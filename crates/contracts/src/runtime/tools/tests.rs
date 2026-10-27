@@ -504,7 +504,6 @@ fn success_with_details_wraps_and_unwraps_scalar_values() {
     assert_eq!(tool_result.details, Some(serde_json::json!({"n": 1})));
 }
 
-
 #[test]
 fn capability_context_is_searchable_and_refreshes_without_overriding_execution() {
     let mut registry = ToolRegistry::new();
@@ -515,7 +514,7 @@ fn capability_context_is_searchable_and_refreshes_without_overriding_execution()
         Some("Mineral operations"),
         "Scandium prospecting",
     );
-    registry.set_capability_contexts(&[described.clone()]);
+    registry.set_capability_contexts(std::slice::from_ref(&described));
     assert_eq!(
         registry.tool_definition("echo").unwrap().full_parameters(),
         canonical.full_parameters()

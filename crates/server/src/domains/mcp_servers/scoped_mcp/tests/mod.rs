@@ -1416,5 +1416,4 @@ fn session_servers_never_carry_tool_labels() {
     assert!(merged["extra"].tool_labels.is_empty());
 }
 
-#[path = "tests/source_context.rs"]
 mod source_context;

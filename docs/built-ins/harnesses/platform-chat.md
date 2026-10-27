@@ -113,7 +113,7 @@ inherited from [Bashkit Worker](/built-ins/harnesses/bashkit-worker/).
 
 | Capability | Purpose |
 |---|---|
-| Platform | Platform operations through the session shell |
+| Platform | Typed native platform operations and the session shell |
 | Current Time | Ground relative time questions |
 | Task Management | Track work within a conversation |
 | Prompt Caching | Cache stable prompt content |
@@ -131,6 +131,7 @@ inherited from [Bashkit Worker](/built-ins/harnesses/bashkit-worker/).
 | User MCP Servers | Use the MCP servers the person added for themselves, and add, remove and connect them in chat ([User MCP servers](/features/user-mcp-servers/)) |
 | Coordination | Hand focused work to threads you can open and follow, when the organization has adopted Chat background work |
 | Poppy Personal Agent | Talk to companies' agents for the person over the Personal Agent Protocol ([Poppy Personal Agent](/capabilities/poppy-personal-agent/)) |
+| Tool Search | Discover native operations on demand with bounded schema disclosure ([Tool Search](/capabilities/tool-search/)) |
 
 ## Existing conversations
 

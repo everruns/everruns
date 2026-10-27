@@ -7,13 +7,17 @@ operation descriptors and a shared simulated backend. Platform Chat now register
 individual `platform_` functions with bounded discovery and keeps the shell for
 composition; see the [capability reference](../../docs/capabilities/platform.md).
 The recorded comparison predates that production switch: its CLI prompt is a
-frozen snapshot, and its native arms use 344 unprefixed captured operations.
+frozen snapshot, and the historical native runs used 344 unprefixed captured operations. The current
+`catalog.json` follows the latest server inventory (361 operations).
 The production catalog excludes 11 infrastructure-only durable operations and
-registers 333 public operations. These historical runs do not qualify the new
+registers 350 public operations. These historical runs do not qualify the new
 managed composition or production model behavior. The invocation schema builder
 is shared with production; fixture dispatch and state remain simulated.
 
 The hosted subject exercises authorization, worker dispatch and persistence.
+Its read/write and command scorers recognize both production `platform_` function
+names and the historical unprefixed native fixture names through the captured
+canonical catalog; unrelated MCP tools do not acquire a platform operation role.
 The offline subject exercises model interface use, canonical JSON schemas, real
 CLI parsing and Bashkit execution, plus deterministic in-memory state. Its
 backend implements generic resource operations rather than production domain
@@ -135,7 +139,7 @@ artifacts are generated from the server and checked against it —
 
 | Artifact | What it carries | Guard |
 |---|---|---|
-| `catalog.json` | all captured commands (currently 344), real descriptions and schemas | `the_eval_catalog_matches_inventory` |
+| `catalog.json` | all captured commands (currently 361), real descriptions and schemas | `the_eval_catalog_matches_inventory` |
 | `harness.json` | Frozen CLI Platform Chat prompt and current shell schema | `the_eval_cli_snapshot_uses_the_current_shell_schema` |
 | `harness-legacy.json` | Historical three-tool baseline | Frozen comparison artifact |
 | `help.json` | `--help` for the root and every node, rendered by the shipped tree | `the_eval_help_matches_the_shipped_tree` |

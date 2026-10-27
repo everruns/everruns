@@ -2,6 +2,8 @@
 
 ## 2026-10-27
 
+- Rebased native Platform discovery onto the current public inventory (350 operations), preserving live authorization and documenting the portable catalog’s feature-independent metadata boundary. See [Platform Chat](harnesses/platform-chat.md) and the [threat model](security/threat-model.md).
+
 - Added [Slate Design System Pages](ui/design-system.md): Slate published at everruns.com/docs/design-system/ from the app's own tokens and Facet icons, replacing the retired design tool export as the starting point for redesigns.
 - Added [Knowledge Pages](ui/knowledge-pages.md): the tabbed Knowledge landing (collections and search accounts) and collections browsed with the shared session file browser over a one-level folder listing.
 
@@ -48,8 +50,6 @@
   Kubernetes gets a Helm chart rather than an operator. `upgrade` backs up the
   database before migrations; `reset` is the only command that deletes data. See
   [Local Setup and Kubernetes](operations/local-setup.md).
-
-## 2026-10-25
 
 * **Native Platform Chat operations.** Documented the managed agent's prefixed
   native operation surface, bounded schema discovery, shared dispatch authority,

@@ -28,7 +28,7 @@ work described below.
 
 The Platform capability also supports an explicit native inventory surface for
 the managed Platform Chat. Its static `operations.json` catalog is generated
-from the server inventory, and all 333 public, noninternal, nondurable
+from the server inventory, and all 350 public, noninternal, nondurable
 operations are projected as prefixed native functions. Workers do not link the
 server crate. Invocation uses the platform's existing authorized dispatch;
 the inventory is not a cached authorization grant. Platform Chat bounds native

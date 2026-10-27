@@ -1,5 +1,59 @@
 [
   {
+    "description": "Connect an existing GitHub identity or public Git source to knowledge.",
+    "input_schema": {
+      "$defs": {
+        "SourceInput": {
+          "additionalProperties": false,
+          "description": "A connected repository mounted beneath a non-overlapping collection path.",
+          "properties": {
+            "config": {
+              "description": "Adapter-specific repository, revision and root-folder configuration, without credentials."
+            },
+            "connection_owner": {
+              "description": "Optional GitHub connection owner; existing connection authorization still applies.",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "description": "Source adapter: `github` reuses a connection; `git` reads a public HTTPS repository.",
+              "type": "string"
+            },
+            "root_path": {
+              "description": "Collection-relative root under which the source hierarchy is preserved.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SourceInput"
+        },
+        {
+          "properties": {
+            "collection_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collection_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "add_knowledge_source",
+    "read_only": false
+  },
+  {
     "description": "Add a member participant to a session.",
     "input_schema": {
       "$defs": {
@@ -201,6 +255,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -709,6 +772,68 @@
       "type": "object"
     },
     "name": "append_manager_context",
+    "read_only": false
+  },
+  {
+    "description": "Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.",
+    "input_schema": {
+      "$defs": {
+        "ModelSelectionChange": {
+          "description": "A reviewed model enablement change with the provider and state the user saw.",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "expected_enabled": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "provider_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "provider_id",
+            "expected_enabled",
+            "enabled"
+          ],
+          "type": "object"
+        }
+      },
+      "description": "Apply a set of reviewed model enablement changes in one transaction.",
+      "properties": {
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/ModelSelectionChange"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "changes"
+      ],
+      "type": "object"
+    },
+    "name": "apply_model_selection",
+    "read_only": false
+  },
+  {
+    "description": "Archive a knowledge collection.",
+    "input_schema": {
+      "properties": {
+        "collection_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "type": "object"
+    },
+    "name": "archive_knowledge",
     "read_only": false
   },
   {
@@ -1285,6 +1410,105 @@
     "read_only": false
   },
   {
+    "description": "Apply a reviewed GitHub package and enable continuous sync. Pull mode is read-only; two_way also publishes local edits using conditional commits.",
+    "input_schema": {
+      "$defs": {
+        "ConnectSourceRequest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/SourceLocation",
+              "description": "Repository, branch and package path that were previewed."
+            },
+            {
+              "properties": {
+                "agent_digest": {
+                  "description": "Agent package digest returned by preview, protecting concurrent local edits.",
+                  "example": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "type": "string"
+                },
+                "commit": {
+                  "description": "Exact source commit returned by preview; a changed branch requires another preview.",
+                  "example": "0123456789abcdef0123456789abcdef01234567",
+                  "type": "string"
+                },
+                "expected_generation": {
+                  "description": "Current binding generation when replacing a source; omit for an unbound Agent.",
+                  "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c",
+                  "format": "uuid",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "mode": {
+                  "$ref": "#/$defs/SourceMode",
+                  "description": "Synchronization direction; two_way requires repository Contents write access."
+                }
+              },
+              "required": [
+                "commit",
+                "agent_digest"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "Reviewed package location and concurrency tokens required to enable source sync."
+        },
+        "SourceLocation": {
+          "description": "Repository, branch and package path that define an Agent's GitHub source.",
+          "properties": {
+            "branch": {
+              "description": "Branch whose future commits the Agent follows.",
+              "example": "main",
+              "type": "string"
+            },
+            "path": {
+              "description": "Repository-relative package folder or manifest; empty selects the repository root.",
+              "example": "agents/support",
+              "type": "string"
+            },
+            "repository": {
+              "description": "GitHub repository in owner/name form.",
+              "example": "acme/agents",
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository",
+            "branch"
+          ],
+          "type": "object"
+        },
+        "SourceMode": {
+          "description": "Source direction. Existing bindings remain inbound-only until explicitly changed.",
+          "enum": [
+            "pull",
+            "two_way"
+          ],
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/ConnectSourceRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "connect_agent_source",
+    "read_only": false
+  },
+  {
     "description": "Copy an agent. Generates a unique name.",
     "input_schema": {
       "description": "Copy an agent. Generates a unique name ({name}-copy, -copy-2, etc.)",
@@ -1476,6 +1700,15 @@
                 },
                 "type": "object"
               },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -1639,6 +1872,37 @@
             "always"
           ],
           "type": "string"
+        },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
         },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
@@ -1849,13 +2113,24 @@
           "enum": [
             "checkpoint_and_stop",
             "stop",
-            "keep_running"
+            "keep_running",
+            "delete"
           ],
           "type": "string"
         },
         "SandboxLifecycle": {
           "description": "Control-plane lifecycle intent. Providers do not own these timers.",
           "properties": {
+            "delete_after_seconds": {
+              "description": "How long a paused Sandbox is kept, counted from its last activity,\nbefore Everruns deletes it with its files. The Session stays; its next\nSandbox call provisions a fresh one. `null` keeps paused Sandboxes\nuntil their Session is deleted.",
+              "example": 259200,
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "idle_action": {
               "$ref": "#/$defs/SandboxIdleAction",
               "description": "Action Everruns requests after the idle interval."
@@ -2394,6 +2669,10 @@
             "null"
           ]
         },
+        "localizations": {
+          "$ref": "#/$defs/EntityLocalizations",
+          "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+        },
         "max_iterations": {
           "description": "Maximum number of LLM iterations per turn for this agent.",
           "example": 20,
@@ -2540,7 +2819,8 @@
             "public_chat",
             "voice",
             "api",
-            "poppy"
+            "poppy",
+            "work_chat"
           ],
           "example": "webhook",
           "type": "string"
@@ -4304,6 +4584,15 @@
                 },
                 "type": "object"
               },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -4351,6 +4640,37 @@
           "required": [
             "text"
           ],
+          "type": "object"
+        },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
           "type": "object"
         },
         "InitialFile": {
@@ -4551,6 +4871,10 @@
             "null"
           ]
         },
+        "localizations": {
+          "$ref": "#/$defs/EntityLocalizations",
+          "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+        },
         "mcpServers": {
           "$ref": "#/$defs/BTreeMap",
           "description": "Remote MCP servers scoped to this harness."
@@ -4625,123 +4949,105 @@
     "read_only": false
   },
   {
-    "description": "Create a knowledge base in the current organization.",
+    "description": "Create a knowledge collection; indexing is optional.",
     "input_schema": {
-      "properties": {
-        "description": {
-          "description": "Human-readable description. Safe to render in user-facing messages.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "embedding_model_id": {
-          "description": "Optional embedding model for hybrid retrieval.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "name": {
-          "description": "Human-readable name. Safe to render in user-facing messages.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "type": "object"
-    },
-    "name": "create_knowledge_base",
-    "read_only": false
-  },
-  {
-    "description": "Create an entry inside a knowledge base.",
-    "input_schema": {
-      "properties": {
-        "body": {
-          "type": "string"
-        },
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        },
-        "kind": {
-          "description": "Discriminator selecting the variant of this resource.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "resource": {
-          "description": "Optional OKF resource URI identifying the underlying asset.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "tags": {
-          "description": "Free-form tags attached to this resource.",
-          "items": {
-            "type": "string"
+      "$defs": {
+        "CollectionInput": {
+          "additionalProperties": false,
+          "description": "A file collection with optional indexing, provider selection and path exclusions.",
+          "properties": {
+            "description": {
+              "description": "Human-readable purpose of the collection, available during progressive disclosure.",
+              "type": "string"
+            },
+            "embedding_model_id": {
+              "description": "Organization embedding model; required when hybrid indexing is enabled.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "indexer_id": {
+              "description": "Optional organization search account. Omit to use the local index backend.",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "indexing": {
+              "$ref": "#/$defs/IndexMode",
+              "description": "Whether files remain unindexed, use keyword search, or also use embedding retrieval."
+            },
+            "name": {
+              "description": "Collection name; `everruns-docs` is reserved for the predefined documentation snapshot.",
+              "type": "string"
+            },
+            "rules": {
+              "description": "Path-glob arrays named `ingest_exclude`, `index_exclude` and `read_exclude`."
+            }
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "required": [
+            "name"
+          ],
+          "type": "object"
         },
-        "title": {
-          "description": "Human-readable title. Safe to render in user-facing messages.",
+        "IndexMode": {
+          "description": "Optional collection indexing: no index, keyword retrieval, or keyword plus embeddings.",
+          "enum": [
+            "off",
+            "lexical",
+            "hybrid"
+          ],
           "type": "string"
         }
       },
-      "required": [
-        "kb_id",
-        "title",
-        "body"
-      ],
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/CollectionInput"
+        }
+      ]
     },
-    "name": "create_knowledge_entry",
+    "name": "create_knowledge",
     "read_only": false
   },
   {
-    "description": "Create a knowledge index in the current organization.",
+    "description": "Configure an organization Turbopuffer account using an existing write-only credential binding.",
     "input_schema": {
-      "properties": {
-        "description": {
-          "description": "Human-readable description. Safe to render in user-facing messages.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "embedding_model_id": {
-          "description": "Embedding model used to embed chunks. Required.",
-          "type": "string"
-        },
-        "name": {
-          "description": "Human-readable name. Safe to render in user-facing messages.",
-          "type": "string"
-        },
-        "source_config": {
-          "description": "Non-secret source coordinates."
-        },
-        "source_type": {
-          "description": "External source type. One of `github`, `git`. Defaults to `github`.",
-          "type": [
-            "string",
-            "null"
-          ]
+      "$defs": {
+        "IndexerInput": {
+          "additionalProperties": false,
+          "description": "An organization Turbopuffer account referencing an existing service credential.",
+          "properties": {
+            "credential_binding_id": {
+              "description": "Active organization-service credential binding; never a plaintext API key.",
+              "format": "uuid",
+              "type": "string"
+            },
+            "endpoint": {
+              "description": "HTTPS regional Turbopuffer API endpoint; embedded credentials are forbidden.",
+              "type": "string"
+            },
+            "name": {
+              "description": "Display name for the organization search account.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "endpoint",
+            "credential_binding_id"
+          ],
+          "type": "object"
         }
       },
-      "required": [
-        "name",
-        "embedding_model_id"
-      ],
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/IndexerInput"
+        }
+      ]
     },
-    "name": "create_knowledge_index",
+    "name": "create_knowledge_indexer",
     "read_only": false
   },
   {
@@ -4866,6 +5172,16 @@
           "example": "github",
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "tool_timeout_ms": {
+          "description": "How long one tool call may take, in milliseconds (1000 to 1800000).\nDefaults to 60000.",
+          "example": 300000,
+          "format": "int64",
+          "minimum": 0,
+          "type": [
+            "integer",
             "null"
           ]
         },
@@ -7153,6 +7469,15 @@
                 },
                 "type": "object"
               },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -7496,13 +7821,24 @@
           "enum": [
             "checkpoint_and_stop",
             "stop",
-            "keep_running"
+            "keep_running",
+            "delete"
           ],
           "type": "string"
         },
         "SandboxLifecycle": {
           "description": "Control-plane lifecycle intent. Providers do not own these timers.",
           "properties": {
+            "delete_after_seconds": {
+              "description": "How long a paused Sandbox is kept, counted from its last activity,\nbefore Everruns deletes it with its files. The Session stays; its next\nSandbox call provisions a fresh one. `null` keeps paused Sandboxes\nuntil their Session is deleted.",
+              "example": 259200,
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "idle_action": {
               "$ref": "#/$defs/SandboxIdleAction",
               "description": "Action Everruns requests after the idle interval."
@@ -8567,59 +8903,23 @@
     "read_only": false
   },
   {
-    "description": "Archive a knowledge base.",
+    "description": "Delete a managed knowledge file and stop serving its search results.",
     "input_schema": {
       "properties": {
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "kb_id"
-      ],
-      "type": "object"
-    },
-    "name": "delete_knowledge_base",
-    "read_only": false
-  },
-  {
-    "description": "Delete a knowledge entry.",
-    "input_schema": {
-      "properties": {
-        "entry_id": {
-          "description": "Knowledge base entry's prefixed public identifier.",
+        "collection_id": {
           "type": "string"
         },
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
+        "path": {
           "type": "string"
         }
       },
       "required": [
-        "kb_id",
-        "entry_id"
+        "collection_id",
+        "path"
       ],
       "type": "object"
     },
-    "name": "delete_knowledge_entry",
-    "read_only": false
-  },
-  {
-    "description": "Archive a knowledge index.",
-    "input_schema": {
-      "properties": {
-        "index_id": {
-          "description": "Knowledge index's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "index_id"
-      ],
-      "type": "object"
-    },
-    "name": "delete_knowledge_index",
+    "name": "delete_knowledge_file",
     "read_only": false
   },
   {
@@ -9147,6 +9447,22 @@
       "type": "object"
     },
     "name": "disconnect_agent_github",
+    "read_only": false
+  },
+  {
+    "description": "Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "disconnect_agent_source",
     "read_only": false
   },
   {
@@ -9947,6 +10263,23 @@
     "read_only": false
   },
   {
+    "description": "Read your own editable profile, without email, tokens or credentials.",
+    "input_schema": {
+      "description": "Read the editable profile belonging to the signed-in account.",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "get_account_profile",
+    "read_only": true
+  },
+  {
     "description": "Get a single agent by ID or name.",
     "input_schema": {
       "description": "Get a single agent by ID or name.",
@@ -10048,6 +10381,74 @@
       "type": "object"
     },
     "name": "get_agent_script",
+    "read_only": true
+  },
+  {
+    "description": "Show the Agent's continuous GitHub source binding and sync status.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_agent_source",
+    "read_only": true
+  },
+  {
+    "description": "Browse GitHub branches and Agent package paths.",
+    "input_schema": {
+      "$defs": {
+        "SourceOptionsRequest": {
+          "description": "Repository location to browse before selecting an Agent source package.",
+          "properties": {
+            "branch": {
+              "description": "Branch to browse; omitted uses the repository's default branch.",
+              "example": "main",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "description": "Repository-relative directory to browse; empty selects the root.",
+              "example": "agents",
+              "type": "string"
+            },
+            "repository": {
+              "description": "GitHub repository in owner/name form.",
+              "example": "acme/agents",
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SourceOptionsRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "get_agent_source_options",
     "read_only": true
   },
   {
@@ -10310,59 +10711,19 @@
     "read_only": true
   },
   {
-    "description": "Get a knowledge base by ID.",
+    "description": "Inspect a knowledge collection, sources and processing status.",
     "input_schema": {
       "properties": {
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
+        "collection_id": {
           "type": "string"
         }
       },
       "required": [
-        "kb_id"
+        "collection_id"
       ],
       "type": "object"
     },
-    "name": "get_knowledge_base",
-    "read_only": true
-  },
-  {
-    "description": "Get a knowledge entry by ID.",
-    "input_schema": {
-      "properties": {
-        "entry_id": {
-          "description": "Knowledge base entry's prefixed public identifier.",
-          "type": "string"
-        },
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "kb_id",
-        "entry_id"
-      ],
-      "type": "object"
-    },
-    "name": "get_knowledge_entry",
-    "read_only": true
-  },
-  {
-    "description": "Get a knowledge index by ID.",
-    "input_schema": {
-      "properties": {
-        "index_id": {
-          "description": "Knowledge index's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "index_id"
-      ],
-      "type": "object"
-    },
-    "name": "get_knowledge_index",
+    "name": "get_knowledge",
     "read_only": true
   },
   {
@@ -10513,6 +10874,23 @@
     "read_only": true
   },
   {
+    "description": "Read the active organization's decision-model selection without model credentials.",
+    "input_schema": {
+      "description": "Read the active organization decision-model selection without credentials.",
+      "properties": {
+        "org": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "org"
+      ],
+      "type": "object"
+    },
+    "name": "get_org_decision_settings",
+    "read_only": true
+  },
+  {
     "description": "Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode.",
     "input_schema": {
       "properties": {
@@ -10527,6 +10905,41 @@
       "type": "object"
     },
     "name": "get_org_egress_allowlist",
+    "read_only": true
+  },
+  {
+    "description": "Read an organization account's editable name. Credentials are never returned.",
+    "input_schema": {
+      "description": "Read the editable name of an authorized organization account.",
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "get_organization_account",
+    "read_only": true
+  },
+  {
+    "description": "Read your own organization profile.",
+    "input_schema": {
+      "description": "Read the active organization profile bound to the signed-in account.",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "get_own_virtual_user_profile",
     "read_only": true
   },
   {
@@ -10702,6 +11115,31 @@
       "type": "object"
     },
     "name": "get_sandbox_fleet_stats",
+    "read_only": true
+  },
+  {
+    "description": "Read editable Sandbox Template metadata, excluding execution configuration and environment values.",
+    "input_schema": {
+      "$defs": {
+        "sbxtplId": {
+          "description": "Prefixed identifier with 'sbxtpl' prefix",
+          "example": "sbxtpl_01933b5a000070008000000000000001",
+          "pattern": "^sbxtpl_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "description": "Read authorized Sandbox Template metadata without execution configuration.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/sbxtplId"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "get_sandbox_template_metadata",
     "read_only": true
   },
   {
@@ -11125,6 +11563,31 @@
       "type": "object"
     },
     "name": "get_session_trace_step",
+    "read_only": true
+  },
+  {
+    "description": "Show what a session's turn is doing or got done.",
+    "input_schema": {
+      "description": "Work report of one turn, or of the session's latest turn.",
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        },
+        "turn_id": {
+          "description": "Turn to report on. Defaults to the session's latest turn.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_session_work",
     "read_only": true
   },
   {
@@ -11755,62 +12218,6 @@
       "description": "Import a full external run group (everruns as host/viewer for external eval\nsystems)."
     },
     "name": "import_eval_run",
-    "read_only": false
-  },
-  {
-    "description": "Import an Open Knowledge Format (OKF) bundle into a knowledge base.",
-    "input_schema": {
-      "$defs": {
-        "OkfFileInput": {
-          "description": "A single inline bundle file, for callers that send files as JSON rather\nthan a tarball.",
-          "properties": {
-            "content": {
-              "description": "Raw markdown file content (frontmatter + body).",
-              "type": "string"
-            },
-            "path": {
-              "description": "Bundle-relative path, e.g. `tables/orders.md`.",
-              "type": "string"
-            }
-          },
-          "required": [
-            "path",
-            "content"
-          ],
-          "type": "object"
-        }
-      },
-      "description": "Import an OKF bundle into a knowledge base.",
-      "properties": {
-        "bundle_base64": {
-          "description": "A base64-encoded `.tar.gz` OKF bundle. Mutually exclusive with `files`.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "files": {
-          "description": "Inline bundle files. Mutually exclusive with `bundle_base64`.",
-          "items": {
-            "$ref": "#/$defs/OkfFileInput"
-          },
-          "type": "array"
-        },
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        },
-        "prune": {
-          "description": "When true, delete previously-imported entries absent from this bundle.",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "kb_id"
-      ],
-      "type": "object"
-    },
-    "name": "import_okf_bundle",
     "read_only": false
   },
   {
@@ -12669,99 +13076,121 @@
     "read_only": true
   },
   {
-    "description": "List knowledge bases in the current organization.",
+    "description": "List versioned knowledge collections.",
     "input_schema": {
       "properties": {
-        "include_archived": {
-          "description": "Include archived knowledge bases.",
+        "after": {
           "type": [
-            "boolean",
+            "string",
             "null"
           ]
         },
-        "search": {
-          "description": "Case-insensitive name filter.",
+        "limit": {
+          "format": "int32",
+          "minimum": 0,
           "type": [
-            "string",
+            "integer",
             "null"
           ]
         }
       },
       "type": "object"
     },
-    "name": "list_knowledge_bases",
+    "name": "list_knowledge",
     "read_only": true
   },
   {
-    "description": "List entries inside a knowledge base.",
+    "description": "List knowledge files with bounded cursor pagination.",
     "input_schema": {
-      "properties": {
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        },
-        "kind": {
-          "description": "Discriminator selecting the variant of this resource.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "search": {
-          "description": "Case-insensitive title or body filter.",
-          "type": [
-            "string",
-            "null"
-          ]
+      "$defs": {
+        "PageQuery": {
+          "properties": {
+            "after": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "extracted": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "length": {
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "limit": {
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "offset": {
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tree": {
+              "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "version": {
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
         }
       },
-      "required": [
-        "kb_id"
-      ],
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/PageQuery"
+        },
+        {
+          "properties": {
+            "collection_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collection_id"
+          ],
+          "type": "object"
+        }
+      ]
     },
-    "name": "list_knowledge_entries",
+    "name": "list_knowledge_files",
     "read_only": true
   },
   {
-    "description": "List documents inside a knowledge index.",
+    "description": "List organization search-provider accounts without credential values.",
     "input_schema": {
-      "properties": {
-        "index_id": {
-          "description": "Knowledge index's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "index_id"
-      ],
       "type": "object"
     },
-    "name": "list_knowledge_index_documents",
-    "read_only": true
-  },
-  {
-    "description": "List knowledge indexes in the current organization.",
-    "input_schema": {
-      "properties": {
-        "include_archived": {
-          "description": "Also return archived items.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "search": {
-          "description": "Case-insensitive substring match on name or description.",
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "name": "list_knowledge_indexes",
+    "name": "list_knowledge_indexers",
     "read_only": true
   },
   {
@@ -14528,6 +14957,15 @@
                 },
                 "type": "object"
               },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -15009,6 +15447,56 @@
     "read_only": true
   },
   {
+    "description": "Validate and compare a GitHub Agent package without changing the Agent.",
+    "input_schema": {
+      "$defs": {
+        "SourceLocation": {
+          "description": "Repository, branch and package path that define an Agent's GitHub source.",
+          "properties": {
+            "branch": {
+              "description": "Branch whose future commits the Agent follows.",
+              "example": "main",
+              "type": "string"
+            },
+            "path": {
+              "description": "Repository-relative package folder or manifest; empty selects the repository root.",
+              "example": "agents/support",
+              "type": "string"
+            },
+            "repository": {
+              "description": "GitHub repository in owner/name form.",
+              "example": "acme/agents",
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository",
+            "branch"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SourceLocation"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "preview_agent_source",
+    "read_only": true
+  },
+  {
     "description": "Preview the final harness shape with capabilities applied.",
     "input_schema": {
       "$defs": {
@@ -15117,6 +15605,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -15334,6 +15831,24 @@
         "entity_ref": {
           "description": "The entity's public id.",
           "type": "string"
+        },
+        "expected_revision": {
+          "description": "Refuse if the resource changed after this revision.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "fields": {
+          "description": "Restore only these top-level fields; omit to restore the full definition.\nRequires expected_revision. Secrets and fields the update cannot restore are refused.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "kind": {
           "description": "Entity kind, for ids without a prefix.",
@@ -15732,6 +16247,82 @@
       "type": "object"
     },
     "name": "run_saved_report",
+    "read_only": true
+  },
+  {
+    "description": "Check whether the whole install is set up right and working: database, workers, keys, messaging, storage, monitoring.",
+    "input_schema": {
+      "properties": {
+        "refresh": {
+          "description": "Run every check now instead of returning the report from the last\nminute. Refreshes closer than five seconds apart share one run.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "name": "run_system_doctor",
+    "read_only": true
+  },
+  {
+    "description": "Search selected knowledge collections with immutable citations.",
+    "input_schema": {
+      "$defs": {
+        "KnowledgeQuery": {
+          "additionalProperties": false,
+          "description": "A bounded retrieval query; runtime hosts intersect collections with live session bindings.",
+          "properties": {
+            "collections": {
+              "description": "Optional collection identifiers. Runtime access remains limited to attached collections.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "lexical_only": {
+              "description": "Use keyword retrieval without creating a query embedding.",
+              "type": "boolean"
+            },
+            "limit": {
+              "description": "Requested maximum passages; hosts enforce the configured retrieval budget.",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "metadata": {
+              "additionalProperties": {},
+              "description": "Exact user-annotation predicates applied without granting additional file access.",
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "path": {
+              "description": "Optional source-relative path prefix that narrows retrieval.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "query": {
+              "description": "Search text used for keyword retrieval and, when enabled, query embeddings.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/KnowledgeQuery"
+        }
+      ]
+    },
+    "name": "search_knowledge_collections",
     "read_only": true
   },
   {
@@ -16274,20 +16865,35 @@
     "read_only": false
   },
   {
-    "description": "Enqueue a manual sync of a knowledge index.",
+    "description": "Queue an immediate check of this Agent's GitHub source.",
     "input_schema": {
       "properties": {
-        "index_id": {
-          "description": "Knowledge index's prefixed public identifier.",
+        "agent_id": {
           "type": "string"
         }
       },
       "required": [
-        "index_id"
+        "agent_id"
       ],
       "type": "object"
     },
-    "name": "sync_knowledge_index",
+    "name": "sync_agent_source",
+    "read_only": false
+  },
+  {
+    "description": "Queue source refresh and retry failed indexing jobs.",
+    "input_schema": {
+      "properties": {
+        "collection_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "type": "object"
+    },
+    "name": "sync_knowledge",
     "read_only": false
   },
   {
@@ -16469,6 +17075,50 @@
     "read_only": false
   },
   {
+    "description": "Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.",
+    "input_schema": {
+      "$defs": {
+        "UndoModelSelectionItem": {
+          "description": "A saved model selection change to restore at an expected current revision.",
+          "properties": {
+            "expected_revision": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "from_revision": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "from_revision",
+            "expected_revision"
+          ],
+          "type": "object"
+        }
+      },
+      "description": "Restore reviewed model selections atomically while their revisions remain current.",
+      "properties": {
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/UndoModelSelectionItem"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "changes"
+      ],
+      "type": "object"
+    },
+    "name": "undo_model_selection",
+    "read_only": false
+  },
+  {
     "description": "Uninstall a plugin. Capability ref becomes dangling for assigned agents.",
     "input_schema": {
       "description": "Uninstall a plugin. Agents/harnesses referencing `plugin:{install_id}` will\nsurface a dangling-ref error (same behaviour as deleted declarative caps).",
@@ -16523,6 +17173,27 @@
       "type": "object"
     },
     "name": "unpublish_agent_channel",
+    "read_only": false
+  },
+  {
+    "description": "Update your own account display name.",
+    "input_schema": {
+      "description": "Update the signed-in account display name across organizations.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "update_account_profile",
     "read_only": false
   },
   {
@@ -16644,6 +17315,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -16808,6 +17488,37 @@
             "always"
           ],
           "type": "string"
+        },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
         },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
@@ -17018,13 +17729,24 @@
           "enum": [
             "checkpoint_and_stop",
             "stop",
-            "keep_running"
+            "keep_running",
+            "delete"
           ],
           "type": "string"
         },
         "SandboxLifecycle": {
           "description": "Control-plane lifecycle intent. Providers do not own these timers.",
           "properties": {
+            "delete_after_seconds": {
+              "description": "How long a paused Sandbox is kept, counted from its last activity,\nbefore Everruns deletes it with its files. The Session stays; its next\nSandbox call provisions a fresh one. `null` keeps paused Sandboxes\nuntil their Session is deleted.",
+              "example": 259200,
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "idle_action": {
               "$ref": "#/$defs/SandboxIdleAction",
               "description": "Action Everruns requests after the idle interval."
@@ -17566,6 +18288,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "localizations": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/EntityLocalizations",
+                  "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "max_iterations": {
@@ -19269,6 +20002,15 @@
                 },
                 "type": "object"
               },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -19316,6 +20058,37 @@
           "required": [
             "text"
           ],
+          "type": "object"
+        },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
           "type": "object"
         },
         "HarnessStatus": {
@@ -19541,6 +20314,17 @@
                 "null"
               ]
             },
+            "localizations": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/EntityLocalizations",
+                  "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "mcpServers": {
               "oneOf": [
                 {
@@ -19658,197 +20442,133 @@
     "read_only": false
   },
   {
-    "description": "Update a knowledge base.",
+    "description": "Configure knowledge indexing and exclusion rules.",
     "input_schema": {
       "$defs": {
-        "UpdateKnowledgeBaseRequest": {
-          "description": "Request body for the `update_knowledge_base` operation.",
+        "CollectionInput": {
+          "additionalProperties": false,
+          "description": "A file collection with optional indexing, provider selection and path exclusions.",
           "properties": {
             "description": {
-              "description": "Human-readable description. Safe to render in user-facing messages.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "description": "Human-readable purpose of the collection, available during progressive disclosure.",
+              "type": "string"
             },
             "embedding_model_id": {
-              "description": "Optional embedding model for hybrid retrieval. Set to null to clear.",
+              "description": "Organization embedding model; required when hybrid indexing is enabled.",
               "type": [
                 "string",
                 "null"
               ]
             },
-            "name": {
-              "description": "Human-readable name. Safe to render in user-facing messages.",
-              "example": "support-runbooks-archive",
+            "indexer_id": {
+              "description": "Optional organization search account. Omit to use the local index backend.",
+              "format": "uuid",
               "type": [
                 "string",
                 "null"
               ]
+            },
+            "indexing": {
+              "$ref": "#/$defs/IndexMode",
+              "description": "Whether files remain unindexed, use keyword search, or also use embedding retrieval."
+            },
+            "name": {
+              "description": "Collection name; `everruns-docs` is reserved for the predefined documentation snapshot.",
+              "type": "string"
+            },
+            "rules": {
+              "description": "Path-glob arrays named `ingest_exclude`, `index_exclude` and `read_exclude`."
             }
           },
+          "required": [
+            "name"
+          ],
           "type": "object"
+        },
+        "IndexMode": {
+          "description": "Optional collection indexing: no index, keyword retrieval, or keyword plus embeddings.",
+          "enum": [
+            "off",
+            "lexical",
+            "hybrid"
+          ],
+          "type": "string"
         }
       },
       "allOf": [
         {
-          "$ref": "#/$defs/UpdateKnowledgeBaseRequest"
+          "$ref": "#/$defs/CollectionInput"
         },
         {
           "properties": {
-            "kb_id": {
-              "description": "Knowledge base's prefixed public identifier.",
+            "collection_id": {
               "type": "string"
             }
           },
           "required": [
-            "kb_id"
+            "collection_id"
           ],
           "type": "object"
         }
       ]
     },
-    "name": "update_knowledge_base",
+    "name": "update_knowledge",
     "read_only": false
   },
   {
-    "description": "Update a knowledge entry.",
+    "description": "Update annotations or file read/index policy without extracting content again.",
     "input_schema": {
       "$defs": {
-        "UpdateKnowledgeEntryRequest": {
-          "description": "Request body for the `update_knowledge_entry` operation.",
+        "FileMetadataInput": {
+          "additionalProperties": false,
+          "description": "Update managed-file annotations and agent visibility without extracting bytes again.",
           "properties": {
-            "body": {
-              "description": "Updated entry body. Markdown is rendered when displayed.",
-              "example": "Use the `/v1/payments/{id}/refund` endpoint with `reason: \"past_window\"`. Now requires VP approval.",
+            "indexable": {
+              "description": "Optional indexing override. Omit to preserve the current policy.",
               "type": [
-                "string",
+                "boolean",
                 "null"
               ]
             },
-            "kind": {
-              "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
-              "example": "runbook",
-              "type": [
-                "string",
-                "null"
-              ]
+            "metadata": {
+              "description": "Replace user annotations while preserving metadata parsed from the original file."
             },
-            "resource": {
-              "description": "Optional OKF resource URI. Set to null to clear.",
-              "type": [
-                "string",
-                "null"
-              ]
+            "path": {
+              "description": "Existing collection-relative file path.",
+              "type": "string"
             },
-            "tags": {
-              "description": "Free-form tags attached to this resource.",
-              "example": [
-                "billing",
-                "refunds",
-                "vp-approval"
-              ],
-              "items": {
-                "type": "string"
-              },
+            "readable": {
+              "description": "Optional agent-read override. Omit to preserve the current policy.",
               "type": [
-                "array",
-                "null"
-              ]
-            },
-            "title": {
-              "description": "Human-readable title. Safe to render in user-facing messages.",
-              "example": "Refund a payment past 60 days",
-              "type": [
-                "string",
+                "boolean",
                 "null"
               ]
             }
           },
+          "required": [
+            "path"
+          ],
           "type": "object"
         }
       },
       "allOf": [
         {
-          "$ref": "#/$defs/UpdateKnowledgeEntryRequest"
+          "$ref": "#/$defs/FileMetadataInput"
         },
         {
           "properties": {
-            "entry_id": {
-              "description": "Knowledge base entry's prefixed public identifier.",
-              "type": "string"
-            },
-            "kb_id": {
-              "description": "Knowledge base's prefixed public identifier.",
+            "collection_id": {
               "type": "string"
             }
           },
           "required": [
-            "kb_id",
-            "entry_id"
+            "collection_id"
           ],
           "type": "object"
         }
       ]
     },
-    "name": "update_knowledge_entry",
-    "read_only": false
-  },
-  {
-    "description": "Update a knowledge index.",
-    "input_schema": {
-      "$defs": {
-        "UpdateKnowledgeIndexRequest": {
-          "description": "Request body for the `update_knowledge_index` operation.",
-          "properties": {
-            "description": {
-              "description": "Human-readable description. Set to null to clear.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "embedding_model_id": {
-              "description": "Embedding model used to embed chunks. Required; cannot be cleared.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "name": {
-              "description": "Human-readable name. Safe to render in user-facing messages.",
-              "example": "product-docs-v2",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "source_config": {
-              "description": "Non-secret source coordinates. Never include credentials."
-            }
-          },
-          "type": "object"
-        }
-      },
-      "allOf": [
-        {
-          "$ref": "#/$defs/UpdateKnowledgeIndexRequest"
-        },
-        {
-          "properties": {
-            "index_id": {
-              "description": "Knowledge index's prefixed public identifier.",
-              "type": "string"
-            }
-          },
-          "required": [
-            "index_id"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "name": "update_knowledge_index",
+    "name": "update_knowledge_file_metadata",
     "read_only": false
   },
   {
@@ -19999,6 +20719,16 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "tool_timeout_ms": {
+              "description": "How long one tool call may take, in milliseconds (1000 to 1800000).\n`0` clears it back to the 60000 default.",
+              "example": 300000,
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
               ]
             },
             "transport_type": {
@@ -20890,6 +21620,342 @@
     "read_only": false
   },
   {
+    "description": "Update the active organization's name and defaults.",
+    "input_schema": {
+      "$defs": {
+        "SearchFallbackMode": {
+          "description": "What happens when a provider cannot answer.",
+          "enum": [
+            "next",
+            "none"
+          ],
+          "type": "string"
+        },
+        "SearchProviderSetting": {
+          "description": "Which provider web search uses.",
+          "enum": [
+            "org_default",
+            "auto",
+            "native",
+            "brave",
+            "parallel",
+            "account",
+            "free"
+          ],
+          "type": "string"
+        },
+        "SystemDecisions": {
+          "description": "Who answers an org's deployment-owned decision checks (guardrail `jev`\nchecks and the Slack relevance check).",
+          "enum": [
+            "deployment",
+            "organization"
+          ],
+          "type": "string"
+        },
+        "UpdateOrganizationRequest": {
+          "description": "Request to update an organization",
+          "properties": {
+            "agentid_agents_per_owner": {
+              "description": "How many agents one AgentID owner may sign in to this organization's\nPublic Chat channels. Pass null to use the platform default (5).",
+              "example": 5,
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "base_harness_id": {
+              "description": "Base harness to use when a session is started without an explicit harness_id.",
+              "example": "harness_01933b5a000070008000000000000601",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "chat_model_id": {
+              "description": "Independent model for the built-in Everruns Chat. Omit to preserve; null inherits\nthe agents/sessions default. Must be an available shared chat model with tools.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default_harness_id": {
+              "description": "Default harness to preselect in the UI for new sessions.\nMutually exclusive with `default_harness_name`.",
+              "example": "harness_01933b5a000070008000000000000602",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default_harness_name": {
+              "description": "Alternative to `default_harness_id` — looked up by stable name within the org.\nMutually exclusive with `default_harness_id`.",
+              "example": "conversation",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default_model_id": {
+              "description": "Default LLM model for this organization. Must be enabled; pass null to use the platform\ndefault.",
+              "example": "model_01933b5a00007000800000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default_provider_per_service": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Org-level default provider per service (EVE-569). Maps a service kind\n(`chat`, `embeddings`, `realtime`, `images`, `rerank`) to the provider id\nused as that service's default, consulted after an explicit binding and\nbefore the single-active-provider fallback. When present it **replaces**\nthe whole map; each referenced provider must exist in the org.",
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "The display name of the organization.",
+              "example": "Acme Corporation",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "small_model_id": {
+              "description": "Shared small chat model for lightweight work. Omit to preserve the selection;\npass null to clear it. Does not change the main chat or decision default.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "system_decisions": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SystemDecisions",
+                  "description": "Who answers deployment-owned decision checks (guardrail `jev` checks\nand the Slack relevance check). `organization` uses the org's default\ndecision model (`PUT /v1/models/decision-default`) on its own provider\naccount; when that model is missing or failing, guardrail checks fail\nopen and Slack stays silent, never falling back to the deployment."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "web_search_defaults": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/WebSearchDefaults",
+                  "description": "Web search defaults; replaces the stored defaults as a whole. Omitted\nfields take their built-in default. `provider` cannot be\n`org_default`, `account_id` and `automatic_order` entries must name\nthis organization's search accounts, free search is always last in\nthe Automatic order, and `results_per_search` is 1 to 20."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "WebSearchDefaults": {
+          "additionalProperties": false,
+          "description": "An organization's web search defaults.",
+          "properties": {
+            "account_id": {
+              "description": "The search account when `provider` is `account`.",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "allow_native": {
+              "description": "Whether agents may use the model provider's own search (billed by the\nmodel provider).",
+              "type": "boolean"
+            },
+            "automatic_order": {
+              "description": "Automatic order: `native`, search account ids, `hosted` (the\ndeployment's own search, when it offers one) and `free`, which is\nalways last. Entries left out keep their natural place.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "blocked_domains": {
+              "description": "Sites no search in this organization returns, on top of each agent's.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "fallback": {
+              "$ref": "#/$defs/SearchFallbackMode",
+              "description": "When a provider cannot answer: `next` falls back (free search last),\n`none` stops. An agent's own `fallback` wins."
+            },
+            "provider": {
+              "$ref": "#/$defs/SearchProviderSetting",
+              "description": "Provider for agents set to the organization default: `auto`, `native`,\n`brave`, `account` (with `account_id`) or `free`."
+            },
+            "results_per_search": {
+              "description": "Results per search when neither the model nor the agent asks (1 to 20).",
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/UpdateOrganizationRequest"
+        },
+        {
+          "properties": {
+            "org": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "org"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Update the active organization name and explicitly supplied defaults."
+    },
+    "name": "update_org",
+    "read_only": false
+  },
+  {
+    "description": "Rename an organization account while preserving its current credentials.",
+    "input_schema": {
+      "$defs": {
+        "OrganizationAccountNameRequest": {
+          "description": "A new display name; account credentials remain unchanged.",
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/OrganizationAccountNameRequest"
+        },
+        {
+          "properties": {
+            "id": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Rename an organization account without replacing its credentials."
+    },
+    "name": "update_organization_account_name",
+    "read_only": false
+  },
+  {
+    "description": "Update your own organization profile without changing lifecycle.",
+    "input_schema": {
+      "$defs": {
+        "UpdateVirtualUserRequest": {
+          "description": "Update a runtime account profile or its management lifecycle.",
+          "properties": {
+            "avatar_url": {
+              "description": "Profile image URL.",
+              "example": "https://example.com/avatar.png",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": {
+              "description": "Human-readable description. Safe to render in user-facing messages.",
+              "example": "Support team member",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "locale": {
+              "description": "Locale used for agent-facing defaults.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Human-readable name. Safe to render in user-facing messages.",
+              "example": "Alex",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/VirtualUserStatus",
+                  "description": "Current lifecycle status."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "timezone": {
+              "description": "IANA time zone used for agent-facing defaults.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "VirtualUserStatus": {
+          "description": "Virtual user lifecycle status.",
+          "enum": [
+            "active",
+            "archived",
+            "deleted"
+          ],
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/UpdateVirtualUserRequest"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Update the signed-in organization profile without changing its lifecycle."
+    },
+    "name": "update_own_virtual_user_profile",
+    "read_only": false
+  },
+  {
     "description": "Update a machine-payment wallet account.",
     "input_schema": {
       "properties": {
@@ -21247,6 +22313,56 @@
       "type": "object"
     },
     "name": "update_provider",
+    "read_only": false
+  },
+  {
+    "description": "Update Sandbox Template metadata while preserving its current execution specification.",
+    "input_schema": {
+      "$defs": {
+        "SandboxTemplateMetadataRequest": {
+          "description": "Editable template metadata; omitted fields retain their current values.",
+          "properties": {
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "sbxtplId": {
+          "description": "Prefixed identifier with 'sbxtpl' prefix",
+          "example": "sbxtpl_01933b5a000070008000000000000001",
+          "pattern": "^sbxtpl_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SandboxTemplateMetadataRequest"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/sbxtplId"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Update Sandbox Template metadata while preserving its current execution specification."
+    },
+    "name": "update_sandbox_template_metadata",
     "read_only": false
   },
   {
@@ -21969,6 +23085,15 @@
                 },
                 "type": "object"
               },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -22217,6 +23342,10 @@
                 "null"
               ]
             },
+            "localizations": {
+              "$ref": "#/$defs/EntityLocalizations",
+              "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+            },
             "max_iterations": {
               "description": "Maximum number of LLM iterations per turn for this agent.",
               "example": 20,
@@ -22352,6 +23481,37 @@
             "always"
           ],
           "type": "string"
+        },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
         },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
@@ -22562,13 +23722,24 @@
           "enum": [
             "checkpoint_and_stop",
             "stop",
-            "keep_running"
+            "keep_running",
+            "delete"
           ],
           "type": "string"
         },
         "SandboxLifecycle": {
           "description": "Control-plane lifecycle intent. Providers do not own these timers.",
           "properties": {
+            "delete_after_seconds": {
+              "description": "How long a paused Sandbox is kept, counted from its last activity,\nbefore Everruns deletes it with its files. The Session stays; its next\nSandbox call provisions a fresh one. `null` keeps paused Sandboxes\nuntil their Session is deleted.",
+              "example": 259200,
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "idle_action": {
               "$ref": "#/$defs/SandboxIdleAction",
               "description": "Action Everruns requests after the idle interval."
@@ -23201,5 +24372,168 @@
     },
     "name": "validate_agent_package",
     "read_only": true
+  },
+  {
+    "description": "Validate a page of OKF v0.2 metadata and reserved navigation files without converting originals.",
+    "input_schema": {
+      "$defs": {
+        "PageQuery": {
+          "properties": {
+            "after": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "extracted": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "length": {
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "limit": {
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "offset": {
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tree": {
+              "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "version": {
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/PageQuery"
+        },
+        {
+          "properties": {
+            "collection_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collection_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "validate_knowledge_okf",
+    "read_only": true
+  },
+  {
+    "description": "Add or update an original file in managed knowledge.",
+    "input_schema": {
+      "$defs": {
+        "FileInput": {
+          "additionalProperties": false,
+          "description": "An inline managed file; use the streaming upload endpoint for files over 8 MiB.",
+          "properties": {
+            "content": {
+              "description": "UTF-8 original content. Supply exactly one of `content` or `content_base64`.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "content_base64": {
+              "description": "Base64 original bytes for binary files; mutually exclusive with `content`.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "indexable": {
+              "description": "Optional per-file indexing policy; false retains the original without indexing it.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "metadata": {
+              "description": "User annotations retained separately from parsed source/frontmatter metadata."
+            },
+            "mime_type": {
+              "description": "Optional media type used for representation extraction; inferred when omitted.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "description": "Normalized absolute path within the collection, preserving its directory hierarchy.",
+              "type": "string"
+            },
+            "readable": {
+              "description": "Optional agent-read policy. Managers can still download retained originals.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/FileInput"
+        },
+        {
+          "properties": {
+            "collection_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collection_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "write_knowledge_file",
+    "read_only": false
   }
 ]

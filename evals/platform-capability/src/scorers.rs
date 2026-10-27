@@ -544,6 +544,11 @@ fn platform_calls(events: &[Value]) -> Vec<(String, String)> {
             // the script heuristic only for historical or hosted events that
             // do not carry this executor audit.
             let name = call.get("name")?.as_str()?;
+            // Production uses platform_<wire_name>; the historical native
+            // fixture uses wire_name. Only catalog operations acquire a role,
+            // so an unrelated or MCP-prefixed tool cannot impersonate one.
+            let canonical = name.strip_prefix("platform_").unwrap_or(name);
+            let read_only = crate::control_plane::operation_read_only(canonical);
             let role = match name {
                 "bash" => match event
                     .pointer("/data/operation_calls")
@@ -560,7 +565,7 @@ fn platform_calls(events: &[Value]) -> Vec<(String, String)> {
                     None if crate::control_plane::script_mutates(script) => "execute",
                     None => "query",
                 },
-                other => match crate::control_plane::operation_read_only(other) {
+                other => match read_only {
                     Some(true) => "query",
                     Some(false) => "execute",
                     None => other,
@@ -568,7 +573,11 @@ fn platform_calls(events: &[Value]) -> Vec<(String, String)> {
             };
             Some((
                 role.to_string(),
-                format!("{}\n{script}", serde_json::to_string(arguments).ok()?),
+                format!(
+                    "{}\n{script}\n{}",
+                    serde_json::to_string(arguments).ok()?,
+                    if read_only.is_some() { canonical } else { "" }
+                ),
             ))
         })
         .collect()
@@ -1109,6 +1118,57 @@ mod tests {
             ..Default::default()
         };
         assert!(platform_commands().score(&sample, &transcript).await.pass);
+    }
+
+    #[tokio::test]
+    async fn hosted_native_calls_use_canonical_read_and_write_roles() {
+        let read = sample(json!({
+            "expect_tools":[{"tool":"query","min":1}],
+            "forbid_tools":["execute"],
+            "expect_commands":[{"tool":"query","regex":"\\blist_agents\\b"}]
+        }));
+        for name in ["list_agents", "platform_list_agents"] {
+            let transcript = Transcript {
+                events: vec![json!({"type":"tool.started","data":{"tool_call":{
+                    "name":name,"arguments":{"params":{"limit":5}}
+                }}})],
+                ..Default::default()
+            };
+            assert!(
+                expected_tools().score(&read, &transcript).await.pass,
+                "{name}"
+            );
+            assert!(forbidden_tools().score(&read, &transcript).await.pass);
+            assert!(platform_commands().score(&read, &transcript).await.pass);
+        }
+
+        let write = Transcript {
+            events: vec![json!({"type":"tool.started","data":{"tool_call":{
+                "name":"platform_update_agent", "arguments":{
+                    "params":{"agent_id":"agent_1","name":"changed"},
+                    "reason":"Requested change", "context_revision":2
+                }
+            }}})],
+            ..Default::default()
+        };
+        assert!(!forbidden_tools().score(&read, &write).await.pass);
+        let forbidden = sample(json!({
+            "forbid_commands":[{"tool":"execute","regex":"\\bupdate_agent\\b"}]
+        }));
+        assert!(!platform_commands().score(&forbidden, &write).await.pass);
+
+        for name in ["platform_unknown_operation", "mcp_other__list_agents"] {
+            let unrelated = Transcript {
+                events: vec![json!({"type":"tool.started","data":{"tool_call":{
+                    "name":name,"arguments":{"params":{}}
+                }}})],
+                ..Default::default()
+            };
+            assert!(
+                !expected_tools().score(&read, &unrelated).await.pass,
+                "{name}"
+            );
+        }
     }
 
     #[tokio::test]

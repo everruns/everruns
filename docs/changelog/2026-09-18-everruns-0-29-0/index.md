@@ -26,7 +26,7 @@ release: "0.29.0"
 
 See the [GitHub release](https://github.com/everruns/everruns/releases/tag/v0.29.0) and the [full release notes](https://github.com/everruns/everruns/blob/main/CHANGELOG.md#0290---2026-09-18) for every pull request in this version.
 
-## Update 2026-10-25
+## Update 2026-10-27
 
 Platform Chat now uses bounded native functions for individual platform
-operations and keeps the shell for aggregation. See [native platform functions](/changelog/2026-10-25-native-platform-functions/).
+operations and keeps the shell for aggregation. See [native platform functions](/changelog/2026-10-27-native-platform-functions/).

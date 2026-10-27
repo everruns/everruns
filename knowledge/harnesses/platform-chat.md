@@ -20,7 +20,7 @@ Harnesses no longer supply conversation presentation.
 ## Native operations and shell composition
 
 The managed Agent opts into `{"surface":"native"}` for the Platform capability.
-This registers all 333 public, noninternal, nondurable inventory operations as
+This registers all 350 public, noninternal, nondurable inventory operations as
 native `platform_<wire_name>` functions; omitting `surface` still selects the
 legacy `discover` / `query` / `execute` interface. The assistant uses those
 native functions for individual platform operations and the `everruns` CLI in
@@ -142,6 +142,9 @@ run on PostgreSQL (a per-test database from the embedded cluster). Behavioral ca
 [Platform Chat test cases](../test-cases/agents/platform_chat/) and
 [UI chat test cases](../test-cases/ui/chats/).
 
+Hosted evaluation classifies native calls through their canonical operation
+metadata, including the production function prefix, alongside CLI traces.
+
 The offline evaluation defaults to the captured historical CLI surface. A frozen
 historical three-tool subject remains selectable as `legacy` for comparisons;
 it is not provisioned as a product harness. See
@@ -157,7 +160,7 @@ it does not qualify Framework durable replay or provider inline tool changes.
 Separate large-result tasks measure filtering and aggregation.
 
 The historical corrected Muse comparison used an offline, unprefixed 344-tool
-catalog including 11 durable operations; production exposes 333 native
+catalog including 11 durable operations; production exposes 350 native
 operations with the `platform_` prefix. Keep those measurements and limitations
 as historical evidence; they do not qualify production models, domain
 authorization, transactions, hosted persistence, or provider inline tool

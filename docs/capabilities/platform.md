@@ -25,7 +25,7 @@ the capability is high-risk and follows the normal admin-only assignment rule.
 ## Interfaces and built-in skills
 
 Platform Chat uses `{"ref":"platform","config":{"surface":"native"}}`.
-This registers all 333 public, nondurable, noninternal inventory operations as
+This registers all 350 public, nondurable, noninternal inventory operations as
 individual `platform_<wire_name>` functions. The schema wraps the canonical
 typed payload in `params`; `reason` and `context_revision` remain separate
 metadata for change history. Names use the `platform_` prefix to avoid clashes

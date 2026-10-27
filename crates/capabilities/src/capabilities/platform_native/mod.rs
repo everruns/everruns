@@ -100,6 +100,7 @@ impl Tool for PlatformNativeTool {
         let Some(store) = context.extension::<crate::PlatformStoreExt>() else {
             return ToolExecutionResult::tool_error("Platform command service is unavailable");
         };
+        // THREAT[TM-AUTHZ-017]: Discovery is not execution authority.
         // The execution scope binds this store to the real initiating message.
         // platform_run enforces current capability attachment, caller policy,
         // feature flags, reason/context gates and canonical payload validation.
