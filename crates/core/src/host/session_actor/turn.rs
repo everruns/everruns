@@ -296,17 +296,9 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                     self.hosts.flush(&host).await?;
                     let tail = match lease.read_tail().await {
                         Ok(tail) => tail,
-                        // A tail too large to read (the poison guard sealed
-                        // it from its first event) has no host outcome to
-                        // finish; failing here would only lease it again.
-                        Err(error) if error.is_non_retryable() => {
-                            tracing::warn!(
-                                session_id = %actor.session_id,
-                                error = %error,
-                                "Turn log cannot be read whole; releasing without the checkpoint"
-                            );
-                            return Ok(());
-                        }
+                        // A tail too large to read, sealed from its first
+                        // event: failing here would only lease it again.
+                        Err(error) if error.is_non_retryable() => return Ok(()),
                         Err(error) => return Err(error),
                     };
                     self.hosts.checkpoint(&host, &tail).await
@@ -373,11 +365,18 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             },
             &signals,
         ));
-        if actor.attempts > self.config.poison_attempts {
-            return self.seal_poisoned(lease, &setup, actor).await;
-        }
-        let tail = lease.read_tail().await?;
-        self.hosts.checkpoint(&setup, &tail).await?;
+        let poisoned = actor.attempts > self.config.poison_attempts;
+        let tail = match lease.read_tail().await {
+            Ok(tail) => {
+                self.hosts.checkpoint(&setup, &tail).await?;
+                tail
+            }
+            // A tail too large to transfer failed every lease here, ahead of
+            // the guard, so one turn re-read ~200 MB every few seconds for
+            // hours. The guard seals it from its first event instead.
+            Err(error) if poisoned && error.is_non_retryable() => lease.read_tail_head().await?,
+            Err(error) => return Err(error),
+        };
         let started_at = tail
             .first()
             .filter(|event| event.event_type == crate::TURN_STARTED)
@@ -387,6 +386,12 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             TurnLogFold::from_events(tail.clone()).filter(|turn| turn.session_id() == session_id);
         if let (Some(_), Some(sequence)) = (&open, started_at) {
             lease.advance(sequence);
+        }
+
+        if poisoned {
+            self.seal(lease, &setup, org_id, open, actor.next_input_seq)
+                .await?;
+            return Ok(Finish::Release);
         }
 
         let Some(turn) = open else {
@@ -736,48 +741,6 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             .fire_turn_end_hooks(drive.harness_id, drive.agent_id, drive.turn_id, false)
             .await;
         Ok(())
-    }
-
-    /// The poison guard's lease: seal the turn instead of running it. Checked
-    /// before the turn's log is read, because reading it can be the very
-    /// failure that repeats: a tail too large to transfer failed every lease
-    /// at the read, ahead of the guard, so the turn re-read ~200 MB every few
-    /// seconds for hours. A tail that cannot be read whole is sealed from its
-    /// first event, losing only the reason and usage counts on the seal.
-    async fn seal_poisoned(
-        &self,
-        lease: &Lease,
-        setup: &H::Host,
-        actor: &LeasedActor,
-    ) -> Result<Finish> {
-        let tail = match lease.read_tail().await {
-            Ok(tail) => {
-                self.hosts.checkpoint(setup, &tail).await?;
-                tail
-            }
-            Err(error) if error.is_non_retryable() => {
-                tracing::warn!(
-                    session_id = %actor.session_id,
-                    error = %error,
-                    "Turn log cannot be read whole; sealing from its first event"
-                );
-                lease.read_tail_head().await?
-            }
-            Err(error) => return Err(error),
-        };
-        let started_at = tail
-            .first()
-            .filter(|event| event.event_type == crate::TURN_STARTED)
-            .and_then(|event| event.sequence)
-            .map(i64::from);
-        let open =
-            TurnLogFold::from_events(tail).filter(|turn| turn.session_id() == actor.session_id);
-        if let (Some(_), Some(sequence)) = (&open, started_at) {
-            lease.advance(sequence);
-        }
-        self.seal(lease, setup, actor.org_id, open, actor.next_input_seq)
-            .await?;
-        Ok(Finish::Release)
     }
 
     /// Seal the turn whose holders keep dying: the open turn, or the fresh
