@@ -84,4 +84,7 @@ export const messages: Readonly<Record<string, string>> = {
   "When to choose this harness": "Коли вибрати цю обв’язку",
   "Which harness should I use?": "Яку обв’язку вибрати?",
   "You are a helpful assistant...": "Ти корисний помічник...",
+  Unrestricted: "Без обмежень",
+  "{value0} allowed": "Дозволено: {value0}",
+  "{value0} blocked": "Заблоковано: {value0}",
 };

@@ -1,3 +1,4 @@
+import { LocaleProvider } from "@/providers/locale-provider";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EntityCardTags, EntityCardCapabilities } from "@/components/ui/entity-card";
 import { EntityIdentity } from "@/components/ui/entity-identity";
@@ -19,6 +20,23 @@ describe("EntityCard", () => {
 });
 
 describe("EntityIdentity", () => {
+  afterEach(() => localStorage.clear());
+
+  it.each([true, false])(
+    "localizes the copy action while preserving the authored name and ID (truncate=%s)",
+    (truncate) => {
+      localStorage.setItem("everruns.ui-language", "uk");
+      render(
+        <LocaleProvider>
+          <EntityIdentity value="agent_123" truncate={truncate}>
+            Copy ID: authored
+          </EntityIdentity>
+        </LocaleProvider>,
+      );
+      expect(screen.getByRole("button", { name: "Скопіювати ID: agent_123" })).toBeInTheDocument();
+      expect(screen.getByText("Copy ID: authored")).toBeInTheDocument();
+    },
+  );
   it("keeps a long ID out of the layout and exposes its full value accessibly", async () => {
     const value = "plugin:plugin_019fda100f037c008024046d6b3d74c0";
 

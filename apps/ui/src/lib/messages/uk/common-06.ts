@@ -50,7 +50,7 @@ export const messages: Readonly<Record<string, string>> = {
   "PDF Preview": "Попередній перегляд PDF",
   "Peak {value0} at {value1}": "Пік {value0} на {value1}",
   "Pending invitations": "Запрошення в очікуванні",
-  Period: "Крапка",
+  Period: "Період",
   'Permanently delete the archived identity "': 'Назавжди видалити заархівовану особу "',
   "Permanently delete the archived skill": "Назавжди видалити заархівований навик",
   "Persian (Iran)": "Перська (Іран)",

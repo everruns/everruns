@@ -325,7 +325,7 @@ export const messages: Readonly<Record<string, string>> = {
   Copied: "Скопійовано",
   "Copied!": "Скопійовано!",
   Copy: "Копіювати",
-  "Copy ID: {value0}": "Ідентифікатор копії: {value0}",
+  "Copy ID: {value0}": "Скопіювати ID: {value0}",
   "Copy setup prompt": "Копіювати підказку налаштування",
   "Copy technical details": "Скопіюйте технічні деталі",
   "Copy the": "Скопіюйте",
