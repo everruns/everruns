@@ -171,6 +171,9 @@ fn status_of(raw: &str) -> CheckStatus {
     }
 }
 
+/// One kind of self-check as each worker reported it, by worker id.
+type Findings<'a> = Vec<(&'a str, SelfCheck)>;
+
 /// One check per kind of self-check, merged across workers. `server_nats`
 /// says whether this server delivers live updates through NATS.
 pub(crate) fn self_report_checks(
@@ -178,8 +181,7 @@ pub(crate) fn self_report_checks(
     server_nats: bool,
     now: DateTime<Utc>,
 ) -> Vec<DoctorCheck> {
-    // Per check id: (title, findings per worker).
-    let mut by_check: BTreeMap<String, (String, Vec<(&str, SelfCheck)>)> = BTreeMap::new();
+    let mut by_check: BTreeMap<String, (String, Findings<'_>)> = BTreeMap::new();
     for worker in live {
         let Some((report, at)) = worker.self_checks() else {
             continue;
