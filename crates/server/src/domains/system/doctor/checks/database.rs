@@ -40,10 +40,13 @@ pub(super) async fn run(doctor: &SystemDoctor) -> Findings {
         }
     };
     let elapsed = started.elapsed().as_millis();
-    found.fact(format!(
-        "PostgreSQL {}",
-        version.split_whitespace().next().unwrap_or(&version)
-    ));
+    // `server_version` may carry a distribution suffix: "16.4 (Ubuntu ...)".
+    let version = version
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    found.fact(format!("PostgreSQL {version}"));
     found.check(if elapsed > 500 {
         reachable
             .warning(format!("The database answered, but took {elapsed} ms."))
