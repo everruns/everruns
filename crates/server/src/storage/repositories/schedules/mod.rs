@@ -2,11 +2,30 @@
 
 pub(super) mod rows;
 use rows::*;
+#[cfg(test)]
+mod tests;
 
 use super::Database;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{LeasedResourceId, ScheduleId, SessionId};
+
+// Decision (EVERRUNS-4C): name the columns, never `*`. sqlx caches each
+// prepared statement per connection, and PostgreSQL refuses to re-plan a
+// cached statement whose result columns changed ("cached plan must not change
+// result type"). With `*`, any added column changes them, so an instance still
+// running during a rolling deploy failed every poll after the new release
+// migrated the table. A named list keeps the result type fixed across additive
+// migrations. Keep each list equal to its row struct's fields.
+const SESSION_SCHEDULE_COLUMNS: &str = "id, public_id, org_id, session_id, owner_principal_id, \
+     resolved_owner_user_id, description, cron_expression, scheduled_at, timezone, enabled, \
+     next_trigger_at, last_triggered_at, trigger_count, claimed_by, claimed_at, created_at, \
+     updated_at, deleted_at";
+
+const LEASED_RESOURCE_COLUMNS: &str = "id, public_id, org_id, session_id, provider, \
+     resource_type, external_id, display_name, status, owner_user_id, connection_id, \
+     lease_duration_seconds, last_touched_at, lease_expires_at, cleanup_started_at, \
+     cleanup_completed_at, cleanup_attempts, last_cleanup_error, metadata, created_at, updated_at";
 
 impl Database {
     // ============================================
@@ -20,13 +39,13 @@ impl Database {
         let id = ScheduleId::new();
         let public_id = id.to_string();
 
-        let row = sqlx::query_as::<_, SessionScheduleRow>(
+        let row = sqlx::query_as::<_, SessionScheduleRow>(sqlx::AssertSqlSafe(format!(
             r#"
             INSERT INTO session_schedules (id, public_id, org_id, session_id, owner_principal_id, resolved_owner_user_id, description, cron_expression, scheduled_at, timezone, next_trigger_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING *
-            "#,
-        )
+            RETURNING {SESSION_SCHEDULE_COLUMNS}
+            "#
+        )))
         .bind(id)
         .bind(&public_id)
         .bind(input.org_id)
@@ -79,13 +98,13 @@ impl Database {
 
         let id = ScheduleId::new();
         let public_id = id.to_string();
-        let row = sqlx::query_as::<_, SessionScheduleRow>(
+        let row = sqlx::query_as::<_, SessionScheduleRow>(sqlx::AssertSqlSafe(format!(
             r#"
             INSERT INTO session_schedules (id, public_id, org_id, session_id, owner_principal_id, resolved_owner_user_id, description, cron_expression, scheduled_at, timezone, next_trigger_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING *
-            "#,
-        )
+            RETURNING {SESSION_SCHEDULE_COLUMNS}
+            "#
+        )))
         .bind(id)
         .bind(&public_id)
         .bind(input.org_id)
@@ -108,9 +127,9 @@ impl Database {
         org_id: i64,
         schedule_id: ScheduleId,
     ) -> Result<Option<SessionScheduleRow>> {
-        let row = sqlx::query_as::<_, SessionScheduleRow>(
-            "SELECT * FROM session_schedules WHERE id = $1 AND org_id = $2",
-        )
+        let row = sqlx::query_as::<_, SessionScheduleRow>(sqlx::AssertSqlSafe(format!(
+            "SELECT {SESSION_SCHEDULE_COLUMNS} FROM session_schedules WHERE id = $1 AND org_id = $2"
+        )))
         .bind(schedule_id)
         .bind(org_id)
         .fetch_optional(&self.pool)
@@ -126,9 +145,9 @@ impl Database {
         org_id: i64,
         session_id: SessionId,
     ) -> Result<Vec<SessionScheduleRow>> {
-        let rows = sqlx::query_as::<_, SessionScheduleRow>(
-            "SELECT * FROM session_schedules WHERE org_id = $1 AND session_id = $2 AND deleted_at IS NULL ORDER BY created_at DESC",
-        )
+        let rows = sqlx::query_as::<_, SessionScheduleRow>(sqlx::AssertSqlSafe(format!(
+            "SELECT {SESSION_SCHEDULE_COLUMNS} FROM session_schedules WHERE org_id = $1 AND session_id = $2 AND deleted_at IS NULL ORDER BY created_at DESC"
+        )))
         .bind(org_id)
         .bind(session_id)
         .fetch_all(&self.pool)
@@ -144,9 +163,9 @@ impl Database {
         org_id: i64,
         session_id: SessionId,
     ) -> Result<Vec<SessionScheduleRow>> {
-        let rows = sqlx::query_as::<_, SessionScheduleRow>(
-            "SELECT * FROM session_schedules WHERE org_id = $1 AND session_id = $2 ORDER BY (deleted_at IS NULL) DESC, created_at DESC",
-        )
+        let rows = sqlx::query_as::<_, SessionScheduleRow>(sqlx::AssertSqlSafe(format!(
+            "SELECT {SESSION_SCHEDULE_COLUMNS} FROM session_schedules WHERE org_id = $1 AND session_id = $2 ORDER BY (deleted_at IS NULL) DESC, created_at DESC"
+        )))
         .bind(org_id)
         .bind(session_id)
         .fetch_all(&self.pool)
@@ -161,7 +180,7 @@ impl Database {
         schedule_id: ScheduleId,
         input: UpdateSessionScheduleRow,
     ) -> Result<Option<SessionScheduleRow>> {
-        let row = sqlx::query_as::<_, SessionScheduleRow>(
+        let row = sqlx::query_as::<_, SessionScheduleRow>(sqlx::AssertSqlSafe(format!(
             r#"
             UPDATE session_schedules SET
                 enabled = COALESCE($3, enabled),
@@ -170,9 +189,9 @@ impl Database {
                 trigger_count = trigger_count + CASE WHEN $7 THEN 1 ELSE 0 END,
                 updated_at = NOW()
             WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
-            RETURNING *
-            "#,
-        )
+            RETURNING {SESSION_SCHEDULE_COLUMNS}
+            "#
+        )))
         .bind(schedule_id)
         .bind(org_id)
         .bind(input.enabled)
@@ -255,10 +274,10 @@ impl Database {
         scheduler_id: &str,
         limit: i32,
     ) -> Result<Vec<SessionScheduleRow>> {
-        let rows = sqlx::query_as::<_, SessionScheduleRow>(
+        let rows = sqlx::query_as::<_, SessionScheduleRow>(sqlx::AssertSqlSafe(format!(
             r#"
             WITH due AS (
-                SELECT id FROM session_schedules
+                SELECT id AS due_id FROM session_schedules
                 WHERE enabled = true
                   AND deleted_at IS NULL
                   AND next_trigger_at IS NOT NULL
@@ -275,10 +294,10 @@ impl Database {
             UPDATE session_schedules s
             SET claimed_by = $1, claimed_at = NOW()
             FROM due d
-            WHERE s.id = d.id
-            RETURNING s.*
-            "#,
-        )
+            WHERE s.id = d.due_id
+            RETURNING {SESSION_SCHEDULE_COLUMNS}
+            "#
+        )))
         .bind(scheduler_id)
         .bind(limit)
         .bind(SESSION_SCHEDULE_CLAIM_LEASE_SECONDS)
@@ -312,7 +331,7 @@ impl Database {
         let public_id = id.to_string();
         let now = Utc::now();
 
-        let row = sqlx::query_as::<_, LeasedResourceRow>(
+        let row = sqlx::query_as::<_, LeasedResourceRow>(sqlx::AssertSqlSafe(format!(
             r#"
             INSERT INTO leased_resources (
                 id,
@@ -348,9 +367,9 @@ impl Database {
                 cleanup_completed_at = NULL,
                 last_cleanup_error = NULL,
                 metadata = EXCLUDED.metadata
-            RETURNING *
-            "#,
-        )
+            RETURNING {LEASED_RESOURCE_COLUMNS}
+            "#
+        )))
         .bind(id)
         .bind(&public_id)
         .bind(input.org_id)
@@ -376,7 +395,7 @@ impl Database {
         &self,
         input: ReleaseLeasedResourceRow,
     ) -> Result<Option<LeasedResourceRow>> {
-        let row = sqlx::query_as::<_, LeasedResourceRow>(
+        let row = sqlx::query_as::<_, LeasedResourceRow>(sqlx::AssertSqlSafe(format!(
             r#"
             UPDATE leased_resources
             SET
@@ -391,9 +410,9 @@ impl Database {
               AND provider = $3
               AND resource_type = $4
               AND external_id = $5
-            RETURNING *
-            "#,
-        )
+            RETURNING {LEASED_RESOURCE_COLUMNS}
+            "#
+        )))
         .bind(input.org_id)
         .bind(input.session_id)
         .bind(&input.provider)
@@ -410,14 +429,14 @@ impl Database {
         &self,
         session_id: SessionId,
     ) -> Result<Vec<LeasedResourceRow>> {
-        let rows = sqlx::query_as::<_, LeasedResourceRow>(
+        let rows = sqlx::query_as::<_, LeasedResourceRow>(sqlx::AssertSqlSafe(format!(
             r#"
-            SELECT *
+            SELECT {LEASED_RESOURCE_COLUMNS}
             FROM leased_resources
             WHERE session_id = $1
             ORDER BY created_at DESC
-            "#,
-        )
+            "#
+        )))
         .bind(session_id)
         .fetch_all(&self.pool)
         .await?;
@@ -431,10 +450,10 @@ impl Database {
         limit: i32,
         stale_after_seconds: i32,
     ) -> Result<Vec<LeasedResourceRow>> {
-        let rows = sqlx::query_as::<_, LeasedResourceRow>(
+        let rows = sqlx::query_as::<_, LeasedResourceRow>(sqlx::AssertSqlSafe(format!(
             r#"
             WITH due AS (
-                SELECT id
+                SELECT id AS due_id
                 FROM leased_resources
                 WHERE (
                     status IN ('active', 'cleanup_failed')
@@ -459,10 +478,10 @@ impl Database {
                 last_cleanup_error = NULL,
                 updated_at = NOW()
             FROM due
-            WHERE lr.id = due.id
-            RETURNING lr.*
-            "#,
-        )
+            WHERE lr.id = due.due_id
+            RETURNING {LEASED_RESOURCE_COLUMNS}
+            "#
+        )))
         .bind(limit)
         .bind(stale_after_seconds)
         .fetch_all(&self.pool)
@@ -477,7 +496,7 @@ impl Database {
         resource_id: LeasedResourceId,
         expected_cleanup_started_at: DateTime<Utc>,
     ) -> Result<Option<LeasedResourceRow>> {
-        let row = sqlx::query_as::<_, LeasedResourceRow>(
+        let row = sqlx::query_as::<_, LeasedResourceRow>(sqlx::AssertSqlSafe(format!(
             r#"
             UPDATE leased_resources
             SET
@@ -490,9 +509,9 @@ impl Database {
             WHERE id = $1
               AND status = 'cleaning'
               AND cleanup_started_at = $2
-            RETURNING *
-            "#,
-        )
+            RETURNING {LEASED_RESOURCE_COLUMNS}
+            "#
+        )))
         .bind(resource_id)
         .bind(expected_cleanup_started_at)
         .fetch_optional(&self.pool)
@@ -509,7 +528,7 @@ impl Database {
         retry_after_seconds: i32,
         error: &str,
     ) -> Result<Option<LeasedResourceRow>> {
-        let row = sqlx::query_as::<_, LeasedResourceRow>(
+        let row = sqlx::query_as::<_, LeasedResourceRow>(sqlx::AssertSqlSafe(format!(
             r#"
             UPDATE leased_resources
             SET
@@ -521,9 +540,9 @@ impl Database {
             WHERE id = $1
               AND status = 'cleaning'
               AND cleanup_started_at = $4
-            RETURNING *
-            "#,
-        )
+            RETURNING {LEASED_RESOURCE_COLUMNS}
+            "#
+        )))
         .bind(resource_id)
         .bind(retry_after_seconds)
         .bind(error)
