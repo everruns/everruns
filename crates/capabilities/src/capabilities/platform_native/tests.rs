@@ -16,6 +16,7 @@ fn complete_catalog_has_unique_deferable_names_and_valid_structured_schemas() {
     for tool in &tools {
         assert!(names.insert(tool.name()));
         assert!(tool.name().starts_with("platform_"));
+        assert!(tool.name().len() <= 64);
         assert_ne!(
             tool.deferrable_policy(),
             everruns_contracts::tool_types::DeferrablePolicy::Never

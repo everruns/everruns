@@ -26993,6 +26993,11 @@ export interface components {
      */
     ToolHints: {
       /**
+       * @description Public capability description used for source-aware tool retrieval.
+       *     Metadata only: it never grants execution authority.
+       */
+      capability_description?: string | null;
+      /**
        * @description Capability that contributed this tool definition.
        *
        *     Reporting uses this attribution only as metadata. It must never contain

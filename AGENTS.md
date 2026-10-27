@@ -57,6 +57,9 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
   `$GITHUB_OUTPUT` and the runner prints it in the `env:` block of every later step. Scope it to the
   one command that needs it (`doppler run -- <cmd>`) instead;
   `scripts/test-workflow-secret-handling.sh` enforces this.
+- Domain-command schema changes update the native Platform and eval snapshots:
+  `UPDATE_PLATFORM_NATIVE_CATALOG=1 UPDATE_EVAL_CATALOG=1 cargo test -p everruns-server --lib -- native_platform_catalog the_eval_`.
+  Their freshness tests use the authoritative command inventory, including non-default feature gates.
 - Run `just pre-push` before pushing. It scopes expensive checks to changed surfaces and shares a
   dedicated pre-push Rust target across worktrees; use `just pre-push-full` to force every check.
 - Editing `ci.yml`'s Rust jobs has two non-obvious traps: jobs sharing a `rust-cache` `shared-key`

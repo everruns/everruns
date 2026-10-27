@@ -12,7 +12,7 @@ fn native_platform_catalog_matches_authoritative_inventory() {
             let meta = (desc.meta)();
             serde_json::json!({
                 "name": meta.name, "category": meta.category,
-                "description": meta.description, "read_only": (desc.read_only)(),
+                "description": meta.description, "read_only": super::catalog::is_read_only_command(desc),
                 "input_schema": (desc.param_schema)(),
             })
         })
