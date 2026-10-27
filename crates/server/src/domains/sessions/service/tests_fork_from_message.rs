@@ -14,6 +14,7 @@ async fn parent_with_two_turns() -> (Arc<StorageBackend>, SessionService, Caller
     let caller = Caller::internal(1);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "branch-harness".to_string(),
         display_name: Some("Branch Harness".to_string()),
         description: None,

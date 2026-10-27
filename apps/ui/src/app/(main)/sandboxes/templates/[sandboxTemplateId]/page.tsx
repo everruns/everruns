@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
@@ -24,10 +25,11 @@ import {
 import type { SandboxPolicy, SandboxTemplate } from "@/lib/api/types";
 
 export default function SandboxTemplatePage() {
+  const ui = useUiTranslations();
   const chatMode = usePageChatMode();
   const { sandboxTemplateId } = useParams<{ sandboxTemplateId: string }>();
   const { data: template, isLoading } = useSandboxTemplate(sandboxTemplateId);
-  usePageTitle(template?.display_name || "Sandbox Template", "Sandbox Templates");
+  usePageTitle(template?.display_name || "Sandbox Template", ui("Sandbox Templates"));
   if (isLoading || !template) return null;
   return (
     <SandboxTemplateEditor
@@ -38,6 +40,7 @@ export default function SandboxTemplatePage() {
 }
 
 function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
+  const ui = useUiTranslations();
   const router = useRouter();
   const revise = useReviseSandboxTemplate();
   const archive = useArchiveSandboxTemplate();
@@ -81,25 +84,29 @@ function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
     <PageContainer>
       <PageBreadcrumb
         items={[
-          { label: "Sandboxes", href: "/sandboxes" },
-          { label: "Templates", href: "/sandboxes/templates" },
+          { label: ui("Sandboxes"), href: "/sandboxes" },
+          { label: ui("Templates"), href: "/sandboxes/templates" },
           { label: template.display_name },
         ]}
       />
       <PageMasthead
         icon={<SandboxTemplateIcon />}
         title={template.display_name}
-        description={`${template.name} · revision ${template.current_revision.revision}${template.is_managed ? " · managed" : ""}`}
+        description={ui("{value0} · revision {value1}{value2}", {
+          value0: template.name,
+          value1: template.current_revision.revision,
+          value2: template.is_managed ? " · managed" : "",
+        })}
       />
       <PageMain className="max-w-3xl space-y-5">
         {chatDraft.notice}
         <Card>
           <CardHeader>
-            <CardTitle>Configuration</CardTitle>
+            <CardTitle>{ui("Configuration")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="display-name">Display name</Label>
+              <Label htmlFor="display-name">{ui("Display name")}</Label>
               <Input
                 id="display-name"
                 value={displayName}
@@ -108,7 +115,7 @@ function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{ui("Description")}</Label>
               <Textarea
                 id="description"
                 value={description}
@@ -127,8 +134,8 @@ function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
         {!template.is_managed ? (
           <div className="flex gap-2">
             <Button variant="accent" onClick={save} disabled={!spec || revise.isPending}>
-              {revise.isPending ? <Loader2 className="size-4 animate-spin" /> : null}Save new
-              revision
+              {revise.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
+              {ui("Save new revision")}
             </Button>
             {chatDraft.blocked && (
               <Button
@@ -143,7 +150,7 @@ function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
                   });
                 }}
               >
-                Discard
+                {ui("Discard")}
               </Button>
             )}
             <Button
@@ -154,12 +161,12 @@ function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
               }}
             >
               <Archive className="size-4" />
-              Archive
+              {ui("Archive")}
             </Button>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Managed Sandbox Templates are versioned by the platform and cannot be edited.
+            {ui("Managed Sandbox Templates are versioned by the platform and cannot be edited.")}
           </p>
         )}
       </PageMain>

@@ -13,6 +13,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import {
   Check,
   CheckCircle2,
@@ -120,6 +121,7 @@ export function workFactsLine(report: WorkReport, locale: string): string {
 }
 
 export function WorkResultBox({ report }: { report: WorkReport }) {
+  const ui = useUiTranslations();
   const { locale, t } = useLocale();
   if (report.state !== "done" || !report.result) return null;
   const facts = workFactsLine(report, locale);
@@ -141,7 +143,7 @@ export function WorkResultBox({ report }: { report: WorkReport }) {
         ) : (
           <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden />
         )}
-        <span>{facts ? `${lead} · ${facts}` : lead}</span>
+        <span>{facts ? ui("{value0} · {value1}", { value0: lead, value1: facts }) : lead}</span>
       </div>
       {summary ? <p className="mt-1.5 pl-6 text-sm">{summary}</p> : null}
       {checks ? (

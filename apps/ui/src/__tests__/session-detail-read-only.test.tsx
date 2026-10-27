@@ -141,6 +141,7 @@ jest.mock("@/providers/org-provider", () => ({
 }));
 
 jest.mock("@/providers/locale-provider", () => ({
+  ...jest.requireActual("@/providers/locale-provider"),
   useLocale: () => ({ locale: "en", backendLocale: "en-US", t: (key: string) => key }),
 }));
 

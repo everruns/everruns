@@ -4,6 +4,7 @@
 // account of a connector, with the connector's own credential fields. Sandbox
 // provider accounts and web search accounts share it.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState } from "react";
 import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
@@ -38,6 +39,7 @@ export function OrganizationAccountDialog({
   /** What the account is for, shown under the title. */
   description?: string;
 }) {
+  const ui = useUiTranslations();
   const [name, setName] = useState(account?.name ?? "");
   const [fields, setFields] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +49,7 @@ export function OrganizationAccountDialog({
     values: { name },
     entityType: "organization_account",
     entityId: account?.id,
-    label: "Account name",
+    label: ui("Account name"),
     priority: 30,
     enabled: open && !!provider?.form_schema,
     baseline: JSON.stringify([account?.id, account?.name, account?.updated_at]),
@@ -104,7 +106,7 @@ export function OrganizationAccountDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {account ? "Rotate" : "Connect"} {provider.display_name}
+            {account ? ui("Rotate") : ui("Connect")} {provider.display_name}
           </DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
@@ -119,17 +121,17 @@ export function OrganizationAccountDialog({
                 chat.clear();
               }}
             >
-              Discard name changes
+              {ui("Discard name changes")}
             </Button>
           )}
           <div className="space-y-2">
-            <Label htmlFor="account-name">Account name</Label>
+            <Label htmlFor="account-name">{ui("Account name")}</Label>
             <Input
               id="account-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
               required
-              placeholder="Production"
+              placeholder={ui("Production")}
             />
           </div>
           {provider.form_schema.fields.map((field) => (
@@ -157,10 +159,10 @@ export function OrganizationAccountDialog({
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button type="submit" disabled={save.isPending || chat.blocked}>
-              {save.isPending ? "Validating…" : "Save account"}
+              {save.isPending ? ui("Validating…") : ui("Save account")}
             </Button>
           </DialogFooter>
         </form>

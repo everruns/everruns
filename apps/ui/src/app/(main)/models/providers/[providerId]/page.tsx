@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import {
@@ -39,6 +41,8 @@ export default function ProviderDetailPage({
 }: {
   params: Promise<{ providerId: string }>;
 }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const { providerId } = use(params);
   // Providers and models share one permission (`org:models:manage`).
   const { can } = usePolicies("providers");
@@ -50,7 +54,7 @@ export default function ProviderDetailPage({
   const [nameProviderId, setNameProviderId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  usePageTitle(provider ? provider.name : null, "Provider");
+  usePageTitle(provider ? provider.name : null, ui("Provider"));
 
   useEffect(() => {
     if (provider && nameProviderId !== provider.id) {
@@ -77,7 +81,7 @@ export default function ProviderDetailPage({
     entityId: providerId,
     entityType: "provider",
     formId: "details",
-    label: "Provider details",
+    label: ui("Provider details"),
     enabled: !!provider && isPlatformProviderVisible(provider.provider_type),
     baseline: provider?.name ?? "",
     dirty: !!provider && name !== provider.name,
@@ -119,8 +123,10 @@ export default function ProviderDetailPage({
   if (!provider || !isPlatformProviderVisible(provider.provider_type)) {
     return (
       <ResourceNotFound
-        title="Provider not found"
-        description="This provider may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Provider not found")}
+        description={ui(
+          "This provider may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref="/models/providers"
         backLabel="Back to providers"
         resourceId={providerId}
@@ -135,7 +141,7 @@ export default function ProviderDetailPage({
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Providers
+        {ui("Back to Providers")}
       </Link>
 
       <PageHeader
@@ -159,7 +165,7 @@ export default function ProviderDetailPage({
               href={`/models?provider=${encodeURIComponent(provider.id)}`}
             >
               <ModelsIcon className="h-4 w-4 mr-2" />
-              View Models
+              {ui("View Models")}
             </LinkButton>
             <EntityActionsMenu
               entityRef={provider.id}
@@ -174,7 +180,7 @@ export default function ProviderDetailPage({
       <PageBody>
         <Card>
           <CardHeader>
-            <CardTitle>Provider Settings</CardTitle>
+            <CardTitle>{ui("Provider Settings")}</CardTitle>
           </CardHeader>
           <CardContent>
             {provider.managed && (
@@ -185,7 +191,7 @@ export default function ProviderDetailPage({
             <form onSubmit={handleSubmit} className="space-y-4 max-w-xl">
               {chatDraft.notice}
               <div className="space-y-2">
-                <Label htmlFor="provider-name">Name</Label>
+                <Label htmlFor="provider-name">{ui("Name")}</Label>
                 <Input
                   id="provider-name"
                   value={name}
@@ -196,13 +202,13 @@ export default function ProviderDetailPage({
               </div>
               {provider.base_url && (
                 <div className="space-y-2">
-                  <Label>Base URL</Label>
+                  <Label>{ui("Base URL")}</Label>
                   <p className="break-all text-sm text-muted-foreground">{provider.base_url}</p>
                 </div>
               )}
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Key className="h-4 w-4" />
-                API Key: {provider.api_key_set ? "Configured" : "Not set"}
+                {ui("API Key:")} {provider.api_key_set ? ui("Configured") : ui("Not set")}
               </div>
               {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
               {!provider.managed && canManage && (
@@ -213,12 +219,12 @@ export default function ProviderDetailPage({
                   }
                 >
                   <Save className="h-4 w-4 mr-2" />
-                  {updateProvider.isPending ? "Saving..." : "Save Changes"}
+                  {updateProvider.isPending ? ui("Saving...") : ui("Save Changes")}
                 </Button>
               )}
               {chatDraft.blocked && (
                 <Button type="button" variant="outline" onClick={() => setName(provider.name)}>
-                  Discard
+                  {ui("Discard")}
                 </Button>
               )}
             </form>
@@ -233,7 +239,7 @@ export default function ProviderDetailPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Models</CardTitle>
+            <CardTitle>{ui("Models")}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center gap-3 text-sm">
             {modelsLoading ? (
@@ -244,15 +250,18 @@ export default function ProviderDetailPage({
             ) : (
               <>
                 <span className="text-muted-foreground">
-                  {formatCountLabel(modelCounts.total, "model")} available
+                  {formatCountLabel(modelCounts.total, "model", undefined, displayLocale)}{" "}
+                  {ui("available")}
                 </span>
-                <Badge variant="outline">{modelCounts.enabled} enabled</Badge>
+                <Badge variant="outline">
+                  {modelCounts.enabled} {ui("enabled")}
+                </Badge>
                 <LinkButton
                   variant="outline"
                   size="sm"
                   href={`/models?provider=${encodeURIComponent(provider.id)}`}
                 >
-                  View provider models
+                  {ui("View provider models")}
                 </LinkButton>
               </>
             )}
@@ -270,6 +279,7 @@ export default function ProviderDetailPage({
  * providers retain trace content only when logging is turned on for the account.
  */
 function ProviderTraceCard({ provider, providerId }: { provider: Provider; providerId: string }) {
+  const ui = useUiTranslations();
   const updateProvider = useUpdateProvider(providerId);
   const [enabled, setEnabled] = useState(provider.trace?.enabled ?? false);
   const [generationTemplate, setGenerationTemplate] = useState(
@@ -309,7 +319,7 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
     entityId: providerId,
     entityType: "provider",
     formId: "tracing",
-    label: "Trace links",
+    label: ui("Trace links"),
     baseline: JSON.stringify(savedTrace),
     dirty: JSON.stringify(traceValues) !== JSON.stringify(savedTrace),
     writable: can("provider.manage") && !provider.managed && !updateProvider.isPending,
@@ -344,24 +354,24 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Trace Links</CardTitle>
+        <CardTitle>{ui("Trace Links")}</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSave} className="space-y-4 max-w-xl">
           {chatDraft.notice}
           <p className="text-sm text-muted-foreground">
-            Show links from session chats to this provider&apos;s trace/logs dashboard. Enable this
-            only after turning on request logging for the account; most providers retain
-            prompt/completion content only when logging is enabled. Templates support the{" "}
+            {ui(
+              "Show links from session chats to this provider's trace/logs dashboard. Enable this only after turning on request logging for the account; most providers retain prompt/completion content only when logging is enabled. Templates support the",
+            )}{" "}
             <code>{"{response_id}"}</code>, <code>{"{session_id}"}</code>,{" "}
-            <code>{"{turn_id}"}</code> and <code>{"{model}"}</code> placeholders.
+            <code>{"{turn_id}"}</code> {ui("and")} <code>{"{model}"}</code> {ui("placeholders.")}
           </p>
           <div className="flex items-center justify-between gap-4">
-            <Label htmlFor="trace-enabled">Enable trace links</Label>
+            <Label htmlFor="trace-enabled">{ui("Enable trace links")}</Label>
             <Switch id="trace-enabled" checked={enabled} onCheckedChange={setEnabled} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="trace-generation">Generation URL template</Label>
+            <Label htmlFor="trace-generation">{ui("Generation URL template")}</Label>
             <Input
               id="trace-generation"
               value={generationTemplate}
@@ -370,7 +380,7 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="trace-session">Session URL template</Label>
+            <Label htmlFor="trace-session">{ui("Session URL template")}</Label>
             <Input
               id="trace-session"
               value={sessionTemplate}
@@ -380,11 +390,11 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
           </div>
           {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
           {saved && !errorMessage && (
-            <p className="text-sm text-muted-foreground">Trace settings saved.</p>
+            <p className="text-sm text-muted-foreground">{ui("Trace settings saved.")}</p>
           )}
           <Button type="submit" disabled={updateProvider.isPending || chatDraft.blocked}>
             <Save className="h-4 w-4 mr-2" />
-            {updateProvider.isPending ? "Saving..." : "Save Trace Settings"}
+            {updateProvider.isPending ? ui("Saving...") : ui("Save Trace Settings")}
           </Button>
           {chatDraft.blocked && (
             <Button
@@ -396,7 +406,7 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
                 setSessionTemplate(savedTrace.session_url_template);
               }}
             >
-              Discard
+              {ui("Discard")}
             </Button>
           )}
         </form>
@@ -418,6 +428,7 @@ function ProviderAdvancedCard({
   provider: Provider;
   providerId: string;
 }) {
+  const ui = useUiTranslations();
   const updateProvider = useUpdateProvider(providerId);
   const [cacheDiagnostics, setCacheDiagnostics] = useState(
     provider.request_options?.cache_diagnostics ?? false,
@@ -457,7 +468,7 @@ function ProviderAdvancedCard({
     entityId: providerId,
     entityType: "provider",
     formId: "advanced",
-    label: "Advanced request settings",
+    label: ui("Advanced request settings"),
     baseline: JSON.stringify(provider.request_options?.cache_diagnostics ?? false),
     dirty: cacheDiagnostics !== (provider.request_options?.cache_diagnostics ?? false),
     writable: can("provider.manage") && !provider.managed && !updateProvider.isPending,
@@ -502,14 +513,14 @@ function ProviderAdvancedCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Advanced</CardTitle>
+        <CardTitle>{ui("Advanced")}</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSave} className="space-y-6 max-w-xl">
           {chatDraft.notice}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="cache-diagnostics">Prompt cache diagnostics</Label>
+              <Label htmlFor="cache-diagnostics">{ui("Prompt cache diagnostics")}</Label>
               <Switch
                 id="cache-diagnostics"
                 checked={cacheDiagnostics}
@@ -517,34 +528,35 @@ function ProviderAdvancedCard({
               />
             </div>
             <p className="text-sm text-muted-foreground">
-              Ask the provider to report where the prompt prefix diverged when a cache read is
-              unexpectedly missing, instead of leaving a silent miss. Supported by Anthropic
-              connections today; other providers ignore it.
+              {ui(
+                "Ask the provider to report where the prompt prefix diverged when a cache read is unexpectedly missing, instead of leaving a silent miss. Supported by Anthropic connections today; other providers ignore it.",
+              )}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label>Custom headers</Label>
+            <Label>{ui("Custom headers")}</Label>
             <p className="text-sm text-muted-foreground">
-              Sent with every request to this provider, useful for gateways and proxies that require
-              their own headers. A header set here replaces the one the driver would send under the
-              same name. Saved values are never read back; leave one blank to keep it, or type a new
-              value to replace it.
+              {ui(
+                "Sent with every request to this provider, useful for gateways and proxies that require their own headers. A header set here replaces the one the driver would send under the same name. Saved values are never read back; leave one blank to keep it, or type a new value to replace it.",
+              )}
             </p>
             {headers.length === 0 && (
-              <p className="text-sm text-muted-foreground">No custom headers.</p>
+              <p className="text-sm text-muted-foreground">{ui("No custom headers.")}</p>
             )}
             {headers.map((header, index) => (
               <div key={index} className="flex items-center gap-2">
                 <Input
-                  aria-label={`Header ${index + 1} name`}
-                  placeholder="x-gateway-tenant"
+                  aria-label={ui("Header {value0} name", { value0: index + 1 })}
+                  placeholder={ui("x-gateway-tenant")}
                   value={header.name}
                   onChange={(event) => updateHeader(index, { name: event.target.value })}
                 />
                 <Input
-                  aria-label={`Header ${index + 1} value`}
-                  placeholder={savedHeaderNames.has(header.name) ? "Unchanged (hidden)" : "value"}
+                  aria-label={ui("Header {value0} value", { value0: index + 1 })}
+                  placeholder={
+                    savedHeaderNames.has(header.name) ? ui("Unchanged (hidden)") : ui("value")
+                  }
                   value={header.value}
                   onChange={(event) => updateHeader(index, { value: event.target.value })}
                 />
@@ -552,7 +564,7 @@ function ProviderAdvancedCard({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label={`Remove header ${index + 1}`}
+                  aria-label={ui("Remove header {value0}", { value0: index + 1 })}
                   onClick={() => setHeaders((current) => current.filter((_, i) => i !== index))}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -566,17 +578,17 @@ function ProviderAdvancedCard({
               onClick={() => setHeaders((current) => [...current, { name: "", value: "" }])}
             >
               <Plus className="h-4 w-4 mr-2" />
-              Add header
+              {ui("Add header")}
             </Button>
           </div>
 
           {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
           {saved && !errorMessage && (
-            <p className="text-sm text-muted-foreground">Advanced settings saved.</p>
+            <p className="text-sm text-muted-foreground">{ui("Advanced settings saved.")}</p>
           )}
           <Button type="submit" disabled={updateProvider.isPending || chatDraft.blocked}>
             <Save className="h-4 w-4 mr-2" />
-            {updateProvider.isPending ? "Saving..." : "Save Advanced Settings"}
+            {updateProvider.isPending ? ui("Saving...") : ui("Save Advanced Settings")}
           </Button>
           {chatDraft.blocked && (
             <Button
@@ -586,7 +598,7 @@ function ProviderAdvancedCard({
                 setCacheDiagnostics(provider.request_options?.cache_diagnostics ?? false)
               }
             >
-              Discard
+              {ui("Discard")}
             </Button>
           )}
         </form>

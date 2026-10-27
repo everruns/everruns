@@ -12,6 +12,7 @@
  * the server never hears about is not approved.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Check, ShieldAlert, X } from "lucide-react";
@@ -109,6 +110,7 @@ export function ToolApprovalRequests({
   requests,
   toolResultsMap,
 }: ToolApprovalRequestsProps) {
+  const ui = useUiTranslations();
   const [choices, setChoices] = useState<Record<string, ToolApprovalDecision>>({});
   const [submitted, setSubmitted] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -163,7 +165,10 @@ export function ToolApprovalRequests({
               )}
             >
               {isAllowed(outcome) ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
-              {`${OUTCOME_LABELS[outcome ?? ""] ?? "Answered"}: ${name}`}
+              {ui("{value0}: {value1}", {
+                value0: OUTCOME_LABELS[outcome ?? ""] ?? "Answered",
+                value1: name,
+              })}
             </div>
           );
         })}
@@ -187,13 +192,17 @@ export function ToolApprovalRequests({
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-foreground">
                   {credentialConsent
-                    ? "Save credentials for this service?"
-                    : `Allow the agent to run ${name}?`}
+                    ? ui("Save credentials for this service?")
+                    : ui("Allow the agent to run {value0}?", { value0: name })}
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {credentialConsent
-                    ? "Review the owner and allowed destinations. The request has not been sent."
-                    : `${riskLine(args.risk)} It will not run unless you allow it.`}
+                    ? ui(
+                        "Review the owner and allowed destinations. The request has not been sent.",
+                      )
+                    : ui("{value0} It will not run unless you allow it.", {
+                        value0: riskLine(args.risk),
+                      })}
                 </p>
                 {credentialConsent ? (
                   <CredentialConsentSummary value={args.arguments} />
@@ -206,18 +215,18 @@ export function ToolApprovalRequests({
                 )}
                 {args.arguments_truncated && (
                   <p className="mt-1 text-xs text-warning">
-                    The arguments are longer than shown. Approving covers the full call.
+                    {ui("The arguments are longer than shown. Approving covers the full call.")}
                   </p>
                 )}
                 {expires && !Number.isNaN(expires.getTime()) && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Counts as rejected if not answered by {expires.toLocaleTimeString()}.
+                    {ui("Counts as rejected if not answered by")} {expires.toLocaleTimeString()}.
                   </p>
                 )}
                 {chosen && requests.length > 1 && !submitting && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {CHOICES.find((choice) => choice.decision === chosen)?.label}, waiting for your
-                    other answers.
+                    {CHOICES.find((choice) => choice.decision === chosen)?.label}
+                    {ui(", waiting for your other answers.")}
                   </p>
                 )}
               </div>
@@ -244,8 +253,8 @@ export function ToolApprovalRequests({
                   {choice.decision === "allow" && <Check className="mr-1 h-3.5 w-3.5" />}
                   {credentialConsent
                     ? choice.decision === "allow"
-                      ? "Approve capture"
-                      : "Decline"
+                      ? ui("Approve capture")
+                      : ui("Decline")
                     : choice.label}
                 </Button>
               ))}

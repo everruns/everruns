@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { useEffect } from "react";
 import {
@@ -36,6 +37,7 @@ export function EmbeddingModelPicker({
   "aria-describedby": ariaDescribedBy,
   onValidityChange,
 }: EmbeddingModelPickerProps) {
+  const ui = useUiTranslations();
   const { data: models = [], isLoading } = useModels();
 
   const candidates = models.filter((model) => model.enabled && isEmbeddingModel(model));
@@ -65,13 +67,16 @@ export function EmbeddingModelPicker({
         <SelectTrigger
           id={id}
           className={cn("w-full", className)}
-          aria-label="Embedding model"
+          aria-label={ui("Embedding model")}
           aria-invalid={ariaInvalid}
           aria-describedby={ariaDescribedBy}
         >
-          <SelectValue placeholder={isLoading ? "Loading models..." : placeholder}>
+          <SelectValue placeholder={isLoading ? ui("Loading models...") : placeholder}>
             {selectedModel
-              ? `${selectedModel.display_name} (${selectedModel.provider_name})`
+              ? ui("{value0} ({value1})", {
+                  value0: selectedModel.display_name,
+                  value1: selectedModel.provider_name,
+                })
               : undefined}
           </SelectValue>
         </SelectTrigger>
@@ -85,17 +90,18 @@ export function EmbeddingModelPicker({
       </Select>
       {!isLoading && sorted.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          No embedding models are configured.{" "}
+          {ui("No embedding models are configured.")}{" "}
           <Link href="/models" className="text-primary underline underline-offset-4">
-            Configure an embedding model
+            {ui("Configure an embedding model")}
           </Link>
           .
         </p>
       )}
       {selectedIsInvalid && (
         <p className="text-xs text-destructive">
-          The configured model is unavailable or does not support embeddings. Choose an embedding
-          model to repair this index.
+          {ui(
+            "The configured model is unavailable or does not support embeddings. Choose an embedding model to repair this index.",
+          )}
         </p>
       )}
     </div>

@@ -8,6 +8,7 @@
 // view, the error filter and the selected step live in the URL so a debugging
 // link can be shared.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -74,6 +75,7 @@ export interface TraceViewProps {
 }
 
 export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
+  const ui = useUiTranslations();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -337,7 +339,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   const totals = overview.data;
 
   return (
-    <section aria-label="Session trace" className="flex min-h-0 flex-1 flex-col">
+    <section aria-label={ui("Session trace")} className="flex min-h-0 flex-1 flex-col">
       <DreamingTrace sessionId={sessionId} />
       {linkedFailure > 0 && !data.loading && (
         <div
@@ -346,26 +348,29 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
         >
           {failedTurn?.status === "failed" ? (
             <>
-              <span className="font-medium text-destructive">Turn {failedTurn.turn} failed</span>
+              <span className="font-medium text-destructive">
+                {ui("Turn")} {failedTurn.turn} {ui("failed")}
+              </span>
               {failedTurn.ended_at && (
                 <span className="ml-3 text-xs text-muted-foreground">
                   {new Date(failedTurn.ended_at).toLocaleString()}
                 </span>
               )}
               <p className="mt-1 break-words">
-                {failedTurn.error?.trim() || "No error details recorded"}
+                {failedTurn.error?.trim() || ui("No error details recorded")}
               </p>
             </>
           ) : (
             <p>
-              The recorded failure could not be located in this trace. Check the Events view for the
-              terminal event.
+              {ui(
+                "The recorded failure could not be located in this trace. Check the Events view for the terminal event.",
+              )}
             </p>
           )}
         </div>
       )}
       <div className="flex flex-wrap items-center gap-3 border-b bg-card px-6 py-3">
-        <div role="radiogroup" aria-label="View" className="flex border">
+        <div role="radiogroup" aria-label={ui("View")} className="flex border">
           {VIEWS.map((option) => (
             <button
               key={option.value}
@@ -389,28 +394,32 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
             checked={errorsOnly}
             onCheckedChange={(checked) => setParams({ errors: checked ? "1" : null })}
           />
-          Errors only
+          {ui("Errors only")}
         </label>
         <label className="flex items-center gap-2 text-xs">
           <Checkbox
             checked={showLifecycle}
             onCheckedChange={(checked) => setParams({ lifecycle: checked ? "1" : null })}
           />
-          Lifecycle events
+          {ui("Lifecycle events")}
         </label>
         <TraceSearch sessionId={sessionId} onPick={(sequence) => void goToSequence(sequence)} />
         {totals && (
           <div className="ml-auto font-mono text-[11px] text-muted-foreground">
-            {formatCount(totals.turn_count)} turns · {formatCount(totals.step_count)} steps
+            {formatCount(totals.turn_count)} {ui("turns ·")} {formatCount(totals.step_count)}{" "}
+            {ui("steps")}
             {totals.error_count > 0 && (
-              <span className="text-destructive"> · {formatCount(totals.error_count)} errors</span>
+              <span className="text-destructive">
+                {" "}
+                · {formatCount(totals.error_count)} {ui("errors")}
+              </span>
             )}
           </div>
         )}
       </div>
 
       <div className="bg-brand-dots grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_clamp(320px,32vw,420px)] xl:grid-cols-[232px_minmax(0,1fr)_clamp(320px,32vw,420px)]">
-        <aside className="hidden min-h-0 overflow-y-auto xl:block" aria-label="Turns">
+        <aside className="hidden min-h-0 overflow-y-auto xl:block" aria-label={ui("Turns")}>
           <TurnRail
             overview={overview.data}
             turns={data.turns}
@@ -441,11 +450,11 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
             </div>
           ) : data.error ? (
             <div className="border bg-card p-4 text-sm text-destructive">
-              Could not load the trace: {data.error.message}
+              {ui("Could not load the trace:")} {data.error.message}
             </div>
           ) : rows.length === 0 ? (
             <div className="border bg-card p-6 text-sm text-muted-foreground">
-              No turns yet. Turns appear here as the session runs.
+              {ui("No turns yet. Turns appear here as the session runs.")}
             </div>
           ) : (
             <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
@@ -608,12 +617,12 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
             "min-h-0 overflow-y-auto bg-card lg:static lg:z-auto lg:block lg:border-l",
             target ? "fixed inset-0 z-40 block" : "hidden",
           )}
-          aria-label="Step inspector"
+          aria-label={ui("Step inspector")}
         >
           {target && (
             <div className="sticky top-0 z-10 flex justify-end border-b bg-card px-3 py-2 lg:hidden">
               <Button variant="ghost" size="sm" onClick={clearSelection}>
-                Back to trace
+                {ui("Back to trace")}
               </Button>
             </div>
           )}

@@ -20,6 +20,7 @@
 // - No badge on the trigger. Where note state matters, the page shows one
 //   muted line in edit mode (see `ManagerNotesHint`).
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import type { ComponentProps, ReactNode } from "react";
 import { useCallback } from "react";
 import Link from "next/link";
@@ -195,6 +196,7 @@ export function buildEntityMenuGroups({
 }
 
 export function EntityActionsMenu(props: EntityActionsMenuProps) {
+  const ui = useUiTranslations();
   const { entityRef, kind, entityName, permissions } = props;
   const [sheet, setSheet] = useEntitySheet();
   const groups = buildEntityMenuGroups(props);
@@ -204,7 +206,7 @@ export function EntityActionsMenu(props: EntityActionsMenuProps) {
       <DropdownMenu>
         <DropdownMenuTrigger
           className={buttonVariants({ variant: "outline", size: "icon" })}
-          aria-label={`More actions for ${entityName}`}
+          aria-label={ui("More actions for {value0}", { value0: entityName })}
           data-slot="entity-actions-trigger"
         >
           <MoreHorizontal className="size-4" />

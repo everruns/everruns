@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useRouter } from "next/navigation";
 import { ChannelUsePanel } from "@/components/agents/channel-use-panel";
 import { A2aSetupGuidance } from "@/components/agents/integrations/a2a-setup-guidance";
@@ -19,7 +20,8 @@ function channelUrl(channelId: string, suffix: string): string {
   return `${origin}/api/v1/channels/${channelId}/${suffix}`;
 }
 function SetupHeading() {
-  return <p className="text-xs font-medium text-muted-foreground">Set up</p>;
+  const ui = useUiTranslations();
+  return <p className="text-xs font-medium text-muted-foreground">{ui("Set up")}</p>;
 }
 
 function ChannelSetupGuidance({
@@ -35,6 +37,7 @@ function ChannelSetupGuidance({
   channel: AgentChannel;
   configureHref?: string;
 }) {
+  const ui = useUiTranslations();
   const router = useRouter();
   const lifecycle = getChannelLifecyclePresentation(channel);
   const configure = configureHref ? () => router.push(configureHref) : undefined;
@@ -108,9 +111,9 @@ function ChannelSetupGuidance({
       <div className="space-y-3">
         <SetupHeading />
         <p className="text-sm text-muted-foreground">
-          Voice calls need an OpenAI provider in this organization. Call the agent with the button
-          below, the microphone in its chat, or the API with an organization API key. The agent
-          writes every answer; the speech model only listens and speaks.
+          {ui(
+            "Voice calls need an OpenAI provider in this organization. Call the agent with the button below, the microphone in its chat, or the API with an organization API key. The agent writes every answer; the speech model only listens and speaks.",
+          )}
         </p>
         <VoiceTalkButton agentId={agentId} channelId={channel.id} disabled={!lifecycle.isLive} />
       </div>

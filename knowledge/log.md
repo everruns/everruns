@@ -10,6 +10,11 @@
 
 ## 2026-10-26
 
+- Added persistent Ukrainian interface selection and generic agent/harness display
+  localization, including the portable agent-file contract and revision restore.
+
+## 2026-10-26
+
 - Chat now treats subchats as independent instances, renders one active conversation,
   scopes Work to its originating Chat, and proposes independent workspace/background-work flags.
 

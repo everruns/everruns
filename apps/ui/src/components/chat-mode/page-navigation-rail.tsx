@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useId, type ReactElement } from "react";
 import Link from "next/link";
 import { Menu } from "lucide-react";
@@ -66,9 +67,10 @@ export function PageNavigationRail({
   sections: NavigationSection[];
   onClose: () => void;
 }) {
+  const ui = useUiTranslations();
   return (
     <nav
-      aria-label="Page navigation"
+      aria-label={ui("Page navigation")}
       aria-hidden={!open}
       className="chat-mode-rail overflow-y-auto border-l bg-background"
       inert={!open}
@@ -77,20 +79,20 @@ export function PageNavigationRail({
         <TooltipProvider delay={150}>
           <DropdownMenu modal={false}>
             <PageNavigationHint
-              label="Browse pages"
-              description="See page names and what each one is for."
+              label={ui("Browse pages")}
+              description={ui("See page names and what each one is for.")}
             >
               <DropdownMenuTrigger
-                aria-label="Browse pages"
+                aria-label={ui("Browse pages")}
                 className={cn(railButton, "h-14 flex-col gap-1 border-b text-muted-foreground")}
               >
                 <Menu aria-hidden="true" className="size-4" />
-                <span className="text-[10px] font-medium">Pages</span>
+                <span className="text-[10px] font-medium">{ui("Pages")}</span>
               </DropdownMenuTrigger>
             </PageNavigationHint>
             <DropdownMenuPositioner side="left" align="start" sideOffset={8}>
               <DropdownMenuContent
-                aria-label="Browse pages"
+                aria-label={ui("Browse pages")}
                 className="w-80 max-w-[calc(100vw-4rem)] motion-reduce:animate-none"
               >
                 {sections.map((section, index) => (
@@ -101,8 +103,8 @@ export function PageNavigationRail({
                       return (
                         <DropdownMenuItem
                           key={item.href}
-                          aria-label={back ? "Back to app" : item.name}
-                          label={back ? "Back to app" : item.name}
+                          aria-label={back ? ui("Back to app") : item.name}
+                          label={back ? ui("Back to app") : item.name}
                           aria-current={!back && isActive(item, pathname) ? "page" : undefined}
                           render={back ? undefined : <Link href={item.href} prefetch={false} />}
                           onClick={back ? onClose : undefined}
@@ -111,10 +113,12 @@ export function PageNavigationRail({
                           <item.icon aria-hidden="true" className="icon-sharp mt-0.5 size-4" />
                           <span>
                             <span className="block font-medium">
-                              {back ? "Back to app" : item.name}
+                              {back ? ui("Back to app") : item.name}
                             </span>
                             <span className="mt-0.5 block text-xs text-muted-foreground">
-                              {back ? "Hide Chat and expand the current page." : item.description}
+                              {back
+                                ? ui("Hide Chat and expand the current page.")
+                                : item.description}
                             </span>
                           </span>
                         </DropdownMenuItem>
@@ -137,17 +141,17 @@ export function PageNavigationRail({
               {section.items.map((item) => (
                 <PageNavigationHint
                   key={item.href}
-                  label={item.href === "/chats" ? "Back to app" : item.name}
+                  label={item.href === "/chats" ? ui("Back to app") : item.name}
                   description={
                     item.href === "/chats"
-                      ? "Hide Chat and expand the current page."
+                      ? ui("Hide Chat and expand the current page.")
                       : item.description
                   }
                 >
                   {item.href === "/chats" ? (
                     <button
                       type="button"
-                      aria-label="Close Chat mode"
+                      aria-label={ui("Close Chat mode")}
                       onClick={onClose}
                       className={cn(railButton, "text-muted-foreground")}
                     >

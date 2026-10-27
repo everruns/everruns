@@ -18,6 +18,12 @@ pub use crate::storage::{CreateHarnessRow, HarnessRow, UpdateHarness};
 /// Request to create a new harness
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateHarnessRequest {
+    /// Locale-keyed display overlays; identifiers and execution instructions are unchanged.
+    #[serde(
+        default,
+        skip_serializing_if = "everruns_contracts::runtime::localization::EntityLocalizations::is_empty"
+    )]
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     /// Name, unique per org. Lowercase alphanumeric and hyphens.
     #[schema(example = "deep-research")]
     pub name: String,
@@ -84,6 +90,9 @@ pub struct CreateHarnessRequest {
 /// Request to update a harness. Only provided fields will be updated.
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateHarnessRequest {
+    /// Locale-keyed display overlays; identifiers and execution instructions are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub localizations: Option<everruns_contracts::runtime::localization::EntityLocalizations>,
     /// Name, unique per org.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "updated-research")]

@@ -14,6 +14,8 @@
 //   are shown after the restore.
 // See knowledge/execution/change-reasons-and-manager-context.md (UI).
 
+import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import { HistoryResourceKind } from "@/hooks/history-resource-kind";
 import Link from "next/link";
@@ -107,6 +109,7 @@ function HistorySheetContents({
   open,
   onOpenChange,
 }: HistorySheetProps) {
+  const ui = useUiTranslations();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const history = useEntityHistory(entityRef, open);
   const entries = useMemo(
@@ -125,9 +128,10 @@ function HistorySheetContents({
     >
       <DrawerContent className="gap-0 overflow-y-auto p-0 sm:max-w-3xl">
         <DrawerHeader className="border-b p-5 pr-12">
-          <DrawerTitle>History</DrawerTitle>
+          <DrawerTitle>{ui("History")}</DrawerTitle>
           <DrawerDescription>
-            Changes to {entityName}, newest first. Open one to compare it with the current{" "}
+            {ui("Changes to")} {entityName}
+            {ui(", newest first. Open one to compare it with the current")}{" "}
             {entityKindLabel(kind as EntityKind) ?? kind.replaceAll("_", " ")}.
           </DrawerDescription>
         </DrawerHeader>
@@ -140,22 +144,22 @@ function HistorySheetContents({
               onBack={() => setSelectedId(null)}
             />
           ) : history.isLoading ? (
-            <div className="space-y-3" aria-label="Loading history">
+            <div className="space-y-3" aria-label={ui("Loading history")}>
               <Skeleton className="h-14 w-full" />
               <Skeleton className="h-14 w-full" />
               <Skeleton className="h-14 w-full" />
             </div>
           ) : history.error ? (
             <p role="alert" className="text-sm text-destructive">
-              Could not load history: {history.error.message}
+              {ui("Could not load history:")} {history.error.message}
             </p>
           ) : entries.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No changes recorded yet.
+              {ui("No changes recorded yet.")}
             </p>
           ) : (
             <div className="space-y-4">
-              <ol className="divide-y border" aria-label="Changes">
+              <ol className="divide-y border" aria-label={ui("Changes")}>
                 {entries.map((entry) => (
                   <HistoryEntryRow key={entry.id} change={entry} onOpen={setSelectedId} />
                 ))}
@@ -167,7 +171,7 @@ function HistorySheetContents({
                   onClick={() => history.fetchNextPage()}
                   disabled={history.isFetchingNextPage}
                 >
-                  {history.isFetchingNextPage ? "Loading..." : "Load older changes"}
+                  {history.isFetchingNextPage ? ui("Loading...") : ui("Load older changes")}
                 </Button>
               )}
             </div>
@@ -201,6 +205,7 @@ function useActorName() {
 }
 
 function HistoryEntryMeta({ change }: { change: EntityChange }) {
+  const ui = useUiTranslations();
   const actorName = useActorName();
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -210,7 +215,7 @@ function HistoryEntryMeta({ change }: { change: EntityChange }) {
           href={`/sessions/${change.via_session_id}`}
           className="underline underline-offset-2 hover:text-foreground"
         >
-          via {change.via_agent_id ?? "agent"} session
+          {ui("via")} {change.via_agent_id ?? ui("agent")} {ui("session")}
         </Link>
       )}
       <span aria-hidden>·</span>
@@ -226,6 +231,7 @@ function HistoryEntryRow({
   change: EntityChange;
   onOpen: (id: string) => void;
 }) {
+  const { displayLocale } = useFormattingLocale();
   return (
     <li className="space-y-1 p-3">
       <div className="flex min-w-0 items-start justify-between gap-3">
@@ -243,10 +249,10 @@ function HistoryEntryRow({
         </button>
         <time
           dateTime={change.created_at}
-          title={formatDate(change.created_at)}
+          title={formatDate(change.created_at, displayLocale)}
           className="shrink-0 text-xs text-muted-foreground"
         >
-          {formatRelativeTime(change.created_at)}
+          {formatRelativeTime(change.created_at, displayLocale)}
         </time>
       </div>
       <HistoryEntryMeta change={change} />
@@ -266,6 +272,8 @@ function HistoryEntryDetail({
   canRestore: boolean;
   onBack: () => void;
 }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const revisionNumber = change.revision ?? null;
   const revision = useEntityRevision(entityRef, revisionNumber);
   const snapshotGone = revision.data !== undefined && revision.data.snapshot == null;
@@ -283,7 +291,7 @@ function HistoryEntryDetail({
     <div className="space-y-5">
       <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2">
         <ArrowLeft className="size-4" />
-        All changes
+        {ui("All changes")}
       </Button>
 
       <div className="space-y-1">
@@ -293,21 +301,23 @@ function HistoryEntryDetail({
             <span className="font-mono text-xs text-muted-foreground">r{change.revision}</span>
           )}
           <time dateTime={change.created_at} className="text-xs text-muted-foreground">
-            {formatDate(change.created_at)}
+            {formatDate(change.created_at, displayLocale)}
           </time>
         </div>
         <HistoryEntryMeta change={change} />
         {change.reason && <p className="text-sm break-words">“{change.reason}”</p>}
         {change.changed_fields.length > 0 && (
           <p className="text-xs text-muted-foreground">
-            Changed: <span className="font-mono">{change.changed_fields.join(", ")}</span>
+            {ui("Changed:")} <span className="font-mono">{change.changed_fields.join(", ")}</span>
           </p>
         )}
       </div>
 
       {restored && (
         <Notice variant="success">
-          <NoticeTitle>Restored revision {restored.restored_revision}</NoticeTitle>
+          <NoticeTitle>
+            {ui("Restored revision")} {restored.restored_revision}
+          </NoticeTitle>
           {restored.warnings.length > 0 && (
             <NoticeDescription>
               <ul className="list-disc pl-4">
@@ -322,29 +332,31 @@ function HistoryEntryDetail({
 
       {revisionNumber === null ? (
         <p className="text-sm text-muted-foreground">
-          This change left no snapshot to compare or restore.
+          {ui("This change left no snapshot to compare or restore.")}
         </p>
       ) : revision.isLoading || diff.isLoading ? (
         <Skeleton className="h-32 w-full" />
       ) : snapshotGone ? (
         <p className="text-sm text-muted-foreground">
-          This point is older than the snapshots kept, so it can no longer be compared or restored.
+          {ui(
+            "This point is older than the snapshots kept, so it can no longer be compared or restored.",
+          )}
         </p>
       ) : revision.error || diff.error ? (
         <p role="alert" className="text-sm text-destructive">
-          Could not load this point: {(revision.error ?? diff.error)?.message}
+          {ui("Could not load this point:")} {(revision.error ?? diff.error)?.message}
         </p>
       ) : (
         <>
-          <section className="space-y-2" aria-label="Difference from the current state">
-            <h4 className="text-sm font-medium">Compared with now</h4>
+          <section className="space-y-2" aria-label={ui("Difference from the current state")}>
+            <h4 className="text-sm font-medium">{ui("Compared with now")}</h4>
             {diffs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Matches the current state.</p>
+              <p className="text-sm text-muted-foreground">{ui("Matches the current state.")}</p>
             ) : (
               fieldDiffs.length > 0 && <FieldDiffTable diffs={fieldDiffs} />
             )}
             {(changedSecrets.length > 0 || unchangedSecrets.length > 0) && (
-              <ul className="space-y-1 text-sm" aria-label="Secrets">
+              <ul className="space-y-1 text-sm" aria-label={ui("Secrets")}>
                 {changedSecrets.map((name) => (
                   <SecretRow key={name} name={name} changed />
                 ))}
@@ -358,7 +370,7 @@ function HistoryEntryDetail({
           {canRestore && diffs.length > 0 && (
             <Button variant="outline" onClick={() => setConfirming(true)}>
               <RotateCcw className="size-4" />
-              Restore this point
+              {ui("Restore this point")}
             </Button>
           )}
         </>
@@ -382,14 +394,15 @@ function HistoryEntryDetail({
 }
 
 function SecretRow({ name, changed }: { name: string; changed: boolean }) {
+  const ui = useUiTranslations();
   return (
     <li className="flex items-center gap-2">
       <KeyRound className="size-3.5 text-muted-foreground" />
       <span className="font-mono text-xs">{name}</span>
       {changed ? (
-        <Badge variant="accent">changed</Badge>
+        <Badge variant="accent">{ui("changed")}</Badge>
       ) : (
-        <Badge variant="outline">unchanged</Badge>
+        <Badge variant="outline">{ui("unchanged")}</Badge>
       )}
     </li>
   );
@@ -430,6 +443,7 @@ function renderValue(value: unknown): string {
 }
 
 function FieldDiffTable({ diffs }: { diffs: FieldDiff[] }) {
+  const ui = useUiTranslations();
   return (
     <div className="divide-y border text-sm">
       {diffs.map((diff) => (
@@ -437,13 +451,13 @@ function FieldDiffTable({ diffs }: { diffs: FieldDiff[] }) {
           <p className="font-mono text-xs font-medium">{diff.field}</p>
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="min-w-0">
-              <p className="text-[11px] text-muted-foreground">At this point</p>
+              <p className="text-[11px] text-muted-foreground">{ui("At this point")}</p>
               <pre className="max-h-48 overflow-auto bg-muted/50 p-2 text-xs whitespace-pre-wrap break-words">
                 {renderValue(diff.from)}
               </pre>
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] text-muted-foreground">Now</p>
+              <p className="text-[11px] text-muted-foreground">{ui("Now")}</p>
               <pre className="max-h-48 overflow-auto bg-muted/50 p-2 text-xs whitespace-pre-wrap break-words">
                 {renderValue(diff.to)}
               </pre>
@@ -470,6 +484,7 @@ function RestoreDialog({
   onOpenChange: (open: boolean) => void;
   onRestored: (result: RestoreResult) => void;
 }) {
+  const ui = useUiTranslations();
   const [reason, setReason] = useState("");
   const restore = useRestoreEntityRevision(entityRef);
   const canSubmit = reason.trim().length > 0 && !restore.isPending;
@@ -502,33 +517,38 @@ function RestoreDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Restore revision {revision}?</DialogTitle>
+            <DialogTitle>
+              {ui("Restore revision")} {revision}?
+            </DialogTitle>
             <DialogDescription>
-              Brings this point back as a new change. The current state stays in history, so this
-              can be undone the same way.
+              {ui(
+                "Brings this point back as a new change. The current state stays in history, so this can be undone the same way.",
+              )}
             </DialogDescription>
           </DialogHeader>
           {secretsNotRestored.length > 0 && (
             <Notice variant="warning">
-              <NoticeTitle>Secrets keep their current values</NoticeTitle>
+              <NoticeTitle>{ui("Secrets keep their current values")}</NoticeTitle>
               <NoticeDescription>
-                A restore never brings secrets back. These differ from this point and will not be
-                restored: <span className="font-mono">{secretsNotRestored.join(", ")}</span>
+                {ui(
+                  "A restore never brings secrets back. These differ from this point and will not be restored:",
+                )}{" "}
+                <span className="font-mono">{secretsNotRestored.join(", ")}</span>
               </NoticeDescription>
             </Notice>
           )}
           <ChangeReasonField value={reason} onChange={setReason} required />
           {restore.error && (
             <p role="alert" className="text-sm text-destructive">
-              Could not restore: {restore.error.message}
+              {ui("Could not restore:")} {restore.error.message}
             </p>
           )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button type="submit" disabled={!canSubmit}>
-              {restore.isPending ? "Restoring..." : "Restore"}
+              {restore.isPending ? ui("Restoring...") : ui("Restore")}
             </Button>
           </DialogFooter>
         </form>

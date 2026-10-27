@@ -5,6 +5,7 @@
  * Used by Settings > Connections and inline chat connection prompts.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ interface ApiKeyDialogProps {
 }
 
 export function ApiKeyDialog({ provider, open, onOpenChange, onConnected }: ApiKeyDialogProps) {
+  const ui = useUiTranslations();
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -96,7 +98,7 @@ export function ApiKeyDialog({ provider, open, onOpenChange, onConnected }: ApiK
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ProviderIcon iconName={provider.icon} className="h-5 w-5" />
-            Connect {provider.display_name}
+            {ui("Connect")} {provider.display_name}
           </DialogTitle>
           <DialogDescription>{provider.description}</DialogDescription>
         </DialogHeader>
@@ -151,10 +153,10 @@ export function ApiKeyDialog({ provider, open, onOpenChange, onConnected }: ApiK
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button type="submit" disabled={createConnection.isPending}>
-              {createConnection.isPending ? "Validating..." : "Connect"}
+              {createConnection.isPending ? ui("Validating...") : ui("Connect")}
             </Button>
           </DialogFooter>
         </form>

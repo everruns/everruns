@@ -9,6 +9,7 @@
 // 1024 px. The server still center-crops whatever it receives, so API uploads
 // without this step behave the same, just without the user's framing.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import Cropper, { type Area } from "react-easy-crop";
 import { Grid2X2, ImageIcon, Loader2, Minus, Plus, Trash2, Upload } from "lucide-react";
@@ -59,6 +60,7 @@ async function cropToPng(src: string, area: Area): Promise<File> {
 }
 
 export function AgentAvatarField({ agent, readOnly }: { agent: Agent; readOnly: boolean }) {
+  const ui = useUiTranslations();
   const inputRef = useRef<HTMLInputElement>(null);
   const { upload, remove, selectPreset } = useAgentAvatar(agent.id);
   const [presetsOpen, setPresetsOpen] = useState(false);
@@ -90,7 +92,7 @@ export function AgentAvatarField({ agent, readOnly }: { agent: Agent; readOnly: 
 
   return (
     <div className="space-y-2">
-      <Label>Avatar</Label>
+      <Label>{ui("Avatar")}</Label>
       <div className="flex items-center gap-4">
         <button
           type="button"
@@ -102,7 +104,7 @@ export function AgentAvatarField({ agent, readOnly }: { agent: Agent; readOnly: 
           }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
-          aria-label={agent.avatar ? "Replace avatar" : "Upload avatar"}
+          aria-label={agent.avatar ? ui("Replace avatar") : ui("Upload avatar")}
           className={cn(
             "flex size-20 flex-none items-center justify-center border border-dashed bg-muted/40 text-muted-foreground transition-colors [&_svg]:size-6",
             !disabled && "cursor-pointer hover:border-foreground/40",
@@ -118,7 +120,7 @@ export function AgentAvatarField({ agent, readOnly }: { agent: Agent; readOnly: 
         </button>
         <div className="flex min-w-0 flex-col gap-2">
           <p className="text-xs text-muted-foreground">
-            {readOnly ? "Avatar" : "Drop an image here, or choose one."}
+            {readOnly ? ui("Avatar") : ui("Drop an image here, or choose one.")}
           </p>
           <div className="flex flex-wrap gap-2">
             <input
@@ -127,7 +129,7 @@ export function AgentAvatarField({ agent, readOnly }: { agent: Agent; readOnly: 
               accept={AVATAR_ACCEPT.join(",")}
               className="hidden"
               disabled={disabled}
-              aria-label="Avatar image"
+              aria-label={ui("Avatar image")}
               onChange={(event) => {
                 pick(event.target.files?.[0]);
                 event.target.value = "";
@@ -141,7 +143,7 @@ export function AgentAvatarField({ agent, readOnly }: { agent: Agent; readOnly: 
               onClick={() => inputRef.current?.click()}
             >
               <Upload />
-              {agent.avatar ? "Replace" : "Upload"}
+              {agent.avatar ? ui("Replace") : ui("Upload")}
             </Button>
             <Button
               type="button"
@@ -156,7 +158,7 @@ export function AgentAvatarField({ agent, readOnly }: { agent: Agent; readOnly: 
               }}
             >
               <Grid2X2 />
-              Choose preset
+              {ui("Choose preset")}
             </Button>
             {agent.avatar && (
               <Button
@@ -167,7 +169,7 @@ export function AgentAvatarField({ agent, readOnly }: { agent: Agent; readOnly: 
                 onClick={() => remove.mutate()}
               >
                 <Trash2 />
-                Remove
+                {ui("Remove")}
               </Button>
             )}
           </div>
@@ -179,8 +181,9 @@ export function AgentAvatarField({ agent, readOnly }: { agent: Agent; readOnly: 
         </p>
       )}
       <p className="text-xs text-muted-foreground">
-        PNG, JPEG, GIF or WebP, at least 64×64. Shown in the UI, the A2A Agent Card, and as the icon
-        of Slack apps created in one click.
+        {ui(
+          "PNG, JPEG, GIF or WebP, at least 64×64. Shown in the UI, the A2A Agent Card, and as the icon of Slack apps created in one click.",
+        )}
       </p>
       <AvatarPresetDialog
         agent={agent}
@@ -224,6 +227,7 @@ function AvatarCropDialog({
   onCancel: () => void;
   onSave: (file: File) => Promise<void>;
 }) {
+  const ui = useUiTranslations();
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [area, setArea] = useState<Area | null>(null);
@@ -246,8 +250,10 @@ function AvatarCropDialog({
     <Dialog open={source !== null} onOpenChange={(open) => !open && !saving && onCancel()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Crop avatar</DialogTitle>
-          <DialogDescription>Drag to position, scroll or use the slider to zoom.</DialogDescription>
+          <DialogTitle>{ui("Crop avatar")}</DialogTitle>
+          <DialogDescription>
+            {ui("Drag to position, scroll or use the slider to zoom.")}
+          </DialogDescription>
         </DialogHeader>
         <div className="relative aspect-square w-full overflow-hidden bg-muted">
           {source && (
@@ -275,24 +281,24 @@ function AvatarCropDialog({
             step={0.01}
             value={zoom}
             onChange={(event) => setZoom(Number(event.target.value))}
-            aria-label="Zoom"
+            aria-label={ui("Zoom")}
             className="h-1 flex-1 cursor-pointer accent-primary"
           />
           <Plus className="size-4 text-muted-foreground" aria-hidden />
         </div>
         {tooSmall && (
           <p className="text-xs text-destructive">
-            The selection is smaller than 64×64 pixels. Zoom out.
+            {ui("The selection is smaller than 64×64 pixels. Zoom out.")}
           </p>
         )}
         {(cropError ?? error) && <p className="text-xs text-destructive">{cropError ?? error}</p>}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
-            Cancel
+            {ui("Cancel")}
           </Button>
           <Button type="button" onClick={save} disabled={saving || !area || tooSmall}>
             {saving && <Loader2 className="animate-spin" />}
-            Save avatar
+            {ui("Save avatar")}
           </Button>
         </DialogFooter>
       </DialogContent>

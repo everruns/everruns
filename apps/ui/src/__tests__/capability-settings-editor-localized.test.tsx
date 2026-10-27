@@ -7,6 +7,7 @@ import { formatMessage } from "@/lib/i18n";
 import type { Capability } from "@/lib/api/types";
 
 jest.mock("@/providers/locale-provider", () => ({
+  ...jest.requireActual("@/providers/locale-provider"),
   useLocale: () => ({
     locale: "uk",
     backendLocale: "uk-UA",

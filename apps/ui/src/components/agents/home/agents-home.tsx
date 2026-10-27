@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 // Agents home: the Agents page as the place where a team
@@ -68,7 +70,9 @@ type ChannelTab = "all" | ChannelState | "public";
 const EXAMPLE_PREVIEW_LIMIT = 3;
 
 export function AgentsHome() {
-  usePageTitle("Agents");
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
+  usePageTitle(ui("Agents"));
   const router = useRouter();
   const searchParams = useSearchParams();
   const view: View = searchParams.get("view") === "channels" ? "channels" : "agents";
@@ -173,14 +177,23 @@ export function AgentsHome() {
         return false;
       }
       if (!needle) return true;
-      return [agent.display_name, agent.name, agent.description]
+      return [
+        agent.display_name,
+        getDisplayName(agent, displayLocale),
+        agent.name,
+        agent.description,
+        ...Object.values(agent.localizations ?? {}).flatMap((entry) => [
+          entry.display_name,
+          entry.description,
+        ]),
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
         .includes(needle);
     });
     return sortAgents(filtered, activityById, attentionByAgent);
-  }, [agents, agentTab, search, activityById, attentionByAgent]);
+  }, [agents, agentTab, search, activityById, attentionByAgent, displayLocale]);
 
   const sessionsByChannel = useMemo(
     () => new Map((activity?.channels ?? []).map((c) => [c.channel_id, c.sessions])),
@@ -208,14 +221,14 @@ export function AgentsHome() {
       return [
         channelShortName(exposure.channel.channel_type),
         exposure.channel.id,
-        exposure.agent ? getDisplayName(exposure.agent) : "",
+        exposure.agent ? getDisplayName(exposure.agent, displayLocale) : "",
       ]
         .join(" ")
         .toLowerCase()
         .includes(needle);
     });
     return sortChannels(filtered, sessionsByChannel);
-  }, [channels, channelTab, search, sessionsByChannel]);
+  }, [channels, channelTab, search, sessionsByChannel, displayLocale]);
 
   const totals = activity?.totals;
   const orgName = currentOrg?.name ?? "this organization";
@@ -228,12 +241,15 @@ export function AgentsHome() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Agents" }]} />
+      <PageBreadcrumb items={[{ label: ui("Agents") }]} />
 
       <PageMasthead
         icon={<AgentIcon />}
-        title="Agents"
-        description={`Agents that work for ${orgName}: what each one is doing, how it is reached, and what is misconfigured.`}
+        title={ui("Agents")}
+        description={ui(
+          "Agents that work for {value0}: what each one is doing, how it is reached, and what is misconfigured.",
+          { value0: orgName },
+        )}
         meta={
           // A quiet org shows no counters: a strip of zeros says nothing the empty list
           // below does not already say.
@@ -243,18 +259,24 @@ export function AgentsHome() {
           agentCounts.attention === 0 ? undefined : (
             <dl className="flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-muted-foreground">
               {/* Agents with work in flight; the org-wide session count is the next fact. */}
-              <Fact label="Agents running" value={totals ? String(agentCounts.running) : "–"} />
               <Fact
-                label="Active turns"
+                label={ui("Agents running")}
+                value={totals ? String(agentCounts.running) : "–"}
+              />
+              <Fact
+                label={ui("Active turns")}
                 value={
                   totals
                     ? `${totals.running_sessions} / ${formatCompactNumber(totals.max_active_turns)}`
                     : "–"
                 }
               />
-              <Fact label="Need attention" value={String(agentCounts.attention)} />
-              <Fact label="Runs, 24h" value={totals ? formatCompactNumber(totals.runs) : "–"} />
-              <Fact label="Failed, 24h" value={totals ? String(totals.failed) : "–"} />
+              <Fact label={ui("Need attention")} value={String(agentCounts.attention)} />
+              <Fact
+                label={ui("Runs, 24h")}
+                value={totals ? formatCompactNumber(totals.runs) : "–"}
+              />
+              <Fact label={ui("Failed, 24h")} value={totals ? String(totals.failed) : "–"} />
             </dl>
           )
         }
@@ -270,16 +292,16 @@ export function AgentsHome() {
               }}
               accept=".md,.toml,.yaml,.yml,.json,.zip"
               className="hidden"
-              aria-label="Import agent file"
+              aria-label={ui("Import agent file")}
             />
             <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
               <Upload className="size-4" />
-              Import
+              {ui("Import")}
             </Button>
             <NewAgentLink>
               <Button variant="accent">
                 <Plus className="size-4" />
-                New agent
+                {ui("New agent")}
               </Button>
             </NewAgentLink>
           </>
@@ -301,9 +323,11 @@ export function AgentsHome() {
       {onlyBuiltInAgents && (
         <div className="flex flex-wrap items-center justify-between gap-3 border bg-card p-4">
           <div>
-            <p className="text-sm font-medium">Build your first agent with your coding tools</p>
+            <p className="text-sm font-medium">
+              {ui("Build your first agent with your coding tools")}
+            </p>
             <p className="text-xs text-muted-foreground">
-              Connect Claude Code, Codex, Cursor, or Gemini CLI to use Everruns.
+              {ui("Connect Claude Code, Codex, Cursor, or Gemini CLI to use Everruns.")}
             </p>
           </div>
           <CodingAgentConnectAction />
@@ -315,22 +339,22 @@ export function AgentsHome() {
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex border" role="tablist" aria-label="View">
+            <div className="flex border" role="tablist" aria-label={ui("View")}>
               <ViewButton
                 active={view === "agents"}
                 onClick={() => setView("agents")}
                 icon={<AgentIcon className="size-4" />}
-                label="Agents"
+                label={ui("Agents")}
               />
               <ViewButton
                 active={view === "channels"}
                 onClick={() => setView("channels")}
                 icon={<Radio className="size-4" />}
-                label="Channels"
+                label={ui("Channels")}
               />
             </div>
             <SearchInput
-              placeholder={view === "agents" ? "Search agents…" : "Search channels…"}
+              placeholder={view === "agents" ? ui("Search agents…") : ui("Search channels…")}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               containerClassName="w-64"
@@ -341,21 +365,21 @@ export function AgentsHome() {
                 value={agentTab}
                 onValueChange={(value) => setAgentTab(value as AgentTab)}
                 items={[
-                  { value: "all", label: "All", count: agentCounts.all },
+                  { value: "all", label: ui("All"), count: agentCounts.all },
                   {
                     value: "running",
-                    label: "Running",
+                    label: ui("Running"),
                     count: agentCounts.running,
                   },
                   {
                     value: "attention",
-                    label: "Needs attention",
+                    label: ui("Needs attention"),
                     count: agentCounts.attention,
                   },
-                  { value: "idle", label: "Idle", count: agentCounts.idle },
+                  { value: "idle", label: ui("Idle"), count: agentCounts.idle },
                   {
                     value: "archived",
-                    label: "Archived",
+                    label: ui("Archived"),
                     count: agentCounts.archived,
                   },
                 ]}
@@ -365,21 +389,21 @@ export function AgentsHome() {
                 value={channelTab}
                 onValueChange={(value) => setChannelTab(value as ChannelTab)}
                 items={[
-                  { value: "all", label: "All", count: channelCounts.all },
-                  { value: "live", label: "Live", count: channelCounts.live },
+                  { value: "all", label: ui("All"), count: channelCounts.all },
+                  { value: "live", label: ui("Live"), count: channelCounts.live },
                   {
                     value: "draft",
-                    label: "Draft",
+                    label: ui("Draft"),
                     count: channelCounts.draft,
                   },
                   {
                     value: "paused",
-                    label: "Paused",
+                    label: ui("Paused"),
                     count: channelCounts.paused,
                   },
                   {
                     value: "public",
-                    label: "Public access",
+                    label: ui("Public access"),
                     count: channelCounts.public,
                   },
                 ]}
@@ -389,9 +413,9 @@ export function AgentsHome() {
 
           {view === "agents" ? (
             agentsLoading ? (
-              <p className="text-sm text-muted-foreground">Loading agents…</p>
+              <p className="text-sm text-muted-foreground">{ui("Loading agents…")}</p>
             ) : visibleAgents.length === 0 ? (
-              <EmptyState icon={<AgentIcon />} title="No agents match your filters." />
+              <EmptyState icon={<AgentIcon />} title={ui("No agents match your filters.")} />
             ) : (
               <ul className="divide-y border bg-card">
                 {visibleAgents.map((agent) => (
@@ -414,14 +438,16 @@ export function AgentsHome() {
                 totals={totals}
               />
               {exposuresLoading ? (
-                <p className="text-sm text-muted-foreground">Loading channels…</p>
+                <p className="text-sm text-muted-foreground">{ui("Loading channels…")}</p>
               ) : visibleChannels.length === 0 ? (
                 <EmptyState
                   icon={<Radio />}
-                  title={channels.length === 0 ? "No channels yet" : "No channels match."}
+                  title={channels.length === 0 ? ui("No channels yet") : ui("No channels match.")}
                   description={
                     channels.length === 0
-                      ? "Add a channel from an agent's Integrations tab. New channels start as drafts and take no traffic until you publish them."
+                      ? ui(
+                          "Add a channel from an agent's Integrations tab. New channels start as drafts and take no traffic until you publish them.",
+                        )
                       : undefined
                   }
                 />
@@ -491,6 +517,8 @@ function ChannelStats({
   channelActivity: Map<string, ChannelActivity>;
   totals: AgentActivityTotals | undefined;
 }) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const live = channels.filter((exposure) => channelState(exposure) === "live");
   const busiest = channels
     .map((exposure) => ({
@@ -509,17 +537,17 @@ function ChannelStats({
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
       <StatCard
-        label="Sessions via channels"
+        label={ui("Sessions via channels")}
         value={totals ? formatCompactNumber(totals.channel_sessions) : "–"}
         hint="Last 7 days"
       />
       <StatCard
-        label="People reached"
+        label={ui("People reached")}
         value={totals ? formatCompactNumber(totals.people_reached) : "–"}
         hint="Distinct signed-in or returning callers, 7 days"
       />
       <StatCard
-        label="Busiest channel"
+        label={ui("Busiest channel")}
         value={
           busiest ? (
             <span className="text-lg">
@@ -531,25 +559,29 @@ function ChannelStats({
         }
         hint={
           busiest
-            ? `${busiest.sessions} ${pluralize(busiest.sessions, "session")}${
-                busiest.exposure.agent ? ` · ${getDisplayName(busiest.exposure.agent)}` : ""
+            ? `${busiest.sessions} ${pluralize(busiest.sessions, "session", undefined, displayLocale)}${
+                busiest.exposure.agent
+                  ? ` · ${getDisplayName(busiest.exposure.agent, displayLocale)}`
+                  : ""
               }`
             : "No traffic in 7 days"
         }
       />
       <StatCard
-        label="Fastest first reply"
+        label={ui("Fastest first reply")}
         value={fastest ? <span className="text-lg">{formatReplyTime(fastest.ms)}</span> : "–"}
         hint={
           fastest
             ? `Median · ${channelShortName(fastest.exposure.channel.channel_type)}${
-                fastest.exposure.agent ? ` · ${getDisplayName(fastest.exposure.agent)}` : ""
+                fastest.exposure.agent
+                  ? ` · ${getDisplayName(fastest.exposure.agent, displayLocale)}`
+                  : ""
               }`
             : "No replies on live channels in 7 days"
         }
       />
       <StatCard
-        label="Live but silent"
+        label={ui("Live but silent")}
         value={String(silent)}
         hint="At most one session in 7 days"
       />
@@ -558,6 +590,7 @@ function ChannelStats({
 }
 
 function FreshOrganization() {
+  const ui = useUiTranslations();
   const router = useRouter();
   const { data: examples } = useAgentExamples();
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
@@ -578,14 +611,16 @@ function FreshOrganization() {
     <div className="flex flex-col gap-6">
       <EmptyState
         icon={<AgentIcon />}
-        title="No agents yet"
-        description="Create an agent for a job your team repeats. Its channels start as drafts and take no traffic until you publish them."
+        title={ui("No agents yet")}
+        description={ui(
+          "Create an agent for a job your team repeats. Its channels start as drafts and take no traffic until you publish them.",
+        )}
         action={
           <div className="flex flex-wrap justify-center gap-3">
             <NewAgentLink>
               <Button variant="accent">
                 <Plus className="size-4" />
-                New agent
+                {ui("New agent")}
               </Button>
             </NewAgentLink>
             <CodingAgentConnectAction />
@@ -595,12 +630,12 @@ function FreshOrganization() {
       {examples && examples.length > 0 && (
         <section>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold tracking-tight">Start from an example</h2>
+            <h2 className="text-lg font-semibold tracking-tight">{ui("Start from an example")}</h2>
             <Link
               href="/agents/examples"
               className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"
             >
-              All examples
+              {ui("All examples")}
               <ArrowRight className="size-3.5" />
             </Link>
           </div>

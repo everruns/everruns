@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { Suspense } from "react";
 import AgentPage from "@/app/(main)/agents/[agentId]/page";
+import { LocaleProvider } from "@/providers/locale-provider";
 import type { Agent, Session } from "@/lib/api/types";
 import type { ChatModeState } from "@/components/chat-mode/chat-mode-context";
 import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
@@ -310,6 +311,32 @@ beforeEach(() => {
 });
 
 describe("AgentPage layout", () => {
+  it("keeps Localization and max output tokens together in the Ukrainian More menu", async () => {
+    localStorage.setItem("everruns.ui-language", "uk");
+    const params = Promise.resolve({ agentId: "agent-1" });
+    try {
+      await act(async () => {
+        render(
+          <LocaleProvider>
+            <Suspense fallback={null}>
+              <AgentPage params={params} />
+            </Suspense>
+          </LocaleProvider>,
+        );
+        await params;
+      });
+      const more = within(screen.getByRole("navigation", { name: "Більше налаштувань" }));
+      expect(more.getByRole("button", { name: /Локалізація/ })).toBeInTheDocument();
+      fireEvent.click(more.getByRole("button", { name: /Максимум вихідних токенів/ }));
+      expect(
+        await screen.findByRole("spinbutton", { name: "Максимум вихідних токенів" }),
+      ).toHaveAttribute("placeholder", "Типово для постачальника");
+    } finally {
+      cleanup();
+      localStorage.removeItem("everruns.ui-language");
+    }
+  });
+
   it("shows one tab row with the session count and no MCP or Credentials tabs", async () => {
     await renderPage();
 

@@ -5,6 +5,7 @@
 // passes `required`. The text travels as the change-reason header and lands in
 // the entity's history. See knowledge/execution/change-reasons-and-manager-context.md.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,12 +29,13 @@ export function ChangeReasonField({
   placeholder,
   className,
 }: ChangeReasonFieldProps) {
+  const ui = useUiTranslations();
   const id = useId();
   return (
     <div className={cn("space-y-1.5", className)}>
       <Label htmlFor={id} className="text-xs">
-        Reason for this change
-        {!required && <span className="font-normal text-muted-foreground">(optional)</span>}
+        {ui("Reason for this change")}
+        {!required && <span className="font-normal text-muted-foreground">{ui("(optional)")}</span>}
       </Label>
       <Input
         id={id}
@@ -42,7 +44,7 @@ export function ChangeReasonField({
         maxLength={MAX_CHANGE_REASON_CHARS}
         required={required}
         disabled={disabled}
-        placeholder={placeholder ?? "Why you are making this change"}
+        placeholder={placeholder ?? ui("Why you are making this change")}
       />
     </div>
   );

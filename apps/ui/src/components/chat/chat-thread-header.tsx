@@ -8,6 +8,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ExternalLink, MessageCircle, Pencil } from "lucide-react";
 import { PLATFORM_CHAT_STARTER_TAG } from "@/lib/chat-threads";
@@ -33,6 +34,7 @@ function ThreadTitle({
   title: string;
   large?: boolean;
 }) {
+  const ui = useUiTranslations();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(session.title ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -54,7 +56,7 @@ function ThreadTitle({
       <Input
         ref={inputRef}
         value={value}
-        aria-label="Thread title"
+        aria-label={ui("Thread title")}
         className="h-8 max-w-sm"
         onChange={(event) => setValue(event.target.value)}
         onBlur={commit}
@@ -77,7 +79,7 @@ function ThreadTitle({
         setValue(session.title ?? "");
         setEditing(true);
       }}
-      aria-label="Rename thread"
+      aria-label={ui("Rename thread")}
     >
       <span
         className={cn(
@@ -126,6 +128,7 @@ export function ChatThreadHeader({
   /** One-line Platform Chat description in simplified Markdown (agent wins). */
   platformDescription?: string | null;
 }) {
+  const ui = useUiTranslations();
   // The intro box shows on a fresh thread; once the user inputs it hides and
   // the header takes over with the short description, animated below.
   const { chatEvents } = useSessionContext();
@@ -154,11 +157,11 @@ export function ChatThreadHeader({
         href={`/sessions/${session.id}/trace`}
         variant="outline"
         size="sm"
-        aria-label="Open session"
+        aria-label={ui("Open session")}
         className="max-sm:w-7 max-sm:px-0"
       >
         <ExternalLink className="size-4" />
-        <span className="max-sm:hidden">Open session</span>
+        <span className="max-sm:hidden">{ui("Open session")}</span>
       </LinkButton>
       {extraActions}
     </>
@@ -171,13 +174,13 @@ export function ChatThreadHeader({
         badges={
           session.archived_at ? (
             <span className="border px-1.5 text-xs text-muted-foreground">
-              {threadMode ? "Resolved" : "Archived"}
+              {threadMode ? ui("Resolved") : ui("Archived")}
             </span>
           ) : undefined
         }
         description={
           <>
-            {counterpartHref ?? counterpart ?? "No agent bound"}
+            {counterpartHref ?? counterpart ?? ui("No agent bound")}
             {contextLabel && <> · {contextLabel}</>}
           </>
         }
@@ -192,13 +195,13 @@ export function ChatThreadHeader({
       <div className="flex min-w-0 flex-col">
         <span className="flex min-w-0 items-center gap-2">
           {permanent ? (
-            <span className="text-base font-semibold">Chat</span>
+            <span className="text-base font-semibold">{ui("Chat")}</span>
           ) : (
             <ThreadTitle session={session} title={title} />
           )}
           {session.archived_at && (
             <span className="flex-none border border-border/70 px-1.5 text-xs font-medium text-muted-foreground">
-              {threadMode ? "Resolved" : "Archived"}
+              {threadMode ? ui("Resolved") : ui("Archived")}
             </span>
           )}
         </span>
@@ -216,7 +219,7 @@ export function ChatThreadHeader({
         </span>
         {!showDescription ? (
           <span className="truncate text-xs text-muted-foreground">
-            {counterpartHref ?? counterpart ?? "No agent bound"}
+            {counterpartHref ?? counterpart ?? ui("No agent bound")}
             {contextLabel && <> · {contextLabel}</>}
           </span>
         ) : null}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,6 +54,7 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
 // ============================================
 
 function ModelList() {
+  const ui = useUiTranslations();
   const { data: models = [], isLoading } = useModels();
 
   if (isLoading) {
@@ -75,7 +77,7 @@ function ModelList() {
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-            Favorites
+            {ui("Favorites")}
           </h4>
           <div className="space-y-1">
             {favoriteModels.map((model) => (
@@ -84,13 +86,14 @@ function ModelList() {
                 <div className="flex-1">
                   <div className="font-medium text-sm">{model.display_name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {model.provider_name} &middot; {model.model_id}
+                    {model.provider_name} {ui("·")}
+                    {model.model_id}
                   </div>
                 </div>
                 <FavoriteToggle model={model} size="sm" />
                 {model.enabled && (
                   <Badge variant="secondary" className="text-xs">
-                    Default
+                    {ui("Default")}
                   </Badge>
                 )}
               </div>
@@ -101,7 +104,7 @@ function ModelList() {
 
       {otherModels.length > 0 && (
         <div className="space-y-2">
-          <h4 className="text-sm font-medium text-muted-foreground">Other Models</h4>
+          <h4 className="text-sm font-medium text-muted-foreground">{ui("Other Models")}</h4>
           <div className="space-y-1">
             {otherModels.map((model) => (
               <div key={model.id} className="flex items-center gap-3 p-2 border">
@@ -109,13 +112,14 @@ function ModelList() {
                 <div className="flex-1">
                   <div className="font-medium text-sm">{model.display_name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {model.provider_name} &middot; {model.model_id}
+                    {model.provider_name} {ui("·")}
+                    {model.model_id}
                   </div>
                 </div>
                 <FavoriteToggle model={model} size="sm" />
                 {model.enabled && (
                   <Badge variant="secondary" className="text-xs">
-                    Default
+                    {ui("Default")}
                   </Badge>
                 )}
               </div>
@@ -132,6 +136,7 @@ function ModelList() {
 // ============================================
 
 export default function DevModelPickerPage() {
+  const ui = useUiTranslations();
   usePageTitle(isDev ? "Model Picker" : "Page not found", isDev ? "Dev" : null);
   const [selectedModel1, setSelectedModel1] = useState<string>("");
   const [selectedModel2, setSelectedModel2] = useState<string>("");
@@ -142,7 +147,7 @@ export default function DevModelPickerPage() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
-          <p className="text-muted-foreground mt-2">Page not found</p>
+          <p className="text-muted-foreground mt-2">{ui("Page not found")}</p>
         </div>
       </div>
     );
@@ -157,14 +162,14 @@ export default function DevModelPickerPage() {
             className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Developer Tools
+            {ui("Back to Developer Tools")}
           </Link>
-          <h1 className="text-3xl font-bold">Model Picker</h1>
+          <h1 className="text-3xl font-bold">{ui("Model Picker")}</h1>
           <p className="text-muted-foreground mt-2">
-            LLM Model selection component with favorite models support
+            {ui("LLM Model selection component with favorite models support")}
           </p>
           <Badge variant="outline" className="mt-2">
-            Development Mode
+            {ui("Development Mode")}
           </Badge>
         </div>
 
@@ -172,55 +177,62 @@ export default function DevModelPickerPage() {
           <div className="space-y-8 pr-4">
             {/* Model Picker Component */}
             <ShowcaseSection
-              title="ModelPicker Component"
-              description="Dropdown selector for LLM models with favorites shown first"
+              title={ui("ModelPicker Component")}
+              description={ui("Dropdown selector for LLM models with favorites shown first")}
             >
-              <ShowcaseItem label="Basic Model Picker">
+              <ShowcaseItem label={ui("Basic Model Picker")}>
                 <div className="max-w-md">
                   <ModelPicker
                     value={selectedModel1}
                     onChange={setSelectedModel1}
-                    placeholder="Select a model"
+                    placeholder={ui("Select a model")}
                   />
                   <p className="text-xs text-muted-foreground mt-2">
-                    Selected: {selectedModel1 || "(none)"}
+                    {ui("Selected:")} {selectedModel1 || ui("(none)")}
                   </p>
                 </div>
               </ShowcaseItem>
 
-              <ShowcaseItem label="With Custom Placeholder">
+              <ShowcaseItem label={ui("With Custom Placeholder")}>
                 <div className="max-w-md">
                   <ModelPicker
                     value={selectedModel2}
                     onChange={setSelectedModel2}
-                    placeholder="Use default model"
+                    placeholder={ui("Use default model")}
                   />
                 </div>
               </ShowcaseItem>
 
-              <ShowcaseItem label="Disabled State">
+              <ShowcaseItem label={ui("Disabled State")}>
                 <div className="max-w-md">
-                  <ModelPicker value="" onChange={() => {}} placeholder="Select a model" disabled />
+                  <ModelPicker
+                    value=""
+                    onChange={() => {}}
+                    placeholder={ui("Select a model")}
+                    disabled
+                  />
                 </div>
               </ShowcaseItem>
             </ShowcaseSection>
 
             {/* Model List with Favorite Toggle */}
             <ShowcaseSection
-              title="Model List with FavoriteToggle"
-              description="List view of all models with toggle buttons to add/remove favorites"
+              title={ui("Model List with FavoriteToggle")}
+              description={ui(
+                "List view of all models with toggle buttons to add/remove favorites",
+              )}
             >
-              <ShowcaseItem label="All Available Models">
+              <ShowcaseItem label={ui("All Available Models")}>
                 <ModelList />
               </ShowcaseItem>
             </ShowcaseSection>
 
             {/* Usage Example */}
             <ShowcaseSection
-              title="Usage Example"
-              description="How to use the ModelPicker in your components"
+              title={ui("Usage Example")}
+              description={ui("How to use the ModelPicker in your components")}
             >
-              <ShowcaseItem label="Code Example">
+              <ShowcaseItem label={ui("Code Example")}>
                 <pre className="text-sm bg-muted p-4 overflow-x-auto">
                   {`import { ModelPicker } from "@/components/models/model-picker";
 
@@ -238,7 +250,7 @@ function MyComponent() {
                 </pre>
               </ShowcaseItem>
 
-              <ShowcaseItem label="FavoriteToggle Example">
+              <ShowcaseItem label={ui("FavoriteToggle Example")}>
                 <pre className="text-sm bg-muted p-4 overflow-x-auto">
                   {`import { FavoriteToggle } from "@/components/models/model-picker";
 

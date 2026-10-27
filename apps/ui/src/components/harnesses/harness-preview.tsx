@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState } from "react";
 import { usePreviewHarness } from "@/hooks/use-harnesses";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -30,6 +31,7 @@ export function HarnessPreview({
   initialFiles,
   parentHarnessId,
 }: HarnessPreviewProps) {
+  const ui = useUiTranslations();
   const previewMutation = usePreviewHarness();
   const [preview, setPreview] = useState<AgentPreviewResponse | null>(null);
 
@@ -78,12 +80,12 @@ export function HarnessPreview({
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-destructive">
             <AlertCircle className="w-5 h-5" />
-            Preview Error
+            {ui("Preview Error")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Failed to generate preview: {previewMutation.error.message}
+            {ui("Failed to generate preview:")} {previewMutation.error.message}
           </p>
         </CardContent>
       </Card>
@@ -101,10 +103,10 @@ export function HarnessPreview({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
-            Full System Prompt
+            {ui("Full System Prompt")}
           </CardTitle>
           <CardDescription>
-            The complete system prompt including capability additions
+            {ui("The complete system prompt including capability additions")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -118,17 +120,17 @@ export function HarnessPreview({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Wrench className="w-5 h-5" />
-            Available Tools
+            {ui("Available Tools")}
             <Badge variant="secondary" className="ml-2">
               {preview.tools.length}
             </Badge>
           </CardTitle>
-          <CardDescription>Tools available from the enabled capabilities</CardDescription>
+          <CardDescription>{ui("Tools available from the enabled capabilities")}</CardDescription>
         </CardHeader>
         <CardContent>
           {preview.tools.length === 0 ? (
             <p className="text-sm text-muted-foreground italic">
-              No tools available. Add capabilities to enable tools.
+              {ui("No tools available. Add capabilities to enable tools.")}
             </p>
           ) : (
             <div className="space-y-4">
@@ -146,6 +148,7 @@ export function HarnessPreview({
 }
 
 function ToolCard({ tool }: { tool: ToolDefinition }) {
+  const ui = useUiTranslations();
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
@@ -157,7 +160,7 @@ function ToolCard({ tool }: { tool: ToolDefinition }) {
         </div>
         {"policy" in tool && tool.policy === "requires_approval" && (
           <Badge variant="outline" className="text-xs">
-            Requires approval
+            {ui("Requires approval")}
           </Badge>
         )}
       </div>
@@ -168,7 +171,7 @@ function ToolCard({ tool }: { tool: ToolDefinition }) {
           className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           onClick={() => setIsExpanded(!isExpanded)}
         >
-          {isExpanded ? "Hide parameters" : "Show parameters"}
+          {isExpanded ? ui("Hide parameters") : ui("Show parameters")}
         </button>
         {isExpanded && (
           <ScrollArea className="mt-2 max-h-[200px]">

@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageDraftTools } from "@/components/chat-mode/use-page-draft-tools";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -155,6 +157,8 @@ export function ChatPanel({
   platformIntro,
   platformStarters = [],
 }: ChatPanelProps = {}) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const chatMode = useChatMode();
   const [sentActionId, setSentActionId] = useState<string | undefined>(undefined);
   const { t } = useLocale();
@@ -490,10 +494,10 @@ export function ChatPanel({
   const agentNameById = useMemo(() => {
     const map = new Map<string, string>();
     for (const agent of agents ?? []) {
-      map.set(agent.id, getDisplayName(agent));
+      map.set(agent.id, getDisplayName(agent, displayLocale));
     }
     return map;
-  }, [agents]);
+  }, [agents, displayLocale]);
 
   const activeAgentParticipants = useMemo(
     () => (participants ?? []).filter((p) => !p.left_at && p.kind === "agent"),
@@ -515,11 +519,14 @@ export function ChatPanel({
       const suffix = participant.id.replace(/^part_/, "").slice(-6);
       return {
         id: participant.id,
-        label: labelCounts.get(label)! > 1 ? `${label} (${suffix})` : label,
+        label:
+          labelCounts.get(label)! > 1
+            ? ui("{value0} ({value1})", { value0: label, value1: suffix })
+            : label,
         description: `Guest agent · ${suffix}`,
       };
     });
-  }, [addressableParticipants, agentNameById]);
+  }, [addressableParticipants, agentNameById, ui]);
 
   useEffect(() => {
     if (
@@ -708,7 +715,7 @@ export function ChatPanel({
 
           {resolvedThread ? (
             <p className="border-t border-border p-4 text-sm text-muted-foreground">
-              This thread is resolved. Reopen it to continue.
+              {ui("This thread is resolved. Reopen it to continue.")}
             </p>
           ) : (
             <>
@@ -716,7 +723,7 @@ export function ChatPanel({
                 <p role="alert" className="px-4 text-xs text-destructive">
                   {pageTools.error}{" "}
                   <button type="button" className="underline" onClick={pageTools.retry}>
-                    Retry
+                    {ui("Retry")}
                   </button>
                 </p>
               )}
@@ -841,24 +848,26 @@ export function ChatPanel({
           <DialogHeader>
             <DialogTitle>/{commandOverlay?.commandName}</DialogTitle>
             <DialogDescription>
-              This command result is ephemeral and does not alter the main chat history.
+              {ui("This command result is ephemeral and does not alter the main chat history.")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             {commandOverlay?.argumentsText && (
               <div className="rounded-sm border border-border bg-muted/30 p-3">
-                <div className="mb-1 text-xs font-medium text-muted-foreground">Arguments</div>
+                <div className="mb-1 text-xs font-medium text-muted-foreground">
+                  {ui("Arguments")}
+                </div>
                 <div className="text-sm text-foreground">{commandOverlay.argumentsText}</div>
               </div>
             )}
 
             <div className="rounded-sm border border-border p-4">
-              <div className="mb-3 text-xs font-medium text-muted-foreground">Result</div>
+              <div className="mb-3 text-xs font-medium text-muted-foreground">{ui("Result")}</div>
               {commandOverlay?.pending ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Thinking...
+                  {ui("Thinking...")}
                 </div>
               ) : commandOverlay?.error ? (
                 <div className="text-sm text-destructive">{commandOverlay.error}</div>
@@ -870,7 +879,7 @@ export function ChatPanel({
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={closeCommandOverlay}>
-              Dismiss
+              {ui("Dismiss")}
             </Button>
           </DialogFooter>
         </DialogContent>

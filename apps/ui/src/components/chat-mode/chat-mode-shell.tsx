@@ -1,4 +1,5 @@
 "use client";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { PageChangeReviewProvider, SavedPageChanges } from "./page-change-review-provider";
 
 import {
@@ -84,6 +85,7 @@ function EnabledShell({
   children: ReactNode;
   navigation?: NavigationSection[];
 }) {
+  const ui = useUiTranslations();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const chatRoute = pathname === "/chats" || pathname.startsWith("/chats/") || pathname === "/chat";
@@ -247,7 +249,7 @@ function EnabledShell({
         </div>
         <section
           className="chat-mode-conversation min-h-0 overflow-hidden border-r bg-background"
-          aria-label="Platform Chat"
+          aria-label={ui("Platform Chat")}
           hidden={!visited && !fullChat}
           inert={!conversationVisible}
           aria-hidden={!conversationVisible}
@@ -263,13 +265,13 @@ function EnabledShell({
                 splitOpen ? (
                   <>
                     <Button variant="ghost" size="sm" onClick={() => changeOpen(false)}>
-                      <ArrowLeft className="size-3.5" /> Back to app
+                      <ArrowLeft className="size-3.5" /> {ui("Back to app")}
                     </Button>
                     <LinkButton
                       variant="ghost"
                       size="icon-sm"
                       href={`/chats/${activeChatId ?? thread.id}`}
-                      aria-label="Open full Chat"
+                      aria-label={ui("Open full Chat")}
                     >
                       <Maximize2 className="size-3.5" />
                     </LinkButton>
@@ -281,11 +283,13 @@ function EnabledShell({
                   <div className="flex shrink-0 gap-3 border-b bg-card px-4 py-3 text-xs">
                     <Eye className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                     <p>
-                      I can see the page beside this chat. Ask about it, or tell me what to change.
+                      {ui(
+                        "I can see the page beside this chat. Ask about it, or tell me what to change.",
+                      )}
                     </p>
                     <button
                       type="button"
-                      aria-label="Dismiss chat hint"
+                      aria-label={ui("Dismiss chat hint")}
                       className="ml-auto self-start"
                       onClick={() => setHint(false)}
                     >
@@ -298,10 +302,10 @@ function EnabledShell({
           ) : (
             <p role={error ? "alert" : "status"} className="p-6 text-sm text-muted-foreground">
               {error
-                ? `Could not open Chat: ${error.message}`
+                ? ui("Could not open Chat: {value0}", { value0: error.message })
                 : isLoading
-                  ? "Opening Chat…"
-                  : "Open Chat to begin."}
+                  ? ui("Opening Chat…")
+                  : ui("Open Chat to begin.")}
             </p>
           )}
         </section>
@@ -311,18 +315,21 @@ function EnabledShell({
               ref={pageContainerRef}
               tabIndex={-1}
               className="chat-mode-page relative flex min-h-0 min-w-0 flex-col outline-none"
-              aria-label="Current page"
+              aria-label={ui("Current page")}
               inert={fullChat}
               aria-hidden={fullChat}
             >
               {splitOpen && (
                 <div className="flex h-10 shrink-0 items-center gap-2 border-b bg-background px-3 text-xs text-muted-foreground">
                   <Eye className="size-3.5 shrink-0" />
-                  <span className="truncate">Showing this page to the chat</span>
-                  <PageNavigationHint label="Search pages" description="Find a page or resource.">
+                  <span className="truncate">{ui("Showing this page to the chat")}</span>
+                  <PageNavigationHint
+                    label={ui("Search pages")}
+                    description={ui("Find a page or resource.")}
+                  >
                     <button
                       type="button"
-                      aria-label="Search pages"
+                      aria-label={ui("Search pages")}
                       className="ml-auto p-1 hover:bg-muted"
                       onClick={() => setSearchOpen(true)}
                     >
@@ -330,13 +337,13 @@ function EnabledShell({
                     </button>
                   </PageNavigationHint>
                   <PageNavigationHint
-                    label="Open full page"
-                    description="Hide Chat and expand the current page."
+                    label={ui("Open full page")}
+                    description={ui("Hide Chat and expand the current page.")}
                   >
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label="Open full page"
+                      aria-label={ui("Open full page")}
                       onClick={() => changeOpen(false)}
                     >
                       <Maximize2 className="size-3.5" />

@@ -3,6 +3,7 @@
 // Dev showcase for the MCP Apps card iframe renderer.
 // See knowledge/ui/mcp-cards.md for the card standard.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
@@ -118,6 +119,7 @@ document.getElementById("open").addEventListener("click", function () {
 </article></body></html>`;
 
 export default function McpCardsDevPage() {
+  const ui = useUiTranslations();
   usePageTitle(isDev ? "Dev: MCP Cards" : "Page not found");
 
   const [log, setLog] = useState<CardMessage[]>([]);
@@ -127,7 +129,7 @@ export default function McpCardsDevPage() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
-          <p className="text-muted-foreground mt-2">Page not found</p>
+          <p className="text-muted-foreground mt-2">{ui("Page not found")}</p>
         </div>
       </div>
     );
@@ -140,21 +142,23 @@ export default function McpCardsDevPage() {
           href="/dev"
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to dev
+          <ArrowLeft className="h-4 w-4" /> {ui("Back to dev")}
         </Link>
 
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">MCP Cards</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{ui("MCP Cards")}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Sandboxed iframe renderer for <code>ui://everruns/...</code> embedded resources returned
-            by the Everruns MCP endpoint. The HTML below is the same shape
-            <code> agent_get_card</code> emits in production.
+            {ui("Sandboxed iframe renderer for")} <code>ui://everruns/...</code>{" "}
+            {ui(
+              "embedded resources returned by the Everruns MCP endpoint. The HTML below is the same shape",
+            )}
+            <code> agent_get_card</code> {ui("emits in production.")}
           </p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Agent card (interactive preview)</CardTitle>
+            <CardTitle className="text-lg">{ui("Agent card (interactive preview)")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <McpCardIframe
@@ -166,19 +170,19 @@ export default function McpCardsDevPage() {
 
             <div className="rounded-md border bg-muted/30 p-3">
               <div className="mb-2 flex items-center justify-between">
-                <div className="text-sm font-medium">Action log</div>
+                <div className="text-sm font-medium">{ui("Action log")}</div>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => setLog([])}
                   disabled={log.length === 0}
                 >
-                  Clear
+                  {ui("Clear")}
                 </Button>
               </div>
               {log.length === 0 ? (
                 <div className="text-xs text-muted-foreground">
-                  Click a button on the card to see messages routed via postMessage.
+                  {ui("Click a button on the card to see messages routed via postMessage.")}
                 </div>
               ) : (
                 <ol className="space-y-1 text-xs font-mono">

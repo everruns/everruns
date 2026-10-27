@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 
 import { z } from "zod";
@@ -74,6 +76,8 @@ export default function AgentTriggerPage({
 }: {
   params: Promise<{ agentId: string; triggerId: string }>;
 }) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const { agentId, triggerId } = use(params);
   const isNew = triggerId === "new";
   const router = useRouter();
@@ -267,13 +271,15 @@ export default function AgentTriggerPage({
   };
 
   if (isLoading || agentLoading)
-    return <div className="container mx-auto p-6">Loading trigger...</div>;
+    return <div className="container mx-auto p-6">{ui("Loading trigger...")}</div>;
 
   if (!agent || (!isNew && !trigger)) {
     return (
       <ResourceNotFound
-        title="Trigger not found"
-        description="This trigger may have been deleted, moved to another agent, or the URL may be wrong."
+        title={ui("Trigger not found")}
+        description={ui(
+          "This trigger may have been deleted, moved to another agent, or the URL may be wrong.",
+        )}
         backHref={returnHref}
         backLabel="Back to agent"
         resourceId={triggerId}
@@ -281,7 +287,7 @@ export default function AgentTriggerPage({
     );
   }
 
-  const agentName = getDisplayName(agent);
+  const agentName = getDisplayName(agent, displayLocale);
   const title = isNew ? "New trigger" : "Trigger";
   const enabled = isGithub ? githubForm.enabled : form.enabled;
   const formValid = isGithub ? isGitHubFormValid(githubForm) : isTriggerFormValid(form);
@@ -291,7 +297,7 @@ export default function AgentTriggerPage({
       {chatDraft.notice}
       <PageBreadcrumb
         items={[
-          { label: "Agents", href: "/agents" },
+          { label: ui("Agents"), href: "/agents" },
           { label: agentName, href: returnHref },
           { label: title },
         ]}
@@ -305,11 +311,11 @@ export default function AgentTriggerPage({
             {!isNew && (
               <Badge variant="accent">
                 <Pencil className="size-3" />
-                Editing
+                {ui("Editing")}
               </Badge>
             )}
             <Badge variant={enabled ? "default" : "secondary"}>
-              {enabled ? "enabled" : "disabled"}
+              {enabled ? ui("enabled") : ui("disabled")}
             </Badge>
           </>
         }
@@ -338,7 +344,7 @@ export default function AgentTriggerPage({
               }
             >
               <Check className="size-4" />
-              {createTrigger.isPending || updateTrigger.isPending ? "Saving..." : "Save"}
+              {createTrigger.isPending || updateTrigger.isPending ? ui("Saving...") : ui("Save")}
             </Button>
             {trigger && !isGithub && (
               <Button
@@ -348,11 +354,11 @@ export default function AgentTriggerPage({
                 disabled={!trigger.enabled || runTrigger.isPending}
               >
                 <Play className="size-4" />
-                Run now
+                {ui("Run now")}
               </Button>
             )}
             <Button type="button" variant="outline" onClick={() => router.push(returnHref)}>
-              Discard
+              {ui("Discard")}
             </Button>
           </>
         }
@@ -369,7 +375,7 @@ export default function AgentTriggerPage({
           <PageMain>
             <Card>
               <CardHeader>
-                <CardTitle>{isGithub ? "GitHub" : "Schedule"}</CardTitle>
+                <CardTitle>{isGithub ? ui("GitHub") : ui("Schedule")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {isGithub ? (
@@ -396,7 +402,7 @@ export default function AgentTriggerPage({
             {trigger && (
               <Card className="h-fit border-destructive/50">
                 <CardHeader>
-                  <CardTitle className="text-destructive">Danger zone</CardTitle>
+                  <CardTitle className="text-destructive">{ui("Danger zone")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <Button
@@ -410,7 +416,7 @@ export default function AgentTriggerPage({
                     disabled={deleteTrigger.isPending}
                   >
                     <Trash2 className="size-4" />
-                    Delete trigger
+                    {ui("Delete trigger")}
                   </Button>
                 </CardContent>
               </Card>
@@ -420,7 +426,9 @@ export default function AgentTriggerPage({
       </form>
 
       <PageFooter>
-        <BackLink href={returnHref}>Back to {agentName}</BackLink>
+        <BackLink href={returnHref}>
+          {ui("Back to")} {agentName}
+        </BackLink>
       </PageFooter>
     </PageContainer>
   );

@@ -29,6 +29,7 @@ async fn seed_conversation_harness(db: &StorageBackend) {
     db.create_harness(
         DEFAULT_ORG_ID,
         crate::storage::CreateHarnessRow {
+            localizations: Default::default(),
             name: "conversation".to_string(),
             display_name: Some("Conversation".to_string()),
             icon: None,

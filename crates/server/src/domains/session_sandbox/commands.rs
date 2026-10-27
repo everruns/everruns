@@ -253,6 +253,7 @@ mod tests {
         db.create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "sandbox-harness".to_string(),
                 display_name: Some("Sandbox Harness".to_string()),
                 icon: None,

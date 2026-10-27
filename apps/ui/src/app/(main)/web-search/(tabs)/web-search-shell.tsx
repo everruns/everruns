@@ -7,6 +7,7 @@
 // `/web-search/defaults`), one "Connect" action in the masthead. This shell is
 // the tabs' layout, so its dialogs and notices survive switching tabs. See knowledge/integrations/web-search.md (UI).
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Globe, Plus, SlidersHorizontal } from "lucide-react";
@@ -47,7 +48,8 @@ const tabPath = (tab: Tab) => tabHref("/web-search", tab, "providers");
 type PageNotice = { kind: "success" | "error"; text: string };
 
 export function WebSearchShell({ children }: { children?: ReactNode }) {
-  usePageTitle("Web search");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Web search"));
   const router = useRouter();
   const tab = tabFromPath(usePathname(), "/web-search", TABS, "providers");
   const { hasRole, currentOrg } = useOrg();
@@ -88,36 +90,38 @@ export function WebSearchShell({ children }: { children?: ReactNode }) {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Web search" }]} />
+      <PageBreadcrumb items={[{ label: ui("Web search") }]} />
       <PageMasthead
         icon={<Globe />}
-        title="Web search"
-        description="Choose how agents search the web: built-in free search, the model provider's own search, or a search account you connect."
+        title={ui("Web search")}
+        description={ui(
+          "Choose how agents search the web: built-in free search, the model provider's own search, or a search account you connect.",
+        )}
         actions={
           isAdmin ? (
             <Button variant="accent" onClick={connect} disabled={searchConnectors.length === 0}>
               <Plus className="size-4" />
-              Connect search provider
+              {ui("Connect search provider")}
             </Button>
           ) : undefined
         }
       />
 
       <SectionTabs
-        aria-label="Web search sections"
+        aria-label={ui("Web search sections")}
         value={tab}
         items={[
           {
             value: "providers",
             href: tabPath("providers"),
-            label: "Providers",
+            label: ui("Providers"),
             icon: <Globe className="icon-sharp size-3.5" />,
             count: catalog.data ? providerCount : undefined,
           },
           {
             value: "defaults",
             href: tabPath("defaults"),
-            label: "Defaults",
+            label: ui("Defaults"),
             icon: <SlidersHorizontal className="icon-sharp size-3.5" />,
           },
         ]}
@@ -135,7 +139,7 @@ export function WebSearchShell({ children }: { children?: ReactNode }) {
               className="text-xs text-muted-foreground hover:text-foreground"
               onClick={() => setNotice(null)}
             >
-              Dismiss
+              {ui("Dismiss")}
             </button>
           </NoticeDescription>
         </Notice>
@@ -182,7 +186,7 @@ export function WebSearchShell({ children }: { children?: ReactNode }) {
             />
           ) : catalog.error ? (
             <p role="alert" className="text-sm text-destructive">
-              Could not load the web search defaults.
+              {ui("Could not load the web search defaults.")}
             </p>
           ) : (
             <Skeleton className="h-96 max-w-4xl" />
@@ -192,10 +196,11 @@ export function WebSearchShell({ children }: { children?: ReactNode }) {
       <Dialog open={choosing} onOpenChange={setChoosing}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Connect a search provider</DialogTitle>
+            <DialogTitle>{ui("Connect a search provider")}</DialogTitle>
             <DialogDescription>
-              The account belongs to the organization. Every agent can search with it, and its key
-              never reaches an agent.
+              {ui(
+                "The account belongs to the organization. Every agent can search with it, and its key never reaches an agent.",
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
@@ -233,7 +238,9 @@ export function WebSearchShell({ children }: { children?: ReactNode }) {
         onOpenChange={(open) => {
           if (!open) setEditing(null);
         }}
-        description="A search account of this organization. Every agent can search with it; the key stays encrypted and never reaches an agent."
+        description={ui(
+          "A search account of this organization. Every agent can search with it; the key stays encrypted and never reaches an agent.",
+        )}
         onSaved={(message) => {
           setNotice({ kind: "success", text: `${message}. It joins the Automatic order.` });
           void invalidate();

@@ -1,4 +1,5 @@
 "use client";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useId } from "react";
 import { useModelProfiles } from "@/hooks/use-providers";
 import type { ModelProfileResponse, ModelService } from "@/lib/api/types";
@@ -21,21 +22,22 @@ export function ModelProfileSelect({
   value?: string;
   onChange: (profile?: ModelProfileResponse) => void;
 }) {
+  const ui = useUiTranslations();
   const id = useId();
   const { data: profiles = [] } = useModelProfiles(providerId, service);
   const selected = profiles.find((p) => p.key === value);
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>Model profile</Label>
+      <Label htmlFor={id}>{ui("Model profile")}</Label>
       <Select
         value={value || "custom"}
         onValueChange={(key) => onChange(profiles.find((p) => p.key === key))}
       >
         <SelectTrigger id={id} className="w-full">
-          <SelectValue>{selected?.profile.name ?? value ?? "Custom model"}</SelectValue>
+          <SelectValue>{selected?.profile.name ?? value ?? ui("Custom model")}</SelectValue>
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="custom">Custom model</SelectItem>
+          <SelectItem value="custom">{ui("Custom model")}</SelectItem>
           {profiles.map((p) => (
             <SelectItem key={p.key} value={p.key}>
               {p.profile.name}

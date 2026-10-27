@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -113,6 +115,8 @@ export function ChatWorkspace({
   extraActions?: ReactNode;
   notice?: ReactNode;
 } = {}) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -211,13 +215,13 @@ export function ChatWorkspace({
     <div className="flex h-full min-h-0 w-full flex-1 flex-col bg-background">
       <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2">
         {selected && (
-          <Button variant="ghost" size="icon" aria-label="Back to threads" onClick={back}>
+          <Button variant="ghost" size="icon" aria-label={ui("Back to threads")} onClick={back}>
             <ArrowLeft />
           </Button>
         )}
         <div
           role="tablist"
-          aria-label="Chat panels"
+          aria-label={ui("Chat panels")}
           className="mr-auto flex gap-1"
           onKeyDown={(event) => {
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -249,7 +253,7 @@ export function ChatWorkspace({
               if (taskId) router.push(pathname);
             }}
           >
-            Subchats
+            {ui("Subchats")}
           </Button>
           {(backgroundWork || taskId) && (
             <Button
@@ -262,24 +266,24 @@ export function ChatWorkspace({
               size="sm"
               onClick={() => setTab("work")}
             >
-              Work
+              {ui("Work")}
             </Button>
           )}
         </div>
-        <LinkButton href="/chats/new" variant="ghost" size="icon" aria-label="New subchat">
+        <LinkButton href="/chats/new" variant="ghost" size="icon" aria-label={ui("New subchat")}>
           <Plus />
         </LinkButton>
         {!useDrawer && (
           <Button
             variant="ghost"
             size="icon"
-            aria-label={expanded ? "Restore split view" : "Expand thread panel"}
+            aria-label={expanded ? ui("Restore split view") : ui("Expand thread panel")}
             onClick={() => setExpanded(!expanded)}
           >
             {expanded ? <Minimize2 /> : <Maximize2 />}
           </Button>
         )}
-        <Button variant="ghost" size="icon" aria-label="Close subchats" onClick={close}>
+        <Button variant="ghost" size="icon" aria-label={ui("Close subchats")} onClick={close}>
           <X />
         </Button>
       </div>
@@ -298,14 +302,14 @@ export function ChatWorkspace({
             <ChatThreadWorkDetail key={task.id} task={task} />
           ) : (
             <p className="p-4 text-sm text-muted-foreground">
-              This work is no longer available in your Chat.
+              {ui("This work is no longer available in your Chat.")}
             </p>
           )
         ) : (
           <div className="space-y-4 p-3">
             <Input
-              aria-label="Search threads"
-              placeholder="Search threads…"
+              aria-label={ui("Search threads")}
+              placeholder={ui("Search threads…")}
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -321,8 +325,8 @@ export function ChatWorkspace({
             {!(workTab ? work.isLoading : conversations.isLoading) && matchingRows.length === 0 && (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 {search
-                  ? "No matching threads."
-                  : "No threads yet. Start one here, or ask Chat to do some work."}
+                  ? ui("No matching threads.")
+                  : ui("No threads yet. Start one here, or ask Chat to do some work.")}
               </p>
             )}
             {THREAD_GROUPS.map((group) => {
@@ -352,7 +356,7 @@ export function ChatWorkspace({
                           </div>
                         </div>
                         <span className="shrink-0 text-[11px] text-muted-foreground">
-                          {formatRelativeTime(row.updated)}
+                          {formatRelativeTime(row.updated, displayLocale)}
                         </span>
                       </Link>
                     ))}
@@ -368,11 +372,11 @@ export function ChatWorkspace({
                   disabled={offset === 0}
                   onClick={() => setOffset(Math.max(0, offset - 20))}
                 >
-                  Previous
+                  {ui("Previous")}
                 </Button>
                 <span>
-                  {offset + 1}–{Math.min(offset + 20, conversations.total!)} of{" "}
-                  {conversations.total} conversations
+                  {offset + 1}–{Math.min(offset + 20, conversations.total!)} {ui("of")}{" "}
+                  {conversations.total} {ui("conversations")}
                 </span>
                 <Button
                   variant="ghost"
@@ -380,7 +384,7 @@ export function ChatWorkspace({
                   disabled={offset + 20 >= conversations.total!}
                   onClick={() => setOffset(offset + 20)}
                 >
-                  Next
+                  {ui("Next")}
                 </Button>
               </div>
             )}
@@ -424,7 +428,7 @@ export function ChatWorkspace({
                     href="/chats/new"
                     variant="ghost"
                     size="icon"
-                    aria-label="New subchat"
+                    aria-label={ui("New subchat")}
                   >
                     <Plus />
                   </LinkButton>
@@ -436,7 +440,7 @@ export function ChatWorkspace({
                     onClick={() => (panelOpen ? close() : setOpen(true))}
                   >
                     <MessageSquare />
-                    Subchats
+                    {ui("Subchats")}
                   </Button>
                 </>
               }
@@ -450,14 +454,14 @@ export function ChatWorkspace({
               showCloseButton={false}
               finalFocus={threadsButton}
             >
-              <DrawerTitle className="sr-only">Subchats</DrawerTitle>
+              <DrawerTitle className="sr-only">{ui("Subchats")}</DrawerTitle>
               {panel}
             </DrawerContent>
           </Drawer>
         ) : (
           panelOpen && (
             <section
-              aria-label="Subchats"
+              aria-label={ui("Subchats")}
               className={cn(
                 "relative z-10 hidden min-h-0 min-w-0 overflow-hidden border-l border-border bg-background xl:flex xl:flex-col",
                 expanded ? "flex-1" : "w-1/2 min-w-[360px]",

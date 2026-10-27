@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -55,6 +56,7 @@ function WorkerRow({
   onDrain: (id: string) => void;
   onResume: (id: string) => void;
 }) {
+  const ui = useUiTranslations();
   const loadPercentage =
     worker.max_concurrency > 0 ? (worker.current_load / worker.max_concurrency) * 100 : 0;
 
@@ -102,7 +104,7 @@ function WorkerRow({
         {worker.accepting_tasks ? (
           <div className="flex items-center gap-1 text-success">
             <CheckCircle className="h-3 w-3" />
-            <span className="text-xs">Yes</span>
+            <span className="text-xs">{ui("Yes")}</span>
           </div>
         ) : (
           <TooltipProvider>
@@ -110,10 +112,12 @@ function WorkerRow({
               <TooltipTrigger>
                 <div className="flex items-center gap-1 text-warning">
                   <Pause className="h-3 w-3" />
-                  <span className="text-xs">No</span>
+                  <span className="text-xs">{ui("No")}</span>
                 </div>
               </TooltipTrigger>
-              <TooltipContent>{worker.backpressure_reason || "Under backpressure"}</TooltipContent>
+              <TooltipContent>
+                {worker.backpressure_reason || ui("Under backpressure")}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
@@ -136,7 +140,9 @@ function WorkerRow({
         <div className="text-sm">
           <p className="text-success">{(worker.tasks_completed ?? 0).toLocaleString()}</p>
           {(worker.tasks_failed ?? 0) > 0 && (
-            <p className="text-xs text-destructive">{worker.tasks_failed} failed</p>
+            <p className="text-xs text-destructive">
+              {worker.tasks_failed} {ui("failed")}
+            </p>
           )}
         </div>
       </TableCell>
@@ -157,13 +163,13 @@ function WorkerRow({
         {worker.status === "active" && (
           <Button variant="outline" size="sm" onClick={() => onDrain(worker.id)}>
             <Pause className="h-3 w-3 mr-1" />
-            Drain
+            {ui("Drain")}
           </Button>
         )}
         {worker.status === "draining" && (
           <Button variant="outline" size="sm" onClick={() => onResume(worker.id)}>
             <Play className="h-3 w-3 mr-1" />
-            Resume
+            {ui("Resume")}
           </Button>
         )}
       </TableCell>
@@ -172,7 +178,8 @@ function WorkerRow({
 }
 
 export default function WorkersPage() {
-  usePageTitle("Workers", "Durable");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Workers"), ui("Durable"));
   const { data, isLoading, error, refetch } = useWorkers();
   const drainMutation = useDrainWorker();
   const resumeMutation = useResumeWorker();
@@ -193,7 +200,7 @@ export default function WorkersPage() {
     return (
       <div className="operational-page container mx-auto p-6">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">Workers</h1>
+          <h1 className="text-2xl font-bold">{ui("Workers")}</h1>
         </div>
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-4">
@@ -211,18 +218,20 @@ export default function WorkersPage() {
     return (
       <div className="operational-page container mx-auto p-6">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">Workers</h1>
+          <h1 className="text-2xl font-bold">{ui("Workers")}</h1>
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Unable to Load Workers</h3>
+            <h3 className="text-lg font-medium mb-2">{ui("Unable to Load Workers")}</h3>
             <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-              The durable workers API is not available. Please ensure the backend is running.
+              {ui(
+                "The durable workers API is not available. Please ensure the backend is running.",
+              )}
             </p>
             <Button onClick={() => refetch()} variant="outline">
               <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
+              {ui("Retry")}
             </Button>
           </CardContent>
         </Card>
@@ -279,7 +288,7 @@ export default function WorkersPage() {
   return (
     <div className="operational-page container mx-auto p-6">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">Workers</h1>
+        <h1 className="text-2xl font-bold">{ui("Workers")}</h1>
       </div>
       <div className="space-y-6">
         {/* Summary Stats */}
@@ -301,8 +310,10 @@ export default function WorkersPage() {
         {/* Workers Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Worker Pool</CardTitle>
-            <CardDescription>All registered workers and their current status</CardDescription>
+            <CardTitle>{ui("Worker Pool")}</CardTitle>
+            <CardDescription>
+              {ui("All registered workers and their current status")}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {workers.length > 0 ? (
@@ -310,16 +321,16 @@ export default function WorkersPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Worker</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Group</TableHead>
-                      <TableHead>Load</TableHead>
-                      <TableHead>Accepting</TableHead>
-                      <TableHead>Activities</TableHead>
-                      <TableHead>Completed</TableHead>
-                      <TableHead>Avg Duration</TableHead>
-                      <TableHead>Last Heartbeat</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead>{ui("Worker")}</TableHead>
+                      <TableHead>{ui("Status")}</TableHead>
+                      <TableHead>{ui("Group")}</TableHead>
+                      <TableHead>{ui("Load")}</TableHead>
+                      <TableHead>{ui("Accepting")}</TableHead>
+                      <TableHead>{ui("Activities")}</TableHead>
+                      <TableHead>{ui("Completed")}</TableHead>
+                      <TableHead>{ui("Avg Duration")}</TableHead>
+                      <TableHead>{ui("Last Heartbeat")}</TableHead>
+                      <TableHead>{ui("Actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -337,10 +348,11 @@ export default function WorkersPage() {
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <Server className="h-12 w-12 mb-4" />
-                <h3 className="text-lg font-medium mb-2">No Workers Connected</h3>
+                <h3 className="text-lg font-medium mb-2">{ui("No Workers Connected")}</h3>
                 <p className="text-sm text-center max-w-md">
-                  No workers have registered with the system. Start a worker process to begin
-                  processing tasks.
+                  {ui(
+                    "No workers have registered with the system. Start a worker process to begin processing tasks.",
+                  )}
                 </p>
               </div>
             )}

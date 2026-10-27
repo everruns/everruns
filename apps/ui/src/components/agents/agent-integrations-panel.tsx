@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
+import { getDisplayName } from "@/lib/entity-lifecycle";
 import { useAgentSource } from "@/hooks/use-agent-source";
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -87,6 +89,8 @@ export function AgentIntegrationsPanel({
   /** Channel to open on arrival, from `?channel=`. */
   initialChannelId?: string | null;
 }) {
+  const ui = useUiTranslations();
+  const { displayLocale } = useLocale();
   const { channels, isLoading } = useAgentChannels(agent.id);
   const { data: triggers = [] } = useAgentTriggers(agent.id);
   const { can: canAgent } = usePolicies("agents");
@@ -133,29 +137,29 @@ export function AgentIntegrationsPanel({
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
       <div>
-        <h2 className="text-xl font-semibold tracking-tight">Integrations</h2>
+        <h2 className="text-xl font-semibold tracking-tight">{ui("Integrations")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Manage how this agent connects and runs.
+          {ui("Manage how this agent connects and runs.")}
         </p>
       </div>
       <PageControlStrip>
         <StatGrid className="gap-4">
-          <StatCard label="Health" value={stats.health} hint={stats.healthSub} />
+          <StatCard label={ui("Health")} value={stats.health} hint={stats.healthSub} />
           <StatCard
-            label="Invocations · 24h"
+            label={ui("Invocations · 24h")}
             value={String(stats.invocations24h)}
             hint={stats.invocationSub}
           />
           <StatCard
-            label="Success rate"
+            label={ui("Success rate")}
             value={stats.successRate === null ? "No runs" : `${stats.successRate.toFixed(1)}%`}
             hint={stats.successSub}
           />
-          <StatCard label="Activity" hint="Run metrics pending backend aggregation">
+          <StatCard label={ui("Activity")} hint="Run metrics pending backend aggregation">
             {stats.timeline.length > 0 ? (
               <MiniTimeline runs={stats.timeline} />
             ) : (
-              <div className="flex h-8 items-center" aria-label="Activity unavailable">
+              <div className="flex h-8 items-center" aria-label={ui("Activity unavailable")}>
                 <span className="h-px w-full bg-border" />
               </div>
             )}
@@ -168,8 +172,10 @@ export function AgentIntegrationsPanel({
           <section className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold tracking-tight">Channels</h3>
-                <p className="text-sm text-muted-foreground">How callers reach this agent</p>
+                <h3 className="text-lg font-semibold tracking-tight">{ui("Channels")}</h3>
+                <p className="text-sm text-muted-foreground">
+                  {ui("How callers reach this agent")}
+                </p>
               </div>
               {canManage && (
                 <Link
@@ -177,18 +183,18 @@ export function AgentIntegrationsPanel({
                   className={buttonVariants({ size: "sm" })}
                 >
                   <Plus className="size-4" />
-                  Add channel
+                  {ui("Add channel")}
                 </Link>
               )}
             </div>
 
             {isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading channels…</p>
+              <p className="text-sm text-muted-foreground">{ui("Loading channels…")}</p>
             ) : doors.length === 0 ? (
               <Card>
                 <CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
                   <p className="text-sm text-muted-foreground">
-                    This agent is not reachable from outside.
+                    {ui("This agent is not reachable from outside.")}
                   </p>
                 </CardContent>
               </Card>
@@ -206,7 +212,7 @@ export function AgentIntegrationsPanel({
                       <div className="space-y-4">
                         <ChannelDetailsPanel
                           agentId={agent.id}
-                          agentName={agent.display_name ?? agent.name}
+                          agentName={getDisplayName(agent, displayLocale)}
                           agentDescription={agent.description}
                           channel={channel}
                           configureHref={
@@ -220,7 +226,7 @@ export function AgentIntegrationsPanel({
                             <BudgetPanel
                               subjectType="agent_channel"
                               subjectId={channel.id}
-                              title="Channel budget"
+                              title={ui("Channel budget")}
                               canManage={canManageBudgets}
                             />
                           </div>
@@ -278,7 +284,7 @@ export function AgentIntegrationsPanel({
                         <BudgetPanel
                           subjectType="agent_channel"
                           subjectId={channel.id}
-                          title="Channel budget"
+                          title={ui("Channel budget")}
                           canManage={canManageBudgets}
                         />
                       ) : undefined
@@ -291,10 +297,10 @@ export function AgentIntegrationsPanel({
         </PageMain>
 
         <PageRail>
-          <RailSection label="All channels">
+          <RailSection label={ui("All channels")}>
             <div className="flex items-center justify-between gap-3">
               <label htmlFor="channels-enabled" className="text-sm font-medium">
-                Enabled
+                {ui("Enabled")}
               </label>
               <Switch
                 id="channels-enabled"
@@ -306,11 +312,13 @@ export function AgentIntegrationsPanel({
               />
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
-              Off pauses every channel on this agent. Publish on each channel stays as it is.
+              {ui(
+                "Off pauses every channel on this agent. Publish on each channel stays as it is.",
+              )}
             </p>
           </RailSection>
           {canViewBudgets && (
-            <RailSection label="Agent budget">
+            <RailSection label={ui("Agent budget")}>
               <BudgetPanel subjectType="agent" subjectId={agent.id} canManage={canManageBudgets} />
             </RailSection>
           )}

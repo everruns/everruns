@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { GitFork, Loader2 } from "lucide-react";
@@ -25,6 +26,7 @@ export function SessionForkButton({
   agentId?: string;
   platformChat?: boolean;
 }) {
+  const ui = useUiTranslations();
   const router = useRouter();
   const { t } = useLocale();
   const forkSession = useForkSession();
@@ -61,7 +63,7 @@ export function SessionForkButton({
         className={buttonVariants({ variant: "outline", size: "sm", className })}
         href={`/playground/new${agentId ? `?agent=${encodeURIComponent(agentId)}` : ""}`}
       >
-        Test in Playground
+        {ui("Test in Playground")}
       </Link>
     );
   }

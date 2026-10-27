@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
@@ -15,7 +16,8 @@ import { HealthIssueDetails } from "@/components/health/health-issue-details";
 import { Button } from "@/components/ui/button";
 
 export default function HealthPage() {
-  usePageTitle("Health", "Settings");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Health"), ui("Settings"));
   const [offset, setOffset] = useState(0);
   useChatPageFilters({ offset: offset });
   const policies = usePolicies("agents");
@@ -44,21 +46,22 @@ export default function HealthPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold">Health</h2>
+        <h2 className="text-lg font-semibold">{ui("Health")}</h2>
         <p className="text-sm text-muted-foreground">
-          Pending organization and integration issues, and the actions that restore them. Reading or
-          snoozing a notification does not resolve an issue.
+          {ui(
+            "Pending organization and integration issues, and the actions that restore them. Reading or snoozing a notification does not resolve an issue.",
+          )}
         </p>
       </div>
       {policies.isLoading ? (
-        <p>Loading permissions…</p>
+        <p>{ui("Loading permissions…")}</p>
       ) : !canView ? (
-        <p>Ask an administrator to review integration health.</p>
+        <p>{ui("Ask an administrator to review integration health.")}</p>
       ) : (
         <>
           {selected.isError && (
             <p role="alert" className="text-sm text-destructive">
-              Could not load this health issue. It may no longer be available.
+              {ui("Could not load this health issue. It may no longer be available.")}
             </p>
           )}
           {selected.data && (
@@ -69,24 +72,26 @@ export default function HealthPage() {
             />
           )}
           {issues.isLoading && (
-            <p className="text-sm text-muted-foreground">Loading health issues…</p>
+            <p className="text-sm text-muted-foreground">{ui("Loading health issues…")}</p>
           )}
           {issues.isError && (
             <p role="alert" className="text-sm text-destructive">
-              Could not load health issues.{" "}
+              {ui("Could not load health issues.")}{" "}
               <Button size="sm" variant="ghost" onClick={() => issues.refetch()}>
-                Retry
+                {ui("Retry")}
               </Button>
             </p>
           )}
           {issues.data && (
             <>
               <h3 className="text-sm font-medium">
-                Action required · {issues.data.total} unresolved
+                {ui("Action required ·")} {issues.data.total} {ui("unresolved")}
               </h3>
               {issues.data.total === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  No pending issues detected. Checks reflect the latest available observations.
+                  {ui(
+                    "No pending issues detected. Checks reflect the latest available observations.",
+                  )}
                 </p>
               )}
               <div className="divide-y divide-border">
@@ -98,12 +103,12 @@ export default function HealthPage() {
                   >
                     <p className="text-sm font-medium">{issue.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {issue.agent_name ?? "Organization"} ·{" "}
+                      {issue.agent_name ?? ui("Organization")} ·{" "}
                       {issue.status === "needs_check"
-                        ? "Needs check"
+                        ? ui("Needs check")
                         : issue.stale
-                          ? "Verification stale"
-                          : "Action required"}
+                          ? ui("Verification stale")
+                          : ui("Action required")}
                     </p>
                     <p className="text-sm">{issue.body}</p>
                   </Link>
@@ -116,7 +121,7 @@ export default function HealthPage() {
                   disabled={offset === 0}
                   onClick={() => setOffset(Math.max(0, offset - 20))}
                 >
-                  Previous
+                  {ui("Previous")}
                 </Button>
                 <Button
                   variant="outline"
@@ -124,7 +129,7 @@ export default function HealthPage() {
                   disabled={offset + 20 >= issues.data.total}
                   onClick={() => setOffset(offset + 20)}
                 >
-                  Next
+                  {ui("Next")}
                 </Button>
               </div>
             </>

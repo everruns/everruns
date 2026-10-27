@@ -62,7 +62,7 @@ agents triggers runs list	--agent-id! --context-revision --reason --trigger-id!
 agents triggers trigger	--agent-id! --context-revision --reason --trigger-id!
 agents triggers update	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --target-binding-key --target-channel-id --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --reason --tag/-t... --writable <agent_id>
-agents upsert	--capabilities --communication --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --max-output-tokens --mcpServers --name! --network-access --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
+agents upsert	--capabilities --communication --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --localizations --max-iterations --max-output-tokens --mcpServers --name! --network-access --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents validate	--remote <file>!
 budgets check	--budget-id! --context-revision --reason
 budgets create	--context-revision --currency! --limit! --metadata --period --reason --soft-limit --subject-id! --subject-type!
@@ -143,13 +143,13 @@ files push	--delete --dry-run --session/-s! <local_dir>
 files sync	--conflict --delete --dry-run --exclude... --interval --no-gitignore --session/-s! --verbose/-v <local_dir>
 harnesses check-name check	--context-revision --exclude-id --name! --reason
 harnesses copy	--context-revision --id --reason <id>
-harnesses create	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --initial-files --intro-markdown --mcpServers --name! --network-access --parent-harness-id --reason --short-description --starters --system-prompt --tags...
+harnesses create	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --initial-files --intro-markdown --localizations --mcpServers --name! --network-access --parent-harness-id --reason --short-description --starters --system-prompt --tags...
 harnesses delete	--context-revision --id --reason <id>
 harnesses destroy	--context-revision --id --reason <id>
 harnesses get	--context-revision --id --reason <id>
 harnesses list	--context-revision --include-archived --reason --search
 harnesses preview	--capabilities --context-revision --mcp-servers --parent-harness-id --reason --system-prompt
-harnesses update	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --id --initial-files --intro-markdown --mcpServers --name --network-access --parent-harness-id --reason --short-description --starters --status --system-prompt --tags... <id>
+harnesses update	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --id --initial-files --intro-markdown --localizations --mcpServers --name --network-access --parent-harness-id --reason --short-description --starters --status --system-prompt --tags... <id>
 health-issues check	--context-revision --issue-id! --reason
 health-issues get	--context-revision --issue-id! --reason
 health-issues list	--channel-id --context-revision --limit --offset --reason

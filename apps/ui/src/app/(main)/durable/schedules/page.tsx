@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import {
   useDurablePageAccess,
   useDurablePageRows,
@@ -83,6 +84,7 @@ function ScheduleRow({
   onTrigger: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const ui = useUiTranslations();
   return (
     <TableRow>
       <TableCell className="max-w-[200px]">
@@ -108,7 +110,7 @@ function ScheduleRow({
       </TableCell>
       <TableCell>
         <Badge variant={schedule.enabled ? "default" : "outline"}>
-          {schedule.enabled ? "Active" : "Paused"}
+          {schedule.enabled ? ui("Active") : ui("Paused")}
         </Badge>
       </TableCell>
       <TableCell>
@@ -135,7 +137,7 @@ function ScheduleRow({
             </Tooltip>
           </TooltipProvider>
         ) : (
-          <span className="text-sm text-muted-foreground">Never</span>
+          <span className="text-sm text-muted-foreground">{ui("Never")}</span>
         )}
       </TableCell>
       <TableCell>
@@ -161,7 +163,7 @@ function ScheduleRow({
                   <Zap className="h-3 w-3" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Trigger Now</TooltipContent>
+              <TooltipContent>{ui("Trigger Now")}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
           {schedule.enabled ? (
@@ -172,7 +174,7 @@ function ScheduleRow({
                     <Pause className="h-3 w-3" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Pause</TooltipContent>
+                <TooltipContent>{ui("Pause")}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           ) : (
@@ -183,14 +185,14 @@ function ScheduleRow({
                     <Play className="h-3 w-3" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Resume</TooltipContent>
+                <TooltipContent>{ui("Resume")}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
           <LinkButton
             variant="ghost"
             size="sm"
-            aria-label={`View schedule ${schedule.name}`}
+            aria-label={ui("View schedule {value0}", { value0: schedule.name })}
             href={`/durable/schedules/${schedule.id}`}
           >
             <Settings className="h-3 w-3" />
@@ -207,7 +209,7 @@ function ScheduleRow({
                   <Trash2 className="h-3 w-3" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Delete</TooltipContent>
+              <TooltipContent>{ui("Delete")}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
@@ -217,6 +219,7 @@ function ScheduleRow({
 }
 
 function CreateScheduleDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const ui = useUiTranslations();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [cronExpression, setCronExpression] = useState("0 * * * * * *");
@@ -231,7 +234,7 @@ function CreateScheduleDialog({ open, onClose }: { open: boolean; onClose: () =>
   const chat = usePageFormDraft({
     schema: scheduleCreateDraftSchema,
     entityType: "schedule",
-    label: "Create schedule",
+    label: ui("Create schedule"),
     priority: 30,
     enabled: open,
     baseline: "new",
@@ -299,33 +302,33 @@ function CreateScheduleDialog({ open, onClose }: { open: boolean; onClose: () =>
   return (
     <DialogContent className="sm:max-w-[500px]">
       <DialogHeader>
-        <DialogTitle>Create Schedule</DialogTitle>
+        <DialogTitle>{ui("Create Schedule")}</DialogTitle>
         <DialogDescription>
-          Create a new scheduled task to trigger workflows or activities automatically.
+          {ui("Create a new scheduled task to trigger workflows or activities automatically.")}
         </DialogDescription>
       </DialogHeader>
       {chat.notice}
       <div className="grid gap-4 py-4">
         <div className="grid gap-2">
-          <Label htmlFor="name">Name</Label>
+          <Label htmlFor="name">{ui("Name")}</Label>
           <Input
             id="name"
-            placeholder="my-schedule"
+            placeholder={ui("my-schedule")}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="description">Description (optional)</Label>
+          <Label htmlFor="description">{ui("Description (optional)")}</Label>
           <Input
             id="description"
-            placeholder="Description of this schedule"
+            placeholder={ui("Description of this schedule")}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="cron">Cron Expression (7-field)</Label>
+          <Label htmlFor="cron">{ui("Cron Expression (7-field)")}</Label>
           <Input
             id="cron"
             placeholder="0 * * * * * *"
@@ -333,36 +336,41 @@ function CreateScheduleDialog({ open, onClose }: { open: boolean; onClose: () =>
             onChange={(e) => setCronExpression(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">
-            Format: sec min hour day month day-of-week year (e.g., &quot;0 0 * * * * *&quot; for
-            every hour)
+            {ui(
+              'Format: sec min hour day month day-of-week year (e.g., "0 0 * * * * *" for every hour)',
+            )}
           </p>
         </div>
         <div className="grid gap-2">
-          <Label>Target Type</Label>
+          <Label>{ui("Target Type")}</Label>
           <Select
             value={targetType}
             onValueChange={(v) => setTargetType(v as "workflow" | "activity")}
           >
             <SelectTrigger>
-              <SelectValue>{targetType === "workflow" ? "Workflow" : "Activity"}</SelectValue>
+              <SelectValue>
+                {targetType === "workflow" ? ui("Workflow") : ui("Activity")}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="workflow">Workflow</SelectItem>
-              <SelectItem value="activity">Activity</SelectItem>
+              <SelectItem value="workflow">{ui("Workflow")}</SelectItem>
+              <SelectItem value="activity">{ui("Activity")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="targetName">Target Name</Label>
+          <Label htmlFor="targetName">{ui("Target Name")}</Label>
           <Input
             id="targetName"
-            placeholder={targetType === "workflow" ? "workflow-type-name" : "activity-type-name"}
+            placeholder={
+              targetType === "workflow" ? ui("workflow-type-name") : ui("activity-type-name")
+            }
             value={targetName}
             onChange={(e) => setTargetName(e.target.value)}
           />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="targetInput">Target Input (JSON)</Label>
+          <Label htmlFor="targetInput">{ui("Target Input (JSON)")}</Label>
           <Textarea
             id="targetInput"
             placeholder="{}"
@@ -373,7 +381,7 @@ function CreateScheduleDialog({ open, onClose }: { open: boolean; onClose: () =>
         </div>
         <div className="flex items-center gap-2">
           <Switch id="enabled" checked={enabled} onCheckedChange={setEnabled} />
-          <Label htmlFor="enabled">Enable schedule immediately</Label>
+          <Label htmlFor="enabled">{ui("Enable schedule immediately")}</Label>
         </div>
       </div>
       {errorMessage && (
@@ -383,7 +391,7 @@ function CreateScheduleDialog({ open, onClose }: { open: boolean; onClose: () =>
       )}
       <DialogFooter>
         <Button variant="outline" onClick={onClose} disabled={createMutation.isPending}>
-          Cancel
+          {ui("Cancel")}
         </Button>
         <Button
           onClick={handleSubmit}
@@ -391,7 +399,7 @@ function CreateScheduleDialog({ open, onClose }: { open: boolean; onClose: () =>
             chat.blocked || !name || !cronExpression || !targetName || createMutation.isPending
           }
         >
-          {createMutation.isPending ? "Creating..." : "Create Schedule"}
+          {createMutation.isPending ? ui("Creating...") : ui("Create Schedule")}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -399,7 +407,8 @@ function CreateScheduleDialog({ open, onClose }: { open: boolean; onClose: () =>
 }
 
 export default function SchedulesPage() {
-  usePageTitle("Schedules", "Durable");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Schedules"), ui("Durable"));
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   useChatPageFilters({ status: statusFilter, search: searchQuery });
@@ -446,7 +455,7 @@ export default function SchedulesPage() {
     return (
       <div className="operational-page container mx-auto p-6">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">Schedules</h1>
+          <h1 className="text-2xl font-bold">{ui("Schedules")}</h1>
         </div>
         <div className="space-y-6">
           <Skeleton className="h-10 w-full" />
@@ -460,18 +469,18 @@ export default function SchedulesPage() {
     return (
       <div className="operational-page container mx-auto p-6">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">Schedules</h1>
+          <h1 className="text-2xl font-bold">{ui("Schedules")}</h1>
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Unable to Load Schedules</h3>
+            <h3 className="text-lg font-medium mb-2">{ui("Unable to Load Schedules")}</h3>
             <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-              The durable schedules API is not available.
+              {ui("The durable schedules API is not available.")}
             </p>
             <Button onClick={() => refetch()} variant="outline">
               <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
+              {ui("Retry")}
             </Button>
           </CardContent>
         </Card>
@@ -502,7 +511,7 @@ export default function SchedulesPage() {
   return (
     <div className="container mx-auto p-6 overflow-hidden">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">Schedules</h1>
+        <h1 className="text-2xl font-bold">{ui("Schedules")}</h1>
       </div>
       <div className="space-y-6">
         {/* Filters and Actions */}
@@ -510,30 +519,30 @@ export default function SchedulesPage() {
           <div className="flex items-center gap-4 flex-1">
             <SearchInput
               containerClassName="flex-1 max-w-sm"
-              placeholder="Search schedules..."
+              placeholder={ui("Search schedules...")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-40">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder={ui("Status")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="paused">Paused</SelectItem>
+                <SelectItem value="all">{ui("All")}</SelectItem>
+                <SelectItem value="active">{ui("Active")}</SelectItem>
+                <SelectItem value="paused">{ui("Paused")}</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
+              {ui("Refresh")}
             </Button>
           </div>
           <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
-                New Schedule
+                {ui("New Schedule")}
               </Button>
             </DialogTrigger>
             <CreateScheduleDialog
@@ -548,10 +557,10 @@ export default function SchedulesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
-              Scheduled Tasks
+              {ui("Scheduled Tasks")}
             </CardTitle>
             <CardDescription>
-              Cron-based schedules that automatically trigger workflows or activities
+              {ui("Cron-based schedules that automatically trigger workflows or activities")}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -560,13 +569,13 @@ export default function SchedulesPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Schedule</TableHead>
-                      <TableHead className="w-[80px]">Status</TableHead>
-                      <TableHead>Cron</TableHead>
-                      <TableHead>Target</TableHead>
-                      <TableHead className="whitespace-nowrap">Last Triggered</TableHead>
-                      <TableHead className="whitespace-nowrap">Next Trigger</TableHead>
-                      <TableHead className="whitespace-nowrap">Actions</TableHead>
+                      <TableHead>{ui("Schedule")}</TableHead>
+                      <TableHead className="w-[80px]">{ui("Status")}</TableHead>
+                      <TableHead>{ui("Cron")}</TableHead>
+                      <TableHead>{ui("Target")}</TableHead>
+                      <TableHead className="whitespace-nowrap">{ui("Last Triggered")}</TableHead>
+                      <TableHead className="whitespace-nowrap">{ui("Next Trigger")}</TableHead>
+                      <TableHead className="whitespace-nowrap">{ui("Actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -586,11 +595,13 @@ export default function SchedulesPage() {
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <Calendar className="h-12 w-12 mb-4" />
-                <h3 className="text-lg font-medium mb-2">No Schedules Found</h3>
+                <h3 className="text-lg font-medium mb-2">{ui("No Schedules Found")}</h3>
                 <p className="text-sm text-center max-w-md mb-4">
                   {searchQuery || statusFilter !== "all"
-                    ? "No schedules match your search criteria."
-                    : "No scheduled tasks have been created yet. Click 'New Schedule' to create one."}
+                    ? ui("No schedules match your search criteria.")
+                    : ui(
+                        "No scheduled tasks have been created yet. Click 'New Schedule' to create one.",
+                      )}
                 </p>
               </div>
             )}

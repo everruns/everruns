@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { z } from "zod";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
@@ -18,7 +19,8 @@ const profileSchema = z.strictObject({
   timezone: z.string(),
 });
 export default function UserProfilePage() {
-  usePageTitle("Profile", "Settings");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Profile"), ui("Settings"));
   const profile = useVirtualUser("me");
   const update = useUpdateVirtualUser();
   const [changes, setChanges] = useState<UpdateVirtualUserRequest>({});
@@ -37,7 +39,7 @@ export default function UserProfilePage() {
     schema: profileSchema,
     entityType: "virtual_user",
     entityId: profile.data?.id,
-    label: "Profile",
+    label: ui("Profile"),
     enabled: !!profile.data,
     values,
     baseline: JSON.stringify(saved),
@@ -51,19 +53,20 @@ export default function UserProfilePage() {
         timezone: next.timezone || null,
       }),
   });
-  if (profile.isLoading) return <p>Loading your profile…</p>;
-  if (!profile.data) return <p className="text-destructive">Your profile could not be loaded.</p>;
+  if (profile.isLoading) return <p>{ui("Loading your profile…")}</p>;
+  if (!profile.data)
+    return <p className="text-destructive">{ui("Your profile could not be loaded.")}</p>;
 
   const user = profile.data;
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-xl font-semibold">Profile</h2>
+        <h2 className="text-xl font-semibold">{ui("Profile")}</h2>
         <p className="text-sm text-muted-foreground">
-          Your name, locale, and timezone for chats in this organization.
+          {ui("Your name, locale, and timezone for chats in this organization.")}
         </p>
         <Link className="text-sm text-primary underline" href={`/virtual-users/${user.id}`}>
-          View virtual user
+          {ui("View virtual user")}
         </Link>
       </div>
       <form
@@ -78,7 +81,7 @@ export default function UserProfilePage() {
       >
         {chat.notice}
         <div className="space-y-2">
-          <Label htmlFor="runtime-name">Name</Label>
+          <Label htmlFor="runtime-name">{ui("Name")}</Label>
           <Input
             disabled={chat.adopted && update.isPending}
             id="runtime-name"
@@ -89,7 +92,7 @@ export default function UserProfilePage() {
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>Locale</Label>
+            <Label>{ui("Locale")}</Label>
             <Combobox
               disabled={chat.adopted && update.isPending}
               options={LOCALE_OPTIONS}
@@ -98,7 +101,7 @@ export default function UserProfilePage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Timezone</Label>
+            <Label>{ui("Timezone")}</Label>
             <Combobox
               disabled={chat.adopted && update.isPending}
               options={TIMEZONE_OPTIONS}
@@ -110,7 +113,7 @@ export default function UserProfilePage() {
           </div>
         </div>
         <Button disabled={update.isPending || chat.blocked} type="submit">
-          Save profile
+          {ui("Save profile")}
         </Button>
         {chat.adopted && dirty && (
           <Button
@@ -119,7 +122,7 @@ export default function UserProfilePage() {
             disabled={update.isPending}
             onClick={() => setChanges({})}
           >
-            Discard
+            {ui("Discard")}
           </Button>
         )}
         {update.error && <p className="text-destructive">{update.error.message}</p>}

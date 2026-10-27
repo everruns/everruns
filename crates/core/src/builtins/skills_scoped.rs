@@ -213,6 +213,14 @@ impl ScopedSkillsCapability {
 
 #[async_trait]
 impl Capability for ScopedSkillsCapability {
+    fn localizations(&self) -> Vec<crate::capabilities::CapabilityLocalization> {
+        vec![crate::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Навички агента",
+            "Пошук, активація та керування навичками робочого простору, глобальної конфігурації та вбудованих наборів через файлову систему сесії.",
+        )]
+    }
+
     fn id(&self) -> &str {
         SKILLS_CAPABILITY_ID
     }

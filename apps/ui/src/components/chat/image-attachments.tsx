@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { X, Loader2, AlertCircle, ImageIcon, Download } from "lucide-react";
 import type { PendingImage } from "@/lib/api/images";
@@ -33,6 +34,7 @@ interface ImageAttachmentItemProps {
 }
 
 function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
+  const ui = useUiTranslations();
   // Use thumbnail URL if uploaded, otherwise use object URL preview
   const displayUrl = image.imageId ? getThumbnailUrl(image.imageId) : image.previewUrl;
 
@@ -42,7 +44,9 @@ function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
         {image.status === "error" ? (
           <div className="flex h-full w-full flex-col items-center justify-center p-2 text-destructive">
             <AlertCircle className="mb-1 h-6 w-6" />
-            <span className="line-clamp-2 text-center text-[10px]">{image.error || "Error"}</span>
+            <span className="line-clamp-2 text-center text-[10px]">
+              {image.error || ui("Error")}
+            </span>
           </div>
         ) : (
           <>
@@ -60,7 +64,7 @@ function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
         type="button"
         className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center border border-border/80 bg-background opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted"
         onClick={() => onRemove(image.tempId)}
-        aria-label={`Remove ${image.filename}`}
+        aria-label={ui("Remove {value0}", { value0: image.filename })}
       >
         <X className="h-3 w-3 text-muted-foreground" />
       </button>
@@ -80,6 +84,7 @@ interface MessageImageProps {
 }
 
 export function MessageImage({ imageId, filename }: MessageImageProps) {
+  const ui = useUiTranslations();
   const [isOpen, setIsOpen] = useState(false);
   const thumbnailUrl = getThumbnailUrl(imageId);
   const fullImageUrl = getImageUrl(imageId);
@@ -102,7 +107,7 @@ export function MessageImage({ imageId, filename }: MessageImageProps) {
             src={thumbnailUrl}
             alt={filename || "Image"}
             className="max-h-[200px] max-w-[200px] border border-border/70 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)] transition-opacity hover:opacity-90"
-            title={filename || "Click to view full size"}
+            title={filename || ui("Click to view full size")}
           />
         </button>
         {filename && (
@@ -114,7 +119,7 @@ export function MessageImage({ imageId, filename }: MessageImageProps) {
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden">
-          <DialogTitle className="sr-only">{filename || "Image preview"}</DialogTitle>
+          <DialogTitle className="sr-only">{filename || ui("Image preview")}</DialogTitle>
           <div className="relative flex flex-col">
             {/* Image container */}
             <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-muted/30">
@@ -128,7 +133,7 @@ export function MessageImage({ imageId, filename }: MessageImageProps) {
             {/* Footer with filename and download */}
             <div className="flex items-center justify-between p-3 border-t bg-background">
               <span className="text-sm text-muted-foreground truncate max-w-[60%]">
-                {filename || "Image"}
+                {filename || ui("Image")}
               </span>
               <Button
                 variant="outline"
@@ -137,7 +142,7 @@ export function MessageImage({ imageId, filename }: MessageImageProps) {
                 className="flex items-center gap-2"
               >
                 <Download className="w-4 h-4" />
-                Download
+                {ui("Download")}
               </Button>
             </div>
           </div>

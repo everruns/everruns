@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import {
   DropdownMenu,
@@ -30,6 +32,8 @@ interface AgentFilterMenuProps {
  * Uses menu pattern (better for filters) instead of form select.
  */
 export function AgentFilterMenu({ value, onValueChange, className }: AgentFilterMenuProps) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const { data: agents = [] } = useAgents();
   const [open, setOpen] = useState(false);
 
@@ -38,7 +42,7 @@ export function AgentFilterMenu({ value, onValueChange, className }: AgentFilter
   }, [agents]);
 
   const selected = value ? agentMap.get(value) : undefined;
-  const displayValue = selected ? getDisplayName(selected) : "All agents";
+  const displayValue = selected ? getDisplayName(selected, displayLocale) : "All agents";
 
   const handleValueChange = (newValue: string) => {
     onValueChange(newValue);
@@ -54,10 +58,10 @@ export function AgentFilterMenu({ value, onValueChange, className }: AgentFilter
       <DropdownMenuPositioner align="end">
         <DropdownMenuContent className="w-[200px]">
           <DropdownMenuRadioGroup value={value} onValueChange={handleValueChange}>
-            <DropdownMenuRadioItem value="">All agents</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="">{ui("All agents")}</DropdownMenuRadioItem>
             {agents.map((agent) => (
               <DropdownMenuRadioItem key={agent.id} value={agent.id}>
-                {getDisplayName(agent)}
+                {getDisplayName(agent, displayLocale)}
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>

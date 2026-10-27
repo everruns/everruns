@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 /**
@@ -87,7 +89,9 @@ function segmentFor(filters: SessionFilters): string {
 }
 
 export default function SessionsPageClient() {
-  usePageTitle("Sessions");
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
+  usePageTitle(ui("Sessions"));
   const router = useRouter();
   const searchParams = useSearchParams();
   const notificationsContext = useOptionalNotificationsContext();
@@ -142,10 +146,10 @@ export default function SessionsPageClient() {
   const agentNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const agent of agents ?? []) {
-      map.set(agent.id, getDisplayName(agent) || shortenId(agent.id));
+      map.set(agent.id, getDisplayName(agent, displayLocale) || shortenId(agent.id));
     }
     return map;
-  }, [agents]);
+  }, [agents, displayLocale]);
 
   const agentLabel = useCallback(
     (agentId: string) => agentNames.get(agentId) ?? shortenId(agentId),
@@ -169,7 +173,7 @@ export default function SessionsPageClient() {
         title: "Sessions exported",
         body: result.truncated
           ? `${result.rowsExported} rows exported (capped). Narrow the filters to export the rest.`
-          : `${result.rowsExported} ${pluralize(result.rowsExported, "row")} exported.`,
+          : `${result.rowsExported} ${pluralize(result.rowsExported, "row", undefined, displayLocale)} exported.`,
       });
     } catch (error) {
       console.error("Failed to export sessions:", error);
@@ -180,7 +184,7 @@ export default function SessionsPageClient() {
     } finally {
       setExporting(false);
     }
-  }, [agentLabel, filters, notificationsContext]);
+  }, [agentLabel, filters, notificationsContext, displayLocale]);
 
   const handleSelectView = useCallback(
     (view: SavedSessionView) => {
@@ -205,19 +209,19 @@ export default function SessionsPageClient() {
       facets.p95_duration_ms > 0 ||
       facets.tokens_today > 0);
   const metrics = facets && [
-    { label: "Active now", value: String(facets.active_now) },
-    { label: "Failed today", value: String(facets.failed_today) },
-    { label: "p95 duration", value: formatDurationCompact(facets.p95_duration_ms) },
-    { label: "Tokens today", value: formatTokens(facets.tokens_today) },
+    { label: ui("Active now"), value: String(facets.active_now) },
+    { label: ui("Failed today"), value: String(facets.failed_today) },
+    { label: ui("p95 duration"), value: formatDurationCompact(facets.p95_duration_ms) },
+    { label: ui("Tokens today"), value: formatTokens(facets.tokens_today) },
   ];
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Sessions" }]} />
+      <PageBreadcrumb items={[{ label: ui("Sessions") }]} />
 
       <PageMasthead
         icon={<SessionIcon />}
-        title="Sessions"
+        title={ui("Sessions")}
         badges={
           <>
             <Badge variant="outline" className="font-mono">
@@ -225,7 +229,7 @@ export default function SessionsPageClient() {
             </Badge>
           </>
         }
-        description="Every run across your agents: chats, schedules, channels and API calls."
+        description={ui("Every run across your agents: chats, schedules, channels and API calls.")}
         meta={
           metrics ? (
             hasActivity ? (
@@ -240,15 +244,15 @@ export default function SessionsPageClient() {
           ) : facetsError ? (
             // Say so rather than claim a permanent "Loading…" the counters will
             // never resolve out of.
-            <span>Counters unavailable</span>
+            <span>{ui("Counters unavailable")}</span>
           ) : (
-            <span>Loading counters…</span>
+            <span>{ui("Loading counters…")}</span>
           )
         }
         actions={
           <Button variant="outline" onClick={handleExport} disabled={exporting || total === 0}>
             <Download className="size-4" />
-            {exporting ? "Exporting…" : "Export"}
+            {exporting ? ui("Exporting…") : ui("Export")}
           </Button>
         }
       />
@@ -263,8 +267,8 @@ export default function SessionsPageClient() {
         >
           <SearchInput
             value={searchDraft}
-            placeholder="Search runs by title"
-            aria-label="Search runs"
+            placeholder={ui("Search runs by title")}
+            aria-label={ui("Search runs")}
             onChange={(event) => setSearchDraft(event.target.value)}
             onBlur={() => {
               if (searchDraft.trim() !== filters.search) {
@@ -289,7 +293,7 @@ export default function SessionsPageClient() {
             applyFilters(withFilterChange(filters, { window: value as SessionTimeWindow }))
           }
         >
-          <SelectTrigger className="w-40 flex-none" aria-label="Time window">
+          <SelectTrigger className="w-40 flex-none" aria-label={ui("Time window")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -311,7 +315,7 @@ export default function SessionsPageClient() {
               applyFilters(EMPTY_SESSION_FILTERS);
             }}
           >
-            Clear filters
+            {ui("Clear filters")}
           </Button>
         )}
       </PageControlStrip>
@@ -327,18 +331,22 @@ export default function SessionsPageClient() {
           ) : sessionsError ? (
             <EmptyState
               icon={<Activity />}
-              title="Could not load runs"
-              description="The sessions list failed to load. Check your connection and try again."
-              action={<Button onClick={() => void refetchSessions()}>Retry</Button>}
+              title={ui("Could not load runs")}
+              description={ui(
+                "The sessions list failed to load. Check your connection and try again.",
+              )}
+              action={<Button onClick={() => void refetchSessions()}>{ui("Retry")}</Button>}
             />
           ) : sessions.length === 0 ? (
             <EmptyState
               icon={<SessionIcon />}
-              title={filtered ? "No runs match these filters" : "No runs yet"}
+              title={filtered ? ui("No runs match these filters") : ui("No runs yet")}
               description={
                 filtered
-                  ? "Every filter narrows the same set. Clear one to widen it."
-                  : "Runs appear here as soon as an agent is started from a chat, a schedule, a channel or the API."
+                  ? ui("Every filter narrows the same set. Clear one to widen it.")
+                  : ui(
+                      "Runs appear here as soon as an agent is started from a chat, a schedule, a channel or the API.",
+                    )
               }
               action={
                 filtered ? (
@@ -349,7 +357,7 @@ export default function SessionsPageClient() {
                       applyFilters(EMPTY_SESSION_FILTERS);
                     }}
                   >
-                    Clear filters
+                    {ui("Clear filters")}
                   </Button>
                 ) : undefined
               }
@@ -388,8 +396,9 @@ export default function SessionsPageClient() {
 
       <PageFooter>
         <span>
-          Showing {total === 0 ? 0 : offset + 1}-{Math.min(offset + SESSIONS_PAGE_SIZE, total)} of{" "}
-          {total} {pluralize(total, "run")}
+          {ui("Showing")} {total === 0 ? 0 : offset + 1}-
+          {Math.min(offset + SESSIONS_PAGE_SIZE, total)} {ui("of")} {total}{" "}
+          {pluralize(total, "run", undefined, displayLocale)}
         </span>
         {totalPages > 1 && (
           <div className="flex items-center gap-2">
@@ -400,10 +409,10 @@ export default function SessionsPageClient() {
               onClick={() => applyFilters({ ...filters, page: filters.page - 1 })}
             >
               <ChevronLeft className="size-4" />
-              Previous
+              {ui("Previous")}
             </Button>
             <span>
-              Page {filters.page + 1} of {totalPages}
+              {ui("Page")} {filters.page + 1} {ui("of")} {totalPages}
             </span>
             <Button
               variant="outline"
@@ -411,7 +420,7 @@ export default function SessionsPageClient() {
               disabled={filters.page >= totalPages - 1}
               onClick={() => applyFilters({ ...filters, page: filters.page + 1 })}
             >
-              Next
+              {ui("Next")}
               <ChevronRight className="size-4" />
             </Button>
           </div>

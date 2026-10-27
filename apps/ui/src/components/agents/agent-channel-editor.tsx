@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChannelChatDraft } from "@/components/chat-mode/use-channel-chat-draft";
 
 import { useAgentSource } from "@/hooks/use-agent-source";
@@ -69,6 +71,7 @@ export function AgentChannelEditor({
   channelId: string;
   slackInstallFailure?: string;
 }) {
+  const ui = useUiTranslations();
   const router = useRouter();
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   const { channels, isLoading: endpointsLoading } = useAgentChannels(agentId);
@@ -97,13 +100,15 @@ export function AgentChannelEditor({
     slackInstallCapability.isLoading ||
     sourceQuery.isLoading
   ) {
-    return <div className="container mx-auto p-6">Loading channel...</div>;
+    return <div className="container mx-auto p-6">{ui("Loading channel...")}</div>;
   }
   if (!agent || !channel) {
     return (
       <ResourceNotFound
-        title="Channel not found"
-        description="This channel may have been deleted, moved to another agent, or the URL may be wrong."
+        title={ui("Channel not found")}
+        description={ui(
+          "This channel may have been deleted, moved to another agent, or the URL may be wrong.",
+        )}
         backHref={returnHref}
         backLabel="Back to agent"
         resourceId={channelId}
@@ -116,10 +121,12 @@ export function AgentChannelEditor({
       <div className="container mx-auto space-y-3 p-6">
         <p>
           {sourceOwned
-            ? "This channel's configuration is managed by GitHub. Edit the Agent source repository to change it. Publication and credentials remain available from Integrations."
-            : "Could not check the channel source. Reload before editing."}
+            ? ui(
+                "This channel's configuration is managed by GitHub. Edit the Agent source repository to change it. Publication and credentials remain available from Integrations.",
+              )
+            : ui("Could not check the channel source. Reload before editing.")}
         </p>
-        <BackLink href={returnHref}>Back to Agent</BackLink>
+        <BackLink href={returnHref}>{ui("Back to Agent")}</BackLink>
       </div>
     );
   }
@@ -157,6 +164,8 @@ function AgentChannelForm({
   onSlackCapabilityChanged?: () => void | Promise<unknown>;
   slackInstallFailure?: string;
 }) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const router = useRouter();
   const agentId = agent.id;
   const channelId = channel.id;
@@ -175,7 +184,7 @@ function AgentChannelForm({
     baseline: channel.updated_at,
     writable: canManage && !updateEndpoint.isPending,
   });
-  const agentName = getDisplayName(agent);
+  const agentName = getDisplayName(agent, displayLocale);
   const lifecycle = getChannelLifecyclePresentation(channel);
   const publishHint = channelPublishControl(channel).hint;
   const slackInstallAvailable = slackInstallCapability?.connected === true;
@@ -192,21 +201,23 @@ function AgentChannelForm({
       {chatDraft.notice}
       <PageBreadcrumb
         items={[
-          { label: "Agents", href: "/agents" },
+          { label: ui("Agents"), href: "/agents" },
           { label: agentName, href: returnHref },
           {
-            label: `${getChannelTypeDisplayName(channel.channel_type)} channel`,
+            label: ui("{value0} channel", {
+              value0: getChannelTypeDisplayName(channel.channel_type),
+            }),
           },
         ]}
       />
       <PageMasthead
         icon={<Radio />}
-        title={`${getChannelTypeDisplayName(channel.channel_type)} channel`}
+        title={ui("{value0} channel", { value0: getChannelTypeDisplayName(channel.channel_type) })}
         badges={
           <>
             <Badge variant="accent">
               <Pencil className="size-3" />
-              Editing
+              {ui("Editing")}
             </Badge>
             <Badge variant={lifecycle.isLive ? "default" : "secondary"}>{lifecycle.label}</Badge>
           </>
@@ -214,7 +225,8 @@ function AgentChannelForm({
         description={
           schedule ? (
             <>
-              Schedule · <CronLabel expr={schedule.cron_expression} tz={schedule.timezone} /> ·{" "}
+              {ui("Schedule ·")}{" "}
+              <CronLabel expr={schedule.cron_expression} tz={schedule.timezone} /> ·{" "}
               {lifecycle.description}
             </>
           ) : (
@@ -234,7 +246,7 @@ function AgentChannelForm({
               }
             >
               <Check className="size-4" />
-              {updateEndpoint.isPending ? "Saving..." : "Save"}
+              {updateEndpoint.isPending ? ui("Saving...") : ui("Save")}
             </Button>
             <Button
               type="button"
@@ -248,7 +260,7 @@ function AgentChannelForm({
               }
               disabled={!canDangerous || publishEndpoint.isPending}
             >
-              {lifecycle.isLive ? "Unpublish" : "Publish"}
+              {lifecycle.isLive ? ui("Unpublish") : ui("Publish")}
             </Button>
             {channel.channel_type === "schedule" && (
               <Button
@@ -258,7 +270,7 @@ function AgentChannelForm({
                 disabled={!canManage || !lifecycle.isLive || triggerEndpoint.isPending}
               >
                 <Play className="size-4" />
-                Run now
+                {ui("Run now")}
               </Button>
             )}
             <Button
@@ -268,7 +280,7 @@ function AgentChannelForm({
               disabled={!canDangerous || deleteEndpoint.isPending}
             >
               <Trash2 className="size-4" />
-              Delete
+              {ui("Delete")}
             </Button>
           </>
         }
@@ -292,12 +304,12 @@ function AgentChannelForm({
             {channel.channel_type === "slack" && <ChannelHealthWarning channelId={channel.id} />}
             {slackInstallFailure !== undefined && (
               <Notice variant="destructive" icon={<CircleAlert className="size-4" />} role="alert">
-                <NoticeTitle>Slack install did not start</NoticeTitle>
+                <NoticeTitle>{ui("Slack install did not start")}</NoticeTitle>
                 <NoticeDescription>
-                  The channel was saved. {slackInstallFailureMessage}{" "}
+                  {ui("The channel was saved.")} {slackInstallFailureMessage}{" "}
                   {slackInstallAvailable
-                    ? "Use Add to Slack to try again, or configure Slack manually."
-                    : "Configure Slack manually."}
+                    ? ui("Use Add to Slack to try again, or configure Slack manually.")
+                    : ui("Configure Slack manually.")}
                 </NoticeDescription>
               </Notice>
             )}
@@ -319,28 +331,32 @@ function AgentChannelForm({
             )}
           </PageMain>
           <PageRail>
-            <RailSection label="Lifecycle">
+            <RailSection label={ui("Lifecycle")}>
               <p className="text-sm">{lifecycle.description}</p>
               <p className="mt-2 text-xs text-muted-foreground">
-                Publish opens this channel to callers. Unpublish closes it.
+                {ui("Publish opens this channel to callers. Unpublish closes it.")}
               </p>
               <p className="mt-2 text-xs text-muted-foreground">
-                Save configuration changes before publishing.
+                {ui("Save configuration changes before publishing.")}
               </p>
             </RailSection>
           </PageRail>
         </PageColumns>
       </form>
       <PageFooter>
-        <BackLink href={returnHref}>Back to {agentName}</BackLink>
+        <BackLink href={returnHref}>
+          {ui("Back to")} {agentName}
+        </BackLink>
       </PageFooter>
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Delete {getChannelTypeDisplayName(channel.channel_type)} channel
+              {ui("Delete")} {getChannelTypeDisplayName(channel.channel_type)} {ui("channel")}
             </DialogTitle>
-            <DialogDescription>Delete this connection to {agentName}?</DialogDescription>
+            <DialogDescription>
+              {ui("Delete this connection to")} {agentName}?
+            </DialogDescription>
           </DialogHeader>
           <SlackRemovalNotice channels={[channel]} action="channel" />
           {deleteEndpoint.error && (
@@ -354,7 +370,7 @@ function AgentChannelForm({
               disabled={deleteEndpoint.isPending}
               onClick={() => setConfirmDelete(false)}
             >
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -363,7 +379,7 @@ function AgentChannelForm({
                 deleteEndpoint.mutate(undefined, { onSuccess: () => router.push(returnHref) })
               }
             >
-              {deleteEndpoint.isPending ? "Deleting..." : "Delete channel"}
+              {deleteEndpoint.isPending ? ui("Deleting...") : ui("Delete channel")}
             </Button>
           </DialogFooter>
         </DialogContent>

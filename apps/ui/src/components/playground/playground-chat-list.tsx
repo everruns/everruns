@@ -1,5 +1,6 @@
 "use client";
 
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ReactNode } from "react";
 import Link from "next/link";
@@ -16,6 +17,7 @@ import {
 import type { Session } from "@/lib/api/types";
 import { threadTitle } from "@/lib/chat-threads";
 import { getDisplayName } from "@/lib/entity-lifecycle";
+import type { EntityLocalizations } from "@/lib/entity-localization";
 import {
   groupPlaygroundSessions,
   playgroundPreview,
@@ -94,11 +96,18 @@ function SubjectChip({ id }: { id?: string | null }) {
 
 function agentLabel(
   session: Session,
-  agents: Array<{ id: string; name: string; display_name?: string | null }>,
+  agents: Array<{
+    id: string;
+    name: string;
+    display_name?: string | null;
+    localizations?: EntityLocalizations;
+  }>,
+  locale: string,
+  harnessLabel: string,
 ): string {
-  if (!session.agent_id) return "Harness chat";
+  if (!session.agent_id) return harnessLabel;
   const agent = agents.find((candidate) => candidate.id === session.agent_id);
-  return agent ? getDisplayName(agent) : session.agent_id;
+  return agent ? getDisplayName(agent, locale) : session.agent_id;
 }
 
 export function PlaygroundChatList({
@@ -108,15 +117,22 @@ export function PlaygroundChatList({
   now = new Date(),
 }: {
   sessions: Session[];
-  agents: Array<{ id: string; name: string; display_name?: string | null }>;
+  agents: Array<{
+    id: string;
+    name: string;
+    display_name?: string | null;
+    localizations?: EntityLocalizations;
+  }>;
   groupBy: PlaygroundGroupBy;
   now?: Date;
 }) {
+  const ui = useUiTranslations();
+  const { displayLocale } = useLocale();
   const groups = groupPlaygroundSessions(
     sessions.map((session) => ({
       session,
       updatedAt: session.updated_at,
-      agentLabel: agentLabel(session, agents),
+      agentLabel: agentLabel(session, agents, displayLocale, ui("Harness chat")),
     })),
     groupBy,
     now,
@@ -168,7 +184,7 @@ export function PlaygroundChatList({
                     <SubjectChip id={session.playground_user_id} />
                   </div>
                   <span
-                    title={`${eventCount} events`}
+                    title={ui("{value0} events", { value0: eventCount })}
                     className="inline-flex items-center justify-end gap-1 font-mono text-[11px] text-muted-foreground"
                   >
                     <MessageSquare className="size-2.5 opacity-60" />
@@ -176,7 +192,7 @@ export function PlaygroundChatList({
                   </span>
                   {starter ? (
                     <span
-                      title={`Started by ${starter.name}`}
+                      title={ui("Started by {value0}", { value0: starter.name })}
                       className="inline-flex size-5 items-center justify-center bg-primary text-[9px] font-semibold text-primary-foreground"
                     >
                       {starter.initials}

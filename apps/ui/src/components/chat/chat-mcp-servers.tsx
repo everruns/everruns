@@ -8,6 +8,7 @@
 // The header button appears only once the chat has such a server: most chats
 // never do, and an empty control would only add noise next to Pin/Archive.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { capabilityIconMap } from "@/lib/capability-icons";
@@ -35,11 +36,12 @@ function host(url: string) {
 }
 
 function SignInBadge({ server }: { server: ChatMcpServer }) {
+  const ui = useUiTranslations();
   switch (server.connection) {
     case "connected":
-      return <Badge variant="success">Signed in</Badge>;
+      return <Badge variant="success">{ui("Signed in")}</Badge>;
     case "not_connected":
-      return <Badge variant="outline">Needs sign-in</Badge>;
+      return <Badge variant="outline">{ui("Needs sign-in")}</Badge>;
     default:
       return null;
   }
@@ -53,13 +55,18 @@ export function ChatMcpServersList({
   sessionId: string;
   readOnly?: boolean;
 }) {
+  const ui = useUiTranslations();
   const { data: servers = [], isLoading, error } = useChatMcpServers(sessionId);
   const remove = useRemoveChatMcpServer(sessionId);
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (isLoading) return <p className="text-sm text-muted-foreground">{ui("Loading…")}</p>;
   if (error) return <ChatErrorAlert message={error.message} />;
   if (servers.length === 0) {
-    return <p className="text-sm text-muted-foreground">No MCP servers were added to this chat.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        {ui("No MCP servers were added to this chat.")}
+      </p>
+    );
   }
   return (
     <div className="space-y-3">
@@ -69,7 +76,7 @@ export function ChatMcpServersList({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="truncate font-mono text-sm">{server.name}</span>
-                {server.catalog_name && <Badge variant="secondary">Catalog</Badge>}
+                {server.catalog_name && <Badge variant="secondary">{ui("Catalog")}</Badge>}
                 <SignInBadge server={server} />
               </div>
               <div className="truncate text-xs text-muted-foreground">{host(server.url)}</div>
@@ -78,7 +85,7 @@ export function ChatMcpServersList({
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label={`Remove ${server.name}`}
+                aria-label={ui("Remove {value0}", { value0: server.name })}
                 disabled={remove.isPending}
                 onClick={() => remove.mutate(server.name)}
               >
@@ -104,6 +111,7 @@ export function ChatMcpServersButton({
   status?: string;
   readOnly?: boolean;
 }) {
+  const ui = useUiTranslations();
   const [open, setOpen] = useState(false);
   const { data: servers = [], refetch } = useChatMcpServers(sessionId);
 
@@ -117,19 +125,22 @@ export function ChatMcpServersButton({
       <Button
         variant="outline"
         size="sm"
-        aria-label={`MCP servers in this chat (${servers.length})`}
+        aria-label={ui("MCP servers in this chat ({value0})", { value0: servers.length })}
         className="max-sm:w-7 max-sm:px-0"
         onClick={() => setOpen(true)}
       >
         <McpIcon className="size-4" />
-        <span className="max-sm:hidden">MCP {servers.length}</span>
+        <span className="max-sm:hidden">
+          {ui("MCP")} {servers.length}
+        </span>
       </Button>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>MCP servers in this chat</DialogTitle>
+          <DialogTitle>{ui("MCP servers in this chat")}</DialogTitle>
           <DialogDescription>
-            Added for this chat only: they join every later turn here and no other chat. Removing
-            one drops its tools from the next turn.
+            {ui(
+              "Added for this chat only: they join every later turn here and no other chat. Removing one drops its tools from the next turn.",
+            )}
           </DialogDescription>
         </DialogHeader>
         <ChatMcpServersList sessionId={sessionId} readOnly={readOnly} />

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useRef } from "react";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { ChatNavRail, type ChatNavAnchor } from "@/components/chat/chat-nav-rail";
@@ -82,6 +83,7 @@ function buildEvents(): Event[] {
 }
 
 export function DevChatNavRailPreview() {
+  const ui = useUiTranslations();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const events = useMemo(buildEvents, []);
   const emptyToolResults = useMemo(() => new Map(), []);
@@ -98,10 +100,13 @@ export function DevChatNavRailPreview() {
       const data = getEventData(event, "input.message");
       if (!data) continue;
       const text = getMessageText(data).trim();
-      anchors.push({ id: event.id, label: text.length > 80 ? `${text.slice(0, 80)}…` : text });
+      anchors.push({
+        id: event.id,
+        label: text.length > 80 ? ui("{value0}…", { value0: text.slice(0, 80) }) : text,
+      });
     }
     return anchors;
-  }, [events]);
+  }, [events, ui]);
 
   const { currentAnchorId, scrollToAnchor } = useMessageScrollerVisibility(
     scrollContainerRef,

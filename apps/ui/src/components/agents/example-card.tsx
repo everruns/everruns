@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { harnessChoiceLabel } from "@/lib/harness-deprecation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,8 @@ import {
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
+import { getDisplayName } from "@/lib/entity-lifecycle";
+import { localizedEntityDescription } from "@/lib/entity-localization";
 import { useLocale } from "@/providers/locale-provider";
 
 interface ExampleCardProps {
@@ -35,25 +38,26 @@ export function ExampleCard({
   adopting = false,
   preview = false,
 }: ExampleCardProps) {
-  const { locale } = useLocale();
+  const ui = useUiTranslations();
+  const { locale, displayLocale } = useLocale();
   const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
     allCapabilities?.find((c) => c.id === capabilityId);
 
   return (
     <EntityCard
-      title={example.display_name}
+      title={getDisplayName(example, displayLocale)}
       headerActions={
         <>
           {(example.dev_only || example.setup) && (
             <div className="flex gap-1">
               {example.setup && (
                 <Badge variant="outline" className="text-xs">
-                  guided setup
+                  {ui("guided setup")}
                 </Badge>
               )}
               {example.dev_only && (
                 <Badge variant="outline" className="text-xs">
-                  dev
+                  {ui("dev")}
                 </Badge>
               )}
             </div>
@@ -65,7 +69,7 @@ export function ExampleCard({
               onClick={() => onImport(example.name)}
               disabled={adopting}
             >
-              {adopting ? "Importing..." : "Import"}
+              {adopting ? ui("Importing...") : ui("Import")}
             </Button>
           )}
         </>
@@ -81,7 +85,7 @@ export function ExampleCard({
                 disabled={adopting}
               >
                 <Import className="w-4 h-4 mr-2" />
-                {adopting ? "Importing..." : "Import"}
+                {adopting ? ui("Importing...") : ui("Import")}
               </Button>
             }
           />
@@ -89,9 +93,11 @@ export function ExampleCard({
       }
     >
       <p className="mb-2 text-xs text-muted-foreground">
-        Harness: {harnessChoiceLabel(example.harness_name)}
+        {ui("Harness:")} {harnessChoiceLabel(example.harness_name)}
       </p>
-      <EntityCardDescription>{example.description}</EntityCardDescription>
+      <EntityCardDescription>
+        {localizedEntityDescription(example, displayLocale)}
+      </EntityCardDescription>
 
       {!preview && (
         <div className="space-y-3">

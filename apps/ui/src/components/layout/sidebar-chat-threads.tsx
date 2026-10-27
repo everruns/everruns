@@ -15,6 +15,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Pin } from "lucide-react";
@@ -45,6 +46,7 @@ function useFrozen<T>(value: T, frozen: boolean): T {
 }
 
 export function SidebarChatThreads({ pathname }: { pathname: string }) {
+  const ui = useUiTranslations();
   const { threads, isLoading } = useChatThreads();
   usePlatformChatThread({ ensure: true });
   const [interacting, setInteracting] = useState(false);
@@ -56,7 +58,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
   return (
     <div
       role="group"
-      aria-label="Subchats"
+      aria-label={ui("Subchats")}
       className="ml-9 mr-2.5 mb-1"
       onMouseEnter={() => setInteracting(true)}
       onMouseLeave={() => setInteracting(false)}
@@ -65,7 +67,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
     >
       <div className="border-l border-border">
         <div className="flex items-center justify-between pl-2 pr-1 text-muted-foreground">
-          <p className="text-xs font-medium">Subchats</p>
+          <p className="text-xs font-medium">{ui("Subchats")}</p>
           {
             <Link
               href={newSideChat.href}
@@ -96,7 +98,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
             >
               <span className="truncate">{threadTitle(thread)}</span>
               {thread.is_pinned === true && (
-                <Pin className="ml-auto size-3 shrink-0 text-primary" aria-label="Pinned" />
+                <Pin className="ml-auto size-3 shrink-0 text-primary" aria-label={ui("Pinned")} />
               )}
             </Link>
           );

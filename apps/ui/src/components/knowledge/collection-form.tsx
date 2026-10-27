@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { collectionDraftSchema } from "@/components/chat-mode/page-form-schemas";
 import { useState } from "react";
@@ -27,6 +28,7 @@ export function CollectionForm({
   onSave: (input: CollectionInput) => Promise<unknown>;
   onCancel?: () => void;
 }) {
+  const ui = useUiTranslations();
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [mode, setMode] = useState<IndexMode>(initial?.indexing ?? "off");
@@ -115,7 +117,7 @@ export function CollectionForm({
     >
       {chatDraft.notice}
       <div className="space-y-2">
-        <Label htmlFor="knowledge-name">Name</Label>
+        <Label htmlFor="knowledge-name">{ui("Name")}</Label>
         <Input
           id="knowledge-name"
           required
@@ -126,42 +128,43 @@ export function CollectionForm({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="knowledge-description">Description</Label>
+        <Label htmlFor="knowledge-description">{ui("Description")}</Label>
         <Textarea
           id="knowledge-description"
           maxLength={4096}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="What should an agent use this collection for?"
+          placeholder={ui("What should an agent use this collection for?")}
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="knowledge-indexing">Indexing</Label>
+        <Label htmlFor="knowledge-indexing">{ui("Indexing")}</Label>
         <select
           id="knowledge-indexing"
           className={selectClass}
           value={mode}
           onChange={(e) => setMode(e.target.value as IndexMode)}
         >
-          <option value="off">Off · browse, mount and grep</option>
-          <option value="lexical">Keyword search</option>
-          <option value="hybrid">Hybrid · keyword and semantic search</option>
+          <option value="off">{ui("Off · browse, mount and grep")}</option>
+          <option value="lexical">{ui("Keyword search")}</option>
+          <option value="hybrid">{ui("Hybrid · keyword and semantic search")}</option>
         </select>
         <p className="text-xs text-muted-foreground">
-          Original files stay available independently of indexing. Hybrid indexing uses your
-          selected embedding provider.
+          {ui(
+            "Original files stay available independently of indexing. Hybrid indexing uses your selected embedding provider.",
+          )}
         </p>
       </div>
       {mode !== "off" && (
         <div className="space-y-2">
-          <Label htmlFor="knowledge-indexer">Search account</Label>
+          <Label htmlFor="knowledge-indexer">{ui("Search account")}</Label>
           <select
             id="knowledge-indexer"
             className={selectClass}
             value={indexer}
             onChange={(e) => setIndexer(e.target.value)}
           >
-            <option value="">Deployment default</option>
+            <option value="">{ui("Deployment default")}</option>
             {accounts.data?.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.name}
@@ -169,13 +172,15 @@ export function CollectionForm({
             ))}
           </select>
           <p className="text-xs text-muted-foreground">
-            Keyword search works locally. Hybrid search requires a configured vector search account.
+            {ui(
+              "Keyword search works locally. Hybrid search requires a configured vector search account.",
+            )}
           </p>
         </div>
       )}
       {mode === "hybrid" && (
         <div className="space-y-2">
-          <Label htmlFor="knowledge-model">Embedding model</Label>
+          <Label htmlFor="knowledge-model">{ui("Embedding model")}</Label>
           <select
             id="knowledge-model"
             className={selectClass}
@@ -183,7 +188,7 @@ export function CollectionForm({
             value={model}
             onChange={(e) => setModel(e.target.value)}
           >
-            <option value="">Select an embedding model</option>
+            <option value="">{ui("Select an embedding model")}</option>
             {models
               ?.filter((m) => m.enabled && m.service === "embeddings")
               .map((m) => (
@@ -195,9 +200,9 @@ export function CollectionForm({
         </div>
       )}
       <details>
-        <summary className="cursor-pointer text-sm">File exclusions</summary>
+        <summary className="cursor-pointer text-sm">{ui("File exclusions")}</summary>
         <div className="mt-3 space-y-2">
-          <Label htmlFor="knowledge-rules">Path rules</Label>
+          <Label htmlFor="knowledge-rules">{ui("Path rules")}</Label>
           <Textarea
             id="knowledge-rules"
             className="font-mono text-xs"
@@ -206,8 +211,9 @@ export function CollectionForm({
             onChange={(e) => setRules(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">
-            Ingestion omits files entirely; indexing controls search; read exclusions also hide
-            files from agents.
+            {ui(
+              "Ingestion omits files entirely; indexing controls search; read exclusions also hide files from agents.",
+            )}
           </p>
         </div>
       </details>
@@ -218,7 +224,7 @@ export function CollectionForm({
       )}
       <div className="flex gap-2">
         <Button type="submit" disabled={pending || chatDraft.blocked} variant="accent">
-          {pending ? "Saving…" : initial ? "Save settings" : "Create collection"}
+          {pending ? ui("Saving…") : initial ? ui("Save settings") : ui("Create collection")}
         </Button>
         {chatDraft.blocked && (
           <Button
@@ -237,12 +243,12 @@ export function CollectionForm({
               setRules(savedValues.rules);
             }}
           >
-            Discard
+            {ui("Discard")}
           </Button>
         )}
         {onCancel && (
           <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
+            {ui("Cancel")}
           </Button>
         )}
       </div>

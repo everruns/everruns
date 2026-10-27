@@ -27,6 +27,9 @@ pub(super) async fn validate_service_account(
 }
 
 pub(super) fn validate_create_limits(req: &CreateAgentRequest) -> Result<(), CommandError> {
+    req.localizations
+        .validate()
+        .map_err(CommandError::bad_request)?;
     if req.name.len() > MAX_AGENT_NAME_BYTES
         || req
             .display_name
@@ -54,6 +57,11 @@ pub(super) fn validate_create_limits(req: &CreateAgentRequest) -> Result<(), Com
 }
 
 pub(super) fn validate_update_limits(req: &UpdateAgentRequest) -> Result<(), CommandError> {
+    if let Some(localizations) = &req.localizations {
+        localizations
+            .validate()
+            .map_err(CommandError::bad_request)?;
+    }
     if req
         .display_name
         .as_ref()

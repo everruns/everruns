@@ -51,7 +51,7 @@ import { useObservers } from "@/hooks/use-observers";
 import { useSavedReports } from "@/hooks/use-reporting";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { localizedCapabilityName } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { useOrg } from "@/providers/org-provider";
 import { useFeatureFlags } from "@/providers/feature-flags-provider";
 import type { FeatureFlags } from "@/lib/api/types";
@@ -167,7 +167,8 @@ function matchesTokens(tokens: string[], ...texts: (string | undefined | null)[]
 const EMPTY_ARRAY: never[] = [];
 
 export function useGlobalSearch(query: string) {
-  const { locale } = useLocale();
+  const { locale, displayLocale } = useLocale();
+  const ui = useUiTranslations();
   const { currentOrg, organizations, setCurrentOrg, hasRole } = useOrg();
   const featureFlags = useFeatureFlags();
   const entitySearchEnabled = query.trim().length > 0;
@@ -202,12 +203,17 @@ export function useGlobalSearch(query: string) {
       const items =
         section.id === "chats" ? [...section.items, ...sideChatNavigation] : section.items;
       return items.flatMap((item) => {
-        const page = { ...item, title: item.name, navigationGroup: group };
+        const page = {
+          ...item,
+          title: ui(item.name),
+          navigationGroup: ui(group),
+          keywords: [...(item.keywords ?? []), item.name],
+        };
         if (item.activePrefix !== "/settings") return [page];
         return [
           {
             ...page,
-            navigationGroup: "Settings",
+            navigationGroup: ui("Settings"),
             keywords: [
               ...(page.keywords ?? []),
               ...(settingsNavigationSections
@@ -219,15 +225,16 @@ export function useGlobalSearch(query: string) {
             .flatMap((settingsSection) =>
               settingsSection.items.map((setting) => ({
                 ...setting,
-                title: setting.name,
-                navigationGroup: `Settings · ${settingsSection.label}`,
+                title: ui(setting.name),
+                keywords: [...(setting.keywords ?? []), setting.name],
+                navigationGroup: `${ui("Settings")} · ${ui(settingsSection.label ?? "")}`,
               })),
             )
             .filter((setting) => setting.href !== item.href),
         ];
       });
     });
-  }, [featureFlags, hasRole, durableAllowed, canNavigate]);
+  }, [featureFlags, hasRole, durableAllowed, canNavigate, ui]);
   const { data: agentsData } = useAgents({ enabled: entitySearchEnabled });
   const { data: sessionsData } = useSessions(
     undefined,
@@ -398,9 +405,20 @@ export function useGlobalSearch(query: string) {
     let agentCount = 0;
     for (const agent of agents) {
       if (agentCount >= MAX_PER_CATEGORY) break;
-      const agentDisplayName = getDisplayName(agent);
+      const agentDisplayName = getDisplayName(agent, displayLocale);
       if (
-        matchesTokens(tokens, agent.name, agentDisplayName, agent.description, agent.id, "agent")
+        matchesTokens(
+          tokens,
+          agent.name,
+          agentDisplayName,
+          agent.description,
+          agent.id,
+          "agent",
+          ...Object.values(agent.localizations ?? {}).flatMap((entry) => [
+            entry.display_name,
+            entry.description,
+          ]),
+        )
       ) {
         results.push({
           id: `agent:${agent.id}`,
@@ -442,11 +460,15 @@ export function useGlobalSearch(query: string) {
           harness.name,
           harness.display_name,
           harness.description,
+          ...Object.values(harness.localizations ?? {}).flatMap((entry) => [
+            entry.display_name,
+            entry.description,
+          ]),
           harness.id,
           "harness",
         )
       ) {
-        const harnessDisplayName = getDisplayName(harness);
+        const harnessDisplayName = getDisplayName(harness, displayLocale);
         results.push({
           id: `harness:${harness.id}`,
           category: "harness",
@@ -680,6 +702,7 @@ export function useGlobalSearch(query: string) {
   }, [
     query,
     locale,
+    displayLocale,
     featureFlags,
     navigationPages,
     currentOrg?.public_id,

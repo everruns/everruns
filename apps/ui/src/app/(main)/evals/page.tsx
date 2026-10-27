@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { EvalsIcon } from "@/components/icons/facet-icons";
@@ -46,6 +48,7 @@ function targetLabel(target?: EvalTarget, agentMap?: Map<string, string>): strin
 }
 
 function EvalCard({ eval: ev, agentMap }: { eval: Eval; agentMap: Map<string, string> }) {
+  const ui = useUiTranslations();
   const label = targetLabel(ev.target, agentMap);
 
   return (
@@ -64,7 +67,9 @@ function EvalCard({ eval: ev, agentMap }: { eval: Eval; agentMap: Map<string, st
               {ev.target.type}
             </Badge>
           )}
-          <span>{ev.case_count} cases</span>
+          <span>
+            {ev.case_count} {ui("cases")}
+          </span>
         </div>
         {ev.last_run && (
           <div className="flex items-center gap-3 text-xs">
@@ -73,7 +78,8 @@ function EvalCard({ eval: ev, agentMap }: { eval: Eval; agentMap: Map<string, st
             </Badge>
             {ev.last_run.summary && (
               <span className={passRateColor(ev.last_run.summary.pass_rate)}>
-                {(ev.last_run.summary.pass_rate * 100).toFixed(0)}% pass rate
+                {(ev.last_run.summary.pass_rate * 100).toFixed(0)}
+                {ui("% pass rate")}
               </span>
             )}
           </div>
@@ -93,13 +99,15 @@ function EvalCard({ eval: ev, agentMap }: { eval: Eval; agentMap: Map<string, st
 }
 
 export default function EvalsPage() {
-  usePageTitle("Evals");
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
+  usePageTitle(ui("Evals"));
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
   useChatPageFilters({ status: statusTab });
   const { data: evals, isLoading, error } = useEvals({ includeArchived: true });
   const { data: agents } = useAgents({ includeArchived: false });
 
-  const agentMap = new Map((agents ?? []).map((a) => [a.id, getDisplayName(a)]));
+  const agentMap = new Map((agents ?? []).map((a) => [a.id, getDisplayName(a, displayLocale)]));
   const counts = useMemo(() => {
     const list = evals ?? [];
     const archived = list.filter((ev) => isArchivedStatus(ev.status)).length;
@@ -113,22 +121,22 @@ export default function EvalsPage() {
     [evals, statusTab],
   );
   const statusItems = [
-    { value: "active" as const, label: "Active" },
-    { value: "archived" as const, label: "Archived" },
+    { value: "active" as const, label: ui("Active") },
+    { value: "archived" as const, label: ui("Archived") },
   ];
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Evals" }]} />
+      <PageBreadcrumb items={[{ label: ui("Evals") }]} />
 
       <PageMasthead
         icon={<EvalsIcon />}
-        title="Evals"
-        description="Define, run, and track behavioral tests for your agents."
+        title={ui("Evals")}
+        description={ui("Define, run, and track behavioral tests for your agents.")}
         actions={
           <LinkButton variant="accent" href="/evals/new">
             <Plus className="size-4" />
-            New Eval
+            {ui("New Eval")}
           </LinkButton>
         }
       />
@@ -149,10 +157,10 @@ export default function EvalsPage() {
           errorMessagePrefix="Failed to load evals"
           emptyState={
             <div className="py-12 text-center">
-              <p className="mb-4 text-muted-foreground">No evals yet</p>
+              <p className="mb-4 text-muted-foreground">{ui("No evals yet")}</p>
               <LinkButton href="/evals/new">
                 <Plus className="mr-2 size-4" />
-                Create your first eval
+                {ui("Create your first eval")}
               </LinkButton>
             </div>
           }

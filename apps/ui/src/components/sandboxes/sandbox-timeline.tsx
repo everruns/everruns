@@ -4,6 +4,7 @@
 // paused, red while lost, with a tick where a lost resource was rebuilt.
 // Underneath, a step chart of how many ran at once.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import type { SandboxTimeline as Timeline, SandboxTimelineLane } from "@/lib/api/sandboxes";
 import { cn } from "@/lib/utils";
 import { formatRunningTime, providerLabel, sandboxStateLabel } from "./sandbox-display";
@@ -46,6 +47,7 @@ function Lane({
   span: number;
   onSelect: (id: string) => void;
 }) {
+  const ui = useUiTranslations();
   const { sandbox } = lane;
   return (
     <div className="grid grid-cols-[minmax(0,13rem)_1fr] items-center gap-3">
@@ -53,12 +55,19 @@ function Lane({
         type="button"
         onClick={() => onSelect(sandbox.id)}
         className="min-w-0 truncate text-left text-sm hover:underline"
-        title={`${sandboxTitle(sandbox)}, ${formatRunningTime(lane.running_seconds)} running`}
+        title={ui("{value0}, {value1} running", {
+          value0: sandboxTitle(sandbox),
+          value1: formatRunningTime(lane.running_seconds),
+        })}
       >
         {sandboxTitle(sandbox)}
         <span className="text-muted-foreground"> · {providerLabel(sandbox.provider)}</span>
       </button>
-      <div className="relative h-4" role="img" aria-label={`${sandboxTitle(sandbox)} lifecycle`}>
+      <div
+        className="relative h-4"
+        role="img"
+        aria-label={ui("{value0} lifecycle", { value0: sandboxTitle(sandbox) })}
+      >
         {lane.spans.map((spanItem, index) => {
           const left = position(spanItem.start, from, span);
           const width = Math.max(0.3, position(spanItem.end, from, span) - left);
@@ -70,7 +79,7 @@ function Lane({
                 <span
                   className="absolute inset-y-0 w-0.5 bg-destructive"
                   style={{ left: `${left}%` }}
-                  title={`Rebuilt as generation ${spanItem.generation}`}
+                  title={ui("Rebuilt as generation {value0}", { value0: spanItem.generation })}
                 />
               ) : null}
               <span
@@ -79,7 +88,10 @@ function Lane({
                   SEGMENT_CLASS[spanItem.state] ?? "bg-muted-foreground/40",
                 )}
                 style={{ left: `${left}%`, width: `${width}%` }}
-                title={`${sandboxStateLabel(spanItem.state)} ${new Date(spanItem.start).toLocaleString()}`}
+                title={ui("{value0} {value1}", {
+                  value0: sandboxStateLabel(spanItem.state),
+                  value1: new Date(spanItem.start).toLocaleString(),
+                })}
               />
             </span>
           );
@@ -90,6 +102,7 @@ function Lane({
 }
 
 function Concurrency({ timeline, from, span }: { timeline: Timeline; from: number; span: number }) {
+  const ui = useUiTranslations();
   const peak = Math.max(1, timeline.peak_running);
   const height = 48;
   const points = timeline.concurrency;
@@ -109,11 +122,14 @@ function Concurrency({ timeline, from, span }: { timeline: Timeline; from: numbe
   return (
     <div className="grid grid-cols-[minmax(0,13rem)_1fr] items-end gap-3 border-t pt-3">
       <span className="text-xs text-muted-foreground">
-        Running at once
+        {ui("Running at once")}
         <span className="block">
           {timeline.peak_at
-            ? `Peak ${timeline.peak_running} at ${new Date(timeline.peak_at).toLocaleString()}`
-            : "None in this window"}
+            ? ui("Peak {value0} at {value1}", {
+                value0: timeline.peak_running,
+                value1: new Date(timeline.peak_at).toLocaleString(),
+              })
+            : ui("None in this window")}
         </span>
       </span>
       <svg
@@ -121,7 +137,9 @@ function Concurrency({ timeline, from, span }: { timeline: Timeline; from: numbe
         preserveAspectRatio="none"
         className="h-12 w-full text-success"
         role="img"
-        aria-label={`Concurrent running Sandboxes, peak ${timeline.peak_running}`}
+        aria-label={ui("Concurrent running Sandboxes, peak {value0}", {
+          value0: timeline.peak_running,
+        })}
       >
         <line x1="0" y1={height - 0.5} x2="1000" y2={height - 0.5} className="stroke-border" />
         {path ? (
@@ -153,6 +171,7 @@ export function SandboxTimelineChart({
   timeline: Timeline;
   onSelect: (id: string) => void;
 }) {
+  const ui = useUiTranslations();
   const from = new Date(timeline.from).getTime();
   const span = Math.max(1, new Date(timeline.to).getTime() - from);
   const ticks = Array.from({ length: TICKS + 1 }, (_, i) => from + (span / TICKS) * i);
@@ -163,7 +182,7 @@ export function SandboxTimelineChart({
           <span />
           <div className="flex justify-between font-mono text-[11px] text-muted-foreground">
             {ticks.map((tick, i) => (
-              <span key={tick}>{i === TICKS ? "now" : tickLabel(tick, span)}</span>
+              <span key={tick}>{i === TICKS ? ui("now") : tickLabel(tick, span)}</span>
             ))}
           </div>
         </div>
@@ -173,20 +192,21 @@ export function SandboxTimelineChart({
         <Concurrency timeline={timeline} from={from} span={span} />
         <div className="flex flex-wrap gap-4 pt-1 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-3 bg-success" /> Running
+            <span className="h-2 w-3 bg-success" /> {ui("Running")}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className={cn("h-2 w-3", SEGMENT_CLASS.paused)} /> Paused
+            <span className={cn("h-2 w-3", SEGMENT_CLASS.paused)} /> {ui("Paused")}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-3 bg-destructive" /> Lost
+            <span className="h-2 w-3 bg-destructive" /> {ui("Lost")}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-3 w-0.5 bg-destructive" /> Rebuilt
+            <span className="h-3 w-0.5 bg-destructive" /> {ui("Rebuilt")}
           </span>
           {timeline.total_lanes > timeline.lanes.length ? (
             <span>
-              Showing the {timeline.lanes.length} longest-running of {timeline.total_lanes}
+              {ui("Showing the")} {timeline.lanes.length} {ui("longest-running of")}{" "}
+              {timeline.total_lanes}
             </span>
           ) : null}
         </div>

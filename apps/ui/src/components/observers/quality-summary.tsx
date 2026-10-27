@@ -6,6 +6,7 @@
 // aggregation is a follow-up. We group completed scores by scorer_key for the
 // summary cards and by day for the trend chart.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo } from "react";
 import {
   CartesianGrid,
@@ -83,6 +84,7 @@ function passRateColor(rate: number): string {
 }
 
 export function QualitySummary({ scores }: { scores: TraceScore[] }) {
+  const ui = useUiTranslations();
   const summaries = useMemo(() => summarizeScores(scores), [scores]);
   const trend = useMemo(() => buildTrend(scores), [scores]);
 
@@ -96,21 +98,23 @@ export function QualitySummary({ scores }: { scores: TraceScore[] }) {
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Scored</span>
+                <span className="text-muted-foreground">{ui("Scored")}</span>
                 <span>{summary.scored}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Pass rate</span>
+                <span className="text-muted-foreground">{ui("Pass rate")}</span>
                 <span
                   className={
                     summary.passRate !== null ? passRateColor(summary.passRate) : undefined
                   }
                 >
-                  {summary.passRate !== null ? `${Math.round(summary.passRate * 100)}%` : "—"}
+                  {summary.passRate !== null
+                    ? ui("{value0}%", { value0: Math.round(summary.passRate * 100) })
+                    : "—"}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Avg value</span>
+                <span className="text-muted-foreground">{ui("Avg value")}</span>
                 <span>{summary.avgValue !== null ? summary.avgValue.toFixed(2) : "—"}</span>
               </div>
             </CardContent>
@@ -121,7 +125,7 @@ export function QualitySummary({ scores }: { scores: TraceScore[] }) {
       {trend.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Pass rate trend</CardTitle>
+            <CardTitle className="text-sm font-medium">{ui("Pass rate trend")}</CardTitle>
           </CardHeader>
           <CardContent className="pb-2">
             <ResponsiveContainer width="100%" height={220}>

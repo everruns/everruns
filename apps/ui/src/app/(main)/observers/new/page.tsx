@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -40,15 +41,16 @@ function NewObserverForm() {
 }
 
 export default function NewObserverPage() {
-  usePageTitle("New Observer", "Observers");
+  const ui = useUiTranslations();
+  usePageTitle(ui("New Observer"), ui("Observers"));
   const observersEnabled = useFeatureFlag("observers");
 
   if (!observersEnabled) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center text-muted-foreground">
-          <p className="text-lg font-medium">Observers is not enabled</p>
-          <p className="text-sm">This feature is currently disabled.</p>
+          <p className="text-lg font-medium">{ui("Observers is not enabled")}</p>
+          <p className="text-sm">{ui("This feature is currently disabled.")}</p>
         </div>
       </div>
     );
@@ -61,12 +63,12 @@ export default function NewObserverPage() {
         className="mb-6 inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="mr-2 h-4 w-4" />
-        Back to Observers
+        {ui("Back to Observers")}
       </Link>
 
       <Card>
         <CardHeader>
-          <CardTitle>Create New Observer</CardTitle>
+          <CardTitle>{ui("Create New Observer")}</CardTitle>
         </CardHeader>
         <CardContent>
           <Suspense fallback={null}>

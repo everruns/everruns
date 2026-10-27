@@ -11,6 +11,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/providers/locale-provider";
 
@@ -26,6 +27,7 @@ interface ChatNavRailProps {
 }
 
 export function ChatNavRail({ anchors, currentAnchorId, onJump }: ChatNavRailProps) {
+  const ui = useUiTranslations();
   const { t } = useLocale();
 
   // A single turn needs no navigation.
@@ -46,7 +48,7 @@ export function ChatNavRail({ anchors, currentAnchorId, onJump }: ChatNavRailPro
             key={anchor.id}
             type="button"
             onClick={() => onJump(anchor.id)}
-            aria-label={`${t("jump_to_turn")}: ${label}`}
+            aria-label={ui("{value0}: {value1}", { value0: t("jump_to_turn"), value1: label })}
             aria-current={isCurrent ? "true" : undefined}
             title={label}
             // Generous vertical padding gives each thin marker a comfortable

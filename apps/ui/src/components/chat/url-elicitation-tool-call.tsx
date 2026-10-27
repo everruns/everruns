@@ -23,6 +23,7 @@
  * checks, finds nothing done yet, and elicits all over again.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Check, ExternalLink, X } from "lucide-react";
@@ -63,6 +64,7 @@ export function UrlElicitationToolCall({
   elicitation,
   toolResultsMap,
 }: UrlElicitationToolCallProps) {
+  const ui = useUiTranslations();
   const [status, setStatus] = useState<"idle" | "submitting" | "accepted" | "declined">("idle");
   // Opening the link and finishing what is on the other side are two different
   // moments, and only the person knows when the second one arrives.
@@ -106,7 +108,9 @@ export function UrlElicitationToolCall({
         )}
       >
         {accepted ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
-        {accepted ? `Continued at ${host}` : `Declined to open ${host}`}
+        {accepted
+          ? ui("Continued at {value0}", { value0: host })
+          : ui("Declined to open {value0}", { value0: host })}
       </div>
     );
   }
@@ -117,7 +121,7 @@ export function UrlElicitationToolCall({
         <ExternalLink className="mt-0.5 h-5 w-5 shrink-0 text-foreground" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">
-            {server} needs you to finish something in your browser
+            {server} {ui("needs you to finish something in your browser")}
           </p>
           {elicitation.message && (
             <p className="mt-0.5 text-xs text-muted-foreground">{elicitation.message}</p>
@@ -133,15 +137,18 @@ export function UrlElicitationToolCall({
             <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>
-                This domain is written in Punycode, so it can look like a different one. Check it
-                before continuing.
+                {ui(
+                  "This domain is written in Punycode, so it can look like a different one. Check it before continuing.",
+                )}
               </span>
             </p>
           )}
           <p className="mt-2 text-xs text-muted-foreground">
             {opened
-              ? "Finish on that page, then come back and continue. Everruns never sees what you enter there."
-              : "Everruns never sees what you enter there. Come back here when you are done."}
+              ? ui(
+                  "Finish on that page, then come back and continue. Everruns never sees what you enter there.",
+                )
+              : ui("Everruns never sees what you enter there. Come back here when you are done.")}
           </p>
           {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
         </div>
@@ -154,7 +161,7 @@ export function UrlElicitationToolCall({
           disabled={status === "submitting"}
           className="text-muted-foreground"
         >
-          {opened ? "Cancel" : "Don't open"}
+          {opened ? ui("Cancel") : ui("Don't open")}
         </Button>
         {opened ? (
           <Button
@@ -163,12 +170,12 @@ export function UrlElicitationToolCall({
             disabled={status === "submitting"}
           >
             <Check className="mr-1 h-3.5 w-3.5" />
-            I&apos;ve finished, continue
+            {ui("I've finished, continue")}
           </Button>
         ) : (
           <Button size="sm" onClick={handleOpen} disabled={status === "submitting" || !url}>
             <ExternalLink className="mr-1 h-3.5 w-3.5" />
-            Open link
+            {ui("Open link")}
           </Button>
         )}
       </div>

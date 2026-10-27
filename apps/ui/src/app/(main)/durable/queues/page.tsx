@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
 
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
@@ -53,7 +54,8 @@ import { EnqueueDialog } from "./enqueue-dialog";
 type TabValue = "overview" | "tasks" | "dlq";
 
 export default function QueuesPage() {
-  usePageTitle("Queues", "Durable");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Queues"), ui("Durable"));
   const [activeTab, setActiveTab] = useState<TabValue>("overview");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -171,7 +173,7 @@ export default function QueuesPage() {
     return (
       <div className="operational-page container mx-auto p-6">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">Queues</h1>
+          <h1 className="text-2xl font-bold">{ui("Queues")}</h1>
         </div>
         <div className="space-y-6">
           <Skeleton className="h-10 w-full" />
@@ -190,18 +192,18 @@ export default function QueuesPage() {
     return (
       <div className="operational-page container mx-auto p-6">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">Queues</h1>
+          <h1 className="text-2xl font-bold">{ui("Queues")}</h1>
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Unable to Load Queues</h3>
+            <h3 className="text-lg font-medium mb-2">{ui("Unable to Load Queues")}</h3>
             <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-              The durable queues API is not available.
+              {ui("The durable queues API is not available.")}
             </p>
             <Button onClick={() => refetchTasks()} variant="outline">
               <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
+              {ui("Retry")}
             </Button>
           </CardContent>
         </Card>
@@ -212,10 +214,10 @@ export default function QueuesPage() {
   return (
     <div className="operational-page container mx-auto p-6">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">Queues</h1>
+        <h1 className="text-2xl font-bold">{ui("Queues")}</h1>
         <Button onClick={() => setEnqueueOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
-          Enqueue Task
+          {ui("Enqueue Task")}
         </Button>
       </div>
 
@@ -225,7 +227,7 @@ export default function QueuesPage() {
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Pending</p>
+              <p className="text-sm text-muted-foreground">{ui("Pending")}</p>
             </div>
             <p className="text-2xl font-bold mt-1">{totalPending}</p>
           </CardContent>
@@ -234,7 +236,7 @@ export default function QueuesPage() {
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2">
               <Activity className="h-4 w-4 text-info" />
-              <p className="text-sm text-muted-foreground">Processing</p>
+              <p className="text-sm text-muted-foreground">{ui("Processing")}</p>
             </div>
             <p className="text-2xl font-bold mt-1">{totalClaimed}</p>
           </CardContent>
@@ -243,7 +245,7 @@ export default function QueuesPage() {
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-success" />
-              <p className="text-sm text-muted-foreground">Completed/hr</p>
+              <p className="text-sm text-muted-foreground">{ui("Completed/hr")}</p>
             </div>
             <p className="text-2xl font-bold mt-1">{totalCompletedHr}</p>
           </CardContent>
@@ -252,7 +254,7 @@ export default function QueuesPage() {
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2">
               <XCircle className="h-4 w-4 text-destructive" />
-              <p className="text-sm text-muted-foreground">Failed/hr</p>
+              <p className="text-sm text-muted-foreground">{ui("Failed/hr")}</p>
             </div>
             <p className={cn("text-2xl font-bold mt-1", totalFailedHr > 0 && "text-destructive")}>
               {totalFailedHr}
@@ -266,15 +268,21 @@ export default function QueuesPage() {
         <div className="flex items-center gap-6 text-sm text-muted-foreground mb-6">
           <div className="flex items-center gap-1">
             <Timer className="h-3.5 w-3.5" />
-            <span>Oldest pending: {formatDurationCompact(stats.oldest_pending_task_age_ms)}</span>
+            <span>
+              {ui("Oldest pending:")} {formatDurationCompact(stats.oldest_pending_task_age_ms)}
+            </span>
           </div>
           <div className="flex items-center gap-1">
             <ArrowUpDown className="h-3.5 w-3.5" />
-            <span>Avg wait: {formatDurationCompact(stats.avg_schedule_to_start_ms)}</span>
+            <span>
+              {ui("Avg wait:")} {formatDurationCompact(stats.avg_schedule_to_start_ms)}
+            </span>
           </div>
           <div className="flex items-center gap-1">
             <Activity className="h-3.5 w-3.5" />
-            <span>Avg exec: {formatDurationCompact(stats.avg_execution_time_ms)}</span>
+            <span>
+              {ui("Avg exec:")} {formatDurationCompact(stats.avg_execution_time_ms)}
+            </span>
           </div>
         </div>
       )}
@@ -292,7 +300,7 @@ export default function QueuesPage() {
             )}
           >
             <ArrowUpDown className="h-4 w-4" />
-            By Activity Type
+            {ui("By Activity Type")}
             {activityTypes.length > 0 && (
               <Badge variant="secondary" className="ml-1">
                 {activityTypes.length}
@@ -309,7 +317,7 @@ export default function QueuesPage() {
             )}
           >
             <ListTodo className="h-4 w-4" />
-            Tasks
+            {ui("Tasks")}
             {tasksData?.total !== undefined && (
               <Badge variant="secondary" className="ml-1">
                 {tasksData.total}
@@ -326,7 +334,7 @@ export default function QueuesPage() {
             )}
           >
             <Inbox className="h-4 w-4" />
-            Dead Letter Queue
+            {ui("Dead Letter Queue")}
             {dlqEntries.length > 0 && (
               <Badge variant="destructive" className="ml-1">
                 {dlqData?.total || 0}
@@ -358,10 +366,11 @@ export default function QueuesPage() {
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <ListTodo className="h-12 w-12 mb-4" />
-                  <h3 className="text-lg font-medium mb-2">No Queue Activity</h3>
+                  <h3 className="text-lg font-medium mb-2">{ui("No Queue Activity")}</h3>
                   <p className="text-sm text-center max-w-md">
-                    No activity types have been registered yet. Enqueue a task or start a workflow
-                    to see queue statistics.
+                    {ui(
+                      "No activity types have been registered yet. Enqueue a task or start a workflow to see queue statistics.",
+                    )}
                   </p>
                 </CardContent>
               </Card>
@@ -371,8 +380,8 @@ export default function QueuesPage() {
             {stats && Object.keys(stats.by_priority).length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm">Priority Distribution</CardTitle>
-                  <CardDescription>Pending tasks grouped by priority level</CardDescription>
+                  <CardTitle className="text-sm">{ui("Priority Distribution")}</CardTitle>
+                  <CardDescription>{ui("Pending tasks grouped by priority level")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-end gap-2 h-24">
@@ -392,7 +401,8 @@ export default function QueuesPage() {
                                 <span className="text-xs text-muted-foreground">{priority}</span>
                               </TooltipTrigger>
                               <TooltipContent>
-                                Priority {priority}: {count} task{count !== 1 ? "s" : ""}
+                                {ui("Priority")} {priority}: {count} {ui("task")}
+                                {count !== 1 ? "s" : ""}
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -412,30 +422,30 @@ export default function QueuesPage() {
             <div className="flex items-center gap-4">
               <SearchInput
                 containerClassName="flex-1 max-w-sm"
-                placeholder="Search tasks..."
+                placeholder={ui("Search tasks...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Status" />
+                  <SelectValue placeholder={ui("Status")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="claimed">Claimed</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="all">{ui("All Status")}</SelectItem>
+                  <SelectItem value="pending">{ui("Pending")}</SelectItem>
+                  <SelectItem value="claimed">{ui("Claimed")}</SelectItem>
+                  <SelectItem value="completed">{ui("Completed")}</SelectItem>
+                  <SelectItem value="failed">{ui("Failed")}</SelectItem>
+                  <SelectItem value="cancelled">{ui("Cancelled")}</SelectItem>
                 </SelectContent>
               </Select>
               {activityTypes.length > 0 && (
                 <Select value={typeFilter} onValueChange={setTypeFilter}>
                   <SelectTrigger className="w-48">
-                    <SelectValue placeholder="Activity Type" />
+                    <SelectValue placeholder={ui("Activity Type")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="all">{ui("All Types")}</SelectItem>
                     {activityTypes.map((type) => (
                       <SelectItem key={type} value={type}>
                         {type}
@@ -446,7 +456,7 @@ export default function QueuesPage() {
               )}
               <Button variant="outline" size="sm" onClick={() => refetchTasks()}>
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
+                {ui("Refresh")}
               </Button>
             </div>
 
@@ -460,14 +470,14 @@ export default function QueuesPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Activity</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Priority</TableHead>
-                          <TableHead>Attempt</TableHead>
-                          <TableHead>Claimed By</TableHead>
-                          <TableHead>Error</TableHead>
-                          <TableHead>Created</TableHead>
-                          <TableHead>Actions</TableHead>
+                          <TableHead>{ui("Activity")}</TableHead>
+                          <TableHead>{ui("Status")}</TableHead>
+                          <TableHead>{ui("Priority")}</TableHead>
+                          <TableHead>{ui("Attempt")}</TableHead>
+                          <TableHead>{ui("Claimed By")}</TableHead>
+                          <TableHead>{ui("Error")}</TableHead>
+                          <TableHead>{ui("Created")}</TableHead>
+                          <TableHead>{ui("Actions")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -480,11 +490,11 @@ export default function QueuesPage() {
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <ListTodo className="h-12 w-12 mb-4" />
-                    <h3 className="text-lg font-medium mb-2">No Tasks Found</h3>
+                    <h3 className="text-lg font-medium mb-2">{ui("No Tasks Found")}</h3>
                     <p className="text-sm text-center max-w-md">
                       {searchQuery || statusFilter !== "all" || typeFilter !== "all"
-                        ? "No tasks match your filters."
-                        : "The task queue is empty."}
+                        ? ui("No tasks match your filters.")
+                        : ui("The task queue is empty.")}
                     </p>
                   </div>
                 )}
@@ -506,20 +516,22 @@ export default function QueuesPage() {
                   className="text-destructive hover:text-destructive"
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
-                  {purgeDlqMutation.isPending ? "Purging..." : "Purge All"}
+                  {purgeDlqMutation.isPending ? ui("Purging...") : ui("Purge All")}
                 </Button>
               )}
               <Button variant="outline" size="sm" onClick={() => refetchDlq()}>
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
+                {ui("Refresh")}
               </Button>
             </div>
 
             <Card>
               <CardHeader>
-                <CardTitle>Dead Letter Queue</CardTitle>
+                <CardTitle>{ui("Dead Letter Queue")}</CardTitle>
                 <CardDescription>
-                  Tasks that exhausted all retry attempts. Requeue to retry or delete to discard.
+                  {ui(
+                    "Tasks that exhausted all retry attempts. Requeue to retry or delete to discard.",
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -530,12 +542,12 @@ export default function QueuesPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Activity</TableHead>
-                          <TableHead>Attempts</TableHead>
-                          <TableHead>Last Error</TableHead>
-                          <TableHead>Dead At</TableHead>
-                          <TableHead>Requeues</TableHead>
-                          <TableHead>Actions</TableHead>
+                          <TableHead>{ui("Activity")}</TableHead>
+                          <TableHead>{ui("Attempts")}</TableHead>
+                          <TableHead>{ui("Last Error")}</TableHead>
+                          <TableHead>{ui("Dead At")}</TableHead>
+                          <TableHead>{ui("Requeues")}</TableHead>
+                          <TableHead>{ui("Actions")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -553,9 +565,11 @@ export default function QueuesPage() {
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <CheckCircle className="h-12 w-12 mb-4 text-success" />
-                    <h3 className="text-lg font-medium mb-2">DLQ is Empty</h3>
+                    <h3 className="text-lg font-medium mb-2">{ui("DLQ is Empty")}</h3>
                     <p className="text-sm text-center max-w-md">
-                      No tasks have failed permanently. All tasks are being processed successfully.
+                      {ui(
+                        "No tasks have failed permanently. All tasks are being processed successfully.",
+                      )}
                     </p>
                   </div>
                 )}

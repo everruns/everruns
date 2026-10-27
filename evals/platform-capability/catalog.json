@@ -2030,6 +2030,37 @@
           ],
           "type": "string"
         },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
           "properties": {
@@ -2787,6 +2818,10 @@
             "string",
             "null"
           ]
+        },
+        "localizations": {
+          "$ref": "#/$defs/EntityLocalizations",
+          "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
         },
         "max_iterations": {
           "description": "Maximum number of LLM iterations per turn for this agent.",
@@ -4829,6 +4864,37 @@
           ],
           "type": "object"
         },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
           "properties": {
@@ -5026,6 +5092,10 @@
             "string",
             "null"
           ]
+        },
+        "localizations": {
+          "$ref": "#/$defs/EntityLocalizations",
+          "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
         },
         "mcpServers": {
           "$ref": "#/$defs/BTreeMap",
@@ -19652,6 +19722,37 @@
           ],
           "type": "string"
         },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
           "properties": {
@@ -20413,6 +20514,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "localizations": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/EntityLocalizations",
+                  "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "max_iterations": {
@@ -22228,6 +22340,37 @@
           ],
           "type": "object"
         },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "HarnessStatus": {
           "description": "Harness lifecycle status.\n- `active`: Harness is available for use\n- `archived`: Harness is hidden from listings and cannot be modified or assigned\n- `deleted`: Harness is a tombstone kept only for historical references",
           "enum": [
@@ -22449,6 +22592,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "localizations": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/EntityLocalizations",
+                  "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "mcpServers": {
@@ -25743,6 +25897,10 @@
                 "null"
               ]
             },
+            "localizations": {
+              "$ref": "#/$defs/EntityLocalizations",
+              "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+            },
             "max_iterations": {
               "description": "Maximum number of LLM iterations per turn for this agent.",
               "example": 20,
@@ -25878,6 +26036,37 @@
             "always"
           ],
           "type": "string"
+        },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
         },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import {
   createContext,
   useContext,
@@ -160,6 +161,7 @@ export function usePageSavedChangeGuard(options: {
 }
 
 export function SavedPageChanges() {
+  const ui = useUiTranslations();
   const controller = useContext(PageChangeReviewContext);
   const [history, setHistory] = useState<PageResource | null>(null);
   useSyncExternalStore(
@@ -174,12 +176,12 @@ export function SavedPageChanges() {
   if (!receipts.length && !errors.length && !active) return null;
   return (
     <aside
-      aria-label="Saved page changes"
+      aria-label={ui("Saved page changes")}
       className="shrink-0 max-h-[45vh] overflow-auto border-t border-accent bg-card px-4 py-3"
     >
       {active && (
         <button type="button" className="text-sm underline" onClick={() => setHistory(active)}>
-          History · {active.label}
+          {ui("History ·")} {active.label}
         </button>
       )}
       {history && (
@@ -203,7 +205,7 @@ export function SavedPageChanges() {
             className="underline"
             onClick={() => void controller.retry(resource)}
           >
-            Reload history
+            {ui("Reload history")}
           </button>
         </div>
       ))}
@@ -212,14 +214,16 @@ export function SavedPageChanges() {
         return (
           <section key={`${receipt.resource.kind}:${receipt.resource.id}`} className="py-2">
             <div className="flex flex-wrap items-center gap-3 text-sm">
-              <strong className="flex-1">Saved changes · {receipt.resource.label}</strong>
+              <strong className="flex-1">
+                {ui("Saved changes ·")} {receipt.resource.label}
+              </strong>
               <button
                 type="button"
                 className="underline disabled:opacity-50"
                 disabled={receipt.pending || receipt.stale || dirty}
                 onClick={() => void controller.undo(receipt.resource)}
               >
-                {receipt.pending ? "Undoing…" : "Undo all"}
+                {receipt.pending ? ui("Undoing…") : ui("Undo all")}
               </button>
               {receipt.resource.kind !== "model_selection" && (
                 <button
@@ -227,7 +231,7 @@ export function SavedPageChanges() {
                   className="underline"
                   onClick={() => setHistory(receipt.resource)}
                 >
-                  History
+                  {ui("History")}
                 </button>
               )}
               <button
@@ -235,17 +239,17 @@ export function SavedPageChanges() {
                 className="underline"
                 onClick={() => controller.dismiss(receipt.resource)}
               >
-                Dismiss
+                {ui("Dismiss")}
               </button>
             </div>
             {receipt.stale && (
               <p className="text-sm text-muted-foreground">
-                This resource changed again. Review its history before undoing.
+                {ui("This resource changed again. Review its history before undoing.")}
               </p>
             )}
             {dirty && (
               <p className="text-sm text-muted-foreground">
-                Your draft is kept. Save or discard it before undoing saved changes.
+                {ui("Your draft is kept. Save or discard it before undoing saved changes.")}
               </p>
             )}
             <PageChangeDiff

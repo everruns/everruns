@@ -6,6 +6,7 @@ jest.mock("next/navigation", () => ({
 }));
 
 jest.mock("@/providers/locale-provider", () => ({
+  ...jest.requireActual("@/providers/locale-provider"),
   useLocale: () => ({ t: (key: string) => key }),
 }));
 

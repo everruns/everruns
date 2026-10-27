@@ -152,6 +152,7 @@ impl Command for CreateAgent {
             let input = CreateAgentRow {
                 public_id: client_id.to_string(),
                 name: req.name,
+                localizations: req.localizations.clone(),
                 display_name: req.display_name,
                 description: req.description,
                 intro_markdown: req.intro_markdown,
@@ -188,6 +189,7 @@ impl Command for CreateAgent {
             let input = CreateAgentRow {
                 public_id: public_id.to_string(),
                 name: req.name,
+                localizations: req.localizations.clone(),
                 display_name: req.display_name,
                 description: req.description,
                 intro_markdown: req.intro_markdown,
@@ -493,6 +495,7 @@ impl Command for UpdateAgentCmd {
                 StorageUpdate::Set(id) => Some(Some(id)),
             },
             name: req.name,
+            localizations: req.localizations.clone(),
             display_name: req.display_name,
             description: req.description,
             intro_markdown: req.intro_markdown,
@@ -706,6 +709,7 @@ impl Command for UpsertAgent {
         let input = CreateAgentRow {
             public_id: public_id.clone(),
             name: req.name,
+            localizations: req.localizations.clone(),
             display_name: req.display_name,
             description: req.description,
             intro_markdown: req.intro_markdown,
@@ -797,6 +801,7 @@ impl Command for CopyAgent {
 
             id: None,
             name: copy_name,
+            localizations: source.localizations.clone(),
             display_name: source.display_name.map(|d| format!("{d} (copy)")),
             description: source.description,
             intro_markdown: source.intro_markdown,

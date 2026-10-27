@@ -33,6 +33,11 @@ manifest.properties.max_iterations = { ...manifest.properties.max_iterations, mi
 manifest.properties.max_output_tokens = { ...manifest.properties.max_output_tokens, minimum: 1, maximum: 2147483647 };
 manifest.properties.files.maxItems = 100;
 manifest.properties.channels.maxProperties = 32;
+defs.EntityLocalizations.maxProperties = 64;
+for (const [field, limit] of [["display_name", 255], ["description", 2000]]) {
+  defs.EntityLocalization.properties[field].minLength = 1;
+  defs.EntityLocalization.properties[field].maxLength = limit;
+}
 // Packages accept client-side declarations only; builtin tools come from capabilities.
 defs.ToolDefinition = convert(schemas.ClientSideTool);
 defs.ToolDefinition.properties.type = { type: "string", enum: ["client_side"] };

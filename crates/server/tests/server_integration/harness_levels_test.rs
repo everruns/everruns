@@ -28,6 +28,7 @@ async fn test_harness_levels_upgrade_pins_legacy_agents_atomically() {
         .create_harness(
             org.org_id,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "worker".into(),
                 display_name: Some("My Worker".into()),
                 icon: None,
@@ -96,6 +97,7 @@ async fn test_harness_levels_upgrade_pins_legacy_agents_atomically() {
         .create_agent(
             org.org_id,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: "legacy-inherited".into(),
                 display_name: None,

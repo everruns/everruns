@@ -1,8 +1,13 @@
+"use client";
+
+import { useUiTranslations } from "@/providers/locale-provider";
 import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { cn } from "@/lib/utils";
 
 /** Lifecycle is readable as text; color is a secondary cue on overview surfaces. */
 export function EntityStatus({ status }: { status: string }) {
+  const ui = useUiTranslations();
+  const label = status.replaceAll("_", " ");
   const variant = getEntityStatusBadgeVariant(status);
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -17,7 +22,9 @@ export function EntityStatus({ status }: { status: string }) {
               : "bg-muted-foreground/60",
         )}
       />
-      <span className="capitalize">{status.replaceAll("_", " ")}</span>
+      <span className="capitalize">
+        {ui(label.charAt(0).toUpperCase() + label.slice(1)).toLowerCase()}
+      </span>
     </span>
   );
 }

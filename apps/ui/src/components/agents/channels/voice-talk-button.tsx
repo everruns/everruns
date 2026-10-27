@@ -4,6 +4,7 @@
 // call starts a new session on the channel's agent; the link opens it so the
 // transcript and the agent's work can be inspected.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Mic, PhoneOff } from "lucide-react";
@@ -31,6 +32,7 @@ export function VoiceTalkButton({
   channelId: string;
   disabled?: boolean;
 }) {
+  const ui = useUiTranslations();
   const [error, setError] = useState<string | null>(null);
   const placeCall = useCallback(
     async (sdp: string) => {
@@ -64,27 +66,29 @@ export function VoiceTalkButton({
             disabled={disabled || !microphoneAvailable}
           >
             <Mic className="size-4" />
-            {ended ? "Talk again" : "Talk to this channel"}
+            {ended ? ui("Talk again") : ui("Talk to this channel")}
           </Button>
         ) : (
           <Button type="button" variant="outline" size="sm" onClick={() => void call.stop()}>
             <PhoneOff className="size-4" />
-            Hang up
+            {ui("Hang up")}
           </Button>
         )}
         <span aria-live="polite" className="flex items-center gap-2">
-          {call.state === "connecting" && <Badge variant="secondary">Connecting…</Badge>}
-          {call.state === "connected" && <Badge>Live</Badge>}
-          {ended && <Badge variant="secondary">Ended</Badge>}
+          {call.state === "connecting" && <Badge variant="secondary">{ui("Connecting…")}</Badge>}
+          {call.state === "connected" && <Badge>{ui("Live")}</Badge>}
+          {ended && <Badge variant="secondary">{ui("Ended")}</Badge>}
         </span>
         {call.sessionId && (
           <Link className="text-sm underline" href={`/sessions/${call.sessionId}`}>
-            Open session
+            {ui("Open session")}
           </Link>
         )}
       </div>
       {!microphoneAvailable && (
-        <p className="text-xs text-muted-foreground">This browser cannot place voice calls.</p>
+        <p className="text-xs text-muted-foreground">
+          {ui("This browser cannot place voice calls.")}
+        </p>
       )}
       {error && (
         <p role="alert" className="text-xs text-destructive">

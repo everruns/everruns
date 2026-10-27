@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Trash2 } from "lucide-react";
@@ -145,19 +146,24 @@ function getResetAt(period: BudgetPeriod, startedAt: Date): Date | null {
 }
 
 function PeriodState({ budget }: { budget: Budget }) {
+  const ui = useUiTranslations();
   if (!budget.period) {
     return <span>{formatPeriod(budget.period)}</span>;
   }
   if (!budget.period_started_at) {
-    return <span>{formatPeriod(budget.period)} · starts on first use</span>;
+    return (
+      <span>
+        {formatPeriod(budget.period)} {ui("· starts on first use")}
+      </span>
+    );
   }
 
   const startedAt = new Date(budget.period_started_at);
   const resetAt = getResetAt(budget.period, startedAt);
   return (
     <span>
-      {formatPeriod(budget.period)} · Started {DATE_TIME_FORMAT.format(startedAt)}
-      {resetAt ? ` · Reset due ${DATE_TIME_FORMAT.format(resetAt)}` : ""}
+      {formatPeriod(budget.period)} {ui("· Started")} {DATE_TIME_FORMAT.format(startedAt)}
+      {resetAt ? ui(" · Reset due {value0}", { value0: DATE_TIME_FORMAT.format(resetAt) }) : ""}
     </span>
   );
 }
@@ -182,6 +188,7 @@ export function BudgetPanel({
   title?: string;
   canManage: boolean;
 }) {
+  const ui = useUiTranslations();
   const queryClient = useQueryClient();
   const queryKey = ["budgets", subjectType, subjectId];
   const [adding, setAdding] = useState(false);
@@ -222,18 +229,21 @@ export function BudgetPanel({
         {canManage && !adding && (
           <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
             <Plus className="size-3" />
-            Add budget
+            {ui("Add budget")}
           </Button>
         )}
       </div>
 
-      {budgetsQuery.isLoading && <p className="text-sm text-muted-foreground">Loading budgets…</p>}
+      {budgetsQuery.isLoading && (
+        <p className="text-sm text-muted-foreground">{ui("Loading budgets…")}</p>
+      )}
       {budgetsQuery.error instanceof Error && (
         <p className="text-sm text-destructive">{budgetsQuery.error.message}</p>
       )}
       {!budgetsQuery.isLoading && budgets.length === 0 && !adding && (
         <p className="text-sm text-muted-foreground">
-          No budget is attached to this {subjectType === "agent" ? "agent" : "channel"}.
+          {ui("No budget is attached to this")}{" "}
+          {subjectType === "agent" ? ui("agent") : ui("channel")}.
         </p>
       )}
 
@@ -256,7 +266,7 @@ export function BudgetPanel({
                     {budget.status}
                   </Badge>
                   {isMigratedAppBudget(budget) && (
-                    <Badge variant="secondary">Migrated App cap</Badge>
+                    <Badge variant="secondary">{ui("Migrated App cap")}</Badge>
                   )}
                 </div>
                 <code className="block truncate text-xs text-muted-foreground">{budget.id}</code>
@@ -266,7 +276,7 @@ export function BudgetPanel({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Edit budget ${budget.id}`}
+                    aria-label={ui("Edit budget {value0}", { value0: budget.id })}
                     onClick={() => setEditingId(budget.id)}
                   >
                     <Pencil className="size-3.5" />
@@ -274,7 +284,7 @@ export function BudgetPanel({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Delete budget ${budget.id}`}
+                    aria-label={ui("Delete budget {value0}", { value0: budget.id })}
                     onClick={() => deleteMutation.mutate(budget.id)}
                     disabled={deleteMutation.isPending}
                   >
@@ -284,11 +294,12 @@ export function BudgetPanel({
               )}
             </div>
             <p className="text-sm">
-              {budget.balance.toFixed(2)} of {budget.limit.toFixed(2)} {budget.currency} remaining
+              {budget.balance.toFixed(2)} {ui("of")} {budget.limit.toFixed(2)} {budget.currency}{" "}
+              {ui("remaining")}
             </p>
             {budget.soft_limit != null && (
               <p className="text-xs text-muted-foreground">
-                Soft limit at {budget.soft_limit.toFixed(2)} {budget.currency}
+                {ui("Soft limit at")} {budget.soft_limit.toFixed(2)} {budget.currency}
               </p>
             )}
             <p className="text-xs text-muted-foreground">
@@ -345,6 +356,7 @@ function NewBudgetForm({
   onCancel: () => void;
   onSubmit: (input: CreateBudgetRequest) => void;
 }) {
+  const ui = useUiTranslations();
   const [currency, setCurrency] = useState("usd");
   const [limit, setLimit] = useState("10");
   const [softLimit, setSoftLimit] = useState("");
@@ -390,20 +402,20 @@ function NewBudgetForm({
     <form onSubmit={handleSubmit} className="space-y-3 rounded-md border border-dashed p-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
-          <Label htmlFor={`${subjectId}-budget-currency`}>Currency</Label>
+          <Label htmlFor={`${subjectId}-budget-currency`}>{ui("Currency")}</Label>
           <Select value={currency} onValueChange={setCurrency}>
             <SelectTrigger id={`${subjectId}-budget-currency`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="usd">USD</SelectItem>
-              <SelectItem value="tokens">Tokens</SelectItem>
-              <SelectItem value="credits">Credits</SelectItem>
+              <SelectItem value="usd">{ui("USD")}</SelectItem>
+              <SelectItem value="tokens">{ui("Tokens")}</SelectItem>
+              <SelectItem value="credits">{ui("Credits")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="space-y-1">
-          <Label htmlFor={`${subjectId}-budget-limit`}>Limit</Label>
+          <Label htmlFor={`${subjectId}-budget-limit`}>{ui("Limit")}</Label>
           <Input
             id={`${subjectId}-budget-limit`}
             type="number"
@@ -415,7 +427,7 @@ function NewBudgetForm({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor={`${subjectId}-budget-soft-limit`}>Soft limit (optional)</Label>
+          <Label htmlFor={`${subjectId}-budget-soft-limit`}>{ui("Soft limit (optional)")}</Label>
           <Input
             id={`${subjectId}-budget-soft-limit`}
             type="number"
@@ -426,7 +438,7 @@ function NewBudgetForm({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor={`${subjectId}-budget-period`}>Period</Label>
+          <Label htmlFor={`${subjectId}-budget-period`}>{ui("Period")}</Label>
           <Select
             value={periodPreset}
             onValueChange={(value) => setPeriodPreset(value as PeriodPreset)}
@@ -446,7 +458,7 @@ function NewBudgetForm({
       </div>
       {periodPreset === "custom" && (
         <div className="space-y-1">
-          <Label htmlFor={`${subjectId}-budget-custom-period`}>Custom period JSON</Label>
+          <Label htmlFor={`${subjectId}-budget-custom-period`}>{ui("Custom period JSON")}</Label>
           <Textarea
             id={`${subjectId}-budget-custom-period`}
             value={customPeriod}
@@ -460,10 +472,10 @@ function NewBudgetForm({
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={submitting}>
-          {submitting ? "Creating…" : "Create budget"}
+          {submitting ? ui("Creating…") : ui("Create budget")}
         </Button>
         <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={submitting}>
-          Cancel
+          {ui("Cancel")}
         </Button>
       </div>
     </form>
@@ -481,6 +493,7 @@ function EditBudgetForm({
   onCancel: () => void;
   onSubmit: (input: UpdateBudgetRequest) => void;
 }) {
+  const ui = useUiTranslations();
   const [limit, setLimit] = useState(String(budget.limit));
   const [softLimit, setSoftLimit] = useState(
     budget.soft_limit == null ? "" : String(budget.soft_limit),
@@ -507,7 +520,7 @@ function EditBudgetForm({
     <form onSubmit={handleSubmit} className="space-y-3 rounded-md border border-dashed p-3">
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1">
-          <Label htmlFor={`${budget.id}-edit-limit`}>Limit</Label>
+          <Label htmlFor={`${budget.id}-edit-limit`}>{ui("Limit")}</Label>
           <Input
             id={`${budget.id}-edit-limit`}
             type="number"
@@ -519,7 +532,7 @@ function EditBudgetForm({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor={`${budget.id}-edit-soft-limit`}>Soft limit (optional)</Label>
+          <Label htmlFor={`${budget.id}-edit-soft-limit`}>{ui("Soft limit (optional)")}</Label>
           <Input
             id={`${budget.id}-edit-soft-limit`}
             type="number"
@@ -530,30 +543,30 @@ function EditBudgetForm({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor={`${budget.id}-edit-status`}>Status</Label>
+          <Label htmlFor={`${budget.id}-edit-status`}>{ui("Status")}</Label>
           <Select value={status} onValueChange={(value) => setStatus(value as BudgetStatus)}>
             <SelectTrigger id={`${budget.id}-edit-status`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="paused">Paused</SelectItem>
-              <SelectItem value="disabled">Disabled</SelectItem>
-              <SelectItem value="exhausted">Exhausted</SelectItem>
+              <SelectItem value="active">{ui("Active")}</SelectItem>
+              <SelectItem value="paused">{ui("Paused")}</SelectItem>
+              <SelectItem value="disabled">{ui("Disabled")}</SelectItem>
+              <SelectItem value="exhausted">{ui("Exhausted")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Currency and rollover period stay fixed. Replace the budget to change them.
+        {ui("Currency and rollover period stay fixed. Replace the budget to change them.")}
       </p>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={submitting}>
-          {submitting ? "Saving…" : "Save budget"}
+          {submitting ? ui("Saving…") : ui("Save budget")}
         </Button>
         <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={submitting}>
-          Cancel
+          {ui("Cancel")}
         </Button>
       </div>
     </form>

@@ -10,6 +10,8 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct AgentRow {
+    #[sqlx(json)]
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     pub id: AgentId,
     pub public_id: String,
     pub org_id: i64,
@@ -114,6 +116,7 @@ pub struct AgentRow {
 
 #[derive(Debug, Clone)]
 pub struct CreateAgentRow {
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     pub public_id: String,
     pub name: String,
     pub display_name: Option<String>,
@@ -160,6 +163,7 @@ impl CreateAgentRow {
         harness_id: HarnessId,
     ) -> Self {
         Self {
+            localizations: Default::default(),
             public_id: public_id.into(),
             name: name.into(),
             display_name: None,
@@ -187,6 +191,7 @@ impl CreateAgentRow {
 
 #[derive(Debug, Clone, Default)]
 pub struct UpdateAgent {
+    pub localizations: Option<everruns_contracts::runtime::localization::EntityLocalizations>,
     pub virtual_user_id: Option<Option<VirtualUserId>>,
     pub name: Option<String>,
     pub display_name: Option<String>,
@@ -281,6 +286,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
         .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
 
     Agent {
+        localizations: row.localizations.clone(),
         service_virtual_user_id: row.virtual_user_id,
         public_id,
         internal_id: row.id.uuid(),

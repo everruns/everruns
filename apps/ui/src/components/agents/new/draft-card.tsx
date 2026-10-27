@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import type { ReactNode } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +22,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function NotSet() {
-  return <span className="text-muted-foreground italic">Not set yet</span>;
+  const ui = useUiTranslations();
+  return <span className="text-muted-foreground italic">{ui("Not set yet")}</span>;
 }
 
 /** The live draft next to the agent builder. Read-only; Blank edits it. */
@@ -40,6 +42,7 @@ export function DraftCard({
   onCreate: () => void;
   onEdit: () => void;
 }) {
+  const ui = useUiTranslations();
   const availability = useAgentNameAvailability(draft.name);
   const blocker =
     draftBlocker(draft) ??
@@ -55,7 +58,7 @@ export function DraftCard({
   const github = draft.github_trigger;
 
   return (
-    <aside className="rounded-md border bg-card" aria-label="Agent draft">
+    <aside className="rounded-md border bg-card" aria-label={ui("Agent draft")}>
       <div className="flex items-start gap-3 px-4 py-4">
         <div className="flex size-8 shrink-0 items-center justify-center rounded bg-accent/15 text-sm font-semibold">
           {title.charAt(0).toUpperCase()}
@@ -66,16 +69,16 @@ export function DraftCard({
             {draft.name || "–"}
           </div>
         </div>
-        <Badge variant="secondary">Draft</Badge>
+        <Badge variant="secondary">{ui("Draft")}</Badge>
       </div>
-      <Field label="Instructions">
+      <Field label={ui("Instructions")}>
         {draft.system_prompt.trim() ? (
           <p className="line-clamp-6 whitespace-pre-wrap">{draft.system_prompt}</p>
         ) : (
           <NotSet />
         )}
       </Field>
-      <Field label="Wakes itself">
+      <Field label={ui("Wakes itself")}>
         {draft.schedule ? (
           <span>
             {describeCronExpression(draft.schedule.cron)} ({draft.schedule.timezone})
@@ -85,7 +88,7 @@ export function DraftCard({
         )}
       </Field>
       {github && (
-        <Field label="Starts on GitHub">
+        <Field label={ui("Starts on GitHub")}>
           <span>
             {github.events.join(", ")}
             {github.repositories.length > 0 && ` in ${github.repositories.join(", ")}`}
@@ -93,24 +96,24 @@ export function DraftCard({
             {(github.branches?.length ?? 0) > 0 && ` on ${github.branches?.join(", ")}`}
             {github.changes_only && " when the outcome changes"}
             <span className="block text-xs text-muted-foreground">
-              You connect GitHub to the agent after it is created.
+              {ui("You connect GitHub to the agent after it is created.")}
             </span>
           </span>
         </Field>
       )}
-      <Field label="Uses">
+      <Field label={ui("Uses")}>
         {draft.capabilities.length > 0 ? (
           draft.capabilities.map(capabilityName).join(", ")
         ) : (
           <NotSet />
         )}
       </Field>
-      <Field label="Ways in">
+      <Field label={ui("Ways in")}>
         {draft.channels.length > 0 ? (
           <span>
             {draft.channels.map((kind) => DRAFT_CHANNEL_LABELS[kind].label).join(", ")}
             <span className="block text-xs text-muted-foreground">
-              Created as drafts. Nothing takes traffic until you publish.
+              {ui("Created as drafts. Nothing takes traffic until you publish.")}
             </span>
           </span>
         ) : (
@@ -118,13 +121,15 @@ export function DraftCard({
         )}
       </Field>
       {(draft.mcp_servers?.length ?? 0) > 0 && (
-        <Field label="Connects to">
+        <Field label={ui("Connects to")}>
           {draft.mcp_servers?.map((server) => server.name).join(", ")}
         </Field>
       )}
-      <Field label="Model and harness">
+      <Field label={ui("Model and harness")}>
         <span className="text-muted-foreground">
-          {pinnedModel ? `${pinnedModel}, ${orgName} default harness` : `${orgName} defaults`}
+          {pinnedModel
+            ? ui("{value0}, {value1} default harness", { value0: pinnedModel, value1: orgName })
+            : ui("{value0} defaults", { value0: orgName })}
         </span>
       </Field>
       {blocker && draft.display_name.trim() && (
@@ -134,7 +139,7 @@ export function DraftCard({
       )}
       <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/60 px-4 py-3">
         <Button type="button" variant="outline" onClick={onEdit}>
-          Edit as form
+          {ui("Edit as form")}
         </Button>
         <Button
           type="button"
@@ -144,7 +149,7 @@ export function DraftCard({
           title={blocker ?? undefined}
         >
           {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-          Create agent
+          {ui("Create agent")}
         </Button>
       </div>
     </aside>
