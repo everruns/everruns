@@ -7,7 +7,7 @@ significance: minor
 products: [platform, cloud]
 surfaces: [api, ui]
 links:
-  prs: []
+  prs: [everruns/everruns#4953]
 ---
 
 The live session stream (`/sse`) delivers each event as it is written. If one
