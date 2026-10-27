@@ -68,6 +68,7 @@
 //   one page is the common case.
 
 mod detached;
+mod journal_admission;
 pub(super) mod rows;
 use rows::*;
 
