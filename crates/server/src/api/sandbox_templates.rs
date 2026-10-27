@@ -144,6 +144,8 @@ impl_dispatchable!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .command::<crate::domains::sandbox_templates::metadata::GetSandboxTemplateMetadata>()
+        .command::<crate::domains::sandbox_templates::metadata::UpdateSandboxTemplateMetadata>()
         // Org-wide Sandbox fleet (domains/sandboxes).
         .command::<ListSandboxes>()
         .command::<GetSandboxFleetStats>()

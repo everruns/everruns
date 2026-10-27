@@ -182,7 +182,19 @@ class Policy(unittest.TestCase):
         command=next(focused.commands(selection))
         for target in targets:self.assertIn(target,command)
         self.assertEqual(focused.real_server_targets(['crates/server/tests/pat_scope_sweep_test.rs']),['pat_scope_sweep_test'])
-        self.assertEqual(focused.real_server_targets(['crates/server/src/domains/models/service.rs']),[])
+        self.assertEqual(focused.real_server_targets(['crates/core/src/engine.rs']),[])
+
+    def test_api_and_command_changes_run_the_production_router_scope_sweep(self):
+        for path in ['crates/server/src/api/organizations/mod.rs',
+                     'crates/server/src/api/virtual_users.rs',
+                     'crates/server/src/api/sandbox_templates.rs',
+                     'crates/server/src/domains/models/service.rs',
+                     'crates/server/src/domains/virtual_users/self_profile.rs',
+                     'crates/server/src/app_builder/mod.rs',
+                     'crates/server-macros/src/lib.rs',
+                     '.github/scripts/ci/focused.py']:
+            with self.subTest(path=path):
+                self.assertEqual(focused.real_server_targets([path]), ['pat_scope_sweep_test'])
 
     def test_mcp_credential_changes_run_the_grpc_identity_contract(self):
         for path in [

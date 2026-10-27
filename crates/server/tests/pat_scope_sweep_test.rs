@@ -259,6 +259,7 @@ struct Answer {
     status: u16,
     code: Option<String>,
     challenge: Option<String>,
+    detail: Option<String>,
 }
 
 impl Answer {
@@ -304,13 +305,18 @@ async fn send(
         .ok()
         .and_then(Result::ok)
         .unwrap_or_default();
-    let code = serde_json::from_slice::<serde_json::Value>(&body)
-        .ok()
+    let problem = serde_json::from_slice::<serde_json::Value>(&body).ok();
+    let code = problem
+        .as_ref()
         .and_then(|value| value["code"].as_str().map(str::to_string));
+    let detail = problem
+        .as_ref()
+        .and_then(|value| value["detail"].as_str().map(str::to_string));
     Some(Answer {
         status,
         code,
         challenge,
+        detail,
     })
 }
 
@@ -332,6 +338,46 @@ async fn sweep(port: u16, context: ServerContext) {
         .unwrap();
     let read_token = mint_pat(&context.db, &["read"]).await;
     let full_token = mint_pat(&context.db, &["*"]).await;
+
+    // A documented read route can return 404 for a missing entity, just like
+    // an unmounted route. Require the domain's response for each review route
+    // (both methods), while the general sweep below checks write-scope denial.
+    let missing_review_resources = [
+        (
+            format!("/v1/organization-accounts/{}", uuid::Uuid::now_v7()),
+            serde_json::json!({"name": "Review account"}),
+            "Account not found",
+        ),
+        (
+            format!(
+                "/v1/sandbox-template-metadata/{}",
+                everruns_contracts::typed_id::SandboxTemplateId::new()
+            ),
+            serde_json::json!({"display_name": "Review template"}),
+            "Sandbox Template not found",
+        ),
+        (
+            format!(
+                "/v1/virtual-users/{}/self-profile",
+                everruns_contracts::typed_id::VirtualUserId::new()
+            ),
+            serde_json::json!({"name": "Review profile"}),
+            "Profile not found",
+        ),
+    ];
+    for (path, body, detail) in missing_review_resources {
+        for (method, token) in [
+            ("GET", &read_token),
+            ("GET", &full_token),
+            ("PATCH", &full_token),
+        ] {
+            let answer = send(&client, &base, token, method, &path, Some(body.clone()))
+                .await
+                .expect("review route answers");
+            assert_eq!(answer.status, 404, "{method} {path}: {:?}", answer.detail);
+            assert_eq!(answer.detail.as_deref(), Some(detail), "{method} {path}");
+        }
+    }
 
     // `read`: Write and Never answer exactly 403 insufficient_scope; Read never does.
     let mut wrong = Vec::new();
