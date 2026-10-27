@@ -60,6 +60,7 @@ impl GrpcClient {
             inner: SharedClient::new(client),
             checkpoints: CheckpointAvailability::new(),
             blobs,
+            history: super::history_cache::HistoryCache::from_env(),
         }
     }
 }

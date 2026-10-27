@@ -62,7 +62,9 @@ hostname = "0.4"
 
 # gRPC dependencies
 tonic.workspace = true
+prost.workspace = true
 prost-types.workspace = true
+moka.workspace = true
 # One-frame request body for uploads on the control-plane channel (already in
 # the tree through tonic).
 http-body-util = "0.1"
