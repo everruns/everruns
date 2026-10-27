@@ -1,7 +1,11 @@
+use crate::auth::config::AuthConfig;
 use crate::background::supervised_task::TaskSupervisor;
 use crate::domains::health_issues::service::SlackHealthService;
+use crate::domains::system::doctor::{self, DoctorEnv, SystemDoctor};
 use crate::storage::{EncryptionService, StorageBackend};
+use axum::http::StatusCode;
 use axum::{Json, extract::State};
+use everruns_durable::WorkflowEventStore;
 use serde::Serialize;
 use std::sync::Arc;
 
@@ -15,6 +19,52 @@ pub(super) struct HealthResponse {
 #[derive(Clone)]
 pub(super) struct HealthState {
     pub(super) auth_mode: String,
+    pub(super) db: Arc<StorageBackend>,
+}
+
+#[derive(Serialize)]
+pub(super) struct ReadyResponse {
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'static str>,
+}
+
+/// `GET /health/ready`: the database answers and its schema matches this
+/// build. Orchestrators route traffic on it; liveness stays on `/health` so
+/// a database outage does not get healthy servers restarted.
+pub(super) async fn ready(State(state): State<HealthState>) -> (StatusCode, Json<ReadyResponse>) {
+    match doctor::readiness(state.db.pool()).await {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(ReadyResponse {
+                status: "ready",
+                reason: None,
+            }),
+        ),
+        Err(reason) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ReadyResponse {
+                status: "not_ready",
+                reason: Some(reason),
+            }),
+        ),
+    }
+}
+
+/// The system doctor over this server's own services.
+pub(super) fn system_doctor(
+    db: &Arc<StorageBackend>,
+    workflow_store: &Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
+    encryption: &Option<Arc<EncryptionService>>,
+    auth_config: &AuthConfig,
+    utility_llm_configured: bool,
+) -> Arc<SystemDoctor> {
+    Arc::new(SystemDoctor::new(
+        db.clone(),
+        workflow_store.clone(),
+        encryption.clone(),
+        DoctorEnv::from_env(auth_config, utility_llm_configured),
+    ))
 }
 
 /// `GET /health`: liveness plus the build version and auth mode.

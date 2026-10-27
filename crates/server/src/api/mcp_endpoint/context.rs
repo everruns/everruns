@@ -22,7 +22,8 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
     .with_utility_llm_service(state.utility_llm_service.clone())
     .with_decisions(state.decisions.clone())
     .with_github_apps(github_apps(state))
-    .with_connection_resolver(state.connection_resolver.clone());
+    .with_connection_resolver(state.connection_resolver.clone())
+    .with_system_doctor(state.system_doctor.clone());
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());
     }
@@ -51,7 +52,8 @@ pub(crate) fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
     .with_utility_llm_service(state.utility_llm_service.clone())
     .with_decisions(state.decisions.clone())
     .with_github_apps(github_apps(state))
-    .with_connection_resolver(state.connection_resolver.clone());
+    .with_connection_resolver(state.connection_resolver.clone())
+    .with_system_doctor(state.system_doctor.clone());
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());
     }

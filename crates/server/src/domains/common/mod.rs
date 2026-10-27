@@ -470,6 +470,8 @@ pub struct Ctx {
     pub decisions: Option<Arc<dyn everruns_core::DecisionsService>>,
     /// Agent health check service.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
+    /// Whole-install health checks; `None` on surfaces without the server's services.
+    pub system_doctor: Option<Arc<crate::domains::system::doctor::SystemDoctor>>,
     /// Runs the OAuth catalog preset connection check; `None` on surfaces
     /// without the API layer's OAuth client (presets stay `not_checked`).
     pub mcp_oauth_checker:
@@ -543,6 +545,7 @@ impl Ctx {
             utility_llm_service: None,
             decisions: None,
             health_check_service: None,
+            system_doctor: None,
             mcp_event_triggers: None,
             channels: None,
             mcp_oauth_checker: None,

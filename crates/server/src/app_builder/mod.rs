@@ -1056,6 +1056,13 @@ impl ServerAppBuilder {
             user_connections_state.clone(),
         )))
         .with_provider_services(provider_services.clone())
+        .with_system_doctor(health::system_doctor(
+            &db,
+            &scheduler_store,
+            &encryption,
+            &auth_config,
+            host_composition.utility_llm_service().is_configured(),
+        ))
         .with_connection_resolver(optional_connection_resolver(
             &db,
             &encryption,
@@ -1078,6 +1085,7 @@ impl ServerAppBuilder {
 
         let health_state = health::HealthState {
             auth_mode: format!("{:?}", auth_config.mode),
+            db: db.clone(),
         };
 
         let feature_flags_state = api::feature_flags::AppState {
@@ -1174,6 +1182,7 @@ impl ServerAppBuilder {
                 ),
             ))
             .merge(api::health_issues::routes(api_state.clone()))
+            .merge(api::system::routes(api_state.clone()))
             .merge(api::memory::routes(api_state.clone()))
             .merge(api::workspaces::routes(api_state.clone()))
             .merge(api::workspace_files::routes(workspace_files_state))
@@ -1296,6 +1305,10 @@ impl ServerAppBuilder {
 
         // Main router
         let mut app = Router::new()
+            .route(
+                "/health/ready",
+                get(health::ready).with_state(health_state.clone()),
+            )
             .route("/health", get(health::endpoint).with_state(health_state))
             .route(
                 "/api-doc/openapi.json",

@@ -16,6 +16,7 @@
 * [Localization And Timezone Resolution](localization.md) - Locale/timezone resolution and backend localization rules.
 * [Notifications](notifications.md) - Generic user notifications.
 * [Actionable Health Issues](health-issues.md) - Persistent operational issues and verified recovery through notifications.
+* [System Doctor](system-doctor.md) - Whole-install health checks in plain language, adapted to every hosting mode.
 * [Email Sending](email.md) - Internal email delivery abstraction.
 * [Egress Service](egress.md) - Host-owned outbound network boundary and future gateway.
 * [Utility LLM Service](utility-llm.md) - Internal utility LLM service for capability internals.

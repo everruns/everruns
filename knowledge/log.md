@@ -4,6 +4,8 @@
 
 - History and manager-context changes now select their REST/command integration contract before merge, including the first mutation's restorable baseline. See [CI Build Time](project/ci-build-time.md).
 
+- Added the [System Doctor](operations/system-doctor.md): platform-wide checks with plain-language fixes over `/v1/system/doctor` and `everruns system doctor`, and a `/health/ready` readiness probe.
+
 ## 2026-10-26
 
 - Chat now treats subchats as independent instances, renders one active conversation,

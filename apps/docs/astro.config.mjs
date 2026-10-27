@@ -442,6 +442,7 @@ export default defineConfig({
                   items: [
                     { label: "Environment Variables", slug: "sre/environment-variables" },
                     { label: "Admin Container", slug: "sre/admin-container" },
+                    { label: "System Doctor", slug: "sre/system-doctor" },
                     { label: "Request Signing", slug: "sre/request-signing" },
                     {
                       label: "Runbooks",

@@ -89,6 +89,17 @@ impl ValkeyClient {
         })
     }
 
+    /// Round-trip one `PING`, for the system doctor.
+    pub async fn ping(&self) -> Result<()> {
+        let _: String = self.client.ping(None).await.context("Valkey PING failed")?;
+        Ok(())
+    }
+
+    /// Close the connection.
+    pub async fn quit(&self) {
+        let _ = self.client.quit().await;
+    }
+
     /// Check rate limit using sliding window counter.
     ///
     /// Returns `Ok(remaining)` if the request is allowed.
