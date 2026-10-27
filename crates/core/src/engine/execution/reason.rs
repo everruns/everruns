@@ -899,15 +899,12 @@ impl ReasonAtom {
                     Ok(result) => result,
                     Err(_) => {
                         compaction_lifecycle.fail_if(provider_managed).await;
-                        let error = AgentLoopError::llm_kind(
-                            crate::engine::error::LlmErrorKind::Unavailable,
-                            format!(
-                                "provider retry time budget exhausted after {} retries over {:.1}s; the turn is safe to resume",
-                                stream_retry_metadata.attempts,
-                                retry_config.max_retry_elapsed.as_secs_f64()
-                            ),
-                        )
-                        .with_retry_metadata(&stream_retry_metadata);
+                        let error = durable_retry::budget_exhausted(
+                            &stream_retry_metadata,
+                            stream_retry_metadata.total_retry_elapsed
+                                + retry_started_at
+                                    .map_or(std::time::Duration::ZERO, |started| started.elapsed()),
+                        );
                         failed_generation
                             .emit(&error.to_string(), None, &stream_retry_metadata)
                             .await;
@@ -1050,6 +1047,7 @@ impl ReasonAtom {
                         "ReasonAtom: transient provider failure before stream, retrying"
                     );
                     stream_retry_metadata.record_retry(wait_duration, None);
+                    stream_retry_metadata.record_failure(&e);
                     everruns_contracts::rt::sleep(wait_duration).await;
                     continue 'stream_attempt;
                 }
@@ -1178,6 +1176,10 @@ impl ReasonAtom {
                                 "ReasonAtom: provider stream stall, retrying"
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
+                            stream_retry_metadata.record_failure(&AgentLoopError::llm_kind(
+                                crate::engine::error::LlmErrorKind::Unavailable,
+                                stall_error.message.clone(),
+                            ));
                             everruns_contracts::rt::sleep(wait_duration).await;
                             stream_state::restart(&self.event_emitter, &started, &text).await;
                             continue 'stream_attempt;
@@ -1503,7 +1505,8 @@ impl ReasonAtom {
                                 retry_config.max_retries,
                             )
                         {
-                            let error = AgentLoopError::llm_kind(err.kind(), err.to_string());
+                            // Keep status and code for the retained cause.
+                            let error = err.clone().into_agent_error();
                             if text.is_empty() {
                                 return Err(durable_retry::retryable_start(error));
                             }
@@ -1586,6 +1589,7 @@ impl ReasonAtom {
                                 "ReasonAtom: transient stream error before output, retrying"
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
+                            stream_retry_metadata.record_failure(&err.clone().into_agent_error());
                             everruns_contracts::rt::sleep(wait_duration).await;
                             stream_state::restart(&self.event_emitter, &started, &text).await;
                             continue 'stream_attempt;

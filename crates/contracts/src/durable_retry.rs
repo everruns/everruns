@@ -1,9 +1,11 @@
 //! Host-owned checkpoints for provider recovery. A parked retry is control
 //! flow, never a failed turn or a suspended language-runtime stack.
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
+use crate::llm_error::LlmError;
 use crate::llm_retry::{LlmRetryConfig, RetryMetadata};
+use crate::retry_failure::RetryFailure;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::{future::Future, sync::Arc, time::Duration};
 
 /// Secret-free, versioned continuation of one turn's reasoning iteration.
@@ -16,6 +18,24 @@ pub struct RetryCheckpoint {
     pub wake_at_ms: i64,
     pub total_wait_ms: u64,
     pub policy: LlmRetryConfig,
+    /// The provider failure the latest retry answers, so a window that
+    /// expires after executor loss still names its cause (EVE-1318).
+    /// Absent from checkpoints written before it existed; an unreadable one
+    /// is dropped rather than failing the turn's recovery.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "lenient_failure"
+    )]
+    pub last_failure: Option<RetryFailure>,
+}
+
+fn lenient_failure<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<RetryFailure>, D::Error> {
+    Ok(Option::<serde_json::Value>::deserialize(deserializer)?
+        .and_then(|value| serde_json::from_value::<RetryFailure>(value).ok())
+        .map(RetryFailure::sanitized))
 }
 
 /// The session authority supplies time, fenced persistence and a durable wake.
@@ -136,8 +156,34 @@ fn metadata(checkpoint: &RetryCheckpoint) -> RetryMetadata {
     RetryMetadata {
         attempts: checkpoint.attempts,
         total_retry_wait: Duration::from_millis(checkpoint.total_wait_ms),
+        last_failure: checkpoint.last_failure.clone(),
         ..Default::default()
     }
+}
+
+/// The terminal error once the recovery window closes. It names the budget
+/// and keeps the last classified provider failure (kind, status and safe
+/// identifiers, never provider text), so a shared-pool 429, an outage and a
+/// network timeout stay distinguishable after an attempt that never answered.
+pub fn budget_exhausted(retry: &RetryMetadata, elapsed: Duration) -> AgentLoopError {
+    let mut message = format!(
+        "provider retry time budget exhausted after {} retries over {:.1}s",
+        retry.attempts,
+        elapsed.as_secs_f64()
+    );
+    let mut error = match &retry.last_failure {
+        Some(failure) => {
+            message.push_str(&format!("; last provider failure: {failure}"));
+            let mut error = LlmError::new(failure.kind, String::new());
+            error.status = failure.status;
+            error.code = failure.code.clone();
+            error
+        }
+        None => LlmError::new(LlmErrorKind::Unavailable, String::new()),
+    };
+    message.push_str("; the turn is safe to resume");
+    error.message = message;
+    AgentLoopError::Llm(error).with_retry_metadata(retry)
 }
 
 /// Restore the generation's count and wall time into the existing bounded
@@ -180,13 +226,11 @@ pub async fn prepare(operation: &str) -> Result<Option<AgentLoopError>> {
     }
     let now = host.now_ms().await?;
     if now >= checkpoint.expires_at_ms {
-        return Ok(Some(
-            AgentLoopError::llm_kind(
-                LlmErrorKind::Unavailable,
-                "provider recovery time budget exhausted",
-            )
-            .with_retry_metadata(&metadata(&checkpoint)),
-        ));
+        let elapsed = now.saturating_sub(checkpoint.started_at_ms).max(0) as u64;
+        return Ok(Some(budget_exhausted(
+            &metadata(&checkpoint),
+            Duration::from_millis(elapsed),
+        )));
     }
     if now < checkpoint.wake_at_ms {
         host.schedule(checkpoint.wake_at_ms).await?;
@@ -241,6 +285,7 @@ async fn retain_retry(
         wake_at_ms: now,
         total_wait_ms: 0,
         policy: config.clone(),
+        last_failure: None,
     });
     if state.version != 1 {
         return Err(AgentLoopError::config(
@@ -264,6 +309,9 @@ async fn retain_retry(
         return Ok(error.with_retry_metadata(&metadata(&state)));
     }
     state.attempts += 1;
+    if let Some(failure) = RetryFailure::from_error(&error) {
+        state.last_failure = Some(failure);
+    }
     state.total_wait_ms = state.total_wait_ms.saturating_add(wait_ms);
     state.wake_at_ms = now.saturating_add(i64::try_from(wait_ms).unwrap_or(i64::MAX));
     boundary.await?;
@@ -394,6 +442,51 @@ mod tests {
             assert_eq!(exhausted.llm_retry_attempts(), 1);
         })
         .await;
+    }
+
+    #[tokio::test]
+    async fn an_expired_window_names_the_classified_failure_it_retained() {
+        let host = Arc::new(Host::default());
+        let refused =
+            AgentLoopError::llm_http(429, r#"{"error":{"code":"rate_limit_exceeded"}}"#, "429");
+        scope(host.clone(), async {
+            assert!(is_parked(&retry("turn/1", &policy(), refused).await));
+        })
+        .await;
+        host.now.store(30_001, Ordering::SeqCst);
+        scope(host, async {
+            let exhausted = prepare("turn/1").await.unwrap().unwrap();
+            assert_eq!(exhausted.llm_error_kind(), Some(LlmErrorKind::RateLimited));
+            assert_eq!(exhausted.http_status(), Some(429));
+            assert_eq!(
+                exhausted.to_string(),
+                "LLM error: provider retry time budget exhausted after 1 retries over 30.0s; \
+                 last provider failure: rate_limited (HTTP 429, code rate_limit_exceeded); \
+                 the turn is safe to resume"
+            );
+        })
+        .await;
+    }
+
+    #[test]
+    fn checkpoints_without_or_with_an_unreadable_failure_still_load() {
+        let mut stored = serde_json::to_value(RetryCheckpoint {
+            version: 1,
+            attempts: 1,
+            started_at_ms: 0,
+            expires_at_ms: 1,
+            wake_at_ms: 1,
+            total_wait_ms: 1,
+            policy: policy(),
+            last_failure: None,
+        })
+        .unwrap();
+        assert!(stored.get("last_failure").is_none());
+        let old: RetryCheckpoint = serde_json::from_value(stored.clone()).unwrap();
+        assert!(old.last_failure.is_none());
+        stored["last_failure"] = serde_json::json!({"kind": "from_a_newer_build"});
+        let newer: RetryCheckpoint = serde_json::from_value(stored).unwrap();
+        assert!(newer.last_failure.is_none());
     }
 
     #[tokio::test]

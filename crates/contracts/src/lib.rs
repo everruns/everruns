@@ -87,6 +87,7 @@ pub mod provider;
 pub mod provider_limit;
 mod provider_managed;
 pub mod reasoning;
+pub mod retry_failure;
 pub mod rt;
 pub mod runtime_provider;
 pub mod secret_scrub;

@@ -137,11 +137,12 @@ impl ReasonAtom {
                     disclosure: ErrorDisclosure::default(),
                     error_context: UserFacingErrorContext::default(),
                     error_hooks: Vec::new(),
-                    result: Err(AgentLoopError::llm_kind(
-                        everruns_contracts::error::LlmErrorKind::Unavailable,
-                        "provider recovery time budget exhausted",
-                    )
-                    .with_retry_metadata(&retry)),
+                    result: Err(durable_retry::budget_exhausted(
+                        &retry,
+                        retry.total_retry_elapsed
+                            + started
+                                .map_or(std::time::Duration::ZERO, |started| started.elapsed()),
+                    )),
                 };
                 let outcome = match remaining_retry_time(&policy, started) {
                     Some(remaining) if remaining.is_zero() => exhausted(),
