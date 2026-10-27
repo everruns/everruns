@@ -273,6 +273,10 @@ async function renderPage() {
   });
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function save() {
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
@@ -356,6 +360,10 @@ describe("AgentPage layout", () => {
     expect(more.queryByRole("button", { name: /Files/ })).not.toBeInTheDocument();
     expect(more.getByRole("button", { name: /Network access\s*Inherited/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Sandbox\s*None/ })).toBeInTheDocument();
+    expect(
+      more.getByRole("button", { name: /Max output tokens\s*Provider default/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Max output tokens")).not.toBeInTheDocument();
     expect(more.getByRole("button", { name: /Health check\s*Not run/ })).toBeInTheDocument();
     // Status badge in view mode, Test in Playground is the primary action.
     expect(screen.getByText("active")).toBeInTheDocument();
@@ -645,13 +653,24 @@ describe("AgentPage edit mode", () => {
   it("sends a max output tokens ceiling and clears it back to the provider default", async () => {
     await renderPage();
     expect(
-      screen.getByText("Lower this if the provider says it can only afford fewer tokens."),
-    ).toBeInTheDocument();
+      screen.queryByText("Lower this if the provider says it can only afford fewer tokens."),
+    ).not.toBeInTheDocument();
 
-    const field = screen.getByLabelText("Max output tokens");
+    fireEvent.click(screen.getByRole("button", { name: /Max output tokens\s*Provider default/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Max output tokens" });
+    expect(
+      within(dialog).getByText("Lower this if the provider says it can only afford fewer tokens."),
+    ).toBeInTheDocument();
+    const field = within(dialog).getByRole("spinbutton", { name: "Max output tokens" });
     expect(field).toHaveAttribute("placeholder", "Provider default");
     fireEvent.change(field, { target: { value: "4096" } });
     expect(screen.getByText("Editing")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+    expect(
+      screen.getByRole("button", {
+        name: new RegExp(`Max output tokens\\s*${escapeRegExp((4096).toLocaleString())}`),
+      }),
+    ).toBeInTheDocument();
     await save();
     expect(mockUpdate.mock.calls[0][0].request.max_output_tokens).toBe(4096);
 
@@ -662,20 +681,37 @@ describe("AgentPage edit mode", () => {
     });
     cleanup();
     await renderPage();
-    expect(screen.getByLabelText("Max output tokens")).toHaveValue(2048);
-    fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "" } });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: new RegExp(`Max output tokens\\s*${escapeRegExp((2048).toLocaleString())}`),
+      }),
+    );
+    const reopened = await screen.findByRole("dialog", { name: "Max output tokens" });
+    const saved = within(reopened).getByRole("spinbutton", { name: "Max output tokens" });
+    expect(saved).toHaveValue(2048);
+    fireEvent.change(saved, { target: { value: "" } });
+    fireEvent.click(within(reopened).getByRole("button", { name: "Done" }));
     await save();
     expect(mockUpdate.mock.calls[0][0].request.max_output_tokens).toBeNull();
   });
 
   it("rejects a zero max output tokens ceiling instead of saving", async () => {
     await renderPage();
-    fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: /Max output tokens/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Max output tokens" });
+    fireEvent.change(within(dialog).getByRole("spinbutton", { name: "Max output tokens" }), {
+      target: { value: "0" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
     await save();
 
     expect(mockUpdate).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Max output tokens")).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText("Enter a whole number of at least 1")).toBeInTheDocument();
+    const invalid = await screen.findByRole("dialog", { name: "Max output tokens" });
+    expect(within(invalid).getByRole("spinbutton", { name: "Max output tokens" })).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(within(invalid).getByText("Enter a whole number of at least 1")).toBeInTheDocument();
   });
 
   it("feeds unsaved prompt text to the checks and applies their fixes", async () => {

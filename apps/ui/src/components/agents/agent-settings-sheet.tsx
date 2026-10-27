@@ -4,7 +4,7 @@
 // column or an accordion cannot give, so each opens here, over the page.
 //
 // Two kinds of section live here and the sheet says which:
-// - Draft sections (Branding, Files, Network access) edit the page's
+// - Draft sections (Branding, Files, Network access, Max output tokens) edit the page's
 //   draft. A change puts the page into edit mode; nothing saves until the
 //   header's Save changes.
 // - Live sections (MCP servers, Credentials, Service account) manage their own
@@ -50,6 +50,7 @@ export type AgentSettingsSection =
   | "files"
   | "network"
   | "sandbox"
+  | "max_output_tokens"
   | "usage"
   | "health";
 
@@ -97,6 +98,12 @@ const SECTIONS: Record<
     description: "Sandbox bindings available when a new Playground Session starts.",
     kind: "draft",
     wide: true,
+  },
+  max_output_tokens: {
+    title: "Max output tokens",
+    description:
+      "Ceiling on tokens one model response may use. Leave this empty for the provider default.",
+    kind: "draft",
   },
   usage: {
     title: "Token usage",
@@ -176,6 +183,7 @@ export function AgentSettingsSheet({
                         files: "initial_files",
                         network: "network_access",
                         sandbox: "sandbox_policy",
+                        max_output_tokens: "max_output_tokens",
                         mcp: ["mcpServers", "mcp_servers"],
                         service: "service_virtual_user_id",
                       } as Record<string, string | string[]>
@@ -232,6 +240,13 @@ export function AgentSettingsSheet({
                     disabled={readOnly}
                   />
                 ))}
+              {active === "max_output_tokens" && (
+                <MaxOutputTokensSection
+                  draft={draft}
+                  readOnly={readOnly}
+                  onDraftChange={onDraftChange}
+                />
+              )}
               {active === "usage" && <UsageSection agent={agent} />}
               {active === "health" && <AgentHealthCheck agentId={agent.id} />}
             </ChatChangeMark>
@@ -382,6 +397,49 @@ function BrandingSection({
           onChange={onDraftChange(draft.setStarters)}
           error={errors.starters}
         />
+      )}
+    </div>
+  );
+}
+
+function MaxOutputTokensSection({
+  draft,
+  readOnly,
+  onDraftChange,
+}: {
+  draft: AgentDraft;
+  readOnly: boolean;
+  onDraftChange: AgentSettingsSheetProps["onDraftChange"];
+}) {
+  const setMaxOutputTokens = onDraftChange((value: string) =>
+    draft.setField("max_output_tokens", value),
+  );
+  const invalid = Boolean(draft.errors.max_output_tokens);
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="max-output-tokens">Max output tokens</Label>
+      <Input
+        id="max-output-tokens"
+        type="number"
+        inputMode="numeric"
+        min={1}
+        step={1}
+        placeholder="Provider default"
+        value={draft.fields.max_output_tokens}
+        onChange={(event) => setMaxOutputTokens(event.target.value)}
+        aria-invalid={invalid ? true : undefined}
+        aria-describedby={!readOnly && !invalid ? "max-output-tokens-hint" : undefined}
+        disabled={readOnly}
+      />
+      {invalid ? (
+        <p className="text-xs text-destructive">{draft.errors.max_output_tokens}</p>
+      ) : (
+        !readOnly && (
+          <p id="max-output-tokens-hint" className="text-xs text-muted-foreground">
+            Lower this if the provider says it can only afford fewer tokens.
+          </p>
+        )
       )}
     </div>
   );
