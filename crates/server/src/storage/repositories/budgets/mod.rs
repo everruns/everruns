@@ -134,6 +134,40 @@ impl Database {
         Ok(rows)
     }
 
+    /// Every budget that is not disabled on any of the `lookup` subjects, in
+    /// one query. The hierarchy listing used to issue one query per level.
+    pub async fn list_budgets_for_subjects(
+        &self,
+        org_id: i64,
+        lookup: BudgetSubjectLookup<'_>,
+    ) -> Result<Vec<BudgetRow>> {
+        let pairs = lookup.to_pairs();
+        if pairs.is_empty() {
+            return Ok(vec![]);
+        }
+        let types: Vec<&str> = pairs.iter().map(|(t, _)| *t).collect();
+        let ids: Vec<&str> = pairs.iter().map(|(_, i)| *i).collect();
+        let rows = sqlx::query_as::<_, BudgetRow>(
+            r#"
+            SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
+                   balance, period, period_started_at, metadata, status, created_at, updated_at
+            FROM budgets
+            WHERE org_id = $1
+              AND status != 'disabled'
+              AND (subject_type, subject_id) IN (
+                  SELECT UNNEST($2::TEXT[]), UNNEST($3::TEXT[])
+              )
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(org_id)
+        .bind(&types)
+        .bind(&ids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     /// Get all active budgets applicable to a session, walking the full
     /// `session → app_channel → app → agent → user → org` hierarchy.
     /// Empty/missing layers are silently skipped.

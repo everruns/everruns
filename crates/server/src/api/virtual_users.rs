@@ -246,6 +246,43 @@ async fn update_me(
     Json(mut req): Json<UpdateVirtualUserRequest>,
 ) -> Result<Json<VirtualUser>, (StatusCode, Json<ErrorResponse>)> {
     let id = org.id;
+    if let Some(management) = &org.management {
+        return state
+            .dispatcher(management)
+            .run(
+                crate::domains::virtual_users::self_profile::UpdateOwnVirtualUserProfile {
+                    id: id.to_string(),
+                    req,
+                },
+            )
+            .await;
+    }
+    // Runtime credentials have already proved this account in the extractor.
+    // Share the mutation lock without manufacturing management rights.
+    let caller = everruns_core::Caller {
+        org_id: org.org_id,
+        org_public_id: everruns_core::organization::org_public_id_from_internal(org.org_id),
+        user_id: None,
+        role: everruns_core::OrgRole::Member,
+        is_platform_user: false,
+        is_internal: false,
+        read_only: false,
+    };
+    let ctx = crate::domains::common::Ctx::minimal(
+        caller,
+        state.db.clone(),
+        None,
+        std::sync::Arc::new(everruns_core::DefaultPermissionResolver),
+    );
+    let _lease = crate::domains::change_history::mutation_guard::acquire(
+        &ctx,
+        &crate::domains::change_history::mutation_guard::Key::new(
+            &ctx,
+            crate::domains::change_history::EntityKind::VirtualUser,
+            &id.to_string(),
+        ),
+    )
+    .await?;
     if req.status.is_some() {
         return Err(ErrorResponse::new("Self-service cannot change lifecycle")
             .into_response(StatusCode::FORBIDDEN));

@@ -156,7 +156,7 @@ pub use self::deployment::DeploymentGrade;
 pub use self::egress::{
     DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
     EgressResponse, EgressResult, EgressScope, EgressService, EgressSigning, EgressStreamResponse,
-    ScopedEgressService,
+    SandboxProxyCredential, ScopedEgressService,
 };
 pub use self::event_emitter::EventEmitter;
 pub use self::events::{

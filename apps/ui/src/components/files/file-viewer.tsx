@@ -10,7 +10,12 @@ import { File, X, Save, Edit3, Lock, Download, Eye, Code2 } from "lucide-react";
 import { FileIcon } from "./file-icon";
 import { FilePreview, canPreview, getPreviewType } from "./file-previews";
 import { useFile, useUpdateFile } from "@/hooks/use-session-files";
-import { formatFileSize, getFileExtension, htmlPreviewUrl } from "@/lib/api/session-files";
+import {
+  fileDownloadUrl,
+  formatFileSize,
+  getFileExtension,
+  htmlPreviewUrl,
+} from "@/lib/api/session-files";
 import type { FileInfo } from "@/lib/api/types";
 
 interface FileViewerProps {
@@ -68,6 +73,17 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
   const handleDownload = () => {
     if (!fileData?.content) return;
 
+    // Binary content arrives base64-encoded; the raw download gives the real bytes.
+    if (fileData.encoding === "base64" && workspaceId) {
+      const a = document.createElement("a");
+      a.href = fileDownloadUrl(workspaceId, file.path);
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
+
     const blob = new Blob([fileData.content], {
       type: fileData.encoding === "base64" ? "application/octet-stream" : "text/plain",
     });
@@ -88,10 +104,12 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
   const hasPreview = canPreview(extension, encoding);
   // HTML previews load through the sandboxed server endpoint so their JS can run
   // in an isolated origin; only available once we know the workspace.
+  const previewType = getPreviewType(extension, encoding);
   const htmlPreviewSrc =
-    workspaceId && getPreviewType(extension, encoding) === "html"
-      ? htmlPreviewUrl(workspaceId, file.path)
-      : undefined;
+    workspaceId && previewType === "html" ? htmlPreviewUrl(workspaceId, file.path) : undefined;
+  // Videos stream from the raw download so the player can seek.
+  const videoSrc =
+    workspaceId && previewType === "video" ? fileDownloadUrl(workspaceId, file.path) : undefined;
 
   return (
     <Card className="h-full flex flex-col">
@@ -213,6 +231,7 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
             extension={extension}
             encoding={encoding}
             htmlPreviewSrc={htmlPreviewSrc}
+            videoSrc={videoSrc}
           />
         ) : (
           <ScrollArea className="h-full">

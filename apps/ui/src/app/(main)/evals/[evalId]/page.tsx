@@ -3,6 +3,8 @@
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { use, useState, useCallback } from "react";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { evalCaseDraftSchema } from "@/components/chat-mode/page-form-schemas";
 import {
   useEval,
   useEvalCases,
@@ -229,9 +231,35 @@ function AddCaseForm({ evalId, onCreated }: { evalId: string; onCreated: () => v
     "contains" | "not_contains" | "regex" | "tool_called"
   >("contains");
   const [scorerValue, setScorerValue] = useState("");
+  const chat = usePageFormDraft({
+    schema: evalCaseDraftSchema,
+    entityType: "eval_case",
+    entityId: evalId,
+    label: "Add test case",
+    formId: "new_case",
+    baseline: "new",
+    dirty:
+      !!name || !!description || !!messageContent || !!scorerValue || scorerType !== "contains",
+    values: {
+      name,
+      description,
+      messages: messageContent,
+      scorer_type: scorerType,
+      scorer_value: scorerValue,
+    },
+    writable: !createCase.isPending,
+    apply: (values) => {
+      setName(values.name);
+      setDescription(values.description);
+      setMessageContent(values.messages);
+      setScorerType(values.scorer_type);
+      setScorerValue(values.scorer_value);
+    },
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (chat.blocked) return;
 
     const conversation: EvalInputMessage[] = messageContent
       .split("\n")
@@ -278,6 +306,7 @@ function AddCaseForm({ evalId, onCreated }: { evalId: string; onCreated: () => v
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {chat.notice}
           <div className="space-y-2">
             <Label htmlFor="case-name">Name</Label>
             <Input
@@ -328,7 +357,7 @@ function AddCaseForm({ evalId, onCreated }: { evalId: string; onCreated: () => v
               />
             </div>
           </div>
-          <Button type="submit" size="sm" disabled={createCase.isPending}>
+          <Button type="submit" size="sm" disabled={chat.blocked || createCase.isPending}>
             {createCase.isPending ? "Adding..." : "Add Case"}
           </Button>
           {createCase.error && (
@@ -483,13 +512,20 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
         <TabsContent value="cases">
           <div className="space-y-4">
             <div className="flex justify-end">
-              <Button variant="outline" size="sm" onClick={() => setShowAddCase(!showAddCase)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!can("agent.manage") || ev.status !== "active"}
+                onClick={() => setShowAddCase(!showAddCase)}
+              >
                 <Plus className="w-4 h-4 mr-2" />
                 {showAddCase ? "Cancel" : "Add Case"}
               </Button>
             </div>
 
-            {showAddCase && <AddCaseForm evalId={evalId} onCreated={() => setShowAddCase(false)} />}
+            {showAddCase && can("agent.manage") && ev.status === "active" && (
+              <AddCaseForm evalId={evalId} onCreated={() => setShowAddCase(false)} />
+            )}
 
             {casesLoading ? (
               <div className="space-y-3">

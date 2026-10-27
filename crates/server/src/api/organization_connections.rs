@@ -2,7 +2,7 @@
 //! declaring `sandbox_provisioning`) and search accounts (connectors declaring
 //! `web_search`).
 
-use crate::auth::middleware::OrgAdmin;
+use crate::auth::middleware::{AuthUser, OrgAdmin, OrgContext};
 use crate::storage::CreateOrganizationConnectionRow;
 use axum::{
     Json, Router,
@@ -54,7 +54,9 @@ pub fn routes(state: AppState) -> Router {
         )
         .route(
             "/v1/orgs/{org}/organization-connections/{connection_id}",
-            put(update_connection).delete(delete_connection),
+            put(update_connection)
+                .patch(rename_connection)
+                .delete(delete_connection),
         )
         .route(
             "/v1/orgs/{org}/organization-connections/{connection_id}/verify",
@@ -63,6 +65,18 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state.clone())
         // Web search reads these accounts; its catalog and preview share the state.
         .merge(super::search_providers::routes(state))
+}
+
+fn account_caller(org: &OrgContext, user: &AuthUser) -> everruns_core::Caller {
+    everruns_core::Caller {
+        org_id: org.org_id,
+        org_public_id: org.public_id.clone(),
+        user_id: Some(user.id),
+        role: org.role,
+        is_platform_user: user.is_platform_user,
+        is_internal: false,
+        read_only: crate::auth::pat_scope::PatScope::restricts_writes(user.pat_scope),
+    }
 }
 
 fn clean_name(name: &str) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
@@ -204,6 +218,7 @@ pub async fn create_connection(
 pub async fn update_connection(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
+    user: AuthUser,
     Path((_org, connection_id)): Path<(String, Uuid)>,
     Json(body): Json<SaveOrganizationConnectionRequest>,
 ) -> Result<Json<OrganizationConnectionResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -238,6 +253,17 @@ pub async fn update_connection(
             ErrorResponse::new("Failed to store connection")
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
+    let review = crate::domains::change_history::rest::RestChange::begin(
+        state.db.clone(),
+        account_caller(&org, &user),
+        "update_organization_connection",
+        crate::domains::change_history::EntityKind::OrganizationAccount,
+        crate::domains::change_history::ChangeAction::Updated,
+        Some(&connection_id.to_string()),
+        &["name"],
+    )
+    .await
+    .map_err(<(StatusCode, Json<ErrorResponse>)>::from)?;
     let row = state
         .db
         .update_organization_connection(
@@ -252,6 +278,54 @@ pub async fn update_connection(
         .map_err(|_| {
             ErrorResponse::new("Failed to store connection")
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+        })?
+        .ok_or_else(|| {
+            ErrorResponse::new("Connection not found").into_response(StatusCode::NOT_FOUND)
+        })?;
+    review.finish(&connection_id.to_string()).await;
+    Ok(Json(OrganizationConnectionResponse::from_row(row)))
+}
+
+/// A display-name change that preserves the connected account credential.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RenameOrganizationConnectionRequest {
+    pub name: String,
+}
+#[utoipa::path(patch, path = "/v1/orgs/{org}/organization-connections/{connection_id}", description = "Rename an organization account without replacing credentials.", request_body = RenameOrganizationConnectionRequest, responses((status = 200, body = OrganizationConnectionResponse)), tag = "sandbox-templates")]
+pub async fn rename_connection(
+    State(state): State<AppState>,
+    OrgAdmin(org): OrgAdmin,
+    user: AuthUser,
+    Path((target_org, connection_id)): Path<(String, Uuid)>,
+    Json(body): Json<RenameOrganizationConnectionRequest>,
+) -> Result<Json<OrganizationConnectionResponse>, (StatusCode, Json<ErrorResponse>)> {
+    use crate::domains::common::{Command, Ctx};
+    if target_org != org.public_id {
+        return Err(
+            ErrorResponse::new("Organization not found").into_response(StatusCode::NOT_FOUND)
+        );
+    }
+    let ctx = Ctx::minimal(
+        account_caller(&org, &user),
+        state.db.clone(),
+        state.encryption.clone(),
+        state.auth.permission_resolver.clone(),
+    );
+    crate::domains::organizations::provider_accounts::UpdateOrganizationAccountName {
+        id: connection_id,
+        req: crate::domains::organizations::provider_accounts::OrganizationAccountNameRequest {
+            name: body.name,
+        },
+    }
+    .run(&ctx)
+    .await
+    .map_err(<(StatusCode, Json<ErrorResponse>)>::from)?;
+    let row = state
+        .db
+        .get_organization_connection(org.org_id, connection_id)
+        .await
+        .map_err(|_| {
+            ErrorResponse::new("Internal error").into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?
         .ok_or_else(|| {
             ErrorResponse::new("Connection not found").into_response(StatusCode::NOT_FOUND)

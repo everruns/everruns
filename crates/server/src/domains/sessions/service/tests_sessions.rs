@@ -816,7 +816,7 @@ async fn fork_copies_history_files_and_records_lineage() {
         .await
         .unwrap();
     }
-    db.create_session_file(CreateSessionFileRow {
+    db.create_session_file(crate::storage::CreateSessionFileRow {
         session_id: SessionId::from_uuid(parent.workspace_id.uuid()),
         path: "/notes.txt".to_string(),
         content: Some(b"fork me".to_vec()),

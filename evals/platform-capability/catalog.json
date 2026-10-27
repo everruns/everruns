@@ -798,6 +798,58 @@
     "read_only": false
   },
   {
+    "category": "models",
+    "cli": "models selection apply",
+    "description": "Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.",
+    "input_schema": {
+      "$defs": {
+        "ModelSelectionChange": {
+          "description": "A reviewed model enablement change with the provider and state the user saw.",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "expected_enabled": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "provider_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "provider_id",
+            "expected_enabled",
+            "enabled"
+          ],
+          "type": "object"
+        }
+      },
+      "description": "Apply a set of reviewed model enablement changes in one transaction.",
+      "properties": {
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/ModelSelectionChange"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "changes"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "apply_model_selection",
+    "output_shape": "unknown",
+    "path": "/v1/models/selection",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "knowledge",
     "cli": "knowledge delete",
     "description": "Archive a knowledge collection.",
@@ -1491,7 +1543,7 @@
   {
     "category": "agents",
     "cli": "agents source connect",
-    "description": "Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.",
+    "description": "Apply a reviewed GitHub package and enable continuous sync. Pull mode is read-only; two_way also publishes local edits using conditional commits.",
     "input_schema": {
       "$defs": {
         "ConnectSourceRequest": {
@@ -1520,6 +1572,10 @@
                     "string",
                     "null"
                   ]
+                },
+                "mode": {
+                  "$ref": "#/$defs/SourceMode",
+                  "description": "Synchronization direction; two_way requires repository Contents write access."
                 }
               },
               "required": [
@@ -1555,6 +1611,14 @@
             "branch"
           ],
           "type": "object"
+        },
+        "SourceMode": {
+          "description": "Source direction. Existing bindings remain inbound-only until explicitly changed.",
+          "enum": [
+            "pull",
+            "two_way"
+          ],
+          "type": "string"
         }
       },
       "allOf": [
@@ -10900,6 +10964,29 @@
     "read_only": false
   },
   {
+    "category": "users",
+    "cli": "users profile get",
+    "description": "Read your own editable profile, without email, tokens or credentials.",
+    "input_schema": {
+      "description": "Read the editable profile belonging to the signed-in account.",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_account_profile",
+    "output_shape": "unknown",
+    "path": "/v1/users/{id}/profile",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "agents",
     "cli": "agents get",
     "description": "Get a single agent by ID or name.",
@@ -11699,6 +11786,29 @@
   },
   {
     "category": "organizations",
+    "cli": "orgs decision-settings get",
+    "description": "Read the active organization's decision-model selection without model credentials.",
+    "input_schema": {
+      "description": "Read the active organization decision-model selection without credentials.",
+      "properties": {
+        "org": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "org"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_org_decision_settings",
+    "output_shape": "unknown",
+    "path": "/v1/orgs/{org}/decision-settings",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "organizations",
     "cli": "orgs egress-allowlist get",
     "description": "Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode.",
     "input_schema": {
@@ -11718,6 +11828,53 @@
     "output_shape": "unknown",
     "path": "/v1/orgs/{org}/egress-allowlist",
     "positional_arg": "org",
+    "read_only": true
+  },
+  {
+    "category": "organizations",
+    "cli": "organization-accounts get",
+    "description": "Read an organization account's editable name. Credentials are never returned.",
+    "input_schema": {
+      "description": "Read the editable name of an authorized organization account.",
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_organization_account",
+    "output_shape": "unknown",
+    "path": "/v1/organization-accounts/{id}",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "virtual_users",
+    "cli": "virtual-users self-profile get",
+    "description": "Read your own organization profile.",
+    "input_schema": {
+      "description": "Read the active organization profile bound to the signed-in account.",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_own_virtual_user_profile",
+    "output_shape": "unknown",
+    "path": "/v1/virtual-users/{id}/self-profile",
+    "positional_arg": null,
     "read_only": true
   },
   {
@@ -11946,6 +12103,37 @@
     "name": "get_sandbox_fleet_stats",
     "output_shape": "unknown",
     "path": "/v1/sandboxes/stats",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "sandbox-templates",
+    "cli": "sandbox-template-metadata get",
+    "description": "Read editable Sandbox Template metadata, excluding execution configuration and environment values.",
+    "input_schema": {
+      "$defs": {
+        "sbxtplId": {
+          "description": "Prefixed identifier with 'sbxtpl' prefix",
+          "example": "sbxtpl_01933b5a000070008000000000000001",
+          "pattern": "^sbxtpl_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "description": "Read authorized Sandbox Template metadata without execution configuration.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/sbxtplId"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_sandbox_template_metadata",
+    "output_shape": "unknown",
+    "path": "/v1/sandbox-template-metadata/{id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -17490,7 +17678,7 @@
           "type": "string"
         },
         "expected_revision": {
-          "description": "Refuse if the Agent changed after this revision. Guarded restores are atomic.",
+          "description": "Refuse if the resource changed after this revision.",
           "format": "int64",
           "type": [
             "integer",
@@ -17498,7 +17686,7 @@
           ]
         },
         "fields": {
-          "description": "Restore only these top-level Agent fields; omit to restore the full definition.\nRequires expected_revision. Secrets and fields the update cannot restore are refused.",
+          "description": "Restore only these top-level fields; omit to restore the full definition.\nRequires expected_revision. Secrets and fields the update cannot restore are refused.",
           "items": {
             "type": "string"
           },
@@ -18995,6 +19183,56 @@
     "read_only": false
   },
   {
+    "category": "models",
+    "cli": "models selection undo",
+    "description": "Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.",
+    "input_schema": {
+      "$defs": {
+        "UndoModelSelectionItem": {
+          "description": "A saved model selection change to restore at an expected current revision.",
+          "properties": {
+            "expected_revision": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "from_revision": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "from_revision",
+            "expected_revision"
+          ],
+          "type": "object"
+        }
+      },
+      "description": "Restore reviewed model selections atomically while their revisions remain current.",
+      "properties": {
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/UndoModelSelectionItem"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "changes"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "undo_model_selection",
+    "output_shape": "unknown",
+    "path": "/v1/models/selection/undo",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "plugins",
     "cli": "plugins uninstall",
     "description": "Uninstall a plugin. Capability ref becomes dangling for assigned agents.",
@@ -19066,6 +19304,33 @@
     "name": "unpublish_agent_channel",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "users",
+    "cli": "users me update",
+    "description": "Update your own account display name.",
+    "input_schema": {
+      "description": "Update the signed-in account display name across organizations.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "method": "PATCH",
+    "name": "update_account_profile",
+    "output_shape": "unknown",
+    "path": "/v1/users/me",
     "positional_arg": null,
     "read_only": false
   },
@@ -23498,6 +23763,360 @@
     "read_only": false
   },
   {
+    "category": "organizations",
+    "cli": "orgs update",
+    "description": "Update the active organization's name and defaults.",
+    "input_schema": {
+      "$defs": {
+        "SearchFallbackMode": {
+          "description": "What happens when a provider cannot answer.",
+          "enum": [
+            "next",
+            "none"
+          ],
+          "type": "string"
+        },
+        "SearchProviderSetting": {
+          "description": "Which provider web search uses.",
+          "enum": [
+            "org_default",
+            "auto",
+            "native",
+            "brave",
+            "parallel",
+            "account",
+            "free"
+          ],
+          "type": "string"
+        },
+        "SystemDecisions": {
+          "description": "Who answers an org's deployment-owned decision checks (guardrail `jev`\nchecks and the Slack relevance check).",
+          "enum": [
+            "deployment",
+            "organization"
+          ],
+          "type": "string"
+        },
+        "UpdateOrganizationRequest": {
+          "description": "Request to update an organization",
+          "properties": {
+            "agentid_agents_per_owner": {
+              "description": "How many agents one AgentID owner may sign in to this organization's\nPublic Chat channels. Pass null to use the platform default (5).",
+              "example": 5,
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "base_harness_id": {
+              "description": "Base harness to use when a session is started without an explicit harness_id.",
+              "example": "harness_01933b5a000070008000000000000601",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "chat_model_id": {
+              "description": "Independent model for the built-in Everruns Chat. Omit to preserve; null inherits\nthe agents/sessions default. Must be an available shared chat model with tools.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default_harness_id": {
+              "description": "Default harness to preselect in the UI for new sessions.\nMutually exclusive with `default_harness_name`.",
+              "example": "harness_01933b5a000070008000000000000602",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default_harness_name": {
+              "description": "Alternative to `default_harness_id` — looked up by stable name within the org.\nMutually exclusive with `default_harness_id`.",
+              "example": "conversation",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default_model_id": {
+              "description": "Default LLM model for this organization. Must be enabled; pass null to use the platform\ndefault.",
+              "example": "model_01933b5a00007000800000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default_provider_per_service": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Org-level default provider per service (EVE-569). Maps a service kind\n(`chat`, `embeddings`, `realtime`, `images`, `rerank`) to the provider id\nused as that service's default, consulted after an explicit binding and\nbefore the single-active-provider fallback. When present it **replaces**\nthe whole map; each referenced provider must exist in the org.",
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "The display name of the organization.",
+              "example": "Acme Corporation",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "small_model_id": {
+              "description": "Shared small chat model for lightweight work. Omit to preserve the selection;\npass null to clear it. Does not change the main chat or decision default.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "system_decisions": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SystemDecisions",
+                  "description": "Who answers deployment-owned decision checks (guardrail `jev` checks\nand the Slack relevance check). `organization` uses the org's default\ndecision model (`PUT /v1/models/decision-default`) on its own provider\naccount; when that model is missing or failing, guardrail checks fail\nopen and Slack stays silent, never falling back to the deployment."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "web_search_defaults": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/WebSearchDefaults",
+                  "description": "Web search defaults; replaces the stored defaults as a whole. Omitted\nfields take their built-in default. `provider` cannot be\n`org_default`, `account_id` and `automatic_order` entries must name\nthis organization's search accounts, free search is always last in\nthe Automatic order, and `results_per_search` is 1 to 20."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "WebSearchDefaults": {
+          "additionalProperties": false,
+          "description": "An organization's web search defaults.",
+          "properties": {
+            "account_id": {
+              "description": "The search account when `provider` is `account`.",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "allow_native": {
+              "description": "Whether agents may use the model provider's own search (billed by the\nmodel provider).",
+              "type": "boolean"
+            },
+            "automatic_order": {
+              "description": "Automatic order: `native`, search account ids, `hosted` (the\ndeployment's own search, when it offers one) and `free`, which is\nalways last. Entries left out keep their natural place.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "blocked_domains": {
+              "description": "Sites no search in this organization returns, on top of each agent's.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "fallback": {
+              "$ref": "#/$defs/SearchFallbackMode",
+              "description": "When a provider cannot answer: `next` falls back (free search last),\n`none` stops. An agent's own `fallback` wins."
+            },
+            "provider": {
+              "$ref": "#/$defs/SearchProviderSetting",
+              "description": "Provider for agents set to the organization default: `auto`, `native`,\n`brave`, `account` (with `account_id`) or `free`."
+            },
+            "results_per_search": {
+              "description": "Results per search when neither the model nor the agent asks (1 to 20).",
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/UpdateOrganizationRequest"
+        },
+        {
+          "properties": {
+            "org": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "org"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Update the active organization name and explicitly supplied defaults."
+    },
+    "method": "PATCH",
+    "name": "update_org",
+    "output_shape": "unknown",
+    "path": "/v1/orgs/{org}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "organizations",
+    "cli": "organization-accounts update",
+    "description": "Rename an organization account while preserving its current credentials.",
+    "input_schema": {
+      "$defs": {
+        "OrganizationAccountNameRequest": {
+          "description": "A new display name; account credentials remain unchanged.",
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/OrganizationAccountNameRequest"
+        },
+        {
+          "properties": {
+            "id": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Rename an organization account without replacing its credentials."
+    },
+    "method": "PATCH",
+    "name": "update_organization_account_name",
+    "output_shape": "unknown",
+    "path": "/v1/organization-accounts/{id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "virtual_users",
+    "cli": "virtual-users self-profile update",
+    "description": "Update your own organization profile without changing lifecycle.",
+    "input_schema": {
+      "$defs": {
+        "UpdateVirtualUserRequest": {
+          "description": "Update a runtime account profile or its management lifecycle.",
+          "properties": {
+            "avatar_url": {
+              "description": "Profile image URL.",
+              "example": "https://example.com/avatar.png",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": {
+              "description": "Human-readable description. Safe to render in user-facing messages.",
+              "example": "Support team member",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "locale": {
+              "description": "Locale used for agent-facing defaults.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Human-readable name. Safe to render in user-facing messages.",
+              "example": "Alex",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/VirtualUserStatus",
+                  "description": "Current lifecycle status."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "timezone": {
+              "description": "IANA time zone used for agent-facing defaults.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "VirtualUserStatus": {
+          "description": "Virtual user lifecycle status.",
+          "enum": [
+            "active",
+            "archived",
+            "deleted"
+          ],
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/UpdateVirtualUserRequest"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Update the signed-in organization profile without changing its lifecycle."
+    },
+    "method": "PATCH",
+    "name": "update_own_virtual_user_profile",
+    "output_shape": "unknown",
+    "path": "/v1/virtual-users/{id}/self-profile",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "payments",
     "cli": "payments accounts update",
     "description": "Update a machine-payment wallet account.",
@@ -23884,6 +24503,62 @@
     "name": "update_provider",
     "output_shape": "unknown",
     "path": "/v1/providers/{id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "sandbox-templates",
+    "cli": "sandbox-template-metadata update",
+    "description": "Update Sandbox Template metadata while preserving its current execution specification.",
+    "input_schema": {
+      "$defs": {
+        "SandboxTemplateMetadataRequest": {
+          "description": "Editable template metadata; omitted fields retain their current values.",
+          "properties": {
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "sbxtplId": {
+          "description": "Prefixed identifier with 'sbxtpl' prefix",
+          "example": "sbxtpl_01933b5a000070008000000000000001",
+          "pattern": "^sbxtpl_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SandboxTemplateMetadataRequest"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/sbxtplId"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Update Sandbox Template metadata while preserving its current execution specification."
+    },
+    "method": "PATCH",
+    "name": "update_sandbox_template_metadata",
+    "output_shape": "unknown",
+    "path": "/v1/sandbox-template-metadata/{id}",
     "positional_arg": null,
     "read_only": false
   },

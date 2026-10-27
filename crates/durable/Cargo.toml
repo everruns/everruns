@@ -38,6 +38,8 @@ async-trait.workspace = true
 
 # Database
 sqlx.workspace = true
+# `TransactionManager`, which `sqlx` does not re-export (commit_in_place).
+sqlx-core.workspace = true
 
 # Serialization
 serde = { workspace = true }

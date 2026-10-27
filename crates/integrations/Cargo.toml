@@ -68,12 +68,15 @@ everruns-contracts = { workspace = true, default-features = false, optional = tr
 anyhow = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
-bashkit = { version = "0.19.0", default-features = false, features = ["aws-lc-rs", "bash_tool", "bot-auth", "cpython", "http_client", "jq", "tzdata"], optional = true }
+bashkit = { version = "0.20.1", default-features = false, features = ["aws-lc-rs", "bash_tool", "bot-auth", "cpython", "http_client", "jq", "tzdata"], optional = true }
 buffa = { version = "0.9", optional = true }
 bytes = { version = "1", optional = true }
 chrono = { workspace = true, optional = true }
 clap = { workspace = true, features = ["string"], optional = true }
-connectrpc = { version = "0.9.0", features = ["client", "client-tls"], optional = true }
+# zstd off: connectrpc 0.9 pins zstd 0.13, which has open advisories
+# (RUSTSEC-2026-0398, -0403, -0410) and no patched 0.13 release. Without it the
+# client does not offer zstd, so E2B answers with gzip or no compression.
+connectrpc = { version = "0.9.0", default-features = false, features = ["client", "client-tls", "gzip", "json"], optional = true }
 ed25519-dalek = { version = "3", features = ["rand_core"], optional = true }
 eventsource-stream = { workspace = true, optional = true }
 everruns-cli-contract = { workspace = true, optional = true }

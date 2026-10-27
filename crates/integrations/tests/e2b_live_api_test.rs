@@ -378,3 +378,87 @@ async fn smoke_live_network_allowlist() {
         "running sandbox did not follow the updated allowlist"
     );
 }
+
+/// E2B accepts the `network.egressProxy` shape `e2b::network` sends when the
+/// host routes sandboxes through its egress proxy (TLS on, a credential as
+/// long as a real one), and fails closed: with a proxy that does not speak
+/// SOCKS5 nothing leaves, and clearing the proxy restores direct egress, so
+/// the proxy was what stopped it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn smoke_live_egress_proxy_fails_closed() {
+    use everruns_integrations::e2b::network::E2BEgress;
+
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let api_key = require_api_key!();
+    let client = E2BClient::new(api_key.clone());
+    // A public host with a valid certificate that is not a SOCKS5 proxy.
+    let proxy = json!({
+        "address": "example.com:443",
+        "username": "everruns",
+        "password": format!("s1.org_{}.session_{}.1900000000.{}", "0".repeat(32), "1".repeat(32), "a".repeat(64)),
+        "tls": {"enabled": true},
+    });
+    let created = client
+        .create_sandbox_with_egress(
+            "base",
+            E2B_DEFAULT_TIMEOUT_SECS,
+            json!({"everruns": "true", "test": "smoke_live_egress_proxy_fails_closed"}),
+            json!({}),
+            &E2BEgress {
+                allow_internet_access: true,
+                network: Some(json!({ "egressProxy": proxy })),
+            },
+        )
+        .await
+        .expect("E2B accepts the egress proxy configuration");
+    let _guard = SandboxGuard {
+        api_key,
+        sandbox_id: created.sandbox_id.clone(),
+    };
+    let state = SandboxState {
+        sandbox_id: created.sandbox_id.clone(),
+        sandbox_domain: created
+            .domain
+            .clone()
+            .unwrap_or_else(|| "e2b.app".to_string()),
+        envd_version: created.envd_version.clone(),
+        envd_access_token: created.envd_access_token.clone(),
+        workspace_path: E2B_DEFAULT_WORKSPACE_PATH.to_string(),
+        started_at: String::new(),
+        timeout_seconds: E2B_DEFAULT_TIMEOUT_SECS,
+    };
+    let reaches_github = || async {
+        let result = client
+            .exec(
+                &state,
+                "curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://github.com/ || true",
+                None,
+                Some(30_000),
+            )
+            .await
+            .expect("network probe exec");
+        let code = result.stdout.trim().to_string();
+        eprintln!("[test] github.com -> {code}");
+        !code.is_empty() && code != "000"
+    };
+
+    assert!(
+        !reaches_github().await,
+        "egress left directly despite an unusable proxy"
+    );
+
+    // An update without `egressProxy` clears it.
+    client
+        .update_network(&created.sandbox_id, json!({}))
+        .await
+        .expect("clear the proxy");
+    let mut restored = false;
+    for _ in 0..5 {
+        if reaches_github().await {
+            restored = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+    assert!(restored, "clearing the proxy did not restore egress");
+}

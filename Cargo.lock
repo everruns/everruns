@@ -1064,8 +1064,9 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bashkit"
-version = "0.19.0"
-source = "git+https://github.com/everruns/bashkit?rev=05c6e01c99f513775e0afd89ca1d7938aa9956c2#05c6e01c99f513775e0afd89ca1d7938aa9956c2"
+version = "0.20.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd7ce5ba9dc6f2c223ca600379ef6ecee079f776db2e46ed3cfa6e858378d309"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1122,8 +1123,9 @@ dependencies = [
 
 [[package]]
 name = "bashkit-cpython-wasm"
-version = "0.19.0"
-source = "git+https://github.com/everruns/bashkit?rev=05c6e01c99f513775e0afd89ca1d7938aa9956c2#05c6e01c99f513775e0afd89ca1d7938aa9956c2"
+version = "0.20.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3332c441cb4554c8995ebe35fbfba7626fa87b2cf52af0498807e9635dba4c98"
 dependencies = [
  "lzma-rs",
  "wasmtime",
@@ -1131,8 +1133,9 @@ dependencies = [
 
 [[package]]
 name = "bashkit-scripted-tool"
-version = "0.19.0"
-source = "git+https://github.com/everruns/bashkit?rev=05c6e01c99f513775e0afd89ca1d7938aa9956c2#05c6e01c99f513775e0afd89ca1d7938aa9956c2"
+version = "0.20.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f0558fa65b4cf3c3337e1d3befe5fb187174d2952f7df649d0fefff0f1329f8"
 dependencies = [
  "async-trait",
  "bashkit",
@@ -1621,8 +1624,8 @@ dependencies = [
  "compression-core",
  "flate2",
  "memchr",
- "zstd 0.14.3",
- "zstd-safe 8.2.0",
+ "zstd",
+ "zstd-safe",
 ]
 
 [[package]]
@@ -1663,7 +1666,6 @@ dependencies = [
  "tower",
  "tracing",
  "wasm-bindgen-futures",
- "zstd 0.13.3",
 ]
 
 [[package]]
@@ -2107,9 +2109,9 @@ dependencies = [
 
 [[package]]
 name = "crypto-bigint"
-version = "0.7.9"
+version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d811ea23fdfbcce2e2d5132344d471abdb8f901ac496a0893a3df92e70525e52"
+checksum = "9c035cb64cba03dad2fb921f3e218785e8cf9a41790da5eb3a1400f62fa2be11"
 dependencies = [
  "cpubits",
  "ctutils",
@@ -2743,7 +2745,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2782,7 +2784,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-ard"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2809,7 +2811,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capabilities"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "a2a-server-lf",
  "anyhow",
@@ -2849,7 +2851,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2880,7 +2882,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli-contract"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "clap",
  "serde",
@@ -2919,7 +2921,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-contracts"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -2982,7 +2984,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -3039,7 +3041,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-docs-snippets"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "axum",
  "everruns",
@@ -3056,7 +3058,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-drivers"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3087,7 +3089,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3102,6 +3104,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "sqlx-core",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
@@ -3204,7 +3207,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3265,7 +3268,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-experimental"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3282,7 +3285,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "chrono",
  "everruns-contracts",
@@ -3302,7 +3305,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llm-tests"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3328,7 +3331,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3342,7 +3345,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3396,7 +3399,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-serve"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "a2a-lf",
  "a2a-server-lf",
@@ -3433,7 +3436,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-serve-agentcore"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -3452,14 +3455,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-serve-build"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "tempfile",
 ]
 
 [[package]]
 name = "everruns-serve-celld"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -3475,7 +3478,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-serve-macros"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3484,7 +3487,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -3499,6 +3502,7 @@ dependencies = [
  "base64 0.23.1",
  "bashkit",
  "bashkit-scripted-tool",
+ "bytes",
  "chrono",
  "chrono-tz",
  "clap",
@@ -3583,7 +3587,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server-macros"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3601,7 +3605,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-test-support"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3624,7 +3628,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-turbopuffer"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3641,7 +3645,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6280,9 +6284,9 @@ dependencies = [
 
 [[package]]
 name = "openssl-probe"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
+checksum = "7e036b411754132fd6b74e94b74e9a13c5cf606fa93d1885c35860d3060820b1"
 
 [[package]]
 name = "opentelemetry"
@@ -6535,21 +6539,20 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "pest"
-version = "2.9.4"
+version = "2.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd47a460a9cbc3b3429c7e22bf0d76653e779319bae45a499ca010c9a990bb23"
+checksum = "a8db75153506001cb36ed924f08cadc862eb3f8c4d0d534139f29074769d7660"
 dependencies = [
  "memchr",
- "psm",
- "stacker",
+ "pest_stack_guard",
  "ucd-trie",
 ]
 
 [[package]]
 name = "pest_derive"
-version = "2.9.4"
+version = "2.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "203e46697708f7519ab1608393cf89239cafb46b8e6d08a8ffe359359b11ef44"
+checksum = "20aa17e11fb35664b67d5214a0afac57a360d231b6ec53d6eba0700b27d933b4"
 dependencies = [
  "pest",
  "pest_generator",
@@ -6557,9 +6560,9 @@ dependencies = [
 
 [[package]]
 name = "pest_generator"
-version = "2.9.4"
+version = "2.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e84ae6340a458d3d6cfc73cf328cf3cfe90b2484cd0de25eb66aa954615ed4d5"
+checksum = "626ec5afccf44ccbfeb2b232316510bb55b4bf34d891afcb0fb07d2b17d7fe9d"
 dependencies = [
  "pest",
  "pest_meta",
@@ -6570,11 +6573,21 @@ dependencies = [
 
 [[package]]
 name = "pest_meta"
-version = "2.9.4"
+version = "2.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b57f92f32b3dbce6598fd8f5cdf1f06a6072570b8103fa21728fa9036923e710"
+checksum = "b3f45b6caa65c1b08186832745159c2529994146340a7bf44168095469720f5d"
 dependencies = [
  "pest",
+]
+
+[[package]]
+name = "pest_stack_guard"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97e6cd2217057fa86b6eaa512917e58089d875b957a31e35e7ab729977e0a5f2"
+dependencies = [
+ "psm",
+ "stacker",
 ]
 
 [[package]]
@@ -8123,9 +8136,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.1.5"
+version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "891efababe418670775f199f0d233d84843c227a0949a883ce15b37c78d6629d"
+checksum = "e5e76742e5294153d4dde1207dbec5bdd81eef6fabdc0d2118babadabfd858aa"
 dependencies = [
  "bitflags 2.13.2",
  "errno",
@@ -9858,9 +9871,9 @@ checksum = "06bdbd8cfc056b8d2e2e85f29b56a3bdbecb527cef81eb39e3e7b98af4652770"
 
 [[package]]
 name = "tonic"
-version = "0.14.6"
+version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac2a5518c70fa84342385732db33fb3f44bc4cc748936eb5833d2df34d6445ef"
+checksum = "16ea7e687c08008d22518056608ad0c1cc721204d30ed48c8439a88ae5b9fc73"
 dependencies = [
  "async-trait",
  "axum",
@@ -9881,6 +9894,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-stream",
+ "tokio-util",
  "tower",
  "tower-layer",
  "tower-service",
@@ -9890,9 +9904,9 @@ dependencies = [
 
 [[package]]
 name = "tonic-build"
-version = "0.14.6"
+version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c68f61875ac5293cf72e6c8cf0158086428c82c37229e98c840878f1706b0322"
+checksum = "040c96f2ebcbe22118dfa258310dad07002ccf92139370cf69532e4047c7d400"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -9902,9 +9916,9 @@ dependencies = [
 
 [[package]]
 name = "tonic-prost"
-version = "0.14.6"
+version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50849f68853be452acf590cde0b146665b8d507b3b8af17261df47e02c209ea0"
+checksum = "8fe9efdab8bb668f5ef526e21c247c8cb658853a754983cb70f1dac3fc4f462a"
 dependencies = [
  "bytes",
  "prost",
@@ -9913,9 +9927,9 @@ dependencies = [
 
 [[package]]
 name = "tonic-prost-build"
-version = "0.14.6"
+version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "654e5643eff75d7f8c99197ce1440ed19a3474eada74c12bbac488b2cafdae27"
+checksum = "8b0e0e10c4980146d75d5acfe4f7a9822278130ca2025c0dc25c82f7307d63ac"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -11487,9 +11501,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.1.1"
+version = "9.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "518b847fd864440c379748ad684c449f293af68978a485a4ff16f7c901c1f7c4"
+checksum = "ec2e3161de27091f18a831d9494e9c53378a34833af5c1dda35ad85849da18d6"
 dependencies = [
  "crc32fast",
  "flate2",
@@ -11528,29 +11542,11 @@ dependencies = [
 
 [[package]]
 name = "zstd"
-version = "0.13.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
-dependencies = [
- "zstd-safe 7.3.0",
-]
-
-[[package]]
-name = "zstd"
 version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db3ae9bf90af6e40197bef767eeefc46ad6397420fe873830bd85e5fbbfb3c70"
 dependencies = [
- "zstd-safe 8.2.0",
-]
-
-[[package]]
-name = "zstd-safe"
-version = "7.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64d80649ab6db9d9f6f9c80a40becd948eda4714a0a5ac8c4d157a32231c7882"
-dependencies = [
- "zstd-sys",
+ "zstd-safe",
 ]
 
 [[package]]

@@ -41,7 +41,7 @@ None.
 | Cap | At most five threads listed under **Chat** |
 | Order | Most recently active thread first |
 | Permanent entry | **Chat** is visibly clickable on another page and directly opens the permanent conversation; it is marked current only on `/chats` |
-| Extra rows | A subordinate **New side chat** row, and an **All chats** row linking to `/chats/history` |
+| Extra rows | A subordinate **New subchat** row, and an **All chats** row linking to `/chats/history` |
 | Frozen order | While the pointer is inside the list, no row changes position |
 | Thaw | After the pointer leaves, the newly active thread moves to the top |
 | Active row | The open thread's row is highlighted |

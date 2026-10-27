@@ -5,6 +5,7 @@ date: 2026-10-19
 kind: feature
 significance: major
 products: [platform, cloud, framework]
+release: "0.49.0"
 surfaces: [ui, api, cli]
 links:
   docs:

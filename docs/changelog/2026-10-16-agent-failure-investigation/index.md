@@ -5,6 +5,7 @@ date: 2026-10-16
 kind: improvement
 significance: minor
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [ui, api, cli]
 links:
   docs: [/observability/]

@@ -53,15 +53,18 @@ before/after under the constraints in [Build Artifact Size](build-artifact-size.
   normal` returns nothing; the remaining lock entries are reachable only through the
   bench's dev-dependency on the published SDK.
 
-## Bashkit security source pin
+## Bashkit runtime dependency
 
-The [workspace patches](../../Cargo.toml) select an immutable upstream Bashkit
-revision because its published Wasmtime constraint prevents a compatible
-security update through the registry. The CPython runtime and scripted-tool
-packages use the same source revision. Standalone Mira workspaces carrying the
-shell repeat those patches because Cargo does not inherit a dependency's
-workspace patches. The source policy permits only that repository, with revision
-selection still fixed in each manifest.
+The workspace and standalone shell evals use published Bashkit 0.20.1 or
+newer in the same compatible release series. This keeps Wasmtime's security
+fix and the Windows CPython COFF embedding fix together. The corrected
+component preserves 64 KiB runtime alignment without requiring an
+unsupported Windows over-aligned static. Python stays enabled in the hosted
+integration catalog.
+
+No Bashkit Git patch or source-policy exception is required. Downstream
+applications resolve the corrected registry packages without inheriting
+workspace patches, which Cargo does not propagate through dependencies.
 
 The advisory gate covers every active committed lockfile. Archived probe
 manifests retain their original resolution as snapshot files; the canonical

@@ -202,14 +202,26 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "The model that answers internal decision checks.",
     ),
     ("models default", "The organization's default model."),
+    (
+        "models selection",
+        "Review and atomically change which models are enabled.",
+    ),
     ("notifications", "Your in-app notifications."),
     ("notifications view", "Mark notifications as seen."),
     ("observers", "Online scoring of live traces."),
     ("observers scores", "Scores an observer produced."),
+    (
+        "organization-accounts",
+        "Organization account names, without retrieving credentials.",
+    ),
     ("orgs", "Organizations you belong to."),
     (
         "orgs audit-logs",
         "Security-relevant actions in your organization.",
+    ),
+    (
+        "orgs decision-settings",
+        "The active organization's decision-model selection.",
     ),
     (
         "orgs egress-allowlist",
@@ -263,6 +275,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "resources grants",
         "Explicit, bounded permission to use a resource.",
+    ),
+    (
+        "sandbox-template-metadata",
+        "Sandbox Template names and descriptions, without execution settings.",
     ),
     (
         "sandbox-targets",
@@ -389,8 +405,20 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     ("users", "People in the current organization."),
     (
+        "users me",
+        "Your own account display name across organizations.",
+    ),
+    (
+        "users profile",
+        "Your own editable account profile, without credentials.",
+    ),
+    (
         "virtual-users",
         "Runtime accounts for consumers or services.",
+    ),
+    (
+        "virtual-users self-profile",
+        "Your organization profile; changing account status requires management access.",
     ),
     (
         "workspaces",

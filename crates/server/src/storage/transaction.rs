@@ -62,7 +62,7 @@ struct TxSlot {
     /// `None` once the transaction has finished.
     connection: Arc<Mutex<SlotConnection>>,
     /// Savepoints currently open on `connection` (each holds its mutex).
-    savepoints: AtomicUsize,
+    savepoints: Arc<AtomicUsize>,
     after_commit: std::sync::Mutex<Vec<BoxFuture<'static, ()>>>,
 }
 
@@ -146,13 +146,13 @@ async fn begin_connection(pool: &PgPool) -> Result<PoolConnection<Postgres>, sql
 
 /// Commit the transaction open on `connection` on a task of its own, so a
 /// caller cancelled while `COMMIT` is in flight cannot queue a rollback behind
-/// it; see `everruns_durable::commit_transaction` (EVERRUNS-35).
+/// it, nor a rejected `COMMIT` a stray one; see
+/// `everruns_durable::commit_transaction` (EVERRUNS-35).
 async fn commit_connection(mut connection: PoolConnection<Postgres>) -> Result<(), sqlx::Error> {
     let commit = tokio::spawn(async move {
-        let result = PgTransactionManager::commit(&mut connection).await;
-        if result.is_err() {
-            PgTransactionManager::start_rollback(&mut connection);
-        }
+        let result = everruns_durable::commit_in_place(&mut connection).await;
+        // Only a failed connection is still counted open: queue its rollback.
+        PgTransactionManager::start_rollback(&mut connection);
         result
     })
     .await;
@@ -265,10 +265,16 @@ where
     let slot = Arc::new(TxSlot {
         pool: pool_identity(&pool),
         connection: Arc::new(Mutex::new(Some(connection))),
-        savepoints: AtomicUsize::new(0),
+        savepoints: Arc::new(AtomicUsize::new(0)),
         after_commit: std::sync::Mutex::new(Vec::new()),
     });
-    let result = CURRENT.scope(slot.clone(), body).await;
+    let result = everruns_durable::schedule_transaction::scope(
+        &pool,
+        slot.connection.clone(),
+        slot.savepoints.clone(),
+        CURRENT.scope(slot.clone(), body),
+    )
+    .await;
     let connection = slot.connection.lock().await.take();
     let effects = std::mem::take(
         &mut *slot

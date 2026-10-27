@@ -689,18 +689,11 @@ impl WorkerServiceImpl {
             .ok_or_else(|| Status::unavailable("Session SQL database not available"))
     }
 
-    /// Max gRPC message size (16MB)
-    ///
-    /// Image data no longer flows through gRPC — workers fetch images via presigned
-    /// HTTP URLs returned by resolve_image/resolve_images RPCs. The limit only needs
-    /// to accommodate metadata, proto messages, and session file content.
-    const MAX_GRPC_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
-
     /// Create a tonic server for this service
     pub fn into_server(self) -> WorkerServiceServer<Self> {
         WorkerServiceServer::new(self)
-            .max_decoding_message_size(Self::MAX_GRPC_MESSAGE_SIZE)
-            .max_encoding_message_size(Self::MAX_GRPC_MESSAGE_SIZE)
+            .max_decoding_message_size(everruns_internal_protocol::MAX_GRPC_MESSAGE_SIZE)
+            .max_encoding_message_size(everruns_internal_protocol::MAX_GRPC_MESSAGE_SIZE)
     }
 
     /// Convert ResolvedModel to proto ResolvedModel
@@ -908,28 +901,17 @@ fn message_to_proto(message: &everruns_core::RuntimeMessage) -> proto::Message {
 /// Extract a RuntimeMessage from an Event's data field
 ///
 /// Events returned from EventService already have data parsed into EventData.
-fn event_to_message(event: &everruns_core::Event) -> Option<everruns_core::RuntimeMessage> {
-    use everruns_core::{ContentPart, EventData, RuntimeMessage};
+pub(crate) fn event_to_message(
+    event: &everruns_core::Event,
+) -> Option<everruns_core::RuntimeMessage> {
+    use everruns_core::EventData;
 
     match &event.data {
         EventData::InputMessage(d) => Some(d.message.clone()),
         EventData::OutputMessageCompleted(d) => Some(d.message.clone()),
-        EventData::ToolCompleted(d) => {
-            let result: Option<serde_json::Value> =
-                d.result.as_ref().map(|parts: &Vec<ContentPart>| {
-                    if parts.len() == 1
-                        && let ContentPart::Text(t) = &parts[0]
-                    {
-                        return serde_json::Value::String(t.text.clone());
-                    }
-                    serde_json::to_value(parts).unwrap_or_default()
-                });
-            Some(RuntimeMessage::tool_result(
-                &d.tool_call_id,
-                result,
-                d.error.clone(),
-            ))
-        }
+        EventData::ToolCompleted(d) => Some(
+            crate::storage::runtime::message::tool_completed_to_message(d.clone()),
+        ),
         _ => None,
     }
 }

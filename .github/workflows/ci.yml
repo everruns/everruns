@@ -2065,8 +2065,13 @@ jobs:
         env:
           BUILD_WORKER: ${{ needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true' || needs.changes.outputs.chaos == 'true' || needs.changes.outputs.budget_e2e == 'true' }}
           BUILD_CLI: ${{ needs.changes.outputs.mode != 'pr' || needs.changes.outputs.docker == 'true' }}
+          # The server image (docker/Dockerfile.prebuilt) also carries the egress proxy.
+          BUILD_EGRESS_PROXY: ${{ needs.changes.outputs.docker == 'true' }}
         run: |
           args=(-p everruns-server --bin everruns-server)
+          if [ "$BUILD_EGRESS_PROXY" = true ]; then
+            args+=(--bin everruns-egress-proxy)
+          fi
           if [ "$BUILD_WORKER" = true ]; then
             args+=(-p everruns-worker --bin everruns-worker)
           fi
@@ -2080,6 +2085,15 @@ jobs:
         with:
           name: everruns-server
           path: target/release-ci/everruns-server
+          retention-days: 1
+          compression-level: 1
+
+      - name: Upload egress proxy binary
+        if: needs.changes.outputs.docker == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: everruns-egress-proxy
+          path: target/release-ci/everruns-egress-proxy
           retention-days: 1
           compression-level: 1
 
@@ -2707,7 +2721,9 @@ jobs:
     needs:
       - changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.sdk_compat == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
-    timeout-minutes: 15
+    # A Cargo.lock change misses the openapi-v1 cache: the cold exporter build
+    # alone took 14m on batch 7e36160, and 15 cancelled the job during cache save.
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v7
@@ -3158,9 +3174,9 @@ jobs:
   # `build-binaries` into the runtime images via docker/Dockerfile.prebuilt —
   # validating the runtime layer (base image, COPY, ENV, CMD) in seconds.
   #
-  # The full build-from-source, multi-arch images are produced at release time
-  # by docker-publish.yml (which also validates the Dockerfile.unified builder
-  # stage from-source on PRs that touch docker/** paths). This job therefore
+  # The multi-arch release images come from the same Dockerfile in
+  # docker-publish.yml, with binaries compiled for release in a bookworm
+  # container (it also runs on PRs that touch docker/** paths). This job therefore
   # gates on `rust` (not the broader `docker` filter) so the build-binaries
   # artifacts it consumes are guaranteed to exist.
   docker-build:
@@ -3184,17 +3200,24 @@ jobs:
           # through Google's mirror too, so this job does not depend on Docker Hub.
           driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
 
+      # Dockerfile.prebuilt reads bin/<TARGETARCH>/; this build is amd64 only.
       - name: Download server binary
         uses: actions/download-artifact@v8
         with:
           name: everruns-server
-          path: ./bin
+          path: ./bin/amd64
+
+      - name: Download egress proxy binary
+        uses: actions/download-artifact@v8
+        with:
+          name: everruns-egress-proxy
+          path: ./bin/amd64
 
       - name: Download worker binary
         uses: actions/download-artifact@v8
         with:
           name: everruns-worker
-          path: ./bin
+          path: ./bin/amd64
 
       # No host chmod needed: Dockerfile.prebuilt uses COPY --chmod, and the
       # image is only built here (never run in CI).

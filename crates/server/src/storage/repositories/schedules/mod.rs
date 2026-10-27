@@ -59,13 +59,13 @@ impl Database {
             .await?;
 
         let active_session_count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM session_schedules WHERE session_id = $1 AND enabled = true",
+            "SELECT COUNT(*) FROM session_schedules WHERE session_id = $1 AND enabled = true AND deleted_at IS NULL",
         )
         .bind(input.session_id)
         .fetch_one(&mut *tx)
         .await?;
         let active_org_count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM session_schedules WHERE org_id = $1 AND enabled = true",
+            "SELECT COUNT(*) FROM session_schedules WHERE org_id = $1 AND enabled = true AND deleted_at IS NULL",
         )
         .bind(input.org_id)
         .fetch_one(&mut *tx)
@@ -119,13 +119,33 @@ impl Database {
         Ok(row)
     }
 
+    /// Schedules the agent can still act on. Deleted rows stay in the table
+    /// for the session recording; this list omits them.
     pub async fn list_session_schedules(
         &self,
         org_id: i64,
         session_id: SessionId,
     ) -> Result<Vec<SessionScheduleRow>> {
         let rows = sqlx::query_as::<_, SessionScheduleRow>(
-            "SELECT * FROM session_schedules WHERE org_id = $1 AND session_id = $2 ORDER BY created_at DESC",
+            "SELECT * FROM session_schedules WHERE org_id = $1 AND session_id = $2 AND deleted_at IS NULL ORDER BY created_at DESC",
+        )
+        .bind(org_id)
+        .bind(session_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// Every schedule this session registered, including ones later deleted.
+    /// The session view uses this so a removed schedule is still visible.
+    pub async fn list_session_schedule_history(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Result<Vec<SessionScheduleRow>> {
+        let rows = sqlx::query_as::<_, SessionScheduleRow>(
+            "SELECT * FROM session_schedules WHERE org_id = $1 AND session_id = $2 ORDER BY (deleted_at IS NULL) DESC, created_at DESC",
         )
         .bind(org_id)
         .bind(session_id)
@@ -149,7 +169,7 @@ impl Database {
                 last_triggered_at = COALESCE($6, last_triggered_at),
                 trigger_count = trigger_count + CASE WHEN $7 THEN 1 ELSE 0 END,
                 updated_at = NOW()
-            WHERE id = $1 AND org_id = $2
+            WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
             RETURNING *
             "#,
         )
@@ -166,23 +186,36 @@ impl Database {
         Ok(row)
     }
 
+    /// Keep the row and mark it deleted. A second delete matches nothing, so
+    /// the caller still reports the schedule as already gone.
     pub async fn delete_session_schedule(
         &self,
         org_id: i64,
         schedule_id: ScheduleId,
     ) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM session_schedules WHERE id = $1 AND org_id = $2")
-            .bind(schedule_id)
-            .bind(org_id)
-            .execute(&self.pool)
-            .await?;
+        let result = sqlx::query(
+            r#"
+            UPDATE session_schedules
+            SET deleted_at = NOW(),
+                enabled = false,
+                next_trigger_at = NULL,
+                claimed_by = NULL,
+                claimed_at = NULL,
+                updated_at = NOW()
+            WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
+            "#,
+        )
+        .bind(schedule_id)
+        .bind(org_id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(result.rows_affected() > 0)
     }
 
     pub async fn count_active_session_schedules(&self, session_id: SessionId) -> Result<u32> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM session_schedules WHERE session_id = $1 AND enabled = true",
+            "SELECT COUNT(*) FROM session_schedules WHERE session_id = $1 AND enabled = true AND deleted_at IS NULL",
         )
         .bind(session_id)
         .fetch_one(&self.pool)
@@ -193,7 +226,7 @@ impl Database {
 
     pub async fn count_active_org_session_schedules(&self, org_id: i64) -> Result<u32> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM session_schedules WHERE org_id = $1 AND enabled = true",
+            "SELECT COUNT(*) FROM session_schedules WHERE org_id = $1 AND enabled = true AND deleted_at IS NULL",
         )
         .bind(org_id)
         .fetch_one(&self.pool)
@@ -227,6 +260,7 @@ impl Database {
             WITH due AS (
                 SELECT id FROM session_schedules
                 WHERE enabled = true
+                  AND deleted_at IS NULL
                   AND next_trigger_at IS NOT NULL
                   AND next_trigger_at <= NOW()
                   AND (

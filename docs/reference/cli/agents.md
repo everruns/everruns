@@ -64,7 +64,7 @@ Agent definitions and their configuration.
 | [`agents scripts get`](#agents-scripts-get) | Get a single saved script by id. |
 | [`agents scripts list`](#agents-scripts-list) | List an agent's saved scripts with their bodies. |
 | [`agents scripts update`](#agents-scripts-update) | Update a saved script's description, input schema or body. |
-| [`agents source connect`](#agents-source-connect) | Apply a reviewed GitHub package and enable continuous inbound sync. |
+| [`agents source connect`](#agents-source-connect) | Apply a reviewed GitHub package and enable continuous sync. |
 | [`agents source disconnect`](#agents-source-disconnect) | Disconnect GitHub source sync and restore local editing. |
 | [`agents source get`](#agents-source-get) | Show the Agent's continuous GitHub source binding and sync status. |
 | [`agents source preview`](#agents-source-preview) | Validate and compare a GitHub Agent package without changing the Agent. |
@@ -1152,7 +1152,7 @@ everruns agents scripts update --agent-id agent_01h9 --script-id scr_01h9 --body
 
 ## agents source connect
 
-Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.
+Apply a reviewed GitHub package and enable continuous sync. Pull mode is read-only; two_way also publishes local edits using conditional commits.
 
 ```bash
 everruns agents source connect [OPTIONS] --agent-digest <agent_digest> --agent-id <agent_id> --branch <branch> --commit <commit> --repository <repository>
@@ -1165,6 +1165,7 @@ everruns agents source connect [OPTIONS] --agent-digest <agent_digest> --agent-i
 | `--branch <BRANCH>` | Required. Branch whose future commits the Agent follows. |
 | `--commit <COMMIT>` | Required. Exact source commit returned by preview; a changed branch requires another preview. |
 | `--expected-generation <EXPECTED_GENERATION>` | Current binding generation when replacing a source; omit for an unbound Agent. |
+| `--mode <MODE>` | Source direction. One of `pull`, `two_way`. |
 | `--path <PATH>` | Repository-relative package folder or manifest; empty selects the repository root. |
 | `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
 

@@ -1,13 +1,16 @@
 "use client";
 
-// Workspace — the state the run left behind (EVE-854): the session's files and
-// its durable session storage, both read-only. These two are shown together
-// because they are the pair `SessionSeedMode::Fork` copies: forking a recording
-// carries exactly what this tab shows.
+// Workspace — the state the run left behind (EVE-854): the session's files,
+// its key values, and the schedules it registered or deleted. All read-only.
+// Files and values are the pair `SessionSeedMode::Fork` copies.
 //
 // The tab used to accept drag-and-drop uploads, inline file edits and secret
 // writes. A recording is not a workspace, so all of that is gone; the browser
 // and viewer render in `readOnly` mode and storage is a listing.
+//
+// Key values used to sit under the file viewer, and only when the session
+// also had a filesystem. A sandbox or storage session never opened this tab,
+// so the values (and the sandbox's files) were unreachable.
 
 import { useState } from "react";
 import { Clock, File, Key, Lock } from "lucide-react";
@@ -18,12 +21,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
 import { useQuery } from "@tanstack/react-query";
 import { SessionSandboxPanel } from "@/components/session/session-sandbox-panel";
+import { SessionSchedulesSection } from "@/components/session/session-schedule-list";
+import { sessionRecordPanes, type SessionRecordPane } from "@/components/session/session-header";
+import { useSessionSchedules } from "@/hooks/use-session-schedules";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
+import { cn } from "@/lib/utils";
 
-function useSessionStorage(sessionId: string, enabled: boolean) {
+function useSessionStorage(sessionId: string) {
   return useQuery({
     queryKey: ["session-storage", sessionId],
-    enabled,
     queryFn: async () => {
       const [keys, secrets] = await Promise.all([
         api.get<ListResponse<KeyValueInfo>>(`/v1/sessions/${sessionId}/storage/keys`),
@@ -34,13 +40,11 @@ function useSessionStorage(sessionId: string, enabled: boolean) {
   });
 }
 
-function StoragePanel({ sessionId, enabled }: { sessionId: string; enabled: boolean }) {
-  const { data, isLoading } = useSessionStorage(sessionId, enabled);
-
-  if (!enabled) return null;
+function StoragePanel({ sessionId }: { sessionId: string }) {
+  const { data, isLoading } = useSessionStorage(sessionId);
 
   return (
-    <div className="border-t p-4">
+    <div className="p-4">
       <h2 className="mb-3 text-sm font-medium text-muted-foreground">Session storage</h2>
 
       {isLoading ? (
@@ -108,21 +112,23 @@ function StoragePanel({ sessionId, enabled }: { sessionId: string; enabled: bool
   );
 }
 
-export function SessionWorkspace() {
-  // Address files by the session's attached workspace (the canonical fs
-  // surface), not the session id — they differ when the session is attached to
-  // a shared workspace. `workspace_id` is undefined only while the session is
-  // still loading.
-  const { session, sessionId } = useSessionContext();
-  const workspaceId = session?.workspace_id;
+const PANE_LABELS: Record<SessionRecordPane, string> = {
+  files: "Filesystem",
+  values: "Key values",
+  schedules: "Schedules",
+};
+
+function FilesystemPane({
+  workspaceId,
+  sessionId,
+}: {
+  workspaceId: string | undefined;
+  sessionId: string;
+}) {
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
 
-  const features = new Set(session?.features ?? []);
-  const hasStorage = features.has("secrets") || features.has("key_value");
-
   return (
-    <div className="relative flex flex-1 overflow-hidden">
-      {/* File browser sidebar */}
+    <div className="relative flex min-h-0 flex-1 overflow-hidden">
       <div className="w-72 flex-shrink-0 overflow-hidden border-r bg-card/50">
         <FileBrowser
           workspaceId={workspaceId}
@@ -132,7 +138,6 @@ export function SessionWorkspace() {
         />
       </div>
 
-      {/* File viewer main area */}
       <div className="flex flex-1 flex-col overflow-y-auto">
         <div className="min-h-0 flex-1 overflow-hidden">
           {selectedFile && !selectedFile.is_directory ? (
@@ -152,9 +157,67 @@ export function SessionWorkspace() {
         </div>
 
         <SessionSandboxPanel sessionId={sessionId} />
-
-        <StoragePanel sessionId={sessionId} enabled={hasStorage} />
       </div>
+    </div>
+  );
+}
+
+export function SessionWorkspace() {
+  // Address files by the session's attached workspace (the canonical fs
+  // surface), not the session id — they differ when the session is attached to
+  // a shared workspace. `workspace_id` is undefined only while the session is
+  // still loading.
+  const { session, sessionId } = useSessionContext();
+  const workspaceId = session?.workspace_id;
+  const features = new Set(session?.features ?? []);
+  const schedules = useSessionSchedules(sessionId);
+  const storage = useSessionStorage(sessionId);
+  const hasScheduleRows = (schedules.data?.length ?? 0) > 0;
+  const hasValueRows =
+    (storage.data?.keyValues.length ?? 0) > 0 || (storage.data?.secrets.length ?? 0) > 0;
+  const panes = sessionRecordPanes({
+    features,
+    hasSchedules: hasScheduleRows,
+    hasValues: hasValueRows,
+  });
+  const [pane, setPane] = useState<SessionRecordPane>(panes[0] ?? "files");
+  const active = panes.includes(pane) ? pane : (panes[0] ?? "files");
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {panes.length > 1 && (
+        <div className="flex border-b" role="tablist" aria-label="Session state">
+          {panes.map((item) => (
+            <button
+              key={item}
+              type="button"
+              role="tab"
+              aria-selected={active === item}
+              onClick={() => setPane(item)}
+              className={cn(
+                "px-4 py-2 text-sm",
+                active === item
+                  ? "border-b-2 border-foreground text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {PANE_LABELS[item]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {active === "files" && <FilesystemPane workspaceId={workspaceId} sessionId={sessionId} />}
+      {active === "values" && (
+        <div className="flex-1 overflow-y-auto">
+          <StoragePanel sessionId={sessionId} />
+        </div>
+      )}
+      {active === "schedules" && (
+        <div className="flex-1 overflow-y-auto p-6">
+          <SessionSchedulesSection sessionId={sessionId} announceEmpty showHeading={false} />
+        </div>
+      )}
     </div>
   );
 }

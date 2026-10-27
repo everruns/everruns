@@ -404,10 +404,18 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     ) -> Result<()> {
         // Status mutation is an acknowledged effect end to end (EVE-882):
         // neither the adapter nor the host contract exposes a session record.
-        self.reads.invalidate_session(org_id, session_id.uuid());
-        self.adapters
+        // A failed write may still have landed, so it drops what was read;
+        // a successful one changed only the status.
+        if let Err(error) = self
+            .adapters
             .set_session_status(org_id, session_id.uuid(), &status.to_string())
-            .await?;
+            .await
+        {
+            self.reads.invalidate_session(org_id, session_id.uuid());
+            return Err(error);
+        }
+        self.reads
+            .session_status_written(org_id, session_id.uuid(), status);
         Ok(())
     }
 

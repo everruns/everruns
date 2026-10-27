@@ -5,6 +5,7 @@ date: 2026-10-17
 kind: fix
 significance: minor
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [ui, agent]
 links:
   docs: [/features/mcp/]

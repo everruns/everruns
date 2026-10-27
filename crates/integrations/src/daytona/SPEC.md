@@ -41,12 +41,12 @@ Per-sandbox state is stored in session **secrets** (encrypted at rest via AES-25
 
 ### API Key Resolution
 
-The Daytona API key is resolved via **user connection** for the `daytona` provider (Settings > My agent experience).
+The Daytona API key is resolved via **user connection** for the `daytona` provider (Settings > Connections).
 If not configured, a `ToolError` guides the user to set up in Settings.
 
 ### User Connection
 
-Daytona registers as a `ConnectionProviderPlugin` (API-key type). Users configure their key in **Settings > My agent experience**:
+Daytona registers as a `ConnectionProviderPlugin` (API-key type). Users configure their key in **Settings > Connections**:
 
 1. User enters API key (from [Daytona Dashboard](https://app.daytona.io) > API Keys)
 2. Key validated via `GET /sandbox` endpoint
@@ -247,7 +247,7 @@ The trust-boundary decision and rationale are documented at the top of `crates/i
 
 ## Security
 
-- **API Key**: Stored in user connections (Settings > My agent experience), encrypted at rest (TM-DAYTONA-004)
+- **API Key**: Stored in user connections (Settings > Connections), encrypted at rest (TM-DAYTONA-004)
 - **Single auth token**: Both Management and Toolbox APIs use the same Bearer token
 - **Sandbox Isolation**: Each sandbox is an isolated environment (TM-DAYTONA-005)
 - **Multi-tenancy**: Sandboxes scoped to session via secret name prefixes
@@ -378,15 +378,18 @@ Change-scoped CI keeps Daytona live coverage off `pull_request`: `.github/workfl
 - **Category**: `Execution`
 - **Dependencies**: `["session_storage"]`
 
-## Desktop computer use (experimental)
+## Sandbox desktop
 
-The module also contributes `computer_use_daytona` (flag `daytona_computer_use`),
-which backs the provider-neutral `computer` tool with the desktop of a
-session-owned sandbox from Daytona's default image. See `computer.rs` and
+A Session Sandbox created with `target.options.desktop` uses Daytona's default
+image (size and snapshot are rejected), and
+`DaytonaSessionSandboxProvider::open_desktop` drives it for the
+`sandbox_desktop` capability. See `computer.rs` and
 `knowledge/execution/computer-use.md`.
 
 - **Display**: sized at create time by `VNC_RESOLUTION`; started through
-  `/computeruse/start`; a sandbox of another size is replaced.
+  `/computeruse/start` once the sandbox runs (create and resume), with
+  `DISPLAY=:0` in the sandbox environment, so a GUI program the agent starts
+  from the shell opens on it.
 - **Actions**: one JSON request per input to `/computeruse/mouse/*` and
   `/computeruse/keyboard/*`; no `exec`, no shell.
 - **Frames**: `/computeruse/screenshot`, PNG checked against the display size.

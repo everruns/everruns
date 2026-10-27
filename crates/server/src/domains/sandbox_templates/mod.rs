@@ -4,10 +4,12 @@
 // See knowledge/harnesses/sandbox-templates.md for the model.
 
 pub mod commands;
+pub mod metadata;
 pub mod queries;
 pub mod record;
 pub mod resolution;
 pub mod resolve;
+mod target_options;
 pub mod types;
 
 pub use commands::*;

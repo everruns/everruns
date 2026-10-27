@@ -6,6 +6,7 @@ cloud: 2026-10-17
 kind: improvement
 significance: minor
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [ui]
 links:
   docs: [/getting-started/use-in-ai-tools/]

@@ -55,6 +55,54 @@ pub struct SessionSandboxConfig {
     pub init: SessionSandboxInitConfig,
 }
 
+impl SessionSandboxConfig {
+    /// Whether the sandbox is created with a desktop: `provider_config.desktop`
+    /// is `true` or an object of computer-use settings (display size and
+    /// action limits).
+    ///
+    /// The `record` key is not a computer-use setting and is left out; read it
+    /// with [`Self::desktop_recording`].
+    pub fn desktop(&self) -> Option<Value> {
+        match self.provider_config.get("desktop") {
+            Some(Value::Bool(true)) => Some(Value::Object(Default::default())),
+            Some(Value::Object(settings)) => {
+                let mut settings = settings.clone();
+                settings.remove(DESKTOP_RECORD_KEY);
+                Some(Value::Object(settings))
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether the desktop is recorded as video: on for every desktop unless
+    /// `provider_config.desktop.record` is `false`.
+    pub fn desktop_recording(&self) -> bool {
+        self.desktop().is_some()
+            && self
+                .provider_config
+                .get("desktop")
+                .and_then(|desktop| desktop.get(DESKTOP_RECORD_KEY))
+                .and_then(Value::as_bool)
+                .unwrap_or(true)
+    }
+}
+
+/// Key of `provider_config.desktop` that turns desktop recording off.
+pub const DESKTOP_RECORD_KEY: &str = "record";
+
+/// A finished recording of a sandbox desktop, collected from the provider.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DesktopRecording {
+    /// File name to store it under, e.g. `2026-10-26T19-50-00Z.mp4`.
+    pub file_name: String,
+    /// Length in seconds, when the provider reports it.
+    pub duration_seconds: Option<f64>,
+    /// Size of the video file in bytes.
+    pub size_bytes: u64,
+    /// The video, or `None` when it was larger than the collection limit.
+    pub content: Option<Vec<u8>>,
+}
+
 impl Default for SessionSandboxConfig {
     fn default() -> Self {
         Self {
@@ -246,6 +294,18 @@ pub trait SessionSandboxContext: Send + Sync {
     #[cfg(feature = "runtime")]
     fn network_access(&self) -> Option<crate::runtime::network_access::NetworkAccessList> {
         None
+    }
+
+    /// A credential for tunnelling the sandbox's own traffic through the
+    /// host's tenant egress proxy, valid for `valid_for`; `None` when the host
+    /// does not route sandboxes. An error means routing is configured but
+    /// unusable, and the sandbox must not start with direct egress instead.
+    #[cfg(feature = "runtime")]
+    fn sandbox_proxy_credential(
+        &self,
+        _valid_for: std::time::Duration,
+    ) -> Result<Option<crate::runtime::SandboxProxyCredential>, ToolExecutionResult> {
+        Ok(None)
     }
 
     /// Labels for the managed Session Sandbox itself: [`Self::resource_labels`]
@@ -447,6 +507,36 @@ pub trait SessionSandboxProvider: Send + Sync {
         Ok(instance.clone())
     }
 
+    /// Open the desktop of a sandbox created with a desktop
+    /// (`provider_config.desktop`), started at `display` size. Providers
+    /// without desktops keep the default refusal.
+    #[cfg(feature = "runtime")]
+    async fn open_desktop(
+        &self,
+        _context: &dyn SessionSandboxContext,
+        _config: &SessionSandboxConfig,
+        _instance: &SessionSandboxInstance,
+        _display: crate::runtime::computer_use::DisplaySize,
+    ) -> Result<Box<dyn crate::runtime::computer_use::ComputerSession>, ToolExecutionResult> {
+        Err(ToolExecutionResult::tool_error(format!(
+            "the {} sandbox has no desktop",
+            self.id()
+        )))
+    }
+
+    /// Stop the desktop's recordings and hand back the finished ones, removing
+    /// them from the sandbox. Called when the Session goes idle, so each turn's
+    /// desktop work becomes one video. Providers that cannot record keep the
+    /// default: nothing to collect.
+    async fn collect_desktop_recordings(
+        &self,
+        _context: &dyn SessionSandboxContext,
+        _config: &SessionSandboxConfig,
+        _instance: &SessionSandboxInstance,
+    ) -> Result<Vec<DesktopRecording>, ToolExecutionResult> {
+        Ok(Vec::new())
+    }
+
     async fn status(
         &self,
         context: &dyn SessionSandboxContext,
@@ -487,4 +577,34 @@ fn default_provider_config() -> Value {
 fn default_output_mode() -> String {
     // EVE-489: persistence-first default for exec-style sandbox tools.
     "auto".to_string()
+}
+
+#[cfg(test)]
+mod desktop_tests {
+    use super::*;
+
+    fn config(provider_config: Value) -> SessionSandboxConfig {
+        SessionSandboxConfig {
+            provider: "daytona".to_string(),
+            provider_config,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn desktops_are_recorded_unless_turned_off() {
+        assert!(config(json!({"desktop": true})).desktop_recording());
+        assert!(config(json!({"desktop": {"display_width": 800}})).desktop_recording());
+        assert!(!config(json!({"desktop": {"record": false}})).desktop_recording());
+        assert!(!config(json!({})).desktop_recording());
+        assert!(!config(json!({"desktop": false, "record": true})).desktop_recording());
+    }
+
+    #[test]
+    fn the_record_switch_is_not_a_computer_use_setting() {
+        let settings = config(json!({"desktop": {"record": false, "display_width": 800}}))
+            .desktop()
+            .unwrap();
+        assert_eq!(settings, json!({"display_width": 800}));
+    }
 }

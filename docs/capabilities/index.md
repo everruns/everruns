@@ -9,7 +9,7 @@ Capabilities are modular units that extend what an agent can do. Each capability
 
 - **Tools**: callable functions the agent can invoke during conversations
 - **System prompt additions**: context and instructions prepended to the agent's prompt
-- **Features**: UI elements unlocked when the capability is active (e.g., Workspace tab)
+- **Features**: UI elements unlocked when the capability is active (e.g., the Files tab)
 
 Agents compose capabilities; enable only what you need.
 
@@ -68,6 +68,7 @@ Cloud and container sandbox environments for isolated code execution.
 | Capability | ID | Tools |
 |---|---|---|
 | Managed Environment | `session_sandbox` | 8 |
+| [Sandbox Desktop](/capabilities/computer-use/#desktop-in-a-sandbox) | `sandbox_desktop` | 1 (added by a Sandbox Template with a desktop) |
 | [Sandbox Fleet](/capabilities/sandbox-fleet/) | `sandbox_fleet` | 8 |
 | [Daytona](/capabilities/daytona/) | `daytona` | 10 |
 | [E2B](/capabilities/e2b/) | `e2b` | 6 |
@@ -134,7 +135,7 @@ External-service capabilities and blueprint-backed workflows.
 | [DuckDuckGo](/integrations/duckduckgo/) | `duckduckgo` | 1 |
 | [Parallel Search and Fetch](/integrations/parallel/) | `parallel_search` | 0 (2 hosted MCP tools from Parallel) |
 | [Jev Decisions](/integrations/typesafe/) | `jev` | 1 |
-| [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 6 (only with `manage` on) |
+| [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 7 (only with `manage` on) |
 | [Poppy Personal Agent](/capabilities/poppy-personal-agent/) | `poppy_client` | 5 |
 
 ### Platform
@@ -294,6 +295,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Agent Skills](/capabilities/agent-skills/) | [File System](/capabilities/file-system/) |
 | [GitHub Scout](/capabilities/github-scout/) | [Sub Agents](/capabilities/sub-agents/) |
 | Managed Environment | [Storage](/capabilities/session-storage/) |
+| [Sandbox Desktop](/capabilities/computer-use/#desktop-in-a-sandbox) | [Storage](/capabilities/session-storage/) |
 | [Sandbox Fleet](/capabilities/sandbox-fleet/) | [Storage](/capabilities/session-storage/) |
 | [E2B](/capabilities/e2b/) | [Storage](/capabilities/session-storage/) |
 | [Daytona](/capabilities/daytona/) | [Storage](/capabilities/session-storage/) |
@@ -315,10 +317,10 @@ Capabilities declare UI features they contribute. The session aggregates feature
 
 | Feature | UI Element | Contributed By |
 |---|---|---|
-| `file_system` | Workspace tab | [File System](/capabilities/file-system/), [Bashkit Shell](/capabilities/bashkit-shell/), [Host Shell](/capabilities/host-shell/) |
-| `secrets` | Storage tab | [Storage](/capabilities/session-storage/) |
-| `key_value` | Storage tab | [Storage](/capabilities/session-storage/) |
-| `schedules` | Schedules tab | [Schedules](/capabilities/session-schedules/) |
+| `file_system` | Files tab, filesystem | [File System](/capabilities/file-system/), [Bashkit Shell](/capabilities/bashkit-shell/), [Host Shell](/capabilities/host-shell/) |
+| `secrets` | Files tab, key values | [Storage](/capabilities/session-storage/) |
+| `key_value` | Files tab, key values | [Storage](/capabilities/session-storage/) |
+| `schedules` | Files tab and Work tab | [Schedules](/capabilities/session-schedules/) |
 | `sql_database` | Database tab | [SQL Database](/capabilities/sql-database/) |
 | `subagents` | Subagents tab | [Sub Agents](/capabilities/sub-agents/) |
 | `citations` | Inline citation chips + Sources strip | [Retrieval Citations](/capabilities/citation-retrieval/), [Citation Verification](/capabilities/citation-verification/) |

@@ -12,6 +12,9 @@ pub mod event_notifications;
 pub mod nats;
 pub mod nats_task_notifications;
 
+// Clears cached feature flags and agent/harness rows when their tables change
+pub mod cache_invalidation;
+
 // Notification broadcaster for push-based user inbox delivery
 pub mod notification_notifications;
 

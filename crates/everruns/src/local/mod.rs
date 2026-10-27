@@ -32,6 +32,8 @@ pub use git_workspace::LocalGitWorkspace as LocalGitWorkspaceProvider;
 pub use platform_store::{LocalPlatformStore, LocalSessionRunner};
 pub use profile::LocalProfile;
 pub use runtime_builder::{LocalRuntimeBuilder, local_capability_registry};
+#[cfg(test)]
+pub(crate) use schedule_runner::occurrence_message_id;
 pub use schedule_runner::{
     LocalScheduleRunner, LocalScheduleRunnerConfig, LocalScheduleRunnerHandle,
 };

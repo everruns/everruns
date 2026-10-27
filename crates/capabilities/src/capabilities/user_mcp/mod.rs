@@ -43,8 +43,8 @@ pub use everruns_core::mcp::{
     UserMcpStoreCall, UserMcpStoreError, UserMcpStoreReply, UserMcpStoreResult,
 };
 pub use tools::{
-    AddUserMcpServerTool, ConnectMcpServerTool, ListUserMcpServersTool, McpLoginPrompterExt,
-    RemoveUserMcpServerTool, SetUserMcpServerEnabledTool, UserMcpStoreExt,
+    AddUserMcpServerTool, ConnectMcpServerTool, ListMcpCatalogTool, ListUserMcpServersTool,
+    McpLoginPrompterExt, RemoveUserMcpServerTool, SetUserMcpServerEnabledTool, UserMcpStoreExt,
 };
 
 pub const USER_MCP_CAPABILITY_ID: &str = everruns_core::mcp::USER_MCP_CAPABILITY_ID;
@@ -88,7 +88,9 @@ pub fn user_mcp_custom_urls_allowed(config: &Value) -> bool {
 
 const MANAGE_PROMPT: &str = "You can manage the MCP servers of the person you are talking to: \
 list_user_mcp_servers, add_user_mcp_server, remove_user_mcp_server, enable_user_mcp_server, \
-disable_user_mcp_server and connect_mcp_server. These change only that person's own list, never \
+disable_user_mcp_server and connect_mcp_server. Before adding a catalog server, call list_mcp_catalog \
+to find approved presets and use the exact returned name as catalog; follow next_cursor until null \
+if needed. Catalog discovery is read-only and never connects or starts sign-in. Management changes only that person's own list, never \
 the organization's. Adding or enabling a server follows the agent's configured tool approval policy. \
 A server added or enabled now is usable from their next message. To add a server for this conversation only, \
 pass scope \"chat\" to add_user_mcp_server; remove_user_mcp_server takes it away again. After \

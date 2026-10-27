@@ -5,6 +5,7 @@ date: 2026-10-14
 kind: fix
 significance: notable
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [agent, api]
 links:
   docs: [/features/a2a/#personal-agents-pact]

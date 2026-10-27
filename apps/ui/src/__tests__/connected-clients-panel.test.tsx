@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ConnectedClientsPanel } from "@/components/connections/connected-clients-panel";
 
-// Connected AI clients on Settings > My agent experience
+// Connected AI clients on Settings > AI clients
 // (knowledge/integrations/mcp-connected-clients.md, phase 1).
 const mockUseConnectedClients = jest.fn();
 const mockUseRevokeConnectedClient = jest.fn();

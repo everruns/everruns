@@ -5,6 +5,7 @@ date: 2026-10-23
 kind: feature
 significance: notable
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [ui, api]
 links:
   docs: [/built-ins/harnesses/platform-chat/]
@@ -30,3 +31,7 @@ and immediate actions keep their normal controls. Hover navigation icons for
 explanations, or open **Pages** for a labeled menu.
 
 ![Chat stages Harness instructions beside the open page](./harness-workspace@2x.png)
+
+## Update 2026-10-26
+
+Chat now stages [settings and secondary forms](/changelog/2026-10-26-chat-page-settings/) and shares operational status.

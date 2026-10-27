@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageRows, useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, AlertTriangle, Pause, Play, RotateCcw } from "lucide-react";
@@ -146,6 +148,61 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
     refetchInterval: paused ? false : 1000,
     retry: false,
   });
+  const data =
+    frozen ?? (replay && snapshot.data ? replaySnapshot(snapshot.data, replay) : snapshot.data);
+  useChatPageFilters({
+    tab,
+    type: view,
+    status: phase,
+    selected_id: actor ?? worker ?? groupId,
+    offset,
+    range: paused ? "paused" : "live",
+  });
+  useChatPageRows(
+    "Monitoring phases",
+    (data?.phases ?? []).map((p) => ({ phase: p.phase, count: p.count, oldest_ms: p.oldest_ms })),
+    { loading: snapshot.isLoading, error: !!snapshot.error },
+  );
+  useChatPageRows(
+    "Monitoring summary",
+    data
+      ? [
+          {
+            actors: data.actors,
+            leases: data.actor_leases,
+            expired_leases: data.expired_leases,
+            organizations: data.organizations,
+            generated_at: data.generated_at,
+            paused,
+          },
+        ]
+      : [],
+    { loading: snapshot.isLoading, error: !!snapshot.error },
+  );
+  useChatPageRows(
+    "Monitoring workers",
+    (data?.workers ?? []).map((w) => ({
+      id: w.id,
+      group: w.worker_group,
+      status: w.status,
+      capacity: w.capacity,
+      current_load: w.current_load,
+      actor_leases: w.actor_leases,
+    })),
+    { enabled: tab === "workers", error: !!snapshot.error },
+  );
+  useChatPageRows(
+    "Monitoring actors",
+    (actors.data?.actors ?? []).map((a) => ({
+      session_id: a.session_id,
+      phase: a.phase,
+      lease_state: a.lease_state,
+      holder: a.holder,
+      fence: a.fence,
+      runnable_age_ms: a.runnable_age_ms,
+    })),
+    { enabled: tab === "actors" && !paused, loading: actors.isLoading, error: !!actors.error },
+  );
   const terminalError =
     snapshot.error instanceof ApiError && [401, 403, 404].includes(snapshot.error.status);
   if (terminalError)
@@ -159,8 +216,6 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
         />
       </PageContainer>
     );
-  const data =
-    frozen ?? (replay && snapshot.data ? replaySnapshot(snapshot.data, replay) : snapshot.data);
   const stale = !!snapshot.error || clock - snapshot.dataUpdatedAt > 5000;
   const groups = data ? groupWorkers(data.workers, groupSize) : [];
   const selectedGroup = groups.find((g) => g.id === groupId);

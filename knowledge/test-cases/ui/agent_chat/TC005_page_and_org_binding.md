@@ -10,7 +10,7 @@ tags: [ui, test-case, agents, platform-chat]
 ## Preconditions
 
 - Two disposable editable Agents, A and B, with distinct instruction sentences.
-- Two test organizations and a real model; Chat mode enabled where needed.
+- Two test organizations and a real model; Chat workspace enabled where needed.
 - Browser trace available to identify pending page tool requests.
 
 ## Steps

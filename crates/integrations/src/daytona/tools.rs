@@ -1415,7 +1415,7 @@ impl Tool for DaytonaGitCloneTool {
         "Clone a git repository into a Daytona sandbox. \
          Default clone path: /home/daytona/<owner>/<repo>. \
          Automatically uses the user's connected GitHub credentials if available. \
-         For private repos, the user must have connected their GitHub account in Settings > My agent experience."
+         For private repos, the user must have connected their GitHub account in Settings > Connections."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -1549,7 +1549,7 @@ impl Tool for DaytonaGitCloneTool {
                         || r.result.contains("could not read Username")
                         || r.result.contains("403"))
                 {
-                    "\n\nThis may be a private repository. The user can connect their GitHub account in Settings > My agent experience to enable authenticated cloning."
+                    "\n\nThis may be a private repository. The user can connect their GitHub account in Settings > Connections to enable authenticated cloning."
                 } else {
                     ""
                 };
@@ -1688,7 +1688,7 @@ impl Tool for DaytonaGitCredentialsTool {
             None => {
                 return ToolExecutionResult::tool_error(
                     "No GitHub credentials found. The user must connect their GitHub account \
-                     in Settings > My agent experience, or set a GITHUB_TOKEN session secret.",
+                     in Settings > Connections, or set a GITHUB_TOKEN session secret.",
                 );
             }
         };
@@ -2875,9 +2875,9 @@ mod tests {
                     msg.contains("No GitHub credentials"),
                     "Expected no credentials error, got: {msg}"
                 );
-                // Should suggest Settings > My agent experience
+                // Should suggest Settings > Connections
                 assert!(
-                    msg.contains("Settings > My agent experience"),
+                    msg.contains("Settings > Connections"),
                     "Expected connection hint, got: {msg}"
                 );
             }

@@ -13,7 +13,7 @@
 use crate::api::session_files::{
     CopyFileRequest, CreateFileRequest, DeleteQuery, DeleteResponse, GetQuery, GetResponse,
     GrepRequest, MoveFileRequest, StatRequest, UpdateFileRequest, is_html_preview_path,
-    raw_file_response, sandboxed_html_response, wants_raw_file,
+    sandboxed_html_response, stream_file_response, wants_raw_file,
 };
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::session_files::queries::{
@@ -30,12 +30,13 @@ use crate::storage::WorkspaceRow;
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use everruns_contracts::typed_id::WorkspaceId;
 use everruns_core::{Caller, FileInfo, FileStat, GrepResult, Policy, SessionFile};
+use futures::StreamExt;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -100,6 +101,12 @@ pub fn routes(state: AppState) -> Router {
                 .delete(delete_path),
         )
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
+        // Raw uploads stream to storage; the per-file and session quotas bound
+        // them instead of a request body limit.
+        .route(
+            "/v1/workspaces/{workspace_id}/fs/_/upload/{*path}",
+            put(upload_path).layer(DefaultBodyLimit::disable()),
+        )
         .with_state(state)
 }
 
@@ -266,6 +273,10 @@ fn service_error<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
         (StatusCode::FORBIDDEN, msg)
     } else if lower.contains("invalid") || lower.contains("not empty") {
         (StatusCode::BAD_REQUEST, msg)
+    } else if lower.contains("download it instead") {
+        // FileTooLargeToLoad: the JSON surface cannot carry it; the raw
+        // download endpoint streams it.
+        (StatusCode::UNPROCESSABLE_ENTITY, msg)
     } else {
         tracing::error!(error = %msg, "workspace_files: service error");
         (
@@ -357,15 +368,16 @@ pub async fn get_path(
         )))
         .into_response())
     } else {
+        if wants_raw_file(&headers) {
+            return stream_file_response(&state.file_service, access.key, &path, &headers, false)
+                .await;
+        }
         let file = state
             .file_service
             .read_file(access.key, &path)
             .await
             .map_err(service_error)?
             .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
-        if wants_raw_file(&headers) {
-            return raw_file_response(file, false);
-        }
         Ok(Json(GetResponse::File(file)).into_response())
     }
 }
@@ -730,7 +742,9 @@ pub async fn copy_file(
     ),
     responses(
         (status = 200, description = "Raw file bytes", content_type = "application/octet-stream"),
+        (status = 206, description = "The byte range named by the `Range` header", content_type = "application/octet-stream"),
         (status = 400, description = "Path points to a directory"),
+        (status = 416, description = "The `Range` header lies outside the file"),
         (status = 404, description = "File not found"),
         (status = 500, description = "Internal server error"),
     ),
@@ -740,6 +754,7 @@ pub async fn download_path(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((workspace_id, path)): Path<(String, String)>,
+    headers: HeaderMap,
 ) -> Result<Response, (StatusCode, String)> {
     let access = resolve_for_read(
         &state,
@@ -762,13 +777,87 @@ pub async fn download_path(
             "Cannot download a directory".to_string(),
         ));
     }
-    let file = state
+    stream_file_response(&state.file_service, access.key, &path, &headers, true).await
+}
+
+/// PUT /v1/workspaces/{workspace_id}/fs/_/upload/{path} - Upload raw file bytes
+///
+/// Creates or replaces the file with the request body, streamed to storage,
+/// so files larger than the JSON API carries (recordings, media) can be
+/// uploaded. Parent directories are created as needed.
+#[utoipa::path(
+    put,
+    path = "/v1/workspaces/{workspace_id}/fs/_/upload/{path}",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
+        ("path" = String, Path, description = "File path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value."),
+    ),
+    request_body(content = Vec<u8>, content_type = "application/octet-stream", description = "Raw file bytes"),
+    responses(
+        (status = 200, description = "File written", body = FileInfo),
+        (status = 400, description = "Invalid path, or the path is a directory or a mounted folder"),
+        (status = 403, description = "File or workspace is read-only"),
+        (status = 413, description = "File or session storage limit exceeded"),
+    ),
+    tag = "workspace-filesystem"
+)]
+pub async fn upload_path(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((workspace_id, path)): Path<(String, String)>,
+    headers: HeaderMap,
+    body: axum::body::Body,
+) -> Result<Json<FileInfo>, (StatusCode, String)> {
+    use futures::TryStreamExt;
+
+    let access = resolve_for_write(
+        &state,
+        &org,
+        &workspace_id,
+        "authorize upload workspace file",
+    )
+    .await?;
+    let path = normalize_path(&path);
+    access.ensure_mutation(&path)?;
+    if is_reserved_path(&path) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Paths starting with '_' are reserved for system actions".to_string(),
+        ));
+    }
+    let declared_bytes = headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok());
+    let stream = body
+        .into_data_stream()
+        .map_err(|error| anyhow::anyhow!("upload body failed: {error}"))
+        .boxed();
+    state
         .file_service
-        .read_file(access.key, &path)
+        .write_file_stream(access.key, &path, stream, declared_bytes, None)
         .await
-        .map_err(service_error)?
-        .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
-    raw_file_response(file, true)
+        .map(Json)
+        .map_err(upload_error)
+}
+
+fn upload_error(error: anyhow::Error) -> (StatusCode, String) {
+    let lower = error.to_string().to_lowercase();
+    if error
+        .downcast_ref::<crate::storage::blob_store::BlobTooLarge>()
+        .is_some()
+        || lower.contains("quota exceeded")
+        || lower.contains("too large")
+    {
+        (StatusCode::PAYLOAD_TOO_LARGE, error.to_string())
+    } else if lower.contains("cannot upload into")
+        || lower.contains("cannot update directory")
+        || lower.contains("cannot write a directory")
+    {
+        (StatusCode::BAD_REQUEST, error.to_string())
+    } else {
+        service_error(error)
+    }
 }
 
 /// GET /v1/workspaces/{workspace_id}/fs/_/preview/{path} - Sandboxed HTML render

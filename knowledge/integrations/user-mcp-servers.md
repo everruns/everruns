@@ -137,6 +137,17 @@ owner or the agent's service account. Consequences:
 
 ### D3. Management tools act on the person's own resources, not on the org
 
+Catalog-only management includes read-only discovery of approved organization
+presets before adding one. Provider names cannot stand in for operator-chosen
+catalog names. Discovery returns bounded pages of active presets with exact names
+and safe display endpoints, without credentials, headers, OAuth configuration or
+network discovery. Every page keeps the resolved management capability and verified
+initiating-person checks, including unattended/shared-session refusal and org
+scoping. It grants no organization management authority. See the host-neutral
+[store seam](../../crates/core/src/mcp/user_store.rs),
+[tools](../../crates/capabilities/src/capabilities/user_mcp/tools.rs), and
+[host implementation and tests](../../crates/server/src/domains/mcp_servers/user_manage/).
+
 The `manage` tools use the same virtual-user self-service operations the
 Settings page uses (`/v1/virtual-users/me/mcp-servers`, implemented in
 `crates/server/src/domains/mcp_servers/user_servers/mod.rs`). They do not need, and never receive,
@@ -292,8 +303,8 @@ for one agent did not make it available to Platform Chat.
   an admin registry: presets with "used by N agents", and a line at the top
   saying a preset does nothing until an agent or a person adds it. People who
   cannot manage the catalog no longer see it in the main navigation.
-- **Settings > My agent experience** gets a **My MCP servers** section next to
-  Connections: one row per server (published title when the server has one,
+- **Settings > MCP servers** (`/settings/mcp-servers`) is the personal server
+  list, one row per server (published title when the server has one,
   otherwise the name, plus host, from catalog / custom, connected
   as, enabled), Add (search the catalog, or custom URL), Connect or Reconnect,
   Remove. The old *My connections* tab on the MCP page redirects here. With D8

@@ -5,6 +5,7 @@ date: 2026-10-14
 kind: feature
 significance: minor
 products: [framework]
+release: "0.49.0"
 surfaces: [code, api]
 links:
   docs: [/framework/sessions/#send-files, /framework/serve/#wire-api]

@@ -239,7 +239,7 @@ impl DbConnectionResolver {
         };
         let Some(agent) = self
             .db
-            .get_agent(s.org_id, agent_id)
+            .get_agent_config(s.org_id, agent_id)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?
         else {
@@ -307,7 +307,12 @@ impl DbConnectionResolver {
             return Ok(None);
         };
         let store = |e: anyhow::Error| AgentLoopError::store(e.to_string());
-        let Some(agent) = self.db.get_agent(org_id, agent_id).await.map_err(store)? else {
+        let Some(agent) = self
+            .db
+            .get_agent_config(org_id, agent_id)
+            .await
+            .map_err(store)?
+        else {
             return Ok(None);
         };
         let Some(identity_id) = agent.virtual_user_id.filter(|_| agent.status == "active") else {
@@ -752,7 +757,7 @@ impl DbConnectionResolver {
             let agent = match s.agent_id {
                 Some(a) => self
                     .db
-                    .get_agent(org_id, a)
+                    .get_agent_config(org_id, a)
                     .await
                     .map_err(|e| AgentLoopError::store(e.to_string()))?
                     .filter(|a| a.status == "active"),

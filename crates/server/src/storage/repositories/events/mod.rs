@@ -198,8 +198,9 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        self.enqueue_event_projection(&row).await;
-        if Self::is_trace_event_type(&row.event_type) {
+        self.enqueue_event_projections(std::slice::from_ref(&row))
+            .await;
+        if Self::ends_trace_turn(&row.event_type) {
             self.schedule_session_trace_projection(row.session_id.uuid());
         }
         Ok(row)
@@ -278,8 +279,9 @@ impl Database {
         .await?;
         tx.commit().await?;
 
-        self.enqueue_event_projection(&row).await;
-        if Self::is_trace_event_type(&row.event_type) {
+        self.enqueue_event_projections(std::slice::from_ref(&row))
+            .await;
+        if Self::ends_trace_turn(&row.event_type) {
             self.schedule_session_trace_projection(row.session_id.uuid());
         }
         Ok(row)
@@ -354,17 +356,16 @@ impl Database {
         sessions.sort();
         sessions.dedup();
         let mut tx = self.pool.begin().await?;
+        // Create-or-lock in one statement: the no-op `DO UPDATE` row-locks an
+        // existing row (waiting out a concurrent creator, then locking what it
+        // committed), and a row this statement inserts is ours until commit.
+        // `DO NOTHING` plus a separate `FOR UPDATE` cost a round trip on every
+        // append; a CTE pairing them would miss a row another transaction
+        // committed while the INSERT waited, since both share one snapshot.
         sqlx::query(
             "INSERT INTO event_sequences (session_id, next_sequence, updated_at) \
              SELECT id, 1, NOW() FROM UNNEST($1::uuid[]) AS id ORDER BY id \
-             ON CONFLICT (session_id) DO NOTHING",
-        )
-        .bind(&sessions)
-        .execute(&mut *tx)
-        .await?;
-        sqlx::query(
-            "SELECT 1 FROM event_sequences WHERE session_id = ANY($1) \
-             ORDER BY session_id FOR UPDATE",
+             ON CONFLICT (session_id) DO UPDATE SET next_sequence = event_sequences.next_sequence",
         )
         .bind(&sessions)
         .execute(&mut *tx)
@@ -404,12 +405,10 @@ impl Database {
 
     /// The reporting projection and session trace work a stored batch owes.
     async fn after_events_stored(&self, ordered: &[EventRow]) {
+        self.enqueue_event_projections(ordered).await;
         let mut traced: Vec<Uuid> = Vec::new();
         for row in ordered {
-            self.enqueue_event_projection(row).await;
-            if Self::is_trace_event_type(&row.event_type)
-                && !traced.contains(&row.session_id.uuid())
-            {
+            if Self::ends_trace_turn(&row.event_type) && !traced.contains(&row.session_id.uuid()) {
                 traced.push(row.session_id.uuid());
             }
         }
@@ -418,7 +417,8 @@ impl Database {
         }
     }
 
-    async fn enqueue_event_projection(&self, row: &EventRow) {
+    /// One outbox insert for every row of a stored batch that feeds reporting.
+    async fn enqueue_event_projections(&self, rows: &[EventRow]) {
         // Reporting outbox enqueue is best-effort per knowledge/evaluation/reporting.md:
         // "If an outbox write fails after canonical state commits, a periodic
         // reconciler must be able to discover and enqueue missing projection
@@ -427,44 +427,43 @@ impl Database {
         // job exists yet (tracked separately); until it lands, a failed
         // enqueue means the corresponding fact will remain stale until the
         // canonical row is touched again and the next enqueue succeeds.
-        if !crate::storage::reporting::outbox::event_needs_projection(&row.event_type) {
+        let rows: Vec<&EventRow> = rows
+            .iter()
+            .filter(|row| {
+                crate::storage::reporting::outbox::event_needs_projection(&row.event_type)
+            })
+            .collect();
+        if rows.is_empty() {
             return;
         }
+        let event_ids: Vec<String> = rows.iter().map(|row| row.id.uuid().to_string()).collect();
+        let session_ids: Vec<Uuid> = rows.iter().map(|row| row.session_id.uuid()).collect();
         if let Err(e) = sqlx::query(
             r#"
             INSERT INTO reporting_outbox (
                 org_id, source_type, source_id, source_version, reason, status, next_attempt_at
             )
-            SELECT s.org_id, 'event', $1, $1, 'event_projection', 'pending', NOW()
-            FROM sessions s
-            WHERE s.id = $2
+            SELECT s.org_id, 'event', e.event_id, e.event_id, 'event_projection', 'pending', NOW()
+            FROM UNNEST($1::text[], $2::uuid[]) AS e(event_id, session_id)
+            JOIN sessions s ON s.id = e.session_id
             ON CONFLICT (org_id, source_type, source_id, source_version, reason)
             DO NOTHING
             "#,
         )
-        .bind(row.id.uuid().to_string())
-        .bind(row.session_id.uuid())
+        .bind(&event_ids)
+        .bind(&session_ids)
         .execute(&self.pool)
         .await
         {
-            // Look up org_id for log correlation. Failure to resolve is
-            // expected when sessions row is gone or pool is unhealthy; we
-            // still log the underlying error and don't propagate.
-            let org_id: Option<i64> =
-                sqlx::query_scalar::<_, i64>("SELECT org_id FROM sessions WHERE id = $1")
-                    .bind(row.session_id.uuid())
-                    .fetch_optional(&self.pool)
-                    .await
-                    .ok()
-                    .flatten();
-            warn!(
-                event_id = %row.id.uuid(),
-                session_id = %row.session_id.uuid(),
-                org_id = ?org_id,
-                event_type = %row.event_type,
-                error = %e,
-                "reporting outbox enqueue failed; event persisted, projection may remain stale until reconciliation lands or the source row is updated again"
-            );
+            for row in rows {
+                warn!(
+                    event_id = %row.id.uuid(),
+                    session_id = %row.session_id.uuid(),
+                    event_type = %row.event_type,
+                    error = %e,
+                    "reporting outbox enqueue failed; event persisted, projection may remain stale until reconciliation lands or the source row is updated again"
+                );
+            }
         }
     }
 

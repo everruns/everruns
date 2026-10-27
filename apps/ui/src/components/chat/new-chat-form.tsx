@@ -17,6 +17,9 @@
  */
 "use client";
 
+import { z } from "zod";
+import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, MessageCircle } from "lucide-react";
@@ -38,6 +41,13 @@ import { useCreateSession } from "@/hooks/use-sessions";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { isHarnessDeprecated } from "@/lib/harness-deprecation";
 import type { CreateSessionRequest } from "@/lib/api/types";
+
+const playgroundDraftSchema = z.strictObject({
+  counterpart: z.string(),
+  sandbox: z.string(),
+  dry_run: z.boolean(),
+  end_user_id: z.string(),
+});
 
 const AGENT_VALUE_PREFIX = "agent:";
 const HARNESS_VALUE_PREFIX = "harness:";
@@ -98,8 +108,63 @@ export function NewPlaygroundChatForm({
     setSandbox(agent?.sandbox_policy?.default ?? "");
   };
 
+  usePageReadContext({
+    entityType: "playground_chat",
+    label: "Playground choices",
+    formId: "choices",
+    fields: ["counterparts", "sandboxes", "choices_truncated"],
+    values: {
+      counterparts: JSON.stringify(
+        [
+          ...agents.map((a) => ({
+            value: `${AGENT_VALUE_PREFIX}${a.id}`,
+            name: getDisplayName(a).slice(0, 128),
+          })),
+          ...availableHarnesses.map((h) => ({
+            value: `${HARNESS_VALUE_PREFIX}${h.name}`,
+            name: getDisplayName(h).slice(0, 128),
+          })),
+        ].slice(0, 500),
+      ),
+      sandboxes: JSON.stringify(sandboxNames.slice(0, 100)),
+      choices_truncated: String(
+        agents.length + availableHarnesses.length > 500 || sandboxNames.length > 100,
+      ),
+    },
+  });
+
+  const chat = usePageFormDraft({
+    schema: playgroundDraftSchema,
+    entityType: "playground_chat",
+    label: "New Playground chat",
+    enabled: !optionsLoading,
+    values: { counterpart: selection, sandbox, dry_run: dryRun, end_user_id: endUserId ?? "" },
+    readonlyFields: ["end_user_id"],
+    baseline: JSON.stringify([initialAgentId, initialDryRun, endUserId]),
+    dirty: !!selection || dryRun !== initialDryRun || !!sandbox,
+    writable: !createSession.isPending,
+    apply: (next) => {
+      selectCounterpart(next.counterpart);
+      if (next.counterpart === selection || next.sandbox !== sandbox) setSandbox(next.sandbox);
+      setDryRun(next.dry_run);
+    },
+  });
+
   const start = async () => {
-    if (!selection) return;
+    if (!selection || chat.blocked) return;
+    if (!selectedAgent && !selectedHarness) {
+      setError("Choose an available agent or harness.");
+      return;
+    }
+    if (
+      sandbox &&
+      (!selectedAgent ||
+        !sandboxNames.includes(sandbox) ||
+        (sandboxMode === "fixed" && sandbox !== selectedAgent.sandbox_policy?.default))
+    ) {
+      setError("Choose a sandbox offered by this agent.");
+      return;
+    }
     setError(null);
     const binding: Partial<CreateSessionRequest> = selection.startsWith(HARNESS_VALUE_PREFIX)
       ? { harness_name: selection.slice(HARNESS_VALUE_PREFIX.length) }
@@ -136,6 +201,7 @@ export function NewPlaygroundChatForm({
 
   return (
     <div className="space-y-3">
+      {chat.notice}
       <div className="flex flex-col gap-3">
         <Combobox
           value={selection}
@@ -216,7 +282,7 @@ export function NewPlaygroundChatForm({
         <Button
           variant="accent"
           onClick={start}
-          disabled={!selection || createSession.isPending || !endUserId}
+          disabled={chat.blocked || !selection || createSession.isPending || !endUserId}
         >
           {createSession.isPending ? (
             <Loader2 className="size-4 animate-spin" />

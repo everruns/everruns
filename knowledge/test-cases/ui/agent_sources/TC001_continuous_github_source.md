@@ -68,3 +68,21 @@ The source applies complete valid packages to the same Agent continuously,
 rejects unauthorized local writes, retains the last valid package on failure,
 and stops applying changes after disconnect. Destination credentials and
 publication controls retain their existing local behavior.
+
+## Two-way sync
+
+1. Grant Contents write on the GitHub App, accept it on the installation, and select
+   **Sync with GitHub** in the source dialog. Preview and enable the reviewed version.
+2. Edit instructions in Everruns and save. Expect queued status, then a new commit
+   on the selected branch, retaining the external instruction file and other files.
+3. Push a repository-only change, then save another Agent edit. Expect both commits
+   retained. Push a package change with no local edits; expect it applied normally.
+4. Change the package on both sides before reconciliation. Expect a visible conflict
+   with the local edit retained and no force push. Review the GitHub version and
+   apply it explicitly to resolve; alternatively disconnect to keep local edits.
+5. Protect the branch against direct writes. Expect a visible error and retained
+   local edits; permit the App and retry to deliver the existing queued commit.
+6. In Chat mode, verify draft edits and save are available for a two-way source.
+   Reconnect in pull mode and verify authored editing becomes unavailable again.
+7. Disconnect with queued work. Expect the current local definition retained and
+   no new attempts, with the confirmation explaining in-flight requests.

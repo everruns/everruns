@@ -79,8 +79,8 @@ pub struct FeatureFlags {
     /// is tier-limited, so chat has not been verified end to end.
     #[serde(default)]
     pub mistral: bool,
-    /// Platform Chat workspace with an integrated Threads panel. Org opt-in.
-    /// Also lets Platform Chat coordinate work through threads.
+    /// Platform Chat delegation and its background Work panel. Org opt-in.
+    /// Independent subchats are available without this flag.
     #[serde(default)]
     pub chat_threads: bool,
     /// Flags declared by integration crates (see
@@ -130,8 +130,8 @@ pub fn is_known_feature_flag(name: &str) -> bool {
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     FeatureFlagDefinition {
         name: "chat_mode",
-        label: "Chat mode",
-        description: "Work with Platform Chat beside the current page. Agents show saved changes with undo.",
+        label: "Chat workspace",
+        description: "Work with Chat beside app pages, share page context and review changes with guarded Undo.",
         grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
@@ -148,8 +148,8 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     },
     FeatureFlagDefinition {
         name: "chat_threads",
-        label: "Chat threads",
-        description: "Manage conversations and ongoing work in a Threads panel alongside permanent Chat.",
+        label: "Chat background work",
+        description: "Let Chat delegate background work and inspect its progress in the Work panel. Subchats are always available.",
         grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {

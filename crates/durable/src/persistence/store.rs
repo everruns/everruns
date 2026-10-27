@@ -931,6 +931,11 @@ pub trait CircuitBreakers: Send + Sync + 'static {
 /// executions, instance heartbeats) and by the schedule management API.
 #[async_trait]
 pub trait Schedules: Send + Sync + 'static {
+    /// Pool whose schedule configuration joins a host command transaction.
+    fn schedule_transaction_pool(&self) -> Option<sqlx::PgPool> {
+        None
+    }
+
     /// Create a new schedule
     async fn create_schedule(&self, schedule: CreateScheduleRow) -> Result<Uuid, StoreError>;
 

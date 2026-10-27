@@ -376,6 +376,24 @@ impl HostedSessionRunner {
             .and_then(|value| value.as_str())
             .and_then(|value| value.parse().ok()))
     }
+
+    /// Report a finished thread turn to its coordinator, if it has one.
+    async fn settle_thread(
+        &self,
+        coordinator: Option<SessionId>,
+        session_id: SessionId,
+        result: &std::result::Result<crate::Turn, crate::RunError>,
+    ) {
+        let Some(coordinator) = coordinator else {
+            return;
+        };
+        let turn = match result {
+            Ok(turn) if turn.success => ThreadTurn::Completed,
+            Ok(turn) if turn.stop_reason == TurnStopReason::Cancelled => ThreadTurn::Cancelled,
+            _ => ThreadTurn::Failed,
+        };
+        let _ = settle_thread_turn(self.registry.as_ref(), coordinator, session_id, turn).await;
+    }
 }
 
 #[async_trait]
@@ -443,14 +461,7 @@ impl LocalSessionRunner for HostedSessionRunner {
         let result = session
             .run(crate::InputMessage::user(content).with_causal_context(causes))
             .await;
-        if let Some(coordinator) = coordinator {
-            let turn = match &result {
-                Ok(turn) if turn.success => ThreadTurn::Completed,
-                Ok(turn) if turn.stop_reason == TurnStopReason::Cancelled => ThreadTurn::Cancelled,
-                _ => ThreadTurn::Failed,
-            };
-            let _ = settle_thread_turn(self.registry.as_ref(), coordinator, session_id, turn).await;
-        }
+        self.settle_thread(coordinator, session_id, &result).await;
         match result {
             Ok(turn) if turn.success => Ok(()),
             Ok(turn) => Err(AgentLoopError::tool(format!(
@@ -459,6 +470,44 @@ impl LocalSessionRunner for HostedSessionRunner {
             ))),
             Err(error) => Err(AgentLoopError::tool(error.to_string())),
         }
+    }
+
+    async fn deliver_occurrence(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        occurrence: everruns_contracts::typed_id::MessageId,
+    ) -> Result<()> {
+        let session = self
+            .engine()?
+            .resume(session_id)
+            .await
+            .map_err(|error| AgentLoopError::tool(error.to_string()))?;
+        let coordinator = self.parent(session_id).await?;
+        if let Some(coordinator) = coordinator {
+            let _ = settle_thread_turn(
+                self.registry.as_ref(),
+                coordinator,
+                session_id,
+                ThreadTurn::Started,
+            )
+            .await;
+        }
+        // The same id reopens the receipt a lost acknowledgement left behind,
+        // whether its turn is pending, running or already finished (EVE-1309).
+        let result = match session
+            .send_with_id(occurrence, crate::InputMessage::user(content))
+            .await
+        {
+            Ok(sent) => sent.wait().await,
+            Err(error) => Err(error),
+        };
+        self.settle_thread(coordinator, session_id, &result).await;
+        // Any committed outcome delivers the occurrence, a failed turn included:
+        // retrying would only reopen that outcome, and the schedule must advance.
+        result
+            .map(|_| ())
+            .map_err(|error| AgentLoopError::tool(error.to_string()))
     }
 
     async fn list_sessions(
@@ -501,6 +550,14 @@ impl LocalSessionRunner for HostedSessionRunner {
             Err(AgentLoopError::SessionNotFound(_)) => Ok(None),
             Err(error) => Err(error),
         }
+    }
+
+    async fn latest_terminal_turn_status(&self, session_id: SessionId) -> Result<Option<String>> {
+        crate::coordination::latest_terminal_turn_status(
+            self.hosting.reader(session_id).event_log,
+            session_id,
+        )
+        .await
     }
 }
 
@@ -597,6 +654,289 @@ mod tests {
             .unwrap();
         assert_eq!(record.parent_session_id, Some(parent));
         assert_eq!(record.title.as_deref(), Some("Thread"));
+    }
+}
+
+#[cfg(test)]
+mod occurrence_tests {
+    use super::*;
+    use crate::hosting::AgentBuild;
+    use everruns_contracts::runtime::session_services::SessionScheduleStore;
+    use everruns_llmsim::{LlmSimConfig, ToolCallConfig};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    const DESCRIPTION: &str = "Run the hourly check.";
+
+    /// One activation of the authority file: each agent turn calls `effect`
+    /// once, counted across restarts.
+    fn open(
+        path: &Path,
+        build: &AgentBuild,
+        effects: &Arc<AtomicUsize>,
+    ) -> (crate::Engine, SqliteHosting, Arc<HostedSessionRunner>) {
+        let counted = effects.clone();
+        let effect = crate::FunctionTool::new(
+            "effect",
+            "Perform the scheduled side effect.",
+            serde_json::json!({"type": "object", "properties": {}}),
+            move |_arguments: Value| {
+                let counted = counted.clone();
+                async move {
+                    counted.fetch_add(1, Ordering::SeqCst);
+                    Ok::<_, String>(serde_json::json!({"done": true}))
+                }
+            },
+        );
+        let call = everruns_contracts::tool_types::ToolCall {
+            id: "call_effect".into(),
+            name: "effect".into(),
+            arguments: serde_json::json!({}),
+        };
+        let model = crate::Model::simulated_with_config(LlmSimConfig {
+            tool_calls: Some(ToolCallConfig::Sequence(vec![vec![call], vec![]])),
+            ..LlmSimConfig::fixed("Checked.")
+        });
+        let agent = crate::Agent::builder()
+            .instructions("Run the check.")
+            .model(model)
+            .tool(effect)
+            .build()
+            .unwrap();
+        let hosting = SqliteHosting::open(path).unwrap();
+        let engine = crate::Engine::builder()
+            .hosting(hosting.clone())
+            .register(build.clone(), agent)
+            .build();
+        let runner = Arc::new(HostedSessionRunner {
+            engine: engine.downgrade(),
+            hosting: hosting.clone(),
+            registry: hosting.task_registry(),
+        });
+        (engine, hosting, runner)
+    }
+
+    async fn journal_count(engine: &crate::Engine, session: SessionId, event_type: &str) -> usize {
+        engine
+            .resume(session)
+            .await
+            .unwrap()
+            .events_after(0)
+            .await
+            .unwrap()
+            .iter()
+            .filter(|event| event.event_type() == event_type)
+            .count()
+    }
+
+    /// A schedule occurrence retried after process loss reopens its original
+    /// admission instead of running again (EVE-1309). Covers loss after the
+    /// turn's terminal commit and loss after admission but before execution,
+    /// both before the claim was acknowledged. The next occurrence, with the
+    /// same description, is distinct and runs.
+    #[tokio::test]
+    async fn retried_schedule_occurrences_reopen_their_admission_across_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("authority.db");
+        let build = AgentBuild::new("assistant", "scheduled-v1");
+        let effects = Arc::new(AtomicUsize::new(0));
+        let timeout = std::time::Duration::from_secs(1);
+        let session = SessionId::new();
+
+        let (engine, hosting, runner) = open(&path, &build, &effects);
+        engine.create_registered(session, &build).await.unwrap();
+        let store = hosting.services.schedules(AUTHORITY_ORG, None);
+        let schedule = store
+            .create_schedule(
+                session,
+                DESCRIPTION.into(),
+                Some("0 * * * *".into()),
+                None,
+                "UTC".into(),
+            )
+            .await
+            .unwrap();
+        let first_due = schedule.next_trigger_at.unwrap();
+
+        // Occurrence 1: the turn commits, then the process dies before the
+        // claim is acknowledged.
+        let claim = store
+            .claim_due("lost", first_due, timeout, 8, None)
+            .unwrap();
+        let first = crate::local::occurrence_message_id(&claim[0].schedule);
+        runner
+            .deliver_occurrence(session, DESCRIPTION, first)
+            .await
+            .unwrap();
+        assert_eq!(effects.load(Ordering::SeqCst), 1);
+        drop((runner, store, hosting));
+        engine.shutdown(std::time::Duration::from_secs(5)).await;
+
+        let (engine, hosting, runner) = open(&path, &build, &effects);
+        let store = hosting.services.schedules(AUTHORITY_ORG, None);
+        let retry_at = first_due + chrono::Duration::seconds(5);
+        let claim = store
+            .claim_due("restarted", retry_at, timeout, 8, None)
+            .unwrap();
+        assert_eq!(
+            claim[0].schedule.trigger_count, 0,
+            "occurrence was retained"
+        );
+        assert_eq!(
+            crate::local::occurrence_message_id(&claim[0].schedule),
+            first
+        );
+        runner
+            .deliver_occurrence(session, DESCRIPTION, first)
+            .await
+            .unwrap();
+        assert_eq!(
+            effects.load(Ordering::SeqCst),
+            1,
+            "retry reopened the outcome"
+        );
+        store
+            .complete_delivery(&claim[0], "restarted", retry_at)
+            .await
+            .unwrap();
+
+        // Occurrence 2, same description: admitted, then the process dies
+        // before the turn executes or the claim is acknowledged.
+        let second_due = store.list_schedules(session).await.unwrap()[0]
+            .next_trigger_at
+            .unwrap();
+        let claim = store
+            .claim_due("lost", second_due, timeout, 8, None)
+            .unwrap();
+        assert_eq!(claim[0].schedule.trigger_count, 1);
+        let second = crate::local::occurrence_message_id(&claim[0].schedule);
+        assert_ne!(second, first, "a later occurrence is a new admission");
+        drop((runner, store));
+        engine.shutdown(std::time::Duration::from_secs(5)).await;
+        let mut message =
+            everruns_core::host::AcceptedTurnInput::new(crate::InputMessage::user(DESCRIPTION))
+                .into_message();
+        message.id = second;
+        hosting.admit(session, message, false).await.unwrap();
+        drop(hosting);
+
+        let (engine, hosting, runner) = open(&path, &build, &effects);
+        let store = hosting.services.schedules(AUTHORITY_ORG, None);
+        let retry_at = second_due + chrono::Duration::seconds(5);
+        let claim = store
+            .claim_due("restarted", retry_at, timeout, 8, None)
+            .unwrap();
+        assert_eq!(
+            crate::local::occurrence_message_id(&claim[0].schedule),
+            second
+        );
+        runner
+            .deliver_occurrence(session, DESCRIPTION, second)
+            .await
+            .unwrap();
+        store
+            .complete_delivery(&claim[0], "restarted", retry_at)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            effects.load(Ordering::SeqCst),
+            2,
+            "one effect per occurrence"
+        );
+        assert_eq!(journal_count(&engine, session, "input.message").await, 2);
+        assert_eq!(journal_count(&engine, session, "turn.started").await, 2);
+        let advanced = store.list_schedules(session).await.unwrap().remove(0);
+        assert_eq!(advanced.trigger_count, 2, "one advancement per occurrence");
+    }
+}
+
+#[cfg(test)]
+mod outcome_tests {
+    use super::*;
+    use crate::hosting::AgentBuild;
+    use everruns_contracts::typed_id::MessageId;
+
+    fn engine_with(
+        profile: &SqliteHosting,
+        build: &AgentBuild,
+        model: crate::Model,
+    ) -> crate::Engine {
+        let agent = crate::Agent::builder()
+            .instructions("Answer briefly.")
+            .model(model)
+            .build()
+            .unwrap();
+        crate::Engine::builder()
+            .hosting(profile.clone())
+            .register(build.clone(), agent)
+            .build()
+    }
+
+    async fn child_of(
+        engine: &crate::Engine,
+        profile: &SqliteHosting,
+        build: &AgentBuild,
+    ) -> (LocalPlatformStore, Arc<HostedSessionRunner>, SessionId) {
+        let parent = SessionId::new();
+        engine.create_registered(parent, build).await.unwrap();
+        let runner = Arc::new(HostedSessionRunner {
+            engine: engine.downgrade(),
+            hosting: profile.clone(),
+            registry: profile.task_registry(),
+        });
+        let child = runner
+            .create_session(HarnessId::new(), None, Some("Child"), None, Some(parent))
+            .await
+            .unwrap();
+        (LocalPlatformStore::new(runner.clone()), runner, child.id)
+    }
+
+    /// A native child is idle after success, failure and cancellation alike.
+    /// Waiting on it reports the finished turn's outcome, which is what lets a
+    /// foreground subagent task settle (EVE-1310); a child that never ran a
+    /// turn stays a nonterminal `idle`.
+    #[tokio::test]
+    async fn waiting_on_a_native_child_reports_its_turn_outcome() {
+        let directory = tempfile::tempdir().unwrap();
+        let profile = SqliteHosting::open(directory.path().join("authority.db")).unwrap();
+
+        let ok = AgentBuild::new("assistant", "ok-v1");
+        let engine = engine_with(&profile, &ok, crate::Model::simulated("Done."));
+        let (store, runner, child) = child_of(&engine, &profile, &ok).await;
+        assert_eq!(store.wait_for_idle(child, Some(5)).await.unwrap(), "idle");
+        runner.send_message(child, "work on it").await.unwrap();
+        assert_eq!(
+            store.wait_for_idle(child, Some(5)).await.unwrap(),
+            "completed"
+        );
+
+        let session = engine.resume(child).await.unwrap();
+        let message = MessageId::new();
+        session.send_with_id(message, "stop this").await.unwrap();
+        let admission = session.admission(message).await.unwrap().unwrap();
+        admission.cancel(uuid::Uuid::new_v4()).await.unwrap();
+        engine.activate(child).await.unwrap();
+        assert_eq!(
+            admission.wait().await.unwrap().stop_reason,
+            TurnStopReason::Cancelled
+        );
+        assert_eq!(
+            store.wait_for_idle(child, Some(5)).await.unwrap(),
+            "cancelled"
+        );
+
+        let profile = SqliteHosting::open(directory.path().join("failing.db")).unwrap();
+        let failing = AgentBuild::new("assistant", "failing-v1");
+        let engine = engine_with(
+            &profile,
+            &failing,
+            crate::Model::simulated_with_config(everruns_llmsim::LlmSimConfig::error(
+                "provider unavailable",
+            )),
+        );
+        let (store, runner, child) = child_of(&engine, &profile, &failing).await;
+        assert!(runner.send_message(child, "work on it").await.is_err());
+        assert_eq!(store.wait_for_idle(child, Some(5)).await.unwrap(), "failed");
     }
 }
 

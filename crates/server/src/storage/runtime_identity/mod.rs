@@ -404,7 +404,7 @@ impl StorageBackend {
                 .cloned();
             let row = match reused {
                 Some(row) => Some(row),
-                None => self.get_agent(org_id, agent.into()).await?,
+                None => self.get_agent_config(org_id, agent.into()).await?,
             };
             if row.is_none_or(|a| a.status != "active") {
                 bail!("Responder not available in this organization");

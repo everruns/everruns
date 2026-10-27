@@ -1,10 +1,15 @@
-//! Continuous, inbound-only Agent source synchronization.
+//! Continuous Agent source synchronization with opt-in conditional GitHub writes.
 //! Source authority is task-local and scoped to one tenant and Agent, never a request flag.
 mod github;
 #[cfg(test)]
 pub(crate) mod test_support;
 #[cfg(test)]
 mod tests;
+mod types;
+mod write;
+pub use types::{AgentSourceStatus, SourceMode};
+#[cfg(test)]
+mod write_tests;
 
 use super::{AGENT_MANAGE, AGENT_VIEW, packages, queries};
 use crate::domains::common::*;
@@ -34,13 +39,13 @@ pub(crate) async fn ensure_writable(ctx: &Ctx, agent: AgentId) -> Result<(), Com
     {
         return Ok(());
     }
-    if ctx
-        .db
-        .get_agent_source(ctx.org_id(), agent.uuid())
-        .await?
-        .is_some()
-    {
-        return Err(CommandError::conflict(READ_ONLY));
+    if let Some(source) = ctx.db.get_agent_source(ctx.org_id(), agent.uuid()).await? {
+        if source.mode != "two_way" {
+            return Err(CommandError::conflict(READ_ONLY));
+        }
+        ctx.db
+            .mark_agent_source_dirty(ctx.org_id(), agent.uuid())
+            .await?;
     }
     Ok(())
 }
@@ -71,60 +76,37 @@ pub(crate) async fn ensure_channel_writable(
             .iter()
             .any(|channel| channel == name)
     {
-        return Err(CommandError::conflict(READ_ONLY));
+        if source.mode != "two_way" {
+            return Err(CommandError::conflict(READ_ONLY));
+        }
+        ctx.db
+            .mark_agent_source_dirty(ctx.org_id(), agent.uuid())
+            .await?;
     }
     Ok(())
 }
 
-/// Continuous GitHub source binding, applied revision and reconciliation status.
-#[derive(Debug, Serialize, ToSchema)]
-pub struct AgentSourceStatus {
-    /// Binding generation used to detect a concurrent reconnect or disconnect.
-    #[schema(example = "018f30c8-c970-7cb5-a8c9-9348aa71ba8c")]
-    pub generation: Uuid,
-    /// Selected GitHub repository in owner/name form.
-    #[schema(example = "acme/agents")]
-    pub repository: String,
-    /// Branch monitored for source updates.
-    #[schema(example = "main")]
-    pub branch: String,
-    /// Repository-relative package folder or manifest; empty means the root.
-    #[schema(example = "agents/support")]
-    pub path: String,
-    /// Package channel names whose configuration is managed by the source.
-    #[schema(example = json!(["chat"]))]
-    pub managed_channels: Vec<String>,
-    /// Last successfully applied commit; retained when a later revision fails.
-    #[schema(example = "0123456789abcdef0123456789abcdef01234567")]
-    pub applied_commit: Option<String>,
-    /// Current reconciliation state: pending, syncing, synced or error.
-    #[schema(example = "synced")]
-    pub status: String,
-    /// Safe diagnostic for the latest failed check, without upstream credentials.
-    #[schema(example = "Source package validation failed: missing capability")]
-    pub error: Option<String>,
-    /// UTC time when the source was last checked.
-    #[schema(example = "2026-10-23T12:00:00Z")]
-    pub last_checked_at: Option<DateTime<Utc>>,
-    /// UTC time when a source revision was last applied successfully.
-    #[schema(example = "2026-10-23T12:00:00Z")]
-    pub last_synced_at: Option<DateTime<Utc>>,
-}
-impl From<AgentSourceRow> for AgentSourceStatus {
-    fn from(r: AgentSourceRow) -> Self {
-        Self {
-            generation: r.generation,
-            repository: r.repository,
-            branch: r.branch,
-            path: r.path,
-            managed_channels: r.managed_channels,
-            applied_commit: r.applied_commit,
-            status: r.status,
-            error: r.error,
-            last_checked_at: r.last_checked_at,
-            last_synced_at: r.last_synced_at,
-        }
+/// A local package import can explicitly change source-owned channel intent.
+/// Omitted destination bindings survive but stop participating in write-back.
+pub(crate) async fn record_local_channels(
+    ctx: &Ctx,
+    agent: Uuid,
+    names: &[String],
+) -> Result<(), CommandError> {
+    if APPLYING
+        .try_with(|key| *key == (ctx.org_id(), agent))
+        .unwrap_or(false)
+    {
+        return Ok(());
     }
+    if let Some(source) = ctx.db.get_agent_source(ctx.org_id(), agent).await?
+        && source.mode == "two_way"
+    {
+        ctx.db
+            .set_agent_source_channels(ctx.org_id(), agent, names)
+            .await?;
+    }
+    Ok(())
 }
 
 async fn agent(ctx: &Ctx, id: &str) -> Result<super::record::Agent, CommandError> {
@@ -217,7 +199,7 @@ fn digest(package: &AgentPackage) -> Result<String, CommandError> {
     Ok(hex::encode(Sha256::digest(bytes)))
 }
 async fn current_digest(ctx: &Ctx, id: &str) -> Result<String, CommandError> {
-    digest(&packages::export(ctx, id).await?)
+    digest(&write::local_package(ctx, id).await?)
 }
 async fn validate(ctx: &Ctx, package: &AgentPackage, id: &str) -> Result<Value, CommandError> {
     let input = packages::PackageInput {
@@ -351,18 +333,13 @@ impl Command for PreviewAgentSource {
         validation["commit"] = json!(snapshot.commit);
         validation["agent_digest"] = json!(current_digest(ctx, &self.agent_id).await?);
         if validation["valid"] == true {
-            let diff = packages::DiffAgentPackage(packages::PackageInput {
-                content: snapshot
-                    .package
-                    .to_string(Format::Json)
+            let current = write::local_package(ctx, &self.agent_id).await?;
+            validation["changes"] = serde_json::to_value(
+                current
+                    .diff(&snapshot.package)
                     .map_err(packages::package_error)?,
-                format: Some("json".into()),
-                file: None,
-                target: Some(self.agent_id),
-            })
-            .run(ctx)
-            .await?;
-            validation["changes"] = diff["changes"].clone();
+            )
+            .map_err(|e| CommandError::internal(e.into()))?;
         }
         Ok(validation)
     }
@@ -371,6 +348,10 @@ impl Command for PreviewAgentSource {
 /// Reviewed package location and concurrency tokens required to enable source sync.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ConnectSourceRequest {
+    /// Synchronization direction; two_way requires repository Contents write access.
+    #[serde(default)]
+    #[schema(example = "two_way")]
+    pub mode: SourceMode,
     /// Repository, branch and package path that were previewed.
     #[serde(flatten)]
     pub location: SourceLocation,
@@ -391,7 +372,7 @@ pub struct ConnectAgentSource {
     #[serde(flatten)]
     pub req: ConnectSourceRequest,
 }
-#[command(name="connect_agent_source",summary="Connect continuous GitHub source sync",category="agents",description="Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.",method="PUT",path="/v1/agents/{agent_id}/source",policy=AGENT_MANAGE,http=plain,request_body(ConnectSourceRequest),cli=CliRoute::new(&["agents", "source"], "connect").with_examples(&[CliExample::new("Enable continuous sync using the commit and Agent digest returned by preview", "everruns agents source connect --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support --commit 0123456789abcdef0123456789abcdef01234567 --agent-digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --reason \"Deploy the reviewed GitHub package\"")]))]
+#[command(name="connect_agent_source",summary="Connect continuous GitHub source sync",category="agents",description="Apply a reviewed GitHub package and enable continuous sync. Pull mode is read-only; two_way also publishes local edits using conditional commits.",method="PUT",path="/v1/agents/{agent_id}/source",policy=AGENT_MANAGE,http=plain,request_body(ConnectSourceRequest),cli=CliRoute::new(&["agents", "source"], "connect").with_examples(&[CliExample::new("Enable continuous sync using the commit and Agent digest returned by preview", "everruns agents source connect --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support --commit 0123456789abcdef0123456789abcdef01234567 --agent-digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --reason \"Deploy the reviewed GitHub package\"")]))]
 impl Command for ConnectAgentSource {
     type Output = AgentSourceStatus;
     async fn execute(mut self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -412,6 +393,16 @@ impl Command for ConnectAgentSource {
             &self.req.location.repository,
         )
         .await?;
+        if self.req.mode == SourceMode::TwoWay {
+            write::token(
+                ctx,
+                identity_id,
+                connection_id,
+                installation_id,
+                &self.req.location.repository,
+            )
+            .await?;
+        }
         let snapshot = github::snapshot(ctx, &self.req.location, &token).await?;
         if snapshot.commit != self.req.commit {
             return Err(CommandError::conflict(
@@ -419,7 +410,7 @@ impl Command for ConnectAgentSource {
             ));
         }
         let now = Utc::now();
-        let row = AgentSourceRow {
+        let mut row = AgentSourceRow {
             agent_id: a.internal_id,
             org_id: ctx.org_id(),
             generation: Uuid::new_v4(),
@@ -436,6 +427,11 @@ impl Command for ConnectAgentSource {
             repository: snapshot.repository,
             branch: self.req.location.branch,
             path: self.req.location.path,
+            mode: self.req.mode.as_str().into(),
+            local_digest: None,
+            local_package: None,
+            local_dirty: false,
+            outbox: None,
             managed_channels: snapshot.package.manifest.channels.keys().cloned().collect(),
             applied_commit: Some(snapshot.commit),
             package_digest: Some(digest(&snapshot.package)?),
@@ -471,6 +467,14 @@ impl Command for ConnectAgentSource {
                     ));
                 }
                 apply(ctx, &snapshot.package, &self.agent_id, a.internal_id).await?;
+                let local =
+                    packages::export_source(ctx, &self.agent_id, Some(&row.managed_channels))
+                        .await?;
+                row.local_digest = Some(digest(&local)?);
+                row.local_package = Some(
+                    serde_json::to_value(&local.manifest)
+                        .map_err(|e| CommandError::internal(e.into()))?,
+                );
                 ctx.db.set_agent_source(&row).await?;
                 Ok(AgentSourceStatus::from(row))
             },
@@ -531,6 +535,9 @@ async fn sync(ctx: &Ctx, row: &AgentSourceRow) -> Result<(), CommandError> {
     let a = agent(ctx, &id).await?;
     if a.status != super::record::AgentStatus::Active {
         return Ok(());
+    }
+    if row.mode == "two_way" {
+        return write::sync(ctx, row, &id).await;
     }
     let token = token(
         ctx,

@@ -5,6 +5,7 @@ date: 2026-10-15
 kind: feature
 significance: minor
 products: [platform]
+release: "0.49.0"
 surfaces: [code]
 links:
   docs: [/features/events/]

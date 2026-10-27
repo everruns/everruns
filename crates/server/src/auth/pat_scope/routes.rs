@@ -525,6 +525,11 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
         Write,
     ),
     (
+        "PATCH",
+        "/v1/orgs/{org}/organization-connections/{connection_id}",
+        Write,
+    ),
+    (
         "POST",
         "/v1/orgs/{org}/organization-connections/{connection_id}/verify",
         Write,
@@ -838,6 +843,11 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
         Read,
     ),
     ("POST", "/v1/workspaces/{workspace_id}/fs/_/stat", Read),
+    (
+        "PUT",
+        "/v1/workspaces/{workspace_id}/fs/_/upload/{path}",
+        Write,
+    ),
     ("DELETE", "/v1/workspaces/{workspace_id}/fs/{path}", Write),
     ("GET", "/v1/workspaces/{workspace_id}/fs/{path}", Read),
     ("POST", "/v1/workspaces/{workspace_id}/fs/{path}", Write),

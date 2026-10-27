@@ -18,6 +18,8 @@ jest.mock("@/components/agents/agent-package-review", () => ({
 const mocked = jest.mocked(api);
 const gh = jest.mocked(github);
 const source: api.AgentSource = {
+  mode: "pull",
+  local_dirty: false,
   generation: "generation-1",
   repository: "acme/agents",
   branch: "main",
@@ -94,8 +96,53 @@ it("requires a valid preview and sends the exact reviewed commit when enabling s
       path: "agents/support",
       commit: "a".repeat(40),
       agent_digest: "base",
+      mode: "pull",
     }),
   );
+});
+it("requires explicit two-way selection and review before enabling repository writes", async () => {
+  mocked.previewAgentSource.mockResolvedValue({
+    valid: true,
+    commit: "a".repeat(40),
+    agent_digest: "base",
+    changes: [],
+  });
+  mocked.connectAgentSource.mockResolvedValue({ ...source, mode: "two_way" });
+  show();
+  fireEvent.click(await screen.findByRole("button", { name: "Sync from GitHub" }));
+  expect(screen.getByLabelText("Sync direction")).toHaveValue("pull");
+  fireEvent.change(screen.getByLabelText("Sync direction"), { target: { value: "two_way" } });
+  expect(screen.getByText(/Requires Contents write permission/)).toBeInTheDocument();
+  await screen.findByRole("option", { name: "acme/agents" });
+  fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "acme/agents" } });
+  await waitFor(() => expect(screen.getByLabelText("Branch")).toHaveValue("main"));
+  fireEvent.click(screen.getByRole("button", { name: "Preview changes" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Enable continuous sync" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Enable continuous sync" }));
+  await waitFor(() =>
+    expect(mocked.connectAgentSource).toHaveBeenCalledWith(
+      "agent_1",
+      expect.objectContaining({ mode: "two_way", commit: "a".repeat(40), agent_digest: "base" }),
+    ),
+  );
+});
+
+it("shows retained local edits and a review action for a two-way conflict", async () => {
+  mocked.getAgentSource.mockResolvedValue({
+    ...source,
+    mode: "two_way",
+    local_dirty: true,
+    status: "conflict",
+    error: "Both sides changed",
+  });
+  show();
+  expect(await screen.findByText("Conflict")).toBeInTheDocument();
+  expect(screen.getByText(/Your local definition is retained/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Review GitHub version" }));
+  expect(screen.getByLabelText("Sync direction")).toHaveValue("two_way");
+  expect(screen.getByRole("button", { name: "Enable continuous sync" })).toBeDisabled();
 });
 it("invalidates a preview when the source selection changes", async () => {
   mocked.previewAgentSource.mockResolvedValue({
@@ -131,7 +178,7 @@ it("disconnects only after explaining that the current definition stays", async 
   mocked.disconnectAgentSource.mockResolvedValue(undefined);
   show();
   fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
-  expect(screen.getByText(/last synced definition stays/i)).toBeInTheDocument();
+  expect(screen.getByText(/current definition stays/i)).toBeInTheDocument();
   expect(mocked.disconnectAgentSource).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Disconnect source sync" }));
   await waitFor(() => expect(mocked.disconnectAgentSource).toHaveBeenCalledWith("agent_1"));

@@ -33,6 +33,28 @@ export const evalCreateDraftSchema = z.strictObject({
   model_id: draftText,
   tags: z.array(draftText).max(100),
 });
+export const evalCaseDraftSchema = z.strictObject({
+  name: draftText,
+  description: draftText,
+  messages: draftText,
+  scorer_type: z.enum(["contains", "not_contains", "regex", "tool_called"]),
+  scorer_value: draftText,
+});
+export const scheduleCreateDraftSchema = z.strictObject({
+  name: draftText,
+  description: draftText,
+  cron_expression: draftText,
+  target_type: z.enum(["workflow", "activity"]),
+  target_name: draftText,
+  enabled: z.boolean(),
+});
+export const scheduleEditDraftSchema = z.strictObject({
+  description: draftText,
+  cron_expression: draftText,
+  max_concurrent: z.string().regex(/^(?:[1-9]\d*)?$/),
+  catch_up_missed: z.boolean(),
+  max_catch_up: z.string().regex(/^(?:[1-9]\d*)?$/),
+});
 export const collectionDraftSchema = z.strictObject({
   name: draftText,
   description: draftText,
@@ -64,6 +86,19 @@ export const providerTraceDraftSchema = z.strictObject({
   ),
 });
 export const providerAdvancedDraftSchema = z.strictObject({ cache_diagnostics: z.boolean() });
+export const providerConnectDraftSchema = z.strictObject({
+  name: draftText,
+  custom_endpoint: z.boolean(),
+  base_url: draftText.refine(isPublicDraftLocation, "Use an endpoint without credentials."),
+});
+export const mcpMetadataDraftSchema = z.strictObject({
+  name: draftText,
+  description: draftText,
+  url: draftText.refine(isPublicDraftLocation, "Use an MCP URL without credentials."),
+  protocol_mode: z.enum(["auto", "2025-03-26", "2025-06-18", "2026-07-28"]),
+  elicitation_policy: z.enum(["url", "url_and_form", "none"]),
+  tool_timeout: draftText,
+});
 export const declarativeDraftSchema = z.strictObject({
   name: draftText,
   displayName: draftText,

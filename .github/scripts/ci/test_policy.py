@@ -191,6 +191,7 @@ class Policy(unittest.TestCase):
             root = Path(directory)
             (root/'src').mkdir(); (root/'tests').mkdir()
             (root/'Cargo.toml').write_text('[package]\nname="everruns-server"\nversion="0.1.0"\nedition="2024"\n[workspace]\n')
+            (root/'build.rs').write_text('fn main() { assert_eq!(std::env::var("NUM_JOBS").unwrap(), "1"); }')
             fixture = '''
 #[test]
 fn cargo_context() {
@@ -210,7 +211,7 @@ mod picked {
 #[test]
 fn unselected() { panic!("filter was lost"); }
 ''')
-            env = dict(os.environ, TEST_SELECTION=json.dumps(selection), CARGO_TARGET_DIR=str(root/'target'))
+            env = dict(os.environ, TEST_SELECTION=json.dumps(selection), CARGO_TARGET_DIR=str(root/'target'), CARGO_BUILD_JOBS='4')
             env.pop('CARGO_MANIFEST_DIR', None); env.pop('CARGO_MANIFEST_PATH', None)
             env.pop('FAIL_SELECTED', None)
             subprocess.run(['cargo', 'generate-lockfile', '--offline'], cwd=root, env=env, check=True, capture_output=True)
@@ -229,6 +230,7 @@ fn unselected() { panic!("filter was lost"); }
             package = root/'crates/server'
             (package/'src').mkdir(parents=True); (package/'tests').mkdir()
             (package/'Cargo.toml').write_text('[package]\nname="everruns-server"\nversion="0.1.0"\nedition="2024"\n[workspace]\n')
+            (package/'build.rs').write_text('fn main() { assert_eq!(std::env::var("NUM_JOBS").unwrap(), "1"); }')
             context = '''
 fn context() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -248,7 +250,7 @@ fn context() {
 #[test] fn offline() { context(); }
 #[test] fn paid() { panic!("paid case was not excluded"); }
 ''')
-            env = dict(os.environ, CARGO_TARGET_DIR=str(root/'target'))
+            env = dict(os.environ, CARGO_TARGET_DIR=str(root/'target'), CARGO_BUILD_JOBS='4')
             script = str(ROOT/'.github/scripts/ci/libtest.py')
             subprocess.run(['cargo','generate-lockfile','--offline'],cwd=package,env=env,check=True,capture_output=True)
             build = ['cargo','test','--locked','-p','everruns-server','--no-run','--message-format=json']
@@ -260,6 +262,7 @@ fn context() {
                                     cwd=package,env=env,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertEqual(result.stdout.count('1 passed; 0 failed'),3)
+            env['CARGO_BUILD_JOBS'] = '1'
             with artifacts.open('w') as output:
                 subprocess.run([*build,'--test','workflow_test'],cwd=package,env=env,stdout=output,stderr=subprocess.PIPE,check=True)
             archive = root/'transferred'

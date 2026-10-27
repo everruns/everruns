@@ -790,10 +790,26 @@ mod tests {
         let schedule_id = create_schedule(&db, session_id).await;
         let task = create_monitor_task(&db, session_id, schedule_id).await;
 
-        // Delete the schedule row entirely.
+        // Soft-delete keeps the row for the session recording and still
+        // counts as inactive, so the linked monitor is reconciled.
         db.delete_session_schedule(DEFAULT_ORG_ID, schedule_id)
             .await
             .unwrap();
+        let live = db
+            .list_session_schedules(DEFAULT_ORG_ID, session_id)
+            .await
+            .unwrap();
+        assert!(
+            live.is_empty(),
+            "deleted schedules stay out of the agent list"
+        );
+        let history = db
+            .list_session_schedule_history(DEFAULT_ORG_ID, session_id)
+            .await
+            .unwrap();
+        assert_eq!(history.len(), 1);
+        assert!(history[0].deleted_at.is_some());
+        assert!(!history[0].enabled);
 
         let results = db
             .list_monitor_tasks_with_inactive_schedules(50)

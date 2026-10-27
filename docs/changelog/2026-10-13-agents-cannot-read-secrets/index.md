@@ -5,6 +5,7 @@ date: 2026-10-13
 kind: breaking
 significance: notable
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [api]
 links:
   docs: [/capabilities/session-storage/, /capabilities/bashkit-shell/#api-keys-the-agent-never-sees]

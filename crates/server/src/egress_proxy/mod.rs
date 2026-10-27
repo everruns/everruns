@@ -10,6 +10,14 @@
 //! connects to, blocks SMTP ports, enforces per-org caps, and counts bytes
 //! per org and session.
 //!
+//! Sandboxes whose provider can tunnel their traffic (E2B's SOCKS5 "bring
+//! your own proxy") use a second listener, SOCKS5 on `EGRESS_PROXY_SOCKS_ADDR`,
+//! authenticated with a per-sandbox credential that lives as long as the
+//! sandbox (`everruns_core::host::sign_sandbox_proxy_credential`). Past
+//! authentication it runs exactly the HTTP listener's checks. The control
+//! plane turns it on for sandboxes with `EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS`,
+//! the public `host:port` providers reach it at, over TLS by default.
+//!
 //! Two extension points let a control plane own policy without forking the
 //! proxy: [`limits::LimitsSource`] (per-org caps, suspension) and
 //! [`usage::UsageSink`] (where counted usage goes). The binary speaks the HTTP
@@ -27,6 +35,7 @@
 //! | `EVERRUNS_EGRESS_PROXY_SECRET` | shared with server and worker, 32+ bytes | required |
 //! | `EGRESS_PROXY_ADDR` | proxy listener | `0.0.0.0:4750` |
 //! | `EGRESS_PROXY_HEALTH_ADDR` | probe listener (`/healthz`) | `0.0.0.0:4751` |
+//! | `EGRESS_PROXY_SOCKS_ADDR` | SOCKS5 listener for sandbox providers | off |
 //! | `EGRESS_PROXY_CONTROL_URL` | control endpoint for limits and usage | none |
 //! | `EGRESS_PROXY_ORG_RPM` | requests per minute per org | no cap |
 //! | `EGRESS_PROXY_ORG_HOST_RPM` | requests per minute per org to one host | no cap |
@@ -44,6 +53,8 @@ pub mod address;
 pub mod limiter;
 pub mod limits;
 pub mod proxy;
+pub mod signals;
+pub mod socks;
 pub mod usage;
 
 #[cfg(test)]
@@ -72,6 +83,8 @@ pub struct ProxyConfig {
     pub secret: String,
     pub listen: SocketAddr,
     pub health: SocketAddr,
+    /// SOCKS5 listener for sandbox providers; off when `None`.
+    pub socks: Option<SocketAddr>,
     /// Base URL of the control endpoint, if any.
     pub control_url: Option<String>,
     /// Caps for every org without a control endpoint, and the fallback when
@@ -107,6 +120,12 @@ impl ProxyConfig {
             secret,
             listen: parse_env("EGRESS_PROXY_ADDR", "0.0.0.0:4750".parse()?)?,
             health: parse_env("EGRESS_PROXY_HEALTH_ADDR", "0.0.0.0:4751".parse()?)?,
+            socks: match env("EGRESS_PROXY_SOCKS_ADDR") {
+                Some(value) => Some(value.parse().map_err(|_| {
+                    anyhow::anyhow!("EGRESS_PROXY_SOCKS_ADDR is not an address: {value:?}")
+                })?),
+                None => None,
+            },
             control_url: env(CONTROL_URL_ENV),
             org_limits: OrgLimits {
                 requests_per_minute: parse_env("EGRESS_PROXY_ORG_RPM", u64::MAX)?,
@@ -189,9 +208,14 @@ pub async fn run(config: ProxyConfig) -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
     let health_listener = tokio::net::TcpListener::bind(config.health).await?;
+    let socks_listener = match config.socks {
+        Some(addr) => Some(tokio::net::TcpListener::bind(addr).await?),
+        None => None,
+    };
     tracing::info!(
         listen = %config.listen,
         health = %config.health,
+        socks = ?config.socks,
         instance,
         replicas = config.replicas,
         bind_addr = ?config.bind_addr,
@@ -223,8 +247,15 @@ pub async fn run(config: ProxyConfig) -> anyhow::Result<()> {
         })
     };
 
+    let socks = async {
+        match socks_listener {
+            Some(listener) => proxy.clone().serve_socks(listener).await,
+            None => std::future::pending().await,
+        }
+    };
     tokio::select! {
-        result = proxy.serve(listener) => result?,
+        result = proxy.clone().serve(listener) => result?,
+        result = socks => result?,
         result = serve_health(health_listener) => result?,
         _ = shutdown_signal() => tracing::info!("egress proxy shutting down"),
     }

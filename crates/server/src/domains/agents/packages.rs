@@ -265,6 +265,24 @@ async fn read_folder(
 }
 
 pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
+    export_inner(ctx, id, false, None).await
+}
+
+/// Source ownership excludes destination-only channels before package validation.
+pub(crate) async fn export_source(
+    ctx: &Ctx,
+    id: &str,
+    managed: Option<&[String]>,
+) -> Result<AgentPackage, CommandError> {
+    export_inner(ctx, id, true, managed).await
+}
+
+async fn export_inner(
+    ctx: &Ctx,
+    id: &str,
+    source_only: bool,
+    managed: Option<&[String]>,
+) -> Result<AgentPackage, CommandError> {
     let agent = GetAgent { id: id.into() }.run(ctx).await?;
     let mut value = serde_json::to_value(&agent).map_err(|e| CommandError::internal(e.into()))?;
     let object = value.as_object_mut().expect("agent object");
@@ -438,11 +456,23 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
     .await?
     {
         let mut config = channel.channel_config;
+        let package_name = config.get("package_name").and_then(Value::as_str);
+        if source_only
+            && package_name
+                .is_none_or(|name| managed.is_some_and(|names| !names.iter().any(|n| n == name)))
+        {
+            continue;
+        }
         let name = config
             .get("package_name")
             .and_then(Value::as_str)
             .map(str::to_string)
             .unwrap_or_else(|| format!("{}-{}", channel.channel_type, manifest.channels.len() + 1));
+        if source_only && manifest.channels.contains_key(&name) {
+            return Err(CommandError::conflict(
+                "Multiple channels claim the same source name. Remove the duplicate binding before syncing",
+            ));
+        }
         scrub_channel(&mut config);
         manifest.channels.insert(
             name,
@@ -762,6 +792,17 @@ pub async fn apply(
             .await?;
         }
     }
+    super::source::record_local_channels(
+        ctx,
+        agent.internal_id,
+        &package
+            .manifest
+            .channels
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>(),
+    )
+    .await?;
     Ok((agent, created))
 }
 

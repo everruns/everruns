@@ -39,6 +39,7 @@ import type { OrganizationConnection } from "@/lib/api/organization-connections"
 import type { ConnectionProvider } from "@/lib/api/types";
 import { tabFromPath, tabHref } from "@/lib/tab-routes";
 import { useOrg } from "@/providers/org-provider";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 
 const TABS = ["providers", "defaults"] as const;
 type Tab = (typeof TABS)[number];
@@ -49,7 +50,8 @@ export function WebSearchShell({ children }: { children?: ReactNode }) {
   usePageTitle("Web search");
   const router = useRouter();
   const tab = tabFromPath(usePathname(), "/web-search", TABS, "providers");
-  const { hasRole } = useOrg();
+  const { hasRole, currentOrg } = useOrg();
+  const chatMode = usePageChatMode();
   const isAdmin = hasRole("admin");
 
   const catalog = useSearchProviders();
@@ -174,7 +176,7 @@ export function WebSearchShell({ children }: { children?: ReactNode }) {
         {tab === "defaults" &&
           (catalog.data ? (
             <SearchDefaultsTab
-              key={JSON.stringify(catalog.data.defaults)}
+              key={chatMode ? currentOrg?.public_id : JSON.stringify(catalog.data.defaults)}
               catalog={catalog.data}
               canManage={isAdmin}
             />

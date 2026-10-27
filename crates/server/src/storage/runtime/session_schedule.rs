@@ -59,6 +59,7 @@ pub fn row_to_domain(row: &SessionScheduleRow) -> SessionSchedule {
         trigger_count: row.trigger_count as u32,
         created_at: row.created_at,
         updated_at: row.updated_at,
+        deleted_at: row.deleted_at,
     }
 }
 

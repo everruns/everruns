@@ -166,6 +166,7 @@ mod tests {
             trigger_count,
             created_at,
             updated_at: created_at,
+            deleted_at: None,
         }
     }
 

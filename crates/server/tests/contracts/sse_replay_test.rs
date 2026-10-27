@@ -13,6 +13,8 @@ use crate::test_harness;
 
 use std::time::Duration;
 
+use everruns_contracts::typed_id::TurnId;
+
 use axum::http::StatusCode;
 use everruns_server::domains::sessions::record::Session;
 use serde_json::{Value, json};
@@ -117,4 +119,48 @@ async fn sse_rejects_since_id_combined_with_after_sequence() {
         ))
         .await
         .assert_status(StatusCode::BAD_REQUEST);
+}
+
+/// Push can drop an event (EKS load test, 2026-10-26: a turn ended in the log
+/// but its open stream never got `session.idled`). A stream inside an open turn
+/// reads PG after a quiet spell and sends what push missed.
+#[tokio::test]
+async fn sse_catches_up_an_event_push_never_delivered() {
+    let server = TestServer::in_memory().await;
+    let session = session_with_message(&server, "open turn").await;
+
+    // Written straight to the log, never published: the dropped push.
+    let pool = server.pool.clone();
+    let session_id = session.id.uuid();
+    let writer = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        sqlx::query(
+            r#"
+            INSERT INTO events (session_id, sequence, event_type, ts, context, data)
+            SELECT $1, COALESCE(MAX(sequence), 0) + 1, 'session.idled', NOW(), '{}',
+                   jsonb_build_object('turn_id', $2::text)
+            FROM events WHERE session_id = $1
+            "#,
+        )
+        .bind(session_id)
+        .bind(TurnId::new().to_string())
+        .execute(&pool)
+        .await
+        .expect("insert session.idled");
+    });
+
+    // Longer than the 5 s catch-up wait, so the stream is still open for it.
+    let stream = server
+        .get_stream_prefix(
+            &format!("/v1/sessions/{}/sse?after_sequence=0", session.id),
+            MAX_BYTES,
+            Duration::from_secs(8),
+        )
+        .await;
+    writer.await.unwrap();
+
+    assert!(
+        stream.contains("event: session.idled"),
+        "expected the missed session.idled to be caught up, got: {stream}"
+    );
 }

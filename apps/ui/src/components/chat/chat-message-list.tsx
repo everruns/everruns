@@ -12,6 +12,8 @@
  *   after the stored events, so a row keyed by the client id survives the moment its send is
  *   stored. A turn whose user message is out of view keeps the older placement: its work log
  *   at its first work event.
+ * - Automatic updates (task wakes) are a folded line, not a user turn. The report is for
+ *   the coordinator; see automatic-update.tsx.
  */
 "use client";
 
@@ -45,6 +47,7 @@ import { getEventData, isImageFilePart, isTextPart } from "@/lib/api/types";
 import type { TextAnnotation } from "@/lib/api/types";
 import { useAgents, useProviders } from "@/hooks";
 import { buildTraceConfigByDriver, resolveGenerationTraceUrl } from "@/lib/chat-trace";
+import { AutomaticUpdate } from "@/components/chat/automatic-update";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { MessageReplyActions } from "@/components/chat/message-reply-actions";
 import { parseCoordinatorMessage, parseTaskUpdate } from "@/lib/chat-thread-messages";
@@ -101,6 +104,10 @@ import {
   type FailureCounts,
 } from "@/components/chat/failure-severity";
 import { RunCards } from "@/components/chat/run-card";
+import {
+  DesktopRecordingCards,
+  assignRecordingsToEvents,
+} from "@/components/chat/desktop-recordings";
 import type { ChatRun } from "@/components/chat/run-cards";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { CompactionDivider } from "@/components/chat/compaction-divider";
@@ -371,6 +378,7 @@ export const ChatMessageList = memo(function ChatMessageList({
     return contexts;
   }, [approvalCalls, chatEvents, memberNames, sessionId, toolResultsMap]);
   const traceConfigByDriver = useMemo(() => buildTraceConfigByDriver(providers), [providers]);
+  const recordingsByEventId = useMemo(() => assignRecordingsToEvents(events ?? []), [events]);
   const clientRequestedToolCallIds = useMemo(() => {
     const ids = new Set<string>();
     for (const event of chatEvents) {
@@ -1152,6 +1160,12 @@ export const ChatMessageList = memo(function ChatMessageList({
                       </div>
                     </div>
                     {runs ? <RunCards runs={runs} /> : null}
+                    {sessionId && recordingsByEventId.has(event.id) ? (
+                      <DesktopRecordingCards
+                        sessionId={sessionId}
+                        recordings={recordingsByEventId.get(event.id) ?? []}
+                      />
+                    ) : null}
                     {turnId && (workLogTurnIds.has(turnId) || anchoredTurnIds.has(turnId))
                       ? null
                       : renderTurnDivider(
@@ -1245,6 +1259,30 @@ export const ChatMessageList = memo(function ChatMessageList({
               const isToolOnlyMessage =
                 !isUser && outputToolCalls.length > 0 && !textContent && images.length === 0;
 
+              if (isTaskWake) {
+                return (
+                  <div
+                    key={`user-${getClientMessageId(event) ?? event.id}`}
+                    className="chat-transcript-row scroll-mt-4"
+                    data-message-anchor={event.id}
+                    id={data.message?.id ? `message-${data.message.id}` : undefined}
+                  >
+                    <AutomaticUpdate
+                      label={t("automatic_update")}
+                      headline={
+                        taskUpdate
+                          ? t(`task_update_${taskUpdate.kind}` as const, {
+                              title: taskUpdate.title,
+                            })
+                          : undefined
+                      }
+                      body={taskUpdate ? taskUpdate.body : textContent}
+                      trailing={<MessageInfoIcon event={event} />}
+                    />
+                  </div>
+                );
+              }
+
               if (isToolOnlyMessage) {
                 if (toolCalls.length === 0) return null;
                 return renderWorkLog(
@@ -1278,12 +1316,6 @@ export const ChatMessageList = memo(function ChatMessageList({
                       {isUser ? (
                         <div className={chatSurfaceStyles.userMessage}>
                           {showPageContext && <MessagePageContext value={pageContext} />}
-                          {isTaskWake && (
-                            <div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                              <RefreshCw className="h-3 w-3" />
-                              <span>{t("automatic_update")}</span>
-                            </div>
-                          )}
                           {isScheduleTriggered && (
                             <div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
                               <CalendarClock className="h-3 w-3" />
@@ -1298,18 +1330,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                           )}
                           <div className="flex items-start gap-2">
                             <div className="flex-1 space-y-2">
-                              {taskUpdate ? (
-                                <>
-                                  <p className="font-medium">
-                                    {t(`task_update_${taskUpdate.kind}` as const, {
-                                      title: taskUpdate.title,
-                                    })}
-                                  </p>
-                                  {taskUpdate.body && (
-                                    <p className="whitespace-pre-wrap">{taskUpdate.body}</p>
-                                  )}
-                                </>
-                              ) : coordinatorMessage ? (
+                              {coordinatorMessage ? (
                                 <>
                                   {coordinatorMessage.kind === "assignment" && (
                                     <p className="font-medium">
@@ -1399,6 +1420,13 @@ export const ChatMessageList = memo(function ChatMessageList({
                     const runs = runsByEventId?.get(event.id);
                     return runs ? <RunCards runs={runs} /> : null;
                   })()}
+
+                  {sessionId && recordingsByEventId.has(event.id) ? (
+                    <DesktopRecordingCards
+                      sessionId={sessionId}
+                      recordings={recordingsByEventId.get(event.id) ?? []}
+                    />
+                  ) : null}
 
                   {(() => {
                     const turnId = getKnownTurnId(event);

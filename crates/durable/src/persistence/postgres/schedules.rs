@@ -4,8 +4,14 @@ use super::*;
 
 #[async_trait]
 impl Schedules for PostgresWorkflowEventStore {
+    fn schedule_transaction_pool(&self) -> Option<PgPool> {
+        Some(self.pool.clone())
+    }
     #[instrument(skip(self, schedule))]
     async fn create_schedule(&self, schedule: CreateScheduleRow) -> Result<Uuid, StoreError> {
+        let mut connection = crate::schedule_transaction::connection(&self.pool)
+            .await
+            .map_err(|error| StoreError::Database(error.to_string()))?;
         let id = Uuid::now_v7();
 
         sqlx::query(
@@ -33,7 +39,7 @@ impl Schedules for PostgresWorkflowEventStore {
         .bind(schedule.max_catch_up.map(|v| v as i32))
         .bind(&schedule.retry_policy)
         .bind(schedule.next_trigger_at)
-        .execute(&self.pool)
+        .execute(&mut *connection)
         .await
         .map_err(|e| {
             error!(error = %e, "Failed to create schedule");
@@ -46,6 +52,9 @@ impl Schedules for PostgresWorkflowEventStore {
 
     #[instrument(skip(self))]
     async fn get_schedule(&self, id: Uuid) -> Result<ScheduleRow, StoreError> {
+        let mut connection = crate::schedule_transaction::connection(&self.pool)
+            .await
+            .map_err(|error| StoreError::Database(error.to_string()))?;
         let row = sqlx::query(
             r#"
             SELECT id, name, description, cron_expression, timezone,
@@ -58,7 +67,7 @@ impl Schedules for PostgresWorkflowEventStore {
             "#,
         )
         .bind(id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *connection)
         .await
         .map_err(|e| {
             error!(error = %e, "Failed to get schedule");
@@ -75,6 +84,9 @@ impl Schedules for PostgresWorkflowEventStore {
         filter: ScheduleFilter,
         pagination: Pagination,
     ) -> Result<Vec<ScheduleRow>, StoreError> {
+        let mut connection = crate::schedule_transaction::connection(&self.pool)
+            .await
+            .map_err(|error| StoreError::Database(error.to_string()))?;
         let rows = sqlx::query(
             r#"
             SELECT id, name, description, cron_expression, timezone,
@@ -97,7 +109,7 @@ impl Schedules for PostgresWorkflowEventStore {
         )
         .bind(pagination.offset as i64)
         .bind(pagination.limit as i64)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *connection)
         .await
         .map_err(|e| {
             error!(error = %e, "Failed to list schedules");
@@ -109,6 +121,9 @@ impl Schedules for PostgresWorkflowEventStore {
 
     #[instrument(skip(self))]
     async fn count_schedules(&self, filter: ScheduleFilter) -> Result<u64, StoreError> {
+        let mut connection = crate::schedule_transaction::connection(&self.pool)
+            .await
+            .map_err(|error| StoreError::Database(error.to_string()))?;
         let row = sqlx::query(
             r#"
             SELECT COUNT(*) as count
@@ -123,7 +138,7 @@ impl Schedules for PostgresWorkflowEventStore {
                 .target_type
                 .map(|t: ScheduleTargetType| t.to_string()),
         )
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *connection)
         .await
         .map_err(|e| {
             error!(error = %e, "Failed to count schedules");
@@ -136,6 +151,9 @@ impl Schedules for PostgresWorkflowEventStore {
 
     #[instrument(skip(self, update))]
     async fn update_schedule(&self, id: Uuid, update: UpdateSchedule) -> Result<(), StoreError> {
+        let mut connection = crate::schedule_transaction::connection(&self.pool)
+            .await
+            .map_err(|error| StoreError::Database(error.to_string()))?;
         // Build dynamic update query
         let result = sqlx::query(
             r#"
@@ -180,7 +198,7 @@ impl Schedules for PostgresWorkflowEventStore {
         .bind(update.retry_policy.into_value())
         .bind(update.next_trigger_at.is_changed())
         .bind(update.next_trigger_at.into_value())
-        .execute(&self.pool)
+        .execute(&mut *connection)
         .await
         .map_err(|e| {
             error!(error = %e, "Failed to update schedule");
@@ -197,9 +215,12 @@ impl Schedules for PostgresWorkflowEventStore {
 
     #[instrument(skip(self))]
     async fn delete_schedule(&self, id: Uuid) -> Result<(), StoreError> {
+        let mut connection = crate::schedule_transaction::connection(&self.pool)
+            .await
+            .map_err(|error| StoreError::Database(error.to_string()))?;
         let result = sqlx::query("DELETE FROM durable_schedules WHERE id = $1")
             .bind(id)
-            .execute(&self.pool)
+            .execute(&mut *connection)
             .await
             .map_err(|e| {
                 error!(error = %e, "Failed to delete schedule");

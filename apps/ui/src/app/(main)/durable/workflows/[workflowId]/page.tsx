@@ -1,5 +1,7 @@
 "use client";
 
+import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
+
 import { use } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -146,15 +148,30 @@ export default function WorkflowDetailPage({
   const { data: events, isLoading: eventsLoading } = useWorkflowEvents(workflowId);
   const cancelMutation = useCancelWorkflow();
 
+  useDurablePageRows(
+    "Workflow",
+    workflow
+      ? [
+          {
+            id: workflow.id,
+            workflow_type: workflow.workflow_type,
+            status: workflow.status,
+            created_at: workflow.created_at,
+          },
+        ]
+      : [],
+    { loading: workflowLoading, error: !!workflowError },
+  );
+
   if (workflowLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Workflow Details</h1>
         </div>
         <div className="space-y-6">
           <Skeleton className="h-8 w-32" />
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="operational-grid grid gap-6 md:grid-cols-2">
             <Skeleton className="h-64" />
             <Skeleton className="h-64" />
           </div>
@@ -166,8 +183,8 @@ export default function WorkflowDetailPage({
 
   if (workflowError || !workflow) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Workflow Details</h1>
         </div>
         <Card>
@@ -200,8 +217,8 @@ export default function WorkflowDetailPage({
   };
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="operational-page container mx-auto p-6">
+      <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold">Workflow Details</h1>
       </div>
       <div className="space-y-6">
@@ -238,7 +255,7 @@ export default function WorkflowDetailPage({
         </div>
 
         {/* Info cards */}
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="operational-grid grid gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle>Details</CardTitle>

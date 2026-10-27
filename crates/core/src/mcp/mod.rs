@@ -82,8 +82,9 @@ pub use result::{extract_json_from_response, map_tool_call_result};
 pub use transport::{McpConnection, McpEndpoint, McpSecretBinding, McpTransport};
 pub use user_store::{
     McpLogin, McpLoginPrompter, USER_MCP_CAPABILITY_ID, USER_MCP_CONNECT_SETTING,
-    UserMcpLoginStatus, UserMcpServerEntry, UserMcpServerSummary, UserMcpStore, UserMcpStoreCall,
-    UserMcpStoreError, UserMcpStoreReply, UserMcpStoreResult,
+    UserMcpCatalogEntry, UserMcpCatalogPage, UserMcpLoginStatus, UserMcpServerEntry,
+    UserMcpServerSummary, UserMcpStore, UserMcpStoreCall, UserMcpStoreError, UserMcpStoreReply,
+    UserMcpStoreResult,
 };
 
 #[cfg(feature = "mcp-stdio")]

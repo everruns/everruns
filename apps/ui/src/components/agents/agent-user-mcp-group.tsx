@@ -169,7 +169,7 @@ function UserMcpGroup({
           </ul>
         )}
 
-        <LinkButton href="/settings/agent-experience" variant="outline" size="sm">
+        <LinkButton href="/settings/mcp-servers" variant="outline" size="sm">
           My MCP servers
         </LinkButton>
       </CardContent>

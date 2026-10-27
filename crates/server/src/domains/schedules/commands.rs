@@ -205,7 +205,7 @@ impl Command for UpdateScheduleCmd {
                     name: None,
                     description: req
                         .description
-                        .map_or(UpdateField::Unchanged, UpdateField::Set),
+                        .map_or(UpdateField::Unchanged, UpdateField::from_option),
                     cron_expression: req.cron_expression,
                     timezone: req.timezone,
                     target_type,
@@ -214,14 +214,14 @@ impl Command for UpdateScheduleCmd {
                     enabled: req.enabled,
                     max_concurrent: req
                         .max_concurrent
-                        .map_or(UpdateField::Unchanged, UpdateField::Set),
+                        .map_or(UpdateField::Unchanged, UpdateField::from_option),
                     catch_up_missed: req.catch_up_missed,
                     max_catch_up: req
                         .max_catch_up
-                        .map_or(UpdateField::Unchanged, UpdateField::Set),
+                        .map_or(UpdateField::Unchanged, UpdateField::from_option),
                     retry_policy: req
                         .retry_policy
-                        .map_or(UpdateField::Unchanged, UpdateField::Set),
+                        .map_or(UpdateField::Unchanged, UpdateField::from_option),
                     next_trigger_at: UpdateField::Unchanged,
                 },
             )

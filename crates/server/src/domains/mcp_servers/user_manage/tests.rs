@@ -101,6 +101,263 @@ fn upsert(name: &str, entry: UserMcpServerEntry) -> UserMcpStoreCall {
 }
 
 #[tokio::test]
+async fn catalog_discovery_finds_exact_names_without_adding_or_connecting() {
+    let fixture = Fixture::new(manage()).await;
+    fixture.catalog_preset("approved-docs", "oauth").await;
+    let call = serde_json::from_value(json!({"op": "list_catalog"})).unwrap();
+    let reply = serde_json::to_value(fixture.call(call).await.unwrap()).unwrap();
+    assert_eq!(reply["page"]["servers"][0]["name"], "approved-docs");
+    assert_eq!(
+        reply["page"]["servers"][0]["url"],
+        "https://mcp.approved-docs.app/mcp"
+    );
+    assert!(reply["page"]["next_cursor"].is_null());
+    assert!(fixture.list().await.is_empty());
+    assert!(fixture.turn_layer().await.is_empty());
+}
+
+#[tokio::test]
+async fn catalog_discovery_native_tool_forwards_verified_input_and_cursor_to_host() {
+    use everruns_capabilities::capabilities::user_mcp::{
+        ForwardingUserMcpStore, ListMcpCatalogTool, UserMcpCallInvoker, UserMcpStoreExt,
+    };
+    use everruns_core::{mcp::UserMcpStore, tool_context::ToolContext, tools::Tool};
+    use std::sync::Arc;
+
+    struct Invoker(Fixture);
+    #[async_trait::async_trait]
+    impl UserMcpCallInvoker for Invoker {
+        async fn invoke(
+            &self,
+            input: Option<Uuid>,
+            call: UserMcpStoreCall,
+        ) -> UserMcpStoreResult<UserMcpStoreReply> {
+            assert_eq!(input, Some(MESSAGE));
+            // Exercise the JSON wire shapes used by the remote-worker RPC.
+            let call = serde_json::from_slice(&serde_json::to_vec(&call).unwrap()).unwrap();
+            let reply = self.0.call_for(input, call).await?;
+            Ok(serde_json::from_slice(&serde_json::to_vec(&reply).unwrap()).unwrap())
+        }
+    }
+    let fixture = Fixture::new(manage()).await;
+    fixture.catalog_preset("approved-docs", "oauth").await;
+    let context =
+        ToolContext::new(fixture.session.id).with_extension(Arc::new(UserMcpStoreExt(Arc::new(
+            ForwardingUserMcpStore::new(Arc::new(Invoker(fixture)), Some(MESSAGE)),
+        )
+            as Arc<dyn UserMcpStore>)));
+    let result = ListMcpCatalogTool
+        .execute_with_context(json!({}), &context)
+        .await;
+    let everruns_core::tools::ToolExecutionResult::Success(page) = result else {
+        panic!("{result:?}")
+    };
+    assert_eq!(page["servers"][0]["name"], "approved-docs");
+    // An invalid cursor must cross the same seam and be refused by the host.
+    let result = ListMcpCatalogTool
+        .execute_with_context(json!({"cursor": "invalid"}), &context)
+        .await;
+    assert!(!result.is_success());
+}
+
+fn catalog_call(cursor: Option<&str>) -> UserMcpStoreCall {
+    serde_json::from_value(json!({"op": "list_catalog", "cursor": cursor})).unwrap()
+}
+
+#[tokio::test]
+async fn catalog_discovery_keeps_the_verified_person_and_manage_guards() {
+    for capability in [MANAGE, Some(json!({})), Some(json!({"connect": true}))] {
+        let fixture = Fixture::new(capability).await;
+        assert!(matches!(
+            fixture.call(catalog_call(None)).await,
+            Err(UserMcpStoreError::Unavailable(_))
+        ));
+    }
+    let fixture = Fixture::new(manage()).await;
+    for input in [None, Some(Uuid::from_u128(92))] {
+        assert!(matches!(
+            fixture.call_for(input, catalog_call(None)).await,
+            Err(UserMcpStoreError::Unavailable(_))
+        ));
+    }
+    fixture.join(201).await;
+    fixture.join(202).await;
+    assert!(matches!(
+        fixture.call(catalog_call(None)).await,
+        Err(UserMcpStoreError::Unavailable(_))
+    ));
+}
+
+#[tokio::test]
+async fn catalog_discovery_excludes_private_inactive_and_other_org_servers_and_secrets() {
+    let fixture = Fixture::new(manage()).await;
+    let input = |name: &str| CreateMcpServerRow {
+        name: name.into(),
+        description: Some("Approved documentation".into()),
+        url:
+            "https://user:secret-password@mcp.example.com/mcp?api_key=secret-query#secret-fragment"
+                .into(),
+        transport_type: "http".into(),
+        api_key_encrypted: Some(b"secret-key".to_vec()),
+        headers: Some(json!({"Authorization": "secret-header"})),
+        settings: Some(json!({"auth_mode": "oauth", "oauth": {"client_secret": "secret-client"}})),
+    };
+    fixture
+        .db
+        .create_mcp_server(DEFAULT_ORG_ID, input("approved-docs"))
+        .await
+        .unwrap();
+    for status in ["disabled", "archived", "deleted"] {
+        let row = fixture
+            .db
+            .create_mcp_server(DEFAULT_ORG_ID, input(status))
+            .await
+            .unwrap();
+        fixture
+            .db
+            .update_mcp_server(
+                DEFAULT_ORG_ID,
+                row.id.uuid(),
+                crate::storage::UpdateMcpServer {
+                    status: Some(status.into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+    }
+    fixture
+        .servers()
+        .add(custom("personal", McpServerAuthMode::None, None))
+        .await
+        .unwrap();
+    let other_org = fixture
+        .db
+        .create_organization(crate::storage::CreateOrganizationRow {
+            public_id: format!("org_{}", Uuid::now_v7().simple()),
+            name: "Other organization".into(),
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    fixture
+        .db
+        .create_mcp_server(other_org.org_id, input("other-org"))
+        .await
+        .unwrap();
+    let reply = serde_json::to_value(fixture.call(catalog_call(None)).await.unwrap()).unwrap();
+    assert_eq!(
+        reply["page"]["servers"],
+        json!([{
+            "name": "approved-docs", "url": "https://mcp.example.com/mcp",
+            "description": "Approved documentation", "auth_mode": "oauth",
+        }])
+    );
+    assert!(!reply.to_string().contains("secret"));
+    assert!(fixture.turn_layer().await.contains_key("personal"));
+    assert_eq!(
+        fixture.list().await.len(),
+        1,
+        "discovery never adds a preset"
+    );
+}
+
+#[tokio::test]
+async fn catalog_discovery_pages_are_bounded_and_do_not_repeat_or_skip_presets() {
+    let fixture = Fixture::new(manage()).await;
+    for index in 0..53 {
+        fixture
+            .catalog_preset(&format!("docs-{index}"), "none")
+            .await;
+    }
+    let first = serde_json::to_value(fixture.call(catalog_call(None)).await.unwrap()).unwrap();
+    let first_servers = first["page"]["servers"].as_array().unwrap();
+    assert_eq!(first_servers.len(), 50);
+    let cursor = first["page"]["next_cursor"].as_str().unwrap();
+    let second =
+        serde_json::to_value(fixture.call(catalog_call(Some(cursor))).await.unwrap()).unwrap();
+    let second_servers = second["page"]["servers"].as_array().unwrap();
+    assert_eq!(second_servers.len(), 3);
+    assert!(second["page"]["next_cursor"].is_null());
+    let names: std::collections::HashSet<_> = first_servers
+        .iter()
+        .chain(second_servers)
+        .map(|server| server["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names.len(), 53);
+    // Unavailable entries may fill a scanned page. Its cursor must still
+    // reach the older approved presets, rather than falsely end discovery.
+    // Catalog order follows IDs; IDs generated in one millisecond need not
+    // follow insertion order. Disable the actual first page, not creation indices.
+    for server in first_servers {
+        let row = fixture
+            .db
+            .get_mcp_server_by_name(DEFAULT_ORG_ID, server["name"].as_str().unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+        fixture
+            .db
+            .update_mcp_server(
+                DEFAULT_ORG_ID,
+                row.id.uuid(),
+                crate::storage::UpdateMcpServer {
+                    status: Some("disabled".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+    }
+    let sparse = serde_json::to_value(fixture.call(catalog_call(None)).await.unwrap()).unwrap();
+    assert_eq!(sparse["page"]["servers"], json!([]));
+    let cursor = sparse["page"]["next_cursor"].as_str().unwrap();
+    let last =
+        serde_json::to_value(fixture.call(catalog_call(Some(cursor))).await.unwrap()).unwrap();
+    assert_eq!(last["page"]["servers"].as_array().unwrap().len(), 3);
+    assert!(last["page"]["next_cursor"].is_null());
+    assert!(matches!(
+        fixture.call(catalog_call(Some("invalid-cursor"))).await,
+        Err(UserMcpStoreError::Invalid(_))
+    ));
+}
+
+#[tokio::test]
+async fn catalog_discovery_bounds_descriptions_without_splitting_utf8_or_names() {
+    let fixture = Fixture::new(manage()).await;
+    fixture.catalog_preset("approved-docs", "none").await;
+    let row = fixture
+        .db
+        .get_mcp_server_by_name(DEFAULT_ORG_ID, "approved-docs")
+        .await
+        .unwrap()
+        .unwrap();
+    fixture
+        .db
+        .update_mcp_server(
+            DEFAULT_ORG_ID,
+            row.id.uuid(),
+            crate::storage::UpdateMcpServer {
+                description: Some("資料".repeat(10_000)),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let reply = serde_json::to_value(fixture.call(catalog_call(None)).await.unwrap()).unwrap();
+    assert_eq!(reply["page"]["servers"][0]["name"], "approved-docs");
+    assert_eq!(
+        reply["page"]["servers"][0]["description"]
+            .as_str()
+            .unwrap()
+            .chars()
+            .count(),
+        256
+    );
+    assert!(!reply.to_string().contains('\u{fffd}'));
+}
+
+#[tokio::test]
 async fn add_from_catalog_is_usable_on_the_next_turn_and_connects_by_card() {
     let fixture = Fixture::new(manage()).await;
     fixture.catalog_preset("linear", "oauth").await;

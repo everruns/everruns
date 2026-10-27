@@ -365,7 +365,7 @@ export function KnowledgeIndexFormDialog({
                   {!githubConnection && (
                     <p className="text-xs text-muted-foreground">
                       Private repositories need a{" "}
-                      <Link href="/settings/agent-experience" className="underline">
+                      <Link href="/settings/connections" className="underline">
                         GitHub connection
                       </Link>
                       .

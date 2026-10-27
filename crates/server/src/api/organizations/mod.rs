@@ -12,15 +12,16 @@ use crate::domains::organizations::record::{
     Organization, generate_org_public_id, validate_org_public_id,
 };
 pub use crate::domains::organizations::types::OrganizationResponse;
-use crate::storage::UpdateField;
-use crate::storage::{AddOrganizationMemberOutcome, StorageBackend, UpdateOrganizationSettings};
+use crate::storage::{AddOrganizationMemberOutcome, StorageBackend};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, Path, State},
     http::{HeaderMap, StatusCode},
     routing::get,
 };
-use everruns_core::{DEFAULT_ORG_ID, OrgRole};
+#[cfg(test)]
+use everruns_core::DEFAULT_ORG_ID;
+use everruns_core::OrgRole;
 
 use crate::api::command_http::CommandRouterExt;
 
@@ -164,78 +165,7 @@ pub struct CreateOrganizationRequest {
     pub name: String,
 }
 
-/// Request to update an organization
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct UpdateOrganizationRequest {
-    /// The display name of the organization.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "Acme Corporation")]
-    pub name: Option<String>,
-    /// Default LLM model for this organization. Must be enabled; pass null to use the platform
-    /// default.
-    #[serde(default, deserialize_with = "double_option")]
-    #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
-    pub default_model_id: Option<Option<everruns_contracts::typed_id::ModelId>>,
-    /// Shared small chat model for lightweight work. Omit to preserve the selection;
-    /// pass null to clear it. Does not change the main chat or decision default.
-    #[serde(default, deserialize_with = "double_option")]
-    #[schema(value_type = Option<String>)]
-    pub small_model_id: Option<Option<everruns_contracts::typed_id::ModelId>>,
-    /// Default harness to preselect in the UI for new sessions.
-    /// Mutually exclusive with `default_harness_name`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000602")]
-    pub default_harness_id: Option<everruns_contracts::typed_id::HarnessId>,
-    /// Alternative to `default_harness_id` — looked up by stable name within the org.
-    /// Mutually exclusive with `default_harness_id`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "conversation")]
-    pub default_harness_name: Option<String>,
-    /// Base harness to use when a session is started without an explicit harness_id.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000601")]
-    pub base_harness_id: Option<everruns_contracts::typed_id::HarnessId>,
-    /// Org-level default provider per service (EVE-569). Maps a service kind
-    /// (`chat`, `embeddings`, `realtime`, `images`, `rerank`) to the provider id
-    /// used as that service's default, consulted after an explicit binding and
-    /// before the single-active-provider fallback. When present it **replaces**
-    /// the whole map; each referenced provider must exist in the org.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<std::collections::HashMap<String, String>>)]
-    pub default_provider_per_service: Option<
-        std::collections::HashMap<
-            everruns_contracts::driver_registry::ServiceKind,
-            everruns_contracts::typed_id::ProviderId,
-        >,
-    >,
-    /// Who answers deployment-owned decision checks (guardrail `jev` checks
-    /// and the Slack relevance check). `organization` uses the org's default
-    /// decision model (`PUT /v1/models/decision-default`) on its own provider
-    /// account; when that model is missing or failing, guardrail checks fail
-    /// open and Slack stays silent, never falling back to the deployment.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub system_decisions: Option<crate::storage::SystemDecisions>,
-    /// How many agents one AgentID owner may sign in to this organization's
-    /// Public Chat channels. Pass null to use the platform default (5).
-    #[serde(default, deserialize_with = "double_option")]
-    #[schema(value_type = Option<i32>, example = 5, minimum = 0)]
-    pub agentid_agents_per_owner: Option<Option<i32>>,
-    /// Web search defaults; replaces the stored defaults as a whole. Omitted
-    /// fields take their built-in default. `provider` cannot be
-    /// `org_default`, `account_id` and `automatic_order` entries must name
-    /// this organization's search accounts, free search is always last in
-    /// the Automatic order, and `results_per_search` is 1 to 20.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub web_search_defaults: Option<everruns_contracts::runtime::web_search::WebSearchDefaults>,
-}
-
-fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
-where
-    T: Deserialize<'de>,
-    D: serde::Deserializer<'de>,
-{
-    Option::<T>::deserialize(de).map(Some)
-}
+pub use crate::domains::organizations::types::UpdateOrganizationRequest;
 
 /// Build organization routes
 pub fn routes(state: AppState) -> Router {
@@ -554,264 +484,54 @@ pub async fn update_organization(
     Path(org_public_id): Path<String>,
     Json(req): Json<UpdateOrganizationRequest>,
 ) -> ApiResult<OrganizationResponse> {
-    use crate::storage::UpdateOrganization;
-
-    // Validate format
+    use crate::domains::common::{Command, Ctx};
+    use crate::domains::organizations::settings::UpdateOrg;
     if !validate_org_public_id(&org_public_id) {
         return Err(ErrorResponse::not_found("Organization"));
     }
-
-    // Check user membership from DB
-    if !is_member_of_public_db(&state.db, user.id, &org_public_id).await? {
-        return Err(ErrorResponse::not_found("Organization"));
-    }
-
-    // Every field accepted by this endpoint mutates organization settings.
-    if !is_org_admin_of_public_db(&state.db, user.id, &org_public_id).await? {
-        return Err(ErrorResponse::new(
-            "Only organization admins can update organization settings",
-        )
-        .into_response(StatusCode::FORBIDDEN));
-    }
-
-    // Validate input. Whitespace-only counts as empty, matching create.
-    if let Some(ref name) = req.name {
-        if name.trim().is_empty() {
-            return Err(ErrorResponse::new("Organization name cannot be empty")
-                .into_response(StatusCode::BAD_REQUEST));
-        }
-        if name.len() > 255 {
-            return Err(
-                ErrorResponse::new("Organization name cannot exceed 255 characters")
-                    .into_response(StatusCode::BAD_REQUEST),
-            );
-        }
-    }
-
-    // Get org_id from public_id
-    let org_row = state
+    let membership = state
         .db
-        .get_organization_by_public_id(&org_public_id)
+        .list_user_organizations(user.id)
         .await
-        .log_internal_error_json("get organization")?
+        .log_internal_error_json("list user organizations")?
+        .into_iter()
+        .find(|org| org.public_id == org_public_id)
         .ok_or_not_found_json("Organization")?;
-
-    // The built-in organization's name is protected, but an idempotent PATCH
-    // that repeats the current name must not block unrelated settings updates.
-    if org_row.org_id == DEFAULT_ORG_ID
-        && req.name.as_deref().is_some_and(|name| name != org_row.name)
-    {
-        return Err(ErrorResponse::new("Cannot update default organization")
-            .into_response(StatusCode::BAD_REQUEST));
-    }
-
-    let UpdateOrganizationRequest {
-        name,
-        default_model_id,
-        small_model_id,
-        mut default_harness_id,
-        default_harness_name,
-        base_harness_id,
-        default_provider_per_service,
-        system_decisions,
-        agentid_agents_per_owner,
-        web_search_defaults,
-    } = req;
-    if agentid_agents_per_owner
-        .flatten()
-        .is_some_and(|cap| cap < 0)
-    {
-        return Err(
-            ErrorResponse::new("agentid_agents_per_owner cannot be negative")
-                .into_response(StatusCode::BAD_REQUEST),
-        );
-    }
-
-    // Resolve default_harness_name to default_harness_id (mutually exclusive)
-    if default_harness_id.is_some() && default_harness_name.is_some() {
-        return Err(ErrorResponse::new(
-            "Cannot specify both default_harness_id and default_harness_name",
-        )
-        .into_response(StatusCode::BAD_REQUEST));
-    }
-    if let Some(ref harness_name) = default_harness_name {
-        super::validation::validate_harness_name_strict(harness_name)?;
-        let row = state
-            .db
-            .get_harness_by_name(org_row.org_id, harness_name)
-            .await
-            .log_internal_error_json("resolve default harness by name")?
-            .ok_or_not_found_json("Harness")?;
-        default_harness_id = Some(row.id);
-    }
-
-    // Validate referenced IDs exist (skip if already resolved from name)
-    for (selection, label) in [
-        (default_model_id.as_ref(), "Default model"),
-        (small_model_id.as_ref(), "Small model"),
-    ] {
-        let Some(Some(model_id)) = selection else {
-            continue;
-        };
-        // Verify the model exists and is enabled
-        let model = state
-            .db
-            .get_model_with_provider(org_row.org_id, model_id.uuid())
-            .await
-            .log_internal_error_json("resolve default model")?
-            .ok_or_else(|| {
-                ErrorResponse::new("Model not found").into_response(StatusCode::BAD_REQUEST)
-            })?;
-        crate::domains::models::catalog::require_chat(model.provider_metadata.as_ref()).map_err(
-            |_| {
-                ErrorResponse::new(format!("{label} must be a chat model"))
-                    .into_response(StatusCode::BAD_REQUEST)
-            },
-        )?;
-        if !model.enabled {
-            return Err(
-                ErrorResponse::new(format!("{label} must be an enabled model"))
-                    .into_response(StatusCode::BAD_REQUEST),
-            );
-        }
-        if model.provider_type == "chatgpt" {
-            return Err(
-                ErrorResponse::new("Personal providers cannot be organization defaults")
-                    .into_response(StatusCode::BAD_REQUEST),
-            );
-        }
-    }
-    if default_harness_name.is_none()
-        && let Some(default_harness_id) = default_harness_id
-    {
-        state
-            .db
-            .get_harness(org_row.org_id, default_harness_id)
-            .await
-            .log_internal_error_json("resolve default harness")?
-            .ok_or_not_found_json("Harness")?;
-    }
-    if let Some(base_harness_id) = base_harness_id {
-        state
-            .db
-            .get_harness(org_row.org_id, base_harness_id)
-            .await
-            .log_internal_error_json("resolve base harness")?
-            .ok_or_not_found_json("Harness")?;
-    }
-    // Validate every pinned provider exists in the org. Capability (the driver
-    // actually declaring the service) is enforced fail-closed at resolve time in
-    // ProviderResolverService::resolve_service. Personal grants cannot be shared
-    // through an organization default, even by their owner.
-    if let Some(ref defaults) = default_provider_per_service {
-        for provider_id in defaults.values() {
-            let provider = state
-                .db
-                .get_provider(org_row.org_id, provider_id.uuid())
-                .await
-                .log_internal_error_json("resolve org default provider")?
-                .ok_or_else(|| {
-                    ErrorResponse::new(format!("Provider {provider_id} not found"))
-                        .into_response(StatusCode::BAD_REQUEST)
-                })?;
-            if provider.provider_type == "chatgpt" {
-                return Err(ErrorResponse::new(
-                    "Personal providers cannot be organization defaults",
-                )
-                .into_response(StatusCode::BAD_REQUEST));
-            }
-        }
-    }
-
-    let web_search_defaults = match web_search_defaults {
-        Some(defaults) => Some(
-            crate::domains::organizations::web_search::validate_defaults(
-                &state.db,
-                org_row.org_id,
-                defaults,
-            )
-            .await
-            .map_err(|error| match error {
-                Ok(message) => ErrorResponse::new(message).into_response(StatusCode::BAD_REQUEST),
-                Err(error) => {
-                    tracing::error!(%error, "Failed to validate web search defaults");
-                    ErrorResponse::new("Internal error")
-                        .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-                }
-            })?,
-        ),
-        None => None,
+    let role = membership
+        .role
+        .parse::<OrgRole>()
+        .unwrap_or(OrgRole::Member);
+    let caller = everruns_core::Caller {
+        org_id: membership.org_id,
+        org_public_id: org_public_id.clone(),
+        user_id: Some(user.id),
+        role,
+        is_platform_user: user.is_platform_user,
+        is_internal: false,
+        read_only: crate::auth::pat_scope::PatScope::restricts_writes(user.pat_scope),
     };
-
-    // Update organization
-    let input = UpdateOrganization { name };
-
-    let row = state
-        .db
-        .update_organization(org_row.org_id, input)
-        .await
-        .log_internal_error_json("update organization")?
-        .ok_or_not_found_json("Organization")?;
-
-    if default_model_id.is_some()
-        || small_model_id.is_some()
-        || default_harness_id.is_some()
-        || base_harness_id.is_some()
-        || default_provider_per_service.is_some()
-        || system_decisions.is_some()
-    {
-        state
-            .db
-            .patch_organization_settings(
-                org_row.org_id,
-                UpdateOrganizationSettings {
-                    default_model_id: match default_model_id {
-                        None => UpdateField::Unchanged,
-                        Some(None) => UpdateField::Clear,
-                        Some(Some(model_id)) => UpdateField::Set(model_id),
-                    },
-                    small_model_id: match small_model_id {
-                        None => UpdateField::Unchanged,
-                        Some(None) => UpdateField::Clear,
-                        Some(Some(id)) => UpdateField::Set(id),
-                    },
-                    default_harness_id: default_harness_id
-                        .map_or(UpdateField::Unchanged, UpdateField::Set),
-                    base_harness_id: base_harness_id
-                        .map_or(UpdateField::Unchanged, UpdateField::Set),
-                    default_provider_per_service: default_provider_per_service
-                        .map_or(UpdateField::Unchanged, UpdateField::Set),
-                    system_decisions,
-                },
-            )
-            .await
-            .log_internal_error_json("update organization settings")?;
+    let ctx = Ctx::minimal(
+        caller,
+        state.db.clone(),
+        None,
+        state.auth.permission_resolver.clone(),
+    );
+    let response = UpdateOrg {
+        org: org_public_id.clone(),
+        request: req,
     }
-    if let Some(defaults) = &web_search_defaults {
-        state
-            .db
-            .set_org_web_search_defaults(org_row.org_id, defaults)
-            .await
-            .log_internal_error_json("update web search defaults")?;
-    }
-    if let Some(cap) = agentid_agents_per_owner {
-        state
-            .db
-            .set_agentid_agents_per_owner(org_row.org_id, cap)
-            .await
-            .log_internal_error_json("update AgentID owner cap")?;
-    }
-
-    let response = build_organization_response(&state.db, row.org_id, row).await?;
-
-    let mut builder =
-        AuditEvent::management(ManagementAction::OrgUpdated, org_row.org_id, Some(user.id))
-            .target("org", &org_public_id);
+    .run(&ctx)
+    .await?;
+    let mut builder = AuditEvent::management(
+        ManagementAction::OrgUpdated,
+        membership.org_id,
+        Some(user.id),
+    )
+    .target("org", &org_public_id);
     if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
         builder = builder.ip(ip);
     }
     audit::emit_event(state.db.clone(), builder.build());
-
     Ok(Json(response))
 }
 
@@ -948,6 +668,7 @@ async fn build_organization_response(
         name: org.name,
         default_model_id: settings.as_ref().and_then(|s| s.default_model_id),
         small_model_id: settings.as_ref().and_then(|s| s.small_model_id),
+        chat_model_id: settings.as_ref().and_then(|s| s.chat_model_id),
         default_harness_id: settings.as_ref().and_then(|s| s.default_harness_id),
         base_harness_id: settings.as_ref().and_then(|s| s.base_harness_id),
         default_provider_per_service: settings

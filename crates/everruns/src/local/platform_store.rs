@@ -89,6 +89,24 @@ pub trait LocalSessionRunner: Send + Sync {
         self.send_message(session_id, content).await
     }
 
+    /// Deliver one schedule occurrence under its stable admission identity.
+    ///
+    /// The schedule runner retries an occurrence until it acknowledges the
+    /// claim, including after process loss between the turn's commit and that
+    /// acknowledgement. Runners with durable admissions admit `occurrence`
+    /// through the session's `send_with_id`, so a retry
+    /// reopens the original receipt and outcome instead of running the turn
+    /// again, and return `Ok` once that admission has a committed outcome.
+    /// Runners without them deliver it as an ordinary message.
+    async fn deliver_occurrence(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        _occurrence: everruns_contracts::typed_id::MessageId,
+    ) -> Result<()> {
+        self.send_message(session_id, content).await
+    }
+
     /// List sessions known to the runner. Optionally filtered by agent.
     async fn list_sessions(
         &self,
@@ -108,6 +126,16 @@ pub trait LocalSessionRunner: Send + Sync {
 
     /// Current session status string, or `None` if the session is unknown.
     async fn get_session_status(&self, session_id: SessionId) -> Result<Option<String>>;
+
+    /// Outcome of the session's latest finished turn (`completed`, `failed`,
+    /// `cancelled` or `sealed`), or `None` when no turn has finished since the
+    /// last one started. An idle session only says it can take another turn,
+    /// so [`LocalPlatformStore::wait_for_idle`] reports this outcome instead
+    /// and delegation can settle the child's task with the matching state.
+    /// Runners that cannot tell return `None` and keep reporting `idle`.
+    async fn latest_terminal_turn_status(&self, _session_id: SessionId) -> Result<Option<String>> {
+        Ok(None)
+    }
 }
 
 fn unsupported(op: &str) -> AgentLoopError {
@@ -190,10 +218,20 @@ impl PlatformStore for LocalPlatformStore {
     ) -> Result<String> {
         // `send_message` runs the turn synchronously to completion in the local
         // host, so by the time a caller polls, the session is already idle.
-        self.runner
+        let status = self
+            .runner
             .get_session_status(session_id)
             .await?
-            .ok_or_else(|| AgentLoopError::session_not_found(session_id))
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
+        // Idle follows success, failure and cancellation alike. Report the
+        // finished turn's outcome so a foreground subagent settles its task
+        // (EVE-1310); a never-started child stays a nonterminal `idle`.
+        if status == "idle"
+            && let Some(outcome) = self.runner.latest_terminal_turn_status(session_id).await?
+        {
+            return Ok(outcome);
+        }
+        Ok(status)
     }
 
     // ---- Platform-management-only: explicit unsupported ---------------------

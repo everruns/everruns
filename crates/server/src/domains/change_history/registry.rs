@@ -23,6 +23,12 @@ use crate::kernel_imports::Policy;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EntityKind {
+    Organization,
+    OrganizationNetwork,
+    OrganizationDecision,
+    UserProfile,
+    OrganizationAccount,
+    SandboxTemplate,
     Agent,
     Harness,
     Skill,
@@ -59,6 +65,12 @@ pub enum EntityKind {
 
 impl EntityKind {
     pub const ALL: &'static [EntityKind] = &[
+        Self::Organization,
+        Self::OrganizationNetwork,
+        Self::OrganizationDecision,
+        Self::UserProfile,
+        Self::OrganizationAccount,
+        Self::SandboxTemplate,
         Self::Agent,
         Self::Harness,
         Self::Skill,
@@ -93,6 +105,12 @@ impl EntityKind {
 
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Organization => "organization",
+            Self::OrganizationNetwork => "organization_network",
+            Self::OrganizationDecision => "organization_decision",
+            Self::UserProfile => "user_profile",
+            Self::OrganizationAccount => "organization_account",
+            Self::SandboxTemplate => "sandbox_template",
             Self::Agent => "agent",
             Self::Harness => "harness",
             Self::Skill => "skill",
@@ -138,6 +156,10 @@ impl EntityKind {
     /// an explicit `--kind`.
     pub fn id_prefix(self) -> Option<&'static str> {
         Some(match self {
+            Self::Organization => "org",
+            Self::OrganizationNetwork | Self::OrganizationDecision => return None,
+            Self::UserProfile | Self::OrganizationAccount => return None,
+            Self::SandboxTemplate => "sbxtpl",
             Self::Agent => "agent",
             Self::Harness => "harness",
             Self::Skill => "skill",
@@ -183,6 +205,16 @@ impl EntityKind {
     pub fn view_policy(self) -> &'static Policy {
         use crate::domains::*;
         match self {
+            Self::Organization => &organizations::settings::ORGANIZATION_VIEW,
+            Self::OrganizationNetwork => {
+                &organizations::egress_allowlist::ORG_EGRESS_ALLOWLIST_VIEW
+            }
+            Self::OrganizationDecision => &models::LLM_MODEL_VIEW,
+            Self::OrganizationAccount => {
+                &organizations::provider_accounts::ORG_PROVIDER_ACCOUNTS_VIEW
+            }
+            Self::SandboxTemplate => &harnesses::HARNESS_VIEW,
+            Self::UserProfile => &users::profile::OWN_PROFILE,
             Self::Agent
             | Self::CheckRule
             | Self::AgentChannel
@@ -219,6 +251,16 @@ impl EntityKind {
     pub fn manage_policy(self) -> &'static Policy {
         use crate::domains::*;
         match self {
+            Self::Organization => &organizations::settings::ORGANIZATION_MANAGE,
+            Self::OrganizationNetwork => {
+                &organizations::egress_allowlist::ORG_EGRESS_ALLOWLIST_MANAGE
+            }
+            Self::OrganizationDecision => &models::LLM_MODEL_MANAGE,
+            Self::OrganizationAccount => {
+                &organizations::provider_accounts::ORG_PROVIDER_ACCOUNTS_VIEW
+            }
+            Self::SandboxTemplate => &harnesses::HARNESS_MANAGE,
+            Self::UserProfile => &users::profile::OWN_PROFILE,
             Self::Agent | Self::AgentChannel | Self::AgentTrigger | Self::AgentScript => {
                 &agents::AGENT_MANAGE
             }
@@ -253,7 +295,11 @@ impl EntityKind {
     pub fn has_manager_context(self) -> bool {
         !matches!(
             self,
-            Self::KnowledgeEntry | Self::KnowledgeIndexer | Self::EvalCase | Self::Session
+            Self::KnowledgeEntry
+                | Self::KnowledgeIndexer
+                | Self::EvalCase
+                | Self::Session
+                | Self::UserProfile
         )
     }
 
@@ -263,6 +309,12 @@ impl EntityKind {
     /// read needs a parent id (channels, triggers, check rules) have none.
     pub fn lookup(self) -> Option<(&'static str, &'static str)> {
         Some(match self {
+            Self::Organization => ("get_org", "org"),
+            Self::OrganizationNetwork => ("get_org_egress_allowlist", "org"),
+            Self::OrganizationDecision => ("get_org_decision_settings", "org"),
+            Self::UserProfile => ("get_account_profile", "id"),
+            Self::OrganizationAccount => ("get_organization_account", "id"),
+            Self::SandboxTemplate => ("get_sandbox_template_metadata", "id"),
             Self::Agent => ("get_agent", "id"),
             Self::Harness => ("get_harness", "id"),
             Self::Skill => ("get_skill", "id"),
@@ -301,6 +353,7 @@ impl EntityKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ChangeAction {
+    Baseline,
     Created,
     Updated,
     Deleted,
@@ -322,6 +375,7 @@ pub enum ChangeAction {
 
 impl ChangeAction {
     pub const ALL: &'static [ChangeAction] = &[
+        Self::Baseline,
         Self::Created,
         Self::Updated,
         Self::Deleted,
@@ -343,6 +397,7 @@ impl ChangeAction {
 
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Baseline => "baseline",
             Self::Created => "created",
             Self::Updated => "updated",
             Self::Deleted => "deleted",
@@ -374,6 +429,7 @@ impl ChangeAction {
 /// Where the changed entity's id is found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubjectId {
+    CallerOrg,
     /// A top-level field of the params (update, delete: the id is an input).
     Param(&'static str),
     /// A top-level field of the output (create: the id exists only after).
@@ -544,12 +600,11 @@ pub fn declared(name: &str) -> Change {
         "create_model" => on(K::Model, Created, ID),
         "update_model" => on(K::Model, Updated, ID),
         "delete_model" => on(K::Model, Deleted, Param("id")),
-        "set_org_egress_allowlist" | "set_org_egress_allowlist_grant" => {
+        "set_org_egress_allowlist" => on(K::OrganizationNetwork, Updated, Param("org")),
+        "set_org_egress_allowlist_grant" => {
             Change::Exempt("an organization setting, recorded in the management audit log")
         }
-        "set_default_decision_model" => {
-            Change::Exempt("an organization setting, not a change to one model")
-        }
+        "set_default_decision_model" => on(K::OrganizationDecision, Updated, SubjectId::CallerOrg),
 
         "create_mcp_server" => on(K::McpServer, Created, ID),
         "update_mcp_server" => on(K::McpServer, Updated, ID),
@@ -569,12 +624,21 @@ pub fn declared(name: &str) -> Change {
         "delete_plugin_marketplace" => on(K::PluginMarketplace, Deleted, Param("id")),
         "sync_plugin_marketplace" => Change::Exempt("a sync run refreshes the catalog"),
 
+        "apply_model_selection" | "undo_model_selection" => Change::Exempt(
+            "Each model update records its own revision in the shared batch transaction",
+        ),
         // Organization.
+        "update_org" => on(K::Organization, Updated, Param("org")),
+        "update_sandbox_template_metadata" => on(K::SandboxTemplate, Updated, Param("id")),
+        "update_organization_account_name" => on(K::OrganizationAccount, Updated, Param("id")),
+        "update_account_profile" => on(K::UserProfile, Updated, Param("id")),
         "update_workspace" => on(K::Workspace, Updated, ID),
         "delete_workspace" => on(K::Workspace, Deleted, Param("workspace_id")),
 
         "create_virtual_user" => on(K::VirtualUser, Created, ID),
-        "update_virtual_user" => on(K::VirtualUser, Updated, ID),
+        "update_virtual_user" | "update_own_virtual_user_profile" => {
+            on(K::VirtualUser, Updated, ID)
+        }
         "delete_virtual_user" | "destroy_virtual_user" => on(K::VirtualUser, Deleted, Param("id")),
 
         "create_observer" => on(K::Observer, Created, ID),

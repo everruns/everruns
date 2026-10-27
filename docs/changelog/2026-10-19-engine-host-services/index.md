@@ -5,6 +5,7 @@ date: 2026-10-19
 kind: feature
 significance: notable
 products: [framework]
+release: "0.49.0"
 surfaces: [code]
 links:
   docs: [/framework/host-services/]

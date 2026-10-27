@@ -122,6 +122,18 @@ carry data in its URL, so open reads are bounded:
   The lookup runs concurrently with DNS-pinning resolution, so a first read of
   an unknown host pays one round trip rather than two; allowlisted hosts skip
   it entirely, which is one reason to list frequently read sites.
+- **Deny feeds.** With `EVERRUNS_EGRESS_DENY_FEEDS`, the boundary also
+  refuses domains on public threat-intelligence lists (preset
+  `hagezi-tif-mini`, or operator URLs), with their subdomains, for every
+  request the allowlist does not admit, open grant included. Unlike the
+  curated deny list, a curated allowlist entry wins over a feed: a feed is a
+  third party's judgement and lists shared platforms. Fetched once per process
+  at start and every 6 hours; a failed fetch keeps the last list, and the
+  process allows traffic until the first fetch lands. Decision: a refreshed
+  list over a per-request lookup, because the long tail of phishing and C2
+  hosts churns daily and a set lookup costs nothing per request; it
+  complements the reputation resolver rather than replacing it. Source:
+  `crates/core/src/host/egress_deny_feeds.rs`.
 - **URL length.** An open read's URL is capped at 2048 characters.
 - **Hostnames only.** An open read to an IP literal is refused, since it would
   bypass any domain-based reputation.
@@ -314,6 +326,51 @@ to the log. Hosted Everruns keeps only its commercial layer in the SaaS
 repository: trust tiers tied to payment, the operator kill switch, and booking
 usage into the org ledger.
 
+The proxy also reports **abuse signals** per org and minute with the usage
+batch (`crates/server/src/egress_proxy/signals.rs`): blocked-port (SMTP)
+attempts, private-address refusals, cap refusals, and distinct hosts reached.
+It counts and never acts on them: deciding that a pattern is abuse needs
+history and account state the proxy does not hold, and the response (warn,
+throttle, suspend) is the host's policy. Distinct hosts are counted per
+org-minute, not per session, so many sessions using the same few APIs do not
+add up to a fan-out.
+
+### Sandboxes through the proxy
+
+E2B can tunnel a sandbox's own outbound TCP to a SOCKS5 proxy we name
+("bring your own proxy"), set per sandbox through its API, invisible to and
+unbypassable from inside the sandbox, and fail-closed when the proxy is down.
+`EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS` turns that on: every E2B sandbox that may
+reach the network gets `network.egressProxy` pointing at the proxy's SOCKS5
+listener (`EGRESS_PROXY_SOCKS_ADDR`). Decisions:
+
+- **Same checks.** After authentication the SOCKS5 listener runs the HTTP
+  listener's code path (`Proxy::open`, `Proxy::relay`): port policy, org
+  limits and suspension, caps, the non-public refusal, byte counting per org
+  and session. Sandbox traffic and tool traffic share one set of limits.
+- **E2B filters first.** The template rule and the session access list stay in
+  `allowOut`/`denyOut`, so the proxy needs no session list of its own.
+- **A credential per sandbox, not per request.** E2B holds the credential for
+  the sandbox's life, so it is `s1.<org>.<session>.<exp>.<hmac>`, valid for the
+  sandbox timeout plus an hour (at most two days) and replaced on every resume.
+  The version is inside the signed claims, so a request token never opens a
+  tunnel and a sandbox credential never rides the HTTP listener. It always
+  names an org, goes to E2B's API only and never into the sandbox; E2B never
+  returns the password.
+- **TLS by default.** E2B can speak TLS to the proxy, so the SOCKS address
+  needs a TLS terminator in front of it; `EVERRUNS_EGRESS_PROXY_SOCKS_TLS=false`
+  is for a proxy reached over a private network only.
+- **Fail closed.** A configured address with an unusable secret stops E2B
+  sandboxes from starting; an expired credential cuts egress rather than
+  falling back to direct. A blocked sandbox gets no proxy.
+
+Limits: UDP, including DNS, is not tunneled and leaves from E2B. Tool-created
+sandboxes (`e2b_create_sandbox`) get a two-day credential because `e2b_exec`
+keeps extending them; one busy for longer loses egress until resumed. Daytona,
+Modal and Sprites have no equivalent hook; routing them means locking their
+egress to the proxy's address and setting proxy variables inside, not built
+yet. Threat model: TM-E2B-005, TM-E2B-008.
+
 ## Relationship to other controls
 
 | Control | Scope | Configured by |
@@ -321,6 +378,7 @@ usage into the org ledger.
 | System allowlist | Tenant/agent runtime egress | Maintainers (curated), operator toggles via env |
 | Org extension | One org's runtime egress, widening the allowlist only | Platform user grants, org admins edit |
 | Open egress grant | One org's runtime egress, `open` mode except the deny list | Platform user or the host's own rules |
+| Deny feeds | All runtime egress the allowlist does not admit | Operator (`EVERRUNS_EGRESS_DENY_FEEDS`) |
 | Tenant egress proxy | All tenant runtime egress: separate addresses, per-org limits | Deployment |
 | `NetworkAccessList` | Per harness/agent/session, agent-authored URLs | Users/agents |
 | Future Egress Gateway | Network component owning outbound policy | Deployment |

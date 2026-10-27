@@ -2,7 +2,9 @@
 
 import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 
-import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+import { z } from "zod";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
 import { usePolicies } from "@/hooks/use-policies";
 
 import { use, useEffect, useRef, useState } from "react";
@@ -29,6 +31,7 @@ import {
   type TriggerFormState,
 } from "@/components/agents/trigger-form";
 import {
+  GITHUB_EVENT_OPTIONS,
   GitHubTriggerForm,
   githubEventsLabel,
   githubFormFromParams,
@@ -47,6 +50,21 @@ import {
   BackLink,
 } from "@/components/layout";
 import { getDisplayName } from "@/lib/entity-lifecycle";
+
+const githubDraftSchema = z.strictObject({
+  message: z.string(),
+  events: z.array(z.enum(GITHUB_EVENT_OPTIONS.map((e) => e.value))).max(20),
+  repositories: z.array(z.string()).max(100),
+  session_mode: z.enum(["per_thread", "shared_session", "session_per_invocation"]),
+  enabled: z.boolean(),
+});
+const scheduleDraftSchema = z.strictObject({
+  message: z.string(),
+  cron_expression: z.string(),
+  timezone: z.string(),
+  session_mode: z.enum(["shared_session", "session_per_invocation"]),
+  enabled: z.boolean(),
+});
 
 /// Full-page trigger editor, matching the channel editors rather than the
 /// dialog the inline panel still uses for quick edits (EVE-1009). `new` creates;
@@ -113,40 +131,83 @@ export default function AgentTriggerPage({
   }, [trigger, adopted]);
 
   const { can } = usePolicies("agents");
-  const savedConfig = trigger?.config as unknown as Partial<TriggerConfig> | undefined;
-  const chatDraft = useTextPageFormDraft({
-    fields: isGithub ? ["message"] : ["message", "cron_expression", "timezone"],
-    values: {
-      message: isGithub ? githubForm.message : form.message,
-      cron_expression: form.cron_expression,
-      timezone: form.timezone ?? "UTC",
-    },
+  const config = trigger?.config as unknown as
+    | Partial<Omit<TriggerConfig, "session_mode"> & GitHubTriggerFormState>
+    | undefined;
+  const savedGithub: z.infer<typeof githubDraftSchema> = {
+    message: config?.message ?? "",
+    events: config?.events ?? [],
+    repositories: config?.repositories ?? [],
+    session_mode: config?.session_mode ?? "per_thread",
+    enabled: trigger?.enabled ?? true,
+  };
+  const githubValues = {
+    message: githubForm.message,
+    events: githubForm.events,
+    repositories: githubForm.repositories,
+    session_mode: githubForm.session_mode,
+    enabled: githubForm.enabled,
+  };
+  const savedSchedule: z.infer<typeof scheduleDraftSchema> = {
+    message: config?.message ?? "",
+    cron_expression: config?.cron_expression ?? "",
+    timezone: config?.timezone ?? "UTC",
+    session_mode:
+      config?.session_mode === "session_per_invocation"
+        ? "session_per_invocation"
+        : "shared_session",
+    enabled: trigger?.enabled ?? true,
+  };
+  const scheduleValues = {
+    message: form.message,
+    cron_expression: form.cron_expression,
+    timezone: form.timezone ?? "UTC",
+    session_mode: form.session_mode ?? "shared_session",
+    enabled: form.enabled,
+  };
+  usePageFormPrefill({
+    identity: triggerId,
+    open: !isNew && isGithub && !!trigger,
+    values: githubValues,
+    saved: savedGithub,
+    apply: (next) =>
+      setGithubForm((previous) => ({ ...previous, ...next, filter: config?.filter ?? null })),
+  });
+  usePageFormPrefill({
+    identity: triggerId,
+    open: !isNew && !isGithub && !!trigger,
+    values: scheduleValues,
+    saved: savedSchedule,
+    apply: setForm,
+  });
+  const commonDraft = {
     entityId: isNew ? undefined : triggerId,
     entityType: "agent_trigger",
-    formId: isGithub ? "github" : "schedule",
     label: isNew ? "New trigger" : "Trigger",
     baseline: trigger?.updated_at ?? "new",
-    dirty: isNew
-      ? !!(isGithub ? githubForm.message : form.message)
-      : isGithub
-        ? githubForm.message !== (savedConfig?.message ?? "")
-        : form.message !== (savedConfig?.message ?? "") ||
-          form.cron_expression !== (savedConfig?.cron_expression ?? "") ||
-          (form.timezone ?? "UTC") !== (savedConfig?.timezone ?? "UTC"),
     writable:
       !!agent && can("agent.manage") && !createTrigger.isPending && !updateTrigger.isPending,
-    enabled: !!agent && !isLoading && !agentLoading && (isNew || !!trigger),
-    apply: (values) => {
-      if (isGithub) setGithubForm((previous) => ({ ...previous, message: values.message }));
-      else
-        setForm((previous) => ({
-          ...previous,
-          message: values.message,
-          cron_expression: values.cron_expression,
-          timezone: values.timezone,
-        }));
-    },
+  };
+  const draftEnabled = !!agent && !isLoading && !agentLoading && (isNew || !!trigger);
+  const githubDraft = usePageFormDraft({
+    ...commonDraft,
+    schema: githubDraftSchema,
+    formId: "github",
+    values: githubValues,
+    dirty: isNew || JSON.stringify(githubValues) !== JSON.stringify(savedGithub),
+    enabled: draftEnabled && isGithub,
+    apply: (next) => setGithubForm((previous) => ({ ...previous, ...next })),
   });
+  const scheduleDraft = usePageFormDraft({
+    ...commonDraft,
+    schema: scheduleDraftSchema,
+    formId: "schedule",
+    values: scheduleValues,
+    dirty: isNew || JSON.stringify(scheduleValues) !== JSON.stringify(savedSchedule),
+    enabled: draftEnabled && !isGithub,
+    apply: setForm,
+  });
+  const chatDraft = isGithub ? githubDraft : scheduleDraft;
   const save = async () => {
     if (chatDraft.blocked) return;
     if (isGithub) {

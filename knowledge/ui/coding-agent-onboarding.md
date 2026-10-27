@@ -44,8 +44,8 @@ Codex, Cursor and Gemini CLI marks identify compatible agents without becoming a
 selector. Manual installation remains a small documentation link. OAuth guidance
 and local no-auth instructions live in the deployment-specific prompt.
 
-Connection management stays in Settings → My agent experience → Connected AI
-clients, where users can refresh OAuth approvals and revoke them. The dialog has
+Connection management stays in Settings → AI clients, where users can refresh
+OAuth approvals and revoke them. The dialog has
 no separate authorization step, configuration accordion or provider explanation;
 provider setup remains in the existing onboarding flow.
 

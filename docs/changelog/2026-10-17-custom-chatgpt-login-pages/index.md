@@ -5,6 +5,7 @@ date: 2026-10-17
 kind: feature
 significance: minor
 products: [framework]
+release: "0.49.0"
 surfaces: [code]
 links:
   docs: [/features/chatgpt/]

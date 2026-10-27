@@ -65,6 +65,7 @@ impl SessionScheduleStore for RecordingScheduleStore {
             trigger_count: 0,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            deleted_at: None,
         })
     }
 

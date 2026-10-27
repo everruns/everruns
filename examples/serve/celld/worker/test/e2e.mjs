@@ -16,7 +16,12 @@ assert.ok(existsSync(binary),"build first: cargo build -p serve-example-celld");
 const token="synthetic-authority-credential-at-least-32-bytes",apiToken="synthetic-api-credential-at-least-32-bytes",executorToken="synthetic-executor-credential-at-least-32-bytes";
 const children=[];const servers=[];
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-async function listen(server){servers.push(server);await new Promise((resolve,reject)=>server.once("error",reject).listen(0,"127.0.0.1",resolve));return server.address().port;}
+// Ports handed out by freePort are released before their owner binds them (the
+// native executor binds SERVE_TEST_NATIVE_PORT long after a qualification parent
+// picked it), so a later port-0 listener can be given the same port and receive
+// the owner's traffic. Every listener here skips ports already reserved.
+const reserved=new Set([Number(process.env.SERVE_TEST_NATIVE_PORT)].filter(Boolean));
+async function listen(server){servers.push(server);for(;;){await new Promise((resolve,reject)=>server.once("error",reject).listen(0,"127.0.0.1",resolve));const port=server.address().port;if(!reserved.has(port)){reserved.add(port);return port;}await new Promise(resolve=>server.close(resolve));}}
 async function freePort(){const server=createServer();const port=await listen(server);await new Promise(resolve=>server.close(resolve));return port;}
 function start(command,args,name,extra={}) {
  const fd=openSync(join(run,`${name}.log`),"w");const child=spawn(command,args,{cwd:repo,env:{...process.env,...extra},detached:true,stdio:["ignore",fd,fd]});closeSync(fd);

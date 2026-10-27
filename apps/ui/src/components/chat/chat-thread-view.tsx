@@ -39,11 +39,17 @@ function ThreadContent({
   extraActions,
   threadMode,
   coordinatorId,
+  pageAware,
+  onPageMessage,
+  notice,
 }: {
   threadId: string;
   extraActions?: ReactNode;
   threadMode?: boolean;
   coordinatorId?: string;
+  pageAware?: boolean;
+  onPageMessage?: () => void;
+  notice?: ReactNode;
 }) {
   const { session, agent, agentId, sessionLoading } = useSessionContext();
   // `GET /v1/sessions/{id}` carries no message preview — only the list does — so
@@ -130,7 +136,10 @@ function ThreadContent({
           ) : undefined
         }
       />
+      {notice}
       <ChatPanel
+        pageAware={pageAware}
+        onPageMessage={onPageMessage}
         resolvedThread={threadMode && !!session.archived_at}
         replyToLabel={counterpart}
         replyInThread={coordinatorThread}
@@ -149,12 +158,18 @@ export function ChatThreadView({
   extraActions,
   threadMode = false,
   coordinatorId,
+  pageAware,
+  onPageMessage,
+  notice,
 }: {
   threadId: string;
   extraActions?: ReactNode;
   threadMode?: boolean;
-  /** The permanent Chat: its child sessions open here as threads. */
+  /** Validated personal Chat parent of a delegated child conversation. */
   coordinatorId?: string;
+  pageAware?: boolean;
+  onPageMessage?: () => void;
+  notice?: ReactNode;
 }) {
   return (
     <SessionProvider key={threadId} sessionId={threadId} readOnlyWhenArchived={threadMode}>
@@ -163,6 +178,9 @@ export function ChatThreadView({
         extraActions={extraActions}
         threadMode={threadMode}
         coordinatorId={coordinatorId}
+        pageAware={pageAware}
+        onPageMessage={onPageMessage}
+        notice={notice}
       />
     </SessionProvider>
   );

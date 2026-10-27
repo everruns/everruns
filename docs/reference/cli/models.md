@@ -19,6 +19,8 @@ LLM models available to agents, and organization defaults.
 | [`models decision-default get`](#models-decision-default-get) | Get the selected decision model. |
 | [`models decision-default set`](#models-decision-default-set) | Set the selected decision model. |
 | [`models default get`](#models-default-get) | Get the effective organization default model. |
+| [`models selection apply`](#models-selection-apply) | Atomically apply reviewed enablement changes. |
+| [`models selection undo`](#models-selection-undo) | Atomically undo selected reviewed model enablement changes. |
 
 ## models delete
 
@@ -154,4 +156,42 @@ Example:
 ```bash
 # Check which model new sessions use when none is chosen
 everruns models default get
+```
+
+## models selection apply
+
+Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.
+
+```bash
+everruns models selection apply [OPTIONS] --changes <changes>
+```
+
+| Flag | Description |
+|---|---|
+| `--changes <CHANGES>` | Required. |
+
+Example:
+
+```bash
+# Enable a reviewed model only if its provider and current selection still match
+everruns models selection apply --changes '[{"id":"model_01h9","provider_id":"provider_01h9","expected_enabled":false,"enabled":true}]' --reason 'Make the reviewed model selectable'
+```
+
+## models selection undo
+
+Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.
+
+```bash
+everruns models selection undo [OPTIONS] --changes <changes>
+```
+
+| Flag | Description |
+|---|---|
+| `--changes <CHANGES>` | Required. |
+
+Example:
+
+```bash
+# Undo reviewed enablement only while the saved revision is still current
+everruns models selection undo --changes '[{"id":"model_01h9","from_revision":1,"expected_revision":2}]' --reason 'Restore the reviewed selection'
 ```

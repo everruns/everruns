@@ -5,6 +5,7 @@ date: 2026-10-13
 kind: fix
 significance: notable
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [api, agent]
 links:
   docs: [/features/channels/]

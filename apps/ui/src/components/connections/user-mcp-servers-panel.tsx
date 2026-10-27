@@ -13,6 +13,10 @@
  * authorized is hidden. See knowledge/integrations/user-mcp-servers.md.
  */
 
+import { z } from "zod";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { isPublicDraftLocation } from "@/components/chat-mode/page-form-schemas";
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 import { useEffect, useId, useState } from "react";
 import { ExternalLink, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { McpToolLabelsDialog } from "@/components/mcp/mcp-tool-labels-dialog";
@@ -265,6 +269,12 @@ function SignInOnlyRow({
   );
 }
 
+const customServerSchema = z.strictObject({
+  name: z.string(),
+  url: z.string().refine(isPublicDraftLocation, "Use a public URL without credentials."),
+});
+const catalogServerSchema = z.strictObject({ catalog: z.string() });
+
 type AuthChoice = "none" | "oauth" | "api_key";
 
 function AddServerDialog({
@@ -302,8 +312,38 @@ function AddServerDialog({
 
   const activeMode = canBrowseCatalog && presets.length > 0 ? mode : "custom";
 
+  const customDraft = usePageFormDraft({
+    schema: customServerSchema,
+    entityType: "user_mcp_server",
+    label: "Personal MCP server",
+    priority: 30,
+    enabled: open && activeMode === "custom" && isPublicDraftLocation(url),
+    values: { name, url },
+    baseline: "new",
+    dirty: !!name || !!url,
+    writable: !add.isPending,
+    apply: (next) => {
+      setName(next.name);
+      setUrl(next.url);
+    },
+  });
+  const catalogDraft = usePageFormDraft({
+    schema: catalogServerSchema,
+    entityType: "user_mcp_server",
+    label: "Add catalog MCP server",
+    priority: 30,
+    enabled: open && activeMode === "catalog" && canBrowseCatalog,
+    values: { catalog: preset },
+    baseline: "new",
+    dirty: !!preset,
+    writable: !add.isPending,
+    apply: (next) => setPreset(next.catalog),
+  });
+  const chat = activeMode === "catalog" ? catalogDraft : customDraft;
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (chat.blocked) return;
     const request =
       activeMode === "catalog"
         ? { catalog: preset }
@@ -328,6 +368,7 @@ function AddServerDialog({
               them.
             </DialogDescription>
           </DialogHeader>
+          {chat.notice}
           {canBrowseCatalog && presets.length > 0 && (
             <SectionTabs
               value={activeMode}
@@ -409,7 +450,10 @@ function AddServerDialog({
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={add.isPending || (activeMode === "catalog" && !preset)}>
+            <Button
+              type="submit"
+              disabled={chat.blocked || add.isPending || (activeMode === "catalog" && !preset)}
+            >
               Add server
             </Button>
           </DialogFooter>
@@ -431,6 +475,19 @@ export function UserMcpServersPanel({ identityId = "me" }: { identityId?: string
     identityId === "me" && !isLoading
       ? (signIns.data ?? []).filter((connection) => !listedProviders.has(connection.provider))
       : [];
+
+  useChatPageRows(
+    "Personal MCP servers",
+    servers.map((server) => ({
+      id: server.id,
+      name: server.name,
+      source: server.source,
+      enabled: server.enabled,
+      deferred: server.deferred,
+      connection_status: server.connection.status,
+    })),
+    { loading: isLoading, error: !!error },
+  );
 
   return (
     <section>

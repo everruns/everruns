@@ -63,6 +63,10 @@ mod sql_columns_tests;
 pub use a2a_push_configs::*;
 pub use agent_avatars::*;
 pub use backend::StorageBackend;
+pub use backend::{
+    CONFIG_ROWS_CHANNEL, ConfigRowCache, ConfigRowChange, ORG_FEATURE_FLAGS_CHANNEL,
+    OrgFeatureFlagCache,
+};
 pub use connection_resolver::{DbConnectionResolver, GitHubAppTokenMinter, NoopConnectionResolver};
 pub use encryption::{
     ENCRYPTED_COLUMNS, EncryptedColumn, EncryptedPayload, EncryptionService,

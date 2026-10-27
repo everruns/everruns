@@ -99,6 +99,24 @@ pub async fn initialize(db: &StorageBackend, org_id: i64) -> Result<()> {
     Ok(())
 }
 
+/// A Chat setting is an organization default, never a persisted Agent override.
+/// Only the built-in operator Agent uses it; named user Agents and Work Chat
+/// channels retain the ordinary agents/sessions model default.
+pub async fn org_chat_model_id(
+    db: &StorageBackend,
+    org_id: i64,
+    agent_name: &str,
+    is_built_in: bool,
+) -> Result<Option<everruns_contracts::typed_id::ModelId>> {
+    if !is_built_in || agent_name != NAME {
+        return Ok(None);
+    }
+    Ok(db
+        .get_organization_settings(org_id)
+        .await?
+        .and_then(|s| s.chat_model_id))
+}
+
 pub async fn is_platform_chat(
     db: &StorageBackend,
     org_id: i64,

@@ -397,6 +397,39 @@ function ModalOptionFields({
   );
 }
 
+function DesktopField({
+  name,
+  options,
+  disabled,
+  onDesktopChange,
+}: {
+  name: string;
+  options: Record<string, unknown>;
+  disabled: boolean;
+  onDesktopChange: (on: boolean) => void;
+}) {
+  const on =
+    options.desktop === true || (typeof options.desktop === "object" && options.desktop !== null);
+  return (
+    <div className="flex items-start gap-3 sm:col-span-2">
+      <Switch
+        id={`sandbox-desktop-${name}`}
+        aria-label="Desktop"
+        checked={on}
+        onCheckedChange={onDesktopChange}
+        disabled={disabled}
+      />
+      <div className="space-y-1">
+        <Label htmlFor={`sandbox-desktop-${name}`}>Desktop</Label>
+        <p className="text-xs text-muted-foreground">
+          Start the sandbox with a Linux desktop and give the agent the computer tool to see and use
+          it. Screenshots cost image tokens.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function E2BOptionFields({
   name,
   options,
@@ -451,6 +484,12 @@ function E2BOptionFields({
           className="font-mono"
         />
       </div>
+      <DesktopField
+        name={name}
+        options={options}
+        disabled={disabled}
+        onDesktopChange={(on) => setOption("desktop", on ? true : "")}
+      />
       <NetworkPolicyFields
         name={name}
         network={network}
@@ -519,6 +558,8 @@ function TemplateSpecEditor({
   };
   const retention = retentionChoice(spec.lifecycle?.delete_after_seconds);
 
+  const daytonaDesktop =
+    options.desktop === true || (typeof options.desktop === "object" && options.desktop !== null);
   const setOption = (key: string, value: unknown) => {
     const next = targetOptions(spec);
     if (value === "" || value === undefined) delete next[key];
@@ -670,8 +711,8 @@ function TemplateSpecEditor({
             ) : null}
             <p className="text-xs text-muted-foreground">
               Personal connections are managed in{" "}
-              <Link href="/settings/agent-experience" className="underline underline-offset-2">
-                My agent experience
+              <Link href="/settings/connections" className="underline underline-offset-2">
+                Connections
               </Link>
               ; Agent connections belong to its Virtual User.
             </p>
@@ -786,7 +827,7 @@ function TemplateSpecEditor({
                 <Select
                   value={typeof options.size === "string" ? options.size : "default"}
                   onValueChange={(value) => setOption("size", value === "default" ? "" : value)}
-                  disabled={disabled}
+                  disabled={disabled || daytonaDesktop}
                 >
                   <SelectTrigger id={`sandbox-size-${name}`} className="w-full">
                     <SelectValue />
@@ -805,8 +846,8 @@ function TemplateSpecEditor({
                   id={`sandbox-snapshot-${name}`}
                   value={typeof options.snapshot === "string" ? options.snapshot : ""}
                   onChange={(event) => setOption("snapshot", event.target.value)}
-                  placeholder="Provider default"
-                  disabled={disabled}
+                  placeholder={daytonaDesktop ? "Desktop image" : "Provider default"}
+                  disabled={disabled || daytonaDesktop}
                 />
               </div>
               <div className="space-y-2">
@@ -840,6 +881,23 @@ function TemplateSpecEditor({
                   disabled={disabled}
                 />
               </div>
+              {daytona ? (
+                <DesktopField
+                  name={name}
+                  options={options}
+                  disabled={disabled}
+                  onDesktopChange={(on) => {
+                    // The desktop ships in Daytona's default image, so it
+                    // replaces any size or snapshot choice.
+                    const next = targetOptions(spec);
+                    delete next.size;
+                    delete next.snapshot;
+                    if (on) next.desktop = true;
+                    else delete next.desktop;
+                    onChange({ ...spec, target: { ...spec.target, options: next } });
+                  }}
+                />
+              ) : null}
               {daytona ? (
                 <NetworkPolicyFields
                   name={name}

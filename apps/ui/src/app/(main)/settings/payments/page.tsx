@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
+
 import { useMemo, useState } from "react";
 import { CreditCard, Plus, ShieldCheck, Trash2, WalletCards } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -67,6 +69,27 @@ export default function PaymentSettingsPage() {
   const { data: accounts = [], isLoading: accountsLoading } = usePaymentAccounts();
   const { data: policies = [] } = usePaymentPolicies();
   const { data: attempts = [] } = usePaymentAttempts({ limit: 25 });
+  useChatPageRows(
+    "Payment accounts",
+    accounts.map((a) => ({
+      id: a.id,
+      label: a.label,
+      rail: a.rail,
+      status: a.status,
+      owner_type: a.owner_type,
+    })),
+    { loading: accountsLoading },
+  );
+  useChatPageRows(
+    "Payment policies",
+    policies.map((p) => ({
+      id: p.id,
+      status: p.status,
+      payment_account_id: p.payment_account_id,
+      max_amount_usd_per_request: p.max_amount_usd_per_request,
+    })),
+  );
+
   const createAccount = useCreatePaymentAccount();
   const disableAccount = useDisablePaymentAccount();
   const createPolicy = useCreatePaymentPolicy();

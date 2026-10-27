@@ -10,7 +10,7 @@ appliesTo: [framework, platform, cloud]
 |---|---|
 | **ID** | `session_storage` |
 | **Category** | Storage |
-| **Features** | `secrets`, `key_value` (enables Storage tab) |
+| **Features** | `secrets`, `key_value` (Key values on the session Files tab) |
 | **Dependencies** | None |
 
 Two storage mechanisms scoped to the current session:
@@ -46,7 +46,7 @@ Manage encrypted secrets. Values are encrypted at rest and write-only: an agent 
 - `set` uses upsert semantics (overwrites existing keys)
 - Secret operations require `SECRETS_ENCRYPTION_KEY` to be configured
 - `list` returns keys/names only (not values) for secrets
-- The Storage tab can create, replace, and delete values, but never reads a value back
+- The session Files tab lists key values and secret names. It does not write them, and it never shows a secret's value
 - A session secret is available only to that session. It does not follow an Agent Trigger that creates a session per invocation.
 - No secret value ever reaches the model. `secret_store get` answers the same refusal for every name. Capabilities that need a key (GitHub, Brave Search, sandboxes and others) read their own secret on the server. A key the agent's shell sends to an HTTP API is a bound secret, described next; an MCP tool-parameter credential goes on the Agent's **Credentials** tab.
 - A **bound secret** (stored with a URL to send it to) is write-only: `secret_store list` shows its name, URL and how to use it, while `get`, `set` and `delete` refuse it. The Bashkit shell uses it as `$NAME` in HTTP requests to that URL; see [Bashkit Shell](/capabilities/bashkit-shell/#api-keys-the-agent-never-sees). To give every session and trigger of an agent the same key, add it as an **HTTP API** credential on the Agent's **Credentials** tab.

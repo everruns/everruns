@@ -121,7 +121,7 @@ token echoes are redacted before the result enters chat or events. Declare all
 claim tokens, assertions, access tokens, and refresh tokens the service returns;
 arbitrary encodings such as base64 are outside this redaction guarantee.
 
-Manage personal credentials in **Settings > My agent experience**, service
+Manage personal credentials in **Settings > Connections**, service
 credentials on their virtual user, agent credentials on the agent's
 **Credentials** tab, organization credentials in **Settings > Organization**,
 and session credentials from the session's **Credentials** action. Values are

@@ -176,13 +176,13 @@ describe("Sidebar", () => {
     });
   });
 
-  it("keeps only Chat in navigation when the organization adopts threads", () => {
+  it("keeps subchats in navigation when the organization adopts background work", () => {
     mockFeatureFlags.chat_threads = true;
     mockThreads.mockReturnValue([{ id: "side_1", title: "Side conversation" }]);
     render(<Sidebar />);
     expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chats");
-    expect(screen.queryByTestId("sidebar-chat-threads")).not.toBeInTheDocument();
-    expect(screen.queryByText("Side conversation")).not.toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-chat-threads")).toBeInTheDocument();
+    expect(screen.getByText("Side conversation")).toBeInTheDocument();
   });
 
   it("keeps search row focused on search only", () => {
@@ -241,7 +241,7 @@ describe("Sidebar", () => {
     expect(trigger).toHaveTextContent("Local user");
 
     fireEvent.click(trigger);
-    expect(screen.getByRole("menuitem", { name: "Profile" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Account" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Changelog" })).toHaveAttribute(
       "href",
       "https://everruns.com/docs/changelog/",
@@ -286,7 +286,7 @@ describe("Sidebar", () => {
     expect(within(footer).queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("routes the Profile menu item to /settings/profile", () => {
+  it("routes the Account menu item to /settings/profile", () => {
     mockUseAuth.mockReturnValue({
       user: { name: "Test User", email: "test@example.com", avatar_url: null },
       requiresAuth: true,
@@ -301,7 +301,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     fireEvent.click(screen.getByRole("button", { name: /test user/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /profile/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Account" }));
 
     expect(mockPush).toHaveBeenCalledWith("/settings/profile");
   });
@@ -469,8 +469,10 @@ describe("Sidebar", () => {
     "/settings/features",
     "/settings/payments",
     "/settings/profile",
-    "/settings/agent-experience",
+    "/settings/user-profile",
     "/settings/connections",
+    "/settings/mcp-servers",
+    "/settings/ai-clients",
     "/settings/personal-access-tokens",
   ])("keeps Settings active on %s", (pathname) => {
     mockPathname.mockReturnValue(pathname);

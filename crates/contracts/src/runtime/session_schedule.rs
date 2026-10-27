@@ -272,6 +272,10 @@ pub struct SessionSchedule {
     pub trigger_count: u32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// When the schedule was deleted. The row stays so a session recording can
+    /// show it; a deleted schedule does not fire and is hidden from the agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 impl SessionSchedule {

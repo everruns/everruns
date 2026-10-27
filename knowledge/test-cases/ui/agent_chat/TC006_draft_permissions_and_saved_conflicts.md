@@ -9,7 +9,7 @@ tags: [ui, test-case, agents, platform-chat]
 
 ## Preconditions
 
-- Chat mode and a real model enabled.
+- Chat workspace and a real model enabled.
 - Built-in Platform Chat Agent and an editable disposable Agent available.
 - For the role check, authenticated manager and viewer accounts in a full-auth stack.
 

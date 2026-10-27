@@ -9,7 +9,7 @@ appliesTo: [framework, platform, cloud]
 | **ID** | `bashkit_shell` (legacy alias: `virtual_bash`) |
 | **Category** | Execution |
 | **Risk** | High, assignment requires an org **Admin** |
-| **Features** | `file_system` (enables the Workspace tab) |
+| **Features** | `file_system` (enables the Files tab) |
 | **Dependencies** | [`session_file_system`](/capabilities/file-system/) |
 
 Execute bash commands in a sandboxed environment with no access to the host

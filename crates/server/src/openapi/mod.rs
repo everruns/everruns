@@ -152,6 +152,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::organization_connections::list_connections,
         api::organization_connections::create_connection,
         api::organization_connections::update_connection,
+        api::organization_connections::rename_connection,
         api::organization_connections::delete_connection,
         api::organization_connections::verify_connection,
         api::user_connections::github_org::list_links,
@@ -471,6 +472,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::workspace_files::grep_files,
         api::workspace_files::download_path,
         api::workspace_files::preview_path,
+        api::workspace_files::upload_path,
         // Evals: the routes the generic command handler cannot serve
         api::evals::import_atif,
         api::evals::export_run_artifacts,
@@ -731,6 +733,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::sandbox_templates::CreateSandboxTemplateRequest,
             api::sandbox_templates::ReviseSandboxTemplateRequest,
             api::organization_connections::SaveOrganizationConnectionRequest,
+            api::organization_connections::RenameOrganizationConnectionRequest,
             api::organization_connections::OrganizationConnectionResponse,
             api::user_connections::github_org::EverrunsAppLinks,
             api::user_connections::github_org::EverrunsAppLink,

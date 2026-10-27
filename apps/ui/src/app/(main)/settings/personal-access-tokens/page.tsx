@@ -2,6 +2,7 @@
 
 import { TokenIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -169,6 +170,19 @@ function CreatePersonalAccessTokenDialog({
       ? parseCustomDays(customDays)
       : TOKEN_EXPIRY_PRESETS.find((preset) => preset.value === expiryPreset)?.days;
   const expiryValid = neverExpires || expiresInDays !== undefined;
+  const chat = useTextPageFormDraft({
+    fields: ["name", "scope", "expiration_days"],
+    values: { name, scope, expiration_days: neverExpires ? "never" : String(expiresInDays ?? "") },
+    readonlyFields: ["scope", "expiration_days"],
+    entityType: "personal_access_token",
+    label: "Create token",
+    priority: 30,
+    enabled: open,
+    baseline: "new",
+    dirty: !!name,
+    writable: !createToken.isPending,
+    apply: (values) => setName(values.name),
+  });
 
   const resetForm = () => {
     setName("");
@@ -187,7 +201,7 @@ function CreatePersonalAccessTokenDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expiryValid) return;
+    if (chat.blocked || !expiryValid) return;
     const data: CreatePersonalAccessTokenRequest = {
       name,
       scopes: [scope],
@@ -210,6 +224,7 @@ function CreatePersonalAccessTokenDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {chat.notice}
           <div className="space-y-2">
             <Label htmlFor="token-name">Name</Label>
             <Input
@@ -351,7 +366,7 @@ function ShowPersonalAccessTokenDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent chatProtected="Created token" className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Personal access token created</DialogTitle>
           <DialogDescription>

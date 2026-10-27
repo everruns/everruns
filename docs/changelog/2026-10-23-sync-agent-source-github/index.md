@@ -5,6 +5,7 @@ date: 2026-10-23
 kind: feature
 significance: notable
 products: [platform]
+release: "0.49.0"
 surfaces: [ui, api, agent]
 links:
   docs: [/how-to/define-agents-as-files/]
@@ -32,3 +33,8 @@ disconnect to restore local editing. See
 ## Update 2026-10-24
 
 Connect an unlinked Agent from **More actions → Sync from GitHub**. The Source panel is shown only for a connected source or while its status is loading or unavailable. Connected source status and controls remain visible. See [Agent actions and searchable Playground setup](/changelog/2026-10-24-agent-actions-playground-search/).
+
+## Update 2026-10-25
+
+Two-way sync is now available as an opt-in. Existing bindings remain read-only.
+See [two-way Agent sync](/changelog/2026-10-25-two-way-agent-github-sync/).

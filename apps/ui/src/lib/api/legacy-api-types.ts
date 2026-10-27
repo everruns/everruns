@@ -1389,15 +1389,15 @@ export interface CreateScheduleRequest {
 
 /** Request to update a schedule */
 export interface UpdateScheduleRequest {
-  description?: string;
+  description?: string | null;
   cron_expression?: string;
   timezone?: string;
   target?: ScheduleTarget;
   enabled?: boolean;
-  max_concurrent?: number;
+  max_concurrent?: number | null;
   catch_up_missed?: boolean;
-  max_catch_up?: number;
-  retry_policy?: Record<string, unknown>;
+  max_catch_up?: number | null;
+  retry_policy?: Record<string, unknown> | null;
 }
 
 /** Schedules list response */
@@ -3356,9 +3356,7 @@ export interface UpdateSessionRequest {
   model_id?: string | null;
 }
 
-// ============================================
 // Session Schedule types
-// ============================================
 export type ScheduleType = "oneshot" | "recurring";
 
 export interface SessionSchedule {
@@ -3379,6 +3377,8 @@ export interface SessionSchedule {
   trigger_count: number;
   created_at: string;
   updated_at: string;
+  /** Set when the schedule was deleted. The row stays on the session recording. */
+  deleted_at?: string | null;
 }
 
 export interface UpdateSessionScheduleRequest {

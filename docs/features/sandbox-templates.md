@@ -54,8 +54,7 @@ provisioned by Everruns and cannot be edited or archived.
 6. Select **Done**, then **Save changes**.
 
 Bashkit is available without a provider connection. Managed providers are shown as unavailable
-when their integration is not installed. User credentials live under **Settings → My agent
-experience**, Agent credentials under the Agent's Virtual User, and organization credentials under
+when their integration is not installed. User credentials live under **Settings → Connections**, Agent credentials under the Agent's Virtual User, and organization credentials under
 **Sandboxes → Provider Accounts**. A fixed Agent policy fixes this choice; Session creation cannot
 override it. Do not put credentials in target options or bootstrap commands.
 
@@ -121,6 +120,11 @@ Sandboxes the agent creates with the provider's own tools, desktops included, ge
 list. Providers filter by host, so a URL rule such as `https://pypi.org/simple/` opens all of
 `pypi.org` inside the Sandbox.
 
+A deployment that runs the tenant egress proxy can also send E2B Sandbox traffic through it,
+so a Sandbox leaves from the proxy's address under the same per-organization limits and usage
+counts as agent tools. E2B still applies the template rule first. See
+[`EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS`](/sre/environment-variables/#tenant-egress-proxy).
+
 ```json
 {
   "containment": {
@@ -129,6 +133,50 @@ list. Providers filter by host, so a URL rule such as `https://pypi.org/simple/`
   }
 }
 ```
+
+## Desktop
+
+Daytona and E2B templates can start the primary Sandbox with a Linux desktop. Turn on **Desktop**
+in the template, or set `target.options.desktop` to `true`. The Agent then gets the `computer`
+tool: it takes screenshots of the desktop and clicks, types and scrolls on it. The desktop runs in
+the same Sandbox as the shell and file tools, so files the agent writes are on the desktop too,
+and the template's outbound network rule covers the desktop's browser.
+
+To pick the display size or cap the number of actions, pass the computer-use settings instead of
+`true`:
+
+```json
+{
+  "target": {
+    "kind": "managed",
+    "provider": "e2b",
+    "options": {
+      "desktop": { "display_width": 1280, "display_height": 800, "max_actions_per_session": 300 }
+    }
+  }
+}
+```
+
+The desktop is the Agent's only display: a template with a desktop replaces any other
+computer-use capability the Agent has. On E2B the Sandbox starts from E2B's `desktop` template
+unless the template names another one built on it. On Daytona it uses Daytona's default image,
+which ships the desktop, so a desktop template cannot also choose a size or snapshot. Every action
+returns a screenshot, which costs image tokens.
+
+### Recordings
+
+Daytona desktops are recorded as video. Recording starts when the agent first uses the desktop in
+a turn and stops when the Session goes idle. The video is saved read-only to
+`/recordings/desktop-<start time>.mp4` in the Session's files, so it stays after the Sandbox is
+deleted, and the chat shows it under the turn with a player and a download link. Recordings count
+toward the Session's file storage, and one larger than 100 MB is not kept. Set `record` to `false`
+in the desktop settings to turn recording off:
+
+```json
+{ "desktop": { "record": false, "display_width": 1280, "display_height": 800 } }
+```
+
+E2B desktops are not recorded yet.
 
 ## Recovery after compute loss
 

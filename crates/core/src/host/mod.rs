@@ -36,6 +36,8 @@ pub mod dreaming;
 #[cfg(feature = "direct-egress")]
 mod egress;
 #[cfg(feature = "direct-egress")]
+mod egress_deny_feeds;
+#[cfg(feature = "direct-egress")]
 mod egress_proxy;
 #[cfg(feature = "direct-egress")]
 mod egress_reputation;
@@ -105,10 +107,14 @@ pub use compute::{HostCompute, HostComputeSession};
 #[cfg(feature = "direct-egress")]
 pub use egress::DirectEgressService;
 #[cfg(feature = "direct-egress")]
+pub use egress_deny_feeds::{DenyFeeds, EGRESS_DENY_FEEDS_ENV};
+#[cfg(feature = "direct-egress")]
 pub use egress_proxy::{
     EGRESS_PROXY_SECRET_ENV, EGRESS_PROXY_URL_ENV, MAX_PROXY_TOKEN_FUTURE_SECS,
-    MIN_PROXY_SECRET_LEN, ProxyClaims, ProxyTokenError, TenantEgressProxy, constant_time_eq,
-    sign_proxy_token, verify_proxy_authorization, verify_proxy_token,
+    MAX_SANDBOX_PROXY_CREDENTIAL_SECS, MIN_PROXY_SECRET_LEN, ProxyClaims, ProxyTokenError,
+    SANDBOX_PROXY_ADDRESS_ENV, SANDBOX_PROXY_TLS_ENV, SANDBOX_PROXY_USERNAME, TenantEgressProxy,
+    constant_time_eq, sign_proxy_token, sign_sandbox_proxy_credential, verify_proxy_authorization,
+    verify_proxy_token, verify_sandbox_proxy_credential,
 };
 #[cfg(feature = "direct-egress")]
 pub use egress_reputation::{DomainReputation, EGRESS_REPUTATION_ENV};

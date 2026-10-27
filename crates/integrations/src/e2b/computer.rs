@@ -1,62 +1,39 @@
-//! Computer use on an E2B desktop sandbox (EVE-1133, experimental).
+//! The display of an E2B Sandbox created with a desktop (EVE-1133).
 //!
-//! The provider-neutral `computer` tool (`everruns_contracts::runtime::computer_use`)
-//! drives a display through [`ComputerBackend`]. This backend's display is a
-//! full X desktop inside a session-owned E2B sandbox: Xvfb at exactly the
-//! configured size, an xfce session when the template ships one, actions
-//! through `xdotool`, frames through ImageMagick `import` (or the first other
-//! screenshot tool the template has) read back as PNG bytes.
+//! A Sandbox Template with `target.options.desktop` makes the session sandbox
+//! provider create the primary Sandbox from E2B's `desktop` template, and the
+//! `sandbox_desktop` capability drives it through [`E2BDesktopSession`]: Xvfb
+//! at exactly the configured size, an xfce session when the template ships
+//! one, actions through `xdotool`, frames through ImageMagick `import` (or the
+//! first other screenshot tool the template has) read back as PNG bytes.
 //!
-//! Decision: E2B over Daytona. The `desktop` template already carries Xvfb,
-//! xdotool and a desktop session, and envd's process API takes an argv, so
-//! no shell sits between the model's text and xdotool.
+//! Decision: the desktop is an option of the primary Sandbox, not a
+//! flagged capability with a Sandbox of its own, so it shares the machine,
+//! files, lifetime and network rule of the shell and file tools.
 //!
 //! Security: typed text and key names never pass through a shell. Every
 //! xdotool call is `exec_argv("xdotool", [...])`; the two fixed shell scripts
 //! (display start, screenshot) take only numbers and constant paths as
 //! positional arguments. `--` ends option parsing before model-supplied text.
 //!
-//! Security: the sandbox is the session's own. Its id lives under a session
-//! storage key reserved from `kv_store` (`COMPUTER_USE_DISPLAY_KV_PREFIX`), and
-//! is re-checked through `get_sandbox_state`, which runs
-//! `verify_owned_external_resource_if_available`. It is leased like any
-//! `e2b_create_sandbox` sandbox, so session cleanup deletes it.
-//!
-//! Security: egress is the E2B sandbox's network policy, the same as
-//! `e2b_create_sandbox`: E2B enforces the session network access list for
-//! every process on the desktop, browser included (`network.rs`, TM-E2B-005).
+//! Security: egress is the Sandbox's E2B network policy: the template rule and
+//! the session network access list, enforced by E2B for every process on the
+//! desktop, browser included (`network.rs`, TM-E2B-005).
 //!
 //! Decision: the pointer lives where xdotool keeps it, in the X server, so
 //! clicks without a coordinate need no stored cursor.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use serde_json::{Value, json};
-use tracing::warn;
 
-use everruns_contracts::runtime::LEASED_RESOURCES_FEATURE;
-use everruns_contracts::runtime::capabilities::{Capability, CapabilityStatus, RiskLevel};
 use everruns_contracts::runtime::computer_use::{
-    COMPUTER_TOOL_NAME, COMPUTER_USE_DISPLAY_KV_PREFIX, COMPUTER_USE_SYSTEM_PROMPT, ComputerAction,
-    ComputerBackend, ComputerSession, ComputerTool, ComputerUseConfig, DisplaySize, Modifier,
-    MouseButton, Screenshot, ScrollDirection, parse_key_combo, parse_modifiers, png_image,
-    zoom_factor,
+    ComputerAction, ComputerSession, DisplaySize, Modifier, MouseButton, Screenshot,
+    ScrollDirection, parse_key_combo, parse_modifiers, png_image, zoom_factor,
 };
-use everruns_contracts::runtime::tool_context::ToolContext;
-use everruns_contracts::runtime::tool_hooks::PreToolUseHook;
-use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 
-use crate::e2b::E2B_DEFAULT_TIMEOUT_SECS;
 use crate::e2b::client::E2BClient;
-use crate::e2b::state::{
-    SandboxState, build_state, get_api_key, get_sandbox_state, save_sandbox_state,
-    touch_sandbox_lease,
-};
-
-/// Capability id of desktop computer use on E2B.
-pub const DESKTOP_COMPUTER_USE_CAPABILITY_ID: &str = "computer_use_desktop";
+use crate::e2b::state::SandboxState;
 
 /// E2B template with Xvfb, xdotool and a desktop session.
 pub const E2B_DESKTOP_TEMPLATE: &str = "desktop";
@@ -64,11 +41,6 @@ pub const E2B_DESKTOP_TEMPLATE: &str = "desktop";
 /// X display the backend starts. Not `:0`, so it never collides with a
 /// display the template or a user started on their own.
 pub const DESKTOP_DISPLAY: &str = ":99";
-
-/// Session storage key holding the desktop sandbox id.
-fn desktop_sandbox_key() -> String {
-    format!("{COMPUTER_USE_DISPLAY_KV_PREFIX}e2b")
-}
 
 /// Working directory for display state, logs and frames inside the sandbox.
 const WORK_DIR: &str = "/tmp/everruns-computer";
@@ -433,136 +405,8 @@ pub use everruns_contracts::runtime::computer_use::{
     png_dimensions, png_screenshot as decode_screenshot,
 };
 
-// ============================================================================
-// Backend
-// ============================================================================
-
-/// The `computer` backend on a session-owned E2B desktop sandbox.
-pub struct E2BDesktopComputerBackend;
-
-#[async_trait]
-impl ComputerBackend for E2BDesktopComputerBackend {
-    fn id(&self) -> &str {
-        "e2b_desktop"
-    }
-
-    fn supports_navigation(&self) -> bool {
-        false
-    }
-
-    async fn acquire(
-        &self,
-        context: &ToolContext,
-        display: DisplaySize,
-    ) -> Result<Box<dyn ComputerSession>, ToolExecutionResult> {
-        let api_key = get_api_key(context).await?;
-        let client = E2BClient::new(api_key);
-        let state = desktop_sandbox(&client, context).await?;
-        let session = E2BDesktopSession::start(client, state, display)
-            .await
-            .map_err(ToolExecutionResult::tool_error)?;
-        Ok(Box::new(session))
-    }
-}
-
-/// The session's desktop sandbox: the recorded one if it is still this
-/// session's and reachable (resumed when paused), otherwise a new one.
-async fn desktop_sandbox(
-    client: &E2BClient,
-    context: &ToolContext,
-) -> Result<SandboxState, ToolExecutionResult> {
-    let storage = context
-        .storage_store
-        .as_ref()
-        .ok_or_else(|| ToolExecutionResult::tool_error("Storage not available in this context"))?;
-    let key = desktop_sandbox_key();
-    let recorded = storage
-        .get_value(context.session_id, &key)
-        .await
-        .ok()
-        .flatten();
-    if let Some(sandbox_id) = recorded {
-        // THREAT[TM-E2B-007]: the key is reserved from kv_store, and ownership
-        // is re-checked here (TM-E2B-003), so a stale or foreign id never
-        // reaches the E2B API.
-        match get_sandbox_state(context, &sandbox_id).await {
-            Ok(mut state) => {
-                let alive = match client
-                    .set_timeout(&state.sandbox_id, state.timeout_seconds)
-                    .await
-                {
-                    Ok(()) => true,
-                    // Paused (auto-pause on timeout): resume keeps memory, so
-                    // the running X server comes back with it.
-                    Err(_) => match client
-                        .resume_sandbox(&state.sandbox_id, state.timeout_seconds)
-                        .await
-                    {
-                        Ok(resumed) => {
-                            if resumed.envd_access_token.is_some() {
-                                state.envd_access_token = resumed.envd_access_token;
-                            }
-                            if let Some(domain) = resumed.domain {
-                                state.sandbox_domain = domain;
-                            }
-                            save_sandbox_state(context, &state).await?;
-                            true
-                        }
-                        Err(e) => {
-                            warn!("computer_use: desktop sandbox is gone, opening a new one: {e}");
-                            false
-                        }
-                    },
-                };
-                if alive {
-                    touch_sandbox_lease(context, &state, None).await?;
-                    return Ok(state);
-                }
-            }
-            Err(_) => warn!("computer_use: recorded desktop sandbox is unavailable"),
-        }
-    }
-
-    let title = "Everruns computer-use desktop";
-    let mut metadata = serde_json::Map::new();
-    metadata.insert("everruns".to_string(), json!("true"));
-    metadata.insert("everruns.title".to_string(), json!(title));
-    metadata.insert(
-        "everruns.session_id".to_string(),
-        json!(context.session_id.to_string()),
-    );
-    metadata.insert("everruns.purpose".to_string(), json!("computer_use"));
-    // Same network policy as e2b_create_sandbox: the session access list,
-    // enforced by E2B.
-    let egress =
-        crate::e2b::network::E2BEgress::from_rules(&crate::e2b::network::tool_rules(context)?);
-    let created = client
-        .create_sandbox_with_egress(
-            E2B_DESKTOP_TEMPLATE,
-            E2B_DEFAULT_TIMEOUT_SECS,
-            Value::Object(metadata),
-            json!({}),
-            &egress,
-        )
-        .await
-        .map_err(ToolExecutionResult::tool_error)?;
-    let state = build_state(
-        &crate::e2b::tools::detail_from_create(created),
-        E2B_DEFAULT_TIMEOUT_SECS,
-    );
-    save_sandbox_state(context, &state).await?;
-    touch_sandbox_lease(context, &state, Some(title.to_string())).await?;
-    if let Err(e) = storage
-        .set_value(context.session_id, &key, &state.sandbox_id)
-        .await
-    {
-        warn!("computer_use: failed to record the desktop sandbox: {e}");
-    }
-    Ok(state)
-}
-
 /// Run the display start script; a no-op when Xvfb already runs at `display`.
-async fn start_display(
+pub(super) async fn start_display(
     client: &E2BClient,
     state: &SandboxState,
     display: DisplaySize,
@@ -761,104 +605,6 @@ impl ComputerSession for E2BDesktopSession {
         // session lease (refreshed on acquire) bound its lifetime.
     }
 }
-
-// ============================================================================
-// Capability
-// ============================================================================
-
-const DESKTOP_PROMPT_NOTE: &str = " The display is a Linux desktop, not a browser page: \
-there is no navigate action, so open applications from the desktop and type addresses into them.";
-
-/// Provider-neutral computer use on an E2B desktop sandbox.
-pub struct E2BDesktopComputerUseCapability;
-
-impl Capability for E2BDesktopComputerUseCapability {
-    fn id(&self) -> &str {
-        DESKTOP_COMPUTER_USE_CAPABILITY_ID
-    }
-
-    fn name(&self) -> &str {
-        "Desktop Computer Use"
-    }
-
-    fn description(&self) -> &str {
-        "Let the agent see and operate a full Linux desktop in an E2B sandbox the way a person \
-         does: it takes screenshots and clicks, types, scrolls, and presses keys at screen \
-         coordinates, in any desktop app. Works with any model that accepts images. E2B limits \
-         the sandbox to the session's network access list. Cannot be combined with \
-         Computer Use: both provide the `computer` tool."
-    }
-
-    fn status(&self) -> CapabilityStatus {
-        CapabilityStatus::Available
-    }
-
-    fn risk_level(&self) -> RiskLevel {
-        RiskLevel::High
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some("monitor")
-    }
-
-    fn category(&self) -> Option<&str> {
-        Some("Sandboxes")
-    }
-
-    fn system_prompt_addition(&self) -> Option<&str> {
-        Some(&DESKTOP_SYSTEM_PROMPT)
-    }
-
-    fn tools(&self) -> Vec<Box<dyn Tool>> {
-        self.tools_with_config(&Value::Null)
-    }
-
-    fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(ComputerTool::new(
-            Arc::new(E2BDesktopComputerBackend),
-            ComputerUseConfig::from_value_or_default(config),
-        ))]
-    }
-
-    fn config_schema(&self) -> Option<Value> {
-        Some(ComputerUseConfig::json_schema())
-    }
-
-    fn validate_config(&self, config: &Value) -> Result<(), String> {
-        ComputerUseConfig::from_value(config).map(|_| ())
-    }
-
-    fn driver_options(&self, config: &Value) -> Vec<(String, Value)> {
-        ComputerUseConfig::from_value_or_default(config).driver_options()
-    }
-
-    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn PreToolUseHook>> {
-        self.pre_tool_use_hooks_with_config(&Value::Null)
-    }
-
-    fn pre_tool_use_hooks_with_config(&self, _config: &Value) -> Vec<Arc<dyn PreToolUseHook>> {
-        // Soft approval only, like the Browserless backend (EVE-1133).
-        vec![]
-    }
-
-    fn dependencies(&self) -> Vec<&'static str> {
-        vec!["session_storage"]
-    }
-
-    fn exclusive_group(&self) -> Option<&'static str> {
-        // One display per agent: every computer-use backend provides the
-        // `computer` tool, so enabling two is rejected rather than letting
-        // the last one silently win.
-        Some(COMPUTER_TOOL_NAME)
-    }
-
-    fn features(&self) -> Vec<&'static str> {
-        vec![LEASED_RESOURCES_FEATURE]
-    }
-}
-
-static DESKTOP_SYSTEM_PROMPT: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| format!("{COMPUTER_USE_SYSTEM_PROMPT}{DESKTOP_PROMPT_NOTE}"));
 
 #[cfg(test)]
 #[path = "computer_tests.rs"]

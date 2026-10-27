@@ -375,6 +375,11 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["gpt-6-sol"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-6-luna"], ModelVendor::OpenAi, OPENAI),
     md(
+        &["gpt-6.1-terra", "openai/gpt-6.1-terra"],
+        ModelVendor::OpenAi,
+        &["openai", "openrouter"],
+    ),
+    md(
         &["gpt-6.1-sol", "openai/gpt-6.1-sol"],
         ModelVendor::OpenAi,
         OPENAI,

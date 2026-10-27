@@ -44,8 +44,10 @@ on mobile.
 
 Idle conversations remain **Open**. **Resolve thread** puts one away without losing its
 history; **Reopen thread** lets you continue. Background work shows its actual progress,
-input requests, and failures. Disabling the feature restores the existing Chat interface
-and preserves conversations and their URLs.
+input requests, and failures. When a thread reports back, the conversation shows one
+folded line, such as "Releases is done". Open the line to read the report. The
+coordinator still receives the full text and answers in the conversation. Disabling the
+feature restores the existing Chat interface and preserves conversations and their URLs.
 
 ## Dashboard
 
@@ -273,10 +275,10 @@ View and manage team members (when authentication is enabled).
 
 Open **Virtual users** to create or manage organization-scoped accounts. Choose **End user** for a person using agents or **Service** for an agent account. The detail page has **Overview**, **Connections**, **Linked identities**, and **Sessions** tabs. Usage is fixed at creation. On an agent page, **More → Service account** selects the account.
 
-**Settings → Account** edits your Everruns management profile. **My agent experience** edits your current organization's default virtual-user profile, runtime defaults, and connections. Switching organizations selects that organization's runtime account. **Team members** remains management membership administration. `/settings/connections` opens My agent experience.
+**Settings → Account** edits your Everruns management profile. **Profile** edits the name, locale, and timezone of your current organization's default virtual user. **Connections** holds that user's provider sign-ins and credentials. **MCP servers** holds the servers you add for yourself. **AI clients** lists the apps you approved to use Everruns as you. Switching organizations selects that organization's runtime account. **Team members** remains management membership administration. `/settings/connections` opens Connections.
 
 End-user connections are private to their owner. Organization management permissions do not grant access to another end user's credentials. Service account connections require management permissions. Saved credentials are encrypted and never returned by the API.
 
-When upgrading an account that belonged to several organizations, old connections require an explicit destination. Select the destination from **My agent experience** and move each pending connection once. A destination that already has that provider is rejected rather than overwritten. Accounts with one organization migrate automatically.
+When upgrading an account that belonged to several organizations, old connections require an explicit destination. Select the destination from **Connections** and move each pending connection once. A destination that already has that provider is rejected rather than overwritten. Accounts with one organization migrate automatically.
 
 Operators upgrading an existing installation should follow the [virtual-user cutover runbook](/sre/runbooks/virtual-user-cutover/).

@@ -141,8 +141,13 @@ impl SessionScheduleService {
         }
     }
 
+    /// Schedules for the session view, including ones that were deleted.
+    /// The agent's own list omits deleted rows.
     pub async fn list(&self, org_id: i64, session_id: SessionId) -> Result<Vec<SessionSchedule>> {
-        let rows = self.db.list_session_schedules(org_id, session_id).await?;
+        let rows = self
+            .db
+            .list_session_schedule_history(org_id, session_id)
+            .await?;
         let mut schedules = Vec::with_capacity(rows.len());
         for row in rows {
             let mut schedule = row_to_domain(&row);

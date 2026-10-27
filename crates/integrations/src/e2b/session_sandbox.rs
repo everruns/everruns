@@ -31,6 +31,17 @@ fn is_not_found(error: &str) -> bool {
     error.contains("404 Not Found") || error.contains("(404)") || error.contains("404:")
 }
 
+fn desktop_display(
+    config: &SessionSandboxConfig,
+) -> Option<everruns_contracts::runtime::computer_use::DisplaySize> {
+    config.desktop().map(|settings| {
+        everruns_contracts::runtime::computer_use::ComputerUseConfig::from_value_or_default(
+            &settings,
+        )
+        .display()
+    })
+}
+
 async fn provider_state(
     context: &dyn SessionSandboxContext,
     instance: &SessionSandboxInstance,
@@ -159,7 +170,14 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
     ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
         let client = client(context, config).await?;
         let timeout = timeout_seconds(config)?;
-        let template = provider_config_string(config, "template").unwrap_or(E2B_DEFAULT_TEMPLATE);
+        // A desktop Sandbox starts from E2B's desktop template unless the
+        // template names another one (a custom image built on it).
+        let default_template = if config.desktop().is_some() {
+            super::computer::E2B_DESKTOP_TEMPLATE
+        } else {
+            E2B_DEFAULT_TEMPLATE
+        };
+        let template = provider_config_string(config, "template").unwrap_or(default_template);
         let workspace_path = provider_config_string(config, "workspace_path")
             .unwrap_or(E2B_DEFAULT_WORKSPACE_PATH)
             .to_string();
@@ -170,22 +188,31 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
         if let Some(name) = &display_name {
             labels.insert("everruns.title".to_string(), json!(name));
         }
-        let egress =
-            super::network::E2BEgress::from_rules(&super::network::session_rules(context, config)?);
+        let rules = super::network::session_rules(context, config)?;
+        let proxy = super::network::proxy_credential(context, &rules, timeout)?;
+        let egress = super::network::E2BEgress::from_rules(&rules, proxy.as_ref());
+        // GUI programs started from the shell open on the desktop's display.
+        let env_vars = match desktop_display(config) {
+            Some(_) => json!({ "DISPLAY": super::computer::DESKTOP_DISPLAY }),
+            None => json!({}),
+        };
         let created = client
-            .create_sandbox_with_egress(
-                template,
-                timeout,
-                Value::Object(labels),
-                json!({}),
-                &egress,
-            )
+            .create_sandbox_with_egress(template, timeout, Value::Object(labels), env_vars, &egress)
             .await
             .map_err(ToolExecutionResult::tool_error)?;
         let detail = super::tools::detail_from_create(created);
         let instance =
             instance_from_detail(context, detail, timeout, workspace_path, display_name).await?;
         refresh_lease(context, config, &instance).await?;
+        // Bring the display up now, not on the first `computer` action: a
+        // browser the agent starts from the shell needs the X server already
+        // there, or it exits with no display. Pause and resume keep it running.
+        if let Some(display) = desktop_display(config) {
+            let state = provider_state(context, &instance).await?;
+            super::computer::start_display(&client, &state, display)
+                .await
+                .map_err(ToolExecutionResult::tool_error)?;
+        }
         Ok(instance)
     }
 
@@ -207,12 +234,11 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
             ),
             Err(error) => return Err(ToolExecutionResult::tool_error(error)),
         };
-        super::network::apply_to_running(
-            &client,
-            &instance.external_id,
-            &super::network::session_rules(context, config)?,
-        )
-        .await?;
+        // Resume replaces the proxy credential too: a new one for this run.
+        let rules = super::network::session_rules(context, config)?;
+        let proxy = super::network::proxy_credential(context, &rules, timeout)?;
+        super::network::apply_to_running(&client, &instance.external_id, &rules, proxy.as_ref())
+            .await?;
         let resumed = instance_from_detail(
             context,
             detail,
@@ -226,6 +252,29 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
         .await?;
         refresh_lease(context, config, &resumed).await?;
         Ok(resumed)
+    }
+
+    async fn open_desktop(
+        &self,
+        context: &dyn SessionSandboxContext,
+        config: &SessionSandboxConfig,
+        instance: &SessionSandboxInstance,
+        display: everruns_contracts::runtime::computer_use::DisplaySize,
+    ) -> Result<
+        Box<dyn everruns_contracts::runtime::computer_use::ComputerSession>,
+        ToolExecutionResult,
+    > {
+        if config.desktop().is_none() {
+            return Err(ToolExecutionResult::tool_error(
+                "this E2B sandbox was created without a desktop",
+            ));
+        }
+        let client = client(context, config).await?;
+        let state = provider_state(context, instance).await?;
+        let session = super::computer::E2BDesktopSession::start(client, state, display)
+            .await
+            .map_err(ToolExecutionResult::tool_error)?;
+        Ok(Box::new(session))
     }
 
     async fn pause(

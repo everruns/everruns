@@ -30,7 +30,7 @@ impl SessionService {
         if let Some(agent_id) = agent_id
             && self
                 .db
-                .get_agent(org_id, AgentId::from_uuid(agent_id))
+                .get_agent_config(org_id, AgentId::from_uuid(agent_id))
                 .await?
                 .is_some()
         {
@@ -69,7 +69,7 @@ impl SessionService {
         if let Some(agent_id) = agent_id
             && self
                 .db
-                .get_agent(org_id, AgentId::from_uuid(agent_id))
+                .get_agent_config(org_id, AgentId::from_uuid(agent_id))
                 .await?
                 .is_some()
         {

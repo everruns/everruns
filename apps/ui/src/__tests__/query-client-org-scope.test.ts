@@ -5,6 +5,7 @@
  * call site that forgets (or a response that lands after an org switch) cannot
  * put one org's data where another org's is read.
  */
+import { authQueryKeys } from "@/lib/auth-query-keys";
 import { dehydrate, hydrate } from "@tanstack/react-query";
 import { createAppQueryClient } from "@/lib/query-client";
 import { setActiveOrgId } from "@/lib/api/active-org";
@@ -65,4 +66,18 @@ test("a server render's entries hydrate in the org it rendered for", () => {
   expect(browser.getQueryData([...queryKeys.harnesses.list(false), "org_test1"])).toEqual([
     "seeded",
   ]);
+});
+
+test("account identity and public auth config stay stable across organization switches", () => {
+  const client = createAppQueryClient();
+  setActiveOrgId("org_a");
+  client.setQueryData(authQueryKeys.user(), { id: "viewer", name: "Northstar" });
+  client.setQueryData(authQueryKeys.config(), { mode: "full" });
+  client.setQueryData(authQueryKeys.personalAccessTokens(), ["private-list"]);
+  setActiveOrgId("org_b");
+  expect(client.getQueryData(authQueryKeys.user())).toEqual({ id: "viewer", name: "Northstar" });
+  expect(client.getQueryData(authQueryKeys.config())).toEqual({ mode: "full" });
+  expect(client.getQueryData(authQueryKeys.personalAccessTokens())).toBeUndefined();
+  client.clear();
+  expect(client.getQueryData(authQueryKeys.user())).toBeUndefined();
 });

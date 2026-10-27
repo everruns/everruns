@@ -42,6 +42,12 @@ const VOLATILE: &[&str] = &[
     "created_at",
     "updated_at",
     "last_used_at",
+    "last_synced_at",
+    "models_reviewed_at",
+    "last_triggered_at",
+    "next_trigger_at",
+    "claimed_at",
+    "claimed_by",
     "ui_link",
     "self_url",
     "view_url",
@@ -87,6 +93,28 @@ pub(super) async fn capture(
         None => output_entity(output, entity_ref)?,
     };
     let mut snapshot = normalize(state);
+    if kind == EntityKind::Skill
+        && let Some(fields) = snapshot.as_object_mut()
+    {
+        fields.retain(|key, _| matches!(key.as_str(), "id" | "status" | "skill_md"));
+    }
+    if kind == EntityKind::Provider {
+        snapshot["request_options"] = provider_options(&snapshot["request_options"]);
+        snapshot["trace"] = provider_trace(&snapshot["trace"]);
+    }
+    if kind == EntityKind::AgentChannel {
+        let channel_type = snapshot["channel_type"].as_str().unwrap_or("").to_string();
+        snapshot["channel_config"] = crate::domains::agent_channels::history::public_config(
+            &channel_type,
+            &snapshot["channel_config"],
+        );
+    }
+    if kind == EntityKind::OrganizationNetwork {
+        // Grants, open egress and deployment mode are separate authorities.
+        if let Some(fields) = snapshot.as_object_mut() {
+            fields.retain(|key, _| key == "patterns");
+        }
+    }
     if kind == EntityKind::Knowledge {
         // Content has its own immutable versions. Configuration snapshots must
         // not change when workers advance jobs, file counts or source cursors.
@@ -125,13 +153,102 @@ pub(super) async fn capture(
     Some((snapshot, hash))
 }
 
+fn provider_options(value: &Value) -> Value {
+    serde_json::json!({"cache_diagnostics": value.get("cache_diagnostics").and_then(Value::as_bool).unwrap_or(false)})
+}
+fn provider_trace(value: &Value) -> Value {
+    serde_json::from_value::<everruns_contracts::provider::ProviderTraceConfig>(value.clone())
+        .ok()
+        .and_then(|value| serde_json::to_value(value).ok())
+        .unwrap_or_else(|| serde_json::json!({"enabled":false}))
+}
+
 /// The entity as its read command returns it now.
 pub(super) async fn read(ctx: &Ctx, kind: EntityKind, entity_ref: &str) -> Option<Value> {
-    let (command, param) = kind.lookup()?;
+    if kind == EntityKind::VirtualUser
+        && crate::domains::virtual_users::self_profile::owns(ctx, entity_ref).await
+    {
+        let text = dispatch(
+            "get_own_virtual_user_profile",
+            serde_json::json!({"id":entity_ref}),
+            ctx,
+        )
+        .await
+        .ok()?;
+        return serde_json::from_str(&text).ok();
+    }
+    let (command, param) = match kind.lookup() {
+        Some(lookup) => lookup,
+        None => return read_child(ctx, kind, entity_ref).await,
+    };
     let mut params = Map::new();
     params.insert(param.to_string(), entity_ref.into());
     let text = dispatch(command, Value::Object(params), ctx).await.ok()?;
-    serde_json::from_str(&text).ok()
+    let mut state: Value = serde_json::from_str(&text).ok()?;
+    if kind == EntityKind::Skill {
+        let content = dispatch(
+            "get_skill_content",
+            serde_json::json!({"id":entity_ref}),
+            ctx,
+        )
+        .await
+        .ok()?;
+        let content: Value = serde_json::from_str(&content).ok()?;
+        state["skill_md"] = content.get("skill_md")?.clone();
+    }
+    Some(state)
+}
+
+// Resolve only the immutable locator inside the active tenant, then use the
+// normal read command for its full permission and visibility checks.
+async fn read_child(ctx: &Ctx, kind: EntityKind, entity_ref: &str) -> Option<Value> {
+    let id = ref_uuid(entity_ref)?;
+    let (sql, command, parent, child) = match kind {
+        EntityKind::AgentChannel => (
+            "SELECT a.public_id FROM agent_channels c JOIN agents a ON a.id=c.agent_id WHERE a.org_id=$1 AND c.public_id='appchan_' || replace($2::uuid::text,'-','')",
+            "get_agent_channel",
+            "agent_id",
+            "channel_id",
+        ),
+        EntityKind::AgentTrigger => (
+            "SELECT a.public_id FROM agent_triggers c JOIN agents a ON a.id=c.agent_id WHERE a.org_id=$1 AND c.id=$2",
+            "get_agent_trigger",
+            "agent_id",
+            "trigger_id",
+        ),
+        EntityKind::AgentScript => (
+            "SELECT a.public_id FROM agent_scripts c JOIN agents a ON a.id=c.agent_id WHERE a.org_id=$1 AND c.id=$2",
+            "get_agent_script",
+            "agent_id",
+            "script_id",
+        ),
+        EntityKind::KnowledgeEntry => (
+            "SELECT a.public_id FROM knowledge_entries c JOIN knowledge_bases a ON a.id=c.kb_id WHERE a.org_id=$1 AND c.public_id='kbe_' || replace($2::uuid::text,'-','')",
+            "get_knowledge_entry",
+            "kb_id",
+            "entry_id",
+        ),
+        EntityKind::EvalCase => (
+            "SELECT a.public_id FROM eval_cases c JOIN evals a ON a.id=c.eval_id WHERE a.org_id=$1 AND c.public_id='evalcase_' || replace($2::uuid::text,'-','')",
+            "get_eval_case",
+            "eval_id",
+            "case_id",
+        ),
+        _ => return None,
+    };
+    let locator: String = sqlx::query_scalar(sql)
+        .bind(ctx.org_id())
+        .bind(id)
+        .fetch_optional(ctx.db.tx_pool())
+        .await
+        .ok()??;
+    let mut params = Map::new();
+    params.insert(parent.into(), locator.clone().into());
+    params.insert(child.into(), entity_ref.into());
+    let text = dispatch(command, Value::Object(params), ctx).await.ok()?;
+    let mut state: Value = serde_json::from_str(&text).ok()?;
+    state.as_object_mut()?.insert(parent.into(), locator.into());
+    Some(state)
 }
 
 /// A command output that is the entity itself (most creates and updates
@@ -145,6 +262,46 @@ fn normalize(mut state: Value) -> Value {
         object.retain(|key, _| !VOLATILE.contains(&key.as_str()) && key != SECRETS_KEY);
     }
     state
+}
+
+/// Compare older journal shapes with today's public projection. Locators are
+/// immutable and newly introduced secret markers cannot verify old revisions.
+pub(super) fn matches_current(kind: EntityKind, recorded: &Value, current: &Value) -> bool {
+    let project = |state: &Value| {
+        let mut value = normalize(state.clone());
+        if kind == EntityKind::Skill
+            && let Some(fields) = value.as_object_mut()
+        {
+            fields.retain(|key, _| matches!(key.as_str(), "id" | "status" | "skill_md"));
+        }
+        if kind == EntityKind::Provider {
+            value["request_options"] = provider_options(&value["request_options"]);
+            value["trace"] = provider_trace(&value["trace"]);
+        }
+        if kind == EntityKind::AgentChannel {
+            let channel_type = value["channel_type"].as_str().unwrap_or("");
+            value["channel_config"] = crate::domains::agent_channels::history::public_config(
+                channel_type,
+                &value["channel_config"],
+            );
+        }
+        if let Some(object) = value.as_object_mut() {
+            for locator in restore_locators(kind) {
+                object.remove(*locator);
+            }
+        }
+        value
+    };
+    // Compare the secret markers separately: normalize strips them by design.
+    let secrets_match = recorded
+        .get(SECRETS_KEY)
+        .and_then(Value::as_object)
+        .is_none_or(|markers| {
+            markers.iter().all(|(key, value)| {
+                current.get(SECRETS_KEY).and_then(|all| all.get(key)) == Some(value)
+            })
+        });
+    secrets_match && project(recorded) == project(current)
 }
 
 /// Sorted keys, so equal states hash equal whatever order fields came in.
@@ -254,6 +411,28 @@ pub(super) async fn secret_markers(
         };
         markers.insert(field.to_string(), marker);
     }
+    if kind == EntityKind::Provider
+        && let Some(id) = ref_uuid(entity_ref)
+        && let Ok(Some(row)) = ctx.db.get_provider(ctx.org_id(), id).await
+    {
+        let headers = row
+            .settings
+            .get("request_options")
+            .and_then(|value| value.get("headers"))
+            .and_then(Value::as_array);
+        let set = headers.is_some_and(|headers| !headers.is_empty());
+        let fingerprint = ctx.encryption.as_ref().filter(|_| set).map(|encryption| {
+            encryption.fingerprint(
+                canonical(&serde_json::json!(headers))
+                    .to_string()
+                    .as_bytes(),
+            )
+        });
+        markers.insert(
+            "request_headers".into(),
+            serde_json::json!({"set":set,"fingerprint":fingerprint}),
+        );
+    }
     markers
 }
 
@@ -306,6 +485,12 @@ pub fn diff(from: &Value, to: &Value) -> Vec<FieldDiff> {
 /// param naming the entity in it.
 pub fn restore_command(kind: EntityKind) -> Option<(&'static str, &'static str)> {
     Some(match kind {
+        EntityKind::Organization => ("update_org", "org"),
+        EntityKind::OrganizationNetwork => ("set_org_egress_allowlist", "org"),
+        EntityKind::OrganizationDecision => ("set_default_decision_model", ""),
+        EntityKind::UserProfile => ("update_account_profile", "id"),
+        EntityKind::OrganizationAccount => ("update_organization_account_name", "id"),
+        EntityKind::SandboxTemplate => ("update_sandbox_template_metadata", "id"),
         EntityKind::Agent => ("update_agent", "id"),
         EntityKind::Harness => ("update_harness", "id"),
         EntityKind::Skill => ("update_skill", "id"),
@@ -337,6 +522,20 @@ pub fn restore_command(kind: EntityKind) -> Option<(&'static str, &'static str)>
         EntityKind::CheckRule => ("upsert_agent_check_rule", "rule_id"),
         EntityKind::Session => return None,
     })
+}
+
+/// Immutable parent identifiers required by nested update commands. They locate
+/// the resource and must survive a selected-field restore, never be restored.
+pub(super) fn restore_locators(kind: EntityKind) -> &'static [&'static str] {
+    match kind {
+        EntityKind::AgentChannel
+        | EntityKind::AgentTrigger
+        | EntityKind::AgentScript
+        | EntityKind::CheckRule => &["agent_id"],
+        EntityKind::KnowledgeEntry => &["kb_id"],
+        EntityKind::EvalCase => &["eval_id"],
+        _ => &[],
+    }
 }
 
 /// The params of an update command's schema.
@@ -395,7 +594,36 @@ pub(super) fn restore_call(
             params.insert(field.clone(), Value::Null);
         }
     }
-    params.insert(id_param.to_string(), entity_ref.into());
+    if kind == EntityKind::Provider {
+        // Header names/values and credentials come exclusively from CURRENT
+        // settings; only the public diagnostics toggle has an inverse.
+        let mut options = provider_options(&snapshot["request_options"]);
+        options["headers"] = current["request_options"]["headers"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .into();
+        params.insert("request_options".into(), options);
+        params.insert("trace".into(), provider_trace(&snapshot["trace"]));
+    }
+    for locator in restore_locators(kind) {
+        if accepted.contains_key(*locator)
+            && let Some(value) = current.get(*locator).or_else(|| snapshot.get(*locator))
+        {
+            params.insert((*locator).into(), value.clone());
+        }
+    }
+    if kind == EntityKind::AgentChannel {
+        let channel_type = current["channel_type"].as_str().unwrap_or("");
+        let public = crate::domains::agent_channels::history::public_config(
+            channel_type,
+            &snapshot["channel_config"],
+        );
+        params.insert("channel_config".into(), public);
+    }
+    if !id_param.is_empty() {
+        params.insert(id_param.to_string(), entity_ref.into());
+    }
     Ok((command, Value::Object(params)))
 }
 
@@ -456,6 +684,16 @@ pub(super) fn unrestored(params: &Value, entity: &Value, id_param: &str) -> Vec<
             let now = entity.get(*field).unwrap_or(&Value::Null);
             match wanted {
                 Value::Null => !now.is_null(),
+                wanted if field.as_str() == "request_options" => {
+                    provider_options(now) != provider_options(wanted)
+                }
+                wanted if field.as_str() == "trace" => {
+                    provider_trace(now) != provider_trace(wanted)
+                }
+                wanted if field.as_str() == "channel_config" => {
+                    let kind = entity["channel_type"].as_str().unwrap_or("");
+                    crate::domains::agent_channels::history::public_config(kind, now) != **wanted
+                }
                 wanted => now != *wanted,
             }
         })

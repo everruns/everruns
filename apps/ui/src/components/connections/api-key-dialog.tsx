@@ -2,7 +2,7 @@
 
 /**
  * Shared ApiKeyDialog for entering API key connections.
- * Used by My agent experience and inline chat connection prompts.
+ * Used by Settings > Connections and inline chat connection prompts.
  */
 
 import { useEffect, useState } from "react";
@@ -92,7 +92,7 @@ export function ApiKeyDialog({ provider, open, onOpenChange, onConnected }: ApiK
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent chatProtected="Connection credentials" className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ProviderIcon iconName={provider.icon} className="h-5 w-5" />

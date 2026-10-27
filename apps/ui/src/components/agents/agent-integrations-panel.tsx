@@ -111,7 +111,8 @@ export function AgentIntegrationsPanel({
       !!name &&
       (sourceQuery.isLoading ||
         sourceQuery.isError ||
-        !!sourceQuery.data?.managed_channels.includes(name))
+        (sourceQuery.data?.mode !== "two_way" &&
+          !!sourceQuery.data?.managed_channels.includes(name)))
     );
   };
   const suspended = agent.exposures_suspended ?? false;

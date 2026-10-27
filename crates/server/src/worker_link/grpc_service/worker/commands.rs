@@ -223,7 +223,7 @@ impl WorkerServiceImpl {
         .ok_or_else(|| Status::not_found("Harness not found"))?;
 
         let agent = match session.agent_id {
-            Some(agent_id) => crate::domains::agents::queries::get_by_public_id(
+            Some(agent_id) => crate::domains::agents::queries::get_for_execution(
                 &self.db,
                 org_id,
                 &agent_id.to_string(),

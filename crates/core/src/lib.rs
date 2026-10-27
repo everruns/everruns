@@ -359,7 +359,7 @@ pub use database_failure::{DatabaseFailureKind, log_database_failure};
 pub use egress::{
     DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
     EgressResponse, EgressResult, EgressScope, EgressService, EgressSigning, EgressStreamResponse,
-    ScopedEgressService,
+    SandboxProxyCredential, ScopedEgressService,
 };
 pub use system_allowlist::{
     AllowGroup, EGRESS_POLICY_ENV, EgressAccess, EgressPolicyDenial, EgressPolicyGrant,

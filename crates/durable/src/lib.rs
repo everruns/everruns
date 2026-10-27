@@ -117,7 +117,8 @@ pub use persistence::{
     SealedTaskInfo, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome, TaskFilter,
     TaskInfo, TaskQueue, TaskStatus, TraceContext, UpdateSchedule, WorkerFilter, WorkerHeartbeat,
     WorkerInfo, WorkerRegistry, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter,
-    WorkflowInfo, WorkflowInfoExtended, WorkflowStatus, begin_transaction, commit_transaction,
+    WorkflowInfo, WorkflowInfoExtended, WorkflowStatus, begin_transaction, commit_in_place,
+    commit_transaction,
 };
 pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,
@@ -136,3 +137,5 @@ pub use task_events::{
     append_event, record_activity_completed, record_activity_failed, record_activity_started,
     record_workflow_cancelled, record_workflow_completed, record_workflow_failed,
 };
+
+pub mod schedule_transaction;

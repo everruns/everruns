@@ -89,7 +89,7 @@ export function IdentityApiKeyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent chatProtected="Connection credentials" className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ProviderIcon iconName={provider.icon} className="h-5 w-5" />

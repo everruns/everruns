@@ -598,6 +598,10 @@ impl ServerAppBuilder {
         let notification_broadcaster = if let Some(database_url) =
             resolve_listener_database_url()?.as_ref()
         {
+            let flags = db.org_feature_flag_cache().clone();
+            let config_rows = db.config_row_cache().clone();
+            let caches = crate::live_updates::cache_invalidation::Caches { flags, config_rows };
+            crate::live_updates::cache_invalidation::spawn(database_url.clone(), caches);
             let broadcaster =
                 crate::live_updates::notification_notifications::NotificationNotificationBroadcaster::new(
                     database_url.clone(),
@@ -636,6 +640,7 @@ impl ServerAppBuilder {
         )
         .with_virtual_registry(virtual_registry.clone());
         if let Some(service) = &session_sandbox_service {
+            service.bind_events(&event_service);
             session_service = session_service.with_session_sandbox_service(service.clone());
         }
         sessions_state.session_service = Arc::new(session_service);

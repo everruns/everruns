@@ -1042,7 +1042,7 @@ export interface paths {
     get: operations["get_agent_source"];
     /**
      * Connect continuous GitHub source sync
-     * @description Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.
+     * @description Apply a reviewed GitHub package and enable continuous sync. Pull mode is read-only; two_way also publishes local edits using conditional commits.
      */
     put: operations["connect_agent_source"];
     post?: never;
@@ -4525,6 +4525,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/models/selection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Atomically apply reviewed enablement changes
+     * @description Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.
+     */
+    post: operations["apply_model_selection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/models/selection/undo": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Atomically undo selected reviewed model enablement changes
+     * @description Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.
+     */
+    post: operations["undo_model_selection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/models/{id}": {
     parameters: {
       query?: never;
@@ -4700,6 +4740,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/organization-accounts/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get organization account name
+     * @description Read an organization account's editable name. Credentials are never returned.
+     */
+    get: operations["get_organization_account"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Rename organization account
+     * @description Rename an organization account while preserving its current credentials.
+     */
+    patch: operations["update_organization_account_name"];
+    trace?: never;
+  };
   "/v1/orgs": {
     parameters: {
       query?: never;
@@ -4748,6 +4812,26 @@ export interface paths {
      * @description List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.
      */
     get: operations["list_audit_logs"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/decision-settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get organization decision settings
+     * @description Read the active organization's decision-model selection without model credentials.
+     */
+    get: operations["get_org_decision_settings"];
     put?: never;
     post?: never;
     delete?: never;
@@ -5020,7 +5104,11 @@ export interface paths {
     delete: operations["delete_connection"];
     options?: never;
     head?: never;
-    patch?: never;
+    /**
+     * Rename connection
+     * @description Rename an organization account without replacing credentials.
+     */
+    patch: operations["rename_connection"];
     trace?: never;
   };
   "/v1/orgs/{org}/organization-connections/{connection_id}/verify": {
@@ -5786,6 +5874,30 @@ export interface paths {
     options?: never;
     head?: never;
     patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-metadata/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get sandbox template metadata
+     * @description Read editable Sandbox Template metadata, excluding execution configuration and environment values.
+     */
+    get: operations["get_sandbox_template_metadata"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update sandbox template metadata
+     * @description Update Sandbox Template metadata while preserving its current execution specification.
+     */
+    patch: operations["update_sandbox_template_metadata"];
     trace?: never;
   };
   "/v1/sandbox-templates": {
@@ -7505,6 +7617,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/users/{id}/profile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get your account profile
+     * @description Read your own editable profile, without email, tokens or credentials.
+     */
+    get: operations["get_account_profile"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/virtual-users": {
     parameters: {
       query?: never;
@@ -7823,6 +7955,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/virtual-users/{id}/self-profile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get your organization profile
+     * @description Read your own organization profile.
+     */
+    get: operations["get_own_virtual_user_profile"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update your organization profile
+     * @description Update your own organization profile without changing lifecycle.
+     */
+    patch: operations["update_own_virtual_user_profile"];
+    trace?: never;
+  };
   "/v1/workspaces": {
     parameters: {
       query?: never;
@@ -7997,6 +8153,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/workspaces/{workspace_id}/fs/_/upload/{path}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Upload raw file bytes
+     * @description Creates or replaces the file with the request body, streamed to storage,
+     *     so files larger than the JSON API carries (recordings, media) can be
+     *     uploaded. Parent directories are created as needed.
+     */
+    put: operations["upload_path"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/workspaces/{workspace_id}/fs/{path}": {
     parameters: {
       query?: never;
@@ -8025,6 +8203,11 @@ export interface components {
     AcceptInviteResponse: {
       org_id: string;
       role: string;
+    };
+    /** @description The signed-in account editable profile, excluding email and credentials. */
+    AccountProfile: {
+      id: string;
+      name: string;
     };
     /** @description Data for act.completed event */
     ActCompletedData: {
@@ -9108,12 +9291,22 @@ export interface components {
        */
       last_synced_at?: string | null;
       /**
+       * @description Local edits are waiting for GitHub synchronization.
+       * @example false
+       */
+      local_dirty: boolean;
+      /**
        * @description Package channel names whose configuration is managed by the source.
        * @example [
        *       "chat"
        *     ]
        */
       managed_channels: string[];
+      /**
+       * @description Direction of synchronization: pull or two_way.
+       * @example two_way
+       */
+      mode: string;
       /**
        * @description Repository-relative package folder or manifest; empty means the root.
        * @example agents/support
@@ -9125,7 +9318,7 @@ export interface components {
        */
       repository: string;
       /**
-       * @description Current reconciliation state: pending, syncing, synced or error.
+       * @description Current reconciliation state, including conflict when both sides changed.
        * @example synced
        */
       status: string;
@@ -9549,6 +9742,10 @@ export interface components {
     AppendManagerContextRequest: {
       /** @description The paragraph to add, markdown. */
       text: string;
+    };
+    /** @description Apply a set of reviewed model enablement changes in one transaction. */
+    ApplyModelSelection: {
+      changes: components["schemas"]["ModelSelectionChange"][];
     };
     /** @description Named session file to collect after an eval case completes. */
     ArtifactSpec: {
@@ -10751,6 +10948,8 @@ export interface components {
        * @example 018f30c8-c970-7cb5-a8c9-9348aa71ba8c
        */
       expected_generation?: string | null;
+      /** @description Synchronization direction; two_way requires repository Contents write access. */
+      mode?: components["schemas"]["SourceMode"];
     };
     /** @description An external MCP client the person approved. */
     ConnectedClient: {
@@ -14148,6 +14347,8 @@ export interface components {
       organizations: components["schemas"]["ExportedOrganization"][];
       /** @description Personal access tokens owned by the user (no sensitive secrets — just metadata). */
       personal_access_tokens: components["schemas"]["ExportedPersonalAccessToken"][];
+      /** @description Private profile change records owned by the exporting account. */
+      profile_history?: unknown[];
       /** @description Profile data for the exporting user. */
       user: components["schemas"]["ExportedUserProfile"];
     };
@@ -17471,6 +17672,8 @@ export interface components {
         agentid_agents_per_owner?: number | null;
         /** @description Base harness used when session creation omits harness_id. */
         base_harness_id?: string | null;
+        /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
+        chat_model_id?: string | null;
         /**
          * Format: date-time
          * @description When the organization was created
@@ -19961,6 +20164,24 @@ export interface components {
       source: string;
       vendor?: components["schemas"]["ModelVendor"] | null;
     };
+    /** @description A reviewed model enablement change with the provider and state the user saw. */
+    ModelSelectionChange: {
+      enabled: boolean;
+      expected_enabled: boolean;
+      id: string;
+      provider_id: string;
+    };
+    /** @description The saved before and after values and revisions of a model selection change. */
+    ModelSelectionReceipt: {
+      after: boolean;
+      before: boolean;
+      /** Format: int64 */
+      from_revision: number;
+      id: string;
+      label: string;
+      /** Format: int64 */
+      revision: number;
+    };
     /**
      * @description How the model was added to the system
      * @example predefined
@@ -20793,6 +21014,10 @@ export interface components {
      * @enum {string}
      */
     ObserverStatus: "active" | "paused" | "archived" | "deleted";
+    /** @description The decision-model selection for the active organization. */
+    OrgDecisionSettings: {
+      model_id?: string | null;
+    };
     /** @description An organization's egress allowlist extension. */
     OrgEgressAllowlistResponse: {
       /**
@@ -20843,6 +21068,16 @@ export interface components {
     OrgFeatureFlagsSettingsResponse: {
       flags: components["schemas"]["OrgFeatureFlagSetting"][];
     };
+    /** @description Editable history contains only the account's display name. */
+    OrganizationAccountMetadata: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+    };
+    /** @description A new display name; account credentials remain unchanged. */
+    OrganizationAccountNameRequest: {
+      name: string;
+    };
     /** @description Non-secret metadata for an organization-owned provider account. */
     OrganizationConnectionResponse: {
       /**
@@ -20889,6 +21124,8 @@ export interface components {
       agentid_agents_per_owner?: number | null;
       /** @description Base harness used when session creation omits harness_id. */
       base_harness_id?: string | null;
+      /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
+      chat_model_id?: string | null;
       /**
        * Format: date-time
        * @description When the organization was created
@@ -22888,6 +23125,10 @@ export interface components {
        */
       redact_content?: boolean;
     };
+    /** @description A display-name change that preserves the connected account credential. */
+    RenameOrganizationConnectionRequest: {
+      name: string;
+    };
     /**
      * @description One column header in a `ReportResult`. The ordered `columns` list
      *     declares the key set of each row in `rows`.
@@ -23366,6 +23607,11 @@ export interface components {
        * @description The revision brought back.
        */
       restored_revision: number;
+      /**
+       * Format: int64
+       * @description The committed inverse's revision, for correlating subsequent reads.
+       */
+      revision?: number | null;
       /** @description Secrets kept at their current value that differ from the revision. */
       warnings: string[];
     };
@@ -23964,6 +24210,11 @@ export interface components {
        * @description Timestamp of the most recent definition or revision change.
        */
       updated_at: string;
+    };
+    /** @description Editable template metadata; omitted fields retain their current values. */
+    SandboxTemplateMetadataRequest: {
+      description?: string | null;
+      display_name?: string | null;
     };
     /** @description Template revision a Sandbox was created from. */
     SandboxTemplateRef: {
@@ -25856,6 +26107,11 @@ export interface components {
        */
       repository: string;
     };
+    /**
+     * @description Source direction. Existing bindings remain inbound-only until explicitly changed.
+     * @enum {string}
+     */
+    SourceMode: "pull" | "two_way";
     /** @description Repository location to browse before selecting an Agent source package. */
     SourceOptionsRequest: {
       /**
@@ -26218,6 +26474,12 @@ export interface components {
       data: components["schemas"]["TaskResponse"][];
       /** @description Total number of items matching the query, across all pages. */
       total: number;
+    };
+    /** @description Editable Sandbox Template labels and metadata, excluding execution configuration. */
+    TemplateMetadata: {
+      description?: string | null;
+      display_name: string;
+      id: components["schemas"]["sbxtplId"];
     };
     /**
      * @description A claim-level citation attached to a span of generated text.
@@ -27871,6 +28133,18 @@ export interface components {
      * @enum {string}
      */
     TurnWaitStatus: "completed" | "failed" | "timeout";
+    /** @description Restore reviewed model selections atomically while their revisions remain current. */
+    UndoModelSelection: {
+      changes: components["schemas"]["UndoModelSelectionItem"][];
+    };
+    /** @description A saved model selection change to restore at an expected current revision. */
+    UndoModelSelectionItem: {
+      /** Format: int64 */
+      expected_revision: number;
+      /** Format: int64 */
+      from_revision: number;
+      id: string;
+    };
     /** @description Request to update an ingress channel owned by an Agent. */
     UpdateAgentChannelRequest: {
       /** @description Replacement transport-specific channel configuration. */
@@ -28563,6 +28837,11 @@ export interface components {
        * @example harness_01933b5a000070008000000000000601
        */
       base_harness_id?: string | null;
+      /**
+       * @description Independent model for the built-in Everruns Chat. Omit to preserve; null inherits
+       *     the agents/sessions default. Must be an available shared chat model with tools.
+       */
+      chat_model_id?: string | null;
       /**
        * @description Default harness to preselect in the UI for new sessions.
        *     Mutually exclusive with `default_harness_name`.
@@ -31476,6 +31755,11 @@ export interface components {
      * @example paypol_01933b5a000070008000000000000001
      */
     paypolId: string;
+    /**
+     * @description Prefixed identifier with 'sbxtpl' prefix
+     * @example sbxtpl_01933b5a000070008000000000000001
+     */
+    sbxtplId: string;
     /**
      * @description Prefixed identifier with 'session' prefix
      * @example session_01933b5a000070008000000000000001
@@ -43312,6 +43596,54 @@ export interface operations {
       };
     };
   };
+  apply_model_selection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ApplyModelSelection"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelSelectionReceipt"][];
+        };
+      };
+    };
+  };
+  undo_model_selection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UndoModelSelection"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelSelectionReceipt"][];
+        };
+      };
+    };
+  };
   get_model: {
     parameters: {
       query?: never;
@@ -43773,6 +44105,56 @@ export interface operations {
       };
     };
   };
+  get_organization_account: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationAccountMetadata"];
+        };
+      };
+    };
+  };
+  update_organization_account_name: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["OrganizationAccountNameRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationAccountMetadata"];
+        };
+      };
+    };
+  };
   list_organizations: {
     parameters: {
       query?: never;
@@ -43926,6 +44308,29 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ListResponse_AuditLogEntry"];
+        };
+      };
+    };
+  };
+  get_org_decision_settings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrgDecisionSettings"];
         };
       };
     };
@@ -44490,6 +44895,32 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  rename_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        org: string;
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RenameOrganizationConnectionRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationConnectionResponse"];
+        };
       };
     };
   };
@@ -46633,6 +47064,56 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SandboxTargetsResponse"];
+        };
+      };
+    };
+  };
+  get_sandbox_template_metadata: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TemplateMetadata"];
+        };
+      };
+    };
+  };
+  update_sandbox_template_metadata: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SandboxTemplateMetadataRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TemplateMetadata"];
         };
       };
     };
@@ -50914,6 +51395,29 @@ export interface operations {
       };
     };
   };
+  get_account_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AccountProfile"];
+        };
+      };
+    };
+  };
   list_virtual_users: {
     parameters: {
       query?: {
@@ -52064,6 +52568,56 @@ export interface operations {
       };
     };
   };
+  get_own_virtual_user_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+    };
+  };
+  update_own_virtual_user_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateVirtualUserRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+    };
+  };
   list_workspaces: {
     parameters: {
       query?: {
@@ -52321,6 +52875,15 @@ export interface operations {
           "application/octet-stream": unknown;
         };
       };
+      /** @description The byte range named by the `Range` header */
+      206: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/octet-stream": unknown;
+        };
+      };
       /** @description Path points to a directory */
       400: {
         headers: {
@@ -52330,6 +52893,13 @@ export interface operations {
       };
       /** @description File not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The `Range` header lies outside the file */
+      416: {
         headers: {
           [name: string]: unknown;
         };
@@ -52527,6 +53097,57 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  upload_path: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Workspace ID (wsp_<32-hex>) */
+        workspace_id: string;
+        /** @description File path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value. */
+        path: string;
+      };
+      cookie?: never;
+    };
+    /** @description Raw file bytes */
+    requestBody: {
+      content: {
+        "application/octet-stream": number[];
+      };
+    };
+    responses: {
+      /** @description File written */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FileInfo"];
+        };
+      };
+      /** @description Invalid path, or the path is a directory or a mounted folder */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description File or workspace is read-only */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description File or session storage limit exceeded */
+      413: {
         headers: {
           [name: string]: unknown;
         };

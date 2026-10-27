@@ -31,6 +31,27 @@ fn base_config(model: &str) -> LlmCallConfig {
     LlmCallConfig::new(model)
 }
 
+#[tokio::test]
+async fn terra_uses_responses_function_tools_with_its_exact_wire_id() {
+    let mut config = base_config("openai/gpt-6.1-terra");
+    config.tools = vec![everruns_contracts::ToolDefinition::function(
+        "lookup_status",
+        "Read the fixture status",
+        json!({"type":"object","properties":{},"additionalProperties":false}),
+    )];
+    config.reasoning_effort = Some(ReasoningEffort::Medium);
+    let body = capture_request_body(&config).await;
+    assert_eq!(body["model"], "openai/gpt-6.1-terra");
+    assert!(
+        body["input"].is_array(),
+        "Responses input, never Chat Completions messages"
+    );
+    assert!(body.get("messages").is_none());
+    assert_eq!(body["tools"][0]["type"], "function");
+    assert_eq!(body["tools"][0]["name"], "lookup_status");
+    assert_eq!(body["reasoning"]["effort"], "medium");
+}
+
 fn provider(api_url: String) -> Provider {
     Provider::new("openrouter-test", OpenRouterChatDriver::new())
         .base_url(api_url)

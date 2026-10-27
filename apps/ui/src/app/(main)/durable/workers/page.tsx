@@ -1,5 +1,7 @@
 "use client";
 
+import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -175,10 +177,22 @@ export default function WorkersPage() {
   const drainMutation = useDrainWorker();
   const resumeMutation = useResumeWorker();
 
+  useDurablePageRows(
+    "Workers",
+    (data?.data ?? []).map((w) => ({
+      id: w.id,
+      status: w.status,
+      group: w.worker_group,
+      current_load: w.current_load,
+      max_concurrency: w.max_concurrency,
+      heartbeat_at: w.last_heartbeat_at,
+    })),
+    { loading: isLoading, error: !!error },
+  );
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Workers</h1>
         </div>
         <div className="space-y-6">
@@ -195,8 +209,8 @@ export default function WorkersPage() {
 
   if (error) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Workers</h1>
         </div>
         <Card>
@@ -263,13 +277,13 @@ export default function WorkersPage() {
   };
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="operational-page container mx-auto p-6">
+      <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold">Workers</h1>
       </div>
       <div className="space-y-6">
         {/* Summary Stats */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="operational-stats grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {summaryStats.map((stat) => (
             <Card key={stat.title}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

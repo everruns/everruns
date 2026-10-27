@@ -54,6 +54,7 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`models`](/reference/cli/models/) | LLM models available to agents, and organization defaults. |
 | [`notifications`](/reference/cli/notifications/) | Your in-app notifications. |
 | [`observers`](/reference/cli/observers/) | Online scoring of live traces. |
+| [`organization-accounts`](/reference/cli/organization-accounts/) | Organization account names, without retrieving credentials. |
 | [`orgs`](/reference/cli/orgs/) | Organizations you belong to, and which one is active |
 | [`payments`](/reference/cli/payments/) | Machine payments: wallets, spend policies and attempts. |
 | [`plugin-marketplaces`](/reference/cli/plugin-marketplaces/) | Sources of installable plugins. |
@@ -62,6 +63,7 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`reports`](/reference/cli/reports/) | Usage and cost reporting: queries, saved reports, catalog. |
 | [`resources`](/reference/cli/resources/) | Access to credentials and connections. |
 | [`sandbox-targets`](/reference/cli/sandbox-targets/) | Sandbox providers this deployment offers. |
+| [`sandbox-template-metadata`](/reference/cli/sandbox-template-metadata/) | Sandbox Template names and descriptions, without execution settings. |
 | [`sandboxes`](/reference/cli/sandboxes/) | Sandboxes across providers: state, history, usage. |
 | [`sessions`](/reference/cli/sessions/) | Running and archived sessions, their state and participants |
 | [`skills`](/reference/cli/skills/) | Skill packages and their content. |

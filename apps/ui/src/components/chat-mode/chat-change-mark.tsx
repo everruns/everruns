@@ -6,6 +6,7 @@ import type { ChatChanges } from "./use-agent-chat-changes";
 import { cn } from "@/lib/utils";
 import { useChatMode } from "./chat-mode-context";
 import type { DraftChatChanges } from "./use-agent-chat-draft";
+import { PageChangeDiff } from "./page-change-diff";
 
 export const ChatDraftChangesContext = createContext<DraftChatChanges | null>(null);
 
@@ -81,6 +82,7 @@ export function ChatDraftChangesToast() {
           <X className="size-4" />
         </button>
       </div>
+      <PageChangeDiff fields={draft.fields} undo={draft.undo} />
       {draft.error && (
         <p role="alert" className="mt-1 text-xs text-destructive">
           {draft.error}
@@ -100,7 +102,7 @@ export function ChatChangesToast({
   editing: boolean;
 }) {
   const changes = useChatChanges();
-  if (!changes || (!changes.fields.length && !changes.error)) return null;
+  if (!changes || changes.shared || (!changes.fields.length && !changes.error)) return null;
   return (
     <div
       className="sticky bottom-3 z-10 mx-3 mt-3 border border-accent bg-card p-3 shadow-sm"
@@ -126,6 +128,12 @@ export function ChatChangesToast({
           <X className="size-4" />
         </button>
       </div>
+      <PageChangeDiff
+        fields={changes.fields}
+        pending={changes.pending}
+        canUndo={canUndo && !editing}
+        undo={(field) => void changes.undo(field)}
+      />
       {editing && changes.fields.length > 0 && (
         <p className="mt-1 text-xs text-muted-foreground">
           Chat saved changes while you were editing. Your draft is kept. Discard it to review the

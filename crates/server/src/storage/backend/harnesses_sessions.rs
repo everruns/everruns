@@ -8,7 +8,7 @@ impl StorageBackend {
         self.fail_if_forced("get_harness")?;
         #[cfg(test)]
         self.record_session_list_lookup().await;
-        dispatch!(self, get_harness, org_id, id)
+        self.cached_harness(org_id, id).await
     }
 
     pub async fn get_harness_ancestry_by_ids(

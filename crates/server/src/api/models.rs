@@ -1,12 +1,14 @@
 // LLM Model API endpoints
 // Routes: /v1/providers/:provider_id/models/... and /v1/models/...
 
+use crate::api::command_http::CommandRouterExt;
 use crate::api::common::{
     ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
 use crate::api::dispatch::{Dispatchable, impl_dispatchable};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
+use crate::domains::models::selection::{ApplyModelSelection, UndoModelSelection};
 pub use crate::domains::models::types::{CreateModelRequest, ListModelsQuery, UpdateModelRequest};
 use crate::domains::models::{
     CreateModel, DeleteModel, GetDefaultModel, GetModel, LLM_MODEL_MANAGE, LLM_MODEL_VIEW,
@@ -288,6 +290,8 @@ pub async fn get_default_model(
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .command::<ApplyModelSelection>()
+        .command::<UndoModelSelection>()
         .route("/v1/model-profiles", get(list_model_profiles))
         .route("/v1/model-profiles/{*key}", get(get_model_profile))
         .route("/v1/models/config", get(model_config))

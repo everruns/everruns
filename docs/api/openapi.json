@@ -4160,7 +4160,7 @@
           "agents"
         ],
         "summary": "Connect continuous GitHub source sync",
-        "description": "Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.",
+        "description": "Apply a reviewed GitHub package and enable continuous sync. Pull mode is read-only; two_way also publishes local edits using conditional commits.",
         "operationId": "connect_agent_source",
         "parameters": [
           {
@@ -18222,6 +18222,88 @@
         }
       }
     },
+    "/v1/models/selection": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Atomically apply reviewed enablement changes",
+        "description": "Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.",
+        "operationId": "apply_model_selection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyModelSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ModelSelectionReceipt"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/models/selection/undo": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Atomically undo selected reviewed model enablement changes",
+        "description": "Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.",
+        "operationId": "undo_model_selection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UndoModelSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ModelSelectionReceipt"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/models/{id}": {
       "get": {
         "tags": [
@@ -18878,6 +18960,92 @@
         }
       }
     },
+    "/v1/organization-accounts/{id}": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Get organization account name",
+        "description": "Read an organization account's editable name. Credentials are never returned.",
+        "operationId": "get_organization_account",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationAccountMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Rename organization account",
+        "description": "Rename an organization account while preserving its current credentials.",
+        "operationId": "update_organization_account_name",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationAccountNameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationAccountMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/orgs": {
       "get": {
         "tags": [
@@ -19178,6 +19346,45 @@
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/orgs/{org}/decision-settings": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Get organization decision settings",
+        "description": "Read the active organization's decision-model selection without model credentials.",
+        "operationId": "get_org_decision_settings",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgDecisionSettings"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
           "support": "preview"
         }
       }
@@ -20051,6 +20258,60 @@
         ],
         "responses": {
           "204": {}
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Rename connection",
+        "description": "Rename an organization account without replacing credentials.",
+        "operationId": "rename_connection",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameOrganizationConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationConnectionResponse"
+                }
+              }
+            }
+          }
         },
         "x-docs": {
           "audience": "public",
@@ -22968,6 +23229,92 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SandboxTargetsResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sandbox-template-metadata/{id}": {
+      "get": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Get sandbox template metadata",
+        "description": "Read editable Sandbox Template metadata, excluding execution configuration and environment values.",
+        "operationId": "get_sandbox_template_metadata",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Update sandbox template metadata",
+        "description": "Update Sandbox Template metadata while preserving its current execution specification.",
+        "operationId": "update_sandbox_template_metadata",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SandboxTemplateMetadataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateMetadata"
                 }
               }
             }
@@ -29280,6 +29627,45 @@
         }
       }
     },
+    "/v1/users/{id}/profile": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Get your account profile",
+        "description": "Read your own editable profile, without email, tokens or credentials.",
+        "operationId": "get_account_profile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountProfile"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/virtual-users": {
       "get": {
         "tags": [
@@ -30698,6 +31084,92 @@
         }
       }
     },
+    "/v1/virtual-users/{id}/self-profile": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Get your organization profile",
+        "description": "Read your own organization profile.",
+        "operationId": "get_own_virtual_user_profile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VirtualUser"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Update your organization profile",
+        "description": "Update your own organization profile without changing lifecycle.",
+        "operationId": "update_own_virtual_user_profile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateVirtualUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VirtualUser"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/workspaces": {
       "get": {
         "tags": [
@@ -31060,11 +31532,20 @@
               "application/octet-stream": {}
             }
           },
+          "206": {
+            "description": "The byte range named by the `Range` header",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
           "400": {
             "description": "Path points to a directory"
           },
           "404": {
             "description": "File not found"
+          },
+          "416": {
+            "description": "The `Range` header lies outside the file"
           },
           "500": {
             "description": "Internal server error"
@@ -31292,6 +31773,79 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fs/_/upload/{path}": {
+      "put": {
+        "tags": [
+          "workspace-filesystem"
+        ],
+        "summary": "Upload raw file bytes",
+        "description": "Creates or replaces the file with the request body, streamed to storage,\nso files larger than the JSON API carries (recordings, media) can be\nuploaded. Parent directories are created as needed.",
+        "operationId": "upload_path",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace ID (wsp_<32-hex>)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Raw file bytes",
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "File written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, or the path is a directory or a mounted folder"
+          },
+          "403": {
+            "description": "File or workspace is read-only"
+          },
+          "413": {
+            "description": "File or session storage limit exceeded"
           }
         },
         "x-docs": {
@@ -31570,6 +32124,22 @@
             "type": "string"
           },
           "role": {
+            "type": "string"
+          }
+        }
+      },
+      "AccountProfile": {
+        "type": "object",
+        "description": "The signed-in account editable profile, excluding email and credentials.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
             "type": "string"
           }
         }
@@ -33637,6 +34207,8 @@
         "type": "object",
         "description": "Continuous GitHub source binding, applied revision and reconciliation status.",
         "required": [
+          "mode",
+          "local_dirty",
           "generation",
           "repository",
           "branch",
@@ -33690,6 +34262,11 @@
             "description": "UTC time when a source revision was last applied successfully.",
             "example": "2026-10-23T12:00:00Z"
           },
+          "local_dirty": {
+            "type": "boolean",
+            "description": "Local edits are waiting for GitHub synchronization.",
+            "example": false
+          },
           "managed_channels": {
             "type": "array",
             "items": {
@@ -33699,6 +34276,11 @@
             "example": [
               "chat"
             ]
+          },
+          "mode": {
+            "type": "string",
+            "description": "Direction of synchronization: pull or two_way.",
+            "example": "two_way"
           },
           "path": {
             "type": "string",
@@ -33712,7 +34294,7 @@
           },
           "status": {
             "type": "string",
-            "description": "Current reconciliation state: pending, syncing, synced or error.",
+            "description": "Current reconciliation state, including conflict when both sides changed.",
             "example": "synced"
           }
         }
@@ -34525,6 +35107,21 @@
           "text": {
             "type": "string",
             "description": "The paragraph to add, markdown."
+          }
+        }
+      },
+      "ApplyModelSelection": {
+        "type": "object",
+        "description": "Apply a set of reviewed model enablement changes in one transaction.",
+        "required": [
+          "changes"
+        ],
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelSelectionChange"
+            }
           }
         }
       },
@@ -36744,6 +37341,10 @@
                 "format": "uuid",
                 "description": "Current binding generation when replacing a source; omit for an unbound Agent.",
                 "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c"
+              },
+              "mode": {
+                "$ref": "#/components/schemas/SourceMode",
+                "description": "Synchronization direction; two_way requires repository Contents write access."
               }
             }
           }
@@ -42738,6 +43339,11 @@
             },
             "description": "Personal access tokens owned by the user (no sensitive secrets — just metadata)."
           },
+          "profile_history": {
+            "type": "array",
+            "items": {},
+            "description": "Private profile change records owned by the exporting account."
+          },
           "user": {
             "$ref": "#/components/schemas/ExportedUserProfile",
             "description": "Profile data for the exporting user."
@@ -48640,6 +49246,13 @@
                   ],
                   "description": "Base harness used when session creation omits harness_id."
                 },
+                "chat_model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default."
+                },
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
@@ -53396,6 +54009,64 @@
           }
         }
       },
+      "ModelSelectionChange": {
+        "type": "object",
+        "description": "A reviewed model enablement change with the provider and state the user saw.",
+        "required": [
+          "id",
+          "provider_id",
+          "expected_enabled",
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "expected_enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ModelSelectionReceipt": {
+        "type": "object",
+        "description": "The saved before and after values and revisions of a model selection change.",
+        "required": [
+          "id",
+          "from_revision",
+          "revision",
+          "before",
+          "after",
+          "label"
+        ],
+        "properties": {
+          "after": {
+            "type": "boolean"
+          },
+          "before": {
+            "type": "boolean"
+          },
+          "from_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ModelSource": {
         "type": "string",
         "description": "How the model was added to the system",
@@ -54726,6 +55397,18 @@
           "deleted"
         ]
       },
+      "OrgDecisionSettings": {
+        "type": "object",
+        "description": "The decision-model selection for the active organization.",
+        "properties": {
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "OrgEgressAllowlistResponse": {
         "type": "object",
         "description": "An organization's egress allowlist extension.",
@@ -54834,6 +55517,35 @@
           }
         }
       },
+      "OrganizationAccountMetadata": {
+        "type": "object",
+        "description": "Editable history contains only the account's display name.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "OrganizationAccountNameRequest": {
+        "type": "object",
+        "description": "A new display name; account credentials remain unchanged.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "OrganizationConnectionResponse": {
         "type": "object",
         "description": "Non-secret metadata for an organization-owned provider account.",
@@ -54910,6 +55622,13 @@
               "null"
             ],
             "description": "Base harness used when session creation omits harness_id."
+          },
+          "chat_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default."
           },
           "created_at": {
             "type": "string",
@@ -58278,6 +58997,18 @@
           }
         }
       },
+      "RenameOrganizationConnectionRequest": {
+        "type": "object",
+        "description": "A display-name change that preserves the connected account credential.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "ReportColumn": {
         "type": "object",
         "description": "One column header in a `ReportResult`. The ordered `columns` list\ndeclares the key set of each row in `rows`.",
@@ -59000,6 +59731,14 @@
             "type": "integer",
             "format": "int64",
             "description": "The revision brought back."
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The committed inverse's revision, for correlating subsequent reads."
           },
           "warnings": {
             "type": "array",
@@ -60233,6 +60972,24 @@
             "type": "string",
             "format": "date-time",
             "description": "Timestamp of the most recent definition or revision change."
+          }
+        }
+      },
+      "SandboxTemplateMetadataRequest": {
+        "type": "object",
+        "description": "Editable template metadata; omitted fields retain their current values.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -63822,6 +64579,14 @@
           }
         }
       },
+      "SourceMode": {
+        "type": "string",
+        "description": "Source direction. Existing bindings remain inbound-only until explicitly changed.",
+        "enum": [
+          "pull",
+          "two_way"
+        ]
+      },
       "SourceOptionsRequest": {
         "type": "object",
         "description": "Repository location to browse before selecting an Agent source package.",
@@ -64559,6 +65324,28 @@
             "type": "integer",
             "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
+          }
+        }
+      },
+      "TemplateMetadata": {
+        "type": "object",
+        "description": "Editable Sandbox Template labels and metadata, excluding execution configuration.",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/sbxtplId"
           }
         }
       },
@@ -67421,6 +68208,43 @@
         ],
         "example": "completed"
       },
+      "UndoModelSelection": {
+        "type": "object",
+        "description": "Restore reviewed model selections atomically while their revisions remain current.",
+        "required": [
+          "changes"
+        ],
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UndoModelSelectionItem"
+            }
+          }
+        }
+      },
+      "UndoModelSelectionItem": {
+        "type": "object",
+        "description": "A saved model selection change to restore at an expected current revision.",
+        "required": [
+          "id",
+          "from_revision",
+          "expected_revision"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "from_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
       "UpdateAgentChannelRequest": {
         "type": "object",
         "description": "Request to update an ingress channel owned by an Agent.",
@@ -68822,6 +69646,13 @@
             ],
             "description": "Base harness to use when a session is started without an explicit harness_id.",
             "example": "harness_01933b5a000070008000000000000601"
+          },
+          "chat_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Independent model for the built-in Everruns Chat. Omit to preserve; null inherits\nthe agents/sessions default. Must be an available shared chat model with tools."
           },
           "default_harness_id": {
             "type": [
@@ -73883,6 +74714,12 @@
         "description": "Prefixed identifier with 'paypol' prefix",
         "example": "paypol_01933b5a000070008000000000000001",
         "pattern": "^paypol_[0-9a-f]{32}$"
+      },
+      "sbxtplId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'sbxtpl' prefix",
+        "example": "sbxtpl_01933b5a000070008000000000000001",
+        "pattern": "^sbxtpl_[0-9a-f]{32}$"
       },
       "sessionId": {
         "type": "string",

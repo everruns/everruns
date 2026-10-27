@@ -87,7 +87,7 @@ impl SessionService {
             None
         };
         let agent = match row.agent_id {
-            Some(agent_id) => self.db.get_agent(caller.org_id, agent_id).await?,
+            Some(agent_id) => self.db.get_agent_config(caller.org_id, agent_id).await?,
             None => None,
         };
         let mut session = Self::row_to_session(row.clone(), &caller.org_public_id, fallback);
@@ -120,6 +120,7 @@ impl SessionService {
                 .map(|model| model.id));
         }
 
+        let mut chat_agent = None;
         if let Some(agent_id) = session.agent_id {
             let agent = match self
                 .db
@@ -127,11 +128,12 @@ impl SessionService {
                 .await?
             {
                 Some(agent) => Some(agent),
-                None => self.db.get_agent(org_id, agent_id).await?,
+                None => self.db.get_agent_config(org_id, agent_id).await?,
             };
-            if let Some(model_id) = agent.and_then(|agent| agent.default_model_id) {
+            if let Some(model_id) = agent.as_ref().and_then(|agent| agent.default_model_id) {
                 return Ok(Some(model_id));
             }
+            chat_agent = agent;
         }
 
         if let Some(harness) = self
@@ -140,6 +142,18 @@ impl SessionService {
             && let Some(model_id) = harness.default_model_id
         {
             return Ok(Some(model_id));
+        }
+
+        if let Some(agent) = chat_agent
+            && let Some(id) = crate::platform_chat_agent::org_chat_model_id(
+                &self.db,
+                org_id,
+                &agent.name,
+                agent.is_built_in,
+            )
+            .await?
+        {
+            return Ok(Some(id));
         }
 
         Ok(self

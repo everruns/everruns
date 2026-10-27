@@ -122,9 +122,23 @@ pub(super) async fn readable(
 ) -> Result<(String, EntityKind), CommandError> {
     let entity_ref = entity_ref.trim().to_string();
     let kind = super::context::resolve_kind(&entity_ref, kind)?;
-    kind.view_policy()
-        .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
-        .map_err(|e| CommandError::forbidden(e.message))?;
+    let entity_ref = super::mutation_guard::canonical_ref(kind, &entity_ref);
+    if kind == EntityKind::UserProfile {
+        let own = ctx
+            .caller
+            .user_id
+            .ok_or_else(|| CommandError::not_found("Profile"))?;
+        if super::snapshot::ref_uuid(&entity_ref) != Some(own) {
+            return Err(CommandError::not_found("Profile"));
+        }
+    }
+    if !(kind == EntityKind::VirtualUser
+        && crate::domains::virtual_users::self_profile::owns(ctx, &entity_ref).await)
+    {
+        kind.view_policy()
+            .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+            .map_err(|e| CommandError::forbidden(e.message))?;
+    }
     super::context::deny_self(ctx, &entity_ref).await?;
     if kind == EntityKind::Session {
         // Session visibility is per participant, which no role policy
@@ -268,6 +282,12 @@ impl Command for ListOrgHistory {
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EntityChange>, CommandError> {
         let kind = self.kind.as_deref().map(parse_kind).transpose()?;
+        if kind == Some(EntityKind::Schedule) {
+            EntityKind::Schedule
+                .view_policy()
+                .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+                .map_err(|error| CommandError::forbidden(error.message))?;
+        }
         let rows = ctx
             .db
             .list_entity_changes(&EntityChangeQuery {

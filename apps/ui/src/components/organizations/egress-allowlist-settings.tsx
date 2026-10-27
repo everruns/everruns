@@ -1,5 +1,8 @@
 "use client";
 
+import { z } from "zod";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { isPublicDraftLocation } from "@/components/chat-mode/page-form-schemas";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +13,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { parseNetworkAccessPatterns } from "@/components/network-access-editor";
 import { useOrgEgressAllowlist, useSetOrgEgressAllowlist } from "@/hooks/use-organizations";
 import { ApiError } from "@/lib/api/client";
+
+const publicPatterns = (text: string) =>
+  text.split("\n").every((line) => !line.includes("://") || isPublicDraftLocation(line.trim()));
+const allowlistDraftSchema = z.strictObject({
+  host_patterns: z.string().refine(publicPatterns, "Host patterns cannot contain credentials."),
+});
 
 /**
  * Organization-level extension of the deployment's outbound allowlist.
@@ -29,6 +38,22 @@ export function EgressAllowlistSettings() {
   const storedText = allowlist?.patterns?.join("\n") ?? "";
   const text = draft ?? storedText;
 
+  const chat = usePageFormDraft({
+    schema: allowlistDraftSchema,
+    values: { host_patterns: text },
+    entityType: "organization_network",
+    label: "Outbound allowlist",
+    formId: "outbound_allowlist",
+    enabled: !!allowlist && !isLoading && !error && publicPatterns(text),
+    baseline: storedText,
+    dirty: text !== storedText,
+    writable: !!allowlist?.granted && !!allowlist?.can_edit && !savePatterns.isPending,
+    apply: (next) => {
+      setDraft(next.host_patterns);
+      setSaved(false);
+    },
+  });
+
   // An unexpected payload (an older server, a proxy page) must not take the
   // whole settings page down, so anything without a pattern list renders nothing.
   if (isLoading || error || !allowlist || !Array.isArray(allowlist.patterns)) {
@@ -41,6 +66,7 @@ export function EgressAllowlistSettings() {
   const curated = allowlist.mode !== "open";
 
   const handleSave = async () => {
+    if (chat.blocked) return;
     setSaved(false);
     try {
       await savePatterns.mutateAsync(parseNetworkAccessPatterns(text));
@@ -70,6 +96,20 @@ export function EgressAllowlistSettings() {
           {allowlist.granted ? "Enabled" : "Not enabled"}
         </Badge>
       </div>
+      {chat.notice}
+      {chat.adopted && draft !== null && (
+        <Button
+          type="button"
+          variant="outline"
+          disabled={savePatterns.isPending}
+          onClick={() => {
+            setDraft(null);
+            chat.clear();
+          }}
+        >
+          Discard allowlist changes
+        </Button>
+      )}
       <Card className="gap-0 overflow-hidden p-0">
         <div className="space-y-3 px-5 py-4">
           {!curated && (
@@ -110,7 +150,7 @@ export function EgressAllowlistSettings() {
                   <Button
                     size="sm"
                     onClick={handleSave}
-                    disabled={!dirty || savePatterns.isPending}
+                    disabled={chat.blocked || !dirty || savePatterns.isPending}
                   >
                     {savePatterns.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                     Save

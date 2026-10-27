@@ -11,14 +11,15 @@ tags:
 
 # Computer Use
 
-Status: phases 1 to 3 implemented, behind experimental mode. Capability
+Status: phases 1 to 4 implemented; the browser backend is behind experimental mode. Capability
 `computer_use`, contract in
 [`crates/contracts/src/runtime/computer_use.rs`](../../crates/contracts/src/runtime/computer_use.rs), first
 backend in
 [`crates/integrations/src/browserless/computer.rs`](../../crates/integrations/src/browserless/computer.rs),
-desktop backend (capability `computer_use_desktop`) in
-[`crates/integrations/src/e2b/computer.rs`](../../crates/integrations/src/e2b/computer.rs),
-Daytona desktop backend (capability `computer_use_daytona`) in
+Sandbox desktop (capability `sandbox_desktop`, a Sandbox Template option) in
+[`crates/capabilities/src/capabilities/sandbox_desktop.rs`](../../crates/capabilities/src/capabilities/sandbox_desktop.rs),
+with desktop drivers in
+[`crates/integrations/src/e2b/computer.rs`](../../crates/integrations/src/e2b/computer.rs) and
 [`crates/integrations/src/daytona/computer.rs`](../../crates/integrations/src/daytona/computer.rs).
 Tracked as EVE-1119 (phase 1) and EVE-1133 (phase 2).
 
@@ -142,58 +143,70 @@ key, code, and virtual key code so default actions fire (Enter submits). The
 CDP layer is independent of Browserless and is tested against a local headless
 Chromium, filling and submitting a form end to end.
 
-### Desktop backend
+### Desktop drivers
 
-The display is a full X desktop in a session-owned E2B sandbox built from
-E2B's `desktop` template: Xvfb at exactly the configured size on its own
-display, the template's xfce session, actions through `xdotool`, frames through
-the first screenshot tool the template has, read back as PNG bytes and checked
-against the display size. It is a separate capability, `computer_use_desktop`,
-rather than a backend switch on `computer_use`, because each backend lives in
-its provider's integration crate and neither crate depends on the other. Both
-contribute the `computer` tool, so they declare the same
-`Capability::exclusive_group`: dependency resolution, capability write paths,
-and session creation (across harness, agent, and session layers) reject the
-pair with an error naming both, instead of the last one's tool silently
-winning. Stored config that predates the check applies neither.
+Both drivers run on the Session Sandbox itself (see Sandbox desktop below).
+They began as standalone, flagged capabilities (`computer_use_desktop`,
+`computer_use_daytona`) that each created a second, desktop-only sandbox; that
+split the agent's shell and screen across two machines and let the desktop
+escape the template's network rule, so both were removed in phase 3c.
 
-- **E2B first.** The desktop template already carries Xvfb, xdotool and a
-  desktop session, and envd's process API takes an argv. Daytona later grew a
-  native Computer Use API, which the Daytona backend below uses.
-- **No shell between the model and xdotool.** Every action is an
-  `xdotool` argv; typed text is one argument after `--`. The two fixed shell
-  scripts (display start, screenshot) take only numbers and constant paths as
-  positional arguments.
-- **Ownership.** The sandbox id lives under a session storage key reserved
-  from `kv_store` (`COMPUTER_USE_DISPLAY_KV_PREFIX`) and is re-checked through
-  the E2B state lookup, which verifies session ownership. The sandbox is leased
-  like an `e2b_create_sandbox` sandbox, so session cleanup deletes it; a paused
-  one is resumed with its running display.
-- **Egress is E2B's.** The sandbox is created with the same call, and so the
-  same network policy, as `e2b_create_sandbox` (TM-E2B-005). The backend adds
-  no bypass and no filter: the session network access list, which the
-  Browserless backend enforces, does not reach inside the desktop.
+- **E2B.** E2B's `desktop` template carries Xvfb, xdotool and an xfce session.
+  The driver starts Xvfb at exactly the configured size, acts through
+  `xdotool` argv via envd's process API (typed text is one argument after
+  `--`, no shell), and reads frames back as PNG checked against the display
+  size. The two fixed shell scripts (display start, screenshot) take only
+  numbers and constant paths.
+- **Daytona.** Daytona's default image ships Xvfb, xfce and x11vnc, sized at
+  create time by `VNC_RESOLUTION`. Each action is one JSON request to the
+  toolbox Computer Use API (`/computeruse/mouse/*`, `/keyboard/*`,
+  `/screenshot`), so no shell sees model text; keys the daemon cannot name are
+  refused, not emulated.
 - **No `navigate`.** The display is not a browser page; the model opens a
   browser on the desktop.
 
-### Daytona desktop backend
+### Sandbox desktop
 
-Capability `computer_use_daytona`, flag `daytona_computer_use`. The display is
-the desktop Daytona's default image ships (Xvfb, xfce, x11vnc), sized at create
-time by the image's `VNC_RESOLUTION` variable and driven through the toolbox
-Computer Use API (`/computeruse/mouse/*`, `/keyboard/*`, `/screenshot`).
+Capability `sandbox_desktop`, added by the server, never chosen directly. A
+Daytona or E2B Sandbox Template with `target.options.desktop` (`true` or the
+`ComputerUseConfig` settings) makes the provider create the Session's primary
+Sandbox with a desktop, and template resolution adds `sandbox_desktop` next to
+`session_sandbox` with the same config
+([`crates/capabilities/src/capabilities/sandbox_desktop.rs`](../../crates/capabilities/src/capabilities/sandbox_desktop.rs)).
+Its `computer` tool asks the provider's `SessionSandboxProvider::open_desktop`
+for a session on that Sandbox, through the Daytona or E2B session types above.
 
-- **Native API, no exec.** Each action is one JSON request to the sandbox
-  daemon, so no shell sees model text and no in-sandbox helper is installed.
-  Keys the daemon cannot name are refused by the daemon, not emulated.
-- **Size is fixed per sandbox.** A recorded sandbox whose desktop reports
-  another size than the configured one is deleted and replaced, because frames
-  of another size put the model's coordinates in the wrong place.
-- **Ownership and lifetime** follow the E2B backend: the id lives under the
-  reserved `computer_use.display.` key, is re-checked through the Daytona state
-  lookup (TM-DAYTONA-005), and the sandbox is leased; a stopped sandbox is
-  started again and its desktop restarted.
-- **Egress is Daytona's**, as for `daytona_create_sandbox`.
+- **Why an option, not a flagged capability.** The standalone backends open a
+  second, tool-owned Sandbox: other files, other lifetime, and only the
+  session access list for egress. The desktop option puts the display on the
+  machine the shell and file tools already use, under the template's network
+  rule, with no extra Sandbox to clean up. It is opt-in per template, so it
+  needs no feature flag.
+- **One display.** It shares the `computer` exclusive group; resolution drops
+  any other computer-use capability from the Agent's list instead of failing.
+- **Display up front.** The provider starts the display as soon as the
+  Sandbox runs and sets `DISPLAY` in its environment, not on the first
+  `computer` action: agents open a browser from the shell before their first
+  screenshot, and a browser started with no X server exits.
+- **Provider images.** E2B defaults the Sandbox to its `desktop` template.
+  Daytona uses its default image, which ships the desktop, so a desktop
+  template rejects `size` and `snapshot`; the display size goes in through
+  `VNC_RESOLUTION` at create.
+- **Recordings.** Daytona's toolbox records the screen itself
+  (`/computeruse/recordings/*`), so the provider starts a recording when the
+  desktop opens and `SessionSandboxProvider::collect_desktop_recordings`
+  stops it, downloads it and deletes it from the Sandbox. The server collects
+  on `session.idled`, the end of a turn, and writes the video read-only to
+  `/recordings/` in the session files with a `file.written` event, which the
+  chat places under the turn that just ended
+  ([`crates/server/src/domains/session_sandbox/recordings.rs`](../../crates/server/src/domains/session_sandbox/recordings.rs)).
+  Collection runs on the server rather than inside a turn because it needs no
+  model step and the server already owns idle handling with a provider
+  context. The Sandbox's recording list is the only state: running means no
+  end time, collected means deleted. On by default for desktops;
+  `desktop.record: false` turns it off. A video shows what the screenshots
+  stored with tool results already show, to the same session readers. E2B has
+  no recording API, so its provider keeps the default of nothing to collect.
 
 ## Phases
 
@@ -201,8 +214,10 @@ Computer Use API (`/computeruse/mouse/*`, `/keyboard/*`, `/screenshot`).
 |---|---|---|
 | 1 | Contract, `computer` function tool, Browserless browser backend | Done |
 | 2 | Native adapters (OpenAI `computer`, Anthropic `computer_toolset_20260801`), batched calls, soft approval only with no per-call hard gate, screenshot thumbnails in the session UI | Done (EVE-1133) |
-| 3 | Desktop backend on an E2B `desktop` sandbox (Xvfb, xdotool, PNG frames), capability `computer_use_desktop` | Done (EVE-1133), experimental |
-| 3b | Desktop backend on a Daytona sandbox through its Computer Use API, capability `computer_use_daytona` | Done, experimental |
+| 3 | Desktop backend on an E2B `desktop` sandbox (Xvfb, xdotool, PNG frames), capability `computer_use_desktop` | Done (EVE-1133), replaced by 3c |
+| 3b | Desktop backend on a Daytona sandbox through its Computer Use API, capability `computer_use_daytona` | Done, replaced by 3c |
+| 3c | Desktop as a Sandbox Template option on Daytona and E2B, capability `sandbox_desktop` | Done |
+| 3d | Daytona desktop recordings saved to session files and played in the chat | Done |
 | 4 | Full Anthropic toolset: `zoom`, `cursor_position`, `left_mouse_down`/`up`, `hold_key`, modified drags, native batches stop at the first failure | Done |
 
 Open before the capability leaves experimental mode: verify the native OpenAI

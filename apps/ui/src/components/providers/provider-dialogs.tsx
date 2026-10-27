@@ -139,7 +139,7 @@ export function SetApiKeyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent chatProtected="Provider credentials">
         <DialogHeader>
           <DialogTitle>{provider?.api_key_set ? "Update" : "Set"} Credentials</DialogTitle>
           <DialogDescription>
