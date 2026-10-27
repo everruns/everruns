@@ -137,6 +137,7 @@ image.workspace = true  # For image thumbnail generation
 
 # gRPC
 tonic.workspace = true
+prost.workspace = true
 prost-types.workspace = true
 serde_urlencoded = "0.7.1"
 url = "2"

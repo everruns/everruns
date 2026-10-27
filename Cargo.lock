@@ -3551,6 +3551,7 @@ dependencies = [
  "object_store",
  "parking_lot",
  "postgresql_embedded",
+ "prost",
  "prost-types",
  "rand 0.10.3",
  "regex",
