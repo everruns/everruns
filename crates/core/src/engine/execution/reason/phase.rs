@@ -107,7 +107,7 @@ impl ReasonAtom {
         };
         let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
-                let (policy, retry, started) =
+                let (policy, retry, started, cause) =
                     durable_retry::restore(retry_operation, &self.provider_retry_config).await?;
                 // Heap-allocate the large fallback future so nested foreground
                 // child turns fit Tokio's default worker stack.
@@ -139,9 +139,8 @@ impl ReasonAtom {
                     error_hooks: Vec::new(),
                     result: Err(durable_retry::budget_exhausted(
                         &retry,
-                        retry.total_retry_elapsed
-                            + started
-                                .map_or(std::time::Duration::ZERO, |started| started.elapsed()),
+                        started,
+                        cause.as_deref(),
                     )),
                 };
                 let outcome = match remaining_retry_time(&policy, started) {

@@ -392,9 +392,6 @@ pub struct RetryMetadata {
     pub total_retry_elapsed: Duration,
     /// Rate limit info from the last 429 response (if any)
     pub last_rate_limit_info: Option<RateLimitInfo>,
-    /// Classification of the last provider failure that consumed a retry, so
-    /// an exhausted budget still names its cause (EVE-1318).
-    pub last_failure: Option<String>,
 }
 
 impl RetryMetadata {
@@ -430,16 +427,6 @@ impl RetryMetadata {
             .saturating_add(other.total_retry_elapsed);
         if other.last_rate_limit_info.is_some() {
             self.last_rate_limit_info = other.last_rate_limit_info;
-        }
-        if other.last_failure.is_some() {
-            self.last_failure = other.last_failure;
-        }
-    }
-
-    /// Remember the classified provider failure a retry is answering.
-    pub fn record_failure(&mut self, error: &crate::error::AgentLoopError) {
-        if let Some(failure) = crate::retry_failure::retained(error) {
-            self.last_failure = Some(failure);
         }
     }
 }
@@ -996,7 +983,6 @@ mod tests {
                 retry_after_secs: Some(11),
                 ..Default::default()
             }),
-            last_failure: None,
         });
         assert_eq!(meta.attempts, 5);
         assert_eq!(meta.total_retry_wait, Duration::from_secs(7));
@@ -1010,7 +996,6 @@ mod tests {
             total_retry_wait: Duration::MAX,
             total_retry_elapsed: Duration::MAX,
             last_rate_limit_info: None,
-            last_failure: None,
         });
         assert_eq!(meta.attempts, u32::MAX);
         assert_eq!(meta.total_retry_wait, Duration::MAX);

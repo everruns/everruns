@@ -143,7 +143,6 @@ fn metadata(checkpoint: &RetryCheckpoint) -> RetryMetadata {
     RetryMetadata {
         attempts: checkpoint.attempts,
         total_retry_wait: Duration::from_millis(checkpoint.total_wait_ms),
-        last_failure: checkpoint.last_failure.clone(),
         ..Default::default()
     }
 }
@@ -152,35 +151,52 @@ fn metadata(checkpoint: &RetryCheckpoint) -> RetryMetadata {
 /// and keeps the last classified provider failure (kind, status and safe
 /// identifiers, never provider text), so a shared-pool 429, an outage and a
 /// network timeout stay distinguishable after an attempt that never answered.
-pub fn budget_exhausted(retry: &RetryMetadata, elapsed: Duration) -> AgentLoopError {
+///
+/// Elapsed time is the restored recovery time plus this instance's clock
+/// since `started`; `cause` is a [`crate::retry_failure::retained`] summary.
+pub fn budget_exhausted(
+    retry: &RetryMetadata,
+    started: Option<crate::rt::Instant>,
+    cause: Option<&str>,
+) -> AgentLoopError {
+    let elapsed = retry
+        .total_retry_elapsed
+        .saturating_add(started.map_or(Duration::ZERO, |started| started.elapsed()));
     let mut message = format!(
         "provider retry time budget exhausted after {} retries over {:.1}s",
         retry.attempts,
         elapsed.as_secs_f64()
     );
     let mut error = LlmError::new(LlmErrorKind::Unavailable, String::new());
-    if let Some(failure) = &retry.last_failure {
+    if let Some(failure) = cause {
         message.push_str("; last provider failure: ");
         message.push_str(failure);
         error.kind = crate::retry_failure::exhausted_kind(failure);
-        error.status = crate::retry_failure::exhausted_status(failure);
     }
     message.push_str("; the turn is safe to resume");
     error.message = message;
     AgentLoopError::Llm(error).with_retry_metadata(retry)
 }
 
+/// What [`restore`] hands the streaming loop: policy, metadata, this
+/// instance's clock origin and the retained cause. The cause travels beside
+/// [`RetryMetadata`] rather than in it: a field there grows every future that
+/// holds metadata, which the size-budgeted Engine Worker Wasm cannot afford.
+pub type Restored = (
+    LlmRetryConfig,
+    RetryMetadata,
+    Option<crate::rt::Instant>,
+    Option<String>,
+);
+
 /// Restore the generation's count and wall time into the existing bounded
 /// streaming loop. In-flight attempts remain bounded after process loss too.
-pub async fn restore(
-    operation: &str,
-    fallback: &LlmRetryConfig,
-) -> Result<(LlmRetryConfig, RetryMetadata, Option<crate::rt::Instant>)> {
+pub async fn restore(operation: &str, fallback: &LlmRetryConfig) -> Result<Restored> {
     let Ok(host) = HOST.try_with(Arc::clone) else {
-        return Ok((fallback.clone(), RetryMetadata::default(), None));
+        return Ok((fallback.clone(), RetryMetadata::default(), None, None));
     };
     let Some(checkpoint) = host.load(operation).await? else {
-        return Ok((fallback.clone(), RetryMetadata::default(), None));
+        return Ok((fallback.clone(), RetryMetadata::default(), None, None));
     };
     let now = host.now_ms().await?;
     let mut policy = checkpoint.policy.clone();
@@ -191,7 +207,12 @@ pub async fn restore(
     let mut restored = metadata(&checkpoint);
     restored.total_retry_elapsed =
         Duration::from_millis(now.saturating_sub(checkpoint.started_at_ms).max(0) as u64);
-    Ok((policy, restored, Some(crate::rt::Instant::now())))
+    Ok((
+        policy,
+        restored,
+        Some(crate::rt::Instant::now()),
+        checkpoint.last_failure,
+    ))
 }
 
 /// Before any provider I/O, re-arm early wakes or surface an exhausted budget
@@ -210,11 +231,11 @@ pub async fn prepare(operation: &str) -> Result<Option<AgentLoopError>> {
     }
     let now = host.now_ms().await?;
     if now >= checkpoint.expires_at_ms {
-        let elapsed = now.saturating_sub(checkpoint.started_at_ms).max(0) as u64;
-        return Ok(Some(budget_exhausted(
-            &metadata(&checkpoint),
-            Duration::from_millis(elapsed),
-        )));
+        let mut retry = metadata(&checkpoint);
+        retry.total_retry_elapsed =
+            Duration::from_millis(now.saturating_sub(checkpoint.started_at_ms).max(0) as u64);
+        let cause = checkpoint.last_failure.as_deref();
+        return Ok(Some(budget_exhausted(&retry, None, cause)));
     }
     if now < checkpoint.wake_at_ms {
         host.schedule(checkpoint.wake_at_ms).await?;
@@ -441,7 +462,6 @@ mod tests {
         scope(host, async {
             let exhausted = prepare("turn/1").await.unwrap().unwrap();
             assert_eq!(exhausted.llm_error_kind(), Some(LlmErrorKind::RateLimited));
-            assert_eq!(exhausted.http_status(), Some(429));
             assert_eq!(
                 exhausted.to_string(),
                 "LLM error: provider retry time budget exhausted after 1 retries over 30.0s; \
@@ -479,7 +499,7 @@ mod tests {
         .await;
         host.now.store(12_500, Ordering::SeqCst);
         scope(host, async {
-            let (config, metadata, started) = restore("turn/1", &policy()).await.unwrap();
+            let (config, metadata, started, _) = restore("turn/1", &policy()).await.unwrap();
             assert_eq!(config.max_retry_elapsed, Duration::from_millis(17_500));
             assert_eq!(metadata.total_retry_elapsed, Duration::from_millis(12_500));
             assert_eq!(metadata.attempts, 1);

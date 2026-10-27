@@ -860,7 +860,7 @@ impl ReasonAtom {
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let has_provider_executed_tools =
             hosted_tools::has_provider_executed_tools(&llm_config.driver_options);
-        let (retry_config, mut stream_retry_metadata, mut retry_started_at) =
+        let (retry_config, mut stream_retry_metadata, mut retry_started_at, mut last_failure) =
             durable_retry::restore(
                 &format!("{}/{}", context.turn_id, iteration),
                 &self.provider_retry_config,
@@ -883,43 +883,41 @@ impl ReasonAtom {
             pending_delta,
             mut tripped,
         ) = 'stream_attempt: loop {
-            let stream_result = if let Some(remaining) =
-                remaining_retry_time(&retry_config, retry_started_at)
-            {
-                match everruns_contracts::rt::timeout(
-                    remaining,
-                    chat_driver.chat_completion_stream(
-                        &crate::engine::ProviderEndpoint::default(),
-                        llm_messages_for_call.clone(),
-                        &llm_config,
-                    ),
-                )
-                .await
-                {
-                    Ok(result) => result,
-                    Err(_) => {
-                        compaction_lifecycle.fail_if(provider_managed).await;
-                        let error = durable_retry::budget_exhausted(
-                            &stream_retry_metadata,
-                            stream_retry_metadata.total_retry_elapsed
-                                + retry_started_at
-                                    .map_or(std::time::Duration::ZERO, |started| started.elapsed()),
-                        );
-                        failed_generation
-                            .emit(&error.to_string(), None, &stream_retry_metadata)
-                            .await;
-                        return Err(error);
-                    }
-                }
-            } else {
-                chat_driver
-                    .chat_completion_stream(
-                        &crate::engine::ProviderEndpoint::default(),
-                        llm_messages_for_call.clone(),
-                        &llm_config,
+            let stream_result =
+                if let Some(remaining) = remaining_retry_time(&retry_config, retry_started_at) {
+                    match everruns_contracts::rt::timeout(
+                        remaining,
+                        chat_driver.chat_completion_stream(
+                            &crate::engine::ProviderEndpoint::default(),
+                            llm_messages_for_call.clone(),
+                            &llm_config,
+                        ),
                     )
                     .await
-            };
+                    {
+                        Ok(result) => result,
+                        Err(_) => {
+                            compaction_lifecycle.fail_if(provider_managed).await;
+                            let error = durable_retry::budget_exhausted(
+                                &stream_retry_metadata,
+                                retry_started_at,
+                                last_failure.as_deref(),
+                            );
+                            failed_generation
+                                .emit(&error.to_string(), None, &stream_retry_metadata)
+                                .await;
+                            return Err(error);
+                        }
+                    }
+                } else {
+                    chat_driver
+                        .chat_completion_stream(
+                            &crate::engine::ProviderEndpoint::default(),
+                            llm_messages_for_call.clone(),
+                            &llm_config,
+                        )
+                        .await
+                };
             let stream_result = stream_result.map_err(|error| {
                 if has_provider_executed_tools {
                     durable_retry::without_retry(error)
@@ -1047,7 +1045,7 @@ impl ReasonAtom {
                         "ReasonAtom: transient provider failure before stream, retrying"
                     );
                     stream_retry_metadata.record_retry(wait_duration, None);
-                    stream_retry_metadata.record_failure(&e);
+                    last_failure = everruns_contracts::retry_failure::retained(&e);
                     everruns_contracts::rt::sleep(wait_duration).await;
                     continue 'stream_attempt;
                 }
@@ -1585,7 +1583,9 @@ impl ReasonAtom {
                                 "ReasonAtom: transient stream error before output, retrying"
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
-                            stream_retry_metadata.record_failure(&err.clone().into_agent_error());
+                            last_failure = everruns_contracts::retry_failure::retained(
+                                &err.clone().into_agent_error(),
+                            );
                             everruns_contracts::rt::sleep(wait_duration).await;
                             stream_state::restart(&self.event_emitter, &started, &text).await;
                             continue 'stream_attempt;
