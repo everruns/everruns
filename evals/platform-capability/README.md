@@ -9,6 +9,15 @@ API. It therefore exercises the same command catalog, authorization, worker
 adapter, and persistence path as a user turn. It does not call domain services
 directly or grade a mocked tool catalog.
 
+Current Platform Chat uses bounded native Platform and MCP discovery while
+retaining its shell. The historical CLI/legacy results below cover their recorded
+interfaces; they do not qualify the new native Platform path. The offline shell
+subject still receives only Bashkit tools, with shared instructions conditional
+on which interfaces are available. Current native coverage lives in the
+[catalog and dispatch tests](../../crates/capabilities/src/capabilities/platform_native/tests.rs),
+[authoritative inventory guard](../../crates/server/src/services/command_catalog/platform_native_tests.rs),
+and [runtime lifecycle tests](../../crates/everruns/tests/host/tool_catalog_lifecycle.rs).
+
 ## What it proves
 
 The focused dataset covers:
@@ -123,7 +132,7 @@ server and checked against it —
 
 | Artifact | What it carries | Guard |
 |---|---|---|
-| `catalog.json` | all 292 commands, real descriptions and schemas | `the_eval_catalog_matches_inventory` |
+| `catalog.json` | the inventory commands, real descriptions and schemas | `the_eval_catalog_matches_inventory` |
 | `harness.json` | Platform Chat's system prompt and tool schemas | `the_eval_harness_matches_the_shipped_one` |
 | `harness-legacy.json` | Historical three-tool baseline | Frozen comparison artifact |
 | `help.json` | `--help` for the root and every node, rendered by the shipped tree | `the_eval_help_matches_the_shipped_tree` |
