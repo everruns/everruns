@@ -50,7 +50,7 @@ pub mod health_issues;
 pub mod history;
 pub mod http_signing_keys;
 pub mod images;
-pub mod internal_images;
+pub mod internal_blobs;
 pub mod knowledge;
 pub mod manager_context;
 pub mod mcp_elicitation;

@@ -2278,7 +2278,6 @@ jobs:
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
-      API_BASE_URL: http://localhost:9000
       WORKER_GRPC_AUTH_TOKEN: test-grpc-token-for-ci
       RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
       # This job exercises the real durable topology: the server owns Postgres
@@ -2452,7 +2451,7 @@ jobs:
           # the vault holds.
           EVERRUNS_LIVE_SKIP_REPORT: ${{ github.workspace }}/live-provider-skips.md
         run: >-
-          doppler run --preserve-env="DATABASE_URL,API_BASE_URL,AUTH_MODE,DEPLOYMENT_GRADE,WORKER_GRPC_AUTH_TOKEN,SECRETS_ENCRYPTION_KEY,RATE_LIMIT_API_REQUESTS_PER_MINUTE,EVERRUNS_REQUIRE_LIVE_TESTS,EVERRUNS_LIVE_SKIP_REPORT"
+          doppler run --preserve-env="DATABASE_URL,AUTH_MODE,DEPLOYMENT_GRADE,WORKER_GRPC_AUTH_TOKEN,SECRETS_ENCRYPTION_KEY,RATE_LIMIT_API_REQUESTS_PER_MINUTE,EVERRUNS_REQUIRE_LIVE_TESTS,EVERRUNS_LIVE_SKIP_REPORT"
           -- python3 .github/scripts/ci/libtest.py execute-workflow "$GITHUB_WORKSPACE/bin/workflow-tests" -- --test-threads=1
 
       - name: Run llmsim workflow tests

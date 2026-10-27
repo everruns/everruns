@@ -43,7 +43,8 @@ Goals:
   enforced by the existing org/workspace authorization layer.
 - **Proxy, not redirect.** Everruns fetches bytes and serves them. No S3
   presigned URLs are handed to browsers or workers; the existing
-  `/v1/images/*` proxy and worker gRPC/internal-presign boundaries are untouched.
+  `/v1/images/*` proxy and the worker byte paths (signed by the control
+  plane, served on the worker endpoint) are untouched.
 - **Optional and reversible.** A deployment can run on PostgreSQL only, or
   enable S3 without reshaping the data model.
 
