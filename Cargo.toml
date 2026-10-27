@@ -232,7 +232,7 @@ regex = "1.11"
 aho-corasick = "1.1"
 globset = "0.4"
 time = "0.3"
-parking_lot = "0.12"
+parking_lot = "0.13"
 dialoguer = "0.12"
 webbrowser = "1"
 
@@ -296,7 +296,7 @@ moka = { version = "0.12", features = ["future", "sync"] }
 
 # Fault injection testing
 fail = "0.5"
-rstest = "0.27"
+rstest = "0.28"
 tempfile = "3"
 
 # File watching and gitignore

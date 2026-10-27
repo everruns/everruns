@@ -132,7 +132,7 @@ tokio-stream = { workspace = true, features = ["net"] }
 serde_json.workspace = true
 wiremock = "0.6"
 regex.workspace = true
-fancy-regex = "0.19"
+fancy-regex = "0.20"
 tempfile.workspace = true
 everruns-core = { workspace = true, default-features = false, features = ["host", "direct-egress"] }
 
