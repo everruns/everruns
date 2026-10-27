@@ -7,7 +7,9 @@ sidebar:
 
 The system doctor checks every part of an install and reports each finding in
 plain words: what it found, why it matters and how to fix it. It covers the
-database and its migrations, connected workers and their load, sign-in and
+database and its migrations, connected workers (their load, versions, and what
+each worker finds about its own setup, such as whether it reaches the egress
+proxy), sign-in and
 encryption keys, NATS, Valkey, S3 file storage and monitoring.
 
 It works the same way however you host Everruns. It reads your configuration,

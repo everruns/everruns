@@ -211,21 +211,25 @@ pub(crate) fn self_report_checks(
 
 fn merged_check(id: &str, title: &str, findings: &[(&str, SelfCheck)]) -> DoctorCheck {
     let check = DoctorCheck::new(AREA, &format!("workers.self.{id}"), title);
-    let worst = findings
+    let statuses: Vec<CheckStatus> = findings
         .iter()
         .map(|(_, finding)| status_of(&finding.status))
+        .collect();
+    let worst = statuses
+        .iter()
+        .copied()
         .filter(|status| *status > CheckStatus::Info)
         .max();
-    let Some(worst) = worst.filter(|status| *status > CheckStatus::Ok) else {
+    let Some(worst) = worst else {
         // All healthy, or all "not used": the first summary speaks for all.
-        let status = worst.unwrap_or(CheckStatus::Info);
         let summary = findings
             .first()
             .map(|(_, finding)| finding.summary.clone())
             .unwrap_or_default();
-        return match status {
-            CheckStatus::Ok => check.ok(summary),
-            _ => check.info(summary),
+        return if statuses.contains(&CheckStatus::Ok) {
+            check.ok(summary)
+        } else {
+            check.info(summary)
         };
     };
     let bad: Vec<&(&str, SelfCheck)> = findings
