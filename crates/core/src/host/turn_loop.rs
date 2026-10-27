@@ -339,7 +339,11 @@ pub async fn drive_turn<A: RuntimeHostAdapter>(
             }
             TurnPlan::ScheduleAct(act_plan) => {
                 tool_calls_count += act_plan.input.tool_calls.len();
-                let act_result = execute_act_activity(adapter, act_plan.input).await?;
+                let act_result = crate::engine::tool_detach::for_act(execute_act_activity(
+                    adapter,
+                    act_plan.input,
+                ))
+                .await?;
                 reply.extend_sent(turn_strategy::sent_texts(&act_result));
                 client_tool_calls.clone_from(&act_result.client_tool_calls);
                 let outcome = turn_strategy::act_outcome(&act_result);

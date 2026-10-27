@@ -139,6 +139,7 @@ fn fenced_emit(
         actor_fence: Some(proto::ActorFence {
             holder: holder.to_string(),
             fence,
+            detached_tool_call_id: None,
         }),
     }
 }

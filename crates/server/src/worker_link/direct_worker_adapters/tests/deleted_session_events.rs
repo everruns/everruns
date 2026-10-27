@@ -292,6 +292,7 @@ async fn fenced_emit_for_a_deleted_session_is_session_not_found() {
                 actor_fence: Some(everruns_internal_protocol::proto::ActorFence {
                     holder: "worker-a".to_string(),
                     fence: i64::try_from(fence).unwrap(),
+                    detached_tool_call_id: None,
                 }),
             },
         ))

@@ -170,6 +170,12 @@ service WorkerService {
     rpc RenewActorLease(RenewActorLeaseRequest) returns (RenewActorLeaseResponse);
     rpc ReleaseActor(ReleaseActorRequest) returns (ReleaseActorResponse);
     rpc ReadActorJournal(ReadActorJournalRequest) returns (ReadActorJournalResponse);
+    // Detached tool calls: a call a holder took off its turn so the turn
+    // parks while the call runs (knowledge/execution/detached-tool-calls.md).
+    rpc DetachToolCall(DetachToolCallRequest) returns (DetachToolCallResponse);
+    rpc RenewDetachedToolCalls(RenewDetachedToolCallsRequest) returns (RenewDetachedToolCallsResponse);
+    rpc CompleteDetachedToolCall(CompleteDetachedToolCallRequest) returns (CompleteDetachedToolCallResponse);
+    rpc ExpireDetachedToolCalls(ExpireDetachedToolCallsRequest) returns (ExpireDetachedToolCallsResponse);
 
     // === Session resource registry ===
     // Served by the internal `worker_*_session_resource(s)` commands over
@@ -658,6 +664,10 @@ message EmitEventRequest {
 message ActorFence {
     string holder = 1;
     int64 fence = 2;
+    // Set for a detached tool call's events: the append is checked against
+    // the call's detached row (holder, unexpired) instead of the actor lease,
+    // and `fence` is unused.
+    optional string detached_tool_call_id = 3;
 }
 
 message EmitEventResponse {
@@ -1331,6 +1341,57 @@ message ReadActorJournalResponse {
     // The session's newest event sequence; unset for an empty log.
     optional int32 head_sequence = 3;
 }
+
+message DetachedToolCallKey {
+    Uuid session_id = 1;
+    string tool_call_id = 2;
+}
+
+message DetachToolCallRequest {
+    DetachedToolCallKey call = 1;
+    // The turn the call belongs to.
+    Uuid turn_id = 2;
+    string holder = 3;
+    // The actor lease the holder detaches the call under.
+    int64 fence = 4;
+    // Record life; 0 = the server default.
+    uint32 ttl_ms = 5;
+}
+
+message DetachToolCallResponse {
+    // False when the holder no longer holds the actor lease.
+    bool detached = 1;
+}
+
+message RenewDetachedToolCallsRequest {
+    string holder = 1;
+    uint32 ttl_ms = 2;
+    repeated DetachedToolCallKey calls = 3;
+}
+
+message RenewDetachedToolCallsResponse {
+    // The calls still live; the holder stops every other one.
+    repeated DetachedToolCallKey live = 1;
+}
+
+message CompleteDetachedToolCallRequest {
+    DetachedToolCallKey call = 1;
+    string holder = 2;
+}
+
+message CompleteDetachedToolCallResponse {
+    // False when the call's record was gone (cancelled or expired).
+    bool completed = 1;
+    // It was the session's last detached call: the actor is runnable.
+    bool resumable = 2;
+}
+
+message ExpireDetachedToolCallsRequest {
+    string holder = 1;
+    repeated DetachedToolCallKey calls = 2;
+}
+
+message ExpireDetachedToolCallsResponse {}
 
 // ============================================================================
 // Session SQL database types

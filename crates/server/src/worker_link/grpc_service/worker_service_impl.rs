@@ -131,6 +131,14 @@ delegate! {
     release_actor => handle_release_actor(proto::ReleaseActorRequest) -> proto::ReleaseActorResponse;
     read_actor_journal => handle_read_actor_journal(proto::ReadActorJournalRequest)
         -> proto::ReadActorJournalResponse;
+    detach_tool_call => handle_detach_tool_call(proto::DetachToolCallRequest)
+        -> proto::DetachToolCallResponse;
+    renew_detached_tool_calls => handle_renew_detached_tool_calls(proto::RenewDetachedToolCallsRequest)
+        -> proto::RenewDetachedToolCallsResponse;
+    complete_detached_tool_call => handle_complete_detached_tool_call(proto::CompleteDetachedToolCallRequest)
+        -> proto::CompleteDetachedToolCallResponse;
+    expire_detached_tool_calls => handle_expire_detached_tool_calls(proto::ExpireDetachedToolCallsRequest)
+        -> proto::ExpireDetachedToolCallsResponse;
 
     // Session task reaper scans (task lifecycle and messages are internal commands).
     list_orphaned_session_tasks => handle_list_orphaned_session_tasks(ListOrphanedSessionTasksRequest)

@@ -12,6 +12,7 @@ fn append_fence(fence: &ActorFence) -> crate::services::ActorAppendFence<'_> {
     crate::services::ActorAppendFence {
         holder: &fence.holder,
         fence: fence.fence,
+        detached_tool_call: fence.detached_tool_call_id.as_deref(),
     }
 }
 

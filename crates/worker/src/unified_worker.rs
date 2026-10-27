@@ -25,7 +25,10 @@ use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::actor_runtime::{ActorRuntime, ActorRuntimeConfig, ActorSlots, WorkerActorHosts};
+use crate::actor_runtime::{
+    ActorRuntime, ActorRuntimeConfig, ActorSlots, DetachedCalls, DetachedCallsConfig,
+    WorkerActorHosts,
+};
 use crate::engine::model_wait::ModelWaitSlots;
 use crate::model_wait_slots::{DEFAULT_MAX_CONCURRENT_MODEL_WAITS, WorkerModelWaitSlots};
 use crate::task_driver::TaskDriver;
@@ -104,6 +107,12 @@ pub struct TaskWorkerConfig {
     /// orchestrator's kill timeout; aborted tasks go back to the queue when
     /// the worker deregisters.
     pub shutdown_grace: Duration,
+    /// How long a server-side tool call runs with its turn before it detaches
+    /// and the turn parks (`WORKER_TOOL_DETACH_AFTER_SECS`; zero keeps every
+    /// call with its turn). See `actor_runtime::detached_calls`.
+    pub tool_detach_after: Duration,
+    /// Most detached calls this worker holds (`MAX_DETACHED_TOOL_CALLS`).
+    pub max_detached_tool_calls: usize,
 }
 
 /// Default for [`TaskWorkerConfig::shutdown_grace`]: inside Kubernetes'
@@ -126,6 +135,9 @@ impl Default for TaskWorkerConfig {
             grpc_address: "127.0.0.1:9001".to_string(),
             connect_timeout: Duration::from_secs(30),
             shutdown_grace: DEFAULT_SHUTDOWN_GRACE,
+            tool_detach_after: crate::actor_runtime::detached_calls::DEFAULT_TOOL_DETACH_AFTER,
+            max_detached_tool_calls:
+                crate::actor_runtime::detached_calls::DEFAULT_MAX_DETACHED_TOOL_CALLS,
         }
     }
 }
@@ -199,6 +211,14 @@ impl TaskWorkerConfig {
                 "WORKER_SHUTDOWN_GRACE_SECS",
                 defaults.shutdown_grace,
             ),
+            tool_detach_after: env_duration_secs(
+                "WORKER_TOOL_DETACH_AFTER_SECS",
+                defaults.tool_detach_after,
+            ),
+            max_detached_tool_calls: env_or(
+                "MAX_DETACHED_TOOL_CALLS",
+                defaults.max_detached_tool_calls,
+            ),
             ..defaults
         }
     }
@@ -257,11 +277,29 @@ where
             "Initialized unified worker"
         );
 
-        let actors = ActorRuntime::new(
+        let mut actors = ActorRuntime::new(
             WorkerActorHosts::new(adapters.clone()),
             adapters.actor_lease_store(),
             ActorRuntimeConfig::new(config.worker_id.clone()),
         );
+        if !config.tool_detach_after.is_zero() && config.max_detached_tool_calls > 0 {
+            let emitters = adapters.clone();
+            actors = actors.with_detached_calls(Arc::new(DetachedCalls::new(
+                adapters.actor_lease_store(),
+                config.worker_id.clone(),
+                DetachedCallsConfig {
+                    detach_after: config.tool_detach_after,
+                    max_calls: config.max_detached_tool_calls,
+                    ttl: crate::actor_runtime::detached_calls::DETACHED_CALL_TTL,
+                },
+                Arc::new(move |fence| {
+                    Arc::new(
+                        crate::worker_adapters::SessionAdapter::new(emitters.clone())
+                            .with_actor_fence(Some(fence)),
+                    ) as Arc<dyn crate::core::event_emitter::EventEmitter>
+                }),
+            )));
+        }
         let driver = TaskDriver::new(
             store.clone(),
             adapters.clone(),

@@ -58,7 +58,8 @@ pub fn is_parked(error: &AgentLoopError) -> bool {
     matches!(error, AgentLoopError::Internal(inner) if inner.is::<Parked>())
 }
 
-fn parked() -> AgentLoopError {
+/// The error a step returns when it parked its turn until a durable wakeup.
+pub fn parked() -> AgentLoopError {
     AgentLoopError::Internal(Parked.into())
 }
 
