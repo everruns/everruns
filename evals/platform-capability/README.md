@@ -762,7 +762,7 @@ doppler run -- just start-dev
 |---|---|---|
 | `EVERRUNS_API_URL` | `http://localhost:9300/api` | Everruns API base |
 | `EVERRUNS_API_KEY` | `dev` | Authorization header value |
-| `EVERRUNS_EVAL_HARNESS` | `platform-chat` | Harness under test |
+| `EVERRUNS_EVAL_HARNESS` | `platform-chat` | Managed Platform Chat Agent by default; other names select custom harnesses |
 | `EVERRUNS_EVAL_TARGETS` | unset | Comma-separated provider model ids or Everruns `model_…` ids |
 | `EVERRUNS_EVAL_TURN_TIMEOUT_SECS` | `180` | Per-turn completion timeout |
 

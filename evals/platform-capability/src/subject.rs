@@ -21,7 +21,7 @@ use mira::{ErrorKind, RunCx, Sample, Subject, Transcript};
 use serde_json::{Value, json};
 use tokio::sync::OnceCell;
 
-/// Default harness that carries the `platform` capability.
+/// Canonical managed Agent; other configured names select custom harnesses.
 const DEFAULT_HARNESS: &str = "platform-chat";
 
 pub struct EverrunsServerSubject {
@@ -149,9 +149,14 @@ impl EverrunsServerSubject {
             "title": format!("Mira eval: {}", sample.id),
             "tags": ["mira", "platform-capability"],
         });
-        // A case about one agent's capabilities (the `user_mcp` tools of
-        // Platform Chat) talks to that agent rather than the bare harness.
-        if let Some(agent) = sample.metadata.get("agent_name").and_then(Value::as_str) {
+        // The canonical operator moved from a harness to a managed Agent.
+        // Never silently qualify the retired harness instead of what ships.
+        if let Some(agent) = sample
+            .metadata
+            .get("agent_name")
+            .and_then(Value::as_str)
+            .or_else(|| (self.harness == DEFAULT_HARNESS).then_some(DEFAULT_HARNESS))
+        {
             body = json!({
                 "agent_name": agent,
                 "title": format!("Mira eval: {}", sample.id),
@@ -627,6 +632,94 @@ fn classify(message: &str) -> ErrorKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn hosted_session_creation_targets_the_managed_agent_and_preserves_overrides() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let mut requests = Vec::new();
+            for _ in 0..3 {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut bytes = Vec::new();
+                let header_end = loop {
+                    let mut buffer = [0; 4096];
+                    let count = stream.read(&mut buffer).unwrap();
+                    assert!(count > 0);
+                    bytes.extend_from_slice(&buffer[..count]);
+                    if let Some(position) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                        break position + 4;
+                    }
+                };
+                let headers = std::str::from_utf8(&bytes[..header_end]).unwrap();
+                assert!(headers.starts_with("POST /v1/sessions "));
+                let length: usize = headers
+                    .lines()
+                    .find_map(|line| {
+                        line.to_ascii_lowercase()
+                            .strip_prefix("content-length:")
+                            .map(|length| length.trim().parse().unwrap())
+                    })
+                    .unwrap();
+                while bytes.len() < header_end + length {
+                    let mut buffer = [0; 4096];
+                    let count = stream.read(&mut buffer).unwrap();
+                    assert!(count > 0);
+                    bytes.extend_from_slice(&buffer[..count]);
+                }
+                requests.push(
+                    serde_json::from_slice::<Value>(&bytes[header_end..header_end + length])
+                        .unwrap(),
+                );
+                let response = r#"{"id":"session_mock"}"#;
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}", response.len()).unwrap();
+            }
+            requests
+        });
+        let mut subject = EverrunsServerSubject {
+            base_url: format!("http://{address}"),
+            api_key: "test".into(),
+            harness: DEFAULT_HARNESS.into(),
+            poll_interval: Duration::from_millis(1),
+            turn_timeout: Duration::from_secs(5),
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(5))
+                .build()
+                .unwrap(),
+            model_cache: OnceCell::new(),
+        };
+        let mut sample = mira::Dataset::from_jsonl_str(crate::DATASET)
+            .unwrap()
+            .samples
+            .remove(0);
+        let cx = RunCx::new(mira::Target::new("default", "everruns", ""));
+        for (harness, agent) in [
+            (DEFAULT_HARNESS, None),
+            ("custom-harness", None),
+            ("custom-harness", Some("assigned-agent")),
+        ] {
+            subject.harness = harness.into();
+            sample.metadata.remove("agent_name");
+            if let Some(agent) = agent {
+                sample.metadata.insert("agent_name".into(), json!(agent));
+            }
+            assert_eq!(
+                subject.create_session(&sample, &cx).await.unwrap(),
+                "session_mock"
+            );
+        }
+        let requests = server.join().unwrap();
+        assert_eq!(requests[0]["agent_name"], "platform-chat");
+        assert!(requests[0].get("harness_name").is_none());
+        assert_eq!(requests[1]["harness_name"], "custom-harness");
+        assert!(requests[1].get("agent_name").is_none());
+        assert_eq!(requests[2]["agent_name"], "assigned-agent");
+        assert!(requests[2].get("harness_name").is_none());
+    }
 
     #[test]
     fn budget_is_inclusive_and_reports_first_exceeded_limit() {
