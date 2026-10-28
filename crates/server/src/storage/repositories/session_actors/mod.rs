@@ -66,6 +66,14 @@
 //   `MAX_ACTOR_JOURNAL_LIMIT` events per call; the caller pages with
 //   `has_more`. A turn's log is bounded in practice by its iteration cap, so
 //   one page is the common case.
+// - The journal leaves out `llm.generation` (EVERRUNS-37). Each one records
+//   the whole prompt sent to the model, again in the provider request body,
+//   so a turn's generations grow with the square of its iterations and were
+//   nearly all of a resume's read (a 35-iteration turn: 10 MB of
+//   generations, 0.25 MB of everything else; prod reads of 300-500 events
+//   took over a second) while no fold or scan reads them. They are
+//   observability records, never a turn's input or state. `head_sequence`
+//   is still the log's, so the cursor and the fence see every event.
 
 mod detached;
 pub(super) mod rows;
@@ -428,8 +436,8 @@ impl Database {
 
     /// The tail of `session_id`'s log an actor folds to resume: events after
     /// `after_sequence`, or from the latest `turn.started` (the whole log when
-    /// no turn started yet). At most `limit` events, capped at
-    /// [`MAX_ACTOR_JOURNAL_LIMIT`].
+    /// no turn started yet), without `llm.generation` records. At most
+    /// `limit` events, capped at [`MAX_ACTOR_JOURNAL_LIMIT`].
     pub async fn read_session_actor_journal(
         &self,
         session_id: SessionId,
@@ -455,6 +463,7 @@ impl Database {
                       LIMIT 1
                   ), 0)
               END
+              AND event_type <> 'llm.generation'
             ORDER BY sequence
             LIMIT $3
             "#
