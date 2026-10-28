@@ -57,6 +57,22 @@ it("cancels an unanswered operation when its route or organization unmounts", as
   await waitFor(() => expect(result).toHaveBeenCalledWith(false));
 });
 
+it("clears an action failure before the dialog is reopened", async () => {
+  const props = {
+    onOpenChange: jest.fn(),
+    title: "Archive memory",
+    description: "Existing sessions retain their bindings.",
+    confirmLabel: "Archive",
+    onConfirm: jest.fn().mockRejectedValue(new Error("request failed")),
+  };
+  const view = render(<ConfirmDialog {...props} open />);
+  fireEvent.click(await screen.findByRole("button", { name: "Archive" }));
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  view.rerender(<ConfirmDialog {...props} open={false} />);
+  view.rerender(<ConfirmDialog {...props} open />);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
 it("cancels on a scope change while preserving the page's unsaved draft", async () => {
   const result = jest.fn();
   function Consumer() {

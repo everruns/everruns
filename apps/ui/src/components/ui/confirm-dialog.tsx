@@ -35,6 +35,8 @@ export function ConfirmDialog({
   const ui = useUiTranslations();
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
+  // A parent can close the controlled dialog without firing onOpenChange.
+  if (!open && failed) setFailed(false);
   const busy = pending || isPending;
   async function confirm() {
     if (busy) return;
