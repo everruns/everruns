@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - 'evals/tool-search-reveal/**'
+      - 'evals/common/**'
       - '.github/workflows/tool-search-reveal-evals.yml'
   push:
     branches: [main]
     paths:
       - 'evals/tool-search-reveal/**'
+      - 'evals/common/**'
       - '.github/workflows/tool-search-reveal-evals.yml'
 
 permissions:

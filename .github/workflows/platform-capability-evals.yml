@@ -5,13 +5,25 @@ on:
     branches: [main]
     paths:
       - 'evals/platform-capability/**'
-      - 'crates/cli-contract/commands.json'
+      - 'evals/common/**'
+      - 'crates/cli-contract/**'
+      - 'crates/capabilities/src/capabilities/platform_native/**'
+      - 'crates/contracts/**'
+      - 'crates/core/src/builtins/tool_search*.rs'
+      - 'crates/server/src/credential_shape.rs'
+      - 'Cargo.toml'
       - '.github/workflows/platform-capability-evals.yml'
   push:
     branches: [main]
     paths:
       - 'evals/platform-capability/**'
-      - 'crates/cli-contract/commands.json'
+      - 'evals/common/**'
+      - 'crates/cli-contract/**'
+      - 'crates/capabilities/src/capabilities/platform_native/**'
+      - 'crates/contracts/**'
+      - 'crates/core/src/builtins/tool_search*.rs'
+      - 'crates/server/src/credential_shape.rs'
+      - 'Cargo.toml'
       - '.github/workflows/platform-capability-evals.yml'
 
 permissions:

@@ -66355,6 +66355,13 @@
         "type": "object",
         "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
         "properties": {
+          "capability_description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets."
+          },
           "capability_id": {
             "type": [
               "string",

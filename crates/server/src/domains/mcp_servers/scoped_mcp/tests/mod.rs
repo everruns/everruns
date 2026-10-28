@@ -1025,43 +1025,6 @@ async fn catalog_preview_discovery_never_uses_legacy_connection_tokens() {
 }
 
 #[tokio::test]
-async fn listed_catalog_tool_search_uses_preset_description() {
-    let db = StorageBackend::test_database();
-    let preset_id = seed_catalog_server(&db, "geothermal", false).await;
-    db.update_mcp_server(
-        everruns_core::DEFAULT_ORG_ID,
-        preset_id.uuid(),
-        UpdateMcpServer {
-            description: Some("Geothermal drilling telemetry records".into()),
-            ..Default::default()
-        },
-    )
-    .await
-    .unwrap();
-    let servers = ScopedMcpServers::from([(
-        "geothermal".to_string(),
-        catalog_server("geothermal", McpServerActsAs::None),
-    )]);
-
-    let definitions = build_materialized_scoped_mcp_tool_definitions(
-        &db,
-        everruns_core::DEFAULT_ORG_ID,
-        &servers,
-        None,
-        None,
-        &CatalogPreviewEgress::default(),
-    )
-    .await
-    .unwrap();
-    let hits = everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&definitions)
-        .search("drilling telemetry", 8, |_| true);
-    assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].name, "mcp_geothermal__echo");
-    assert!(hits[0].server_match);
-    assert!(!hits[0].tool_match);
-}
-
-#[tokio::test]
 async fn runtime_catalog_discovery_without_cache_identity_fails_closed() {
     let db = StorageBackend::test_database();
     seed_catalog_server(&db, "linear", true).await;
@@ -1452,3 +1415,5 @@ fn session_servers_never_carry_tool_labels() {
     );
     assert!(merged["extra"].tool_labels.is_empty());
 }
+
+mod source_context;

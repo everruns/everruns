@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - 'evals/generic/**'
+      - 'evals/common/**'
       - '.github/workflows/generic-evals.yml'
   push:
     branches: [main]
     paths:
       - 'evals/generic/**'
+      - 'evals/common/**'
       - '.github/workflows/generic-evals.yml'
 
 permissions:
