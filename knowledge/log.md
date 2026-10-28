@@ -6,6 +6,8 @@
 
 - Move console and Work Chat type checks to pinned `tsrs`, with route generation and a mandatory build gate. Retain TypeScript for API consumers. See [Code Organization](foundations/code-organization.md).
 
+- Added [tab-local Chat recovery and shared SSE subscriptions](ui/chat-recovery.md), using atomic, time-bounded send identities and preserving independent transcript replay cursors.
+
 - Added explicit shared-message request lists to the [Framework batch API](framework/batch-model-requests.md), preserving builder validation, scoped tickets and uncertainty handling.
 
 - Required short, compilable Rust API examples for Framework changelog entries and updated the batch entry to demonstrate submission and ticket serialization. See [Public Changelog](docs/changelog.md).

@@ -12,6 +12,7 @@
 * [Models and Providers](models-and-providers.md) - Why providers live under Library → Models with Models, Providers and Defaults tabs and share the models permission.
 * [Session Trace](session-trace.md) - One Trace view of turns and steps, and the trace index that keeps it fast for very large sessions.
 * [Chat Experience](chat-experience.md) - Why chat is a centered reading column with one turn status row from Enter to answer, and the send/turn state contracts behind it.
+* [Chat Recovery and Live Transport](chat-recovery.md) - Tab-local drafts and pending sends, safe reconnection and shared SSE subscriptions.
 * [Page-aware Chat Mode](chat-mode.md) - Adoption-gated split shell, page context, Agent change attribution and guarded undo, with the remaining migration slices.
 * [Harness Page](harness-page.md) - Why the harness page uses that workspace with capabilities as the page.
 * [Entity Actions Menu](entity-actions-menu.md) - One header overflow menu per entity page for secondary record functions and lifecycle actions, in a fixed order.

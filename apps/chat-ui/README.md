@@ -71,3 +71,17 @@ hoisted dependencies without importing the console app at runtime.
 Login admission defaults to 120 requests per peer per ten minutes. Set the
 optional `CHAT_LOGIN_LIMIT_PER_10_MINUTES` (1–10,000) for your deployment's NAT
 and traffic profile. Limited requests return HTTP 429 with `Retry-After`.
+
+
+## Connection recovery
+
+Drafts and uncertain message requests are retained in this tab's session storage,
+scoped to a random namespace issued for the browser login and the conversation.
+The namespace is not a login credential. Retry uses the original request body
+and Agent API idempotency key; reload never resends an old instruction. Retry is
+blocked before the server's one-day retention expires. Discard removes a local
+copy without cancelling accepted work. Logout clears local recovery.
+
+Browser quota or disabled storage produces a warning; keep the tab open and
+copy unsent text before leaving. Closing the tab or clearing site data can remove
+recovery. An offline application shell and offline inference are not provided.
