@@ -472,9 +472,14 @@ impl Database {
         after_sequence: Option<i32>,
         limit: i64,
     ) -> Result<ActorJournalRows> {
-        let mut connection = self.pool.acquire().await?;
-        Self::read_session_actor_journal_on(&mut connection, session_id, after_sequence, limit)
-            .await
+        let (events, has_more) =
+            Self::actor_journal_events_on(&self.pool, session_id, after_sequence, limit).await?;
+        let head_sequence = Self::actor_journal_head_on(&self.pool, session_id).await?;
+        Ok(ActorJournalRows {
+            events,
+            has_more,
+            head_sequence,
+        })
     }
 
     pub(super) async fn read_session_actor_journal_on(
@@ -483,6 +488,23 @@ impl Database {
         after_sequence: Option<i32>,
         limit: i64,
     ) -> Result<ActorJournalRows> {
+        let (events, has_more) =
+            Self::actor_journal_events_on(&mut *connection, session_id, after_sequence, limit)
+                .await?;
+        let head_sequence = Self::actor_journal_head_on(connection, session_id).await?;
+        Ok(ActorJournalRows {
+            events,
+            has_more,
+            head_sequence,
+        })
+    }
+
+    async fn actor_journal_events_on<'e>(
+        connection: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+        session_id: SessionId,
+        after_sequence: Option<i32>,
+        limit: i64,
+    ) -> Result<(Vec<EventRow>, bool)> {
         let limit = if limit <= 0 {
             DEFAULT_ACTOR_JOURNAL_LIMIT
         } else {
@@ -510,20 +532,22 @@ impl Database {
         .bind(session_id)
         .bind(after_sequence)
         .bind(limit + 1)
-        .fetch_all(&mut *connection)
+        .fetch_all(connection)
         .await?;
         let has_more = events.len() as i64 > limit;
         events.truncate(limit as usize);
-        let head_sequence = sqlx::query_scalar::<_, Option<i32>>(
+        Ok((events, has_more))
+    }
+
+    async fn actor_journal_head_on<'e>(
+        connection: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+        session_id: SessionId,
+    ) -> Result<Option<i32>> {
+        Ok(sqlx::query_scalar::<_, Option<i32>>(
             "SELECT MAX(sequence) FROM events WHERE session_id = $1",
         )
         .bind(session_id)
         .fetch_one(connection)
-        .await?;
-        Ok(ActorJournalRows {
-            events,
-            has_more,
-            head_sequence,
-        })
+        .await?)
     }
 }
