@@ -31,6 +31,12 @@ New delegated RPCs inherit denial. Generic command dispatch, provider credential
 resolution, work claiming, event publishing and notification discovery do not
 fall back to internal/Owner authority for such a request.
 
+The same listener's [blob HTTP routes](../../crates/server/src/api/internal_blobs.rs)
+refuse journal-only scopes before path/query extraction, upload-body buffering,
+signature processing or storage. Even an otherwise-valid legacy signed URL does
+not grant byte access to this role. Requests without a scope retain the existing
+trusted legacy bearer/signature behavior.
+
 The [journal handler](../../crates/server/src/worker_link/grpc_service/worker/actors.rs)
 rejects a contradictory session selector before reading its data. Each permitted
 read performs [online admission](../../crates/server/src/storage/repositories/session_actors/journal_admission.rs)
@@ -75,6 +81,15 @@ or trusted relays. Ordered bounded event ingress remains separate work. Until
 these dependencies and adversarial deployment qualification pass, the scoped
 reader is not a runnable replacement for a worker and must not be presented as
 production tenant isolation.
+
+[Combined-listener regressions](../../crates/server/src/worker_link/grpc_service/tests/scoped_blobs/mod.rs)
+exercise the actual outer bearer layer and merged gRPC/HTTP routes with a fixed
+trusted scope adapter. They cover signed image/file URLs, own/foreign uploads,
+malformed requests, stalled/oversized bodies and unavailable storage, alongside
+legacy positive and authentication/signature negative cases. An instrumented
+router body must receive zero polls on refusal; network refusal must not wait
+for a stalled upload to finish. These are synthetic component tests, not
+production identity or deployment qualification.
 
 No live identity, credential, certificate, broker user, network/security policy,
 or persistent-access setup is performed by this source change. Those deployment
