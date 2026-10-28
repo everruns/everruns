@@ -11,7 +11,7 @@ overrides:
   brace-expansion@1: 1.1.21
   brace-expansion@2: 2.1.7
   dompurify: 3.4.17
-  fast-uri: 3.1.8
+  fast-uri: 3.1.9
   js-yaml: 4.3.2
   mermaid: 11.16.1
   nanoid: 3.3.18
@@ -42,8 +42,10 @@ minimumReleaseAgeStrict: true
 # GHSA-58mr-gqgx-xq4g (host confusion via an unclosed bracket in the URI
 # authority), GHSA-qw65-cvwx-89v3 (authority injection via an unvalidated port
 # in serialize), and GHSA-hrr3-gc8f-f4qj (inconsistent host case normalization
-# via percent-encoded octets). 3.1.8 is the only patched 3.x release for all
-# seven. Staying on the 3.x line keeps the
+# via percent-encoded octets). 3.1.9 also fixes encoded schemes, unchecked
+# WHATWG host canonicalization, relative-path equivalence and suffix scheme
+# injection (GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h,
+# GHSA-333x-w4r6-6crp). Staying on the 3.x line keeps the
 # override inside the range its dependents declare; 4.x is outside every
 # advisory but is a major bump this pin does not need to take.
 # brace-expansion 1.1.21 / 2.1.7 (GHSA-q2hr-2g5m-vwhr
