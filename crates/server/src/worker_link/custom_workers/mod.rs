@@ -11,6 +11,8 @@ use tonic::{Request, Response, Status};
 
 use crate::{services::EventService, storage::StorageBackend};
 
+pub mod http;
+
 #[cfg(test)]
 mod tests;
 

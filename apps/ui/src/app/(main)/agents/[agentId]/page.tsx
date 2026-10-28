@@ -4,6 +4,7 @@ import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/lo
 
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
+import { ExternalWorker } from "@/components/agents/external-worker";
 import { AgentSourcePanel } from "@/components/agents/agent-source";
 import { useAgentSource } from "@/hooks/use-agent-source";
 import { exportAgentPackage } from "@/lib/api/agents";
@@ -727,6 +728,10 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                 </>
               }
             />
+
+            {!editing && !builtIn && (
+              <ExternalWorker agentId={agentId} disabled={!can("agent.dangerous")} />
+            )}
 
             {!editing && !builtIn && (
               <AgentSourcePanel

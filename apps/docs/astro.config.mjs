@@ -446,6 +446,7 @@ export default defineConfig({
                     { label: "Admin Container", slug: "sre/admin-container" },
                     { label: "System Doctor", slug: "sre/system-doctor" },
                     { label: "Custom Agent Workers", slug: "how-to/custom-agent-workers" },
+                    { label: "Cloudflare Agent", slug: "how-to/cloudflare-agent" },
                     { label: "Request Signing", slug: "sre/request-signing" },
                     {
                       label: "Runbooks",

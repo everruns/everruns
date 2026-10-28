@@ -1078,6 +1078,15 @@ For setup instructions and configuration details, see the [Braintrust Integratio
 | `BRAINTRUST_TOOL_RESULTS_MODE` | No | `summary` | Tool result export mode: `full`, `summary`, `redacted`, `none` |
 | `BRAINTRUST_DEBUG_PAYLOADS` | No | `false` | Print full outbound Braintrust payload JSON to local debug logs |
 
+### EXTERNAL_AGENTS_ENABLED
+
+Set to `true` to enable self-service customer-hosted HTTPS Agent registration and
+request-driven execution. Default: disabled. Requires configured encryption and
+outbound HTTPS through the host egress service. The Agent's dangerous-settings
+permission gates registration, rotation and disable. Customer endpoints receive
+no CP user or fleet credentials. See [Cloudflare agents](/how-to/cloudflare-agent/)
+for the deployment, protocol, limits and smoke test.
+
 ### CUSTOM_WORKER_GRPC_BIND_ADDR
 
 **Component:** Control plane. **Default:** unset (listener disabled).

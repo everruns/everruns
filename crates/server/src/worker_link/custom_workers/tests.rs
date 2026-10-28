@@ -3,7 +3,7 @@ use everruns_contracts::typed_id::{MessageId, TurnId};
 use everruns_core::{EventContext, EventRequest, OutputMessageCompletedData, RuntimeMessage};
 use everruns_internal_protocol::schema_event_request_to_proto;
 
-const TOKEN: &str = "custom_worker_test_credential_1234567890";
+pub(super) const TOKEN: &str = "custom_worker_test_credential_1234567890";
 
 fn request<T>(value: T) -> Request<T> {
     let mut request = Request::new(value);
@@ -13,7 +13,7 @@ fn request<T>(value: T) -> Request<T> {
     request
 }
 
-async fn fixture() -> (CustomWorkerServiceImpl, uuid::Uuid, SessionId) {
+pub(super) async fn fixture() -> (CustomWorkerServiceImpl, uuid::Uuid, SessionId) {
     let db = Arc::new(StorageBackend::test_database());
     let agent = db.create_test_agent(1, uuid::Uuid::now_v7()).await;
     let session = db.create_test_session().await;

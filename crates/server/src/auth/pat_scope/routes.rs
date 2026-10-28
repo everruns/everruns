@@ -58,6 +58,9 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
         "/v1/e/{channel_id}/sessions/{session_id}/share",
         Never,
     ),
+    ("GET", "/v1/agents/{agent_id}/external-worker", Read),
+    ("POST", "/v1/agents/{agent_id}/external-worker", Never),
+    ("DELETE", "/v1/agents/{agent_id}/external-worker", Never),
     ("GET", "/v1/channels/{channel_id}/chat/config", Read),
     ("POST", "/v1/channels/{channel_id}/chat/main", Write),
     (

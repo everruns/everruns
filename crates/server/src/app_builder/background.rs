@@ -498,3 +498,35 @@ pub(super) fn spawn_custom_worker_server(
     );
     Ok(())
 }
+
+/// The response transport holds only an internal custom-worker credential.
+pub(super) fn spawn_external_workers(
+    supervisor: &mut TaskSupervisor,
+    db: Arc<StorageBackend>,
+    event_service: Arc<services::EventService>,
+    encryption: Option<Arc<EncryptionService>>,
+    egress: Arc<dyn everruns_core::EgressService>,
+) -> Result<()> {
+    if crate::domains::external_agents::enabled() {
+        let encryption = encryption
+            .clone()
+            .context("External agents require encryption")?;
+        let external_db = db.clone();
+        let external_events = event_service.clone();
+        supervisor.spawn(
+            "external_agents",
+            crate::background::supervised_task::RestartPolicy::always_after(
+                std::time::Duration::from_secs(5),
+            ),
+            move || {
+                crate::worker_link::custom_workers::http::run(
+                    external_db.clone(),
+                    external_events.clone(),
+                    encryption.clone(),
+                    egress.clone(),
+                )
+            },
+        );
+    }
+    Ok(())
+}

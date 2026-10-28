@@ -1,5 +1,20 @@
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  "External worker setup failed": "External worker setup failed",
+  Execution: "Execution",
+  "External worker": "External worker",
+  "Built-in runtime": "Built-in runtime",
+  "Configure execution": "Configure execution",
+  "Unable to load execution settings": "Unable to load execution settings",
+  "This endpoint owns the model, prompt and tools. Agent editor settings are not applied to external execution.":
+    "This endpoint owns the model, prompt and tools. Agent editor settings are not applied to external execution.",
+  "Deploy your worker first. Install a random endpoint secret in its environment, then enter it here to verify ownership.":
+    "Deploy your worker first. Install a random endpoint secret in its environment, then enter it here to verify ownership.",
+  "Worker HTTPS endpoint": "Worker HTTPS endpoint",
+  "Endpoint secret": "Endpoint secret",
+  "Verify and connect": "Verify and connect",
+  "Disable external worker": "Disable external worker",
+
   Discard: "Discard",
   "Recovery storage is unavailable. Keep this tab open and copy unsent text before leaving.":
     "Recovery storage is unavailable. Keep this tab open and copy unsent text before leaving.",

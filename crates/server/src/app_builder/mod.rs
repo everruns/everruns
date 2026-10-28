@@ -942,7 +942,7 @@ impl ServerAppBuilder {
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
         );
-        let agent_triggers_state = api::agent_triggers::AppState::new(
+        let mut agent_triggers_state = api::agent_triggers::AppState::new(
             db.clone(),
             encryption.clone(),
             scheduler_store.clone(),
@@ -953,6 +953,7 @@ impl ServerAppBuilder {
         )
         .with_mcp_event_triggers(mcp_event_triggers.clone())
         .with_channels(channel_recovery.clone());
+        agent_triggers_state.external_egress = Some(host_composition.egress_service());
         let schedules_state = api::schedules::routes(
             api::schedules::ScheduleAppState::new(
                 db.clone(),
@@ -1101,6 +1102,7 @@ impl ServerAppBuilder {
             ))
             .merge(api::apps::routes(apps_state))
             .merge(api::agent_channels::routes(agent_triggers_state.clone()))
+            .merge(api::external_agents::routes(agent_triggers_state.clone()))
             .merge(api::agent_triggers::routes(agent_triggers_state))
             // Evals routes are conditionally merged below based on feature flag.
             .merge(api::harness_examples::routes(harness_examples_state))
@@ -1333,6 +1335,13 @@ impl ServerAppBuilder {
         };
 
         background::spawn_custom_worker_server(&mut supervisor, db.clone(), event_service.clone())?;
+        background::spawn_external_workers(
+            &mut supervisor,
+            db.clone(),
+            event_service.clone(),
+            encryption.clone(),
+            host_composition.egress_service(),
+        )?;
 
         let worker_link = background::WorkerLinkDeps {
             db: db.clone(),

@@ -15,6 +15,7 @@
 ## 2026-10-28
 
 - Preserve provider attribution for Knowledge embeddings and retain deployment-owned index operation receipts separately from host pricing. See [Knowledge Indexing and Storage](runtime-resources/knowledge-indexing.md).
+- Added opt-in self-service HTTPS worker registration, response-stream execution through the restricted worker validator, and a Cloudflare/private-D1 example. See [Custom workers](operations/custom-workers.md).
 
 - Made single-message retrieval independent of the history window and indexed embedded message IDs for turn-start and input-provenance lookups. See [Architecture](foundations/architecture.md) and [ID Schema](foundations/id-schema.md).
 

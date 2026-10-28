@@ -39,6 +39,7 @@ pub mod dispatch;
 pub mod durable;
 pub mod evals;
 pub mod events;
+pub mod external_agents;
 pub mod feature_flags;
 pub mod files;
 pub mod github_apps;

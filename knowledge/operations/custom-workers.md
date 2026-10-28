@@ -11,8 +11,9 @@ tags:
 
 # Customer-hosted custom agent workers
 
-Status: experimental, self-hosted and operator-provisioned. Cloud deployment of
-customer images is outside this change.
+Status: experimental. Pull workers remain operator-provisioned. Request-driven
+HTTPS endpoints have opt-in API/UI registration; Cloud rollout is an installation
+decision. Customer code runs in its own account, not in Cloud platform compute.
 
 ## Intent and ownership
 
@@ -33,8 +34,8 @@ explicitly configured and requires TLS outside loopback. See
 ## UI identity and channel boundary
 
 A binding selects an existing Agent; connecting a replica does not create one.
-The ordinary Agents, Playground, session and trace surfaces remain in use. No
-custom-worker registration/status UI or runtime badge is introduced. Platform
+The ordinary Agents, Playground, session and trace surfaces remain in use. Pull workers have no registration/status UI. HTTPS endpoints have an Execution
+panel on the Agent page for verified registration, status, rotation and disable. Platform
 Agent configuration is not automatically executed by the customer binary.
 
 Slack's channel host admits messages into the bound Agent's sessions and consumes
@@ -131,3 +132,38 @@ Python harness regressions run through the example's cargo test target. See the
 [agent acceptance case](../test-cases/agents/custom_workers/TC001_custom_data_worker_smoke.md)
 and [UI acceptance case](../test-cases/ui/custom_workers/TC001_custom_worker_chat_and_trace.md)
 for qualification; run records are kept outside the knowledge bundle.
+
+## Request-driven HTTPS endpoints
+
+The [HTTP adapter](../../crates/server/src/worker_link/custom_workers/http.rs)
+reuses CustomWorkerService for leases, journal reads and event ingestion. It
+holds the adapter credential only inside the CP, streams response events under
+one input's authority, and derives all canonical correlations using the existing
+validator. The remote endpoint never receives a CP user or fleet credential.
+Model/tool traces require runtime instrumentation; arbitrary code is not inspected.
+
+[Registration commands](../../crates/server/src/domains/external_agents/mod.rs)
+require the Agent dangerous-settings policy and reject read-only callers. A
+signed, fresh challenge verifies knowledge of a preinstalled endpoint secret;
+request signatures bind exact bytes, timestamp and endpoint audience. Secrets
+are encrypted and participate in normal key rotation. Outbound requests use the
+host egress service with tenant attribution and mandatory DNS pinning; HTTPS,
+no URL credentials, no query/fragment and no redirects limit receiver SSRF and
+credential forwarding. Registration locks actor writes briefly after network
+verification and refuses held leases, avoiding a routing change during execution.
+An operator-managed pull binding cannot be converted accidentally.
+
+Disconnects, malformed events and deadline expiry terminate visibly without
+replaying remote side effects. A crash after a committed terminal event only
+acknowledges that input; a crash before terminal completion seals the interrupted
+attempt on the next lease. Cancellation closes the HTTP request and emits a
+cancelled turn. The CP cannot undo effects or force external code to stop.
+Side-effecting implementations own durable idempotency and recovery. Disabled
+bindings retain routing exclusion; there is no built-in execution fallback.
+
+[Cloudflare example](../../examples/cloudflare-data-agent/README.md) uses a private
+D1 database and a real model. Its public guide includes implementation code,
+normal API invocation and the same Agent's Slack Direct-reply setup. The transport
+is opt-in and bounded, including fleet-wide per-org admission; production Cloud enablement requires adopting the OSS
+revision in the Cloud wrapper and qualifying that installation. This feature is
+separate from engine-owned durable execution on Cloudflare.
