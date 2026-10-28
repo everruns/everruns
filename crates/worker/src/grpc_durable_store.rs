@@ -135,6 +135,17 @@ impl GrpcDurableStore {
 
         loop {
             attempt += 1;
+            let addrs = match tls_config {
+                Some(_) => Default::default(),
+                None => crate::grpc_balance::resolve(address).await,
+            };
+            if addrs.len() > 1 {
+                let channel =
+                    crate::grpc_balance::balanced_channel(address.to_string(), addrs, |e| e);
+                let client =
+                    WorkerServiceClient::with_interceptor(channel, GrpcClientAuth::from_env());
+                return Ok(Self { client });
+            }
             let mut ep = base_endpoint.clone();
             if let Some(ref tls) = tls_config {
                 ep = ep

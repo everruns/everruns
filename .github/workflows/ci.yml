@@ -985,9 +985,9 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.mode == 'pr' && needs.changes.outputs.has_tests == 'true'
-    # Cold server compilation plus the full selected suite can exceed 40m;
-    # retain the repository's bounded 45m ceiling without dropping tests.
-    timeout-minutes: 45
+    # A server cache miss measured 35m compiling plus six minutes of tests.
+    # Retain every selected test and bounded cold-build headroom.
+    timeout-minutes: ${{ matrix.group == 'server' && 50 || 40 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.changes.outputs.matrix) }}

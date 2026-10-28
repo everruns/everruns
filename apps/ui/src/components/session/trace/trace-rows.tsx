@@ -23,6 +23,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StreamdownMessage } from "@/components/chat/streamdown-message";
 import type { TraceBatch, TraceGap, TraceStep, TraceTurn } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import {
@@ -267,9 +268,11 @@ function RowShell({
       role={onSelect ? "button" : undefined}
       tabIndex={onSelect ? 0 : undefined}
       aria-pressed={onSelect ? selected : undefined}
-      onClick={onSelect}
+      onClick={(e) => {
+        if (!(e.target as HTMLElement).closest("a, button, input")) onSelect?.();
+      }}
       onKeyDown={(e) => {
-        if (onSelect && (e.key === "Enter" || e.key === " ")) {
+        if (e.target === e.currentTarget && onSelect && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
           onSelect();
         }
@@ -349,6 +352,7 @@ export function StepRow({
   turn,
   step,
   view,
+  plainText,
   selected,
   onSelect,
   nested,
@@ -357,6 +361,7 @@ export function StepRow({
   turn: TraceTurn;
   step: TraceStep;
   view: "all" | "messages" | "tools";
+  plainText: boolean;
   selected: boolean;
   onSelect: () => void;
   nested?: boolean;
@@ -387,12 +392,20 @@ export function StepRow({
         />
       }
     >
-      <StepContent step={step} view={view} />
+      <StepContent step={step} view={view} plainText={plainText} />
     </RowShell>
   );
 }
 
-function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages" | "tools" }) {
+function StepContent({
+  step,
+  view,
+  plainText,
+}: {
+  step: TraceStep;
+  view: "all" | "messages" | "tools";
+  plainText: boolean;
+}) {
   const ui = useUiTranslations();
   const error = step.status === "error";
   switch (step.kind) {
@@ -424,14 +437,20 @@ function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages"
             </div>
           )}
           {step.narration && (
-            <p
+            <div
               className={cn(
-                "text-sm leading-[1.55] break-words whitespace-pre-wrap",
+                "min-w-0 text-sm leading-[1.55] break-words",
                 step.kind === "answer" && "border-l border-primary/65 pl-3.5",
               )}
             >
-              {step.narration}
-            </p>
+              {plainText ? (
+                <p className="whitespace-pre-wrap">{step.narration}</p>
+              ) : (
+                <StreamdownMessage variant="compact" skipHtml>
+                  {step.narration}
+                </StreamdownMessage>
+              )}
+            </div>
           )}
         </>
       );

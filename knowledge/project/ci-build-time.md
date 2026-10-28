@@ -100,13 +100,6 @@ normal CI cache baseline without evidence; account for repository cache pressure
 
 ## Measured Baseline
 
-A focused server [PR run](https://github.com/everruns/everruns/actions/runs/40626917933/job/122614095753)
-spent 2,095.8s compiling and 278.7s passing all 3,703 library tests, then reached
-its 40-minute job limit during integration execution. The affected-test job now
-uses the existing 45-minute repository ceiling so this cold path can finish its
-selected integration and authorization contracts. No tests, cache keys, compiler
-flags or execution concurrency changed; this is timeout headroom, not a speedup.
-
 Taken from the domain shard before any change ([run 35165812202](https://github.com/everruns/everruns/actions/runs/35165812202), 16.2 min total):
 
 | Step | Build | Tests |
@@ -179,11 +172,23 @@ durable 9.1m to 2-3m.
 - **Keep large CI Rust cache writes on main.** PRs restore the canonical
   dependency caches but do not retain their own Rust copies. Immutable generations
   already compete under a fixed repository budget; branch copies can evict the
-  useful main baseline. The trusted [closed-PR cleanup](../../.github/workflows/ci-cache-cleanup.yml)
+  useful main baseline. The offline eval workflows follow the same writer rule;
+  their independent Cargo workspaces still share the repository's cache budget.
+  Source policy changes apply when a workflow adopts them, not retroactively to
+  older PR heads. The trusted [closed-PR cleanup](../../.github/workflows/ci-cache-cleanup.yml)
   also removes remaining Node and tool caches after closure, rechecking current PR
   state and accepting only exact PR merge refs. It never deletes branch caches or
   executes PR code. Manual cleanup sweeps existing closed PRs; no periodic tick or
   paid cache-capacity increase is required.
+- **A cache miss must still fit the job.** A focused server run with no Rust
+  cache spent 33m48s compiling; all 3,706 unit, 65 persistence, one router and
+  85 selected domain tests passed before the forty-minute job timed out
+  ([run](https://github.com/everruns/everruns/actions/runs/40613751449/attempts/1)).
+  Its unchanged retry spent 35m16s compiling and was interrupted during units.
+  The server matrix leg therefore retains bounded cold-build headroom; other
+  groups keep their existing budget. Test selection, compile memory limits,
+  profiles and execution concurrency are unchanged. This margin is not evidence
+  of a warm-cache latency improvement or a guarantee that a cache remains resident.
 - **Benchmark optimization and concurrency separately.** The manual
   [pilot](../../.github/workflows/ci-test-archive.yml) compares CI binary optimization
   on a pinned runner image using empty targets followed by dependency-only warm
