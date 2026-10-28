@@ -2,6 +2,7 @@
 title: "Estimate agent model costs before running tasks"
 description: "Plan per-task and monthly model spend from an agent's configuration, with editable workload scenarios, context growth and transparent pricing assumptions."
 date: 2026-10-28
+supersededBy: 2026-10-28-smart-agent-cost-projections
 kind: feature
 significance: notable
 products: [platform, cloud]

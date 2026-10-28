@@ -20,11 +20,31 @@ spending cap or measured confidence. Entry: **Estimate cost** in the header of t
 
 ## Presentation
 
-The default view asks only what kind of task the user expects and how many tasks they run per day.
-Task choices use everyday examples, and headline amounts round to cents (positive amounts below
-a cent stay explicitly below $0.01). Token counts, model-call assumptions, cost breakdowns and
-the detailed method live behind **Advanced assumptions**, closed by default. Keep the AI-only
-pricing scope visible without requiring that disclosure.
+The header opens a smart planning dashboard. The host utility LLM infers three representative
+tasks from the assembled agent instructions and tool definitions, with optional user guidance.
+Generated tasks are hypotheses, never measured usage or inferred frequencies. Users edit the
+relative mix (equal initially), choose tasks per day or active users times tasks per user per day,
+and see average task, daily and 30-day monthly costs plus a scenario chart.
+
+Volume and mix sliders recompute locally without LLM calls. Generated plans are cached by
+organization, draft, guidance and display locale for ten minutes; they are not persisted.
+Changing provenance resets local edits. Explicit regeneration replaces assumptions. UI states
+clearly separate loading, unavailable inference and unknown pricing. The manual calculator remains
+available when the utility service is disabled, limited or fails.
+
+Advanced assumptions expose per-task model calls, input, output and tool-result sizes. Authored
+examples remain outside translation. The deployment utility model produces natural-language
+suggestions in the selected display locale. User model selection still determines prices.
+
+## Bounded inference
+
+The purpose-specific [cost planning command](../../crates/server/src/domains/agents/cost_plan.rs)
+requires agent management permission and resolves previews through the same tenant and harness
+permission boundary as ordinary previews. It shares analysis rate and concurrency admission,
+bounds definition size, completion time and output, and validates strict structured workloads.
+The utility model receives neither credentials nor executable tools. It cannot choose prices,
+change agents, or execute representative tasks. Provider failures return generic errors.
+Suggestions can still be mistaken or steered by authored text; every assumption remains editable.
 
 ## Strategy
 
@@ -45,7 +65,9 @@ pricing scope visible without requiring that disclosure.
 - Compute lighter and heavier scenarios by changing calls, output and tool-result volume.
   These are sensitivity examples, not observed percentiles or a confidence interval. Neither
   scenario bounds actual spend. Keep the starting definition and input fixed across scenarios.
-- Project the same task workload across the user-entered daily volume and a stated 30-day month.
+- Calculate each selected task separately, then weight its cost by the user-selected mix. Never
+  average token counts before applying tiered prices. Project that mix across daily volume and a
+  stated 30-day month.
   Zero volume is valid. Invalid or empty fields must not produce stale totals. Unknown prices
   are unavailable, not zero; tiny positive amounts must not render as free.
 
@@ -63,6 +85,14 @@ agent revisions, models, failed work, idle sessions and multiple tasks per conve
 empirical estimator would need comparable completed task samples, configuration provenance,
 pricing coverage and a visible sample size before claiming measured ranges. This calculator
 deliberately exposes its assumptions until those data contracts exist.
+
+## Shared announcement
+
+The original `2026-10-28-agent-cost-estimation` changelog link was shared publicly. At the
+owner’s request, the docs Worker permanently redirects its HTML and Markdown URLs to
+`2026-10-28-smart-agent-cost-projections`, preserving query parameters. The original dated
+source remains marked superseded. This announcement redirect is covered by the
+[Worker tests](../../apps/docs/worker/index.test.mjs).
 
 ## Sources and verification
 

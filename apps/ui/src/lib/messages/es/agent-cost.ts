@@ -78,4 +78,51 @@ export const messages: Readonly<Record<string, string>> = {
     "Usa precios de catálogo y tamaños de texto aproximados, sin descuento de caché. El coste real depende de la tarea, los reintentos, el razonamiento, las lecturas/escrituras de caché y el proveedor. Excluye tiempo de sandbox, herramientas de pago, medios, modelos adicionales, subagentes y tarifas de plataforma.",
   "Uses the current agent draft. Estimator inputs do not change the agent. Run representative tasks in Playground and compare their recorded usage before setting a budget.":
     "Usa el borrador actual del agente. Los datos del estimador no modifican el agente. Ejecuta tareas representativas en Playground y compara su uso registrado antes de fijar un presupuesto.",
+  "Smart estimate": "Estimación inteligente",
+  "Manual calculator": "Calculadora manual",
+  "What should we plan for? (optional)": "¿Qué debemos planificar? (opcional)",
+  "Infer typical tasks from this agent": "Inferir tareas habituales de este agente",
+  "Update estimate": "Actualizar estimación",
+  "AI suggests tasks from your agent. Usage sliders update instantly without another AI call.":
+    "La IA sugiere tareas según tu agente. Los controles actualizan la proyección al instante sin otra llamada a la IA.",
+  "Understanding your agent and estimating typical tasks…":
+    "Analizando tu agente y estimando tareas habituales…",
+  "Smart estimates are unavailable right now. Retry or use the manual calculator.":
+    "Las estimaciones inteligentes no están disponibles. Reintenta o usa la calculadora manual.",
+  "Cost projection": "Proyección de costes",
+  "Average per task": "Promedio por tarea",
+  "Daily cost": "Coste diario",
+  "30-day month · Each task starts a new conversation":
+    "Mes de 30 días · Cada tarea inicia una conversación nueva",
+  "Check task assumptions and select at least one task. Oversized tasks cannot be priced.":
+    "Revisa los supuestos y selecciona al menos una tarea. No se pueden calcular tareas demasiado grandes.",
+  "Usage projection": "Proyección de uso",
+  "By tasks": "Por tareas",
+  "By users": "Por usuarios",
+  "Active users": "Usuarios activos",
+  "Tasks per user per day": "Tareas por usuario al día",
+  "Enter a whole number within the displayed limits.":
+    "Introduce un número entero dentro de los límites indicados.",
+  "Task mix": "Distribución de tareas",
+  "Typical tasks for your agent": "Tareas habituales de tu agente",
+  "Suggested by AI, not measured usage. Equal mix to start; adjust relative frequency or set a task to zero.":
+    "Sugerencias de IA, no uso medido. Mezcla inicial uniforme; ajusta la frecuencia relativa o pon una tarea a cero.",
+  Frequency: "Frecuencia",
+  "Monthly spend as usage grows": "Gasto mensual al aumentar el uso",
+  "Monthly planning range: {low} – {high}": "Rango mensual previsto: {low} – {high}",
+  "Largest cost driver: {task}": "Principal factor de coste: {task}",
+  "Edit task": "Editar tarea",
+  "Task example": "Ejemplo de tarea",
+  "Changing the example does not recalculate assumptions. Use the planning input above to generate a new estimate.":
+    "Cambiar el ejemplo no recalcula los supuestos. Usa el campo superior para generar otra estimación.",
+  "Instructions and tools are counted on every call; earlier outputs and tool results accumulate. Current catalog prices and model limits apply. Cache discounts are not assumed.":
+    "Las instrucciones y herramientas cuentan en cada llamada; las respuestas y resultados anteriores se acumulan. Se aplican los precios del catálogo y límites del modelo, sin descuentos de caché supuestos.",
+  "Planning scenarios, not quotes or spending limits. The shaded range varies task complexity, not statistical confidence. AI token costs only: paid tools, hosting, media, other agents and service fees are extra. No tasks are executed and your agent is not changed.":
+    "Escenarios de planificación, no presupuestos ni límites. El área sombreada varía la complejidad, no la confianza estadística. Solo costes de tokens de IA: herramientas de pago, alojamiento, medios, otros agentes y tarifas son adicionales. No se ejecutan tareas ni se modifica tu agente.",
+  "{label} slider": "Control de {label}",
+  "Monthly cost projection with lighter and heavier task scenarios":
+    "Proyección mensual para tareas más sencillas y complejas",
+  "{count} tasks / day": "{count} tareas / día",
+  "At current usage": "Con el uso actual",
+  "/ month": "/ mes",
 };

@@ -402,6 +402,34 @@
         }
       }
     },
+    "/v1/agents/cost-plan": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Suggest editable typical task workloads for agent cost planning",
+        "description": "Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.",
+        "operationId": "plan_agent_costs",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCostPlan"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/diff": {
       "post": {
         "tags": [
@@ -33711,6 +33739,21 @@
           }
         }
       },
+      "AgentCostPlan": {
+        "type": "object",
+        "required": [
+          "tasks"
+        ],
+        "properties": {
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostPlanTask"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "AgentCredentialBinding": {
         "type": "object",
         "description": "Metadata for a write-only credential bound to one agent: either an MCP\ntool parameter or an HTTP API the agent's shell calls.",
@@ -39094,6 +39137,50 @@
             "example": "templates/runbook.md"
           }
         }
+      },
+      "CostPlanTask": {
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "assumption",
+          "calls",
+          "message_tokens",
+          "output_tokens",
+          "tool_result_tokens"
+        ],
+        "properties": {
+          "assumption": {
+            "type": "string"
+          },
+          "calls": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "description": {
+            "type": "string"
+          },
+          "message_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "tool_result_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "CostTier": {
         "type": "object",

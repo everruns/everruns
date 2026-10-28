@@ -98,17 +98,24 @@ Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats*
 Open **Agents**, select an agent, then click **Estimate cost** in the page header.
 The button is available from every tab, including while editing.
 
-Choose the kind of work: a quick answer, a multi-step task, or deep research. Enter how many
-**Tasks per day** you expect. You’ll see an estimated **cost per task** and **monthly cost**,
-plus a range for simpler or more involved tasks. A month means 30 days of use.
+**Smart estimate** suggests three typical tasks from the agent’s instructions and tools.
+Optionally describe a workload, then choose **Update estimate** to regenerate the suggestions.
+Adjust each task’s relative frequency, or set it to zero to exclude it.
 
-The calculator uses the agent’s current settings without running or saving it. Prices cover AI
-usage only; paid tools, hosting and other service fees are extra. These are planning estimates,
-not fixed prices or spending limits. Try representative tasks in Playground before budgeting.
+Plan **By tasks** with tasks per day, or **By users** with active users and tasks per user per day.
+Sliders and exact number inputs update average task, daily and monthly costs immediately, without
+another AI call. The chart shows monthly spend as usage grows, with lighter and heavier task
+scenarios. A month means 30 days of use.
 
-**Advanced assumptions** lets you adjust model calls and token counts and inspect the cost
-breakdown. These details are optional; the task choices fill them in for you. Missing prices
-and tasks too large for the chosen model are shown explicitly.
+Suggestions are editable assumptions, not measured behavior. **Advanced assumptions** lets you
+adjust each task’s model calls and token counts. Current catalog prices determine the money;
+the utility model does not invent prices. Missing prices and oversized tasks are shown explicitly.
+
+Smart estimates require the deployment’s utility LLM service. The **Manual calculator** remains
+available if smart estimates are unavailable. Neither mode executes tasks or saves the agent.
+Prices cover AI tokens only; paid tools, hosting, media and other service fees are extra.
+These are planning estimates, not quotes or spending limits. Compare representative Playground
+runs before budgeting.
 
 #### Avatar
 

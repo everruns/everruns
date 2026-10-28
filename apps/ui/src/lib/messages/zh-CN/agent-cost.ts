@@ -71,4 +71,48 @@ export const messages: Readonly<Record<string, string>> = {
     "采用目录中的 token 价格和近似文本大小，不计缓存折扣。实际费用取决于任务、重试、推理、缓存读写和供应商定价。不包含沙盒时间、付费工具、媒体、额外模型或子智能体以及平台费用。",
   "Uses the current agent draft. Estimator inputs do not change the agent. Run representative tasks in Playground and compare their recorded usage before setting a budget.":
     "使用当前智能体草稿。估算器输入不会更改智能体。设置预算前，请在 Playground 中运行代表性任务并比较记录的用量。",
+  "Smart estimate": "智能估算",
+  "Manual calculator": "手动计算器",
+  "What should we plan for? (optional)": "要规划什么？（可选）",
+  "Infer typical tasks from this agent": "根据此智能体推断典型任务",
+  "Update estimate": "更新估算",
+  "AI suggests tasks from your agent. Usage sliders update instantly without another AI call.":
+    "AI 根据智能体建议任务。调整用量滑块会立即更新预测，无需再次调用 AI。",
+  "Understanding your agent and estimating typical tasks…": "正在分析智能体并估算典型任务…",
+  "Smart estimates are unavailable right now. Retry or use the manual calculator.":
+    "智能估算暂不可用。请重试或使用手动计算器。",
+  "Cost projection": "费用预测",
+  "Average per task": "每项任务平均费用",
+  "Daily cost": "每日费用",
+  "30-day month · Each task starts a new conversation": "按每月 30 天计算 · 每项任务开始一个新对话",
+  "Check task assumptions and select at least one task. Oversized tasks cannot be priced.":
+    "请检查任务假设并选择至少一项任务。超出限制的任务无法估价。",
+  "Usage projection": "用量预测",
+  "By tasks": "按任务",
+  "By users": "按用户",
+  "Active users": "活跃用户",
+  "Tasks per user per day": "每位用户每天的任务数",
+  "Enter a whole number within the displayed limits.": "请输入指定范围内的整数。",
+  "Task mix": "任务组合",
+  "Typical tasks for your agent": "智能体的典型任务",
+  "Suggested by AI, not measured usage. Equal mix to start; adjust relative frequency or set a task to zero.":
+    "由 AI 建议，并非实测用量。初始均匀分配；可调整相对频率或将某项任务设为零。",
+  Frequency: "频率",
+  "Monthly spend as usage grows": "用量增长时的月度费用",
+  "Monthly planning range: {low} – {high}": "月度规划范围：{low} – {high}",
+  "Largest cost driver: {task}": "最大费用来源：{task}",
+  "Edit task": "编辑任务",
+  "Task example": "任务示例",
+  "Changing the example does not recalculate assumptions. Use the planning input above to generate a new estimate.":
+    "修改示例不会重新计算假设。请使用上方规划输入生成新估算。",
+  "Instructions and tools are counted on every call; earlier outputs and tool results accumulate. Current catalog prices and model limits apply. Cache discounts are not assumed.":
+    "每次调用均计入指令和工具；先前输出及工具结果会累积。使用当前目录价格和模型限制，不假定缓存折扣。",
+  "Planning scenarios, not quotes or spending limits. The shaded range varies task complexity, not statistical confidence. AI token costs only: paid tools, hosting, media, other agents and service fees are extra. No tasks are executed and your agent is not changed.":
+    "这些是规划场景，并非报价或支出上限。阴影范围体现任务复杂度变化，不代表统计置信度。仅含 AI token 费用：付费工具、托管、媒体、其他智能体及服务费另计。不会执行任务或修改智能体。",
+  "{label} slider": "{label}滑块",
+  "Monthly cost projection with lighter and heavier task scenarios":
+    "轻量和复杂任务场景的月度费用预测",
+  "{count} tasks / day": "每天 {count} 项任务",
+  "At current usage": "按当前用量",
+  "/ month": "/ 月",
 };
