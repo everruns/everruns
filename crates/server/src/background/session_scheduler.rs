@@ -231,12 +231,9 @@ async fn poll_and_trigger(
         // Build injected message with metadata.source = "schedule"
         let message_id = Uuid::now_v7();
         let message_id_typed = MessageId::from_uuid(message_id);
-        db.record_runtime_invocation(
-            session.org_id,
-            session.id,
+        db.record_scheduled_runtime_invocation(
+            &row,
             message_id,
-            None,
-            None,
             session.agent_id.map(|id| id.uuid()),
         )
         .await?;
