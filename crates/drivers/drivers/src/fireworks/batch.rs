@@ -143,7 +143,11 @@ impl FireworksChatDriver {
             .map_or((path.as_str(), None), |(p, q)| (p, Some(q)));
         url.set_path(path);
         if let Some(query) = query {
-            url.set_query(Some(query));
+            let combined = match url.query() {
+                Some(existing) if !existing.is_empty() => format!("{existing}&{query}"),
+                _ => query.to_owned(),
+            };
+            url.set_query(Some(&combined));
         }
         let bytes = http
             .request_url(method, url.to_string(), body, content_type, creating)

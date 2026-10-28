@@ -63,7 +63,7 @@ fn mistral_client(server: &MockServer) -> Batch {
 #[tokio::test]
 async fn mistral_native_inline_submission_resumes_and_maps_inline_or_file_results() {
     for files in [false, true] {
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         let ticket = mistral_ticket(&server).await;
         let saved = serde_json::to_string(&ticket).unwrap();
         for secret in ["private input", "private-key", &server.uri()] {
@@ -131,7 +131,7 @@ async fn mistral_cancel_and_expiry_preserve_finished_rows_using_verified_counts(
         ("CANCELLED", BatchItemError::Cancelled),
         ("TIMEOUT_EXCEEDED", BatchItemError::Expired),
     ] {
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         let ticket = mistral_ticket(&server).await;
         server.reset().await;
         let mut job = mistral_job(status);
@@ -143,7 +143,7 @@ async fn mistral_cancel_and_expiry_preserve_finished_rows_using_verified_counts(
         assert!(rows[0].result.is_ok());
         assert_eq!(rows[1].result.as_ref().unwrap_err(), &reason);
     }
-    let server = MockServer::start().await;
+    let server = MockServer::builder().start().await;
     let ticket = mistral_ticket(&server).await;
     server.reset().await;
     mock(&server, "GET", MJOB, mistral_job("RUNNING")).await;
@@ -166,7 +166,7 @@ async fn mistral_rejects_missing_duplicate_unknown_results_and_unsafe_remote_ids
         json!([success("one"), success("one")]),
         json!([success("one"), failure("unknown")]),
     ] {
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         let ticket = mistral_ticket(&server).await;
         server.reset().await;
         let mut job = mistral_job("SUCCESS");
@@ -178,7 +178,7 @@ async fn mistral_rejects_missing_duplicate_unknown_results_and_unsafe_remote_ids
             "unexpected result: {result:?}"
         );
     }
-    let server = MockServer::start().await;
+    let server = MockServer::builder().start().await;
     let ticket = mistral_ticket(&server).await;
     server.reset().await;
     let mut job = mistral_job("SUCCESS");
@@ -200,7 +200,7 @@ async fn mistral_rejects_missing_duplicate_unknown_results_and_unsafe_remote_ids
 }
 #[tokio::test]
 async fn mistral_uncertain_submission_is_never_replayed_and_reads_can_be_retried() {
-    let server = MockServer::start().await;
+    let server = MockServer::builder().start().await;
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(503).set_body_string("private detail"))
         .expect(1)
@@ -268,7 +268,7 @@ impl Respond for Job {
 }
 fn fireworks(server: &MockServer, artifacts: &MockServer, account: &str) -> Provider {
     let provider: Provider = Fireworks::new("private-key")
-        .base_url(format!("{}/inference/v1", server.uri()))
+        .base_url(format!("{}/inference/v1?gateway=test", server.uri()))
         .batch(
             FireworksBatchConfig::new(account)
                 .unwrap()
@@ -306,11 +306,18 @@ fn fireworks_job(ticket: &BatchTicket) -> Value {
 }
 #[tokio::test]
 async fn fireworks_native_dataset_job_resumes_and_collects_without_leaking_auth_to_storage() {
-    let server = MockServer::start().await;
-    let artifacts = MockServer::start().await;
+    let server = MockServer::builder().start().await;
+    let artifacts = MockServer::builder().start().await;
     let ticket = fireworks_ticket(&server, &artifacts).await;
     let requests = server.received_requests().await.unwrap();
     assert_eq!(requests.len(), 3);
+    assert!(
+        requests.iter().all(|r| r
+            .url
+            .query_pairs()
+            .any(|(key, value)| key == "gateway" && value == "test")),
+        "management operations must preserve configured gateway query parameters"
+    );
     let upload = requests
         .iter()
         .find(|r| r.url.path().ends_with(":upload"))
@@ -383,8 +390,8 @@ async fn fireworks_native_dataset_job_resumes_and_collects_without_leaking_auth_
 #[tokio::test]
 async fn fireworks_rejects_untrusted_signed_urls_redirects_and_oversized_artifacts() {
     for mode in ["untrusted", "redirect", "oversized"] {
-        let server = MockServer::start().await;
-        let artifacts = MockServer::start().await;
+        let server = MockServer::builder().start().await;
+        let artifacts = MockServer::builder().start().await;
         let ticket = fireworks_ticket(&server, &artifacts).await;
         server.reset().await;
         mock(
@@ -433,8 +440,8 @@ async fn fireworks_rejects_untrusted_signed_urls_redirects_and_oversized_artifac
 #[tokio::test]
 async fn fireworks_uncertain_staging_is_never_replayed_or_deleted() {
     for stage in 0..3 {
-        let server = MockServer::start().await;
-        let artifacts = MockServer::start().await;
+        let server = MockServer::builder().start().await;
+        let artifacts = MockServer::builder().start().await;
         if stage > 0 {
             Mock::given(method("POST"))
                 .and(path("/v1/accounts/account-1/datasets"))
@@ -484,8 +491,8 @@ async fn fireworks_terminal_failure_never_invents_per_item_results() {
         "JOB_STATE_CANCELLED",
         "JOB_STATE_EXPIRED",
     ] {
-        let server = MockServer::start().await;
-        let artifacts = MockServer::start().await;
+        let server = MockServer::builder().start().await;
+        let artifacts = MockServer::builder().start().await;
         let ticket = fireworks_ticket(&server, &artifacts).await;
         server.reset().await;
         let mut job = fireworks_job(&ticket);
@@ -529,7 +536,7 @@ fn explicit_account_and_artifact_policy_are_required_and_keys_are_redacted() {
 #[tokio::test]
 async fn groq_first_class_chat_uses_native_non_streaming_and_discovery_identity() {
     use everruns::Model;
-    let server = MockServer::start().await;
+    let server = MockServer::builder().start().await;
     mock(&server, "POST", "/openai/v1/chat/completions", completion()).await;
     let response = Model::new(
         "test-model",
