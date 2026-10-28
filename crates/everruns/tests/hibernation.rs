@@ -455,3 +455,160 @@ async fn sqlite_retry_reopens_in_another_engine() {
     ))
     .await;
 }
+
+/// First call: a classified provider refusal. Every later call never answers,
+/// so the retained retry window expires on the reopened executor (EVE-1318).
+#[derive(Clone)]
+struct RefusedThenSilent {
+    calls: Arc<AtomicUsize>,
+    status: u16,
+}
+#[async_trait]
+impl ChatDriver for RefusedThenSilent {
+    async fn chat_completion_stream(
+        &self,
+        _: &ProviderEndpoint,
+        _: Vec<everruns::llm::Message>,
+        _: &LlmCallConfig,
+    ) -> Result<LlmResponseStream, AgentLoopError> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) > 0 {
+            return futures::future::pending().await;
+        }
+        let body = if self.status == 429 {
+            r#"{"error":{"code":"engine_overloaded","message":"Authorization: Bearer sk-live-secret","metadata":{"limit_source":"upstream_provider_shared_pool"}}}"#
+        } else {
+            r#"{"error":{"code":"service_unavailable","message":"Authorization: Bearer sk-live-secret"}}"#
+        };
+        Err(AgentLoopError::llm_http(
+            self.status,
+            body,
+            format!("provider error ({}): {body}", self.status),
+        ))
+    }
+}
+
+/// `late`: reopen only after the retained window already expired, so the
+/// Engine rejects the turn before provider I/O. Otherwise the reopened
+/// attempt itself runs out of the remaining window.
+async fn exhausted_window(status: u16, late: bool) -> (String, String) {
+    let profile = MemoryHosting::default();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let agent = Agent::builder()
+        .instructions("Answer briefly.")
+        .provider(Provider::new(
+            "refusing",
+            RefusedThenSilent {
+                calls: calls.clone(),
+                status,
+            },
+        ))
+        .model("test")
+        .host_services(
+            everruns::hosting::services::HostServices::new().provider_retry(
+                everruns_contracts::LlmRetryConfig {
+                    max_retries: 3,
+                    initial_backoff: Duration::from_millis(50),
+                    max_backoff: Duration::from_millis(50),
+                    jitter_factor: 0.0,
+                    max_retry_elapsed: Duration::from_millis(400),
+                    ..Default::default()
+                },
+            ),
+        )
+        .build()
+        .unwrap();
+    let engine = || {
+        Engine::builder()
+            .hosting(External(profile.clone()))
+            .register(build(), agent.clone())
+            .build()
+    };
+    let first = engine();
+    let id = SessionId::new();
+    let session = Box::pin(first.create_registered(id, &build()))
+        .await
+        .unwrap();
+    let sent = session.send("hello").await.unwrap();
+    Box::pin(first.activate(id)).await.unwrap();
+    let parked = profile.status(id).await.unwrap();
+    assert!(parked.wake_at.is_some(), "a classified refusal parks");
+    // Executor loss between attempts: the cause must survive in the checkpoint.
+    drop(session);
+    drop(first);
+    let wait = if late {
+        600
+    } else {
+        (parked.wake_at.unwrap() - parked.now_ms).max(0) as u64 + 20
+    };
+    tokio::time::sleep(Duration::from_millis(wait)).await;
+    let replacement = engine();
+    let session = replacement.resume(id).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), Box::pin(replacement.activate(id)))
+        .await
+        .unwrap()
+        .unwrap();
+    let turn = tokio::time::timeout(
+        Duration::from_secs(2),
+        session
+            .admission(sent.message_id.parse().unwrap())
+            .await
+            .unwrap()
+            .unwrap()
+            .wait(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(!turn.success);
+    assert_eq!(calls.load(Ordering::SeqCst), if late { 1 } else { 2 });
+    let events = session.events_after(0).await.unwrap();
+    assert!(
+        !format!("{events:?}").contains("sk-live-secret"),
+        "{events:?}"
+    );
+    let reason = events
+        .iter()
+        .find_map(|event| match &event.kind {
+            everruns::SessionEventKind::ReasonCompleted {
+                success: false,
+                error: Some(error),
+            } => Some(error.clone()),
+            _ => None,
+        })
+        .expect("the failed step records its terminal error");
+    assert!(
+        reason.contains("budget exhausted after 1 retries"),
+        "{reason}"
+    );
+    (reason, turn.error.expect("a failed turn names its error"))
+}
+
+#[tokio::test]
+async fn expired_retry_window_keeps_the_classified_429_after_reopen() {
+    for late in [false, true] {
+        let (error, shown) = Box::pin(exhausted_window(429, late)).await;
+        assert!(shown.starts_with("Rate limited"), "{shown}");
+        assert!(
+            error.contains("last provider failure: rate_limited"),
+            "{error}"
+        );
+        assert!(error.contains("HTTP 429"), "{error}");
+        assert!(error.contains("engine_overloaded"), "{error}");
+        assert!(error.contains("upstream_provider_shared_pool"), "{error}");
+    }
+}
+
+#[tokio::test]
+async fn expired_retry_window_keeps_a_provider_outage_distinct() {
+    for late in [false, true] {
+        let (error, shown) = Box::pin(exhausted_window(503, late)).await;
+        assert!(shown.contains("experiencing issues"), "{shown}");
+        assert!(
+            error.contains("last provider failure: unavailable"),
+            "{error}"
+        );
+        assert!(error.contains("HTTP 503"), "{error}");
+        assert!(error.contains("service_unavailable"), "{error}");
+        assert!(!error.contains("rate_limited"), "{error}");
+    }
+}
