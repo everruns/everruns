@@ -208,15 +208,19 @@ async fn scoped_mcp_lookup_uses_current_agent_config_in_direct_and_grpc_paths() 
         None,
         crate::oss_host_composition_for_grade(everruns_core::DeploymentGrade::Dev),
     );
+    let mut request = tonic::Request::new(GetMcpServerByPrefixRequest {
+        input_message_id: None,
+        org_id,
+        session_id: Some(ProtoUuid {
+            value: session.id.uuid().to_string(),
+        }),
+        server_prefix: "docs".to_string(),
+    });
+    request
+        .extensions_mut()
+        .insert(crate::worker_link::grpc_service::authority::WorkerAuthority::Development);
     let grpc = grpc_service
-        .get_mcp_server_by_prefix(tonic::Request::new(GetMcpServerByPrefixRequest {
-            input_message_id: None,
-            org_id,
-            session_id: Some(ProtoUuid {
-                value: session.id.uuid().to_string(),
-            }),
-            server_prefix: "docs".to_string(),
-        }))
+        .get_mcp_server_by_prefix(request)
         .await
         .expect("gRPC pinned MCP lookup")
         .into_inner()

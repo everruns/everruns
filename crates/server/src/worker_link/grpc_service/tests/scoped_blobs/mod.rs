@@ -1,6 +1,7 @@
 //! Real combined-listener scope tests. The fixed server-side scope adapter is
 //! synthetic; no production identity or credential issuer is enabled.
 
+mod authority_context;
 mod tests;
 
 use super::super::assignment_scope::ActorJournalScope;
@@ -22,6 +23,23 @@ struct CombinedServer {
 
 impl CombinedServer {
     async fn start(service: WorkerServiceImpl, scope: Option<ActorJournalScope>) -> Self {
+        let mut bearer = GrpcAuthInterceptor::new(Some(TEST_BLOB_SECRET.into()));
+        let auth = move |request: Request<()>| {
+            let mut request = bearer.call(request)?;
+            if let Some(scope) = &scope {
+                request.extensions_mut().insert(
+                    super::super::authority::WorkerAuthority::ActorJournal(scope.clone()),
+                );
+            }
+            Ok(request)
+        };
+        Self::start_with_auth(service, auth).await
+    }
+
+    async fn start_with_auth<I>(service: WorkerServiceImpl, auth: I) -> Self
+    where
+        I: tonic::service::Interceptor + Clone + Send + Sync + 'static,
+    {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let incoming = futures::stream::unfold(listener, |listener| async move {
@@ -29,17 +47,8 @@ impl CombinedServer {
             Some((socket, listener))
         });
         let (shutdown, stopped) = tokio::sync::oneshot::channel();
-        let mut bearer = GrpcAuthInterceptor::new(Some(TEST_BLOB_SECRET.into()));
-        let auth = move |request: Request<()>| {
-            let mut request = bearer.call(request)?;
-            if let Some(scope) = &scope {
-                request.extensions_mut().insert(scope.clone());
-            }
-            Ok(request)
-        };
         let task = tokio::spawn(async move {
             tonic::transport::Server::builder()
-                // Same outer layer and combined routes as production startup.
                 .layer(tonic::service::interceptor::InterceptorLayer::new(auth))
                 .add_routes(service.into_routes(TEST_BLOB_SECRET.into()))
                 .serve_with_incoming_shutdown(Box::pin(incoming), async {

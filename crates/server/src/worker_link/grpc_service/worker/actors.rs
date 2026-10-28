@@ -165,10 +165,11 @@ impl WorkerServiceImpl {
         &self,
         request: Request<proto::ReadActorJournalRequest>,
     ) -> Result<Response<proto::ReadActorJournalResponse>, Status> {
-        let scope = request
-            .extensions()
-            .get::<super::super::assignment_scope::ActorJournalScope>()
-            .cloned();
+        let scope = match super::super::authority::resolve(request.extensions())? {
+            super::super::authority::WorkerAuthority::ActorJournal(scope) => Some(scope.clone()),
+            super::super::authority::WorkerAuthority::LegacyWorker
+            | super::super::authority::WorkerAuthority::Development => None,
+        };
         let req = request.into_inner();
         let session_id = SessionId::from_uuid(parse_uuid(req.session_id.as_ref())?);
         if let Some(scope) = scope {

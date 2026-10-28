@@ -1,3 +1,5 @@
+mod transport;
+pub(crate) use transport::{start_grpc_test_server, trusted_request};
 mod dreaming;
 use super::worker::commands::test_support::execute_test_command;
 use super::*;
@@ -175,15 +177,13 @@ async fn exact_provider_config_preserves_credentialless_driver_type() {
         .expect("create credentialless provider");
 
     let response = service
-        .get_default_provider_credentials(tonic::Request::new(
-            GetDefaultProviderCredentialsRequest {
-                session_id: None,
-                org_id: everruns_core::DEFAULT_ORG_ID,
-                provider_type: String::new(),
-                provider_id: provider.id.to_string(),
-                ..Default::default()
-            },
-        ))
+        .get_default_provider_credentials(trusted_request(GetDefaultProviderCredentialsRequest {
+            session_id: None,
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            provider_type: String::new(),
+            provider_id: provider.id.to_string(),
+            ..Default::default()
+        }))
         .await
         .expect("resolve exact provider config")
         .into_inner();
@@ -321,7 +321,7 @@ async fn test_execute_command_denies_org_disabled_feature() {
         .expect("disable skills for the organization");
 
     let response = service
-        .execute_command(Request::new(ExecuteCommandRequest {
+        .execute_command(trusted_request(ExecuteCommandRequest {
             name: "list_skills".to_string(),
             api_version: "v1".to_string(),
             params_json: br#"{}"#.to_vec(),
@@ -350,7 +350,7 @@ async fn test_execute_command_unknown_command_returns_bad_request_kind() {
     let service = test_worker_service().await;
 
     let response = service
-        .execute_command(Request::new(ExecuteCommandRequest {
+        .execute_command(trusted_request(ExecuteCommandRequest {
             name: "definitely_not_a_command".to_string(),
             api_version: "v1".to_string(),
             params_json: br#"{}"#.to_vec(),
@@ -386,7 +386,7 @@ async fn test_execute_command_sanitizes_database_conflicts_only() {
         ("domain", SAFE_DOMAIN_DETAIL),
     ] {
         let response = service
-            .execute_command(Request::new(ExecuteCommandRequest {
+            .execute_command(trusted_request(ExecuteCommandRequest {
                 name: COMMAND_NAME.to_string(),
                 api_version: "v1".to_string(),
                 params_json: serde_json::to_vec(&serde_json::json!({ "kind": kind }))
@@ -428,7 +428,7 @@ async fn direct_worker_rpcs_do_not_leak_storage_errors() {
 
     service.db.force_storage_failure("get_agent_by_public_id");
     let agent = service
-        .get_agent(Request::new(GetAgentRequest {
+        .get_agent(trusted_request(GetAgentRequest {
             agent_id: Some(id.clone()),
             org_id: everruns_core::DEFAULT_ORG_ID,
         }))
@@ -437,7 +437,7 @@ async fn direct_worker_rpcs_do_not_leak_storage_errors() {
 
     service.db.force_storage_failure("get_harness");
     let harness = service
-        .get_harness(Request::new(GetHarnessRequest {
+        .get_harness(trusted_request(GetHarnessRequest {
             harness_id: Some(id),
             org_id: everruns_core::DEFAULT_ORG_ID,
         }))
@@ -446,7 +446,7 @@ async fn direct_worker_rpcs_do_not_leak_storage_errors() {
 
     service.db.force_storage_failure("get_session");
     let authorize = service
-        .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+        .authorize_session_creation(trusted_request(AuthorizeSessionCreationRequest {
             input_message_id: None,
 
             org_id: everruns_core::DEFAULT_ORG_ID,
@@ -628,7 +628,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
         .await
         .unwrap();
     let response = service
-        .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+        .authorize_session_creation(trusted_request(AuthorizeSessionCreationRequest {
             input_message_id: Some(proto::Uuid {
                 value: session.id.uuid().to_string(),
             }),
@@ -642,7 +642,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
     assert_eq!(response.budget_root_session_id, session.id.to_string());
 
     let foreign = service
-        .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+        .authorize_session_creation(trusted_request(AuthorizeSessionCreationRequest {
             input_message_id: Some(proto::Uuid {
                 value: session.id.uuid().to_string(),
             }),
@@ -656,7 +656,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
 
     service.set_permission_resolver(Arc::new(DenyGrpcSessionManageResolver));
     let denied = service
-        .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+        .authorize_session_creation(trusted_request(AuthorizeSessionCreationRequest {
             input_message_id: Some(proto::Uuid {
                 value: session.id.uuid().to_string(),
             }),
@@ -671,52 +671,6 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
 
 /// Signing secret of the test server's worker byte paths.
 pub(crate) const TEST_BLOB_SECRET: &str = "test-blob-secret";
-
-pub(crate) async fn start_grpc_test_server(
-    service: WorkerServiceImpl,
-) -> (
-    String,
-    tokio::sync::oneshot::Sender<()>,
-    tokio::task::JoinHandle<()>,
-) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind grpc listener");
-    let addr = listener.local_addr().expect("grpc listener address");
-    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-    let (incoming_tx, incoming_rx) = tokio::sync::mpsc::channel(8);
-    let server = tokio::spawn(async move {
-        let accept_task = tokio::spawn(async move {
-            let mut shutdown_rx = shutdown_rx;
-            loop {
-                tokio::select! {
-                    _ = &mut shutdown_rx => break,
-                    accepted = listener.accept() => {
-                        match accepted {
-                            Ok((stream, _)) => {
-                                if incoming_tx.send(Ok(stream)).await.is_err() {
-                                    break;
-                                }
-                            }
-                            Err(error) => {
-                                let _ = incoming_tx.send(Err(error)).await;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-        tonic::transport::Server::builder()
-            .add_routes(service.into_routes(TEST_BLOB_SECRET.to_string()))
-            .serve_with_incoming(tokio_stream::wrappers::ReceiverStream::new(incoming_rx))
-            .await
-            .expect("grpc test server should run");
-        accept_task.await.expect("grpc accept task should join");
-    });
-
-    (addr.to_string(), shutdown_tx, server)
-}
 
 #[tokio::test]
 async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
@@ -977,7 +931,7 @@ async fn test_execute_command_uses_user_permissions() {
         .expect("ensure membership");
 
     let response = service
-        .execute_command(Request::new(ExecuteCommandRequest {
+        .execute_command(trusted_request(ExecuteCommandRequest {
             name: "create_harness".to_string(),
             api_version: "v1".to_string(),
             params_json: serde_json::to_vec(&serde_json::json!({
@@ -1319,7 +1273,7 @@ async fn test_list_orphaned_session_tasks_returns_stale_task() {
     .expect("set stale heartbeat");
 
     // Call the RPC with a 5-minute stale threshold.
-    let request = tonic::Request::new(ListOrphanedSessionTasksRequest {
+    let request = trusted_request(ListOrphanedSessionTasksRequest {
         stale_after_seconds: 300,
         limit: 50,
     });
@@ -1371,7 +1325,7 @@ async fn test_list_orphaned_session_tasks_excludes_fresh_heartbeat() {
     .expect("set fresh heartbeat");
 
     // Call with a 5-minute stale threshold — fresh task must not appear.
-    let request = tonic::Request::new(ListOrphanedSessionTasksRequest {
+    let request = trusted_request(ListOrphanedSessionTasksRequest {
         stale_after_seconds: 300,
         limit: 50,
     });
@@ -1407,7 +1361,7 @@ async fn test_list_orphaned_session_tasks_excludes_null_heartbeat() {
     .await;
 
     // heartbeat_at is NULL — must never appear in orphan list.
-    let request = tonic::Request::new(ListOrphanedSessionTasksRequest {
+    let request = trusted_request(ListOrphanedSessionTasksRequest {
         stale_after_seconds: 1,
         limit: 50,
     });
