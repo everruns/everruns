@@ -10,7 +10,6 @@ release: "0.48.0"
 links:
   docs: [/capabilities/guardrails/]
   prs: [everruns/everruns#4459, everruns/everruns#4542]
-visual: "Agent capability settings with the Guardrails editor showing the preset gallery and a check's stage and action (/agents/<id>), cropped to the panel"
 ---
 
 **In the UI:** the Guardrails capability settings on an agent or harness is now
@@ -18,6 +17,10 @@ an editor instead of a raw form. Add a gallery preset to append its checks, or
 add a single check and set its rule, stage and what happens on a match. Choose
 whether a policy judge or moderation check is answered by the utility model or
 the organization's decision model. The mode reads **Active** or **Advisory**.
+
+![Guardrails editor with the preset gallery open](./guardrails-preset-gallery@2x.png)
+
+![Guardrails check with its type, stage and what happens on a match](./guardrails-check-stage-action@2x.png)
 
 **For agents:** `llm_judge` and `mcp` checks are now valid on the output stage.
 They run once on the finalized assistant message, with the same caps, advisory

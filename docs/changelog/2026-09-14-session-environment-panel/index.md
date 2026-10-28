@@ -10,11 +10,12 @@ release: "0.27.0"
 links:
   docs: [/framework/workspaces-and-environments/]
   prs: [everruns/everruns#3599]
-visual: "Session Workspace tab showing the Environment panel (/sessions/<id>, Workspace tab); crop to the panel"
 ---
 
 A session now has an explicit environment: where its commands run (compute) and
 what they may touch (containment).
+
+![Session workspace Sandbox panel listing the environment's capabilities](./session-sandbox-environment@2x.png)
 
 **In the UI:** the session **Workspace** tab gains an **Environment** panel.
 

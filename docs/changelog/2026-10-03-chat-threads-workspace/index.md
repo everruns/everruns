@@ -7,7 +7,6 @@ significance: notable
 products: [platform, cloud]
 surfaces: [ui]
 release: "0.39.0"
-visual: "Permanent Chat with the Threads panel open, showing Open and Resolved groups and a background work row; route /chat; crop to the chat and panel."
 links:
   docs: [/features/ui/]
   prs: [everruns/everruns#4146]
@@ -17,6 +16,8 @@ Organization owners and admins can turn on **Chat threads** in
 **Settings > Features**. With it on, the sidebar holds only Chat, and a
 **Threads** panel beside the permanent conversation lists your other
 conversations and the work running in the background.
+
+![Chat with the side panel open, listing Open and Resolved subchats](./chat-subchats-panel@2x.png)
 
 Create a **New thread**, search conversations, and open work from its card,
 where you can answer pending input or stop it. **Resolve thread** puts a
