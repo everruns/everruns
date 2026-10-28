@@ -3,6 +3,12 @@ use std::{collections::HashSet, io::Write, time::Duration};
 
 use everruns_contracts::{ProviderEndpoint, batch::*};
 use reqwest::Method;
+#[cfg(any(
+    feature = "openai",
+    feature = "groq",
+    feature = "mistral",
+    feature = "gemini"
+))]
 use serde_json::Value;
 
 pub(super) struct BoundedBody {
@@ -81,6 +87,12 @@ pub(super) struct Http<'a> {
     pub max_bytes: usize,
 }
 impl Http<'_> {
+    #[cfg(any(
+        feature = "openai",
+        feature = "groq",
+        feature = "mistral",
+        feature = "gemini"
+    ))]
     pub async fn request(
         self,
         method: Method,
@@ -89,6 +101,31 @@ impl Http<'_> {
         content_type: &str,
         creating: bool,
     ) -> Result<Vec<u8>, BatchError> {
+        let url = self
+            .endpoint
+            .url(path)
+            .ok_or(BatchError::InvalidRequest("provider has no base URL"))?;
+        self.request_url(method, url, body, content_type, creating)
+            .await
+    }
+    /// A control-plane path on the configured origin; never a provider-returned URL.
+    pub async fn request_url(
+        self,
+        method: Method,
+        url: String,
+        body: Vec<u8>,
+        content_type: &str,
+        creating: bool,
+    ) -> Result<Vec<u8>, BatchError> {
+        let base = reqwest::Url::parse(self.endpoint.base_url().unwrap_or_default())
+            .map_err(|_| BatchError::InvalidRequest("invalid provider URL"))?;
+        let target = reqwest::Url::parse(&url)
+            .map_err(|_| BatchError::InvalidRequest("invalid control URL"))?;
+        if base.origin() != target.origin() {
+            return Err(BatchError::InvalidRequest(
+                "control URL must use configured origin",
+            ));
+        }
         let failure = || {
             if creating {
                 BatchError::SubmissionUncertain
@@ -97,10 +134,6 @@ impl Http<'_> {
             }
         };
         tokio::time::timeout(self.timeout, async {
-            let url = self
-                .endpoint
-                .url(path)
-                .ok_or(BatchError::InvalidRequest("provider has no base URL"))?;
             let resolved = self
                 .endpoint
                 .resolve(method.as_str(), url, &body)
@@ -141,6 +174,12 @@ impl Http<'_> {
         .await
         .map_err(|_| failure())?
     }
+    #[cfg(any(
+        feature = "openai",
+        feature = "groq",
+        feature = "mistral",
+        feature = "gemini"
+    ))]
     pub async fn json(
         self,
         method: Method,

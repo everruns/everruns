@@ -21,13 +21,25 @@ enum Api {
     Responses,
     Completions,
     Gemini,
+    #[cfg(feature = "groq")]
+    Groq,
 }
-const APIS: [Api; 3] = [Api::Responses, Api::Completions, Api::Gemini];
+const APIS: &[Api] = &[
+    Api::Responses,
+    Api::Completions,
+    Api::Gemini,
+    #[cfg(feature = "groq")]
+    Api::Groq,
+];
 impl Api {
     fn provider(self, server: &MockServer, key: &str) -> Provider {
         let base = format!("{}/v1", server.uri());
         match self {
             Self::Responses => OpenAI::new(key).base_url(base).into(),
+            #[cfg(feature = "groq")]
+            Self::Groq => everruns::providers::groq::Groq::new(key)
+                .base_url(base)
+                .into(),
             Self::Completions => Provider::new("openai", OpenAICompletionsChatDriver::new())
                 .base_url(base)
                 .auth(everruns::BearerAuth::new(key)),
@@ -47,6 +59,8 @@ impl Api {
         match self {
             Self::Responses => "/v1/responses",
             Self::Completions => "/v1/chat/completions",
+            #[cfg(feature = "groq")]
+            Self::Groq => "/v1/chat/completions",
             Self::Gemini => "",
         }
     }
@@ -95,6 +109,8 @@ impl Api {
             Self::Responses => {
                 json!({"id":"resp_1","object":"response","created_at":0,"status":"completed","model":self.model(),"output":[{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"output_text","text":text}]}],"usage":{"input_tokens":10,"output_tokens":3,"total_tokens":13}})
             }
+            #[cfg(feature = "groq")]
+            Self::Groq => Api::Completions.success(text),
             Self::Completions => {
                 json!({"id":"chatcmpl_1","model":self.model(),"choices":[{"message":{"role":"assistant","content":text},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":3,"total_tokens":13}})
             }
@@ -147,7 +163,7 @@ async fn completed(api: Api, server: &MockServer) {
 }
 #[tokio::test]
 async fn all_drivers_submit_persist_reconstruct_and_collect_by_id() {
-    for api in APIS {
+    for &api in APIS {
         let server = MockServer::builder().start().await;
         assert!(api.provider(&server, "synthetic-key").supports_batch());
         let ticket = creation(api, &server).await;
@@ -225,7 +241,7 @@ async fn all_drivers_submit_persist_reconstruct_and_collect_by_id() {
 }
 #[tokio::test]
 async fn creation_failures_never_replay_upload_or_job_and_sanitize_errors() {
-    for api in APIS {
+    for &api in APIS {
         for bad in [
             ResponseTemplate::new(503).set_body_string("secret body"),
             ResponseTemplate::new(200)
@@ -279,7 +295,7 @@ async fn uncertain_upload_never_creates_a_job() {
 }
 #[tokio::test]
 async fn direct_requests_reject_continuations_options_and_mixed_models_before_network() {
-    for api in APIS {
+    for &api in APIS {
         let server = MockServer::builder().start().await;
         let mut first = api.request("one");
         let mut second = api.request("two");
@@ -309,7 +325,7 @@ async fn direct_requests_reject_continuations_options_and_mixed_models_before_ne
 }
 #[tokio::test]
 async fn scoped_tickets_reject_credentials_from_other_tenants_and_formats() {
-    for api in APIS {
+    for &api in APIS {
         let server = MockServer::builder().start().await;
         let ticket = creation(api, &server).await;
         server.reset().await;
@@ -414,7 +430,7 @@ async fn gemini_cancellation_is_explicit_and_global_failure_is_not_fake_item_dat
 }
 #[tokio::test]
 async fn retryable_reads_are_explicit_and_redirects_and_size_limits_fail_closed() {
-    for api in APIS {
+    for &api in APIS {
         let server = MockServer::builder().start().await;
         let ticket = creation(api, &server).await;
         server.reset().await;
@@ -478,7 +494,7 @@ async fn submit_timeout_is_uncertain_without_retry() {
 
 #[tokio::test]
 async fn all_drivers_recover_without_creating_work_and_reject_unsafe_resource_ids() {
-    for api in APIS {
+    for &api in APIS {
         let server = MockServer::builder().start().await;
         mock(&server, "GET", &api.job_path(), api.job(false)).await;
         let ticket = api
@@ -553,7 +569,7 @@ async fn openai_cancellation_and_global_validation_failure_remain_job_operations
 }
 #[tokio::test]
 async fn provider_result_identity_mismatches_fail_without_partial_results() {
-    for api in APIS {
+    for &api in APIS {
         for ids in [["first", "first"], ["first", "unknown"], ["first", ""]] {
             let server = MockServer::builder().start().await;
             let ticket = creation(api, &server).await;

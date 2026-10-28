@@ -38,7 +38,7 @@ cargo run -p everruns --features openai --example github_monitor -- --live OWNER
 
 ## Provider-native batches
 
-These examples use `ANTHROPIC_API_KEY` and the real Anthropic Message Batches API; they can incur charges and take up to 24 hours.
+These examples call real native provider batch APIs and can incur charges. Set `BATCH_PROVIDER=anthropic|openai|gemini|mistral|groq|fireworks`, enable its Cargo feature and configure its API key. Fireworks also requires `FIREWORKS_ACCOUNT_ID` and `FIREWORKS_ARTIFACT_ORIGIN`. Job duration and cancellation support vary by provider.
 
 | Example | What it demonstrates | Run |
 |---|---|---|

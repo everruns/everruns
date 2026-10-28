@@ -1,8 +1,14 @@
-//! OpenAI's Files + Batches lifecycle. The uploaded file and the job are two
-//! separate external effects; neither ambiguous operation is replayed.
-use super::*;
+//! Native chat batch lifecycles sharing result/count validation. OpenAI and
+//! Groq upload files before creation; Mistral submits inline. Never replay an
+//! ambiguous external mutation.
+#[cfg(feature = "groq")]
+use crate::groq::GroqChatDriver;
 use crate::native_batch::{BoundedBody, Http, http_error, valid_segment, validate};
+#[cfg(feature = "openai")]
+use crate::openai::{OpenAIChatDriver, OpenAICompletionsChatDriver};
+use async_trait::async_trait;
 use everruns_contracts::batch::*;
+use everruns_contracts::{LlmResponse, ProviderEndpoint};
 use reqwest::Method;
 use serde_json::{Value, json};
 use std::{collections::HashSet, io::Write, time::Duration};
@@ -14,9 +20,28 @@ const BOUNDARY: &str = "everruns_batch_upload";
 #[async_trait]
 trait Codec: Send + Sync {
     const URL: &'static str;
+    const JOBS: &'static str = "batches";
+    const LIMIT: usize = MAX_REQUESTS;
+    fn valid_job_id(id: &str) -> bool {
+        id.starts_with("batch_")
+    }
+    fn valid_file_id(id: &str) -> bool {
+        id.starts_with("file-") || id.starts_with("file_")
+    }
+    fn normalize(&self, job: Value) -> Result<Value, BatchError> {
+        Ok(job)
+    }
+    async fn create(
+        &self,
+        http: Http<'_>,
+        requests: Vec<BatchRequest>,
+    ) -> Result<String, BatchError> {
+        submit(self, http, requests).await
+    }
     fn encode(&self, item: &BatchRequest) -> std::result::Result<Value, BatchError>;
     async fn decode(&self, value: Value) -> std::result::Result<LlmResponse, BatchError>;
 }
+#[cfg(feature = "openai")]
 #[async_trait]
 impl Codec for OpenAIChatDriver {
     const URL: &'static str = "/v1/responses";
@@ -32,6 +57,7 @@ impl Codec for OpenAIChatDriver {
             .map_err(|_| BatchError::Protocol("invalid Responses completion"))
     }
 }
+#[cfg(feature = "openai")]
 #[async_trait]
 impl Codec for OpenAICompletionsChatDriver {
     const URL: &'static str = "/v1/chat/completions";
@@ -46,19 +72,19 @@ impl Codec for OpenAICompletionsChatDriver {
             .map_err(|_| BatchError::Protocol("invalid Chat Completions completion"))
     }
 }
-fn job_path(id: &str, suffix: &str) -> std::result::Result<String, BatchError> {
-    if !id.starts_with("batch_") || !valid_segment(id) {
+fn job_path<C: Codec + ?Sized>(id: &str, suffix: &str) -> std::result::Result<String, BatchError> {
+    if !valid_segment(id) || !C::valid_job_id(id) {
         return Err(BatchError::InvalidTicket);
     }
-    Ok(format!("batches/{id}{suffix}"))
+    Ok(format!("{}/{id}{suffix}", C::JOBS))
 }
-fn file_path(id: &str) -> std::result::Result<String, BatchError> {
-    if !(id.starts_with("file-") || id.starts_with("file_")) || !valid_segment(id) {
+fn file_path<C: Codec + ?Sized>(id: &str) -> std::result::Result<String, BatchError> {
+    if !valid_segment(id) || !C::valid_file_id(id) {
         return Err(BatchError::Protocol("invalid file ID"));
     }
     Ok(format!("files/{id}/content"))
 }
-fn status(
+fn status<C: Codec + ?Sized>(
     value: &Value,
     expected: Option<&str>,
     url: &str,
@@ -66,7 +92,7 @@ fn status(
     let id = value["id"]
         .as_str()
         .ok_or(BatchError::Protocol("missing job ID"))?;
-    job_path(id, "").map_err(|_| BatchError::Protocol("invalid job ID"))?;
+    job_path::<C>(id, "").map_err(|_| BatchError::Protocol("invalid job ID"))?;
     if expected.is_some_and(|expected| id != expected) {
         return Err(BatchError::Protocol("job ID mismatch"));
     }
@@ -107,16 +133,16 @@ fn refused(body: &Value) -> bool {
         })
 }
 
-async fn submit<C: Codec>(
+async fn submit<C: Codec + ?Sized>(
     codec: &C,
     http: Http<'_>,
     requests: Vec<BatchRequest>,
 ) -> std::result::Result<String, BatchError> {
-    validate(&requests, MAX_REQUESTS)?;
+    validate(&requests, C::LIMIT)?;
     let model = &requests[0].config.model;
     if requests.iter().any(|r| &r.config.model != model) {
         return Err(BatchError::InvalidRequest(
-            "OpenAI requires one model per batch",
+            "provider requires one model per batch",
         ));
     }
     // Compact JSON escapes CR/LF in caller text. A CRLF multipart boundary
@@ -169,7 +195,7 @@ async fn submit<C: Codec>(
     let file: Value =
         serde_json::from_slice(&uploaded).map_err(|_| BatchError::SubmissionUncertain)?;
     let file_id = file["id"].as_str().ok_or(BatchError::SubmissionUncertain)?;
-    file_path(file_id).map_err(|_| BatchError::SubmissionUncertain)?;
+    file_path::<C>(file_id).map_err(|_| BatchError::SubmissionUncertain)?;
     // Do not delete the staging file on an uncertain create: it may already
     // belong to a live job. Applications reconcile provider artifacts explicitly.
     let body = serde_json::to_vec(
@@ -177,7 +203,7 @@ async fn submit<C: Codec>(
     )
     .map_err(|_| BatchError::InvalidRequest("batch encoding failed"))?;
     let job = http.json(Method::POST, "batches", body, true).await?;
-    status(&job, None, C::URL).map_err(|_| BatchError::SubmissionUncertain)?;
+    status::<C>(&job, None, C::URL).map_err(|_| BatchError::SubmissionUncertain)?;
     job["id"]
         .as_str()
         .map(str::to_owned)
@@ -189,10 +215,11 @@ async fn collect<C: Codec>(
     job_id: &str,
     expected: Option<&[String]>,
 ) -> std::result::Result<Vec<BatchResult>, BatchError> {
-    let job = http
-        .json(Method::GET, &job_path(job_id, "")?, vec![], false)
-        .await?;
-    if status(&job, Some(job_id), C::URL)? != BatchStatus::Ended {
+    let job = codec.normalize(
+        http.json(Method::GET, &job_path::<C>(job_id, "")?, vec![], false)
+            .await?,
+    )?;
+    if status::<C>(&job, Some(job_id), C::URL)? != BatchStatus::Ended {
         return Err(BatchError::NotReady);
     }
     if job["status"] == "failed" {
@@ -210,18 +237,33 @@ async fn collect<C: Codec>(
     let mut successes = 0u64;
     let mut failures = 0u64;
     for field in ["output_file_id", "error_file_id"] {
-        let Some(id) = job.get(field).filter(|id| !id.is_null()) else {
-            continue;
+        let bytes = if field == "output_file_id"
+            && job["outputs"].is_array()
+            && job.get(field).is_none_or(Value::is_null)
+        {
+            let mut bytes = Vec::new();
+            for row in job["outputs"]
+                .as_array()
+                .ok_or(BatchError::Protocol("invalid inline outputs"))?
+            {
+                serde_json::to_writer(&mut bytes, row)
+                    .map_err(|_| BatchError::Protocol("invalid inline output"))?;
+                bytes.push(b'\n');
+            }
+            bytes
+        } else {
+            let Some(id) = job.get(field).filter(|id| !id.is_null()) else {
+                continue;
+            };
+            let path = file_path::<C>(id.as_str().ok_or(BatchError::Protocol("invalid file ID"))?)?;
+            http.request(Method::GET, &path, vec![], "application/json", false)
+                .await?
         };
-        let path = file_path(id.as_str().ok_or(BatchError::Protocol("invalid file ID"))?)?;
-        let bytes = http
-            .request(Method::GET, &path, vec![], "application/json", false)
-            .await?;
         for line in bytes
             .split(|b| *b == b'\n')
             .filter(|line| !line.iter().all(u8::is_ascii_whitespace))
         {
-            if results.len() == MAX_REQUESTS {
+            if results.len() == C::LIMIT {
                 return Err(BatchError::Protocol("too many results"));
             }
             let row: Value = serde_json::from_slice(line)
@@ -318,7 +360,7 @@ macro_rules! batch_driver {
                 timeout: Duration,
                 max_bytes: usize,
             ) -> std::result::Result<String, BatchError> {
-                submit(
+                Codec::create(
                     self,
                     Http {
                         endpoint,
@@ -341,9 +383,9 @@ macro_rules! batch_driver {
                     timeout,
                     max_bytes,
                 }
-                .json(Method::GET, &job_path(job_id, "")?, vec![], false)
+                .json(Method::GET, &job_path::<Self>(job_id, "")?, vec![], false)
                 .await?;
-                status(&job, Some(job_id), Self::URL)
+                status::<Self>(&self.normalize(job)?, Some(job_id), Self::URL)
             }
             async fn collect(
                 &self,
@@ -402,18 +444,160 @@ macro_rules! batch_driver {
                 }
                 .json(
                     Method::POST,
-                    &job_path(job_id, "/cancel")?,
+                    &job_path::<Self>(job_id, "/cancel")?,
                     b"{}".to_vec(),
                     false,
                 )
                 .await?;
-                status(&job, Some(job_id), Self::URL)
+                status::<Self>(&self.normalize(job)?, Some(job_id), Self::URL)
             }
         }
     };
 }
+#[cfg(feature = "openai")]
 batch_driver!(OpenAIChatDriver, "openai-responses-batch-v1");
+#[cfg(feature = "openai")]
 batch_driver!(
     OpenAICompletionsChatDriver,
     "openai-chat-completions-batch-v1"
+);
+
+#[cfg(feature = "groq")]
+#[async_trait]
+impl Codec for GroqChatDriver {
+    const URL: &'static str = "/v1/chat/completions";
+    fn encode(&self, item: &BatchRequest) -> Result<Value, BatchError> {
+        self.inner
+            .encode_batch_request_for_url(
+                "https://api.groq.com/openai/v1/chat/completions",
+                &item.messages,
+                &item.config,
+            )
+            .map_err(|_| BatchError::InvalidRequest("Groq request encoding failed"))
+    }
+    async fn decode(&self, value: Value) -> Result<LlmResponse, BatchError> {
+        self.inner
+            .decode_batch_response(value)
+            .map_err(|_| BatchError::Protocol("invalid Groq completion"))
+    }
+}
+#[cfg(feature = "groq")]
+batch_driver!(GroqChatDriver, "groq-chat-completions-v1");
+
+#[cfg(feature = "mistral")]
+#[async_trait]
+impl Codec for crate::mistral::MistralChatDriver {
+    const URL: &'static str = "/v1/chat/completions";
+    const JOBS: &'static str = "batch/jobs";
+    const LIMIT: usize = 10_000;
+    fn valid_job_id(_id: &str) -> bool {
+        true
+    }
+    fn valid_file_id(_id: &str) -> bool {
+        true
+    }
+    fn encode(&self, item: &BatchRequest) -> Result<Value, BatchError> {
+        self.inner
+            .encode_batch_request_for_url(
+                "https://api.mistral.ai/v1/chat/completions",
+                &item.messages,
+                &crate::mistral::supported_effort(&item.config),
+            )
+            .map_err(|_| BatchError::InvalidRequest("Mistral request encoding failed"))
+    }
+    async fn decode(&self, value: Value) -> Result<LlmResponse, BatchError> {
+        self.inner
+            .decode_batch_response(value)
+            .map_err(|_| BatchError::Protocol("invalid Mistral completion"))
+    }
+    fn normalize(&self, mut job: Value) -> Result<Value, BatchError> {
+        job["status"] = match job["status"].as_str() {
+            Some("QUEUED" | "RUNNING") => "in_progress",
+            Some("CANCELLATION_REQUESTED") => "cancelling",
+            Some("SUCCESS") => "completed",
+            Some("FAILED") => "failed",
+            Some("TIMEOUT_EXCEEDED") => "expired",
+            Some("CANCELLED") => "cancelled",
+            _ => return Err(BatchError::Protocol("unknown Mistral job status")),
+        }
+        .into();
+        let count = |key: &str| {
+            job[key]
+                .as_u64()
+                .or_else(|| job[key].as_str()?.parse::<u64>().ok())
+        };
+        let total = count("total_requests").ok_or(BatchError::Protocol("missing total"))?;
+        let success =
+            count("succeeded_requests").ok_or(BatchError::Protocol("missing success count"))?;
+        let failed =
+            count("failed_requests").ok_or(BatchError::Protocol("missing failure count"))?;
+        if success.checked_add(failed) != count("completed_requests") {
+            return Err(BatchError::Protocol("Mistral counts mismatch"));
+        }
+        job["request_counts"] = json!({"total":total,"completed":success,"failed":failed});
+        job["output_file_id"] = job["output_file"].clone();
+        job["error_file_id"] = job["error_file"].clone();
+        Ok(job)
+    }
+    async fn create(
+        &self,
+        http: Http<'_>,
+        requests: Vec<BatchRequest>,
+    ) -> Result<String, BatchError> {
+        validate(&requests, Self::LIMIT)?;
+        let model = &requests[0].config.model;
+        if requests.iter().any(|r| &r.config.model != model) {
+            return Err(BatchError::InvalidRequest(
+                "Mistral requires one model per batch",
+            ));
+        }
+        let mut body = BoundedBody {
+            bytes: Vec::new(),
+            max_bytes: 20_000_000,
+        };
+        #[derive(serde::Serialize)]
+        struct Row<'a> {
+            custom_id: &'a str,
+            body: Value,
+        }
+        // Serialize incrementally; bound before building an oversized requests array.
+        body.write_all(b"{\"endpoint\":\"/v1/chat/completions\",\"timeout_hours\":24,\"model\":")
+            .map_err(|_| BatchError::InvalidRequest("batch too large"))?;
+        serde_json::to_writer(&mut body, model)
+            .map_err(|_| BatchError::InvalidRequest("batch too large"))?;
+        body.write_all(b",\"requests\":[")
+            .map_err(|_| BatchError::InvalidRequest("batch too large"))?;
+        for (index, item) in requests.iter().enumerate() {
+            if index > 0 {
+                body.write_all(b",")
+                    .map_err(|_| BatchError::InvalidRequest("batch too large"))?;
+            }
+            serde_json::to_writer(
+                &mut body,
+                &Row {
+                    custom_id: &item.id,
+                    body: self.encode(item)?,
+                },
+            )
+            .map_err(|_| BatchError::InvalidRequest("inline batch exceeds 20 MB"))?;
+        }
+        body.write_all(b"]}")
+            .map_err(|_| BatchError::InvalidRequest("inline batch exceeds 20 MB"))?;
+        let job = self
+            .normalize(
+                http.json(Method::POST, Self::JOBS, body.bytes, true)
+                    .await?,
+            )
+            .map_err(|_| BatchError::SubmissionUncertain)?;
+        status::<Self>(&job, None, Self::URL).map_err(|_| BatchError::SubmissionUncertain)?;
+        job["id"]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or(BatchError::SubmissionUncertain)
+    }
+}
+#[cfg(feature = "mistral")]
+batch_driver!(
+    crate::mistral::MistralChatDriver,
+    "mistral-chat-completions-v1"
 );
