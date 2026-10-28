@@ -119,10 +119,11 @@ binary carrying web-fetch, and was the only reason the workspace resolved a
 
 ## Remaining Candidates
 
-- **`serde_yaml`** — zero exclusive cost, but upstream is archived. It parses skill and
-  agent frontmatter in `crates/contracts/src/runtime/skill.rs`, `api/agents/mod.rs`,
-  `domains/knowledge_bases/okf.rs`, and the CLI. Options are a maintained fork or a
-  purpose-built frontmatter parser; the parsed surface is small and typed. Supply-chain
+- **`serde_yaml`** — upstream and its `unsafe-libyaml` dependency are unmaintained.
+  Contracts skill frontmatter and core agent packages use `serde-saphyr` with YAML 1.2
+  booleans, literal merge keys, resource budgets, and source snippets disabled in errors.
+  Include and interpolation features are disabled. This removes libyaml from framework-only
+  consumers; server and CLI YAML usage still needs a separate migration. Supply-chain
   hygiene, not size.
 - **`wiremock`** (dev-only, 6 crates) — used by 24 crates' tests. A minimal mock server
   in `everruns-test-support` would remove it, at the cost of reimplementing matchers.
