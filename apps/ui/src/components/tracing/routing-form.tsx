@@ -32,7 +32,13 @@ const modes: [RoutingMode, string][] = [
   ["replace", "Use selected destinations"],
   ["off", "Turn off external tracing"],
 ];
-export function TracingRoutingForm({ agentId }: { agentId?: string }) {
+export function TracingRoutingForm({
+  agentId,
+  active = true,
+}: {
+  agentId?: string;
+  active?: boolean;
+}) {
   const ui = useUiTranslations();
   const { currentOrg, hasRole } = useOrg();
   const canManage = hasRole("admin");
@@ -70,6 +76,7 @@ export function TracingRoutingForm({ agentId }: { agentId?: string }) {
     values: draft,
     dirty,
     writable:
+      active &&
       canManage &&
       !busy &&
       !query.isLoading &&
@@ -84,7 +91,7 @@ export function TracingRoutingForm({ agentId }: { agentId?: string }) {
       setDraft(values);
       setSaved(false);
     },
-    enabled: !!query.data,
+    enabled: active && !!query.data,
   });
   const conflict = baseline !== null && query.data?.revision !== baseline && dirty;
   function reset() {
@@ -101,7 +108,7 @@ export function TracingRoutingForm({ agentId }: { agentId?: string }) {
     chat.clear();
   }
   async function save() {
-    if (baseline === null || conflict || chat.blocked) return;
+    if (!active || baseline === null || conflict || chat.blocked) return;
     setBusy(true);
     setError(null);
     try {

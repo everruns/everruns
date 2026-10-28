@@ -208,7 +208,13 @@ export function AgentSettingsSheet({
                     )[active] ?? active)
               }
             >
-              {active === "tracing" && <TracingRoutingForm key={agent.id} agentId={agent.id} />}
+              {active === "tracing" && (
+                <TracingRoutingForm
+                  key={agent.id}
+                  agentId={agent.id}
+                  active={section === "tracing"}
+                />
+              )}
               {active === "localization" && (
                 <EntityLocalizationsEditor
                   value={draft.localizations}

@@ -103,6 +103,23 @@ it("keeps the organization-only routing mode read-only and rejects a mixed patch
   expect(read().values).toEqual({ mode: "replace", destination_ids: [selected] });
 });
 
+it("invalidates a captured tracing binding as soon as its retained drawer closes", () => {
+  const view = render(
+    <PageChatProvider value={mode}>
+      <TracingRoutingForm agentId="agent_fixture" />
+    </PageChatProvider>,
+  );
+  const captured = adapter;
+  const before = read();
+  view.rerender(
+    <PageChatProvider value={mode}>
+      <TracingRoutingForm agentId="agent_fixture" active={false} />
+    </PageChatProvider>,
+  );
+  expect(() => captured.patch(before.binding, before.revision, { mode: "off" })).toThrow();
+  expect(saveTracingPolicy).not.toHaveBeenCalled();
+});
+
 it("refuses a stale routing save and preserves the dirty draft", () => {
   const tree = (
     <PageChatProvider value={mode}>
