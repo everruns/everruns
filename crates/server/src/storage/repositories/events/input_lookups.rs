@@ -9,6 +9,29 @@ use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_server_macros::sql;
 
 impl Database {
+    /// Exact message-id candidates in log order, including legacy Event envelopes.
+    /// A malformed duplicate can be skipped without materializing unrelated
+    /// history. Tool results have no stored message id.
+    pub fn message_events_by_id(
+        &self,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> futures::stream::BoxStream<'_, sqlx::Result<EventRow>> {
+        sqlx::query_as::<_, EventRow>(sql!(
+            r#"
+            SELECT {EventRow}
+            FROM events
+            WHERE session_id = $1
+              AND event_type IN ('input.message', 'output.message.completed')
+              AND COALESCE(data->'message'->>'id', data->'data'->'message'->>'id') = $2
+            ORDER BY sequence
+            "#
+        ))
+        .bind(session_id.uuid())
+        .bind(message_id.to_string())
+        .fetch(&self.pool)
+    }
+
     /// Find the input event a client sent with `client_message_id`, so a retried
     /// send returns the stored message instead of starting a second turn.
     ///
@@ -57,7 +80,8 @@ impl Database {
             FROM events
             WHERE session_id = $1
               AND event_type = 'input.message'
-              AND data->'message'->>'id' = $2
+              AND COALESCE(data->'message'->>'id', data->'data'->'message'->>'id') = $2
+            ORDER BY sequence
             LIMIT 1
             "#
         ))

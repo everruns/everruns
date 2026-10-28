@@ -104,8 +104,7 @@ impl MessageRetriever for DbMessageRetriever {
         session_id: SessionId,
         message_id: MessageId,
     ) -> Result<Option<RuntimeMessage>> {
-        let messages = self.load(session_id).await?;
-        Ok(messages.into_iter().find(|m| m.id == message_id))
+        retrieve_message(&self.db, session_id, message_id).await
     }
 
     async fn load(&self, session_id: SessionId) -> Result<Vec<RuntimeMessage>> {
@@ -211,6 +210,29 @@ impl MessageRetriever for DbMessageRetriever {
 // ============================================================================
 // Event Parsing
 // ============================================================================
+
+/// Shared by the runtime retriever and both worker transports. Turn startup
+/// asks for one input; loading history here copies and parses the whole window
+/// and cannot find inputs outside that window.
+pub(crate) async fn retrieve_message(
+    db: &StorageBackend,
+    session_id: SessionId,
+    message_id: MessageId,
+) -> Result<Option<RuntimeMessage>> {
+    use futures::TryStreamExt;
+
+    let mut events = db.message_events_by_id(session_id, message_id);
+    while let Some(event) = events.try_next().await.store_err()? {
+        match event_to_message(&event.data, &event.event_type) {
+            Ok(message) if message.id == message_id => return Ok(Some(message)),
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!("Failed to parse message from event {}: {}", event.id, e);
+            }
+        }
+    }
+    Ok(None)
+}
 
 /// Convert stored event data to a RuntimeMessage
 ///
@@ -343,6 +365,10 @@ pub fn create_db_message_retriever(db: Arc<StorageBackend>) -> DbMessageRetrieve
 // ============================================================================
 // Tests
 // ============================================================================
+
+#[cfg(test)]
+#[path = "message_lookup_tests.rs"]
+mod lookup_tests;
 
 #[cfg(test)]
 mod tests {
