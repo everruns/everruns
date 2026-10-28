@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { TeamIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
@@ -47,8 +47,8 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString(undefined, {
+function formatDate(dateStr: string, locale?: string): string {
+  return new Date(dateStr).toLocaleDateString(locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -93,6 +93,8 @@ function MemberCard({
   /** Viewer has owner role in the current org. */
   viewerIsOwner: boolean;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const updateRole = useUpdateMemberRole();
   const removeMember = useRemoveMember();
@@ -158,7 +160,7 @@ function MemberCard({
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground hidden sm:inline">
-            {ui("Joined")} {formatDate(member.joined_at)}
+            {ui("Joined")} {formatDate(member.joined_at, displayLocale)}
           </span>
 
           {canChangeRole ? (

@@ -4,8 +4,8 @@
 // listed after they are canceled or deleted, so the recording shows what was
 // set up and what was removed.
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { AlertCircle, CalendarClock, Repeat } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";

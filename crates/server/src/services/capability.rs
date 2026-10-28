@@ -128,7 +128,7 @@ impl CapabilityService {
             .registry
             .list()
             .into_iter()
-            .map(|cap| CapabilityInfo::from_core(cap.as_ref()))
+            .map(|cap| super::capability_localizations::from_core(cap.as_ref()))
             .collect();
 
         // Get MCP server capabilities
@@ -516,7 +516,7 @@ impl CapabilityService {
         Ok(self
             .registry
             .get(id.as_str())
-            .map(|cap| CapabilityInfo::from_core(cap.as_ref())))
+            .map(|cap| super::capability_localizations::from_core(cap.as_ref())))
     }
 
     /// Return the IDs of any high-risk capabilities in the given list.

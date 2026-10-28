@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { Check, ExternalLink, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -15,9 +15,9 @@ function sameWords(left: string | undefined, right: string | undefined): boolean
   return normalized.length > 0 && normalized === normalize(right);
 }
 
-function readableTimestamp(value: string): string {
+function readableTimestamp(value: string, locale?: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(locale);
 }
 
 function ApprovalEpisodeCard({
@@ -28,6 +28,7 @@ function ApprovalEpisodeCard({
   sessionId: string;
 }) {
   const ui = useUiTranslations();
+  const { displayLocale } = useLocale();
   const approved = episode.status === "approved";
   const title = episode.grant?.action ?? episode.ask?.action ?? "Critical action";
   const showAskedAction = Boolean(
@@ -90,7 +91,7 @@ function ApprovalEpisodeCard({
               </p>
             )}
             <p className="mt-1 text-xs text-muted-foreground">
-              {ui("Asked")} {readableTimestamp(episode.ask.at)}
+              {ui("Asked")} {readableTimestamp(episode.ask.at, displayLocale)}
             </p>
           </div>
         )}
@@ -101,7 +102,7 @@ function ApprovalEpisodeCard({
               <>
                 {ui("Approved by")} {episode.grant.approvedBy}
                 <span aria-hidden> · </span>
-                {readableTimestamp(episode.grant.at)}
+                {readableTimestamp(episode.grant.at, displayLocale)}
               </>
             ) : episode.awaitingConsent ? (
               "Waiting for consent. Nothing has been recorded as approved."

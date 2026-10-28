@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
 
 import { use } from "react";
@@ -88,6 +88,8 @@ function getEventIcon(eventType: string) {
 }
 
 function EventTimeline({ events }: { events: WorkflowEvent[] }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   if (events.length === 0) {
     return (
@@ -113,7 +115,11 @@ function EventTimeline({ events }: { events: WorkflowEvent[] }) {
               <p className="font-medium text-sm">{formatEventType(event.event_type)}</p>
               <span className="text-xs text-muted-foreground">
                 #{event.sequence_num} ·{" "}
-                {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
+                {formatDistanceToNow(
+                  new Date(event.created_at),
+                  { addSuffix: true },
+                  displayLocale,
+                )}
               </span>
             </div>
             {event.event_data && Object.keys(event.event_data).length > 0 && (
@@ -135,6 +141,8 @@ export default function WorkflowDetailPage({
 }: {
   params: Promise<{ workflowId: string }>;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { workflowId } = use(params);
 
@@ -267,19 +275,23 @@ export default function WorkflowDetailPage({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">{ui("Created")}</p>
-                  <p className="font-medium">{new Date(workflow.created_at).toLocaleString()}</p>
+                  <p className="font-medium">
+                    {new Date(workflow.created_at).toLocaleString(displayLocale)}
+                  </p>
                 </div>
                 {workflow.started_at && (
                   <div>
                     <p className="text-sm text-muted-foreground">{ui("Started")}</p>
-                    <p className="font-medium">{new Date(workflow.started_at).toLocaleString()}</p>
+                    <p className="font-medium">
+                      {new Date(workflow.started_at).toLocaleString(displayLocale)}
+                    </p>
                   </div>
                 )}
                 {workflow.completed_at && (
                   <div>
                     <p className="text-sm text-muted-foreground">{ui("Completed")}</p>
                     <p className="font-medium">
-                      {new Date(workflow.completed_at).toLocaleString()}
+                      {new Date(workflow.completed_at).toLocaleString(displayLocale)}
                     </p>
                   </div>
                 )}

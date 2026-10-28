@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { FolderOpen } from "lucide-react";
 import { KnowledgeIcon } from "@/components/icons/facet-icons";
 import { EmptyState, PageMain } from "@/components/layout";
@@ -66,6 +66,8 @@ export default function KnowledgeCollectionsPage() {
 }
 
 function CollectionCard({ collection }: { collection: KnowledgeCollection }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const state = collectionState(collection);
   const synced = (collection.sources ?? [])
@@ -75,11 +77,11 @@ function CollectionCard({ collection }: { collection: KnowledgeCollection }) {
     .at(-1);
   const meta = [
     collection.file_count !== undefined &&
-      ui("{value0} files", { value0: collection.file_count.toLocaleString() }),
+      ui("{value0} files", { value0: collection.file_count.toLocaleString(displayLocale) }),
     collection.indexing !== "off" &&
       collection.indexed_count !== undefined &&
-      ui("{value0} indexed", { value0: collection.indexed_count.toLocaleString() }),
-    synced && ui("Synced {value0}", { value0: formatRelativeTime(synced) }),
+      ui("{value0} indexed", { value0: collection.indexed_count.toLocaleString(displayLocale) }),
+    synced && ui("Synced {value0}", { value0: formatRelativeTime(synced, displayLocale) }),
   ].filter(Boolean);
   return (
     <EntityCard

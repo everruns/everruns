@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
 
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
@@ -79,6 +79,8 @@ function WorkflowRow({
   workflow: DurableWorkflow;
   onCancel: (id: string) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   return (
     <TableRow>
@@ -97,9 +99,15 @@ function WorkflowRow({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(workflow.created_at), { addSuffix: true })}
+              {formatDistanceToNow(
+                new Date(workflow.created_at),
+                { addSuffix: true },
+                displayLocale,
+              )}
             </TooltipTrigger>
-            <TooltipContent>{new Date(workflow.created_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>
+              {new Date(workflow.created_at).toLocaleString(displayLocale)}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -108,9 +116,15 @@ function WorkflowRow({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger className="text-sm text-muted-foreground">
-                {formatDistanceToNow(new Date(workflow.started_at), { addSuffix: true })}
+                {formatDistanceToNow(
+                  new Date(workflow.started_at),
+                  { addSuffix: true },
+                  displayLocale,
+                )}
               </TooltipTrigger>
-              <TooltipContent>{new Date(workflow.started_at).toLocaleString()}</TooltipContent>
+              <TooltipContent>
+                {new Date(workflow.started_at).toLocaleString(displayLocale)}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
@@ -122,9 +136,15 @@ function WorkflowRow({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger className="text-sm text-muted-foreground">
-                {formatDistanceToNow(new Date(workflow.completed_at), { addSuffix: true })}
+                {formatDistanceToNow(
+                  new Date(workflow.completed_at),
+                  { addSuffix: true },
+                  displayLocale,
+                )}
               </TooltipTrigger>
-              <TooltipContent>{new Date(workflow.completed_at).toLocaleString()}</TooltipContent>
+              <TooltipContent>
+                {new Date(workflow.completed_at).toLocaleString(displayLocale)}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
@@ -161,6 +181,8 @@ function WorkflowRow({
 }
 
 function TaskRow({ task }: { task: DurableTask }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   return (
     <TableRow>
@@ -206,9 +228,11 @@ function TaskRow({ task }: { task: DurableTask }) {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(task.scheduled_at), { addSuffix: true })}
+              {formatDistanceToNow(new Date(task.scheduled_at), { addSuffix: true }, displayLocale)}
             </TooltipTrigger>
-            <TooltipContent>{new Date(task.scheduled_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>
+              {new Date(task.scheduled_at).toLocaleString(displayLocale)}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -231,6 +255,8 @@ function TaskRow({ task }: { task: DurableTask }) {
 }
 
 function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string) => void }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   return (
     <TableRow>
@@ -261,9 +287,9 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(entry.dead_at), { addSuffix: true })}
+              {formatDistanceToNow(new Date(entry.dead_at), { addSuffix: true }, displayLocale)}
             </TooltipTrigger>
-            <TooltipContent>{new Date(entry.dead_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>{new Date(entry.dead_at).toLocaleString(displayLocale)}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>

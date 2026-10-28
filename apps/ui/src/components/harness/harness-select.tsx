@@ -1,8 +1,8 @@
 "use client";
 
 import { localizedEntityDescription } from "@/lib/entity-localization";
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useId, useMemo, useState } from "react";
 import {
   Select,

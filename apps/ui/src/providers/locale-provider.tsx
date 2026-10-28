@@ -24,7 +24,8 @@ import {
   type MessageKey,
   type SupportedLocale,
 } from "@/lib/i18n";
-import { uiMessages } from "@/lib/ui-messages";
+import { uiMessagesByLocale } from "@/lib/ui-messages";
+import { detectInterfaceLocale, isSupportedLocale } from "@/lib/locale-registry";
 
 interface LocaleContextValue {
   locale: SupportedLocale;
@@ -50,7 +51,7 @@ const PREFERENCE_KEY = "everruns.ui-language";
 function readPreference(): "system" | SupportedLocale {
   try {
     const value = localStorage.getItem(PREFERENCE_KEY);
-    return value === "en" || value === "uk" ? value : "system";
+    return isSupportedLocale(value) ? value : "system";
   } catch {
     return "system";
   }
@@ -79,17 +80,19 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     () => "system" as const,
   );
   const [backendLocale, setBackendLocale] = useState("en-US");
-  const displayLocale = preference === "system" ? backendLocale : preference;
+  const [browserDisplayLocale, setBrowserDisplayLocale] = useState("en-US");
+  const displayLocale = preference === "system" ? browserDisplayLocale : preference;
   const locale = getSupportedLocale(displayLocale);
 
   useEffect(() => {
     const browserLocale = detectBrowserLocale(window.navigator);
     setBackendLocale(browserLocale);
+    setBrowserDisplayLocale(detectInterfaceLocale(window.navigator));
   }, []);
 
   useEffect(() => {
-    document.documentElement.lang = displayLocale;
-  }, [displayLocale]);
+    document.documentElement.lang = locale === "zh-CN" ? "zh-Hans" : displayLocale;
+  }, [displayLocale, locale]);
 
   const value = useMemo<LocaleContextValue>(
     () => ({
@@ -115,7 +118,7 @@ export function useUiTranslations() {
   const { locale } = useLocale();
   return useCallback(
     (message: string, values?: Record<string, unknown>): string => {
-      const template = locale === "uk" ? (uiMessages[message] ?? message) : message;
+      const template = uiMessagesByLocale[locale]?.[message] ?? message;
       return values
         ? template.replace(/\{(\w+)\}/g, (token, key: string) =>
             key in values ? String(values[key]) : token,

@@ -5,8 +5,8 @@
 // over the page. Every section edits the page's draft: a change puts the page
 // into edit mode, and nothing saves until the header's Save changes.
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { EntityLocalizationsEditor } from "@/components/entity-localizations-editor";
 import { Check, Loader2, X } from "lucide-react";
 import { useHarnessNameAvailability } from "@/hooks";
