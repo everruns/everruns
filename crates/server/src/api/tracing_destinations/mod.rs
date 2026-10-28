@@ -1,5 +1,5 @@
 //! Customer destination management. Auth and policy changes are explicit, tenant-scoped operations.
-use super::{common::ErrorResponse, state::ApiState};
+use super::{command_http::CommandRouterExt, common::ErrorResponse, state::ApiState};
 use crate::domains::change_history::{ChangeAction, EntityKind, rest::RestChange};
 use crate::domains::common::Command;
 use crate::{
@@ -101,6 +101,10 @@ pub struct TestTraceResponse {
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
+        .command::<commands::GetTracingPolicy>()
+        .command::<commands::UpdateTracingPolicy>()
+        .command::<destination_history::GetTracingDestinationMetadata>()
+        .command::<destination_history::UpdateTracingDestinationMetadata>()
         .route(
             "/v1/tracing/destinations",
             get(list_destinations).post(create_destination),

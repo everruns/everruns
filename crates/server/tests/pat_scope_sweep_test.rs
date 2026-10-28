@@ -364,6 +364,16 @@ async fn sweep(port: u16, context: ServerContext) {
             serde_json::json!({"name": "Review profile"}),
             "Profile not found",
         ),
+        (
+            format!("/v1/tracing/policies/{}", uuid::Uuid::now_v7()),
+            serde_json::json!({"mode": "off", "destination_ids": []}),
+            "Tracing policy not found",
+        ),
+        (
+            format!("/v1/tracing/destination-metadata/{}", uuid::Uuid::now_v7()),
+            serde_json::json!({"enabled": false}),
+            "Destination not found",
+        ),
     ];
     for (path, body, detail) in missing_review_resources {
         for (method, token) in [
