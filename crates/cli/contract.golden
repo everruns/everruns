@@ -362,6 +362,10 @@ status
 system doctor	--context-revision --reason --refresh
 system health	--context-revision --reason
 tasks list	--context-revision --created-after --kind --limit --reason --root-session-id --state
+tracing destinations get	--context-revision --id! --reason
+tracing destinations update	--context-revision --enabled --id! --name --reason
+tracing routing get	--context-revision --id! --reason
+tracing routing update	--context-revision --destination-ids!... --expected-revision --id! --mode! --reason
 user connections list	--context-revision --provider --reason
 user connections providers list	--context-revision --reason --search
 users list	--context-revision --reason --search
