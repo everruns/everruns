@@ -35,7 +35,7 @@ for (const role of ["owner", "admin", "member"] as const) {
       await route.fulfill({ json });
     });
     await page.goto("/settings/tracing");
-      await expect(page.getByRole("cell", { name: /^Fictional receiver/ })).toBeVisible();
+    await expect(page.getByRole("cell", { name: /^Fictional receiver/ })).toBeVisible();
     await page.keyboard.press("Control+j");
     await expect(page.getByRole("region", { name: "Current page" })).toBeVisible();
     await page
@@ -69,6 +69,8 @@ for (const chat of [false, true])
       page,
       baseURL,
     }) => {
+      // CI uses Next's development server; these tabs can require a cold compile.
+      test.setTimeout(60_000);
       await context.addCookies([
         { name: "access_token", value: "e2e-only", domain: new URL(baseURL!).hostname, path: "/" },
       ]);
@@ -84,6 +86,13 @@ for (const chat of [false, true])
       await page.keyboard.press("Control+j");
       if (chat) {
         await expect(page.locator(".chat-mode-shell")).toHaveAttribute("data-chat-mode", "open");
+        // The grid moves tab hit targets while opening. State is already open
+        // before that transition ends, so wait for its actual completion.
+        await page.locator(".chat-mode-shell").evaluate(async (shell) => {
+          await Promise.all(
+            shell.getAnimations().map((animation) => animation.finished.catch(() => {})),
+          );
+        });
         await expect(page.getByRole("region", { name: "Current page" })).toBeVisible();
         await expect(
           page.getByRole("region", { name: "Platform Chat", exact: true }),
@@ -92,8 +101,10 @@ for (const chat of [false, true])
         await expect(page.getByRole("heading", { name: "Thread not found" })).toHaveCount(0);
         const nav = page.getByRole("navigation", { name: "Collection sections" });
         await nav.getByRole("link", { name: "Sources" }).click();
+        await page.waitForURL(`**/knowledge/${PLAYBOOKS_ID}/sources`);
         await expect(page.getByRole("cell", { name: /Managed files/ })).toBeVisible();
         await nav.getByRole("link", { name: "Settings" }).click();
+        await page.waitForURL(`**/knowledge/${PLAYBOOKS_ID}/settings`);
         const name = page.getByRole("textbox", { name: "Name", exact: true });
         await expect(name).toHaveValue("support-playbooks");
         await name.fill("Support draft");
