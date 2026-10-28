@@ -28,7 +28,12 @@ references are preserved; raw files still waiting for upload are not stored.
 Credentials are not written to recovery records.
 
 A connectivity failure in a live tab may retry on network return with its
-original identity. Automatic recovery is serial and stops at a failed retry.
+original identity. Console sends use the existing atomic command endpoint with
+that identity as its idempotency key. The legacy REST handler's recent-input
+lookup is not an atomic concurrent-send guarantee. Retries stop after 23 hours,
+inside the command store's 24-hour retention, measured from the original send;
+retrying never extends this deadline. Expired local copies remain reviewable
+and discardable. Automatic recovery is serial and stops at a failed retry.
 Server rejections do not become connectivity retries. Restored sends require
 explicit Retry, or Discard of the local copy. Reload is not permission to
 execute an old instruction. Discard does not cancel work already accepted by

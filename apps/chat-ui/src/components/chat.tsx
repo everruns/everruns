@@ -412,6 +412,7 @@ export function Chat({ config }: { config: Config }) {
     setBusy(true);
     setError(null);
     let id = selected;
+    const currentIntent = () => !retired.current && currentRef.current.scope === scope;
     try {
       if (!id) {
         const chat = await api<Session>(
@@ -420,11 +421,13 @@ export function Chat({ config }: { config: Config }) {
           {},
           (newConversationKey.current ??= crypto.randomUUID()),
         );
+        if (!currentIntent()) return;
         newConversationKey.current = undefined;
         id = chat.id;
         setSelected(id);
         setSessions((old) => [chat, ...old]);
       }
+      if (!currentIntent()) return;
       const key = scope ? recoveryKey(scope, id) : `memory:${id}`;
       let submission = pending;
       if (!submission) {
@@ -442,6 +445,7 @@ export function Chat({ config }: { config: Config }) {
               },
             ]
           : [];
+        if (!currentIntent()) return;
         submission = {
           key: crypto.randomUUID(),
           createdAt: Date.now(),
@@ -465,6 +469,7 @@ export function Chat({ config }: { config: Config }) {
         throw new Error(
           "This pending send is older than the retry window. Review the conversation before sending again.",
         );
+      if (!currentIntent()) return;
       await api(`sessions/${id}/messages`, "POST", submission.body, submission.key);
       const live = currentRef.current.scope === scope && currentRef.current.selected === id;
       const originalText = (

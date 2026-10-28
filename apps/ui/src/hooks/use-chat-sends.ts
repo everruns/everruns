@@ -22,6 +22,7 @@ import { chatRecoveryEpoch, readPendingSends, writeChatRecovery } from "@/lib/ch
 import { getEventData } from "@/lib/api/types";
 import {
   getClientMessageId,
+  isChatRetryExpired,
   newClientMessageId,
   NOT_DELIVERED_MS,
   reconcilePendingSends,
@@ -134,6 +135,8 @@ export function useChatSends({
         controller.abort();
       }, NOT_DELIVERED_MS);
       try {
+        if (recoveryEpoch.current !== chatRecoveryEpoch())
+          throw new Error("recovery_scope_retired");
         if (!navigator.onLine) throw new TypeError("offline");
         const message = await send(
           { clientMessageId: item.clientId, ...draftOf(item) },
@@ -182,6 +185,7 @@ export function useChatSends({
         addressedParticipantId: draft.addressedParticipantId,
         phase: "sending",
         sentAtMs: now,
+        createdAtMs: now,
       };
       commit((current) => [...current, item]);
       return attempt(item);
@@ -193,9 +197,14 @@ export function useChatSends({
     (clientId: string) => {
       const item = pendingRef.current.find((p) => p.clientId === clientId);
       if (!item || item.phase !== "failed" || controllers.current.has(clientId)) return;
+      if (isChatRetryExpired(item)) {
+        update(clientId, { retryExpired: true, retryWhenOnline: false });
+        return;
+      }
       const next: PendingSend = {
         ...item,
         phase: "sending",
+        createdAtMs: item.createdAtMs ?? item.sentAtMs,
         sentAtMs: Date.now(),
         error: undefined,
         retryWhenOnline: false,
@@ -305,9 +314,14 @@ export function useChatSends({
             controllers.current.has(item.clientId)
           )
             continue;
+          if (isChatRetryExpired(item)) {
+            update(item.clientId, { retryExpired: true, retryWhenOnline: false });
+            continue;
+          }
           const next = {
             ...item,
             phase: "sending" as const,
+            createdAtMs: item.createdAtMs ?? item.sentAtMs,
             retryWhenOnline: false,
             sentAtMs: Date.now(),
             error: undefined,

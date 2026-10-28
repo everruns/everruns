@@ -2,7 +2,11 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { Event } from "@/lib/api/types";
 import type { ChatSendInput, CreatedMessage } from "@/lib/api/messages";
 import { useChatSends } from "../use-chat-sends";
-import { CLIENT_MESSAGE_ID_METADATA_KEY, NOT_DELIVERED_MS } from "@/lib/chat-turn-state";
+import {
+  CLIENT_MESSAGE_ID_METADATA_KEY,
+  NOT_DELIVERED_MS,
+  CHAT_RETRY_WINDOW_MS,
+} from "@/lib/chat-turn-state";
 import { chatRecoveryKey, readPendingSends, clearChatRecovery } from "@/lib/chat-recovery";
 
 let seq = 0;
@@ -355,4 +359,56 @@ it("a late network failure cannot repopulate recovery after logout", async () =>
     await request.catch(() => {});
   });
   expect(sessionStorage.getItem(storageKey)).toBeNull();
+});
+
+it.each(["manual", "online"])(
+  "blocks %s retry after the original atomic admission window",
+  async (mode) => {
+    const now = jest.spyOn(Date, "now");
+    const start = 1_800_000_000_000;
+    now.mockReturnValue(start);
+    try {
+      const send = jest.fn(async () => {
+        throw new TypeError("network");
+      });
+      const { result } = setup(send);
+      await act(async () => {
+        await result.current.submit({ text: "hi" }).catch(() => {});
+      });
+      const id = result.current.pending[0].clientId;
+      now.mockReturnValue(start + 1000);
+      await act(async () => {
+        result.current.retry(id);
+      });
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(result.current.pending[0].createdAtMs).toBe(start);
+      now.mockReturnValue(start + CHAT_RETRY_WINDOW_MS);
+      await act(async () => {
+        if (mode === "manual") result.current.retry(id);
+        else window.dispatchEvent(new Event("online"));
+      });
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(result.current.pending[0]).toMatchObject({
+        retryExpired: true,
+        retryWhenOnline: false,
+      });
+    } finally {
+      now.mockRestore();
+    }
+  },
+);
+
+it("cannot resume a live connectivity failure after logout retires its scope", async () => {
+  const send = jest.fn(async () => {
+    throw new TypeError("network");
+  });
+  const { result } = setup(send);
+  await act(async () => {
+    await result.current.submit({ text: "private" }).catch(() => {});
+  });
+  clearChatRecovery();
+  await act(async () => {
+    window.dispatchEvent(new Event("online"));
+  });
+  expect(send).toHaveBeenCalledTimes(1);
 });

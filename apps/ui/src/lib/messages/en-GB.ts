@@ -221,4 +221,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Use organization defaults": "Use organisation defaults",
   "Add to organization defaults": "Add to organisation defaults",
   "Manage organization destinations": "Manage organisation destinations",
+  "Retry window expired. Review this conversation before sending again.":
+    "Retry window expired. Review this conversation before sending again.",
 };

@@ -139,7 +139,9 @@ see [Chat Recovery and Live Transport](chat-recovery.md).
   (`turnPhaseFor(message, events, now)`) maps a user message plus the event stream to the
   table above, and is unit tested state by state.
 - **Retry resends the same `client_message_id`.** A send that reached the server but lost its
-  response must not create a second message (see server changes).
+  response must not create a second message. Console sends use the atomic command
+  endpoint and a matching `Idempotency-Key`, with retries limited to 23 hours from
+  the original attempt (see [recovery](chat-recovery.md)).
 - **Stop before ack** aborts the request and restores the draft when the send never reached
   the server; when the ack arrives anyway, the UI cancels the turn as soon as it starts.
 
@@ -150,9 +152,10 @@ All additive; no migration.
 1. **`client_message_id` on `POST /v1/sessions/{id}/messages`.** Optional UUID. The server
    stores it in reserved message metadata (`everruns_client_message_id`, stripped from client
    metadata like other reserved keys) so the `input.message` event echoes it, and treats it as
-   an idempotency key: a repeat within the session returns the stored message instead of
-   creating a new turn. No new table: the lookup uses the same `data @>` containment the Slack
-   `slack_ts` dedup uses, over the session's newest input messages.
+   a sequential retry hint: a repeat among the newest 200 input messages returns the stored
+   message. This pre-insert lookup is not atomic under concurrent requests. Console sends
+   instead invoke the existing command endpoint, whose retained idempotency key atomically
+   admits one request. No server schema or public API change is needed for UI recovery.
 2. **Delivery in the response.** The `Message` response gains `delivery`:
    `"started"` (new turn), `"steered"` (joined a running turn), `"resumed"` (resolved a
    parked turn) or `"duplicate"` (a retry of a stored send). The server already knows this at

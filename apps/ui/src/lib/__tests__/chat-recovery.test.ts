@@ -47,3 +47,12 @@ it("logout clears every recovery scope and preserves unrelated preferences", () 
   expect(sessionStorage.length).toBe(1);
   expect(sessionStorage.getItem("theme")).toBe("dark");
 });
+
+it("marks expired restored requests review-only without extending their original age", () => {
+  writeChatRecovery(key, { pending: [{ ...item, createdAtMs: 1, sentAtMs: Date.now() }] });
+  expect(readPendingSends(key)[0]).toMatchObject({
+    createdAtMs: 1,
+    retryExpired: true,
+    retryWhenOnline: false,
+  });
+});

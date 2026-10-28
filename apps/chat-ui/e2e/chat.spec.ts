@@ -285,7 +285,65 @@ test("an authorization rejection stops stream reconnection", async ({ page, requ
     await route.fulfill({ status: 401, body: "Sign in to continue" });
   });
   await page.goto(origin);
-  await expect(page.getByRole("link", { name: "Continue to sign in →" })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole("link", { name: "Continue to sign in →" })).toBeVisible({
+    timeout: 15000,
+  });
   await page.waitForTimeout(2200);
   expect(streams).toBe(1);
+});
+
+test("sign-out retires an attachment read before it can start a message", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  await page.addInitScript(() => {
+    const actualRead = FileReader.prototype.readAsDataURL;
+    FileReader.prototype.readAsDataURL = function (file) {
+      const originalLoad = this.onload;
+      this.onload = (event) => {
+        originalLoad?.call(this, event);
+        (window as unknown as { uploadReadFinished: boolean }).uploadReadFinished = true;
+      };
+      (window as unknown as { releaseUpload: () => void }).releaseUpload = () =>
+        actualRead.call(this, file);
+    };
+  });
+  let finishLogout!: () => void;
+  const logout = new Promise<void>((resolve) => {
+    finishLogout = resolve;
+  });
+  await page.route("**/auth/logout", async (route) => {
+    await logout;
+    await route.fulfill({ status: 204 });
+  });
+  let messages = 0;
+  await page.route("**/api/sessions/*/messages", async (route) => {
+    messages++;
+    await route.fulfill({ json: { id: "unexpected" } });
+  });
+  await page.goto(origin);
+  const composer = page.getByRole("textbox", { name: "Message", exact: true });
+  await expect(composer).toBeEnabled();
+  await page
+    .locator('input[type="file"]')
+    .setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("notes") });
+  await composer.fill("Read the attachment.");
+  await composer.press("Enter");
+  await page.waitForFunction(
+    () => typeof (window as unknown as { releaseUpload?: () => void }).releaseUpload === "function",
+  );
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.evaluate(() => (window as unknown as { releaseUpload: () => void }).releaseUpload());
+  await page.waitForFunction(
+    () => (window as unknown as { uploadReadFinished?: boolean }).uploadReadFinished,
+  );
+  await page.waitForTimeout(200);
+  const saved = await page.evaluate(() =>
+    Object.keys(sessionStorage).filter((key) => key.startsWith("everruns:work-chat:")),
+  );
+  const observedMessages = messages;
+  finishLogout();
+  expect(observedMessages).toBe(0);
+  expect(saved).toEqual([]);
 });

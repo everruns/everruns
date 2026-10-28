@@ -1019,8 +1019,12 @@ export const ChatMessageList = memo(function ChatMessageList({
           className="flex items-center justify-end gap-2 text-sm text-destructive"
           data-testid="turn-not-delivered"
         >
-          <span>{t("turn_not_delivered")}</span>
-          {onRetrySend && (
+          <span>
+            {send.retryExpired
+              ? ui("Retry window expired. Review this conversation before sending again.")
+              : t("turn_not_delivered")}
+          </span>
+          {onRetrySend && !send.retryExpired && (
             <Button
               type="button"
               variant="ghost"

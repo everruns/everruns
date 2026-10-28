@@ -2,7 +2,7 @@
 // organization and session; only server-uploaded attachment references are saved.
 // Restored sends require explicit Retry: a reload cannot prove whether a request
 // was accepted, nor whether the user still wants an old instruction executed.
-import type { PendingSend } from "./chat-turn-state";
+import { isChatRetryExpired, type PendingSend } from "./chat-turn-state";
 
 const PREFIX = "everruns:chat-recovery:v1:";
 let epoch = 0;
@@ -41,12 +41,20 @@ export function readPendingSends(key?: string): PendingSend[] {
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.clientId) ||
       typeof item.text !== "string" ||
       !Number.isFinite(item.sentAtMs) ||
+      (item.createdAtMs !== undefined && !Number.isFinite(item.createdAtMs)) ||
       ![item.images, item.files].every((refs) => Array.isArray(refs) && refs.length <= 50) ||
       !item.images.every((ref) => ref && typeof ref.imageId === "string") ||
       !item.files.every((ref) => ref && typeof ref.fileId === "string")
     )
       throw new Error("recovery_format");
-    return { ...item, phase: "failed", error: undefined, retryWhenOnline: false };
+    return {
+      ...item,
+      createdAtMs: item.createdAtMs ?? item.sentAtMs,
+      phase: "failed",
+      error: undefined,
+      retryWhenOnline: false,
+      retryExpired: isChatRetryExpired(item),
+    };
   });
 }
 
