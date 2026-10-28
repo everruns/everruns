@@ -76,6 +76,43 @@ async fn race(transition: Transition) {
                 .unwrap();
         }
         Transition::Append => {}
+        Transition::Owner => {
+            sqlx::query("SAVEPOINT owner_attempt")
+                .execute(&mut *writer)
+                .await
+                .unwrap();
+            let refused = sqlx::query("UPDATE sessions SET org_id=3 WHERE id=$1")
+                .bind(a.session)
+                .execute(&mut *writer)
+                .await
+                .unwrap_err();
+            assert_eq!(
+                refused
+                    .as_database_error()
+                    .and_then(|e| e.code())
+                    .as_deref(),
+                Some("23503")
+            );
+            sqlx::query("ROLLBACK TO SAVEPOINT owner_attempt")
+                .execute(&mut *writer)
+                .await
+                .unwrap();
+            sqlx::query("RELEASE SAVEPOINT owner_attempt")
+                .execute(&mut *writer)
+                .await
+                .unwrap();
+            // The permitted lifecycle edit removes its cross-org prerequisite first.
+            sqlx::query("DELETE FROM resource_grants WHERE consumer_session_id=$1")
+                .bind(a.session)
+                .execute(&mut *writer)
+                .await
+                .unwrap();
+            sqlx::query("UPDATE sessions SET org_id=3 WHERE id=$1")
+                .bind(a.session)
+                .execute(&mut *writer)
+                .await
+                .unwrap();
+        }
         other => {
             let (query, id) = match other {
                 Transition::Identity => (
@@ -98,7 +135,6 @@ async fn race(transition: Transition) {
                     "UPDATE session_actors SET lease_holder=NULL,lease_expires_at=NULL WHERE session_id=$1",
                     a.session.uuid(),
                 ),
-                Transition::Owner => ("UPDATE sessions SET org_id=3 WHERE id=$1", a.session.uuid()),
                 _ => unreachable!(),
             };
             assert_eq!(
@@ -143,6 +179,17 @@ async fn race(transition: Transition) {
         let next = server.read(a.session, a.byte).await.unwrap();
         assert_eq!(next.head_sequence, Some(2));
         assert!(next.has_more);
+        let mut request = read(a.session, a.byte);
+        request.get_mut().after_sequence = Some(1);
+        let page = WorkerServiceClient::new(server.channel.clone())
+            .read_actor_journal(request)
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(page.events.len(), 1);
+        assert_eq!(page.events[0].sequence, 2);
+        assert_eq!(page.head_sequence, Some(2));
+        assert!(!page.has_more);
         retained_read(&service, context, a.session).await.unwrap();
     } else {
         let code = if matches!(transition, Transition::Floor) {
@@ -247,4 +294,54 @@ async fn journal_snapshot_scoped_read_loopback_latency() {
         "scoped snapshot loopback: n=100 p50={}us p95={}us",
         elapsed[49], elapsed[94]
     );
+}
+
+#[tokio::test]
+async fn journal_snapshot_refuses_ambient_transactions_without_escaping_them() {
+    let service = Arc::new(test_worker_service().await);
+    let a = assignment(&service, 2, CLIENT_A, 0xa1).await;
+    let server = Server::start(service.clone(), true, Some((CLIENT_A, KEY_A))).await;
+    server.read(a.session, a.byte).await.unwrap();
+    let context = server.context();
+    let original_title = service
+        .db
+        .get_session(2, a.session)
+        .await
+        .unwrap()
+        .unwrap()
+        .title;
+    let result = crate::storage::transaction::scope(&service.db, async {
+        let executor = service.db.database().tx_pool();
+        sqlx::query("UPDATE sessions SET title='uncommitted-snapshot-fixture' WHERE id=$1")
+            .bind(a.session).execute(executor).await.unwrap();
+        sqlx::query("INSERT INTO events (session_id,sequence,event_type,ts,context,data,metadata,tags)             SELECT session_id,sequence+1,event_type,ts,context,data,metadata,tags             FROM events WHERE session_id=$1 AND sequence=1")
+            .bind(a.session).execute(executor).await.unwrap();
+        let journal = service.db.read_session_actor_journal(a.session,Some(0),100).await.unwrap();
+        assert_eq!(journal.events.len(),2);
+        assert_eq!(journal.head_sequence,Some(2));
+        let error = retained_read(&service,context,a.session).await.unwrap_err();
+        assert_eq!(error.code(),tonic::Code::Internal);
+        assert_eq!(error.message(),"Failed to authorize worker assignment");
+        assert_eq!(service.db.get_session(2,a.session).await.unwrap().unwrap().title.as_deref(),Some("uncommitted-snapshot-fixture"));
+        Err::<(),_>("roll back fixture")
+    }, |_| "transaction failed").await;
+    assert_eq!(result, Err("roll back fixture"));
+    assert_eq!(
+        service
+            .db
+            .get_session(2, a.session)
+            .await
+            .unwrap()
+            .unwrap()
+            .title,
+        original_title
+    );
+    let journal = service
+        .db
+        .read_session_actor_journal(a.session, Some(0), 100)
+        .await
+        .unwrap();
+    assert_eq!(journal.events.len(), 1);
+    assert_eq!(journal.head_sequence, Some(1));
+    server.read(a.session, a.byte).await.unwrap();
 }
