@@ -366,6 +366,16 @@ impl RuntimeProvider {
             .ok_or_else(|| self.unsupported_service("chat"))
     }
 
+    /// Whether this provider's driver implements native offline batches.
+    /// This is a local capability query, not a check of account permissions,
+    /// model eligibility or a custom endpoint's API compatibility.
+    pub fn supports_batch(&self) -> bool {
+        self.driver
+            .as_ref()
+            .and_then(|driver| driver.batch_driver())
+            .is_some()
+    }
+
     fn unsupported_service(&self, service: &str) -> crate::error::AgentLoopError {
         crate::error::AgentLoopError::Configuration(format!(
             "Provider '{}' does not implement the {service} service",
@@ -654,6 +664,10 @@ impl crate::driver_registry::EmbeddingsDriver for ProviderBoundEmbeddingsDriver 
 
 #[async_trait]
 impl ChatDriver for ProviderBoundDriver {
+    // No batch hook: this legacy adapter hides its bound endpoint from the
+    // caller. Exposing it would fingerprint the caller's unrelated endpoint in
+    // persisted tickets. Batch clients must retain the RuntimeProvider instead.
+
     fn native_async_driver(
         &self,
         model: &str,
