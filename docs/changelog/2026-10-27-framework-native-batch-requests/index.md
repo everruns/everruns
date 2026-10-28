@@ -13,6 +13,8 @@ links:
 Framework applications can submit independent model completions through
 Anthropic Message Batches, then poll, collect or cancel them using a serializable
 ticket. Results map to the original request IDs even when returned out of order.
+This API is on `main` and is not included in the published `0.49.0` crate; use
+the pinned Git dependency in the [batch guide](/framework/batch-model-requests/).
 Enable the `anthropic` feature, submit a completion, and save its ticket:
 
 ```rust

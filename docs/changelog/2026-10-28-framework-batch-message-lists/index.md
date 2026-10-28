@@ -12,7 +12,9 @@ links:
 
 Framework batches now accept a list of typed requests through
 `Batch::submit_requests`. Reuse existing messages and configuration without
-building a `Completion` for each request. Enable the `anthropic` feature:
+building a `Completion` for each request. This API is on `main` and is not in
+the published `0.49.0` crate; use the pinned Git dependency in the
+[batch guide](/framework/batch-model-requests/), then enable `anthropic`:
 
 ```rust
 use everruns::{
