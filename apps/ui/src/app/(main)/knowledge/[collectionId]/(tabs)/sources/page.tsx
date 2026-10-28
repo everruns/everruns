@@ -33,6 +33,7 @@ import {
   useRefreshKnowledge,
 } from "@/components/knowledge/use-knowledge";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useKnowledgeSourceRows } from "@/components/knowledge/use-knowledge-page-context";
 import { formatRelativeTime } from "@/lib/formatting";
 import type { KnowledgeSource } from "@/lib/api/knowledge";
 
@@ -65,6 +66,10 @@ export default function KnowledgeSourcesPage({
   const refresh = useRefreshKnowledge();
   const [connecting, setConnecting] = useState(false);
   const c = collection.data;
+  useKnowledgeSourceRows(c?.sources ?? [], {
+    loading: collection.isLoading,
+    error: !!collection.error,
+  });
   usePageTitle(ui("Sources"), c?.name ?? ui("Knowledge"));
   const canConnect = canManage && !!c && !isBuiltinCollection(c);
 

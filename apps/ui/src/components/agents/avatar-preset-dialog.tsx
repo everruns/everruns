@@ -59,7 +59,11 @@ export function AvatarPresetDialog({
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && close()}>
-      <DialogContent className="flex max-h-[90dvh] flex-col sm:max-w-3xl" showCloseButton={!saving}>
+      <DialogContent
+        chatProtected="Agent avatar"
+        className="flex max-h-[90dvh] flex-col sm:max-w-3xl"
+        showCloseButton={!saving}
+      >
         <DialogHeader>
           <DialogTitle>{ui("Choose an avatar")}</DialogTitle>
           <DialogDescription>

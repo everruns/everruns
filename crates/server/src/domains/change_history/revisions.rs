@@ -332,6 +332,13 @@ impl RestoreEntityRevision {
             values.retain(|field, _| {
                 field == id_param || locators.contains(&field.as_str()) || fields.contains(field)
             });
+            snapshot::preserve_replacement_fields(
+                kind,
+                &entity_ref,
+                &mut params,
+                &current,
+                fields,
+            )?;
         }
         let command = if kind == super::EntityKind::VirtualUser
             && kind

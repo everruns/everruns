@@ -126,7 +126,10 @@ function HistorySheetContents({
         onOpenChange(next);
       }}
     >
-      <DrawerContent className="gap-0 overflow-y-auto p-0 sm:max-w-3xl">
+      <DrawerContent
+        chatProtected="Resource history"
+        className="gap-0 overflow-y-auto p-0 sm:max-w-3xl"
+      >
         <DrawerHeader className="border-b p-5 pr-12">
           <DrawerTitle>{ui("History")}</DrawerTitle>
           <DrawerDescription>
@@ -508,7 +511,7 @@ function RestoreDialog({
         onOpenChange(next);
       }}
     >
-      <DialogContent>
+      <DialogContent chatProtected="Restore resource revision">
         <form
           className="space-y-4"
           onSubmit={(event) => {

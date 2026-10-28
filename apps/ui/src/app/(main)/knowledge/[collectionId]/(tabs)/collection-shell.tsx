@@ -7,6 +7,8 @@
 // `/knowledge/{id}`; the shell is the tabs' layout.
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+import { useKnowledgeCollectionRows } from "@/components/knowledge/use-knowledge-page-context";
 import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { FolderTree, RefreshCw, Search, Settings2, Unplug } from "lucide-react";
@@ -47,6 +49,11 @@ export function CollectionShell({
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
   const c = collection.data;
+  useChatPageFilters({ tab });
+  useKnowledgeCollectionRows(c ? [c] : [], {
+    loading: collection.isLoading,
+    error: !!collection.error,
+  });
 
   if (collection.error && !c) {
     return (

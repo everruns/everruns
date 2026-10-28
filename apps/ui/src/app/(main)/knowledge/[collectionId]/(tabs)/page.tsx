@@ -183,8 +183,8 @@ export default function KnowledgeFilesPage({
           {error}
         </p>
       )}
-      <div className="flex h-[calc(100dvh-20rem)] min-h-[520px] flex-col overflow-hidden border bg-card md:flex-row">
-        <div className="h-64 shrink-0 overflow-hidden border-b bg-card/50 md:h-auto md:w-72 md:border-r md:border-b-0">
+      <div className="flex h-[calc(100dvh-20rem)] min-h-[520px] flex-col overflow-hidden border bg-card @min-[48rem]/page-main:flex-row">
+        <div className="h-64 shrink-0 overflow-hidden border-b bg-card/50 @min-[48rem]/page-main:h-auto @min-[48rem]/page-main:w-72 @min-[48rem]/page-main:border-r @min-[48rem]/page-main:border-b-0">
           <FileBrowser
             key={source.key}
             source={source}

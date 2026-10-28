@@ -16,6 +16,7 @@ import {
   useKnowledgeCollections,
 } from "@/components/knowledge/use-knowledge";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useKnowledgeCollectionRows } from "@/components/knowledge/use-knowledge-page-context";
 import { formatRelativeTime } from "@/lib/formatting";
 import type { KnowledgeCollection } from "@/lib/api/knowledge";
 
@@ -26,6 +27,10 @@ export default function KnowledgeCollectionsPage() {
   usePageTitle(ui("Knowledge"));
   const collections = useKnowledgeCollections();
   const items = collections.data?.pages.flatMap((page) => page.data);
+  useKnowledgeCollectionRows(items ?? [], {
+    loading: collections.isLoading,
+    error: !!collections.error,
+  });
   return (
     <PageMain>
       <QueryStateWrapper

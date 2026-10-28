@@ -47,6 +47,88 @@ fn with_reason(ctx: &Ctx, reason: &str) -> Ctx {
     )
 }
 
+#[test]
+fn knowledge_field_inverse_keeps_unselected_replacement_settings() {
+    let id = "kn_00000000000040008000000000000001";
+    let current = json!({
+        "name": "Reviewed", "description": "Keep the new description",
+        "indexing": "hybrid",
+        "embedding_model_id": "00000000-0000-4000-8000-000000000002",
+        "indexer_id": "00000000-0000-4000-8000-000000000003",
+        "rules": {"index_exclude": ["drafts/**"]}
+    });
+    let mut inverse = json!({"collection_id": id, "name": "Original"});
+    snapshot::preserve_replacement_fields(
+        EntityKind::Knowledge,
+        id,
+        &mut inverse,
+        &current,
+        &["name".into()],
+    )
+    .unwrap();
+    let mut expected = current.clone();
+    expected["name"] = json!("Original");
+    expected["collection_id"] = json!(id);
+    assert_eq!(inverse, expected);
+    // Exercise the real replacement input, whose defaults previously erased
+    // every omitted field even though the selected name inverse succeeded.
+    inverse.as_object_mut().unwrap().remove("collection_id");
+    let input: crate::domains::knowledge::types::CollectionInput =
+        serde_json::from_value(inverse).unwrap();
+    assert_eq!(input.description, "Keep the new description");
+    assert_eq!(input.rules, current["rules"]);
+}
+
+#[tokio::test]
+async fn guarded_knowledge_name_undo_preserves_current_collection_configuration() {
+    let ctx = owner();
+    ctx.db
+        .replace_org_feature_flags(
+            DEFAULT_ORG_ID,
+            &std::collections::HashMap::from([("knowledge".into(), true)]),
+        )
+        .await
+        .unwrap();
+    let original = run(
+        "create_knowledge",
+        json!({
+            "name":"knowledge-inverse", "description":"Original", "indexing":"off",
+            "rules":{"index_exclude":[]}
+        }),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let id = original["id"].as_str().unwrap();
+    run(
+        "update_knowledge",
+        json!({
+            "collection_id":id, "name":"Reviewed", "description":"Keep this description",
+            "indexing":"off", "rules":{"index_exclude":["drafts/**"]}
+        }),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let restored = run(
+        "restore_entity_revision",
+        json!({
+            "entity_ref":id, "revision":1, "expected_revision":2, "fields":["name"]
+        }),
+        &with_reason(&ctx, "Undo reviewed collection name"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(restored["entity"]["name"], "knowledge-inverse");
+    assert_eq!(restored["entity"]["description"], "Keep this description");
+    assert_eq!(
+        restored["entity"]["rules"],
+        json!({"index_exclude":["drafts/**"]})
+    );
+    assert_eq!(restored["entity"]["indexing"], "off");
+    assert_eq!(restored["revision"], 3);
+}
+
 #[tokio::test]
 async fn guarded_harness_restore_preserves_other_fields_and_refuses_stale_undo() {
     let ctx = owner();
