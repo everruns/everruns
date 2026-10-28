@@ -2,6 +2,8 @@
 
 ## 2026-10-28
 
+- Clarified unreleased Framework batch installation and pinned its source revision in the [public guide](../docs/framework/batch-model-requests.md).
+
 - Added explicit shared-message request lists to the [Framework batch API](framework/batch-model-requests.md), preserving builder validation, scoped tickets and uncertainty handling.
 
 - Required short, compilable Rust API examples for Framework changelog entries and updated the batch entry to demonstrate submission and ticket serialization. See [Public Changelog](docs/changelog.md).

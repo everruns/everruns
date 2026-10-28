@@ -21,13 +21,26 @@ sessions keep their existing behavior.
 | Engine memory/SQLite hosting, `serve`, Platform workers and eval service | No batch scheduling or ticket persistence integration; an embedding native application can separately use the direct API |
 | Wasm, Cloudflare Durable Objects and celld | No built-in batch driver in this version |
 
-Install the Framework with the provider feature:
+The batch API is currently on `main` and is not included in the published
+`0.49.0` crate. Until a crate release includes it, use this pinned Git revision
+with the provider feature:
 
 ```toml
 [dependencies]
-everruns = { version = "0.49", features = ["anthropic"] }
+everruns = { git = "https://github.com/everruns/everruns", rev = "96f2783bb868c65925a93dec78ea8cf43978791c", features = ["anthropic"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt"] }
+```
+
+For Core hosts using the stored-message conversion example, pin `everruns-core`
+to the same revision and enable `host`, so both crates share the message contract:
+
+```toml
+[dependencies.everruns-core]
+git = "https://github.com/everruns/everruns"
+rev = "96f2783bb868c65925a93dec78ea8cf43978791c"
+default-features = false
+features = ["host"]
 ```
 
 ## Submit now, collect later
@@ -173,7 +186,8 @@ before consuming it. Anthropic's existing driver does not enforce
 
 ## Runnable examples
 
-Both examples call the real provider and incur its normal batch charges. Set
+Run these examples from a repository checkout containing the pinned revision
+above. Both examples call the real provider and incur its normal batch charges. Set
 `ANTHROPIC_API_KEY` locally; do not put it in a ticket or command argument.
 
 **Classification across processes:** submit three reviews, then inspect or cancel
