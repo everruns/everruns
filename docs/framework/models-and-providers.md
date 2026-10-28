@@ -122,7 +122,7 @@ The set below is what ships today. The boundary is open, so a
 | Microsoft MAI | `everruns-drivers` (`mai`) | OpenAI Chat Completions, System One (Azure AI Foundry) | chat, decisions | yes |
 | Fireworks AI | `everruns-drivers` (`fireworks`) | OpenAI Chat Completions-compatible | chat | yes |
 | Meta | `everruns-drivers` (`meta`) | OpenAI Responses-compatible | chat | yes |
-| Mistral AI | `everruns-drivers` (`mistral`) | OpenAI Chat Completions-compatible | chat | yes |
+| Mistral AI | `everruns-drivers` (`mistral`) | Chat Completions; opt-in stateless Responses | chat | yes |
 | Cloudflare AI Gateway | `everruns-drivers` (`cloudflare`) | OpenAI Chat Completions-compatible | chat | Workers AI only |
 | Vercel AI Gateway | `everruns-drivers` (`vercel`) | Open Responses | chat | yes |
 | LLM Simulator | `everruns-llmsim` | none — in-process test double | chat, realtime (simulated) | no |

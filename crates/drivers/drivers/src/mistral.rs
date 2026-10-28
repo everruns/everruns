@@ -2,7 +2,8 @@
 //
 // Mistral's La Plateforme serves an OpenAI-compatible Chat Completions API at
 // `https://api.mistral.ai/v1`, so this driver wraps `OpenAIProtocolChatDriver`
-// and adds identity, auth, and model discovery.
+// and adds identity, auth, and model discovery. The `mistral/responses` call
+// option selects the stateless Responses preview without changing the default.
 //
 // Two wire differences matter, and both are handled in the shared protocol
 // rather than here, because any gateway relaying Mistral's native shape hits
@@ -22,6 +23,10 @@
 // (`completion_chat`, `function_calling`, `vision`, `reasoning`) and the
 // context window. Every alias is listed as its own entry carrying the same
 // canonical `name`, so only the canonical entry is kept.
+
+mod responses;
+
+pub use responses::MISTRAL_RESPONSES_OPTION;
 
 use async_trait::async_trait;
 use chrono::TimeZone;
@@ -71,6 +76,7 @@ pub fn provider(
 #[derive(Clone)]
 pub struct MistralChatDriver {
     pub(crate) inner: OpenAIProtocolChatDriver,
+    responses: everruns_contracts::OpenResponsesProtocolChatDriver,
 }
 
 impl MistralChatDriver {
@@ -80,6 +86,7 @@ impl MistralChatDriver {
             // Mistral routes requests that share a `prompt_cache_key` to the
             // same prompt cache; cached input bills at 10%.
             inner: OpenAIProtocolChatDriver::new().with_prompt_cache_key(true),
+            responses: responses::driver(),
         }
     }
 }
@@ -125,6 +132,13 @@ impl ChatDriver for MistralChatDriver {
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
+        if responses::enabled(config)? {
+            responses::validate_messages(&messages)?;
+            return self
+                .responses
+                .chat_completion_stream(endpoint, messages, &supported_effort(config))
+                .await;
+        }
         self.inner
             .chat_completion_stream(endpoint, messages, &supported_effort(config))
             .await
@@ -144,9 +158,20 @@ impl ChatDriver for MistralChatDriver {
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
+        if responses::enabled(config)? {
+            responses::validate_messages(&messages)?;
+            return self
+                .responses
+                .chat_completion_non_streaming(endpoint, messages, &supported_effort(config))
+                .await;
+        }
         self.inner
             .chat_completion_non_streaming(endpoint, messages, &supported_effort(config))
             .await
+    }
+
+    fn supports_response_format(&self, _model: &str) -> bool {
+        true
     }
 
     async fn list_models(

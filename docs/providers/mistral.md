@@ -65,6 +65,46 @@ let provider = everruns_drivers::mistral::from_env("mistral")?;
 
 Enable the `mistral` feature of `everruns-drivers`.
 
+## Responses API preview
+
+The existing Mistral provider can opt into Mistral's stateless
+[Responses API](https://docs.mistral.ai/studio/conversations/responses) per call.
+Chat Completions remains the default. In Framework code, set the driver option
+on `LlmCallConfig` (or your runtime agent's `driver_options`):
+
+```rust
+use everruns_contracts::LlmCallConfig;
+use everruns_drivers::mistral::MISTRAL_RESPONSES_OPTION;
+
+let mut config = LlmCallConfig::new("mistral-large-4");
+config.driver_options.insert(MISTRAL_RESPONSES_OPTION.into(), true.into());
+```
+
+Use the same provider, API key, and `/v1` base URL. The option sends requests to
+`/v1/responses`; removing it or setting it to `false` restores Chat Completions.
+This is a Framework driver option; there is no separate hosted provider type or
+UI protocol selector.
+
+Responses supports streamed text and reasoning, client-executed function calls,
+parallel tool calls, JSON Schema output, token usage, prompt-cache routing, and
+HTTP retries. Pass the full message history on every call: Everruns replays
+messages, function calls and results, and Mistral plaintext reasoning. It sends
+`store: false` and ignores `previous_response_id` because Mistral stores no
+response chain. Reasoning from another provider is not replayed to Mistral.
+
+User messages and function results can contain image URLs/data URLs and files
+as HTTPS URLs or data URLs, subject to the selected model's capabilities.
+Uploaded file IDs are not exposed by Everruns' portable message contract.
+Audio and opaque provider content are rejected before sending a request.
+
+Non-streaming callers receive a collected SSE response; native Responses JSON
+transport is not implemented. Failed, incomplete, or prematurely closed streams
+fail the call rather than reporting a successful partial answer. Background
+responses, WebSockets, server-side compaction, hosted tools, token-counting,
+function namespaces, and forced tool selection are not exposed by this
+integration. OpenAI-only service-tier and verbosity settings are omitted.
+The existing Mistral feature flag and model discovery behavior are unchanged.
+
 ## Links
 
 - [Mistral Large 4 announcement](https://mistral.ai/news/mistral-large-4/)
