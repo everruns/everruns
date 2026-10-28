@@ -10,3 +10,5 @@
 * [MCP recovery](mcp_recovery/) - Listing failure, successful removal, and caller isolation.
 * [User MCP](user_mcp/) - Personal MCP management and shared approval policy.
 * [Large MCP catalogs](large_mcp_catalogs/) - Pagination, authorized search, bounded schemas, shared invocation surfaces, deferred loading, dynamic updates, and discovery limits.
+
+* [Custom workers](custom_workers/) - Real-model private-data worker qualification through the CP.

@@ -382,6 +382,7 @@ export default defineConfig({
                   items: [
                     { label: "Overview", slug: "framework/examples" },
                     { label: "Support Agent", slug: "framework/examples/support-agent" },
+                    { label: "Custom Data Agent Worker", slug: "framework/examples/custom-data-agent" },
                     { label: "Everruns Support Agent", slug: "framework/examples/everruns-support-agent" },
                     { label: "Coding Review Agent", slug: "framework/examples/coding-review-agent" },
                     { label: "Research Agent", slug: "framework/examples/research-agent" },
@@ -444,6 +445,7 @@ export default defineConfig({
                     { label: "Environment Variables", slug: "sre/environment-variables" },
                     { label: "Admin Container", slug: "sre/admin-container" },
                     { label: "System Doctor", slug: "sre/system-doctor" },
+                    { label: "Custom Agent Workers", slug: "how-to/custom-agent-workers" },
                     { label: "Request Signing", slug: "sre/request-signing" },
                     {
                       label: "Runbooks",

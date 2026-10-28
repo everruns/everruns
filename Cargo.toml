@@ -33,6 +33,7 @@ members = [
     "crates/serve-agentcore",
     "crates/serve-celld",
     "examples/support-agent",
+    "examples/custom-data-agent",
     "examples/everruns-support-agent",
     "examples/coding-review-agent",
     "examples/research-agent",

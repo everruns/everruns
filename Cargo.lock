@@ -3043,6 +3043,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-custom-data-agent"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "everruns",
+ "everruns-contracts",
+ "everruns-core",
+ "everruns-internal-protocol",
+ "reqwest",
+ "rusqlite",
+ "serde_json",
+ "tokio",
+ "tonic",
+ "uuid",
+]
+
+[[package]]
 name = "everruns-docs-snippets"
 version = "0.49.0"
 dependencies = [
