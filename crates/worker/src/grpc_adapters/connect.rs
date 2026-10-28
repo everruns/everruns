@@ -36,6 +36,14 @@ impl GrpcClient {
 
     /// Connect with an explicit deadline for each call.
     pub async fn connect_with_request_timeout(addr: &str, timeout: Duration) -> Result<Self> {
+        let addrs = crate::grpc_balance::resolve(addr).await;
+        if addrs.len() > 1 {
+            let channel =
+                crate::grpc_balance::balanced_channel(addr.to_string(), addrs, move |e| {
+                    e.timeout(timeout)
+                });
+            return Ok(Self::from_channel(channel));
+        }
         let endpoint = format!("http://{}", addr);
         let channel = tonic::transport::Endpoint::from_shared(endpoint)
             .map_err(|e| AgentLoopError::store(format!("Invalid gRPC endpoint: {}", e)))?

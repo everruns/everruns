@@ -13,6 +13,7 @@ pub mod app_builder;
 mod catalog_cli;
 pub mod grpc_actor_lease_store;
 pub mod grpc_adapters;
+mod grpc_balance;
 pub mod grpc_command_transport;
 pub mod grpc_durable_store;
 pub mod grpc_files_adapter;
