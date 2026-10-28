@@ -924,7 +924,6 @@ pub async fn agent_api_stream_events(
     });
     session_event_sse(SessionEventStream {
         event_service: state.event_service.clone(),
-        event_broadcaster: None,
         session_id: session.id.uuid(),
         since_id: query.since_id.map(|id| id.uuid()),
         after_sequence: query.after_sequence,

@@ -2,6 +2,38 @@ use super::{Event, RuntimeMessage};
 use crate::kernel_imports::EventData;
 use everruns_contracts::typed_id::MessageId;
 
+pub(super) async fn get_message(
+    db: &crate::storage::StorageBackend,
+    session_id: uuid::Uuid,
+    message_id: uuid::Uuid,
+) -> super::Result<Option<RuntimeMessage>> {
+    use everruns_contracts::error::StoreResultExt;
+
+    let result: super::Result<_> = async {
+        let message = crate::storage::runtime::message::retrieve_message(
+            db,
+            session_id.into(),
+            message_id.into(),
+        )
+        .await?;
+        if message.is_some() {
+            return Ok(message);
+        }
+        // Keep the stable event-derived IDs exposed by load_messages for tool
+        // results, without falling back to scanning the conversation.
+        let event = db
+            .tool_message_event_by_id(session_id.into(), message_id.into())
+            .await
+            .store_err()?;
+        Ok(event.and_then(|row| event_to_message(crate::EventService::row_to_event(row))))
+    }
+    .await;
+    result.map_err(|error| {
+        tracing::error!(error = %error, "Failed to load message");
+        super::store_error("Failed to load message")
+    })
+}
+
 /// Convert an event to a message
 pub(super) fn event_to_message(event: Event) -> Option<RuntimeMessage> {
     match &event.data {
@@ -23,6 +55,49 @@ mod tests {
     use super::*;
     use crate::kernel_imports::ContentPart;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn indexed_get_preserves_event_derived_tool_result_ids() {
+        use everruns_worker::WorkerAdapters;
+
+        let adapters = super::super::tests::test_adapters();
+        let session = adapters.db.create_test_session().await;
+        let other = adapters.db.create_test_session().await;
+        let event = adapters
+            .db
+            .create_event(crate::storage::CreateEventRow {
+                session_id: session,
+                event_type: "tool.completed".into(),
+                ts: chrono::Utc::now(),
+                context: json!({}),
+                data: json!({
+                    "tool_call_id": "call_1", "tool_name": "test",
+                    "success": true, "status": "success",
+                    "result": [{"type": "text", "text": "result"}]
+                }),
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .unwrap();
+        let loaded = adapters.load_messages(session.uuid()).await.unwrap();
+        let message = adapters
+            .get_message(session.uuid(), event.id.uuid())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(message).unwrap(),
+            serde_json::to_value(&loaded[0]).unwrap()
+        );
+        assert!(
+            adapters
+                .get_message(other.uuid(), event.id.uuid())
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
 
     /// A screenshot a tool returned reaches the worker as an image part, not as
     /// base64 inside the result text.

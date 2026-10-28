@@ -710,3 +710,28 @@ fn explicitly_selected_manifest_does_not_overwrite_other_manifest_assets() {
         "This is a runtime asset, not the selected manifest"
     );
 }
+
+#[test]
+fn yaml_preserves_scalar_types_aliases_and_literal_merge_keys() {
+    let text = "name: test\ninstructions: Hi\ncapabilities:\n  - ref: current_time\n    config:\n      enabled: true\n      country: NO\n      switch: off\n      original: &value [one, two]\n      copy: *value\n      merged: {<<: {key: value}}\n";
+    let package = AgentPackage::parse(text, Format::Yaml).unwrap();
+    let exported: serde_json::Value =
+        serde_json::from_str(&package.to_string(Format::Json).unwrap()).unwrap();
+    let config = &exported["capabilities"][0]["config"];
+    assert_eq!(config["enabled"], true);
+    assert_eq!(config["country"], "NO");
+    assert_eq!(config["switch"], "off");
+    assert_eq!(config["copy"], config["original"]);
+    assert_eq!(config["merged"]["<<"]["key"], "value");
+    assert!(config["merged"].get("key").is_none());
+}
+
+#[test]
+fn yaml_and_markdown_frontmatter_reject_excessive_nesting() {
+    let nested = format!("{}0{}", "[".repeat(70), "]".repeat(70));
+    let text = format!(
+        "name: test\ninstructions: Hi\ncapabilities:\n  - ref: current_time\n    config: {{nested: {nested}}}\n"
+    );
+    assert!(AgentPackage::parse(&text, Format::Yaml).is_err());
+    assert!(AgentPackage::parse(&format!("---\n{text}---\nHi"), Format::Markdown).is_err());
+}

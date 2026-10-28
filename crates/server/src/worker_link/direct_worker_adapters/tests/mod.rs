@@ -70,6 +70,72 @@ mod internal_commands;
 mod phase_read_tests;
 
 #[tokio::test]
+async fn single_message_lookup_bypasses_history_window_in_both_worker_transports() {
+    use crate::storage::{CreateEventRow, DbMessageRetriever};
+    use everruns_core::{InputMessage, RuntimeMessage, events::InputMessageData};
+    use everruns_internal_protocol::proto::{
+        GetMessageRequest, worker_service_server::WorkerService,
+    };
+
+    let adapters = test_adapters();
+    let session = adapters.db.create_test_session().await;
+    let other = adapters.db.create_test_session().await;
+    let input = DbMessageRetriever::new(adapters.db.clone())
+        .add(session.uuid(), InputMessage::user("original task"))
+        .await
+        .unwrap();
+    let rows = (0..crate::storage::repository::MESSAGE_SAFETY_LIMIT)
+        .map(|_| CreateEventRow {
+            session_id: session,
+            event_type: "input.message".into(),
+            ts: chrono::Utc::now(),
+            context: serde_json::json!({}),
+            data: serde_json::to_value(InputMessageData::new(RuntimeMessage::user("later")))
+                .unwrap(),
+            metadata: None,
+            tags: None,
+        })
+        .collect();
+    adapters.db.create_events(rows).await.unwrap();
+    let grpc = crate::worker_link::grpc_service::WorkerServiceImpl::new(
+        adapters.event_service.as_ref().clone(),
+        adapters.db.clone(),
+        None,
+        None,
+        crate::oss_host_composition_for_grade(everruns_core::DeploymentGrade::Dev),
+    );
+    for id in [session, other] {
+        let direct = adapters
+            .get_message(id.uuid(), input.id.uuid())
+            .await
+            .unwrap();
+        assert_eq!(
+            direct.as_ref().map(|m| m.id),
+            (id == session).then_some(input.id)
+        );
+        let response = grpc
+            .get_message(tonic::Request::new(GetMessageRequest {
+                session_id: Some(everruns_internal_protocol::uuid_to_proto_uuid(id.uuid())),
+                message_id: Some(everruns_internal_protocol::uuid_to_proto_uuid(
+                    input.id.uuid(),
+                )),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(response.message.is_some(), id == session);
+        if let Some(message) = response.message {
+            assert_eq!(
+                message.id,
+                Some(everruns_internal_protocol::uuid_to_proto_uuid(
+                    input.id.uuid()
+                ))
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn build_mcp_tool_definitions_skips_non_mcp_capabilities() {
     let adapters = test_adapters();
     let agent_id = Uuid::new_v4();
