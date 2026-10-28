@@ -129,7 +129,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Suggest editable typical task workloads for agent cost planning
+     * Plan agent cost workloads
      * @description Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.
      */
     post: operations["plan_agent_costs"];

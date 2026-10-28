@@ -407,7 +407,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "Suggest editable typical task workloads for agent cost planning",
+        "summary": "Plan agent cost workloads",
         "description": "Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.",
         "operationId": "plan_agent_costs",
         "responses": {

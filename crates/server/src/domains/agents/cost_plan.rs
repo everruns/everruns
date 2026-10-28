@@ -41,9 +41,14 @@ pub struct AgentCostPlan {
 
 #[command(
     name = "plan_agent_costs", category = "agents",
+    summary = "Plan agent cost workloads",
     description = "Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.",
     method = "POST", path = "/v1/agents/cost-plan", policy = AGENT_MANAGE,
     read_only = false, http = plain,
+    cli = CliRoute::new(&["agents"], "cost-plan").with_examples(&[CliExample::new(
+        "Suggest task workloads for a draft without running or saving it",
+        r#"everruns agents cost-plan --agent '{"system_prompt":"Draft short customer replies"}'"#,
+    )]),
 )]
 impl Command for PlanAgentCosts {
     type Output = AgentCostPlan;

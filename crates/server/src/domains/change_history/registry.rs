@@ -514,6 +514,7 @@ pub fn declared(name: &str) -> Change {
         "delete_agent_check_rule" => on(K::CheckRule, Deleted, Param("rule_id")),
         "analyze_agent"
         | "draft_agent"
+        | "plan_agent_costs"
         | "preview_agent"
         | "diff_agent_package"
         | "validate_agent_package" => {

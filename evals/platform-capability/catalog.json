@@ -16716,6 +16716,344 @@
     "read_only": false
   },
   {
+    "category": "agents",
+    "cli": "agents cost-plan",
+    "description": "Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.",
+    "input_schema": {
+      "$defs": {
+        "AgentCapabilityConfig": {
+          "description": "Per-agent capability configuration\n\nAssociates a capability with an agent, including optional per-agent configuration.\nThe config field allows the same capability to behave differently per-agent.",
+          "properties": {
+            "config": {
+              "description": "Per-agent configuration for this capability (capability-specific)"
+            },
+            "ref": {
+              "description": "Reference to the capability ID",
+              "type": "string"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "type": "object"
+        },
+        "BTreeMap": {
+          "additionalProperties": {
+            "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
+            "properties": {
+              "actsAs": {
+                "$ref": "#/$defs/McpServerActsAs",
+                "description": "Identity whose grant this attachment requests."
+              },
+              "args": {
+                "description": "Arguments passed to the stdio `command`.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "auth_mode": {
+                "$ref": "#/$defs/McpServerAuthMode",
+                "description": "Authentication mode used when executing tools from this scoped server."
+              },
+              "command": {
+                "description": "Executable to spawn for a stdio transport server.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "connectInChat": {
+                "$ref": "#/$defs/McpConnectInChat",
+                "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
+              },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "elicitation_policy": {
+                "$ref": "#/$defs/McpElicitationPolicy",
+                "description": "Which elicitation modes this server may use (`url` by default)."
+              },
+              "env": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Environment variables set for the stdio `command`.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "headers": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Additional HTTP headers sent on MCP requests (HTTP transport only).",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "oauth_provider_id": {
+                "description": "Provider id used to resolve a user-scoped bearer token.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "protocol_mode": {
+                "$ref": "#/$defs/McpProtocolMode",
+                "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
+              },
+              "tool_discovery": {
+                "description": "Whether to discover tool definitions live from this server.",
+                "type": "boolean"
+              },
+              "tool_labels": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/McpToolLabel"
+                },
+                "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "type": {
+                "$ref": "#/$defs/McpServerTransportType",
+                "description": "MCP transport type. Only remote HTTP is supported today."
+              },
+              "url": {
+                "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio.",
+                "type": "string"
+              },
+              "use": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/McpServerPresetRef",
+                    "description": "Organization catalog preset that supplies transport and authentication policy."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "InitialFile": {
+          "description": "Starter file copied into a new session from an agent or harness.",
+          "properties": {
+            "content": {
+              "description": "File content: plain text or base64-encoded binary.",
+              "type": "string"
+            },
+            "encoding": {
+              "description": "Content encoding: `text` or `base64`.",
+              "type": "string"
+            },
+            "is_readonly": {
+              "description": "Prevent session-side edits or deletes when true.",
+              "type": "boolean"
+            },
+            "path": {
+              "description": "Absolute path within the session workspace. `/workspace` prefix is accepted.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ],
+          "type": "object"
+        },
+        "McpConnectInChat": {
+          "description": "Whether a missing sign-in for an agent MCP attachment may pause the turn\nwith an in-chat Connect card.\n\nDecision: `never` exists for agents behind channels that cannot render a\ncard (user MCP servers D5). The call then fails like any other tool error,\nnaming the server and where to connect it, and the turn keeps going. It\nchanges only how a missing grant is reported, never which grant is used.",
+          "enum": [
+            "ask",
+            "never"
+          ],
+          "example": "ask",
+          "type": "string"
+        },
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
+          "type": "string"
+        },
+        "McpProtocolMode": {
+          "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
+          "enum": [
+            "auto",
+            "2025-03-26",
+            "2025-06-18",
+            "2026-07-28"
+          ],
+          "example": "auto",
+          "type": "string"
+        },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user",
+            "user_or_service"
+          ],
+          "example": "service",
+          "type": "string"
+        },
+        "McpServerAuthMode": {
+          "description": "MCP server authentication mode.",
+          "enum": [
+            "none",
+            "api_key",
+            "oauth"
+          ],
+          "example": "api_key",
+          "type": "string"
+        },
+        "McpServerPresetRef": {
+          "description": "Reference to an organization MCP server catalog entry.",
+          "example": "catalog:linear",
+          "type": "string"
+        },
+        "McpServerTransportType": {
+          "description": "MCP Server transport type.",
+          "enum": [
+            "http",
+            "stdio"
+          ],
+          "example": "http",
+          "type": "string"
+        },
+        "McpToolLabel": {
+          "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+          "enum": [
+            "read_only",
+            "changes"
+          ],
+          "type": "string"
+        },
+        "PreviewAgentRequest": {
+          "description": "Request to preview the final agent shape with capabilities applied",
+          "properties": {
+            "capabilities": {
+              "description": "Capabilities to apply with per-agent configuration.",
+              "example": [
+                {
+                  "config": {},
+                  "ref": "current_time"
+                },
+                {
+                  "config": {},
+                  "ref": "test_math"
+                }
+              ],
+              "items": {
+                "$ref": "#/$defs/AgentCapabilityConfig"
+              },
+              "type": "array"
+            },
+            "harness_id": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/harnessId",
+                  "description": "Harness to layer beneath this draft. Omit to preview the agent layer alone."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "initial_files": {
+              "description": "Draft starter files; agent paths override inherited harness files.",
+              "items": {
+                "$ref": "#/$defs/InitialFile"
+              },
+              "type": "array"
+            },
+            "mcpServers": {
+              "$ref": "#/$defs/BTreeMap",
+              "description": "Remote MCP servers scoped to the previewed agent."
+            },
+            "system_prompt": {
+              "description": "The base system prompt (before capability additions)",
+              "example": "You are a helpful customer support agent.",
+              "type": "string"
+            },
+            "tools": {
+              "description": "Client-side tools to include in the preview.",
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "system_prompt"
+          ],
+          "type": "object"
+        },
+        "harnessId": {
+          "description": "Prefixed identifier with 'harness' prefix",
+          "example": "harness_01933b5a000070008000000000000001",
+          "pattern": "^harness_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "agent": {
+          "$ref": "#/$defs/PreviewAgentRequest"
+        },
+        "guidance": {
+          "description": "Optional description of the workload to plan. Empty infers typical tasks.",
+          "type": "string"
+        },
+        "locale": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "plan_agent_costs",
+    "output_shape": "unknown",
+    "path": "/v1/agents/cost-plan",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "session_tasks",
     "cli": "sessions tasks messages post",
     "description": "Send an inbound message to a session task.",
