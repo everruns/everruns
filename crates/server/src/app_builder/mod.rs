@@ -549,7 +549,7 @@ impl ServerAppBuilder {
         let event_delivery = if self.config.dev_mode {
             crate::live_updates::event_delivery::EventDelivery::in_memory()
         } else {
-            crate::live_updates::event_delivery::EventDelivery::from_env().await
+            crate::live_updates::event_delivery::EventDelivery::from_env(db.clone()).await
         };
         let resolve_listener_database_url = || {
             database_url
@@ -1062,10 +1062,7 @@ impl ServerAppBuilder {
             &mcp_endpoint_state,
         );
 
-        let health_state = health::HealthState {
-            auth_mode: format!("{:?}", auth_config.mode),
-            db: db.clone(),
-        };
+        let health_state = health::HealthState::new(&auth_config, &db, &event_delivery);
 
         let feature_flags_state = api::feature_flags::AppState {
             flags: feature_flags.clone(),

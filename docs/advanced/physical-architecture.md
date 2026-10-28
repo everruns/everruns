@@ -17,7 +17,7 @@ The [getting-started architecture](/explanation/architecture/) page describes th
 | Control plane (server) | REST API, SSE event streams, gRPC server for workers, owns all state | Yes | 9301 (HTTP), 9001 (gRPC) |
 | Worker pool | Stateless executors of the agentic loop: each leases a session and runs its whole turn | Yes | – (outbound only) |
 | PostgreSQL 17 | Durable storage for agents, sessions, events, durable task queue | Yes | 5432 |
-| NATS JetStream | Push-based ephemeral event delivery and task notifications | Optional | 4222 |
+| NATS JetStream | Live session events across control-plane instances, task notifications | Optional for one control-plane instance, required for more | 4222 |
 | Valkey | Distributed sliding-window rate limiting across control-plane instances | Optional | 6379 |
 | Management UI | Operator interface for agent and provider configuration | Optional | – (served by proxy) |
 | Tenant egress proxy | Gives tenant outbound traffic its own address, per-org limits and usage counts | Optional | 4750 (proxy), 4751 (health) |
@@ -44,18 +44,19 @@ Operational requirements:
 
 See [`docs/sre/environment-variables.md`](/sre/environment-variables/) for the full list of database-related variables.
 
-## NATS JetStream, optional push delivery
+## NATS JetStream, required for more than one control-plane instance
 
-NATS is not required, but turning it on materially reduces PostgreSQL write pressure and SSE tail latency for busy deployments.
+Live session events (what a chat streams over SSE) are pushed from the instance that published them to the instances serving the clients. NATS carries that push between instances. How a control-plane instance delivers them depends on its setup, and `/health` reports the choice as `event_delivery`:
 
-Without NATS, Everruns uses PostgreSQL for both storage *and* delivery: ephemeral events persist to PG and SSE clients poll PG with `LISTEN/NOTIFY` wakeups; workers are notified of new tasks the same way. This works, and it is the default. The cost is write amplification, every streaming-token delta lands in PG even though no client will ever re-read it.
+| Setup | `event_delivery` | Behavior |
+|-------|------------------|----------|
+| `NATS_URL` set and reachable | `nats` | Events reach every instance. Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL and flow only through JetStream. Durable events still persist to PG, so SSE reconnection via `since_id` keeps working. |
+| One instance, no `NATS_URL` | `in_memory` | Events are pushed inside the one process. Every event, deltas included, is also written to PG. Correct for a single control-plane instance only. |
+| `NATS_URL` set but unreachable at startup, or `EXPECTED_INSTANCES` above 1 with no `NATS_URL` | `polling` | Each open stream polls PostgreSQL for new events (100 ms while busy, backing off to 1 s while quiet). Every event is written to PG. Streams stay correct across instances, at the cost of extra queries and latency. `/health` reports `status: degraded`, and the system doctor shows a warning. |
 
-With `NATS_URL` set and JetStream enabled, Everruns rewires two hot paths:
+Run more than one control-plane instance only with NATS, and set `EXPECTED_INSTANCES` so an instance started without NATS falls back to polling instead of in-memory delivery. The system doctor flags a problem when several instances run and any of them uses in-memory delivery, because clients on one instance would miss events published through another.
 
-- **Ephemeral event delivery.** Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL entirely and flow only through NATS JetStream. SSE streams subscribe to per-session subjects with short-term retention. Durable events (`output.message.completed`, `turn.started`, `tool.completed`, etc.) still persist to PG so SSE reconnection via `since_id` continues to work, missed deltas are acceptable because the completed event carries the full content.
-- **Task notifications.** `task.available.{activity_type}` subjects replace PG NOTIFY for worker wakeup, dropping notification latency from ~30 ms to ~1 ms.
-
-NATS is fail-graceful: if the connection fails at startup, the control plane logs a warning and falls back to the PG-backed paths. Only the control plane connects to NATS, workers still talk to the server via gRPC.
+NATS also carries task notifications: `task.available.{activity_type}` subjects replace PG `NOTIFY` for worker wakeup, dropping notification latency from about 30 ms to about 1 ms. Only the control plane connects to NATS; workers talk to the server via gRPC.
 
 ## Valkey, optional distributed rate limiting
 
@@ -152,7 +153,7 @@ Multiple control-plane instances can run behind a load balancer with no session 
 | Concern | How it stays correct |
 |---------|---------------------|
 | Database connections | `EXPECTED_INSTANCES=N` divides the pool so `pool × instances ≤ 80% of PG_MAX_CONNECTIONS` |
-| SSE delivery | `LISTEN/NOTIFY` or NATS subjects fan out to every instance; reconnects are idempotent |
+| SSE delivery | NATS subjects fan out to every instance (required for more than one instance; without it, instances poll PostgreSQL and report `degraded`); reconnects are idempotent |
 | Turn and task claiming | `SKIP LOCKED` on session leases and the durable task queue partitions work naturally; a session's fenced lease keeps one worker on it |
 | Migrations | PostgreSQL advisory lock prevents concurrent runs |
 | Rate limits | Valkey-backed sliding-window counters are shared; in-memory falls back to per-instance |

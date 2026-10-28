@@ -17,18 +17,25 @@ use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+mod polling;
+pub use polling::PollingEventDelivery;
+
 /// Event delivery backend for real-time SSE push.
 ///
 /// Follows the same enum dispatch pattern as `StorageBackend`.
 /// - `InMemory`: dev mode, single process, no external deps
 /// - `Nats`: production, multi-instance, NATS JetStream
+/// - `Polling`: several servers without a reachable NATS (degraded)
 #[derive(Clone)]
 pub enum EventDelivery {
     /// In-process broadcast channels, partitioned by session_id.
-    /// Works for single-instance deployments and dev mode.
+    /// Works for single-instance deployments and dev mode only: a client sees
+    /// only what its own process published.
     InMemory(Arc<InMemoryEventDelivery>),
     /// NATS JetStream for multi-instance production deployments.
     Nats(Arc<NatsEventDelivery>),
+    /// Subscribers poll the event log in PostgreSQL (see `polling`).
+    Polling(Arc<PollingEventDelivery>),
 }
 
 impl EventDelivery {
@@ -44,11 +51,35 @@ impl EventDelivery {
         match self {
             Self::InMemory(_) => "in_memory",
             Self::Nats(_) => "nats",
+            Self::Polling(_) => "polling",
         }
     }
 
-    /// Create from environment. Uses NATS if `NATS_URL` is set, otherwise in-memory.
-    pub async fn from_env() -> Self {
+    /// Whether live delivery runs below what this deployment asked for: NATS
+    /// is configured but unreachable, or several servers run without it.
+    pub fn is_degraded(&self) -> bool {
+        matches!(self, Self::Polling(_))
+    }
+
+    /// Create from environment.
+    ///
+    /// - `NATS_URL` set and reachable: NATS.
+    /// - `NATS_URL` set but unreachable: PostgreSQL polling. Decision: degrade
+    ///   rather than refuse to start, so a NATS outage does not keep servers
+    ///   down; in-memory delivery here would silently split live updates
+    ///   between servers.
+    /// - No `NATS_URL` and `EXPECTED_INSTANCES` above 1: PostgreSQL polling,
+    ///   for the same reason.
+    /// - Otherwise (one server): in-memory.
+    pub async fn from_env(db: Arc<crate::storage::StorageBackend>) -> Self {
+        let delivery = Self::select_from_env(db).await;
+        // Heartbeats carry it, so the system doctor sees every server's choice.
+        let _ = ACTIVE_BACKEND.set(delivery.backend_name());
+        delivery
+    }
+
+    async fn select_from_env(db: Arc<crate::storage::StorageBackend>) -> Self {
+        let polling = |db| Self::Polling(Arc::new(PollingEventDelivery::new(db)));
         match std::env::var("NATS_URL") {
             Ok(url) => match NatsEventDelivery::connect(&url).await {
                 Ok(nats) => {
@@ -61,16 +92,23 @@ impl EventDelivery {
                 Err(e) => {
                     warn!(
                         error = %crate::live_updates::nats::error_chain(&e),
-                        "Failed to connect to NATS — falling back to in-memory event delivery. \
-                         SSE will only work within this process instance."
+                        "Failed to connect to NATS, so live session events are polled from \
+                         PostgreSQL (degraded) until this server restarts."
                     );
-                    Self::InMemory(Arc::new(InMemoryEventDelivery::new()))
+                    polling(db)
                 }
             },
+            Err(_) if expected_instances() > 1 => {
+                warn!(
+                    "NATS_URL not set and EXPECTED_INSTANCES > 1, so live session events are \
+                     polled from PostgreSQL (degraded). More than one server needs NATS."
+                );
+                polling(db)
+            }
             Err(_) => {
                 info!(
-                    "NATS_URL not set — using in-memory event delivery. \
-                     Set NATS_URL for multi-instance SSE support."
+                    "NATS_URL not set: in-memory event delivery, which serves one server only. \
+                     More than one server needs NATS."
                 );
                 Self::InMemory(Arc::new(InMemoryEventDelivery::new()))
             }
@@ -87,6 +125,8 @@ impl EventDelivery {
         match self {
             Self::InMemory(inner) => inner.publish(event),
             Self::Nats(inner) => inner.publish(event).await,
+            // Subscribers read the stored event from PostgreSQL.
+            Self::Polling(_) => Ok(()),
         }
     }
 
@@ -96,6 +136,7 @@ impl EventDelivery {
         match self {
             Self::InMemory(inner) => Ok(inner.subscribe(session_id)),
             Self::Nats(inner) => inner.subscribe(session_id).await,
+            Self::Polling(inner) => inner.subscribe(session_id).await,
         }
     }
 }
@@ -109,12 +150,14 @@ impl EventDelivery {
 pub enum EventSubscription {
     InMemory(broadcast::Receiver<Event>),
     Nats(Box<async_nats::jetstream::consumer::pull::Stream>),
+    Polling(Box<polling::PollingSubscription>),
 }
 
 impl EventSubscription {
     /// Receive the next event. Returns None if the subscription is closed.
     pub async fn recv(&mut self) -> Option<Event> {
         match self {
+            Self::Polling(subscription) => subscription.recv().await,
             Self::InMemory(rx) => loop {
                 match rx.recv().await {
                     Ok(event) => return Some(event),
@@ -154,6 +197,22 @@ impl EventSubscription {
             },
         }
     }
+}
+
+static ACTIVE_BACKEND: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+/// The backend this server chose at startup (`EventDelivery::from_env`), if
+/// it did.
+pub fn active_backend() -> Option<&'static str> {
+    ACTIVE_BACKEND.get().copied()
+}
+
+/// `EXPECTED_INSTANCES`: how many servers the operator runs (default 1).
+pub(crate) fn expected_instances() -> usize {
+    std::env::var("EXPECTED_INSTANCES")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(1)
 }
 
 // ============================================================
