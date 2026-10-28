@@ -362,4 +362,7 @@ export const messages: Readonly<Record<string, string>> = {
   Repositories: "Dépôts",
   "Request URL": "URL de la demande",
   "Require sign-in": "Nécessite une connexion",
+  "Models consumers may select": "Modèles que les utilisateurs peuvent choisir",
+  "Leave all unchecked to use the Agent default.":
+    "Ne cochez aucun modèle pour utiliser le modèle par défaut de l’Agent.",
 };

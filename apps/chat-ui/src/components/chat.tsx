@@ -550,7 +550,7 @@ function WorkChat({ config }: { config: Config }) {
                     onClick={async () => {
                       if (
                         !confirm(
-                          "Share this conversation's messages and widgets with anyone who has the link? Workspace files stay private.",
+                          "Share this conversation's messages and widgets, including future messages, with anyone who has the link? Workspace files stay private.",
                         )
                       )
                         return;

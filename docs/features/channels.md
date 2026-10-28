@@ -248,6 +248,6 @@ revision-checked editing, and downloads both text and binary files. HTML/SVG
 previews display in a sandbox without scripts or external network access.
 
 **Conversation actions → Share read-only link** publishes that conversation's
-messages and widgets to anyone holding the link. Files, approvals and execution
-controls remain private. **Revoke public links** removes access; creating another
+messages and widgets, including future messages, to anyone holding the link.
+Files, approvals and execution controls remain private. **Revoke public links** removes access; creating another
 link replaces the earlier one. Channel unpublication also removes public access.

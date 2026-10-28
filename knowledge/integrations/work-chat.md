@@ -68,7 +68,7 @@ reaches consumer execution and self-service routes only.
 
 - [Channel configuration](../../crates/server/src/domains/agent_channels/record/work_chat.rs)
 - [Effective features](../../crates/server/src/domains/agent_channels/work_chat.rs)
-- [Consumer routes](../../crates/server/src/api/agent_api/work_chat.rs)
+- [Consumer routes](../../crates/server/src/api/agent_api/work_chat/mod.rs)
 - [Consumer delegation](../../crates/server/src/worker_link/consumer_delegation.rs)
 - [Standalone browser host](../../apps/chat-ui/)
 - [Execution API](agent-execution-api.md)

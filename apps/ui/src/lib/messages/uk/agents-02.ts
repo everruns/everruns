@@ -361,4 +361,7 @@ export const messages: Readonly<Record<string, string>> = {
   Repositories: "Репозиторії",
   "Request URL": "URL запиту",
   "Require sign-in": "Вимагати входу",
+  "Models consumers may select": "Моделі, які можуть вибирати користувачі",
+  "Leave all unchecked to use the Agent default.":
+    "Не вибирайте жодної, щоб використовувати типову модель агента.",
 };

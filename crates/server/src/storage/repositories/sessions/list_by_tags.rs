@@ -34,8 +34,8 @@ impl Database {
         limit: u32,
         include_archived: bool,
     ) -> Result<(Vec<SessionRow>, u32)> {
-        // THREAT[TM-API-001]: `activity_predicate` is the only interpolated
-        // text, built by `sql_string_list` from closed-enum literals.
+        // THREAT[TM-API-001]: interpolated filters contain closed-enum
+        // activity literals or the fixed archive predicate. Caller values bind as parameters.
         let activity_predicate = if activities.is_empty() {
             String::new()
         } else {

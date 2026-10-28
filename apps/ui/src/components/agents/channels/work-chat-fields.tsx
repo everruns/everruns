@@ -63,9 +63,9 @@ export function WorkChatFields({
         )}
       </p>
       <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">Models consumers may select</legend>
+        <legend className="text-sm font-medium">{ui("Models consumers may select")}</legend>
         <p className="text-sm text-muted-foreground">
-          Leave all unchecked to use the Agent default.
+          {ui("Leave all unchecked to use the Agent default.")}
         </p>
         <div className="max-h-48 space-y-2 overflow-auto">
           {models
@@ -75,6 +75,7 @@ export function WorkChatFields({
                 <input
                   type="checkbox"
                   checked={modelIds.includes(model.id)}
+                  disabled={!modelIds.includes(model.id) && modelIds.length >= 30}
                   onChange={(event) =>
                     onModelsChange(
                       event.target.checked

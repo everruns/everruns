@@ -247,7 +247,7 @@ impl Database {
             .bind(channel)
             .execute(&mut *tx)
             .await?;
-        sqlx::query("DELETE FROM channel_bindings WHERE channel_id = $1 AND session_id = $2 AND binding_key LIKE 'work_chat:share:%'").bind(channel).bind(session).execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM channel_bindings WHERE channel_id = $1 AND session_id = $2 AND starts_with(binding_key, 'work_chat:share:')").bind(channel).bind(session).execute(&mut *tx).await?;
         if let Some(token) = token {
             sqlx::query("INSERT INTO channel_bindings (channel_id, binding_key, session_id) VALUES ($1, $2, $3)").bind(channel).bind(format!("work_chat:share:{token}")).bind(session).execute(&mut *tx).await?;
         }

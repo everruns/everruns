@@ -835,7 +835,7 @@ async fn work_chat_organizes_owned_conversations_and_revokes_read_only_links() {
     .await
     .assert_success();
     server.get(&url).await.assert_status(StatusCode::NOT_FOUND);
-    call(&server,Method::POST,&format!("{path}/messages"),Some(&alice),Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Hi"}]},"controls":{"model_id":"model_01933b5a000070008000000000000001"}}))).await.assert_status(StatusCode::BAD_REQUEST);
+    call(&server,Method::POST,&format!("{path}/messages"),Some(&alice),Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Hi"}]},"controls":{"model_id":everruns_contracts::typed_id::ModelId::new()}}))).await.assert_status(StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

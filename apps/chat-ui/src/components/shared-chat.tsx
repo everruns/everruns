@@ -30,6 +30,8 @@ export function SharedChat({ token, name }: { token: string; name: string }) {
         return [...merged.values()].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
       });
     } catch (error) {
+      olderLoaded.current = false;
+      setBefore(null);
       setEvents([]);
       setError(error instanceof Error ? error.message : "Conversation unavailable");
     } finally {
