@@ -46,7 +46,7 @@
     "clsx": "^2.1.1",
     "cron-parser": "^5.10.2",
     "cronstrue": "^3.37.0",
-    "lucide-react": "^1.59.0",
+    "lucide-react": "^1.60.0",
     "next": "16.4.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
