@@ -408,6 +408,11 @@ pub struct EncryptedColumn {
 /// - `reencrypt-secrets` CLI tool for key rotation
 /// - Tests to ensure all encrypted columns are properly registered
 pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
+    EncryptedColumn {
+        table: "tracing_connections",
+        column: "secrets_encrypted",
+        id_column: "id",
+    },
     // Private consolidation evidence/proposals and Memory-wide reservations.
     // The UUID is globally unique; tenant/key remains the maintenance CAS identity.
     EncryptedColumn {

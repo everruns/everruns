@@ -104,6 +104,7 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
         &[
             "durable",
             "monitoring",
+            "tracing",
             "system",
             "durable-schedules",
             "sandbox-templates",

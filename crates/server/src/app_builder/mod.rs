@@ -1166,6 +1166,7 @@ impl ServerAppBuilder {
                 ),
             ))
             .merge(api::health_issues::routes(api_state.clone()))
+            .merge(api::tracing_destinations::routes(api_state.clone()))
             .merge(api::system::routes(api_state.clone()))
             .merge(api::memory::routes(api_state.clone()))
             .merge(api::workspaces::routes(api_state.clone()))

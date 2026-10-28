@@ -1,8 +1,11 @@
 import { expect, test, type Page, type Request } from "@playwright/test";
 
 const DEFAULT_ORG_ID = "org_00000000000000000000000000000001";
+// next dev compiles a destination's RSC bundle on its first navigation.
+const NAVIGATION_TIMEOUT = 30_000;
 const SETTINGS_CHILD_ROUTES = [
   "/settings/organization",
+  "/settings/tracing",
   "/settings/providers",
   "/settings/members",
   "/settings/features",
@@ -110,6 +113,7 @@ function isStartupApi(pathname: string) {
 }
 
 test.describe("Sidebar navigation prefetch", () => {
+  test.setTimeout(60_000);
   test.use({ viewport: { width: 1440, height: 2000 } });
 
   test.beforeEach(async ({ context, page, baseURL }) => {
@@ -168,7 +172,7 @@ test.describe("Sidebar navigation prefetch", () => {
     await page.goto("/chats");
     await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
     await page.getByRole("link", { name: "Sessions" }).click();
-    await expect(page).toHaveURL(/\/sessions$/);
+    await expect(page).toHaveURL(/\/sessions$/, { timeout: NAVIGATION_TIMEOUT });
     await expect(
       page.getByText("Every run across your agents: chats, schedules, channels and API calls."),
     ).toBeVisible();
@@ -186,7 +190,7 @@ test.describe("Sidebar navigation prefetch", () => {
 
     settingsRequests.length = 0;
     await page.getByRole("link", { name: "Settings", exact: true }).click();
-    await expect(page).toHaveURL(/\/settings\/organization$/);
+    await expect(page).toHaveURL(/\/settings\/organization$/, { timeout: NAVIGATION_TIMEOUT });
     await page.waitForLoadState("networkidle");
 
     const eagerChildRequests = settingsRequests.filter((request) => {

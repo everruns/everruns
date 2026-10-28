@@ -289,6 +289,15 @@ impl From<&str> for McpServerTransportType {
     }
 }
 
+/// Runtime search context derived from the capability contributing an MCP server.
+/// It is never accepted from or persisted in authored server configuration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpCapabilityContext {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
 /// Session-, agent-, or harness-scoped remote MCP server configuration.
 ///
 /// This intentionally mirrors the `mcpServers` object shape used by common MCP
@@ -298,6 +307,10 @@ impl From<&str> for McpServerTransportType {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(try_from = "ScopedMcpServerWire", into = "ScopedMcpServerWire")]
 pub struct ScopedMcpServer {
+    /// Declared owner context, rederived from current capability configuration.
+    #[serde(skip)]
+    #[cfg_attr(feature = "openapi", schema(ignore))]
+    pub capability_context: Option<McpCapabilityContext>,
     /// Searchable server context supplied by its attachment or catalog. It is
     /// metadata, not an instruction or a credential.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -464,6 +477,7 @@ impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
         }
         validate_mcp_tool_timeout_ms(wire.tool_timeout_ms)?;
         Ok(Self {
+            capability_context: None,
             description: wire.description,
             transport_type: wire
                 .transport_type
@@ -516,6 +530,7 @@ impl From<ScopedMcpServer> for ScopedMcpServerWire {
 impl Default for ScopedMcpServer {
     fn default() -> Self {
         Self {
+            capability_context: None,
             description: None,
             transport_type: McpServerTransportType::Http,
             url: String::new(),

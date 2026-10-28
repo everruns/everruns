@@ -65,6 +65,7 @@ use crate::tool_context::ToolContext;
 use async_trait::async_trait;
 use everruns_contracts::runtime::capabilities::ToolDisclosure;
 use everruns_contracts::runtime::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
+use everruns_contracts::runtime::tool_catalog::ToolSearchSourceKind;
 use everruns_contracts::tool_changes::ToolChanges;
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -164,7 +165,7 @@ impl CatalogLimits {
 
 const BOUNDED_SYSTEM_PROMPT: &str = "Additional tools are available through tool_search. \
 Search by operation, capability, or MCP server purpose. The catalog includes MCP server \
-names and descriptions. Search returns authoritative parameter schemas and makes matching \
+names and descriptions. Search returns operation summaries and makes matching \
 operations available as native functions on your next step. If a deferred server is loaded, \
 search again for its operation. Refine broad queries; only a bounded working set is advertised.";
 
@@ -304,6 +305,20 @@ impl Capability for ToolSearchCapability {
 
     fn category(&self) -> Option<&str> {
         Some("Optimization")
+    }
+
+    fn supersedes_with_config(&self, config: &Value) -> Vec<&'static str> {
+        if CatalogLimits::from_config(config).is_some() {
+            // An explicit disclosure ceiling must win over inherited hosted
+            // search, which otherwise skips the bounded definition hook.
+            vec![
+                super::auto_tool_search::AUTO_TOOL_SEARCH_CAPABILITY_ID,
+                super::openai_tool_search::OPENAI_TOOL_SEARCH_CAPABILITY_ID,
+                super::claude_tool_search::CLAUDE_TOOL_SEARCH_CAPABILITY_ID,
+            ]
+        } else {
+            vec![]
+        }
     }
 
     fn native_tool_disclosure_policy_with_config(
@@ -680,35 +695,51 @@ impl ToolSearchTool {
         let mut loaded = Vec::new();
         let mut omitted = 0usize;
         let mut active_bytes = 2usize;
-        let mut matching_sources = std::collections::BTreeSet::new();
-        let output = |matches: &Vec<Value>,
-                      loaded: &Vec<String>,
+        let output = |matches: &[Value],
+                      loaded: &[String],
                       omitted,
-                      servers: &Vec<String>| {
-            json!({
+                      servers: &[String],
+                      omitted_tools: &[String]| {
+            let mut result = json!({
                 "query": query, "tools": matches, "loaded": loaded, "bounded": true,
                 "loading_mcp_servers": servers, "omitted_for_byte_budget": omitted,
                 "message": "Selected schemas become native functions next step. After loading a server, search again for its operation. Refine source-only or oversized matches."
-            })
+            });
+            if !omitted_tools.is_empty() {
+                result["omitted_tools"] = json!(omitted_tools);
+                result["message"] = json!(
+                    "Selected schemas become native functions next step. Search one omitted_tools name exactly to load its schema. After loading a server, search again for its operation."
+                );
+            }
+            result
         };
-        for hit in hits
-            .into_iter()
-            .take(limits.active_tools.min(MAX_SEARCH_RESULTS))
-        {
-            let Some(tool) = registry.get(&hit.name) else {
+        let considered = limits.active_tools.min(MAX_SEARCH_RESULTS);
+        let mut omitted_tools: Vec<_> = hits
+            .iter()
+            .take(considered)
+            .filter(|hit| hit.tool_match && registry.get(&hit.name).is_some())
+            .map(|hit| hit.name.clone())
+            .collect();
+        // Reserve canonical-name refinement hints before admitting schemas.
+        // Trim whole identities if even the hints exceed the response budget.
+        // A loaded name leaves this list, so a single exact schema retains its
+        // entire previous budget instead of paying for duplicate metadata.
+        while !omitted_tools.is_empty() {
+            let mut preview = output(&[], &[], MAX_SEARCH_RESULTS, &[], &omitted_tools);
+            // An all-omitted result also carries the source-browse envelope.
+            preview["available_servers"] = json!([]);
+            if serialized_size(&preview, limits.result_bytes).is_some() {
+                break;
+            }
+            omitted_tools.pop();
+        }
+        for hit in hits.into_iter().take(considered) {
+            let Some(definition) = registry.tool_definition(&hit.name) else {
                 continue;
             };
-            let definition = tool.to_definition();
             if !hit.tool_match {
-                // A server-domain match identifies a source, not a particular
-                // operation. Ask for refinement rather than promoting the
-                // first alphabetical operations from a large server.
-                if hit.server_match
-                    && let Some((source, _)) =
-                        crate::mcp_server::parse_mcp_tool_name(definition.name())
-                {
-                    matching_sources.insert(source);
-                }
+                // Source context identifies a capability or server, not a
+                // particular operation. Only operation matches reveal schemas.
                 continue;
             }
             let separator = usize::from(!loaded.is_empty());
@@ -719,8 +750,11 @@ impl ToolSearchTool {
                 omitted += 1;
                 continue;
             };
+            // The next native projection supplies the complete canonical schema.
+            // Repeating it here spends context twice and can reject a schema
+            // that fits active_bytes but exceeds result_bytes.
             let value = json!({"name": definition.name(), "description": definition.description(),
-                "parameters": definition.full_parameters(), "server_match": hit.server_match,
+                "server_match": hit.server_match,
                 "operation_match": hit.tool_match});
             matches.push(value);
             loaded.push(hit.name.clone());
@@ -728,8 +762,16 @@ impl ToolSearchTool {
                 .iter()
                 .filter_map(|name| crate::deferred_mcp_server_prefix(name).map(str::to_string))
                 .collect();
+            let mut remaining_omitted_tools = omitted_tools.clone();
+            remaining_omitted_tools.retain(|name| name != &hit.name);
             if serialized_size(
-                &output(&matches, &loaded, MAX_SEARCH_RESULTS, &pending),
+                &output(
+                    &matches,
+                    &loaded,
+                    MAX_SEARCH_RESULTS,
+                    &pending,
+                    &remaining_omitted_tools,
+                ),
                 limits.result_bytes,
             )
             .is_none()
@@ -739,29 +781,57 @@ impl ToolSearchTool {
                 omitted += 1;
             } else {
                 active_bytes += size + separator;
+                omitted_tools = remaining_omitted_tools;
             }
         }
         let servers = reveal_deferred_servers(context, &loaded).await;
-        let mut result = output(&matches, &loaded, omitted, &servers);
+        let mut result = output(&matches, &loaded, omitted, &servers, &omitted_tools);
         if matches.is_empty() {
             // Bounded source browse, never a fallback listing every operation.
-            let sources: std::collections::BTreeSet<_> = if matching_sources.is_empty() {
-                registry
-                    .tool_names()
+            let matching_sources = index.search_sources(query, 16, |name| {
+                name != TOOL_SEARCH_TOOL_NAME && allowed.contains(name)
+            });
+            let sources: Vec<_> = if matching_sources.is_empty() {
+                let (servers, capabilities): (Vec<_>, Vec<_>) = index
+                    .sources(|name| name != TOOL_SEARCH_TOOL_NAME && allowed.contains(name))
                     .into_iter()
-                    .filter(|name| allowed.contains(*name))
-                    .filter_map(|name| {
-                        crate::mcp_server::parse_mcp_tool_name(name)
-                            .map(|(source, _)| source)
-                            .or_else(|| crate::deferred_mcp_server_prefix(name).map(str::to_string))
+                    .partition(|source| source.kind == ToolSearchSourceKind::McpServer);
+                let (mut servers, mut capabilities) =
+                    (servers.into_iter(), capabilities.into_iter());
+                // Give both source types room in the shared browse bound.
+                (0..16)
+                    .filter_map(|position| {
+                        if position % 2 == 0 {
+                            servers.next().or_else(|| capabilities.next())
+                        } else {
+                            capabilities.next().or_else(|| servers.next())
+                        }
                     })
                     .collect()
             } else {
-                matching_sources
+                matching_sources.into_iter().collect()
             };
             let mut sources: Vec<_> = sources.into_iter().take(16).collect();
             loop {
-                result["available_servers"] = json!(sources);
+                result["available_servers"] = json!(
+                    sources
+                        .iter()
+                        .filter(|source| source.kind == ToolSearchSourceKind::McpServer)
+                        .map(|source| &source.id)
+                        .collect::<Vec<_>>()
+                );
+                let capabilities: Vec<_> = sources
+                    .iter()
+                    .filter(|source| source.kind == ToolSearchSourceKind::Capability)
+                    .map(|source| json!({"id":source.id,"name":source.name}))
+                    .collect();
+                if capabilities.is_empty() {
+                    if let Some(result) = result.as_object_mut() {
+                        result.remove("available_capabilities");
+                    }
+                } else {
+                    result["available_capabilities"] = json!(capabilities);
+                }
                 if serialized_size(&result, limits.result_bytes).is_some() || sources.is_empty() {
                     break;
                 }
@@ -878,6 +948,12 @@ impl Tool for ToolSearchTool {
     }
 
     fn description(&self) -> &str {
+        if self.limits.is_some() {
+            return "Search available tools and capabilities by keyword. Returns matching names \
+                and descriptions; selected tools receive their complete parameter schemas as \
+                native functions on the next step. Search results omit duplicate schemas. \
+                Call this before using a tool whose parameters you have not loaded yet.";
+        }
         "Search the available tools by keyword and load their full parameter \
          schemas. Returns matching tools with their names, descriptions, and JSON \
          parameter schemas. Call this before using any tool whose parameters you \

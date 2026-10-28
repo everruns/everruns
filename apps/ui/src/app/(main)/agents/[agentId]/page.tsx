@@ -555,6 +555,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
         ? formatTokens(agent.usage.input_tokens + agent.usage.output_tokens)
         : ui("None"),
     },
+    ...(!builtIn ? [{ id: "tracing", label: ui("Tracing"), summary: ui("Destinations") }] : []),
     { id: "health", label: ui("Health check"), summary: ui(healthSummary(latestHealth)) },
   ].filter((row) => row.id !== "files" || showFiles);
 

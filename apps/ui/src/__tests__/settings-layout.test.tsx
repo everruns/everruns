@@ -108,7 +108,7 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
-    expect(screen.getAllByRole("link")).toHaveLength(14);
+    expect(screen.getAllByRole("link")).toHaveLength(15);
     for (const link of screen.getAllByRole("link")) {
       expect(link).toHaveAttribute("data-prefetch", "false");
     }

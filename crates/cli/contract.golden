@@ -164,14 +164,14 @@ images list	--context-revision --limit --offset --reason
 knowledge create	--context-revision --description --embedding-model-id --indexer-id --indexing --name! --reason --rules
 knowledge delete	--collection-id! --context-revision --reason
 knowledge files delete	--collection-id! --context-revision --path! --reason
-knowledge files list	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason
+knowledge files list	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree
 knowledge files update	--collection-id! --context-revision --indexable --metadata --path! --readable --reason
 knowledge files write	--collection-id! --content --content-base64 --context-revision --indexable --metadata --mime-type --path! --readable --reason
 knowledge get	--collection-id! --context-revision --reason
 knowledge indexers create	--context-revision --credential-binding-id! --endpoint! --name! --reason
 knowledge indexers list	--context-revision --reason
 knowledge list	--after --context-revision --limit --reason
-knowledge okf validate	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason
+knowledge okf validate	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree
 knowledge search	--collections... --context-revision --lexical-only --limit --metadata --path --query! --reason
 knowledge sources add	--collection-id! --config --connection-owner --context-revision --kind! --reason --root-path
 knowledge sync	--collection-id! --context-revision --reason
@@ -362,6 +362,10 @@ status
 system doctor	--context-revision --reason --refresh
 system health	--context-revision --reason
 tasks list	--context-revision --created-after --kind --limit --reason --root-session-id --state
+tracing destinations get	--context-revision --id! --reason
+tracing destinations update	--context-revision --enabled --id! --name --reason
+tracing routing get	--context-revision --id! --reason
+tracing routing update	--context-revision --destination-ids!... --expected-revision --id! --mode! --reason
 user connections list	--context-revision --provider --reason
 user connections providers list	--context-revision --reason --search
 users list	--context-revision --reason --search

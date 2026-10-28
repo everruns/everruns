@@ -21,7 +21,7 @@
 //! Each capability is in its own file with collocated tools.
 
 use crate::is_plugin_capability;
-use crate::runtime::capability_mcp_server::capability_mcp_servers_to_scoped;
+use crate::runtime::capability_mcp_server::capability_mcp_servers_to_scoped_with_context;
 use crate::runtime::events::TokenUsage;
 use crate::runtime::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
 use crate::runtime::message::RuntimeMessage;
@@ -425,7 +425,15 @@ pub fn collect_capability_mcp_servers(
                 if let Some(contributed) = definition.mcp_servers {
                     servers = merge_scoped_mcp_servers(
                         &servers,
-                        &capability_mcp_servers_to_scoped(&contributed),
+                        &capability_mcp_servers_to_scoped_with_context(
+                            &contributed,
+                            cap_id,
+                            definition
+                                .display_name
+                                .as_deref()
+                                .unwrap_or(&definition.name),
+                            &definition.description,
+                        ),
                     );
                 }
             }
@@ -436,8 +444,15 @@ pub fn collect_capability_mcp_servers(
                 continue;
             }
             let contributed = capability.mcp_servers_with_config(cap_config.config_value());
-            servers =
-                merge_scoped_mcp_servers(&servers, &capability_mcp_servers_to_scoped(&contributed));
+            servers = merge_scoped_mcp_servers(
+                &servers,
+                &capability_mcp_servers_to_scoped_with_context(
+                    &contributed,
+                    cap_id,
+                    capability.name(),
+                    capability.description(),
+                ),
+            );
         }
     }
 
@@ -673,7 +688,11 @@ async fn collect(
                     (None, Some(category)) => definition.with_category(category),
                     _ => definition,
                 }
-                .with_capability_attribution(id, Some(capability.name()))
+                .with_capability_context(
+                    id,
+                    Some(capability.name()),
+                    capability.description(),
+                )
             })
             .collect();
         preview_definitions.extend(definitions.iter().cloned());
@@ -744,7 +763,15 @@ async fn collect(
                     if let Some(ref servers) = definition.mcp_servers {
                         mcp_servers = merge_scoped_mcp_servers(
                             &mcp_servers,
-                            &capability_mcp_servers_to_scoped(servers),
+                            &capability_mcp_servers_to_scoped_with_context(
+                                servers,
+                                cap_id,
+                                definition
+                                    .display_name
+                                    .as_deref()
+                                    .unwrap_or(&definition.name),
+                                &definition.description,
+                            ),
                         );
                     }
                     for skill in definition.skill_contributions() {
@@ -891,7 +918,12 @@ async fn collect(
             let contributed = effective.mcp_servers_with_config(cap_config.config_value());
             mcp_servers = merge_scoped_mcp_servers(
                 &mcp_servers,
-                &capability_mcp_servers_to_scoped(&contributed),
+                &capability_mcp_servers_to_scoped_with_context(
+                    &contributed,
+                    cap_id,
+                    effective.name(),
+                    effective.description(),
+                ),
             );
 
             // Normalize capability-contributed skills into mount points under
@@ -947,7 +979,7 @@ async fn collect(
                 (None, Some(cat)) => def.with_category(cat),
                 _ => def,
             }
-            .with_capability_attribution(cap.id(), Some(cap.name()));
+            .with_capability_context(cap.id(), Some(cap.name()), cap.description());
             tool_definitions.push(def);
         }
         narration_hooks.push(Arc::new(CapabilityNarrationHook(cap.clone())));
@@ -1079,6 +1111,7 @@ pub async fn apply_capabilities(
     for tool in collected.tools {
         tool_registry.register_boxed(tool);
     }
+    tool_registry.set_capability_contexts(&collected.tool_definitions);
 
     // Create modified runtime agent
     let mut runtime_agent = RuntimeAgent {

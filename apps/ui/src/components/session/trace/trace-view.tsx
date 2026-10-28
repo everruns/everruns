@@ -82,6 +82,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   const view = (VIEWS.find((v) => v.value === searchParams.get("view"))?.value ?? "all") as View;
   const errorsOnly = searchParams.get("errors") === "1";
   const showLifecycle = searchParams.get("lifecycle") === "1";
+  const plainText = searchParams.get("text") === "plain";
   const selectedStep = parseStepKey(searchParams.get("step"));
   const failureSequence = Number(searchParams.get("failure") || 0);
   const linkedFailure =
@@ -389,6 +390,25 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
             </button>
           ))}
         </div>
+        <div role="radiogroup" aria-label={ui("Message format")} className="flex border">
+          {([false, true] as const).map((plain) => (
+            <button
+              key={String(plain)}
+              type="button"
+              role="radio"
+              aria-checked={plainText === plain}
+              onClick={() => setParams({ text: plain ? "plain" : null })}
+              className={cn(
+                "h-7 px-3 text-xs font-medium",
+                plainText === plain
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted",
+              )}
+            >
+              {plain ? ui("Plain text") : ui("Markdown")}
+            </button>
+          ))}
+        </div>
         <label className="flex items-center gap-2 text-xs">
           <Checkbox
             checked={errorsOnly}
@@ -513,6 +533,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                         turn={row.turn}
                         step={row.step}
                         view={view}
+                        plainText={plainText}
                         selected={
                           !batch &&
                           !childStep &&
@@ -538,6 +559,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                         turn={row.turn}
                         step={row.step}
                         view={view}
+                        plainText={plainText}
                         nested
                         selected={
                           !batch &&

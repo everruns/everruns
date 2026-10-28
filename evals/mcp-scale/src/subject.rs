@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use crate::event_usage;
 use everruns::{Agent, CapabilityRef, InMemoryEngine, McpServer, Provider, Session, SessionEvent};
-use mira::subject::summarize_events;
 use mira::{ErrorKind, RunCx, Sample, Subject, Target, Transcript};
 use serde_json::{Value, json};
 
@@ -201,8 +201,7 @@ fn finish(transcript: &mut Transcript, catalog_size: usize, state_paths: &[std::
     transcript
         .metadata
         .insert("fixture_state_snapshots".into(), json!(snapshots));
-    let (usage, _) = summarize_events(&transcript.events);
-    transcript.usage = usage;
+    event_usage::summarize_events(&transcript.events).apply_to(transcript);
     transcript.tool_calls = transcript
         .events
         .iter()
@@ -215,7 +214,7 @@ fn finish(transcript: &mut Transcript, catalog_size: usize, state_paths: &[std::
         })
         .collect();
     transcript.tool_calls_count = transcript.tool_calls.len();
-    let mcp_calls = transcript
+    let mcp_calls: Vec<_> = transcript
         .events
         .iter()
         .filter(|event| {
@@ -231,8 +230,12 @@ fn finish(transcript: &mut Transcript, catalog_size: usize, state_paths: &[std::
                         .is_some_and(|name| name.starts_with("mcp_"))
                     && event.pointer("/data/status").and_then(Value::as_str) == Some("completed"))
         })
-        .count();
-    transcript.record_metric("mcp.calls", mcp_calls as f64);
+        .filter_map(|event| event.pointer("/data/tool_name").and_then(Value::as_str))
+        .map(str::to_owned)
+        .collect();
+    let unique_operations: std::collections::HashSet<_> = mcp_calls.iter().collect();
+    transcript.record_metric("mcp.calls", mcp_calls.len() as f64);
+    transcript.record_metric("mcp.unique_operations", unique_operations.len() as f64);
     transcript.record_metric("mcp.catalog_tools", catalog_size as f64);
     transcript.record_metric("mcp.input_tokens", transcript.usage.input_tokens as f64);
 }
