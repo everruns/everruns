@@ -359,7 +359,7 @@ export default function ReportsPage() {
         }
       />
 
-      <PageMain className="space-y-6">
+      <PageMain className="gap-6">
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="pb-2">
