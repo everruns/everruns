@@ -533,10 +533,10 @@ pub fn visible_event_types(visibility: ApiVisibility) -> Option<Vec<String>> {
 }
 
 /// An event as every API surface publishes it: the canonical envelope after
-/// [`Event::into_public`], which strips reasoning replay state. Projection
+/// [`Event::into_public`], which projects metadata and strips replay state. Projection
 /// starts from this, so no visibility can return more than `/v1` would.
 pub fn public_event_json(event: &Event) -> Option<Value> {
-    if event.data.needs_public_projection() {
+    if event.metadata.is_some() || event.data.needs_public_projection() {
         serde_json::to_value(event.clone().into_public()).ok()
     } else {
         serde_json::to_value(event).ok()
@@ -582,8 +582,7 @@ pub fn project_event(mut event: Value, config: &AgentApiChannelConfig) -> Option
         }
         _ => return None,
     };
-    // Event metadata and tags carry internal routing and execution detail, so
-    // only `full` returns them.
+    // Reduced visibility withholds even the reviewed provenance and tags.
     Some(json!({
         "id": event["id"],
         "type": event["type"],
@@ -749,6 +748,36 @@ fn public_turn_failure(data: &Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_visibility_modes_hide_internal_metadata() {
+        let mut message = everruns_core::RuntimeMessage::assistant("answer");
+        message.metadata = Some(
+            serde_json::from_value(
+                json!({"tool_changes":{"system_prompt":"CANARY"}, "model":"test"}),
+            )
+            .unwrap(),
+        );
+        let event = Event::new(
+            SessionId::new(),
+            everruns_core::EventContext::empty(),
+            everruns_core::events::OutputMessageCompletedData::new(message),
+        )
+        .with_metadata(json!({"authority":"CANARY"}));
+        for visibility in [
+            ApiVisibility::Messages,
+            ApiVisibility::Activity,
+            ApiVisibility::Full,
+        ] {
+            let public = project_event(
+                public_event_json(&event).unwrap(),
+                &config(visibility, ApiErrorDetail::Detailed),
+            )
+            .unwrap();
+            assert!(!public.to_string().contains("CANARY"));
+            assert!(public.to_string().contains("answer"));
+        }
+    }
 
     fn event(event_type: &str, data: Value) -> Value {
         json!({

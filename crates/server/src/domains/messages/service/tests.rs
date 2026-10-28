@@ -865,3 +865,76 @@ async fn a_duplicate_send_marks_a_stored_message_whose_turn_never_started() {
     assert!(actor.runnable_since.is_none(), "{actor:?}");
     assert_eq!(input_count(&db, &session).await, 1);
 }
+
+#[test]
+fn historical_message_formats_hide_runtime_metadata() {
+    let mut message = everruns_core::RuntimeMessage::assistant("answer");
+    message.metadata = Some(
+        serde_json::from_value(serde_json::json!({
+            "model":"test-model", "tool_changes":{"system_prompt":"CANARY"},
+            "future_internal":"CANARY"
+        }))
+        .unwrap(),
+    );
+    let event = everruns_core::Event::new(
+        SessionId::new(),
+        everruns_core::EventContext::empty(),
+        everruns_core::events::OutputMessageCompletedData::new(message),
+    );
+    for stored in [
+        serde_json::to_value(&event).unwrap(),
+        serde_json::to_value(&event.data).unwrap(),
+    ] {
+        let public = MessageService::event_to_message(
+            event.session_id.uuid(),
+            &stored,
+            &event.event_type,
+            1,
+        )
+        .unwrap();
+        let json = serde_json::to_string(&public).unwrap();
+        assert!(!json.contains("CANARY"));
+        assert!(json.contains("test-model"));
+        assert!(stored.to_string().contains("CANARY"));
+    }
+}
+
+#[tokio::test]
+async fn create_duplicate_and_list_project_metadata_without_changing_storage() {
+    let db = Arc::new(StorageBackend::test_database());
+    let svc = MessageService::new(
+        db.clone(),
+        Arc::new(NoopRunner),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
+    );
+    let session = create_test_session(&db, 1).await;
+    let mut request = CreateMessageRequest::user("hello");
+    request.client_message_id = Some(Uuid::now_v7());
+    request.metadata = Some(
+        serde_json::from_value(serde_json::json!({
+            "custom":{"ticket":"ticket-1"}, "future_internal":"CANARY", "source":"api"
+        }))
+        .unwrap(),
+    );
+    for _ in 0..2 {
+        let message = svc
+            .create(send_ctx(&session), request.clone())
+            .await
+            .unwrap();
+        let public = serde_json::to_string(&message).unwrap();
+        assert!(!public.contains("CANARY"));
+        assert!(public.contains("ticket-1"));
+        assert!(public.contains("everruns_client_message_id"));
+    }
+    let messages = svc.list(session.id.uuid()).await.unwrap();
+    assert!(!serde_json::to_string(&messages).unwrap().contains("CANARY"));
+    let stored = db
+        .list_message_events_limited(session.id, None)
+        .await
+        .unwrap();
+    assert!(
+        stored
+            .iter()
+            .any(|row| row.data.to_string().contains("CANARY"))
+    );
+}

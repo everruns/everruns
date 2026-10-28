@@ -434,6 +434,7 @@ impl Event {
     /// [`EventData::into_public`]. Apply at every event read boundary.
     pub fn into_public(mut self) -> Self {
         self.data = self.data.into_public();
+        self.metadata = self.metadata.as_ref().map(crate::public_metadata::event);
         self
     }
 
@@ -787,6 +788,9 @@ impl EventData {
                     .map(RuntimeMessage::into_public)
                     .collect();
                 data.request_body = data.request_body.map(llm_data::public_request_body);
+                // Replay bookkeeping is not a diagnostic request field. The
+                // intentional prompts/tools above and trace name summary remain.
+                data.metadata.tool_changes = None;
                 EventData::LlmGeneration(data)
             }
             other => other,

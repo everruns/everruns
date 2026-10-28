@@ -627,3 +627,17 @@ async fn reasoning_delta_omits_the_repeated_accumulated_prefix() {
     assert!(event.as_json()["data"].get("accumulated").is_none());
     assert!(event.canonical_json()["data"].get("accumulated").is_none());
 }
+
+#[test]
+fn reviewed_envelope_filters_metadata_but_canonical_keeps_replay() {
+    let event = everruns_core::Event::new(
+        SessionId::new(),
+        everruns_core::EventContext::empty(),
+        everruns_core::events::InputMessageData::new(everruns_core::RuntimeMessage::user("hi")),
+    )
+    .with_metadata(json!({"initiator":{"type":"user","user_id":"u1"},"authority":"CANARY"}));
+    let view = SessionEvent::from_core_event(&event);
+    assert!(!view.as_json().to_string().contains("CANARY"));
+    assert_eq!(view.as_json()["metadata"]["initiator"]["user_id"], "u1");
+    assert!(view.canonical_json().to_string().contains("CANARY"));
+}

@@ -275,6 +275,7 @@ async fn test_events_do_not_publish_reasoning_replay_state() {
                 text: "visible reasoning".to_string(),
             }),
     ));
+    message.metadata = Some(serde_json::from_value(json!({"model":"test-model", "tool_changes":{"system_prompt":"METADATA-CANARY"}, "unknown":"METADATA-CANARY"})).unwrap());
     let data = everruns_core::EventData::OutputMessageCompleted(
         everruns_core::events::OutputMessageCompletedData::new(message),
     );
@@ -299,7 +300,16 @@ async fn test_events_do_not_publish_reasoning_replay_state() {
         .assert_status(StatusCode::OK)
         .json();
 
+    for path in [
+        format!("/v1/sessions/{}/messages", session.id),
+        format!("/v1/sessions/{}/export?format=jsonl", session.id),
+    ] {
+        let response = server.get(&path).await.assert_status(StatusCode::OK);
+        assert!(!response.text().contains("METADATA-CANARY"));
+        assert!(response.text().contains("test-model"));
+    }
     let published = serde_json::to_string(&body).expect("serialize response");
+    assert!(!published.contains("METADATA-CANARY"));
     assert!(
         !published.contains("sig-do-not-publish"),
         "reasoning signature must not reach the events API: {published}"

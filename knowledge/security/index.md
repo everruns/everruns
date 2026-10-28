@@ -17,3 +17,5 @@
 * [Machine Payments](machine-payments.md) - Capability-side payments to external paid services.
 * [Secret-leak Guardrails](secret-leak-guardrails.md) - Defense-in-depth semantic detection and deterministic known-value redaction.
 * [CI Secret Handling](ci-secret-handling.md) - Keeping runtime-fetched credentials out of Actions logs.
+
+* [Public Message Metadata](public-message-metadata.md) - Public conversation projection and trusted replay boundary.
