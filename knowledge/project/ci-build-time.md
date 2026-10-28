@@ -107,7 +107,6 @@ uses the existing 45-minute repository ceiling so this cold path can finish its
 selected integration and authorization contracts. No tests, cache keys, compiler
 flags or execution concurrency changed; this is timeout headroom, not a speedup.
 
-
 Taken from the domain shard before any change ([run 35165812202](https://github.com/everruns/everruns/actions/runs/35165812202), 16.2 min total):
 
 | Step | Build | Tests |
