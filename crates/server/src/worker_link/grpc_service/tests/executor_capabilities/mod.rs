@@ -16,6 +16,7 @@ use std::{sync::Mutex, time::Duration};
 use tonic::codegen::{Service as _, http};
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity, ServerTlsConfig};
 
+mod lifecycle;
 mod negatives;
 mod records;
 
@@ -146,6 +147,7 @@ async fn assignment_window(
     .execute(db.database().pool())
     .await
     .unwrap();
+    seed_dependency(db, grant, session, org).await;
     Assignment {
         session,
         grant,
@@ -154,6 +156,41 @@ async fn assignment_window(
         digest,
         byte,
     }
+}
+
+// Revocation prerequisites only: no secret payload or resource-use authority
+// is created for the executor. Fixtures use session-scoped service consent.
+async fn seed_dependency(
+    db: &StorageBackend,
+    grant: uuid::Uuid,
+    session: SessionId,
+    org: i64,
+) -> (uuid::Uuid, uuid::Uuid) {
+    let resource = uuid::Uuid::new_v4();
+    let source = uuid::Uuid::new_v4();
+    sqlx::query("INSERT INTO resource_access (id,org_id,kind,scope,usage) VALUES ($1,$2,'credential_binding','organization','service')")
+        .bind(resource).bind(org).execute(db.database().pool()).await.unwrap();
+    sqlx::query("INSERT INTO resource_grants (id,org_id,resource_id,consumer_scope,consumer_session_id,usage) VALUES ($1,$2,$3,'session',$4,'service')")
+        .bind(source).bind(org).bind(resource).bind(session).execute(db.database().pool()).await.unwrap();
+    register_dependency(db, grant, source, resource)
+        .await
+        .unwrap();
+    (source, resource)
+}
+
+async fn register_dependency(
+    db: &StorageBackend,
+    grant: uuid::Uuid,
+    source: uuid::Uuid,
+    resource: uuid::Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("INSERT INTO worker_journal_grant_dependencies \
+        (grant_id,source_grant_id,source_resource_id,grant_revision,resource_revision,grant_epoch,resource_epoch) \
+        SELECT $1,rg.id,ra.id,rg.revision,ra.revision,rg.worker_authorization_epoch,ra.worker_authorization_epoch \
+        FROM resource_grants rg JOIN resource_access ra ON ra.id=rg.resource_id \
+        WHERE rg.id=$2 AND ra.id=$3")
+        .bind(grant).bind(source).bind(resource).execute(db.database().pool()).await?;
+    Ok(())
 }
 
 #[derive(Clone)]

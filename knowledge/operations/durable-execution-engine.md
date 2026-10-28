@@ -596,9 +596,37 @@ capability issuer exists. The migration creates empty records. Identity and
 capability bindings cannot be retargeted, extended, un-revoked or recycled;
 parent purge leaves unusable digest tombstones. Trusted issuance still needs
 certificate enrollment/validity policy, secure proof delivery, retention and
-resource budgets, and integration with underlying user/agent revocation before
+resource budgets, and complete underlying user/custom-policy provenance before
 activation. A qualified listener must supply actual verified mTLS connection
 evidence; a TLS-terminating proxy's headers are insufficient. Transport peers
 sharing one process's identities or proofs still share its authority.
+
+The source-only [lifecycle admission](../../crates/server/src/storage/repositories/session_actors/capability_admission.rs)
+also requires explicit supporting grants. These are revocation prerequisites,
+not permission to read a journal or use a resource. This first supported class
+is session-scoped service grants to organization-owned service resources; personal, agent-consumer and wider
+scopes cannot be enrolled without verified invocation provenance. No issuer
+selects or registers dependencies in production. A future trusted issuer must
+prove journal authority independently and register the complete dependency set;
+one arbitrary live resource grant is insufficient evidence of that authority.
+
+[Database lifecycle triggers](../../crates/server/migrations/20261028115847_worker_grant_lifecycle_revocation.sql)
+pin database-owned versions at assignment creation and dependency registration.
+Resource/grant edits or deletion, session identity or archive changes, configured
+agent identity or status changes, cancellation, lease release/reassignment, and
+renewing an expired lease revoke old grants atomically. Forward renewal of a live
+lease and session title changes preserve it. Versions remain monotonic when old
+values are restored; deleted source references become immutable tombstones, so
+recreating identifiers cannot revive a proof. An elapsed supporting-grant expiry
+is refused online; extending it requires a fresh assignment. Existing grants
+without captured origins or dependencies fail closed rather than being backfilled.
+
+Registration locks source records before the assignment. Creation serializes
+against lifecycle changes. Online admission checks current versions as well as
+revocation, so a racing uncommitted registration cannot escape by missing an
+update notification. Admission linearizes at the database statement snapshot:
+a revocation committed before admission is denied; an earlier admitted read can
+finish afterward. Retained contexts and new connections both recheck. There is
+no promise to retract data already delivered or synchronously stop in-flight reads.
 
 **Design decision**: Workers are intentionally cross-org. Org-scoping is enforced at the HTTP API layer, not the gRPC transport.
