@@ -1,6 +1,6 @@
 ---
 title: Several control-plane instances without NATS no longer split live chat
-description: Instances that cannot share live events through NATS now poll PostgreSQL for them and report degraded health, instead of silently missing other instances' events.
+description: Instances that cannot share live events through NATS now poll PostgreSQL for them and report degraded health instead of silently missing events.
 date: 2026-10-28
 kind: fix
 significance: minor
