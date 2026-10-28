@@ -3,7 +3,15 @@ use everruns_contracts::typed_id::SessionId;
 use tonic::service::Interceptor;
 
 fn scope() -> ActorJournalScope {
-    ActorJournalScope::new(2, SessionId::new(), "executor".into(), 1).unwrap()
+    ActorJournalScope::new(
+        uuid::Uuid::new_v4(),
+        uuid::Uuid::new_v4(),
+        2,
+        SessionId::new(),
+        "executor".into(),
+        1,
+    )
+    .unwrap()
 }
 
 #[test]

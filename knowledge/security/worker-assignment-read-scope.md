@@ -58,11 +58,47 @@ not grant access. Foreign and absent selectors receive the same refusal.
 Admission linearizes at the database statement's snapshot. A read admitted
 before lease release/reassignment may finish afterward; already delivered bytes
 cannot be retracted. A revocation committed before a new admission is refused.
-Capability/grant revocation beyond the actor lease is not implemented here.
+The journal authorization grant is independently revocable. Credential and
+underlying user/agent resource-grant integration remain unimplemented.
+
+## Independent journal authorization
+
+A [stored journal-read grant](../../crates/server/migrations/20261028074331_worker_journal_read_grants.sql)
+is now mandatory for scoped reads. Admission checks its executor and assignment
+binding, database-clock validity and revocation together with the live lease
+in one statement. An active lease alone cannot preserve a revoked or expired
+authorization. A new grant for the same executor and lease does not resurrect
+a retained old reference. Missing, foreign and mismatched grants all refuse
+without revealing a foreign journal.
+
+These records and executor references are not credentials. Matching an executor
+identifier does not authenticate a workload. A future identity adapter must
+resolve that identifier from verified identity and bind an actual capability
+to the grant; caller headers and grant IDs are insufficient. No production
+producer creates grants or scopes, and no worker/public API exposes grant
+creation or the trusted control plane's org-scoped revocation operation.
+
+Grant bindings and deadlines are immutable, revocation is irreversible, and
+records remain as tombstones while their parent session and org are live.
+Ordinary row deletion cannot recycle a revoked reference. Parent deletion
+removes the grant along with its data. Database owner/control-plane compromise
+remains outside this component's trust boundary. Deadlines are finite and
+bounded by the actor maximum lease window; effective admission ends at the
+earlier grant or actual lease expiry. Renewing a lease never extends the grant.
+
+[Grant regressions](../../crates/server/src/worker_link/grpc_service/tests/assignment_scope/grants.rs)
+first reproduced six lease-only admission failures, including foreign journal
+reads with a contradictory grant binding and equal holder/fence values. They
+exercise revocation without releasing the lease, reconnect/replay after
+replacement, unknown grants, expired/not-yet-valid grants and cross-executor
+or cross-tenant substitution. Separate database tests enforce immutable
+bindings/deadlines, tombstone retention and tenant-scoped revocation. The
+executor identity adapter in these tests is a synthetic server assertion, not
+production identity or credential qualification.
 
 ## Qualification of this slice
 
-[Network regressions](../../crates/server/src/worker_link/grpc_service/tests/assignment_scope.rs)
+[Network regressions](../../crates/server/src/worker_link/grpc_service/tests/assignment_scope/mod.rs)
 use the actual gRPC service and isolated PostgreSQL with two fixture tenants.
 A fixed trusted test interceptor stands in for identity integration; it issues
 no credentials and is not evidence of production workload authentication.
@@ -77,8 +113,8 @@ boundary, not an end-to-end worker-isolation guarantee.
 ## Dependencies before activation
 
 The broader [assignment-bound design proposal](https://github.com/everruns/everruns/pull/4987)
-requires a separate executor identity and capability issuer, online capability
-and grant revocation, protected-assignment routing/storage and a security version
+requires a separate executor identity and capability issuer, online credential
+and underlying user/agent grant revocation, protected-assignment routing/storage and a security version
 floor. Every legacy and alternate route must refuse protected assignments.
 Standard bearer-authenticated wire clients keep their existing protocol. Custom
 server adapters and direct calls to the public RPC implementation must establish

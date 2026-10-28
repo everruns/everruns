@@ -17,10 +17,13 @@ fn denied() -> Status {
 
 /// A server-resolved actor assignment permitted to read its journal only.
 ///
-/// The lease is rechecked at each admission; holding this value is not proof
-/// that the lease remains live. Other RPCs must fail closed for this scope.
+/// Executor and grant references are not credentials or identity proofs. The
+/// stored authorization and lease are rechecked at each admission; retaining
+/// this value never preserves a revoked grant. Other RPCs must fail closed.
 #[derive(Clone, Debug)]
 pub struct ActorJournalScope {
+    pub(super) grant_id: uuid::Uuid,
+    pub(super) executor_id: uuid::Uuid,
     pub(super) org_id: i64,
     pub(super) session_id: SessionId,
     pub(super) holder: String,
@@ -29,17 +32,28 @@ pub struct ActorJournalScope {
 
 impl ActorJournalScope {
     /// Scope already resolved by a trusted assignment/identity adapter.
-    /// This validates shape only, not the caller's identity or authority.
+    /// This validates shape only, not the caller's identity or authority. The
+    /// adapter must bind the executor to verified identity, never metadata.
     pub fn new(
+        grant_id: uuid::Uuid,
+        executor_id: uuid::Uuid,
         org_id: i64,
         session_id: SessionId,
         holder: String,
         fence: i64,
     ) -> Result<Self, Status> {
-        if org_id <= 0 || holder.trim().is_empty() || fence <= 0 {
+        if grant_id.is_nil()
+            || executor_id.is_nil()
+            || org_id <= 0
+            || holder.trim().is_empty()
+            || holder.len() > 256
+            || fence <= 0
+        {
             return Err(Status::invalid_argument("Invalid actor journal scope"));
         }
         Ok(Self {
+            grant_id,
+            executor_id,
             org_id,
             session_id,
             holder,
@@ -58,7 +72,14 @@ impl ActorJournalScope {
             return Err(denied());
         }
         let allowed = db
-            .actor_journal_read_allowed(self.org_id, self.session_id, &self.holder, self.fence)
+            .actor_journal_read_allowed(
+                self.org_id,
+                self.session_id,
+                &self.holder,
+                self.fence,
+                self.grant_id,
+                self.executor_id,
+            )
             .await
             .map_err(|error| {
                 super::worker::support::internal_status(
