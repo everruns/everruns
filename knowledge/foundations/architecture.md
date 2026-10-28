@@ -325,6 +325,24 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
 
 See [knowledge/operations/durable-execution-engine.md](../operations/durable-execution-engine.md) for the durable engine architecture.
 
+Single-message reads at turn startup resolve the session-scoped message ID through
+an expression index on message events. They must not load the conversation window:
+that repeats JSON transfer and parsing on every turn and hides older inputs behind
+the history safety cap. The [retriever](../../crates/server/src/storage/runtime/message.rs)
+retains legacy event-envelope support and skips malformed duplicate records in log
+order. In-process workers also resolve their event-derived tool-result IDs through
+the event primary key; generated tool-result IDs in the runtime/gRPC projection
+remain unstored.
+The [lookup regressions](../../crates/server/src/storage/runtime/message.rs) and
+[benchmark](../../crates/server/benches/message_lookup.rs) cover the history boundary, formats, isolation and retrieval cost at increasing depth.
+
+### Customer-hosted custom execution
+
+Custom agent implementations use a separate, opt-in, agent-scoped service, never
+an internal fleet credential. The control plane retains intake, actor leases and
+canonical event fan-out. See [Custom workers](../operations/custom-workers.md)
+for authority, persistent routing, recovery responsibilities and isolation limits.
+
 ### Worker ↔ Control-Plane Communication
 
 Workers communicate with the control-plane via gRPC instead of direct database access:
@@ -809,7 +827,7 @@ Multiple control-plane instances can run behind a load balancer for HA.
 | Task claiming (SKIP LOCKED) | Naturally partitions work |
 | Worker registration | Database-backed, any server can serve any worker |
 | PgListener (task_available) | Each instance runs its own listener; all receive NOTIFY |
-| PgListener (event_available) | Same; SSE clients on any instance see all events |
+| Live session events | NATS carries them across instances; without NATS, in-memory delivery covers a single instance only |
 | Rate limiting (Valkey) | Shared sliding-window counters when `VALKEY_URL` set |
 
 ### Configuration (`EXPECTED_INSTANCES`)

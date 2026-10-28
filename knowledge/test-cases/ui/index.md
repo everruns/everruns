@@ -5,6 +5,7 @@
 * [Agent avatars](agent_avatars/) - Manual UI cases.
 * [Agent chat](agent_chat/) - Manual UI cases.
 * [Agent checks](agent_checks/) - Manual UI cases.
+* [Agent cost estimation](agent_cost/) - Manual UI cases.
 * [Agent credentials](agent_credentials/) - Manual UI cases.
 * [Virtual users](agent_identities/) - Manual UI cases.
 * [Agent integrations](agent_integrations/) - Manual UI cases.
@@ -66,3 +67,4 @@
 * [Work Chat](work_chat/) - Hosted consumer identity, interfaces and workspace boundaries.
 
 * [Customer tracing](tracing/) - Protected destinations, multi-target routing and delivery feedback.
+* [Custom workers](custom_workers/) - Existing Playground and trace rendering of custom execution.

@@ -168,7 +168,8 @@ test("reviews a GitHub package, locks editing, and disconnects without losing th
     });
   await page.getByRole("menuitem", { name: "Sync with GitHub", exact: true }).click();
   await expect(page.getByRole("button", { name: "Enable continuous sync" })).toBeDisabled();
-  await page.getByLabel("Repository", { exact: true }).selectOption("acme/agents");
+  await page.getByLabel("Repository", { exact: true }).click();
+  await page.getByRole("option", { name: "acme/agents", exact: true }).click();
   await expect(page.getByLabel("Branch", { exact: true })).toHaveValue("main");
   await page.getByLabel("Package folder or manifest").fill("agents/support");
   await page.getByRole("button", { name: "Preview changes", exact: true }).click();

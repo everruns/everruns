@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { TeamIcon } from "@/components/icons/facet-icons";
@@ -95,6 +96,7 @@ function MemberCard({
 }) {
   const { displayLocale } = useLocale();
 
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   const updateRole = useUpdateMemberRole();
   const removeMember = useRemoveMember();
@@ -124,7 +126,7 @@ function MemberCard({
   };
 
   const handleRemove = async () => {
-    if (!confirm(`Remove ${member.name} from this organization?`)) return;
+    if (!(await requestConfirmation(`Remove ${member.name} from this organization?`))) return;
     try {
       await removeMember.mutateAsync(member.user_id);
     } catch {
@@ -245,12 +247,13 @@ const INVITE_STATUS_LABEL: Record<InvitationStatus, string> = {
 };
 
 function InviteRow({ invite, canManage }: { invite: Invitation; canManage: boolean }) {
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   const revokeInvite = useRevokeInvite();
   const isExpired = invite.status === "expired";
 
   const handleRevoke = async () => {
-    if (!confirm(`Revoke the invitation for ${invite.email}?`)) return;
+    if (!(await requestConfirmation(`Revoke the invitation for ${invite.email}?`))) return;
     try {
       await revokeInvite.mutateAsync(invite.id);
     } catch {

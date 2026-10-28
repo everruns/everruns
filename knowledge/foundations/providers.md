@@ -494,6 +494,17 @@ Yolop consumes the same driver package and credential types. Its settings
 adapter supplies a cross-process lease and an atomic compare-and-save so an
 external login/logout cannot be overwritten by an in-flight refresh.
 
+OAuth hosts assemble Codex and plan providers through one
+[typed builder](../../crates/drivers/drivers/src/codex/driver.rs), so chat and
+model discovery share the same authenticated provider and cannot drift. The
+grant's route is a typed value, never a string parsed from provider metadata.
+The upstream API is generic over a host token store, never a file path; file
+persistence and locking stay in the host. There is no cross-driver auth enum:
+each driver exposes only the auth it supports, and an impossible combination
+fails at construction with a named error rather than at the first request.
+Every chat driver implements `list_models` under its own auth policy, Codex
+included, so discovery needs no provider allowlist.
+
 ## Decision model services
 
 The same runtime provider may expose chat, decisions and embeddings using one authentication owner.

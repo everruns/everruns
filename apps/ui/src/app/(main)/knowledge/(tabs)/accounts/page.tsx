@@ -13,6 +13,7 @@ import {
   useKnowledgeIndexers,
 } from "@/components/knowledge/use-knowledge";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useKnowledgeAccountRows } from "@/components/knowledge/use-knowledge-page-context";
 
 // Accounts tab: the organization's search accounts (Turbopuffer) that indexed
 // collections store their index in. The page header, tabs and "Add search
@@ -23,6 +24,10 @@ export default function KnowledgeAccountsPage() {
   const ui = useUiTranslations();
   usePageTitle(ui("Accounts"), ui("Knowledge"));
   const indexers = useKnowledgeIndexers();
+  useKnowledgeAccountRows(indexers.data ?? [], {
+    loading: indexers.isLoading,
+    error: !!indexers.error,
+  });
   const collections = useKnowledgeCollections();
   const all = collections.data?.pages.flatMap((page) => page.data) ?? [];
   return (

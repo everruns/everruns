@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 /**
  * My MCP servers: MCP servers a person added for themselves, from the
@@ -94,6 +95,7 @@ function removeWarning(server: UserMcpServer) {
 function ServerRow({ identityId, server }: { identityId: string; server: UserMcpServer }) {
   const { displayLocale } = useLocale();
 
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   const update = useUpdateUserMcpServer(identityId);
   const remove = useRemoveUserMcpServer(identityId);
@@ -207,8 +209,8 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
           size="sm"
           className="text-destructive"
           disabled={remove.isPending}
-          onClick={() => {
-            if (confirm(removeWarning(server))) {
+          onClick={async () => {
+            if (await requestConfirmation(removeWarning(server))) {
               remove.mutate(server.id);
             }
           }}

@@ -178,6 +178,13 @@ with their scorer collection read-only; metadata edits preserve them.
 Credential-bearing URL fields disable their adapter and incoming URL patches are
 validated. No redacted credential is ever written back as a form value.
 
+Tracing provides bounded destination status rows and a routing draft with normal
+Save/Discard and history. Organization defaults retain their fixed routing mode.
+Loading or failed policy reads mask underlying editors, including cached-data
+failures. Receiver credentials, content capture and delivery actions remain manual.
+Interface-language drafts use the registered locale catalog and affect this device
+only; execution locale and resource history remain separate.
+
 Providers have independent details, tracing and advanced Save forms. Their shared
 page binding returns named forms and permits one named form per patch. A collection
 uses the page title for its context chip, rather than the last registered form. Child
@@ -268,6 +275,40 @@ non-modal and outside-pointer dismissal is disabled: focusing Chat keeps the for
 mounted. Explicit Close/Escape still work. The common two-column page body responds
 to the page pane's width. Feature-off pages retain their normal controls and shell.
 
+## Coverage of new interfaces
+
+Authenticated pages have an explicit coverage inventory in
+[`chat-page-coverage.json`](../../apps/ui/src/test-utils/chat-page-coverage.json).
+Its regression gate fails on added or moved pages until their editor, view,
+conversation, manual-action or redirect contract is reviewed. It tests the common
+fallback binding and refusal behavior; a catalog entry is not a rendered-page or
+live-model acceptance result. Field fixtures independently enumerate the shared
+schemas and exercise each field, omitted-value preservation, read-only access,
+revoked authority and stale baselines. Rendered editor and browser tests
+complement these common contracts.
+
+The tabbed Knowledge interface shares those contracts. Collection settings follow
+clean refreshes and preserve dirty drafts on concurrent updates. Collection,
+account, source and search views expose bounded displayed metadata. Search excerpts,
+source configuration, credential bindings and raw errors stay outside those
+projections. The shared file browser follows only expanded visible ancestors and
+bounds its projection before walking a large catalog; file bodies and file-write
+actions retain their manual controls. Its layout uses the page pane's width.
+
+Agent and Harness display translations use a bounded locale-keyed draft schema;
+translations cannot alter execution instructions or stable resource identity.
+They follow the resource's ordinary Save, saved review and guarded Undo. Interface
+language is a separate device preference: Adoption stages it until Save, while
+feature-off behavior still switches immediately. It has no server entity history.
+
+Manager notes acquire their own high-priority sheet binding. They are readable
+only when the authorized sheet is open, writable only after Edit, and retain the
+notes endpoint's own expected revision on Save. Draft diffs and Undo stay local;
+notes writes remain context-history entries rather than resource-snapshot inverses.
+Protected history, sandbox and file overlays mask underlying writable forms and
+restore their bindings on close. Installation health exposes status and check
+identity only after platform-policy authorization; diagnostic payloads remain out.
+
 ## Live Agent drafts
 
 The Agent page registers a typed form adapter with the shell. The managed
@@ -335,6 +376,8 @@ starts a fresh observation baseline while History remains available.
 Selected-field Undo runs through the resource's normal update validation,
 permissions and manager context. Unsupported old values refuse the inverse and
 keep its receipt; the UI must not treat a failed inverse as a successful Undo.
+Replacement-style update commands receive current values for unselected settings
+so a field inverse cannot reset other saved configuration through input defaults.
 Secrets and protected authority remain current. A dirty form keeps its values
 when the saved definition changes and blocks Save until Discard rebases it.
 Dismissing review markers does not remove that conflict.

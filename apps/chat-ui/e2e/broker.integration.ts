@@ -218,6 +218,14 @@ async function main() {
     assert.equal(rows.rows.filter((row) => row.kind === "session").length, 1);
     assert.ok(rows.rows.every((row) => !row.payload.includes("provider-fixture")));
     assert.equal((await context.request.get(`${origin}/api/sessions`)).status(), 200);
+    const recovery = await (await context.request.get(`${origin}/api/chat/recovery`)).json();
+    assert.match(recovery.scope, /^[A-Za-z0-9_-]{43}$/);
+    assert.notEqual(recovery.scope, session.value, "recovery namespace is not a credential");
+    assert.deepEqual(
+      await (await context.request.get(`${origin}/api/chat/recovery`)).json(),
+      recovery,
+    );
+
     assert.ok(handoff);
     assert.equal((await context.request.get(handoff)).status(), 400, "handoff replay");
     const sibling = "01933b5a000070008000000000000002.localhost";
@@ -249,6 +257,7 @@ async function main() {
       0,
     );
     assert.equal((await context.request.get(`${origin}/api/sessions`)).status(), 401);
+    assert.equal((await context.request.get(`${origin}/api/chat/recovery`)).status(), 401);
     assert.ok(admissions >= 2);
     let limited = 0;
     for (let attempt = 0; attempt < 6; attempt++) {

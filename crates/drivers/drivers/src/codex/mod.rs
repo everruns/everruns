@@ -1,9 +1,17 @@
 //! Legacy Codex backend protocol, sharing the Responses transport and parser.
+//!
+//! OAuth hosts assemble a provider with [`driver()`] (store-backed, rotating)
+//! or [`driver::ephemeral`] (a grant held in memory); both serve chat and model
+//! discovery from the same [`Provider`].
+pub mod driver;
+pub use crate::chatgpt::auth::{MemoryTokenStore, TokenRoute, TokenStore};
+pub use driver::{CodexDriverBuilder, CodexDriverError, driver};
+
 use async_trait::async_trait;
 use everruns_contracts::{
-    BearerAuth, ChatDriver, CompactRequest, CompactResponse, DriverId, DriverRegistry,
-    LlmCallConfig, LlmResponseStream, Message, ModelProfile, OpenResponsesProtocolChatDriver,
-    Provider, ProviderEndpoint, get_model_profile,
+    BearerAuth, ChatDriver, CompactRequest, CompactResponse, DiscoveredModel, DriverId,
+    DriverRegistry, LlmCallConfig, LlmResponseStream, Message, ModelProfile,
+    OpenResponsesProtocolChatDriver, Provider, ProviderEndpoint, ProviderKey, get_model_profile,
 };
 use everruns_contracts::{
     driver_registry::DriverDescriptor, error::Result,
@@ -18,6 +26,10 @@ use std::{
 };
 pub const CODEX_DRIVER_ID: &str = "openai-codex";
 pub const CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
+/// Codex CLI version reported to the catalog. The backend hides models whose
+/// `minimal_client_version` is newer, so hosts may raise it with
+/// [`CodexChatDriver::with_client_version`] or the builder.
+pub const CODEX_CLIENT_VERSION: &str = "0.164.0";
 struct CodexRequest;
 impl OpenResponsesRequestExtension for CodexRequest {
     fn decorate(&self, body: &mut Value, _config: &LlmCallConfig) -> Result<()> {
@@ -48,6 +60,7 @@ impl OpenResponsesRequestExtension for CodexRequest {
 pub struct CodexChatDriver {
     inner: OpenResponsesProtocolChatDriver,
     unavailable_until: Arc<Mutex<HashMap<[u8; 32], Instant>>>,
+    client_version: Arc<str>,
 }
 impl Default for CodexChatDriver {
     fn default() -> Self {
@@ -65,7 +78,13 @@ impl CodexChatDriver {
                 .with_required_completion(true)
                 .with_request_extension(Arc::new(CodexRequest)),
             unavailable_until: Arc::new(Mutex::new(HashMap::new())),
+            client_version: CODEX_CLIENT_VERSION.into(),
         }
+    }
+    /// Codex client version sent as `client_version` on catalog requests.
+    pub fn with_client_version(mut self, version: impl AsRef<str>) -> Self {
+        self.client_version = version.as_ref().into();
+        self
     }
 }
 #[async_trait]
@@ -88,6 +107,21 @@ impl ChatDriver for CodexChatDriver {
     }
     fn supports_compact(&self) -> bool {
         true
+    }
+    /// The Codex catalog, authenticated like chat: OAuth bearer plus the
+    /// `chatgpt-account-id` and `originator` headers from the provider's auth.
+    async fn list_models(
+        &self,
+        endpoint: &ProviderEndpoint,
+    ) -> Result<Option<Vec<DiscoveredModel>>> {
+        let mut path = reqwest::Url::parse("http://localhost/models")
+            .map_err(|_| everruns_contracts::AgentLoopError::llm("Invalid Codex catalog path"))?;
+        path.query_pairs_mut()
+            .append_pair("client_version", &self.client_version);
+        let path = format!("models?{}", path.query().unwrap_or_default());
+        crate::chatgpt::list_catalog(&self.inner.client(), endpoint, &path, "Codex")
+            .await
+            .map(Some)
     }
     async fn compact(
         &self,
@@ -141,18 +175,43 @@ pub fn provider(
     id: impl Into<everruns_contracts::ProviderKey>,
     auth: impl everruns_contracts::ProviderAuth + 'static,
 ) -> Provider {
-    Provider::new(id, CodexChatDriver::new())
-        .base_url(CODEX_BASE_URL)
-        .auth(auth)
+    route_provider(id.into(), TokenRoute::Codex, None, None).auth(auth)
+}
+/// The one route-to-backend mapping: which chat driver and default base URL a
+/// grant's route reaches. The builder and the descriptor both go through it,
+/// so chat and discovery cannot target different backends.
+pub(crate) fn route_provider(
+    id: ProviderKey,
+    route: TokenRoute,
+    base_url: Option<&str>,
+    client_version: Option<&str>,
+) -> Provider {
+    match route {
+        TokenRoute::Codex => {
+            let mut driver = CodexChatDriver::new();
+            if let Some(version) = client_version {
+                driver = driver.with_client_version(version);
+            }
+            Provider::new(id, driver).base_url(base_url.unwrap_or(CODEX_BASE_URL))
+        }
+        TokenRoute::ChatGptPlan => Provider::new(id, crate::chatgpt::ChatGptChatDriver::new())
+            .base_url(base_url.unwrap_or(crate::chatgpt::oauth::RESOURCE)),
+    }
 }
 pub fn descriptor() -> DriverDescriptor {
     let mut d = DriverDescriptor::chat_only(DriverId::external(CODEX_DRIVER_ID), |config| {
-        Provider::new(config.provider.clone(), CodexChatDriver::new())
-            .base_url(config.base_url.as_deref().unwrap_or(CODEX_BASE_URL))
-            .auth(BearerAuth::new(config.api_key.clone().unwrap_or_default()))
-            .header("originator", "everruns")
-            .header("openai-beta", "responses=experimental")
-            .into_boxed_driver()
+        // Dynamic config carries a host-resolved access token only. OAuth
+        // hosts that rotate grants use `driver(store)` instead.
+        route_provider(
+            config.provider.clone(),
+            TokenRoute::Codex,
+            config.base_url.as_deref(),
+            None,
+        )
+        .auth(BearerAuth::new(config.api_key.clone().unwrap_or_default()))
+        .header("originator", "everruns")
+        .header("openai-beta", "responses=experimental")
+        .into_boxed_driver()
     });
     d.display_name = "Codex (legacy)".into();
     d

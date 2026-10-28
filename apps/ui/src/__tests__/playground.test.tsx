@@ -163,7 +163,7 @@ test("agent filter and grouping controls the current page without a virtual-user
   renderLibrary();
   await screen.findByRole("link", { name: "Support test" });
   expect(screen.queryByText("Virtual user filter")).not.toBeInTheDocument();
-  expect(screen.getByRole("radio", { name: "Day" })).toHaveAttribute("aria-checked", "true");
+  expect(screen.getByRole("button", { name: "Day" })).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(screen.getByRole("button", { name: "Filter" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: /Support agent/ }));
   await waitFor(() =>
@@ -172,9 +172,9 @@ test("agent filter and grouping controls the current page without a virtual-user
     ),
   );
   expect(screen.getByText("Agent is")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
+  fireEvent.click(screen.getByRole("button", { name: "Agent" }));
   expect(screen.getByRole("group", { name: "Support agent" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("radio", { name: "None" }));
+  fireEvent.click(screen.getByRole("button", { name: "None" }));
   expect(
     screen.queryByRole("group", { name: /Today|Yesterday|Earlier|Support agent/ }),
   ).not.toBeInTheDocument();

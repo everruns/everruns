@@ -7,6 +7,7 @@
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
+import { ConfirmationProvider } from "@/components/ui/confirmation-provider";
 import { ArrowLeft } from "lucide-react";
 import { usePageTitle } from "@/hooks";
 
@@ -57,7 +58,7 @@ export function DevPageShell({
           <p className="text-sm leading-6 text-muted-foreground">{description}</p>
         </div>
 
-        {children}
+        <ConfirmationProvider>{children}</ConfirmationProvider>
       </div>
     </div>
   );

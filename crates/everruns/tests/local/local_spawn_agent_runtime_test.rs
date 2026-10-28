@@ -353,6 +353,12 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         .await
         .expect("runtime builds");
     runtime_cell.set(runtime.clone()).ok().expect("set once");
+    // Nested delegation must leave room for polling on a normal thread stack.
+    assert!(
+        std::mem::size_of_val(&runtime.run_text_turn(parent_subagent_session_id, "probe"))
+            <= 16 * 1024,
+        "turn entry must not embed the engine loop's full future state",
+    );
 
     // AC #6: the single assembled `spawn_agent` advertises the union of the two
     // active delegation targets, in the dispatcher's canonical order.

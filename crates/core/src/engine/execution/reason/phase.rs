@@ -107,7 +107,7 @@ impl ReasonAtom {
         };
         let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
-                let (policy, retry, started) =
+                let (policy, retry, started, cause) =
                     durable_retry::restore(retry_operation, &self.provider_retry_config).await?;
                 // Heap-allocate the large fallback future so nested foreground
                 // child turns fit Tokio's default worker stack.
@@ -137,11 +137,11 @@ impl ReasonAtom {
                     disclosure: ErrorDisclosure::default(),
                     error_context: UserFacingErrorContext::default(),
                     error_hooks: Vec::new(),
-                    result: Err(AgentLoopError::llm_kind(
-                        everruns_contracts::error::LlmErrorKind::Unavailable,
-                        "provider recovery time budget exhausted",
-                    )
-                    .with_retry_metadata(&retry)),
+                    result: Err(durable_retry::budget_exhausted(
+                        &retry,
+                        started,
+                        cause.as_deref(),
+                    )),
                 };
                 let outcome = match remaining_retry_time(&policy, started) {
                     Some(remaining) if remaining.is_zero() => exhausted(),

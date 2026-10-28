@@ -29,7 +29,6 @@ use serde::Deserialize;
 use super::command_http::CommandRouterExt;
 use super::common::{ErrorResponse, ListResponse, impl_auth_state};
 use super::sse::{DisconnectReason, SseConnectionTracker, SseStreamConfig};
-use crate::live_updates::event_notifications::EventNotificationBroadcaster;
 use crate::services::EventService;
 
 use futures::{
@@ -37,8 +36,6 @@ use futures::{
     stream::{self, Stream},
 };
 use std::{convert::Infallible, sync::Arc, time::Duration};
-use tokio::sync::broadcast;
-use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use uuid::Uuid;
 
@@ -145,8 +142,6 @@ pub struct AppState {
     pub session_service: Arc<SessionService>,
     pub event_service: Arc<EventService>,
     pub sse_tracker: Arc<SseConnectionTracker>,
-    /// Push-based event notifications via pg_notify (None in DEV_MODE/in-memory)
-    pub event_broadcaster: Option<Arc<EventNotificationBroadcaster>>,
     pub auth: AuthState,
 }
 
@@ -164,7 +159,6 @@ impl AppState {
             session_service: Arc::new(SessionService::new(db.clone())),
             event_service: Arc::new(EventService::with_listeners(db, event_delivery, listeners)),
             sse_tracker,
-            event_broadcaster: None,
             auth,
         }
     }
@@ -313,7 +307,6 @@ pub async fn stream_sse(
 
     Ok(session_event_sse(SessionEventStream {
         event_service: state.event_service.clone(),
-        event_broadcaster: state.event_broadcaster.clone(),
         session_id,
         since_id: query.since_id.map(|id| id.uuid()),
         after_sequence: query.after_sequence,
@@ -362,8 +355,6 @@ pub(crate) type SseRender = Arc<dyn Fn(&Event, Duration) -> Option<SseEvent> + S
 /// One session's live event stream: what to follow and how to render it.
 pub(crate) struct SessionEventStream {
     pub event_service: Arc<EventService>,
-    /// Push-based event notifications via pg_notify (None in DEV_MODE/in-memory)
-    pub event_broadcaster: Option<Arc<EventNotificationBroadcaster>>,
     pub session_id: Uuid,
     /// Reconnect cursor: replay durable events after this one first.
     pub since_id: Option<Uuid>,
@@ -422,7 +413,6 @@ pub(crate) async fn session_event_sse(
 ) -> Sse<impl Stream<Item = Result<SseEvent, Infallible>>> {
     let SessionEventStream {
         event_service,
-        event_broadcaster,
         session_id,
         since_id: initial_since_id,
         after_sequence: initial_after_sequence,
@@ -450,34 +440,8 @@ pub(crate) async fn session_event_sse(
         .await
         .ok();
 
-    // If we have a subscription, use push-based delivery.
-    // Otherwise, fall back to legacy PG polling with pg_notify waker.
+    // If we have a subscription, use push-based delivery; otherwise poll PG.
     let use_push = subscription.is_some();
-
-    // Legacy PG polling waker (used only when EventDelivery subscription unavailable)
-    let event_waker = Arc::new(tokio::sync::Notify::new());
-    let mut pg_notify_listener_task: Option<JoinHandle<()>> = None;
-    if let (false, Some(broadcaster)) = (use_push, &event_broadcaster) {
-        let mut rx = broadcaster.subscribe();
-        let waker = event_waker.clone();
-        let target_session = session_id;
-        let task = tokio::spawn(async move {
-            loop {
-                match rx.recv().await {
-                    Ok(payload) if payload.session_id == target_session => {
-                        waker.notify_one();
-                    }
-                    Ok(_) => {}
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::debug!(lagged = n, "Event notification receiver lagged, waking");
-                        waker.notify_one();
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                }
-            }
-        });
-        pg_notify_listener_task = Some(task);
-    }
 
     // Shared subscription wrapped in Arc<Mutex> for use inside the stream
     let subscription = Arc::new(tokio::sync::Mutex::new(subscription));
@@ -512,7 +476,6 @@ pub(crate) async fn session_event_sse(
         exclude_types: Vec<String>,
         connection_start: Instant,
         max_duration: Duration,
-        event_waker: Arc<tokio::sync::Notify>,
         push: PushCursor,
     }
 
@@ -526,7 +489,6 @@ pub(crate) async fn session_event_sse(
         filter_types,
         exclude_types,
         connection_start,
-        event_waker,
         push: PushCursor::default(),
     };
 
@@ -773,11 +735,7 @@ pub(crate) async fn session_event_sse(
                             }))
                         }
                         Ok(_) => {
-                            let fallback = Duration::from_millis(state.backoff_ms);
-                            tokio::select! {
-                                _ = state.event_waker.notified() => {}
-                                _ = tokio::time::sleep(fallback) => {}
-                            }
+                            tokio::time::sleep(Duration::from_millis(state.backoff_ms)).await;
                             Some((stream::iter(vec![]), StreamState {
                                 backoff_ms: state.config.next_backoff(state.backoff_ms),
                                 ..state
@@ -799,7 +757,6 @@ pub(crate) async fn session_event_sse(
     let guarded_stream = GuardedStream {
         inner: Box::pin(stream),
         _guard: sse_guard,
-        notification_task: pg_notify_listener_task,
     };
 
     let keep_alive = KeepAlive::new()
@@ -812,15 +769,6 @@ pub(crate) async fn session_event_sse(
 struct GuardedStream<S> {
     inner: std::pin::Pin<Box<S>>,
     _guard: super::sse::SseConnectionGuard,
-    notification_task: Option<JoinHandle<()>>,
-}
-
-impl<S> Drop for GuardedStream<S> {
-    fn drop(&mut self) {
-        if let Some(task) = self.notification_task.take() {
-            task.abort();
-        }
-    }
 }
 
 impl<S: Stream> Stream for GuardedStream<S> {
@@ -1113,7 +1061,6 @@ mod tests {
             _guard: tracker
                 .try_acquire(1, session)
                 .expect("the first connection is admitted"),
-            notification_task: None,
         };
 
         // The slot is taken for as long as the stream is alive.

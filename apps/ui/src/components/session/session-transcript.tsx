@@ -158,6 +158,7 @@ export function SessionTranscript({
             collapseWorkLog={collapseWorkLog}
             pendingSends={chatSends.pending}
             onRetrySend={chatSends.retry}
+            onDiscardSend={chatSends.discard}
             sessionActive={isActive}
             messageActions={messageActions}
             streamingWork={

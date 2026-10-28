@@ -14,16 +14,23 @@ tags:
 
 Provider-native batch work begins at the direct Framework completion boundary.
 The public [Batch API](../../crates/everruns/src/batch.rs) accepts independent
-completions, returns a credential-free ticket and exposes explicit lifecycle
+completions or explicit shared message/configuration values, returns a
+credential-free ticket and exposes explicit lifecycle
 operations. Existing interactive calls keep their behavior. Batch support is an
 optional [provider contract](../../crates/contracts/src/batch.rs), never a
 synchronous fallback or a streaming driver wrapper.
 
-The first built-in implementation is native Anthropic Message Batches. It reuses
-the Messages encoder so reasoning, tool schemas and message layout have one
-owner. Providers must explicitly expose batch support. Wasm and Engine-hosted
+Built-in implementations cover Anthropic Message Batches, OpenAI Responses and
+Chat Completions batches, and Gemini Developer API inline batches. They reuse
+the interactive codecs so request layout and response normalization have one
+owner. Capability is exposed through the optional driver hook and a local
+provider query; it does not promise account/model eligibility. Providers must explicitly expose batch support. Wasm and Engine-hosted
 batch execution are outside this implementation; the public
 [guide](../../docs/framework/batch-model-requests.md) owns the support matrix.
+
+The two input paths share whole-batch validation and ticket creation. Explicit
+request lists reuse the provider-message contract already used by core; they do
+not introduce a second wire schema or implicitly resolve stored attachments.
 
 ## Recovery and isolation
 
@@ -40,7 +47,12 @@ the application. Ambiguous creation has an explicit uncertain outcome and cannot
 be retried automatically. A caller records durable intent before submitting and
 reconciles with the provider when acceptance or ticket persistence is lost.
 Polling and collecting may repeat with the same ticket. Cancellation is
-asynchronous and preserves completed requests. No exactly-once external effects,
+asynchronous; collect available completed requests or handle a provider job-level
+failure when no per-item output exists. OpenAI's staged upload and job creation
+are separate effects. Neither ambiguous mutation is replayed or cleaned up
+automatically, since a staging file can already belong to a live job.
+Partial OpenAI cancellation uses trusted ticket IDs only after output counts
+match; missing successful files must never become invented cancelled rows. No exactly-once external effects,
 automatic tool execution or transparent agent-loop durability is promised.
 
 ## Success bars
@@ -54,6 +66,15 @@ automatic tool execution or transparent agent-loop durability is promised.
 - Demonstrate submission, process reconstruction, collection and cancellation in
   runnable real-provider examples, with deterministic tests at the public API.
 
-The [acceptance suite](../../crates/everruns/tests/provider_batch.rs) and
+The [Anthropic acceptance suite](../../crates/everruns/tests/provider_batch.rs),
+[multi-provider suite](../../crates/everruns/tests/provider_batch_multi.rs) and
 [classification example](../../crates/everruns/examples/batch_classification.rs)
 are the executable evidence for the lifecycle and recovery boundary.
+
+Run-owned pending-response withdrawal (as in
+[Pydantic AI's lifecycle correction](https://github.com/pydantic/pydantic-ai/pull/11517))
+does not transfer ownership here: no agent run retains the ticket. A successful
+submit-now/collect-later job must survive client/future drops. Only an explicit
+application decision cancels its whole job; borrowed/shared provider jobs are
+never cancelled as cleanup. An abandoned submission future still requires intent
+reconciliation because remote acceptance may have happened.

@@ -2,11 +2,11 @@
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { Suspense } from "react";
-import Link from "next/link";
+
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+
 import { usePageTitle } from "@/hooks";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageContainer, PageBreadcrumb, PageMasthead } from "@/components/layout";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { ObserverForm, type ObserverFormInitial } from "@/components/observers/observer-form";
 import { SCORER_CATALOG } from "@/components/observers/scorer-catalog";
@@ -57,25 +57,14 @@ export default function NewObserverPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <Link
-        href="/observers"
-        className="mb-6 inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        {ui("Back to Observers")}
-      </Link>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{ui("Create New Observer")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Suspense fallback={null}>
-            <NewObserverForm />
-          </Suspense>
-        </CardContent>
-      </Card>
-    </div>
+    <PageContainer>
+      <PageBreadcrumb
+        items={[{ label: ui("Observers"), href: "/observers" }, { label: ui("New Observer") }]}
+      />
+      <PageMasthead title={ui("New Observer")} />
+      <Suspense fallback={null}>
+        <NewObserverForm />
+      </Suspense>
+    </PageContainer>
   );
 }

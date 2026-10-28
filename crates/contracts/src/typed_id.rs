@@ -412,7 +412,8 @@ impl IdMarker for MessageIdMarker {
     const PREFIX: &'static str = "message";
 
     // Messages are not DB entities — they live embedded in `events.data` JSONB
-    // with no table, FK, index, or sort dependency on their id, and the id is
+    // with no table, FK, or chronological sort dependency on their id (the
+    // server indexes it for equality lookups), and the id is
     // the *public* identifier serialized to clients (`output.message.completed`,
     // `EventContext.input_message_id`). UUIDv7's time-ordering does no work here
     // and would leak a creation timestamp into a client-visible id, so message

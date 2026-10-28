@@ -776,7 +776,6 @@ impl TestServer {
             ),
             event_service: event_service.clone(),
             sse_tracker: sse_tracker.clone(),
-            event_broadcaster: None,
             auth: auth_state.clone(),
         };
         let providers_state = api::providers::AppState::new(

@@ -273,3 +273,8 @@ describe("PersonalAccessTokensPage", () => {
     expect(screen.queryByRole("button", { name: /Create token/i })).not.toBeInTheDocument();
   });
 });
+
+// Consumer action tests stub the decision boundary; dialog lifecycle is covered separately.
+jest.mock("@/components/ui/confirmation-provider", () => ({
+  useConfirmation: () => (message: string) => Promise.resolve(window.confirm(message)),
+}));

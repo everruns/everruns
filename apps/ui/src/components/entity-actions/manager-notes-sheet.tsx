@@ -16,6 +16,7 @@
 import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
 
 import { useState } from "react";
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 import { NotebookPen, Pencil } from "lucide-react";
 import { ChangeReasonField } from "@/components/entity-actions/change-reason-field";
 import { entityKindLabel, type EntityKind } from "@/components/entity-actions/entity-kinds";
@@ -72,6 +73,20 @@ export function ManagerNotesSheet({
   const content = notes.data?.content ?? "";
   const bytes = draft ? new TextEncoder().encode(draft.content).length : 0;
   const conflict = isManagerContextConflict(save.error);
+  const chatDraft = useTextPageFormDraft({
+    fields: ["content"],
+    values: { content: draft?.content ?? content },
+    entityId: entityRef,
+    entityType: "manager_notes",
+    formId: "manager_notes",
+    label: "Manager notes",
+    priority: 30,
+    enabled: open && !notes.isLoading && !notes.error,
+    baseline: String(notes.data?.revision ?? 0),
+    dirty: !!draft && draft.content !== content,
+    writable: !!draft && !save.isPending && !conflict,
+    apply: (next) => setDraft((previous) => previous && { ...previous, content: next.content }),
+  });
 
   const startEdit = () => {
     save.reset();
@@ -83,7 +98,7 @@ export function ManagerNotesSheet({
     setReason("");
   };
   const submit = async () => {
-    if (!draft) return;
+    if (!draft || chatDraft.blocked || save.isPending || bytes > MAX_NOTES_BYTES) return;
     try {
       await save.mutateAsync({
         content: draft.content,
@@ -132,6 +147,7 @@ export function ManagerNotesSheet({
                 void submit();
               }}
             >
+              {chatDraft.notice}
               <Textarea
                 aria-label={ui("Manager notes")}
                 value={draft.content}
@@ -175,7 +191,9 @@ export function ManagerNotesSheet({
                 </Button>
                 <Button
                   type="submit"
-                  disabled={save.isPending || conflict || bytes > MAX_NOTES_BYTES}
+                  disabled={
+                    save.isPending || conflict || chatDraft.blocked || bytes > MAX_NOTES_BYTES
+                  }
                 >
                   {save.isPending ? ui("Saving...") : ui("Save notes")}
                 </Button>

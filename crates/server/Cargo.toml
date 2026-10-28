@@ -179,3 +179,8 @@ harness = false
 [[bench]]
 name = "knowledge_catalog"
 harness = false
+
+# Single-message retrieval scaling; isolated database, explicit benchmark runs.
+[[bench]]
+name = "message_lookup"
+harness = false

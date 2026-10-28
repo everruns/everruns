@@ -69,7 +69,6 @@ pub mod resource_links;
 // Push delivery: event fan-out and task/event/notification broadcasters
 pub mod live_updates;
 pub use live_updates::event_delivery::EventDelivery;
-pub use live_updates::event_notifications::EventNotificationBroadcaster;
 pub use live_updates::notification_notifications::NotificationNotificationBroadcaster;
 pub use live_updates::task_notifications::{TaskBroadcaster, TaskNotificationBroadcaster};
 

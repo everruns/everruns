@@ -43,6 +43,6 @@ These examples use `ANTHROPIC_API_KEY` and the real Anthropic Message Batches AP
 | Example | What it demonstrates | Run |
 |---|---|---|
 | [`batch_classification.rs`](batch_classification.rs) | Submit, persist intent and ticket, resume, collect validated classifications or cancel | `cargo run -p everruns --features anthropic --example batch_classification -- submit /tmp/reviews-001` |
-| [`batch_eval.rs`](batch_eval.rs) | Batch three eval cases, poll and score answers by ID | `cargo run -p everruns --features anthropic --example batch_eval` |
+| [`batch_eval.rs`](batch_eval.rs) | Submit typed message lists, poll and score three eval cases by ID | `cargo run -p everruns --features anthropic --example batch_eval` |
 
 See [Batch Model Requests](https://everruns.com/docs/framework/batch-model-requests/) for recovery, tenant isolation, provider and hosting limitations.

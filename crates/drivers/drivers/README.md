@@ -280,6 +280,33 @@ Hosts provide the browser opener and an implementation of
 `chatgpt::auth::TokenStore`; `RotatingAuth` loads credentials under its lease and
 persists the full rotated pair before producing authentication headers. Hosts
 with writers outside that lease must implement atomic `compare_and_save`.
+`chatgpt::auth::MemoryTokenStore` keeps a grant in process for tests and
+ephemeral use.
+
+`codex::driver(store)` assembles the provider: it wires `RotatingAuth`, maps the
+typed `TokenRoute` (`Codex` or `ChatGptPlan`) to its backend, and returns one
+`Provider` that serves both chat and `list_models`. Options the route cannot
+use, malformed URLs, and ephemeral grants that cannot authenticate fail in
+`build()` with a named `CodexDriverError`.
+
+```rust,no_run
+# #[cfg(feature = "codex")]
+# fn grant() -> everruns_drivers::chatgpt::CodexAuth { unimplemented!() }
+# #[cfg(feature = "codex")]
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use everruns_drivers::codex::{self, MemoryTokenStore, TokenRoute};
+use std::sync::Arc;
+
+let store = Arc::new(MemoryTokenStore::new(grant()));
+let provider = codex::driver(store)
+    .route(TokenRoute::Codex)
+    .originator("my-app")
+    .build()?;
+let models = provider.list_models().await?;
+// Or hold a grant only in memory:
+let provider = codex::driver::ephemeral(grant()).build()?;
+# Ok(()) }
+```
 `chatgpt::login::LoginAttempt` handles loopback PKCE and verified dynamic
 registration; credentials and registration are host-owned. Embedders can call
 `LoginAttempt::with_success_page_html` to replace the default plain-text

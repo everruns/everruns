@@ -1,6 +1,8 @@
 "use client";
 
 import { useUiTranslations } from "@/providers/locale-provider";
+import { ManualPageContext } from "@/components/chat-mode/manual-page-context";
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 import { relativeFilePath } from "@/lib/path-utils";
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -36,6 +38,7 @@ export function FileViewer({ source, file, onClose, badges, actions, footer }: F
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("preview");
+  useChatPageFilters({ file_path: file.path });
 
   const readOnly = !source.writes;
   const {
@@ -50,7 +53,12 @@ export function FileViewer({ source, file, onClose, badges, actions, footer }: F
   const [saving, setSaving] = useState(false);
 
   const handleEdit = () => {
-    if (fileData?.content) {
+    if (
+      fileData?.encoding === "text" &&
+      typeof fileData.content === "string" &&
+      !readOnly &&
+      !file.is_readonly
+    ) {
       setEditContent(fileData.content);
       setIsEditing(true);
     }
@@ -117,6 +125,7 @@ export function FileViewer({ source, file, onClose, badges, actions, footer }: F
 
   return (
     <Card className="h-full flex flex-col">
+      {isEditing && <ManualPageContext label="File editor" />}
       <CardHeader className="pb-2 border-b">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">

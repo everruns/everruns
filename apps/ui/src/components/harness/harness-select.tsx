@@ -4,13 +4,7 @@ import { localizedEntityDescription } from "@/lib/entity-localization";
 import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
 
 import { useId, useMemo, useState } from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import { useHarnesses } from "@/hooks";
 import type { Harness } from "@/lib/api/types";
 import { isHarnessDeprecated } from "@/lib/harness-deprecation";
@@ -62,7 +56,7 @@ export function HarnessSelect({
   const [showDeprecated, setShowDeprecated] = useState(false);
   const noneValue = "__none__";
   const purposeId = `${useId()}-purpose`;
-  const { data: harnesses = [] } = useHarnesses();
+  const { data: harnesses = [], isLoading, error } = useHarnesses();
   const filteredHarnesses = useMemo(
     () =>
       harnesses.filter(
@@ -82,8 +76,7 @@ export function HarnessSelect({
   // When no value is set and includeNoneOption is true, show the noneLabel.
   const selected = value ? harnessMap.get(value) : undefined;
   const displayValue = value
-    ? getDisplayName(selected, displayLocale) ||
-      (filteredHarnesses.length === 0 ? ui("Loading…") : value)
+    ? getDisplayName(selected, displayLocale) || (isLoading ? ui("Loading…") : value)
     : includeNoneOption
       ? ui(noneLabel)
       : undefined;
@@ -91,21 +84,29 @@ export function HarnessSelect({
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-1.5">
-      <Select
+      <Combobox
+        id={id}
         value={value || (includeNoneOption ? noneValue : value)}
-        onValueChange={(nextValue) => onValueChange(nextValue === noneValue ? "" : nextValue)}
+        onValueChange={(next) => onValueChange(next === noneValue ? "" : next)}
+        valueLabel={displayValue}
+        placeholder={ui(placeholder)}
+        searchPlaceholder={ui("Search harnesses")}
+        aria-describedby={purpose ? purposeId : undefined}
         disabled={disabled}
-      >
-        <SelectTrigger
-          id={id}
-          className={className}
-          aria-describedby={purpose ? purposeId : undefined}
-        >
-          <SelectValue placeholder={ui(placeholder)}>{displayValue}</SelectValue>
-        </SelectTrigger>
-        <SelectContent className="w-72">
-          {includeNoneOption && <SelectItem value={noneValue}>{ui(noneLabel)}</SelectItem>}
-          {harnesses.some(isHarnessDeprecated) && (
+        loading={isLoading}
+        error={error ? ui("Could not load harnesses. Try again.") : undefined}
+        clearable={false}
+        className={className}
+        options={[
+          ...(includeNoneOption ? [{ value: noneValue, label: ui(noneLabel) }] : []),
+          ...filteredHarnesses.map((harness) => ({
+            value: harness.id,
+            label: getDisplayName(harness, displayLocale),
+            description: localizedEntityDescription(harness, displayLocale).trim(),
+          })),
+        ]}
+        footer={
+          harnesses.some(isHarnessDeprecated) ? (
             <button
               type="button"
               className="w-full px-2 py-1.5 text-left text-sm text-muted-foreground"
@@ -114,28 +115,9 @@ export function HarnessSelect({
             >
               {showDeprecated ? ui("Hide deprecated") : ui("Show deprecated")}
             </button>
-          )}
-          {filteredHarnesses.map((harness) => {
-            const description = localizedEntityDescription(harness, displayLocale).trim();
-            return (
-              <SelectItem
-                key={harness.id}
-                value={harness.id}
-                className="items-start py-1.5 [&>div]:min-w-0 [&>div]:flex-1"
-              >
-                <span className="flex w-full min-w-0 flex-col items-start gap-0.5 whitespace-normal">
-                  <span>{getDisplayName(harness, displayLocale)}</span>
-                  {description ? (
-                    <span className="line-clamp-2 text-left text-[11px] leading-snug font-normal text-muted-foreground">
-                      {description}
-                    </span>
-                  ) : null}
-                </span>
-              </SelectItem>
-            );
-          })}
-        </SelectContent>
-      </Select>
+          ) : undefined
+        }
+      />
       {purpose ? (
         <p id={purposeId} className="line-clamp-3 text-xs leading-snug text-muted-foreground">
           {purpose}

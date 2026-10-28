@@ -435,3 +435,58 @@ pub(super) async fn start_maintenance(
         supervisor.track("reporting_background", handle);
     }
 }
+
+/// Customer worker credentials are never accepted by the trusted listener.
+/// A separate port lets operators expose only this narrow service.
+pub(super) fn spawn_custom_worker_server(
+    supervisor: &mut TaskSupervisor,
+    db: Arc<StorageBackend>,
+    events: Arc<services::EventService>,
+) -> Result<()> {
+    let address = match std::env::var("CUSTOM_WORKER_GRPC_BIND_ADDR") {
+        Ok(address) => address
+            .parse::<std::net::SocketAddr>()
+            .context("Invalid CUSTOM_WORKER_GRPC_BIND_ADDR")?,
+        Err(std::env::VarError::NotPresent) => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    let tls = grpc_service::grpc_server_tls_from_env_result()?;
+    anyhow::ensure!(
+        address.ip().is_loopback() || tls.is_some(),
+        "Custom worker listener requires TLS when bound outside loopback"
+    );
+    if let Some(tls) = tls.clone() {
+        tonic::transport::Server::builder().tls_config(tls)?;
+    }
+    supervisor.spawn(
+        "custom_worker_grpc",
+        RestartPolicy::always_after(Duration::from_secs(5)),
+        move || {
+            let db = db.clone();
+            let events = events.clone();
+            let tls = tls.clone();
+            async move {
+                let mut server = tonic::transport::Server::builder();
+                if let Some(tls) = tls {
+                    match server.tls_config(tls) {
+                        Ok(configured) => server = configured,
+                        Err(error) => {
+                            tracing::error!(%error, "Custom worker TLS failed");
+                            return;
+                        }
+                    }
+                }
+                let service =
+                    crate::worker_link::custom_workers::CustomWorkerServiceImpl::new(db, events);
+                if let Err(error) = server
+                    .add_service(service.into_server())
+                    .serve(address)
+                    .await
+                {
+                    tracing::error!(%error, "Custom worker listener failed");
+                }
+            }
+        },
+    );
+    Ok(())
+}

@@ -101,7 +101,10 @@ export function TracingDestinationDialog({
         if (!open && !busy) onClose();
       }}
     >
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent
+        chatProtected="Tracing destination credentials and delivery settings"
+        className="max-h-[90dvh] overflow-y-auto sm:max-w-lg"
+      >
         <DialogHeader>
           <DialogTitle>
             {ui(destination ? "Edit tracing destination" : "Add tracing destination")}

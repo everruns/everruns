@@ -1,4 +1,6 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
+import { PageContainer, PageMasthead } from "@/components/layout";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
@@ -143,6 +145,7 @@ export default function WorkflowDetailPage({
 }) {
   const { displayLocale } = useLocale();
 
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   const { workflowId } = use(params);
 
@@ -176,9 +179,9 @@ export default function WorkflowDetailPage({
 
   if (workflowLoading) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Workflow Details")}</h1>
+          <PageMasthead title={ui("Workflow Details")} className="min-w-0 flex-1" />
         </div>
         <div className="space-y-6">
           <Skeleton className="h-8 w-32" />
@@ -188,15 +191,15 @@ export default function WorkflowDetailPage({
           </div>
           <Skeleton className="h-96" />
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (workflowError || !workflow) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Workflow Details")}</h1>
+          <PageMasthead title={ui("Workflow Details")} className="min-w-0 flex-1" />
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -217,20 +220,20 @@ export default function WorkflowDetailPage({
             </div>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
-  const handleCancel = () => {
-    if (confirm("Are you sure you want to cancel this workflow?")) {
+  const handleCancel = async () => {
+    if (await requestConfirmation("Are you sure you want to cancel this workflow?")) {
       cancelMutation.mutate(workflowId);
     }
   };
 
   return (
-    <div className="operational-page container mx-auto p-6">
+    <PageContainer className="operational-page">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">{ui("Workflow Details")}</h1>
+        <PageMasthead title={ui("Workflow Details")} className="min-w-0 flex-1" />
       </div>
       <div className="space-y-6">
         {/* Back link */}
@@ -375,6 +378,6 @@ export default function WorkflowDetailPage({
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

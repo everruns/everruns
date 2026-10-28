@@ -115,7 +115,7 @@ import { ModelChangeDivider } from "@/components/chat/model-change-divider";
 import { getFullText, type ToolCallContent } from "@/components/chat/tool-call-utils";
 import type { ApprovalToolContext } from "@/components/chat/approval-tool-activity";
 import { useMembers } from "@/hooks/use-members";
-import { useLocale } from "@/providers/locale-provider";
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import {
   getRuntimeErrorFromOutputMessage,
   getRuntimeErrorFromTurnFailed,
@@ -189,6 +189,7 @@ interface ChatMessageListProps {
   /** Sends the event stream does not carry yet; each gets a user block and status row. */
   pendingSends?: PendingSend[];
   onRetrySend?: (clientId: string) => void;
+  onDiscardSend?: (clientId: string) => void;
   /** Show Good / Bad and "Branch into new chat" on agent replies (chat threads). */
   messageActions?: boolean;
   /** The session reports a running turn. */
@@ -308,10 +309,12 @@ export const ChatMessageList = memo(function ChatMessageList({
   streamingWork = null,
   pendingSends = EMPTY_PENDING_SENDS,
   onRetrySend,
+  onDiscardSend,
   sessionActive = false,
   messageActions = false,
 }: ChatMessageListProps) {
   const { locale, displayLocale, t } = useLocale();
+  const ui = useUiTranslations();
   const { data: providers } = useProviders();
   const { data: agents } = useAgents();
   const approvalCalls = useMemo(() => {
@@ -1016,8 +1019,12 @@ export const ChatMessageList = memo(function ChatMessageList({
           className="flex items-center justify-end gap-2 text-sm text-destructive"
           data-testid="turn-not-delivered"
         >
-          <span>{t("turn_not_delivered")}</span>
-          {onRetrySend && (
+          <span>
+            {send.retryExpired
+              ? ui("Retry window expired. Review this conversation before sending again.")
+              : t("turn_not_delivered")}
+          </span>
+          {onRetrySend && !send.retryExpired && (
             <Button
               type="button"
               variant="ghost"
@@ -1027,6 +1034,17 @@ export const ChatMessageList = memo(function ChatMessageList({
             >
               <RefreshCw className="mr-1 h-3.5 w-3.5" />
               {t("turn_retry_send")}
+            </Button>
+          )}
+          {onDiscardSend && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => onDiscardSend(send.clientId)}
+            >
+              {ui("Discard")}
             </Button>
           )}
         </div>,

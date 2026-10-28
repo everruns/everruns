@@ -1,5 +1,6 @@
 // PostgreSQL repository: Events (source of truth for messages)
 
+mod after_store;
 mod input_lookups;
 pub(super) mod rows;
 use rows::*;
@@ -198,11 +199,7 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        self.enqueue_event_projections(std::slice::from_ref(&row))
-            .await;
-        if Self::ends_trace_turn(&row.event_type) {
-            self.schedule_session_trace_projection(row.session_id.uuid());
-        }
+        self.after_events_stored(std::slice::from_ref(&row)).await;
         Ok(row)
     }
 
@@ -279,11 +276,7 @@ impl Database {
         .await?;
         tx.commit().await?;
 
-        self.enqueue_event_projections(std::slice::from_ref(&row))
-            .await;
-        if Self::ends_trace_turn(&row.event_type) {
-            self.schedule_session_trace_projection(row.session_id.uuid());
-        }
+        self.after_events_stored(std::slice::from_ref(&row)).await;
         Ok(row)
     }
 
@@ -447,70 +440,6 @@ impl Database {
         tx.commit().await?;
         self.after_events_stored(&ordered).await;
         Ok(ordered)
-    }
-
-    /// The reporting projection and session trace work a stored batch owes.
-    async fn after_events_stored(&self, ordered: &[EventRow]) {
-        self.enqueue_event_projections(ordered).await;
-        let mut traced: Vec<Uuid> = Vec::new();
-        for row in ordered {
-            if Self::ends_trace_turn(&row.event_type) && !traced.contains(&row.session_id.uuid()) {
-                traced.push(row.session_id.uuid());
-            }
-        }
-        for session_id in traced {
-            self.schedule_session_trace_projection(session_id);
-        }
-    }
-
-    /// One outbox insert for every row of a stored batch that feeds reporting.
-    async fn enqueue_event_projections(&self, rows: &[EventRow]) {
-        // Reporting outbox enqueue is best-effort per knowledge/evaluation/reporting.md:
-        // "If an outbox write fails after canonical state commits, a periodic
-        // reconciler must be able to discover and enqueue missing projection
-        // work from canonical tables." Never fail the canonical event write
-        // because the reporting projector queue is unavailable. No reconciler
-        // job exists yet (tracked separately); until it lands, a failed
-        // enqueue means the corresponding fact will remain stale until the
-        // canonical row is touched again and the next enqueue succeeds.
-        let rows: Vec<&EventRow> = rows
-            .iter()
-            .filter(|row| {
-                crate::storage::reporting::outbox::event_needs_projection(&row.event_type)
-            })
-            .collect();
-        if rows.is_empty() {
-            return;
-        }
-        let event_ids: Vec<String> = rows.iter().map(|row| row.id.uuid().to_string()).collect();
-        let session_ids: Vec<Uuid> = rows.iter().map(|row| row.session_id.uuid()).collect();
-        if let Err(e) = sqlx::query(
-            r#"
-            INSERT INTO reporting_outbox (
-                org_id, source_type, source_id, source_version, reason, status, next_attempt_at
-            )
-            SELECT s.org_id, 'event', e.event_id, e.event_id, 'event_projection', 'pending', NOW()
-            FROM UNNEST($1::text[], $2::uuid[]) AS e(event_id, session_id)
-            JOIN sessions s ON s.id = e.session_id
-            ON CONFLICT (org_id, source_type, source_id, source_version, reason)
-            DO NOTHING
-            "#,
-        )
-        .bind(&event_ids)
-        .bind(&session_ids)
-        .execute(&self.pool)
-        .await
-        {
-            for row in rows {
-                warn!(
-                    event_id = %row.id.uuid(),
-                    session_id = %row.session_id.uuid(),
-                    event_type = %row.event_type,
-                    error = %e,
-                    "reporting outbox enqueue failed; event persisted, projection may remain stale until reconciliation lands or the source row is updated again"
-                );
-            }
-        }
     }
 
     pub async fn create_waiting_turn_resolution_event(
@@ -711,6 +640,41 @@ impl Database {
         .bind(session_id.uuid())
         .bind(message_id)
         .fetch_one(&self.pool)
+        .await?)
+    }
+
+    /// One turn's events of the given types, oldest first: from the turn's
+    /// `turn.started` (found through the partial turns index, newest first, so
+    /// usually the first row it reads) to the end of the session.
+    pub async fn list_turn_events(
+        &self,
+        session_id: SessionId,
+        turn_id: &str,
+        event_types: &[String],
+    ) -> Result<Vec<EventRow>> {
+        Ok(sqlx::query_as::<_, EventRow>(sql!(
+            r#"
+            WITH started AS (
+                SELECT sequence FROM events
+                WHERE session_id = $1
+                  AND event_type = 'turn.started'
+                  AND context->>'turn_id' = $2
+                ORDER BY sequence DESC
+                LIMIT 1
+            )
+            SELECT {EventRow}
+            FROM events
+            WHERE session_id = $1
+              AND sequence >= (SELECT sequence FROM started)
+              AND event_type = ANY($3)
+              AND context->>'turn_id' = $2
+            ORDER BY sequence ASC
+            "#
+        ))
+        .bind(session_id.uuid())
+        .bind(turn_id)
+        .bind(event_types)
+        .fetch_all(&self.pool)
         .await?)
     }
 
@@ -1455,3 +1419,6 @@ impl Database {
         Ok(rows.into_iter().collect())
     }
 }
+
+#[cfg(test)]
+mod tests;

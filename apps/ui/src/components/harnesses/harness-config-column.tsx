@@ -1,4 +1,5 @@
 "use client";
+import { Label } from "@/components/ui/label";
 
 // The harness page's narrow config column. Primary settings (parent harness,
 // model, tags) are always visible; everything set once and rarely changed,
@@ -39,14 +40,6 @@ interface HarnessConfigColumnProps {
   className?: string;
 }
 
-function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: React.ReactNode }) {
-  return (
-    <label htmlFor={htmlFor} className="text-xs font-medium text-muted-foreground">
-      {children}
-    </label>
-  );
-}
-
 export function HarnessConfigColumn({
   harness,
   parentHarness,
@@ -76,7 +69,9 @@ export function HarnessConfigColumn({
     >
       <div className="flex flex-col gap-4 border-b p-4">
         <div className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="parent-harness">{ui("Parent harness")}</FieldLabel>
+          <Label className="text-xs font-medium text-muted-foreground" htmlFor="parent-harness">
+            {ui("Parent harness")}
+          </Label>
           {readOnly ? (
             parentHarness ? (
               <Link
@@ -105,7 +100,9 @@ export function HarnessConfigColumn({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="default-model">{ui("Default model")}</FieldLabel>
+          <Label className="text-xs font-medium text-muted-foreground" htmlFor="default-model">
+            {ui("Default model")}
+          </Label>
           {readOnly ? (
             <span className="text-[13px] text-muted-foreground">
               {defaultModel?.display_name ?? ui("Organization default")}
@@ -122,7 +119,9 @@ export function HarnessConfigColumn({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="tags">{ui("Tags")}</FieldLabel>
+          <Label className="text-xs font-medium text-muted-foreground" htmlFor="tags">
+            {ui("Tags")}
+          </Label>
           {readOnly ? (
             <div className="flex flex-wrap gap-1">
               {normalizeTags(harness.tags).length === 0 ? (
