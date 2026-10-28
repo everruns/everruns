@@ -13,7 +13,8 @@
 // - Legacy paths are HMAC-signed with WORKER_GRPC_AUTH_TOKEN over kind, id,
 //   org and expiry. Holders of that shared worker key can mint paths within
 //   the existing trusted-worker boundary. Journal-only assignment scopes are
-//   refused before signature or body processing.
+//   refused before signature or body processing. Missing or ambiguous server
+//   authority also fails closed.
 // - Uploads go the other way on the same server: a worker POSTs a generated
 //   image as raw bytes (`blob_wire`), authorized by the worker bearer token
 //   like the gRPC call it replaces, which also named its org.
@@ -134,26 +135,28 @@ pub fn routes(state: AppState) -> Router {
         )
         // A journal reader has no byte authority, even for a valid legacy URL.
         // Run before extractors: do not buffer an upload or touch storage first.
-        .layer(axum::middleware::from_fn(deny_journal_reader))
+        .layer(axum::middleware::from_fn(require_blob_authority))
         .with_state(state)
 }
 
-async fn deny_journal_reader(
+async fn require_blob_authority(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    if request
-        .extensions()
-        .get::<crate::worker_link::grpc_service::assignment_scope::ActorJournalScope>()
-        .is_some()
-    {
-        return (
+    use crate::worker_link::grpc_service::authority::{self, WorkerAuthority};
+    match authority::resolve(request.extensions()) {
+        Ok(WorkerAuthority::LegacyWorker | WorkerAuthority::Development) => next.run(request).await,
+        Ok(WorkerAuthority::ActorJournal(_)) => (
             StatusCode::FORBIDDEN,
             "Worker assignment does not permit blob access",
         )
-            .into_response();
+            .into_response(),
+        Err(_) => (
+            StatusCode::UNAUTHORIZED,
+            "Worker authority context required",
+        )
+            .into_response(),
     }
-    next.run(request).await
 }
 
 #[derive(Debug, Deserialize)]
@@ -335,13 +338,17 @@ mod tests {
         let app = routes(AppState {
             db,
             signing_secret: "secret".into(),
-        });
+        })
+        .layer(axum::Extension(
+            crate::worker_link::grpc_service::authority::WorkerAuthority::Development,
+        ));
         let id = Uuid::new_v4();
         let expires = chrono::Utc::now().timestamp() + 60;
-        for uri in [
-            format!("/internal/blobs/images/{id}?org_id=1&expires={expires}&sig=bad"),
-            format!("/internal/blobs/videos/{id}?org_id=1&expires={expires}&sig=bad"),
+        for (kind, expected) in [
+            ("images", StatusCode::FORBIDDEN),
+            ("videos", StatusCode::NOT_FOUND),
         ] {
+            let uri = format!("/internal/blobs/{kind}/{id}?org_id=1&expires={expires}&sig=bad");
             let response = app
                 .clone()
                 .oneshot(
@@ -352,7 +359,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_ne!(response.status(), StatusCode::OK);
+            assert_eq!(response.status(), expected);
         }
     }
 }

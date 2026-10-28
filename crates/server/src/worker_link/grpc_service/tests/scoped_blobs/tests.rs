@@ -131,7 +131,9 @@ async fn scoped_upload_is_denied_before_body_buffering() {
         db: db.clone(),
         signing_secret: TEST_BLOB_SECRET.into(),
     })
-    .layer(axum::Extension(scope));
+    .layer(axum::Extension(
+        super::super::super::authority::WorkerAuthority::ActorJournal(scope),
+    ));
     for oversized in [false, true] {
         let polls = Arc::new(AtomicUsize::new(0));
         let observed = polls.clone();

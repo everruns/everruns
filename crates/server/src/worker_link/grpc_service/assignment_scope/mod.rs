@@ -1,30 +1,18 @@
 //! Server-side scope for the first assignment-authorized worker operation.
 //!
 //! This is not a credential or an identity verifier. A trusted server identity
-//! adapter may insert it into request extensions only after verifying an
+//! adapter may wrap it in canonical worker authority only after verifying an
 //! executor's assignment. Never construct it from caller metadata or the shared
 //! worker bearer. No production adapter issues this scope yet.
 
 use everruns_contracts::typed_id::SessionId;
-use tonic::{Request, Status};
+use tonic::Status;
 
 #[cfg(test)]
 mod tests;
 
 fn denied() -> Status {
     Status::permission_denied("Worker assignment does not permit this operation")
-}
-
-/// Every generated delegate passes this gate. A new RPC is denied by default
-/// for a scoped executor, including generic commands and credential routes.
-/// Absence of a scope preserves the existing trusted-worker protocol; it does
-/// not authenticate a scoped executor. Protected-assignment routing and a
-/// production identity/capability adapter are prerequisites to enabling it.
-pub(super) fn check_rpc<T>(request: &Request<T>, rpc: &str) -> Result<(), Status> {
-    if request.extensions().get::<ActorJournalScope>().is_some() && rpc != "read_actor_journal" {
-        return Err(denied());
-    }
-    Ok(())
 }
 
 /// A server-resolved actor assignment permitted to read its journal only.
