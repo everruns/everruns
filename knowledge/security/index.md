@@ -8,6 +8,7 @@
 * [Threat Model](threat-model.md) - Security threat model.
 * [Security Testing](security-testing.md) - Security testing process (threat-model tests, fail-rs, DeepSec, supply chain).
 * [Multitenancy](multitenancy.md) - Organization-based multitenancy.
+* [Assignment-scoped Journal Read Foundation](worker-assignment-read-scope.md) - Preparatory server scope and deny-by-default RPC gate; production identity integration remains blocked.
 * [Permissions Model](permissions.md) - Fine-grained permissions model.
 * [Scoped Resource Ownership and Access](resource-access.md) - Proposed shared ownership, grants, and runtime authorization for connections, credential bindings, and GitHub; memory deferred.
 * [Scoped Resources Implementation Request](scoped-resources-implementation-request.md) - Six-stage implementation handoff for common access, credential capture, and GitHub compatibility; memory excluded.

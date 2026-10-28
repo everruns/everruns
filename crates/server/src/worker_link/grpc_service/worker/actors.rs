@@ -165,8 +165,15 @@ impl WorkerServiceImpl {
         &self,
         request: Request<proto::ReadActorJournalRequest>,
     ) -> Result<Response<proto::ReadActorJournalResponse>, Status> {
+        let scope = request
+            .extensions()
+            .get::<super::super::assignment_scope::ActorJournalScope>()
+            .cloned();
         let req = request.into_inner();
         let session_id = SessionId::from_uuid(parse_uuid(req.session_id.as_ref())?);
+        if let Some(scope) = scope {
+            scope.admit_read(&self.db, session_id).await?;
+        }
         let journal = self
             .db
             .read_session_actor_journal(session_id, req.after_sequence, i64::from(req.limit))

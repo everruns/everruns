@@ -6,6 +6,7 @@
 // Decision: Remaining top-level services are cross-cutting infra helpers only
 // Decision: Split into submodules for maintainability (EVE-101).
 
+pub mod assignment_scope;
 mod worker;
 // The one wire shape of a command failure, shared with the in-process worker.
 pub(crate) use worker::support::command_error_to_proto;
