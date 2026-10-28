@@ -5,6 +5,7 @@
 * [Agent avatars](agent_avatars/) - Manual UI cases.
 * [Agent chat](agent_chat/) - Manual UI cases.
 * [Agent checks](agent_checks/) - Manual UI cases.
+* [Agent cost estimation](agent_cost/) - Manual UI cases.
 * [Agent credentials](agent_credentials/) - Manual UI cases.
 * [Virtual users](agent_identities/) - Manual UI cases.
 * [Agent integrations](agent_integrations/) - Manual UI cases.
