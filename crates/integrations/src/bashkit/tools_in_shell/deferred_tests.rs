@@ -202,11 +202,7 @@ async fn assert_repeated_source_search(fixture: &Fixture, query: &str) {
     let output = run(&command, &fixture.context).await;
     let stdout = output["stdout"].as_str().unwrap();
     assert_eq!(output["exit_code"], 0, "{output}");
-    assert_eq!(
-        stdout.matches("Server description matches").count(),
-        2,
-        "{stdout}"
-    );
+    assert_eq!(stdout.matches("Matching sources").count(), 2, "{stdout}");
     assert_eq!(stdout.matches("tools docs --help").count(), 2, "{stdout}");
     assert!(
         !stdout.contains("tools docs search-docs"),
@@ -232,6 +228,22 @@ async fn server_description_matches_are_reported_as_browse_suggestions() {
         0,
         "a search that does not name the server leaves it alone"
     );
+}
+
+#[tokio::test]
+async fn registry_owner_purpose_survives_deferred_loading_and_index_rebuild() {
+    let mut fixture = fixture(Listing::Tools);
+    let registry = Arc::get_mut(fixture.context.tool_registry.as_mut().unwrap()).unwrap();
+    let mut placeholder = registry.tool_definition("mcp_docs").unwrap();
+    let ToolDefinition::Builtin(tool) = &mut placeholder else {
+        unreachable!()
+    };
+    tool.hints.capability_id = Some("archivist".into());
+    tool.hints.capability_name = Some("Archivist".into());
+    tool.hints.capability_description = Some("Archival cartography".into());
+    registry.set_capability_contexts(&[placeholder]);
+
+    assert_repeated_source_search(&fixture, "archival cartography").await;
 }
 
 #[tokio::test]

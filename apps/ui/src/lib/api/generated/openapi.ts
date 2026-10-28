@@ -26993,6 +26993,11 @@ export interface components {
      */
     ToolHints: {
       /**
+       * @description Declared capability description for source-aware tool discovery.
+       *     Never populate this with system prompts, conversation state or secrets.
+       */
+      capability_description?: string | null;
+      /**
        * @description Capability that contributed this tool definition.
        *
        *     Reporting uses this attribution only as metadata. It must never contain

@@ -5,9 +5,23 @@
       "duration_ms": 15768,
       "error": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 1066.0,
+        "llm.input_tokens_peak": 3903.0,
+        "llm.input_tokens_total": 18552.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.001359866,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 5664.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 4.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 60345.0
+        "mcp.input_tokens": 12069.0
       },
       "passed": true,
       "scores": [
@@ -34,10 +48,10 @@
         }
       ],
       "usage": {
-        "cache_read_tokens": 32415,
-        "cost_usd": 0.0,
-        "input_tokens": 60345,
-        "output_tokens": 3500
+        "cache_read_tokens": 6483,
+        "cost_usd": 0.001359866,
+        "input_tokens": 12069,
+        "output_tokens": 700
       }
     },
     {
@@ -45,9 +59,23 @@
       "duration_ms": 37737,
       "error": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 12.0,
+        "llm.input_tokens_first": 2277.0,
+        "llm.input_tokens_peak": 21401.0,
+        "llm.input_tokens_total": 173099.0,
+        "llm.provider_cost_calls": 12.0,
+        "llm.provider_reported_cost_usd": 0.008715620000000002,
+        "llm.tool_bytes_first": 4017.0,
+        "llm.tool_bytes_peak": 4017.0,
+        "llm.tool_requests_captured": 12.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 12.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 7.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 411695.0
+        "mcp.input_tokens": 82339.0
       },
       "passed": true,
       "scores": [
@@ -74,10 +102,10 @@
         }
       ],
       "usage": {
-        "cache_read_tokens": 453800,
-        "cost_usd": 0.0,
-        "input_tokens": 411695,
-        "output_tokens": 7505
+        "cache_read_tokens": 90760,
+        "cost_usd": 0.008715620000000002,
+        "input_tokens": 82339,
+        "output_tokens": 1501
       }
     },
     {
@@ -85,9 +113,23 @@
       "duration_ms": 11426,
       "error": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 2778.0,
+        "llm.input_tokens_peak": 5570.0,
+        "llm.input_tokens_total": 28623.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.001352116,
+        "llm.tool_bytes_first": 5785.0,
+        "llm.tool_bytes_peak": 9383.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 14.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 4.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 59575.0
+        "mcp.input_tokens": 11915.0
       },
       "passed": true,
       "scores": [
@@ -114,10 +156,10 @@
         }
       ],
       "usage": {
-        "cache_read_tokens": 83540,
-        "cost_usd": 0.0,
-        "input_tokens": 59575,
-        "output_tokens": 3180
+        "cache_read_tokens": 16708,
+        "cost_usd": 0.001352116,
+        "input_tokens": 11915,
+        "output_tokens": 636
       }
     },
     {
@@ -125,9 +167,23 @@
       "duration_ms": 6934,
       "error": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1054.0,
+        "llm.input_tokens_peak": 2180.0,
+        "llm.input_tokens_total": 5238.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000536638,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 2835.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 6.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 24345.0
+        "mcp.input_tokens": 4869.0
       },
       "passed": true,
       "scores": [
@@ -154,10 +210,10 @@
         }
       ],
       "usage": {
-        "cache_read_tokens": 1845,
-        "cost_usd": 0.0,
-        "input_tokens": 24345,
-        "output_tokens": 1225
+        "cache_read_tokens": 369,
+        "cost_usd": 0.000536638,
+        "input_tokens": 4869,
+        "output_tokens": 245
       }
     },
     {
@@ -165,9 +221,23 @@
       "duration_ms": 15606,
       "error": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 5.0,
+        "llm.input_tokens_first": 2265.0,
+        "llm.input_tokens_peak": 7664.0,
+        "llm.input_tokens_total": 23493.0,
+        "llm.provider_cost_calls": 5.0,
+        "llm.provider_reported_cost_usd": 0.0015484919999999998,
+        "llm.tool_bytes_first": 4017.0,
+        "llm.tool_bytes_peak": 4017.0,
+        "llm.tool_requests_captured": 5.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 5.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 68485.0
+        "mcp.input_tokens": 13697.0
       },
       "passed": true,
       "scores": [
@@ -194,10 +264,10 @@
         }
       ],
       "usage": {
-        "cache_read_tokens": 48980,
-        "cost_usd": 0.0,
-        "input_tokens": 68485,
-        "output_tokens": 3980
+        "cache_read_tokens": 9796,
+        "cost_usd": 0.0015484919999999998,
+        "input_tokens": 13697,
+        "output_tokens": 796
       }
     },
     {
@@ -205,9 +275,23 @@
       "duration_ms": 7602,
       "error": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 2766.0,
+        "llm.input_tokens_peak": 4976.0,
+        "llm.input_tokens_total": 12550.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.0013016,
+        "llm.tool_bytes_first": 5785.0,
+        "llm.tool_bytes_peak": 8184.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 62750.0
+        "mcp.input_tokens": 12550.0
       },
       "passed": true,
       "scores": [
@@ -234,9 +318,9 @@
         }
       ],
       "usage": {
-        "cost_usd": 0.0,
-        "input_tokens": 62750,
-        "output_tokens": 1165
+        "cost_usd": 0.0013016,
+        "input_tokens": 12550,
+        "output_tokens": 233
       }
     }
   ],
@@ -289,32 +373,34 @@
   "title": "Shipping rebuild smoke, separate from the original qualification",
   "usage_by_surface": {
     "cli": {
-      "cache_read_tokens": 502780,
-      "cost_usd": 0.0,
-      "input_tokens": 480180,
-      "output_tokens": 11485,
+      "cache_read_tokens": 100556,
+      "cost_usd": 0.010264112000000002,
+      "input_tokens": 96036,
+      "output_tokens": 2297,
       "trials": 2
     },
     "hybrid": {
-      "cache_read_tokens": 83540,
-      "cost_usd": 0.0,
-      "input_tokens": 122325,
-      "output_tokens": 4345,
+      "cache_read_tokens": 16708,
+      "cost_usd": 0.002653716,
+      "input_tokens": 24465,
+      "output_tokens": 869,
       "trials": 2
     },
     "native": {
-      "cache_read_tokens": 34260,
-      "cost_usd": 0.0,
-      "input_tokens": 84690,
-      "output_tokens": 4725,
+      "cache_read_tokens": 6852,
+      "cost_usd": 0.0018965039999999998,
+      "input_tokens": 16938,
+      "output_tokens": 945,
       "trials": 2
     }
   },
-  "usage_note": "Input tokens are uncached; cache-read is a separate bucket. Totals accumulate over all model turns. Missing cache-read fields contribute zero. Provider reported cost_usd 0.0; billing is unknown. Two tasks per surface are not a stable efficiency estimate or proof of causal cache savings. The CLI rollback requested full server help, adding the 2,000-tool listing to its transcript.",
+  "usage_correction": "usage-correction-2026-10-23.json",
+  "usage_note": "Usage corrected from retained generation events once per reasoning iteration. Input is uncached; cache-read is separate. The prior recursive projection counted each usage five times and missed actual provider cost. Provider-reported effective costs are observations, not invoice reconciliation. Original archives and all task scores are unchanged. Totals accumulate across calls; they are not peak context. Two tasks per surface do not establish a stable ranking or causal cache savings. CLI requested a 2000-operation help listing, capped at64KiB by the shell.",
   "usage_total": {
-    "cache_read_tokens": 620580,
-    "input_tokens": 687195,
-    "output_tokens": 20555,
+    "cache_read_tokens": 124116,
+    "cost_usd": 0.014814332000000003,
+    "input_tokens": 137439,
+    "output_tokens": 4111,
     "trials": 6
   }
 }

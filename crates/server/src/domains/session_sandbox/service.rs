@@ -136,6 +136,13 @@ impl SessionSandboxService {
         let service = self.clone();
         let handle = tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(timeout)).await;
+            // The activation that cancels this timer may have been handled by
+            // another server replica; a session running a turn keeps its
+            // sandbox, and goes idle (and arms a timer) again later.
+            if service.session_is_active(session_id).await {
+                service.idle_tasks.lock().await.remove(&session_id);
+                return;
+            }
             if let Err(err) = service.pause_for_session(session_id, &config).await {
                 tracing::warn!(
                     session_id = %session_id,
@@ -146,6 +153,14 @@ impl SessionSandboxService {
             service.idle_tasks.lock().await.remove(&session_id);
         });
         self.idle_tasks.lock().await.insert(session_id, handle);
+    }
+
+    async fn session_is_active(&self, session_id: SessionId) -> bool {
+        match self.db.get_session_unscoped(session_id).await {
+            Ok(Some(session)) => session.status == "active",
+            // Unknown: pause as before; a live turn's next sandbox call resumes it.
+            _ => false,
+        }
     }
 
     /// Pause an idle session's sandbox now, if its config asks for idle pause.
@@ -962,9 +977,8 @@ mod tests {
         assert_eq!(*REMOVED_RECORDINGS.lock().unwrap(), ["kept", "huge"]);
     }
 
-    #[tokio::test]
-    async fn idle_pause_marks_state_paused() {
-        let db = Arc::new(StorageBackend::test_database());
+    /// A session whose sandbox idle-pauses after one second.
+    async fn idle_pause_session(db: &Arc<StorageBackend>) -> crate::storage::SessionRow {
         let harness_id = create_test_harness(db.as_ref()).await;
         db.set_harness_capabilities(
             harness_id.uuid(),
@@ -980,41 +994,46 @@ mod tests {
         )
         .await
         .unwrap();
-        let session = db
-            .create_session(CreateSessionRow {
-                playground_user_id: None,
-                source: crate::domains::sessions::record::SessionSource::Api,
-                workspace_id: None,
-                org_id: DEFAULT_ORG_ID,
-                app_id: None,
-                channel_id: None,
-                trigger_id: None,
-                harness_id: Some(harness_id),
-                agent_id: None,
-                agent_revision: None,
-                virtual_user_id: None,
-                owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
-                resolved_owner_user_id: None,
-                title: Some("test".to_string()),
-                locale: None,
-                tags: vec![],
-                model_id: None,
-                capabilities: json!([]),
-                tools: json!([]),
-                mcp_servers: serde_json::json!({}),
-                system_prompt: None,
-                initial_files: json!([]),
-                hints: None,
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                blueprint_id: None,
-                blueprint_config: None,
-                parent_session_id: None,
-                budget_root_session_id: None,
-            })
-            .await
-            .unwrap();
+        db.create_session(CreateSessionRow {
+            playground_user_id: None,
+            source: crate::domains::sessions::record::SessionSource::Api,
+            workspace_id: None,
+            org_id: DEFAULT_ORG_ID,
+            app_id: None,
+            channel_id: None,
+            trigger_id: None,
+            harness_id: Some(harness_id),
+            agent_id: None,
+            agent_revision: None,
+            virtual_user_id: None,
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: Some("test".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: json!([]),
+            tools: json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn idle_pause_marks_state_paused() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = idle_pause_session(&db).await;
 
         let service = SessionSandboxService::new(db.clone(), test_storage_store(&db), None);
         service.ensure_started_for_session(session.id).await;
@@ -1026,6 +1045,35 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(state.status, SessionSandboxStatus::Paused);
+    }
+
+    /// The activation that cancels the timer can land on another server
+    /// replica; the timer then finds the session running and keeps the sandbox.
+    #[tokio::test]
+    async fn idle_pause_skips_a_session_that_became_active_elsewhere() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = idle_pause_session(&db).await;
+
+        let service = SessionSandboxService::new(db.clone(), test_storage_store(&db), None);
+        service.ensure_started_for_session(session.id).await;
+        service.schedule_idle_pause(session.id).await;
+        db.update_session(
+            DEFAULT_ORG_ID,
+            session.id,
+            crate::storage::UpdateSession {
+                status: Some("active".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+
+        let state = load_session_sandbox_state(&service.tool_context(session.id).await)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(state.status, SessionSandboxStatus::Paused);
     }
 
     #[tokio::test]

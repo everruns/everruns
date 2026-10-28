@@ -6,6 +6,55 @@ use everruns_contracts::typed_id::SessionId;
 
 struct CatalogTool(ToolDefinition);
 
+#[tokio::test]
+async fn explicit_bounded_search_supersedes_inherited_discovery() {
+    use crate::builtins::{
+        AutoToolSearchCapability, ClaudeToolSearchCapability, OpenAiToolSearchCapability,
+    };
+    let mut registry = CapabilityRegistry::new();
+    registry.register(ToolSearchCapability::new());
+    registry.register(AutoToolSearchCapability::new());
+    registry.register(OpenAiToolSearchCapability::new());
+    registry.register(ClaudeToolSearchCapability::new());
+    for inherited in [
+        "auto_tool_search",
+        "openai_tool_search",
+        "claude_tool_search",
+    ] {
+        for model in [
+            "gpt-5.4",
+            "meta/muse-spark-1.3-contributor",
+            "claude-opus-4-8",
+        ] {
+            for bounded_first in [false, true] {
+                let mut configs = vec![
+                    crate::AgentCapabilityConfig::new(inherited),
+                    crate::AgentCapabilityConfig::with_config(
+                        "tool_search",
+                        json!({"bounded":true,"threshold":1}),
+                    ),
+                ];
+                if bounded_first {
+                    configs.reverse();
+                }
+                let mut ctx = SystemPromptContext::without_file_store(SessionId::new());
+                ctx.model = Some(model.into());
+                let runtime = RuntimeAgentBuilder::new()
+                    .tools(definitions(2000))
+                    .with_capability_configs(&configs, &registry, &ctx)
+                    .await
+                    .model(model)
+                    .build();
+                assert!(runtime.tool_search.is_none(), "{inherited}/{model}");
+                assert_eq!(runtime.tools.len(), 1, "{inherited}/{model}");
+                assert_eq!(runtime.tools[0].name(), "tool_search");
+                assert_eq!(runtime.catalog_tools.len(), 2000);
+                assert_eq!(runtime.execution_tools().len(), 2001);
+            }
+        }
+    }
+}
+
 #[async_trait]
 impl Tool for CatalogTool {
     fn name(&self) -> &str {
@@ -56,6 +105,172 @@ fn definitions(count: usize) -> Vec<ToolDefinition> {
         .collect()
 }
 
+fn capability_tool(name: &str, id: &str, title: &str, purpose: &str) -> ToolDefinition {
+    let mut definition = builtin(name, "Process one item", json!({"type":"object"}));
+    let ToolDefinition::Builtin(tool) = &mut definition else {
+        unreachable!()
+    };
+    tool.hints.capability_id = Some(id.to_owned());
+    tool.hints.capability_name = Some(title.to_owned());
+    tool.hints.capability_description = Some(purpose.to_owned());
+    definition
+}
+
+fn bounded_tool(result_bytes: usize) -> ToolSearchTool {
+    ToolSearchTool {
+        reveal: Reveal::Redefine,
+        limits: Some(CatalogLimits {
+            active_tools: 32,
+            active_bytes: 65536,
+            result_bytes,
+        }),
+    }
+}
+
+#[tokio::test]
+async fn capability_purpose_refines_without_loading_opaque_operations() {
+    let definitions: Vec<_> = (0..600)
+        .map(|position| {
+            capability_tool(
+                &format!("opaque_{position:04}"),
+                "stockroom",
+                "Stockroom",
+                "Warehouse fulfillment inventory",
+            )
+        })
+        .collect();
+    let context = context(&definitions);
+    let tool = bounded_tool(1024);
+    let ToolExecutionResult::Success(result) = tool
+        .execute_with_context(json!({"query":"warehouse fulfillment"}), &context)
+        .await
+    else {
+        panic!("source refinement should fit")
+    };
+    assert_eq!(result["tools"], json!([]));
+    assert_eq!(result["loaded"], json!([]));
+    assert_eq!(
+        result["available_capabilities"],
+        json!([{"id":"stockroom","name":"Stockroom"}])
+    );
+    assert!(serde_json::to_vec(&result).unwrap().len() <= 1024);
+    assert!(!serde_json::to_string(&result).unwrap().contains("opaque_"));
+
+    let ToolExecutionResult::Success(refined) = tool
+        .execute_with_context(json!({"query":"opaque_0017"}), &context)
+        .await
+    else {
+        panic!("exact operation refinement should fit")
+    };
+    assert_eq!(refined["loaded"], json!(["opaque_0017"]));
+    assert!(refined["tools"][0].get("parameters").is_none());
+    let mut request = RuntimeMessage::assistant("");
+    request.content = vec![ContentPart::ToolCall(
+        everruns_contracts::runtime::message::ToolCallContentPart::new(
+            "refinement",
+            TOOL_SEARCH_TOOL_NAME,
+            json!({"query":"opaque_0017"}),
+        ),
+    )];
+    let disclosure = tool_disclosure(&[
+        request,
+        RuntimeMessage::tool_result("refinement", Some(refined), None),
+    ]);
+    let projected = hook(disclosure).transform(definitions);
+    assert_eq!(projected.len(), 1);
+    assert_eq!(projected[0].name(), "opaque_0017");
+    assert_eq!(projected[0].full_parameters(), &json!({"type":"object"}));
+}
+
+#[tokio::test]
+async fn mixed_source_refinements_and_fallbacks_share_scope_count_and_byte_bounds() {
+    let mut definitions = Vec::new();
+    for position in 0..24 {
+        definitions.push(capability_tool(
+            &format!("opaque_{position:04}"),
+            &format!("stockroom_{position:02}"),
+            &format!("Stockroom {position:02}"),
+            "Warehouse fulfillment inventory",
+        ));
+        let mut server = builtin(
+            format!("mcp_atlas_{position:02}__opaque"),
+            "Process one item",
+            json!({"type":"object"}),
+        );
+        let ToolDefinition::Builtin(tool) = &mut server else {
+            unreachable!()
+        };
+        tool.hints.metadata = Some(json!({"mcp_server":{
+            "name":format!("atlas_{position:02}"),"description":"Warehouse fulfillment inventory"}}));
+        definitions.push(server);
+    }
+    definitions.push(capability_tool(
+        "private_opaque",
+        "private_capability",
+        "Private",
+        "Secret documents",
+    ));
+    let mut context = context(&definitions);
+    Arc::make_mut(context.visible_tool_names.as_mut().unwrap()).remove("private_opaque");
+    for limit in [1024, 32768] {
+        for query in [
+            "warehouse fulfillment",
+            "unknownphenomenon",
+            "secret documents",
+        ] {
+            let ToolExecutionResult::Success(result) = bounded_tool(limit)
+                .execute_with_context(json!({"query":query}), &context)
+                .await
+            else {
+                panic!("source hints should fit")
+            };
+            assert_eq!(result["tools"], json!([]));
+            assert_eq!(result["loaded"], json!([]));
+            let servers = result["available_servers"].as_array().unwrap();
+            let capabilities = result
+                .get("available_capabilities")
+                .and_then(Value::as_array);
+            assert!(servers.len() + capabilities.map_or(0, Vec::len) <= 16);
+            assert!(serde_json::to_vec(&result).unwrap().len() <= limit);
+            let output = serde_json::to_string(&result).unwrap();
+            assert!(!output.contains("private_capability"));
+            assert!(!output.contains("private_opaque"));
+            if query == "unknownphenomenon" {
+                assert!(!servers.is_empty());
+                assert!(!capabilities.unwrap().is_empty());
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn capability_browse_hints_cannot_crowd_out_omitted_operation_refinement() {
+    let mut definition = capability_tool(
+        "opaque_zeta",
+        "stockroom",
+        &"界".repeat(400),
+        "Warehouse fulfillment inventory",
+    );
+    let ToolDefinition::Builtin(tool) = &mut definition else {
+        unreachable!()
+    };
+    tool.parameters = json!({"type":"object","description":"x".repeat(2000)});
+    let context = context(&[definition]);
+    let mut search = bounded_tool(1024);
+    search.limits.as_mut().unwrap().active_bytes = 1024;
+    let ToolExecutionResult::Success(result) = search
+        .execute_with_context(json!({"query":"opaque_zeta"}), &context)
+        .await
+    else {
+        panic!("omitted operation hint should fit")
+    };
+    assert_eq!(result["loaded"], json!([]));
+    assert_eq!(result["omitted_tools"], json!(["opaque_zeta"]));
+    assert_eq!(result["omitted_for_byte_budget"], 1);
+    assert!(result.get("available_capabilities").is_none());
+    assert!(serde_json::to_vec(&result).unwrap().len() <= 1024);
+}
+
 fn context(definitions: &[ToolDefinition]) -> ToolContext {
     let mut registry = ToolRegistry::new();
     for definition in definitions {
@@ -83,6 +298,51 @@ fn hook(disclosure: ToolDisclosure) -> DeferSchemaHook {
             result_bytes: 32768,
         }),
     }
+}
+
+fn project_search_result(
+    query: &str,
+    result: Value,
+    definitions: Vec<ToolDefinition>,
+) -> Vec<ToolDefinition> {
+    let mut request = RuntimeMessage::assistant("");
+    request.content = vec![ContentPart::ToolCall(
+        everruns_contracts::runtime::message::ToolCallContentPart::new(
+            "search",
+            TOOL_SEARCH_TOOL_NAME,
+            json!({"query":query}),
+        ),
+    )];
+    hook(tool_disclosure(&[
+        request,
+        RuntimeMessage::tool_result("search", Some(result), None),
+    ]))
+    .transform(definitions)
+}
+
+#[tokio::test]
+async fn schema_larger_than_search_result_budget_is_delivered_as_a_full_native_function() {
+    let schema = json!({
+        "type":"object", "additionalProperties":false, "required":["id"],
+        "$defs":{"identifier":{"type":"string","enum":["kept"]}},
+        "properties":{"id":{"$ref":"#/$defs/identifier"}},
+        "description":"x".repeat(40000)
+    });
+    let definitions = vec![builtin("large_record", "Read a record", schema.clone())];
+    let ToolExecutionResult::Success(result) = bounded_tool(1024)
+        .execute_with_context(json!({"query":"large_record"}), &context(&definitions))
+        .await
+    else {
+        panic!("native schema fits even though search text has a smaller budget")
+    };
+    assert_eq!(result["loaded"], json!(["large_record"]));
+    assert!(result["tools"][0].get("parameters").is_none());
+    assert!(serde_json::to_vec(&result).unwrap().len() <= 1024);
+    let projected = project_search_result("large_record", result, definitions);
+    assert_eq!(projected.len(), 1);
+    assert_eq!(projected[0].full_parameters(), &schema);
+    assert!(serde_json::to_vec(&projected).unwrap().len() > 32768);
+    assert!(serde_json::to_vec(&projected).unwrap().len() <= 65536);
 }
 
 #[test]
@@ -136,6 +396,17 @@ async fn initial_surface_stays_constant_at_ten_thousand_tools_and_retains_execut
             .build();
         assert_eq!(runtime.tools.len(), 1);
         assert_eq!(runtime.tools[0].name(), TOOL_SEARCH_TOOL_NAME);
+        // The native baseline contains no catalog operation schemas. The
+        // complete definitions remain available to the execution registry.
+        assert_eq!(
+            runtime.tools[0].parameters()["properties"]["query"]["type"],
+            "string"
+        );
+        assert!(
+            !serde_json::to_string(&runtime.tools)
+                .unwrap()
+                .contains("record_00000")
+        );
         assert_eq!(runtime.catalog_tools.len(), count);
         assert_eq!(runtime.execution_tools().len(), count + 1);
     }
@@ -170,6 +441,66 @@ async fn actual_search_obeys_count_and_bytes_and_never_dumps_the_catalog() {
 }
 
 #[tokio::test]
+async fn exact_search_discloses_only_the_selected_schema_at_two_thousand_and_ten_thousand() {
+    for count in [2000, 10000] {
+        let definitions = definitions(count);
+        let context = context(&definitions);
+        let tool = ToolSearchTool {
+            reveal: Reveal::Redefine,
+            limits: Some(CatalogLimits {
+                active_tools: 32,
+                active_bytes: 65536,
+                result_bytes: 32768,
+            }),
+        };
+        let ToolExecutionResult::Success(result) = tool
+            .execute_with_context(json!({"query":"record_01999"}), &context)
+            .await
+        else {
+            panic!("bounded search should return the selected schema");
+        };
+        assert_eq!(result["loaded"], json!(["record_01999"]));
+        assert_eq!(result["tools"].as_array().unwrap().len(), 1);
+        assert_eq!(result["tools"][0]["name"], "record_01999");
+        assert!(
+            !serde_json::to_string(&result)
+                .unwrap()
+                .contains("record_02000")
+        );
+    }
+}
+
+#[tokio::test]
+async fn bounded_search_never_returns_an_exact_match_outside_the_current_allowlist() {
+    let definitions = definitions(2000);
+    let mut context = context(&definitions);
+    context.visible_tool_names = Some(Arc::new(HashSet::from(["record_00000".to_owned()])));
+    let tool = ToolSearchTool {
+        reveal: Reveal::Redefine,
+        limits: Some(CatalogLimits {
+            active_tools: 32,
+            active_bytes: 65536,
+            result_bytes: 32768,
+        }),
+    };
+    let ToolExecutionResult::Success(result) = tool
+        .execute_with_context(json!({"query":"record_01999"}), &context)
+        .await
+    else {
+        panic!("scoped search should return bounded authorized results");
+    };
+    let loaded = result["loaded"].as_array().unwrap();
+    assert!(loaded.iter().all(|name| name == "record_00000"));
+    assert!(
+        result["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|tool| tool["name"] == "record_00000")
+    );
+}
+
+#[tokio::test]
 async fn oversized_schema_is_not_reported_as_loaded() {
     let oversized = builtin(
         "giant_record",
@@ -194,6 +525,149 @@ async fn oversized_schema_is_not_reported_as_loaded() {
     };
     assert!(result["loaded"].as_array().unwrap().is_empty());
     assert_eq!(result["omitted_for_byte_budget"], 1);
+}
+
+#[tokio::test]
+async fn byte_omitted_operation_names_enable_exact_refinement_without_leaking_scope() {
+    let definitions = vec![
+        builtin(
+            "update_agent_script",
+            "Update an agent description.",
+            json!({"type":"object","description":"x".repeat(3000)}),
+        ),
+        builtin(
+            "update_agent",
+            "Update an agent.",
+            json!({"type":"object","description":"x".repeat(31000)}),
+        ),
+        builtin(
+            "update_private_agent",
+            "Update an agent description.",
+            json!({"type":"object"}),
+        ),
+    ];
+    let mut context = context(&definitions);
+    context.visible_tool_names = Some(Arc::new(HashSet::from([
+        "update_agent_script".to_owned(),
+        "update_agent".to_owned(),
+    ])));
+    let tool = ToolSearchTool {
+        reveal: Reveal::Redefine,
+        limits: Some(CatalogLimits {
+            active_tools: 32,
+            active_bytes: 32768,
+            result_bytes: 32768,
+        }),
+    };
+    let ToolExecutionResult::Success(result) = tool
+        .execute_with_context(json!({"query":"update agent description"}), &context)
+        .await
+    else {
+        panic!("search failed")
+    };
+    assert_eq!(result["loaded"], json!(["update_agent_script"]));
+    assert_eq!(result["omitted_for_byte_budget"], 1);
+    assert_eq!(result["omitted_tools"], json!(["update_agent"]));
+    assert!(serde_json::to_vec(&result).unwrap().len() <= 32768);
+    assert!(
+        !serde_json::to_string(&result)
+            .unwrap()
+            .contains("update_private_agent")
+    );
+
+    let ToolExecutionResult::Success(refined) = tool
+        .execute_with_context(json!({"query":result["omitted_tools"][0]}), &context)
+        .await
+    else {
+        panic!("exact refinement failed")
+    };
+    assert_eq!(refined["loaded"], json!(["update_agent"]));
+    assert!(refined["tools"][0].get("parameters").is_none());
+    let projected = project_search_result("update_agent", refined.clone(), definitions.clone());
+    assert_eq!(
+        projected[0].full_parameters(),
+        definitions[1].full_parameters()
+    );
+    assert!(refined.get("omitted_tools").is_none());
+    assert!(serde_json::to_vec(&refined).unwrap().len() <= 32768);
+}
+
+#[tokio::test]
+async fn exact_summary_at_result_byte_boundary_keeps_its_entire_budget() {
+    let name = "edge_record";
+    let mut description = String::new();
+    let schema = json!({"type":"object"});
+    let envelope = json!({
+        "query":name,"tools":[{"name":name,"description":description,
+            "server_match":false,"operation_match":true}],
+        "loaded":[name],"bounded":true,"loading_mcp_servers":[],"omitted_for_byte_budget":0,
+        "message":"Selected schemas become native functions next step. After loading a server, search again for its operation. Refine source-only or oversized matches."
+    });
+    description = "x".repeat(32768 - serde_json::to_vec(&envelope).unwrap().len());
+    let definitions = vec![builtin(name, description, schema.clone())];
+    let context = context(&definitions);
+    let tool = ToolSearchTool {
+        reveal: Reveal::Redefine,
+        limits: Some(CatalogLimits {
+            active_tools: 32,
+            active_bytes: 65536,
+            result_bytes: 32768,
+        }),
+    };
+    let ToolExecutionResult::Success(result) = tool
+        .execute_with_context(json!({"query":name}), &context)
+        .await
+    else {
+        panic!("exact summary at the byte boundary should fit")
+    };
+    assert_eq!(result["loaded"], json!([name]));
+    assert!(result["tools"][0].get("parameters").is_none());
+    let projected = project_search_result(name, result.clone(), definitions);
+    assert_eq!(projected[0].full_parameters(), &schema);
+    assert!(result.get("omitted_tools").is_none());
+    assert_eq!(serde_json::to_vec(&result).unwrap().len(), 32768);
+}
+
+#[tokio::test]
+async fn omitted_name_hints_are_bounded_complete_utf8_identities_from_the_current_scope() {
+    let definitions: Vec<_> = (0..20)
+        .map(|position| {
+            builtin(
+                format!("lookup_{}_{position:02}", "界".repeat(60)),
+                "Look up a record.",
+                json!({"type":"object","description":"x".repeat(2000)}),
+            )
+        })
+        .collect();
+    let mut context = context(&definitions);
+    let allowed: HashSet<_> = definitions
+        .iter()
+        .skip(1)
+        .map(|definition| definition.name().to_owned())
+        .collect();
+    context.visible_tool_names = Some(Arc::new(allowed.clone()));
+    let tool = ToolSearchTool {
+        reveal: Reveal::Redefine,
+        limits: Some(CatalogLimits {
+            active_tools: 32,
+            active_bytes: 1024,
+            result_bytes: 1024,
+        }),
+    };
+    let ToolExecutionResult::Success(result) = tool
+        .execute_with_context(json!({"query":"lookup"}), &context)
+        .await
+    else {
+        panic!("bounded name hints should fit")
+    };
+    assert!(serde_json::to_vec(&result).unwrap().len() <= 1024);
+    assert_eq!(result["omitted_for_byte_budget"], MAX_SEARCH_RESULTS);
+    let hints = result["omitted_tools"].as_array().unwrap();
+    assert!(!hints.is_empty());
+    assert!(hints.len() <= MAX_SEARCH_RESULTS);
+    for name in hints {
+        assert!(allowed.contains(name.as_str().unwrap()));
+    }
 }
 
 #[tokio::test]
