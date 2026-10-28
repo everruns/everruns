@@ -178,10 +178,12 @@ async fn active_turn_cap_enforced() {
         request_id: None,
     };
 
-    let err = svc
-        .create(ctx, CreateMessageRequest::user("hello"))
-        .await
-        .unwrap_err();
+    let send = svc.create(ctx, CreateMessageRequest::user("hello"));
+    assert!(
+        std::mem::size_of_val(&send) < 4096,
+        "message intake must not inflate nested HTTP handler futures"
+    );
+    let err = send.await.unwrap_err();
     assert!(
         err.downcast_ref::<BadRequestError>().is_some(),
         "expected BadRequestError, got: {err}"

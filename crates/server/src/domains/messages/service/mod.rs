@@ -162,7 +162,9 @@ impl MessageService {
         req: CreateMessageRequest,
         prefetch: CreateMessagePrefetch,
     ) -> Result<Message> {
-        self.create_inner(ctx, req, prefetch, None).await
+        // Keep the intake future off nested HTTP handler stacks. Agent API
+        // sends add enough wrappers to overflow a default debug worker stack.
+        Box::pin(self.create_inner(ctx, req, prefetch, None)).await
     }
 
     /// [`Self::create`] for a message whose turn runs a saved script instead
