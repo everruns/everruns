@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { Component, useState, type ReactNode } from "react";
 import { Streamdown } from "streamdown";
+import { artifactPath } from "./artifact-path";
 import "@openuidev/react-ui/components.css";
 
 const OpenUI = dynamic(
@@ -356,16 +357,18 @@ export function MessageContent({
     <Streamdown
       key={key}
       components={{
-        a: ({ href, children, ...props }) =>
-          onFile && href && (href.startsWith("/workspace/") || href.startsWith("/attachments/")) ? (
-            <button className="artifact-link" onClick={() => onFile(href)}>
+        a: ({ href, children, ...props }) => {
+          const path = onFile ? artifactPath(href) : null;
+          return path ? (
+            <button className="artifact-link" onClick={() => onFile?.(path)}>
               {children}
             </button>
           ) : (
             <a {...props} href={href}>
               {children}
             </a>
-          ),
+          );
+        },
       }}
     >
       {text}

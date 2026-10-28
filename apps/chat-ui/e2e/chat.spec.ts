@@ -463,3 +463,38 @@ test("preserves attachments and draft on failure, then submits effort and all fi
   expect(sent?.controls.reasoning.effort).toBe("high");
   await expect(page.getByRole("button", { name: "Remove before.csv" })).toHaveCount(0);
 });
+
+test("publishes a usable read-only link when clipboard access is denied and can revoke it", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  const token = "01933b5a-0000-7000-8000-000000000001";
+  let revoked = false;
+  await page.route("**/api/sessions/*/share", async (route) => {
+    revoked = route.request().method() === "DELETE";
+    await route.fulfill({ json: revoked ? { revoked: true } : { token } });
+  });
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, "clipboard", {
+      value: {
+        writeText: async () => {
+          throw new Error("Clipboard access denied");
+        },
+      },
+    }),
+  );
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.goto(origin);
+  await page.getByLabel("Conversation actions").click();
+  await page.getByRole("button", { name: "Share read-only link", exact: true }).click();
+  await expect(
+    page.getByText(`Read-only link: ${origin}/?share=${token}`, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(`Read-only link: ${origin}/?share=${token}`, { exact: true }),
+  ).not.toContainText(root.id);
+  await page.getByRole("button", { name: "Revoke public links", exact: true }).click();
+  await expect(page.getByText("Public links revoked.")).toBeVisible();
+  expect(revoked).toBe(true);
+});

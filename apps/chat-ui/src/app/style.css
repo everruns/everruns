@@ -452,6 +452,7 @@ h1 {
   color: var(--muted);
 }
 .notice {
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: 12px;
 }

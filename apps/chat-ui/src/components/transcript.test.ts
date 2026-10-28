@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { artifactPath } from "./artifact-path";
 import { conversationMessages, type ChatEvent } from "./transcript";
 import { workForMessages } from "./work-log";
 test("completed messages replace streamed deltas and keep tool results out of the transcript", () => {
@@ -36,4 +37,16 @@ test("each reply receives the work from its own user turn", () => {
   const { logs } = workForMessages(events);
   assert.equal(logs.get("a1")?.length, 1);
   assert.equal((logs.get("a2")?.[0].data.tool_call as { id: string }).id, "tool2");
+});
+
+test("artifact URLs decode file names once and stay on workspace mounts", () => {
+  assert.equal(artifactPath("/workspace/my%20report.md#summary"), "/workspace/my report.md");
+  assert.equal(
+    artifactPath("/attachments/%E6%8A%A5%E5%91%8A.csv?download=1"),
+    "/attachments/报告.csv",
+  );
+  assert.equal(artifactPath("/workspace/literal%2520.md"), "/workspace/literal%20.md");
+  assert.equal(artifactPath("https://example.test/workspace/report.md"), null);
+  assert.equal(artifactPath("/workspace/../memory/user"), null);
+  assert.equal(artifactPath("/workspace/bad%escape.md"), null);
 });

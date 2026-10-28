@@ -563,8 +563,12 @@ function WorkChat({ config }: { config: Config }) {
                         const url = new URL(location.href);
                         url.search = "";
                         url.searchParams.set("share", result.token);
-                        await navigator.clipboard.writeText(url.toString());
-                        setNotice("Read-only link copied. A new link replaces the previous one.");
+                        try {
+                          await navigator.clipboard.writeText(url.toString());
+                          setNotice("Read-only link copied. A new link replaces the previous one.");
+                        } catch {
+                          setNotice(`Read-only link: ${url.toString()}`);
+                        }
                       } catch (error) {
                         fail(error);
                       }
