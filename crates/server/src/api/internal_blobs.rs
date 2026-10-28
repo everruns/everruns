@@ -22,7 +22,7 @@
 use crate::security::constant_time_eq;
 use crate::storage::StorageBackend;
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     body::{Body, Bytes},
     extract::{DefaultBodyLimit, Path, Query, State},
     http::{StatusCode, header},
@@ -135,17 +135,34 @@ pub fn routes(state: AppState) -> Router {
         )
         // A journal reader has no byte authority, even for a valid legacy URL.
         // Run before extractors: do not buffer an upload or touch storage first.
-        .layer(axum::middleware::from_fn(require_blob_authority))
+        .layer(axum::middleware::from_fn_with_state(
+            state.db.clone(),
+            require_blob_authority,
+        ))
         .with_state(state)
 }
 
 async fn require_blob_authority(
+    State(db): State<Arc<StorageBackend>>,
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
     use crate::worker_link::grpc_service::authority::{self, WorkerAuthority};
     match authority::resolve(request.extensions()) {
-        Ok(WorkerAuthority::LegacyWorker | WorkerAuthority::Development) => next.run(request).await,
+        Ok(authority @ (WorkerAuthority::LegacyWorker | WorkerAuthority::Development)) => {
+            // Read-link authentication must reject invalid signatures without
+            // any database access. The handler checks the floor before lookup.
+            if matches!(
+                *request.method(),
+                axum::http::Method::GET | axum::http::Method::HEAD
+            ) {
+                return next.run(request).await;
+            }
+            if let Err(error) = authority::admit_ingress(&db, authority).await {
+                return ingress_error(error).into_response();
+            }
+            next.run(request).await
+        }
         Ok(WorkerAuthority::ActorJournal(_) | WorkerAuthority::VerifiedJournal(_)) => (
             StatusCode::FORBIDDEN,
             "Worker assignment does not permit blob access",
@@ -159,6 +176,15 @@ async fn require_blob_authority(
     }
 }
 
+fn ingress_error(error: tonic::Status) -> (StatusCode, &'static str) {
+    let status = if error.code() == tonic::Code::PermissionDenied {
+        StatusCode::FORBIDDEN
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status, "Worker byte authority unavailable")
+}
+
 #[derive(Debug, Deserialize)]
 pub struct UploadQuery {
     pub org_id: i64,
@@ -168,8 +194,14 @@ pub struct UploadQuery {
 async fn upload_image(
     State(state): State<AppState>,
     Query(query): Query<UploadQuery>,
+    Extension(authority): Extension<crate::worker_link::grpc_service::authority::WorkerAuthority>,
     body: Bytes,
 ) -> Result<Json<UploadedImage>, (StatusCode, &'static str)> {
+    // A body admitted before cutover may arrive later. Refuse before decoding
+    // or storing it once its legacy authority is no longer accepted.
+    crate::worker_link::grpc_service::authority::admit_ingress(&state.db, &authority)
+        .await
+        .map_err(ingress_error)?;
     let (head, data) =
         decode_image_upload(&body).ok_or((StatusCode::BAD_REQUEST, "Malformed image upload"))?;
     if data.len() > crate::api::images::MAX_IMAGE_SIZE {
@@ -243,9 +275,13 @@ async fn get_blob(
     State(state): State<AppState>,
     Path((kind, id)): Path<(String, Uuid)>,
     Query(query): Query<SignedQuery>,
+    Extension(authority): Extension<crate::worker_link::grpc_service::authority::WorkerAuthority>,
 ) -> Result<Response, (StatusCode, &'static str)> {
     let kind = BlobKind::parse(&kind).ok_or((StatusCode::NOT_FOUND, "Unknown blob kind"))?;
     validate_signature(&state.signing_secret, kind, id, &query)?;
+    crate::worker_link::grpc_service::authority::admit_ingress(&state.db, &authority)
+        .await
+        .map_err(ingress_error)?;
 
     let internal = |error: anyhow::Error| {
         tracing::error!(%id, kind = kind.as_str(), error = %error, "Failed to load blob for worker");

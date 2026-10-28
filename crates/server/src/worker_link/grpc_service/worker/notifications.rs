@@ -12,6 +12,8 @@ impl WorkerServiceImpl {
         &self,
         request: Request<SubscribeTaskNotificationsRequest>,
     ) -> Result<Response<TaskNotificationStream>, Status> {
+        let authority = super::super::authority::resolve(request.extensions())?.clone();
+        let db = self.db.clone();
         let req = request.into_inner();
         let worker_id = req.worker_id.clone();
         let activity_types = req.activity_types.clone();
@@ -35,7 +37,8 @@ impl WorkerServiceImpl {
             .await;
 
         // Create a channel for the stream
-        let (tx, rx) = tokio::sync::mpsc::channel(128);
+        let (tx, rx) =
+            tokio::sync::mpsc::channel::<std::result::Result<TaskNotification, Status>>(128);
         let activity_types_set: std::collections::HashSet<String> =
             activity_types.into_iter().collect();
 
@@ -122,7 +125,19 @@ impl WorkerServiceImpl {
         });
 
         // Return the receiver as a stream
-        let stream = ReceiverStream::new(rx);
+        // Queued notifications and heartbeats must not extend a legacy stream
+        // across protection cutover. A failure terminates the stream.
+        let stream = futures::stream::try_unfold(rx, move |mut receiver| {
+            let db = db.clone();
+            let authority = authority.clone();
+            async move {
+                let Some(message) = receiver.recv().await else {
+                    return Ok(None);
+                };
+                super::super::authority::admit_ingress(&db, &authority).await?;
+                Ok(Some((message?, receiver)))
+            }
+        });
         Ok(Response::new(Box::pin(stream)))
     }
 }
