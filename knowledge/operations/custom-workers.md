@@ -38,6 +38,18 @@ a SHA-256 digest of a high-entropy worker token is stored. Each request checks t
 current enabled deployment; disabling it revokes subsequent requests immediately.
 An in-flight request authorized before revocation may finish.
 
+The database-wide [worker ingress protection floor](../security/worker-assignment-read-scope.md#protected-wire-ingress-floor)
+also applies to this separate listener. With any floor present, customer-worker
+RPCs refuse before deployment lookup and operation dispatch. Agent-bound tokens
+and actor fences do not establish the verified assignment authority required by
+that mode. Absence is checked on every call rather than cached per connection;
+unknown versions and storage/schema failure fail closed. Ordinary custom-worker
+behavior remains available only with the floor absent. This refusal is a
+prerequisite guard, not a scoped implementation of this protocol. Calls admitted
+before a committed floor may finish; previously disclosed data cannot be recalled.
+No floor activation or production credential/configuration change is performed
+by the source guard.
+
 The binding is persistent, including when its credential is disabled. Built-in
 workers exclude bound sessions before their bounded candidate scan; a custom
 worker leases only its own bound agent. An unavailable custom implementation
@@ -105,7 +117,8 @@ compute, filesystem, secret and network isolation boundary exists.
 Regression tests cover persistent routing without fallback, revocation, credential
 rejection, cross-deployment/tenant and session denial, live lease and fence checks,
 and canonical event ingestion. Source:
-[custom worker tests](../../crates/server/src/worker_link/custom_workers/tests.rs).
+[custom worker tests](../../crates/server/src/worker_link/custom_workers/tests.rs)
+and [floor transport regressions](../../crates/server/src/worker_link/custom_workers/ingress_floor_tests.rs).
 The sample's database test verifies aggregate results and parameter binding.
 The example's fixed-origin OpenAI transport preserves deployment proxies and CA
 trust while rejecting other origins and redirects; it does not relax native
