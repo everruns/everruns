@@ -428,49 +428,6 @@ mod tests {
 }
 
 #[cfg(test)]
-mod live_tests {
-    use super::*;
-
-    #[tokio::test]
-    #[ignore = "requires a real OPENAI_API_KEY and model access"]
-    async fn real_model_queries_the_private_database() {
-        let path =
-            std::env::temp_dir().join(format!("custom-live-{}.sqlite", uuid::Uuid::now_v7()));
-        let db = rusqlite::Connection::open(&path).unwrap();
-        db.execute_batch("CREATE TABLE sales(region TEXT, amount_cents INTEGER); INSERT INTO sales VALUES ('north',12000),('north',8500),('south',7000);").unwrap();
-        drop(db);
-        let agent = build_agent(path.clone(), &[]).unwrap();
-        let engine = Engine::new();
-        let session = engine.create(agent);
-        let turn = tokio::time::timeout(
-            Duration::from_secs(90),
-            session.send_and_wait(
-                "Call sales_summary for region north. Report orders and revenue_cents as JSON.",
-            ),
-        )
-        .await
-        .unwrap()
-        .unwrap();
-        std::fs::remove_file(path).unwrap();
-        if !turn.success {
-            let events = session.event_page(None, 100).await.unwrap();
-            let errors: Vec<_> = events
-                .events
-                .iter()
-                .filter_map(|event| {
-                    event.canonical_json()["data"]["error"]
-                        .as_str()
-                        .map(str::to_owned)
-                })
-                .collect();
-            panic!("Real-model execution failed: {errors:?}");
-        }
-        assert!(turn.tool_calls > 0);
-        assert!(turn.response.contains("20500"));
-    }
-}
-
-#[cfg(test)]
 mod projection_tests {
     use super::*;
     #[test]

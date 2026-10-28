@@ -239,5 +239,5 @@ python3 -m unittest discover -s examples/custom-data-agent/tests
 
 The example's cargo tests include its Python harness contracts, so ordinary CI
 also checks API namespace/health handling and credential/CA deployment boundaries.
-The ignored `real_model_queries_the_private_database` test is a useful provider
-preflight, but does not replace the complete CP/worker smoke above.
+Run the complete CP/worker smoke above for real-provider validation; ordinary
+unit tests do not require provider credentials.
