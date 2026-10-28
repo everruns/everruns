@@ -114,6 +114,29 @@ claim work or enter generic command dispatch. Tests also cover release, expiry,
 stale generations and reconnect. This verifies the server component's conditional
 boundary, not an end-to-end worker-isolation guarantee.
 
+## Protected wire ingress floor
+
+The [protocol floor](../../crates/server/migrations/20261028140332_worker_ingress_protection_floor.sql)
+is a prerequisite for opaque capability enrollment and verified journal use.
+It refuses legacy/development and selector-only authority across canonical worker
+RPCs and byte routes, regardless of caller-selected org/session identifiers or
+valid legacy signatures. Invalid read signatures are still rejected without
+any database lookup; new uploads are refused before buffering. Empty metadata preserves the existing unprotected
+plane; storage/schema errors fail closed. Floor removal and downgrade are
+refused, so revoking or deleting assignments cannot reopen broad worker access.
+
+The floor is database-wide because global claims, provider credentials and
+object links do not carry trustworthy assignment scope. Per-assignment mixed
+legacy compatibility is deliberately unsupported. Verified journal reads remain
+the only scoped operation; other operations are refused rather than promoted to
+legacy authority. Unknown future floor versions also fail closed.
+
+[Qualification and rollout limits](../operations/durable-execution-engine.md#worker-communication)
+include in-flight operation semantics, complete legacy draining, missing scoped
+operations, direct/custom hosting and independent enforcement of the serving
+binary version floor. No activation/issuer is wired. This is a canonical wire
+ingress component, not a full worker/process/host isolation guarantee.
+
 ## Dependencies before activation
 
 The broader [assignment-bound design proposal](https://github.com/everruns/everruns/pull/4987)

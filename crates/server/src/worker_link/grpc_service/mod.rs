@@ -167,7 +167,6 @@ use everruns_internal_protocol::{
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 
 /// Read the gRPC auth token from the environment. When set, all gRPC
