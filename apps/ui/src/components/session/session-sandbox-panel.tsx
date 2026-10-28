@@ -165,6 +165,23 @@ export function SessionSandboxPanel({ sessionId }: { sessionId: string }) {
           </p>
         )}
 
+        {data.build ? (
+          <div className="space-y-2 border p-3">
+            <h3 className="text-sm font-medium">{ui("Built snapshot")}</h3>
+            <p className="break-all font-mono text-xs">{data.build.snapshot_id}</p>
+            {data.build.software_notes ? (
+              <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-xs">
+                {data.build.software_notes}
+              </pre>
+            ) : null}
+            <p className="text-xs text-muted-foreground">
+              {ui(
+                "Author-supplied reference data. These notes do not grant capabilities or change runtime policy.",
+              )}
+            </p>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
           {data.name ? (
             <span>

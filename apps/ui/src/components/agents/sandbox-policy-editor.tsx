@@ -226,7 +226,7 @@ type NetworkPolicy = NonNullable<NonNullable<SandboxTemplateSpec["containment"]>
  * Outbound network policy for providers that enforce it themselves (Modal,
  * Daytona, E2B). Renders grid cells, so it sits inside a two-column grid.
  */
-function NetworkPolicyFields({
+export function NetworkPolicyFields({
   name,
   network,
   disabled,
@@ -866,7 +866,7 @@ function TemplateSpecEditor({
                   value={typeof options.snapshot === "string" ? options.snapshot : ""}
                   onChange={(event) => setOption("snapshot", event.target.value)}
                   placeholder={daytonaDesktop ? ui("Desktop image") : ui("Provider default")}
-                  disabled={disabled || daytonaDesktop}
+                  disabled={disabled}
                 />
               </div>
               <div className="space-y-2">

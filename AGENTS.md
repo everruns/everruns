@@ -38,6 +38,10 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
 
 ### Gotchas
 
+- Sandbox Builder walkthrough publication is on hold until the user approves the review cut.
+  Keep its video off YouTube and out of public docs until that approval. Implementation,
+  ordinary feature docs, CI and merge do not release this hold.
+
 - Dreaming has an explicit user publication hold. Do not create or reinstate its public
   changelog entry or announcement assets until the user explicitly approves them. CI, merge
   and release are not publication approval. Continue implementation without an entry and

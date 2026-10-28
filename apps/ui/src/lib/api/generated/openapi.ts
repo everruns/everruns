@@ -6030,6 +6030,86 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sandbox-template-builds/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Sandbox Template build
+     * @description Inspect a build attempt in the authenticated organization.
+     */
+    get: operations["get_sandbox_template_build"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-builds/{id}/apply": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Save built snapshot as new revision
+     * @description Atomically apply a ready snapshot to its unchanged source template. Existing Agent and Session pins do not move.
+     */
+    post: operations["apply_sandbox_template_build"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-builds/{id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Cancel Sandbox Template build
+     * @description Cancel queued or running build work and clean up its disposable resources.
+     */
+    post: operations["cancel_sandbox_template_build"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-builds/{id}/discard": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Discard unused build artifact
+     * @description Remove an unused build artifact. Applied artifacts remain pinned and cannot be discarded.
+     */
+    post: operations["discard_sandbox_template_build"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sandbox-template-metadata/{id}": {
     parameters: {
       query?: never;
@@ -6072,6 +6152,30 @@ export interface paths {
      * @description Create a reusable Sandbox Template and its first immutable revision.
      */
     post: operations["create_sandbox_template"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-templates/{id}/builds": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Sandbox Template builds
+     * @description List twenty build attempts at an optional offset, bounded logs, and captured software notes.
+     */
+    get: operations["list_sandbox_template_builds"];
+    put?: never;
+    /**
+     * Build a Sandbox Template snapshot
+     * @description Run an install script in fresh isolated compute and bake a reusable provider snapshot. Does not revise the template.
+     */
+    post: operations["start_sandbox_template_build"];
     delete?: never;
     options?: never;
     head?: never;
@@ -24305,6 +24409,38 @@ export interface components {
       commands?: string[];
     };
     /**
+     * @description Reference data resolved by the server from an applied artifact in this tenant.
+     *     Software notes remain untrusted author content, never runtime policy.
+     */
+    SandboxBuildProvenance: {
+      build_id: string;
+      /** Format: date-time */
+      built_at: string;
+      snapshot_id: string;
+      software_notes?: string | null;
+      verification_command?: string | null;
+    };
+    SandboxBuildRequest: {
+      build_network?: components["schemas"]["SandboxNetworkPolicy"] | null;
+      install_script: string;
+      /** @description Optional bounded, author-supplied Markdown captured from the builder. */
+      metadata_path?: string | null;
+      /** @description Source revision to guard against concurrent template edits. */
+      source_revision_id: string;
+      /** Format: int64 */
+      timeout_seconds?: number;
+      verification_command?: string | null;
+    };
+    /** @enum {string} */
+    SandboxBuildStatus:
+      | "queued"
+      | "running"
+      | "ready"
+      | "failed"
+      | "cancelled"
+      | "applied"
+      | "discarded";
+    /**
      * @description What the Sandbox target can actually do.
      *
      *     Read this before assuming a shell behaves like Linux. Bashkit reports
@@ -24761,6 +24897,31 @@ export interface components {
        * @description Timestamp of the most recent definition or revision change.
        */
       updated_at: string;
+    };
+    SandboxTemplateBuild: {
+      applied_revision_id?: string | null;
+      builder_id?: string | null;
+      cancel_requested: boolean;
+      cleanup_pending: boolean;
+      /** Format: date-time */
+      created_at: string;
+      error?: string | null;
+      id: string;
+      logs: string;
+      request: components["schemas"]["SandboxBuildRequest"];
+      sandbox_template_id: string;
+      snapshot_id?: string | null;
+      snapshot_name: string;
+      /** Format: date-time */
+      snapshot_requested_at?: string | null;
+      software_notes?: string | null;
+      /** @description Exact source spec; no runtime credentials or workspace are attached. */
+      source_spec: components["schemas"]["SandboxTemplateSpec"];
+      status: components["schemas"]["SandboxBuildStatus"];
+      step: string;
+      /** Format: date-time */
+      updated_at: string;
+      verification_sandbox_id?: string | null;
     };
     /** @description Editable template metadata; omitted fields retain their current values. */
     SandboxTemplateMetadataRequest: {
@@ -26247,6 +26408,7 @@ export interface components {
     SessionSandboxCredentialSource: "none" | "session_user" | "agent" | "organization";
     /** @description The primary Sandbox a Session is running in. */
     SessionSandboxResponse: {
+      build?: components["schemas"]["SandboxBuildProvenance"] | null;
       capabilities: components["schemas"]["SandboxCapabilities"];
       containment: components["schemas"]["SandboxContainment"];
       /** @description Most recent checkpoint used to recover this logical Sandbox. */
@@ -48042,6 +48204,98 @@ export interface operations {
       };
     };
   };
+  get_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
+        };
+      };
+    };
+  };
+  apply_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplate"];
+        };
+      };
+    };
+  };
+  cancel_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
+        };
+      };
+    };
+  };
+  discard_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
+        };
+      };
+    };
+  };
   get_sandbox_template_metadata: {
     parameters: {
       query?: never;
@@ -48130,6 +48384,56 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SandboxTemplate"];
+        };
+      };
+    };
+  };
+  list_sandbox_template_builds: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"][];
+        };
+      };
+    };
+  };
+  start_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SandboxBuildRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
         };
       };
     };

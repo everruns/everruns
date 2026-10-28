@@ -918,7 +918,8 @@ impl TestServer {
             db.clone(),
             sessions_state.session_service.clone(),
             auth_state.clone(),
-        );
+        )
+        .with_encryption(encryption.clone());
         let user_connections_state = api::user_connections::AppState::new(
             db.clone(),
             encryption.clone(),

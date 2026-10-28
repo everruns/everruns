@@ -1,3 +1,4 @@
+import { messages as sandboxBuilds } from "./messages/uk/sandbox-builds";
 import { messages as agentCost } from "./messages/uk/agent-cost";
 import { messages as sharedControls } from "./messages/uk/shared-controls";
 import { messages as tracing } from "./messages/uk/tracing";
@@ -30,6 +31,7 @@ import { messages as catalog18 } from "./messages/uk/settings-02";
 
 export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   Object.create(null) as Record<string, string>,
+  sandboxBuilds,
   catalog0,
   catalog1,
   catalog2,

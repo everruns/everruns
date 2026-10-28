@@ -391,6 +391,13 @@ impl IdMarker for SandboxTemplateRevisionIdMarker {
     const LEGACY_PREFIXES: &'static [&'static str] = &["envrev"];
 }
 
+/// Marker for a Sandbox Template build attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SandboxTemplateBuildIdMarker;
+impl IdMarker for SandboxTemplateBuildIdMarker {
+    const PREFIX: &'static str = "sbxbuild";
+}
+
 /// Marker for durable logical Sandbox IDs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SandboxIdMarker;
@@ -760,6 +767,8 @@ pub type WorkspaceId = TypedId<WorkspaceIdMarker>;
 pub type SandboxTemplateId = TypedId<SandboxTemplateIdMarker>;
 /// Immutable Sandbox Template revision ID.
 pub type SandboxTemplateRevisionId = TypedId<SandboxTemplateRevisionIdMarker>;
+/// A Sandbox Template build attempt.
+pub type SandboxTemplateBuildId = TypedId<SandboxTemplateBuildIdMarker>;
 /// Durable logical Sandbox ID.
 pub type SandboxId = TypedId<SandboxIdMarker>;
 /// Eval ID

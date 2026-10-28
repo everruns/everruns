@@ -223,4 +223,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Manage organization destinations": "Manage organisation destinations",
   "Retry window expired. Review this conversation before sending again.":
     "Retry window expired. Review this conversation before sending again.",
+  "Select and save a named Organization provider account before building.":
+    "Select and save a named Organisation provider account before building.",
 };

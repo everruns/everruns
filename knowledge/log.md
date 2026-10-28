@@ -10,6 +10,8 @@
 
 - Made single-message retrieval independent of the history window and indexed embedded message IDs for turn-start and input-provenance lookups. See [Architecture](foundations/architecture.md) and [ID Schema](foundations/id-schema.md).
 
+- Implemented the [generic Sandbox snapshot builder](harnesses/sandbox-builder.md): authored install scripts, Daytona filesystem snapshots, guarded revisions, cleanup reconciliation and readable provenance. Walkthrough publication awaits user approval.
+
 - Clarified custom-worker Agent identity, operator provisioning, inline tool code, ordinary API invocation and the Slack Direct-reply boundary, including unqualified live Slack behavior. See [Custom workers](operations/custom-workers.md).
 
 - Clarified unreleased Framework batch installation and pinned its source revision in the [public guide](../docs/framework/batch-model-requests.md).

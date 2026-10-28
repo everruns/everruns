@@ -23818,6 +23818,162 @@
         }
       }
     },
+    "/v1/sandbox-template-builds/{id}": {
+      "get": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Get Sandbox Template build",
+        "description": "Inspect a build attempt in the authenticated organization.",
+        "operationId": "get_sandbox_template_build",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxTemplateBuild"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sandbox-template-builds/{id}/apply": {
+      "post": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Save built snapshot as new revision",
+        "description": "Atomically apply a ready snapshot to its unchanged source template. Existing Agent and Session pins do not move.",
+        "operationId": "apply_sandbox_template_build",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxTemplate"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sandbox-template-builds/{id}/cancel": {
+      "post": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Cancel Sandbox Template build",
+        "description": "Cancel queued or running build work and clean up its disposable resources.",
+        "operationId": "cancel_sandbox_template_build",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxTemplateBuild"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sandbox-template-builds/{id}/discard": {
+      "post": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Discard unused build artifact",
+        "description": "Remove an unused build artifact. Applied artifacts remain pinned and cannot be discarded.",
+        "operationId": "discard_sandbox_template_build",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxTemplateBuild"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sandbox-template-metadata/{id}": {
       "get": {
         "tags": [
@@ -23956,6 +24112,95 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SandboxTemplate"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sandbox-templates/{id}/builds": {
+      "get": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "List Sandbox Template builds",
+        "description": "List twenty build attempts at an optional offset, bounded logs, and captured software notes.",
+        "operationId": "list_sandbox_template_builds",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SandboxTemplateBuild"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Build a Sandbox Template snapshot",
+        "description": "Run an install script in fresh isolated compute and bake a reusable provider snapshot. Does not revise the template.",
+        "operationId": "start_sandbox_template_build",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SandboxBuildRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxTemplateBuild"
                 }
               }
             }
@@ -61549,6 +61794,97 @@
           }
         }
       },
+      "SandboxBuildProvenance": {
+        "type": "object",
+        "description": "Reference data resolved by the server from an applied artifact in this tenant.\nSoftware notes remain untrusted author content, never runtime policy.",
+        "required": [
+          "build_id",
+          "snapshot_id",
+          "built_at"
+        ],
+        "properties": {
+          "build_id": {
+            "type": "string"
+          },
+          "built_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "snapshot_id": {
+            "type": "string"
+          },
+          "software_notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verification_command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SandboxBuildRequest": {
+        "type": "object",
+        "required": [
+          "source_revision_id",
+          "install_script"
+        ],
+        "properties": {
+          "build_network": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SandboxNetworkPolicy",
+                "description": "Package sources for the build only. Defaults to the template policy."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "install_script": {
+            "type": "string"
+          },
+          "metadata_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional bounded, author-supplied Markdown captured from the builder."
+          },
+          "source_revision_id": {
+            "type": "string",
+            "description": "Source revision to guard against concurrent template edits."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "verification_command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "SandboxBuildStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "ready",
+          "failed",
+          "cancelled",
+          "applied",
+          "discarded"
+        ]
+      },
       "SandboxCapabilities": {
         "type": "object",
         "description": "What the Sandbox target can actually do.\n\nRead this before assuming a shell behaves like Linux. Bashkit reports\n`native_processes: false`, which is why a build fails there; the answer is\navailable before the first turn rather than after a confusing tool error.",
@@ -62490,6 +62826,107 @@
             "type": "string",
             "format": "date-time",
             "description": "Timestamp of the most recent definition or revision change."
+          }
+        }
+      },
+      "SandboxTemplateBuild": {
+        "type": "object",
+        "required": [
+          "id",
+          "sandbox_template_id",
+          "request",
+          "source_spec",
+          "status",
+          "step",
+          "logs",
+          "snapshot_name",
+          "cancel_requested",
+          "cleanup_pending",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "applied_revision_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "builder_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cancel_requested": {
+            "type": "boolean"
+          },
+          "cleanup_pending": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "logs": {
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/SandboxBuildRequest"
+          },
+          "sandbox_template_id": {
+            "type": "string"
+          },
+          "snapshot_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "snapshot_name": {
+            "type": "string"
+          },
+          "snapshot_requested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "software_notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_spec": {
+            "$ref": "#/components/schemas/SandboxTemplateSpec",
+            "description": "Exact source spec; no runtime credentials or workspace are attached."
+          },
+          "status": {
+            "$ref": "#/components/schemas/SandboxBuildStatus"
+          },
+          "step": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "verification_sandbox_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -65273,6 +65710,17 @@
           "resolved_from"
         ],
         "properties": {
+          "build": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SandboxBuildProvenance",
+                "description": "Server-resolved provenance for the exact tenant, account and snapshot.\nCaptured software notes are untrusted author reference data."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "capabilities": {
             "$ref": "#/components/schemas/SandboxCapabilities"
           },

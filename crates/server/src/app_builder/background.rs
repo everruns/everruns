@@ -378,6 +378,10 @@ pub(super) async fn start_maintenance(
     let mut agent_source_ctx = deps.agent_source_ctx;
     agent_source_ctx.db = deps.background_db.clone();
     let cluster_jobs = vec![
+        crate::domains::sandbox_templates::builds::runner::job(
+            deps.background_db.clone(),
+            deps.encryption.clone(),
+        ),
         crate::domains::agents::source::source_sync_job(agent_source_ctx),
         crate::background::actor_history_retention::retention_job(deps.background_pool.clone()),
         crate::background::blob_gc::blob_gc_job(
