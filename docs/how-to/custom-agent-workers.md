@@ -13,6 +13,26 @@ It uses the Everruns Framework, a real OpenAI model and a private SQLite databas
 You can replace its runtime with another framework or entirely custom code.
 Customer image hosting in Everruns Cloud is not enabled.
 
+## Where it appears in the UI
+
+The custom implementation belongs to an **ordinary Agent**. Create that Agent in
+**Agents**, then have an installation operator bind its ID to a custom-worker
+deployment. It stays in the Agents list with its usual name, avatar and
+Integrations page. Its conversations appear as ordinary sessions; open
+**Playground** to talk to it and **Trace** to inspect its reported execution.
+It does not appear only as an anonymous collection of sessions.
+
+Starting a worker does **not** create an Agent automatically. There is currently
+no self-service worker registration screen, custom-runtime badge, worker health
+panel or UI editor for the binding. Provisioning and credential rotation use the
+operator steps below. An offline worker leaves messages queued.
+
+The Agent's platform identity and channel settings remain useful. Its model,
+system prompt, capabilities, MCP configuration and tool definitions are **not
+automatically applied to your binary**. Your implementation must explicitly load
+and honor any configuration it supports. The sample pins its own model,
+instructions and private tool in code.
+
 ## Prerequisites
 
 - A self-hosted CP and built-in worker built from the same repository revision
@@ -105,10 +125,99 @@ https://workers.example.com:9002 {
 Restrict network access to this listener. Never proxy the trusted fleet service
 onto the customer-facing endpoint. Keep TLS verification enabled.
 
+## Define the custom agent and tool
+
+The worker is an application you build. This Rust building block defines its
+actual behavior using the Framework (`everruns` with the `openai` feature),
+`rusqlite` with `bundled`, `serde_json`, `tokio` and `anyhow`:
+
+```rust
+use std::path::{Path, PathBuf};
+use everruns::{Agent, FunctionTool, Provider};
+use serde_json::{Value, json};
+
+fn sales_summary(database: &Path, region: &str) -> Result<String, String> {
+    let db = rusqlite::Connection::open_with_flags(
+        database, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    ).map_err(|_| "Database unavailable".to_string())?;
+    db.query_row(
+        "SELECT count(*), coalesce(sum(amount_cents), 0) FROM sales WHERE region = ?1",
+        [region],
+        |row| Ok(json!({
+            "region": region,
+            "orders": row.get::<_, i64>(0)?,
+            "revenue_cents": row.get::<_, i64>(1)?
+        }).to_string()),
+    ).map_err(|_| "Sales query failed".to_string())
+}
+
+fn build_sales_agent(database: PathBuf, provider: Provider) -> anyhow::Result<Agent> {
+    let tool = FunctionTool::new(
+        "sales_summary",
+        "Read aggregate sales from our private database.",
+        json!({
+            "type": "object",
+            "properties": {"region": {"type": "string"}},
+            "required": ["region"],
+            "additionalProperties": false
+        }),
+        move |args: Value| {
+            let database = database.clone();
+            async move {
+                let region = args["region"].as_str()
+                    .ok_or_else(|| "region required".to_string())?.to_owned();
+                tokio::task::spawn_blocking(move || sales_summary(&database, &region))
+                    .await.map_err(|_| "Database task failed".to_string())?
+            }
+        },
+    );
+    Ok(Agent::builder()
+        .name("private-sales-agent")
+        .provider(provider)
+        .model("gpt-6.1-sol")
+        .instructions("Use sales_summary for sales questions. Never invent numbers.")
+        .max_iterations(8)
+        .tool(tool)
+        .build()?)
+}
+```
+
+Supply an application-owned provider, for example
+`everruns::OpenAI::from_env()?.into()` from `OPENAI_API_KEY`, when calling
+`build_sales_agent(database, provider)`. The checked-in worker uses its
+fixed-origin transport to preserve deployment proxies and CA trust, and also
+reconstructs prior conversation in its instructions.
+
+This function builds the agent; it does **not** register it with the CP or replace
+the worker protocol loop. The adapter in
+[`src/main.rs`](https://github.com/everruns/everruns/blob/main/examples/custom-data-agent/src/main.rs)
+leases a session, reads its journal, runs this kind of Framework agent, forwards
+canonical events, renews the lease and acknowledges the completed input. Copy
+that adapter and replace its `build_agent`/tool logic to build your own worker.
+Running `Engine::new().create(agent)` alone creates a local Framework session,
+not a CP-connected worker.
+
 ## 4. Start the data agent
 
-Create the private database from the example README, then run from the repository
-root with your model key supplied by your own secret manager:
+Create a private application database. This seed makes north-region sales total
+27,278 cents across two orders:
+
+```bash
+python3 - <<'PYTHON'
+import sqlite3
+from pathlib import Path
+path = Path("work/sales.sqlite")
+path.parent.mkdir(parents=True, exist_ok=True)
+with sqlite3.connect(path) as db:
+    db.execute("CREATE TABLE sales(region TEXT NOT NULL, amount_cents INTEGER NOT NULL)")
+    db.executemany("INSERT INTO sales VALUES (?, ?)", [
+        ("north", 18037), ("north", 9241), ("south", 7000)
+    ])
+PYTHON
+```
+
+Run from the repository root with `OPENAI_API_KEY` supplied by your own secret
+manager:
 
 ```bash
 export CUSTOM_WORKER_URL=http://127.0.0.1:28704
@@ -127,6 +236,89 @@ Open Playground, select the provisioned agent and ask for north-region sales. Th
 normal chat, events, work and trace views receive the tool call and final answer.
 Tool results in events are visible to that session's readers: expose only data
 they are allowed to see.
+
+## Invoke it through the CP
+
+The worker polls for work; users never call its container directly. In the UI,
+open the Agent in Playground and send a message. For API callers, use the same
+Agent ID you bound above. This local-development example uses `jq` and the API
+base from step 1:
+
+```bash
+export AGENT_ID=agent_REPLACE_ME
+SESSION_ID=$(curl -fsS "$EVERRUNS_API_URL/v1/sessions" \
+  -H 'Content-Type: application/json' \
+  -d "{\"agent_id\":\"$AGENT_ID\",\"source\":\"playground\"}" | jq -r .id)
+
+curl -fsS "$EVERRUNS_API_URL/v1/sessions/$SESSION_ID/messages" \
+  -H 'Content-Type: application/json' \
+  -d '{"message":{"role":"user","content":[{"type":"text","text":"Use sales_summary to report north-region orders and revenue_cents."}]}}'
+
+# Read responses after the worker finishes, or follow the live SSE endpoint.
+curl -fsS "$EVERRUNS_API_URL/v1/sessions/$SESSION_ID/messages"
+curl -N "$EVERRUNS_API_URL/v1/sessions/$SESSION_ID/sse?after_sequence=0"
+```
+
+With authentication enabled, add your normal API bearer credential and
+organization selector to these requests. Message submission is asynchronous: the
+first response acknowledges input, not a completed model answer. The tool should
+return `{"region":"north","orders":2,"revenue_cents":27278}`; the model composes
+the final reply. Open `/playground/<session_id>` or
+`/sessions/<session_id>/trace` in the platform UI to inspect this same session.
+Send follow-ups to the same session's messages endpoint to retain conversation
+history. Stop the SSE client with Ctrl+C when finished.
+
+## Connect the same Agent to Slack
+
+Yes: open **Agents → your Agent → Integrations → Add channel → Slack** and follow
+[Publish an Agent to Slack](/how-to/publish-to-slack/). Keep the Agent's
+**Communication** setting at **Direct** for this sample. The CP needs its normal
+Slack workspace installation, public HTTPS webhook origin and channel
+permissions; registering a custom worker does not perform that setup.
+
+The basic route is:
+
+```text
+Slack message → CP channel/session intake → this Agent's actor queue
+              → your worker → canonical output events → CP delivery → Slack
+```
+
+The channel must target the **same bound Agent**. Slack credentials stay in the
+CP. The worker emits completed agent messages and turn lifecycle events; it does
+not need the Slack bot token to return a normal reply. Channel response policy
+and thread/channel/user session routing remain CP-owned. If the custom worker is
+offline or revoked, accepted Slack input stays queued too.
+
+This is the existing channel delivery path, not a separate Slack implementation
+inside the worker. The shipped smoke qualifies API, Playground, Trace and SSE;
+**a live Slack workspace end-to-end run with this custom worker has not been
+qualified**. Verify a mention and threaded follow-up in your workspace before
+relying on that deployment.
+
+Do not infer full native Slack feature support from basic replies. The sample
+has no CP `send_message` tool, Slack action tools, approval cards or delegated-task
+progress implementation. **Explicit** communication therefore does not work as
+an automatic replacement for Direct replies. Adding a Slack capability or MCP
+server in the Agent editor does not install its tools into this worker. Your
+private-data authorization must also account for channel participants; the
+sample's region filter is a query parameter, not a per-Slack-user access policy.
+
+## Functionality and ownership
+
+| Functionality | Custom-worker behavior |
+| --- | --- |
+| Agents list, branding and Integrations | Ordinary Agent record; binding is operator-managed. |
+| API messages and Playground | Normal CP intake, routed to the bound implementation. |
+| SSE, Trace, work reports and reported usage | Existing CP views consume the canonical events your worker emits. |
+| Slack basic request/reply | Existing CP channel route with Direct communication; live custom-worker Slack qualification is still required. |
+| Conversation history and replica replacement | Sample reconstructs history from CP events between turns. |
+| Cancellation and interrupted reads | Sample observes cancellation, renews leases and bounds read-only retries. |
+| Agent editor model, prompt, capabilities and MCP tools | Not inherited by the custom implementation. |
+| Tool permissions, approvals, guardrails and model budgets | Implementation must enforce its own policy; native pipeline guarantees do not transfer. |
+| Arbitrary database writes and other side effects | Implementation must provide idempotency and recovery; sample tool is read-only. |
+| Images, files and multimodal input | Sample extracts text only; custom implementations must add attachment handling and authorization. |
+| Client tools, mid-turn steering, delegation and background work | Outside the sample's supported contract. |
+| Hosting customer images in Everruns Cloud | Not enabled. |
 
 ## 5. Run the full smoke test
 
@@ -165,7 +357,7 @@ The runner checks:
 It writes a JSON report and event evidence under `work/`, stops its worker and
 revokes its credential even on failure. It retains its isolated agent/session for
 inspection. It does not stop or delete the operator's stack. Live runs incur
-model charges; an ignored model test alone is not evidence of a completed smoke.
+model charges; compilation or unit tests alone are not evidence of a completed smoke.
 
 ## Implement another runtime
 
