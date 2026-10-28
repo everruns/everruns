@@ -141,7 +141,7 @@ def main():
         print("\n".join(violations), file=sys.stderr)
         print("Database drivers and connection construction belong to server, durable or the everruns facade; the private data-agent example owns only its tool database.", file=sys.stderr)
         return 1
-    print("Database driver isolation guard passed: only server/durable/facade own connections; contracts codecs remain optional.")
+    print("Database driver isolation guard passed: platform owners and the private tool example are scoped; contracts codecs remain optional.")
     return 0
 
 
