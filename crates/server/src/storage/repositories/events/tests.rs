@@ -1,4 +1,4 @@
-//! `event_available` wake-ups on a real database.
+//! Event writes on a real database.
 
 use crate::storage::test_database::test_session_row;
 use crate::storage::{CreateEventRow, StorageBackend};
@@ -42,32 +42,10 @@ async fn next_payload(listener: &mut PgListener) -> String {
 }
 
 #[tokio::test]
-async fn event_writes_wake_postgres_listeners_once_per_session() {
+async fn event_writes_send_no_notify() {
     let db = StorageBackend::test_database();
     let id = session(&db).await;
     let mut listener = listener(&db).await;
-
-    db.create_events(vec![row(id, "turn.started"), row(id, "reason.started")])
-        .await
-        .expect("batch");
-    assert_eq!(next_payload(&mut listener).await, id.uuid().to_string());
-
-    db.create_event(row(id, "turn.completed"))
-        .await
-        .expect("single");
-    assert_eq!(
-        next_payload(&mut listener).await,
-        id.uuid().to_string(),
-        "a batch wakes listeners once, then the next write wakes them again"
-    );
-}
-
-#[tokio::test]
-async fn event_writes_send_no_notify_when_nothing_listens_in_postgres() {
-    let db = StorageBackend::test_database();
-    let id = session(&db).await;
-    let mut listener = listener(&db).await;
-    db.set_pg_event_notify(false);
 
     db.create_events(vec![row(id, "turn.started"), row(id, "reason.started")])
         .await
@@ -84,6 +62,6 @@ async fn event_writes_send_no_notify_when_nothing_listens_in_postgres() {
         next_payload(&mut listener).await,
         "marker",
         "no event write may NOTIFY: each one would take the database-wide \
-         notify lock at commit"
+         notify lock at commit, and nothing listens"
     );
 }

@@ -22,7 +22,6 @@ mod serve;
 use crate::api::sse::{SseConnectionLimits, SseConnectionTracker};
 use crate::auth::{self, AuthBackend};
 use crate::background::supervised_task::TaskSupervisor;
-use crate::live_updates::event_delivery::EventDelivery;
 use crate::live_updates::pg_listener_config::resolve_pg_listener_database_url;
 use crate::openapi::ApiDoc;
 use crate::server::{ServerConfig, build_router_with_prefix};
@@ -576,29 +575,6 @@ impl ServerAppBuilder {
 
         let sse_tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits::from_env()));
 
-        let event_broadcaster = if matches!(event_delivery, EventDelivery::Nats(_)) {
-            tracing::info!(
-                "Skipping legacy PostgreSQL event listener; NATS event delivery is active"
-            );
-            None
-        } else if let Some(database_url) = resolve_listener_database_url()?.as_ref() {
-            let broadcaster =
-                crate::live_updates::event_notifications::EventNotificationBroadcaster::new(
-                    database_url.clone(),
-                )
-                .await;
-            tracing::info!("Event notification broadcaster initialized for push-based SSE");
-            Some(Arc::new(broadcaster))
-        } else {
-            tracing::info!(
-                "Event notification broadcaster not available (DEV_MODE), SSE will use polling"
-            );
-            None
-        };
-        // Only the PostgreSQL SSE listener reads `event_available`; without it
-        // each event write would still take the database-wide NOTIFY lock at
-        // commit (`Database::notify_event_available`).
-        db.set_pg_event_notify(event_broadcaster.is_some());
         let notification_broadcaster = if let Some(database_url) =
             resolve_listener_database_url()?.as_ref()
         {
@@ -686,7 +662,6 @@ impl ServerAppBuilder {
             ),
             event_service: event_service.clone(),
             sse_tracker: sse_tracker.clone(),
-            event_broadcaster,
             auth: auth_state.clone(),
         };
         let notifications_state = api::notifications::AppState {

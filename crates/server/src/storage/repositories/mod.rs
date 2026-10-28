@@ -316,11 +316,6 @@ pub struct Database {
     blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
     /// Keeps a test's private database alive while any clone uses it.
     test_database: Option<std::sync::Arc<crate::storage::test_database::TestDatabase>>,
-    /// Whether event writes send `NOTIFY event_available` for PostgreSQL
-    /// LISTEN subscribers. Shared by every clone and background view, so the
-    /// server turns it off once for the whole process when NATS carries event
-    /// delivery (see `notify_event_available`).
-    pg_event_notify: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// Idle time after which a pooled connection is pinged before reuse.
@@ -354,20 +349,7 @@ impl Database {
             pool: crate::storage::transaction::TxPool::new(pool),
             blob_store: None,
             test_database: None,
-            pg_event_notify: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
         }
-    }
-
-    /// Send (`true`, the default) or skip `NOTIFY event_available` on event
-    /// writes, for this value and every clone of it.
-    pub fn set_pg_event_notify(&self, on: bool) {
-        self.pg_event_notify
-            .store(on, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub(crate) fn pg_event_notify(&self) -> bool {
-        self.pg_event_notify
-            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Tie a test's private database to this value and its clones.
@@ -499,7 +481,6 @@ impl Database {
             background_pool,
             blob_store: None,
             test_database: None,
-            pg_event_notify: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
         })
     }
 
@@ -534,7 +515,6 @@ impl Database {
             background_pool: self.background_pool.clone(),
             blob_store: self.blob_store.clone(),
             test_database: self.test_database.clone(),
-            pg_event_notify: self.pg_event_notify.clone(),
         }
     }
 }

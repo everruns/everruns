@@ -486,7 +486,6 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
         if let Some(row) = inserted {
-            self.notify_event_available(&[row.session_id.uuid()]).await;
             if !crate::storage::reporting::outbox::event_needs_projection(&row.event_type) {
                 return Ok((row, true));
             }
@@ -608,7 +607,6 @@ impl Database {
         .execute(&mut *tx)
         .await?;
         tx.commit().await?;
-        self.notify_event_available(&[session_id.uuid()]).await;
         Ok(true)
     }
 

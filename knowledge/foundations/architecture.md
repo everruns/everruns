@@ -816,7 +816,7 @@ Multiple control-plane instances can run behind a load balancer for HA.
 | Task claiming (SKIP LOCKED) | Naturally partitions work |
 | Worker registration | Database-backed, any server can serve any worker |
 | PgListener (task_available) | Each instance runs its own listener; all receive NOTIFY |
-| PgListener (event_available) | Without NATS only: the server NOTIFYs after each event write so SSE clients on any instance see all events; under NATS no NOTIFY is sent (each one serializes commits on a database-wide lock) |
+| Live session events | NATS carries them across instances; without NATS, in-memory delivery covers a single instance only |
 | Rate limiting (Valkey) | Shared sliding-window counters when `VALKEY_URL` set |
 
 ### Configuration (`EXPECTED_INSTANCES`)
