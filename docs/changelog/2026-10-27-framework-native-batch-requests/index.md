@@ -14,7 +14,7 @@ Framework applications can submit independent model completions through
 Anthropic Message Batches, then poll, collect or cancel them using a serializable
 ticket. Results map to the original request IDs even when returned out of order.
 This API is on `main` and is not included in the published `0.49.0` crate; use
-the pinned Git dependency in the [batch guide](/framework/batch-model-requests/).
+the Git dependency in the [batch guide](/framework/batch-model-requests/).
 Enable the `anthropic` feature, submit a completion, and save its ticket:
 
 ```rust
@@ -33,7 +33,7 @@ let saved_ticket = serde_json::to_vec(&ticket)?;
 # }
 ```
 
-The alpha API leaves persistence and scheduling to your application. It does not
+Applications own persistence and scheduling. It does not
 stream tokens or execute tools. Ambiguous submissions require provider
 reconciliation before retrying. The [batch guide](/framework/batch-model-requests/)
 covers resumption, cancellation, tenant/account scoping, supported providers and
@@ -43,3 +43,7 @@ hosting limitations, with a second example for offline evals.
 
 You can also [submit existing message lists](/changelog/2026-10-28-framework-batch-message-lists/)
 through the same batch client.
+
+The same batch API now supports OpenAI Responses, OpenAI Chat Completions and
+Gemini inline jobs. See [Batch Model Requests](/framework/batch-model-requests/)
+for provider limits and the updated multi-provider examples.

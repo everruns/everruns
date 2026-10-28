@@ -2,6 +2,8 @@
 
 ## 2026-10-28
 
+- Clarified custom-worker Agent identity, operator provisioning, inline tool code, ordinary API invocation and the Slack Direct-reply boundary, including unqualified live Slack behavior. See [Custom workers](operations/custom-workers.md).
+
 - Clarified unreleased Framework batch installation and pinned its source revision in the [public guide](../docs/framework/batch-model-requests.md).
 
 - Move console and Work Chat type checks to pinned `tsrs`, with route generation and a mandatory build gate. Retain TypeScript for API consumers. See [Code Organization](foundations/code-organization.md).
@@ -20,6 +22,8 @@
   Fixed collection saved-state comparisons and selected-field history inverses
   retaining unrelated replacement settings. See [Chat mode](ui/chat-mode.md) and
   [Knowledge pages](ui/knowledge-pages.md).
+
+- Added plain-language [Agent Cost Estimation](ui/agent-cost-estimation.md) in the agent page header, with task and monthly costs and optional advanced assumptions.
 
 ## 2026-10-27
 

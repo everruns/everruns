@@ -103,7 +103,7 @@ advanced-host examples, not alternative Framework entrypoints.
 
 ## Provider-native batches
 
-The [batch guide](/framework/batch-model-requests/) shows offline work through the real Anthropic Message Batches API. Both examples require `ANTHROPIC_API_KEY` and can incur charges.
+The [batch guide](/framework/batch-model-requests/) shows offline work through Anthropic, OpenAI and Gemini. Set `BATCH_PROVIDER=anthropic|openai|gemini`, enable its Cargo feature and configure its API key. Both examples can incur charges.
 
 | Example | Behavior | Run |
 | --- | --- | --- |

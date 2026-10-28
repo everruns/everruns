@@ -67,9 +67,9 @@ regex
 reqwest
 seccompiler
 serde
+serde-saphyr
 serde_json
 serde_urlencoded
-serde_yaml
 sha2
 thiserror
 tokio

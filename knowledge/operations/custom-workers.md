@@ -30,6 +30,21 @@ explicitly configured and requires TLS outside loopback. See
 [the protocol](../../crates/internal-protocol/proto/worker.proto) and
 [the service](../../crates/server/src/worker_link/custom_workers/mod.rs).
 
+## UI identity and channel boundary
+
+A binding selects an existing Agent; connecting a replica does not create one.
+The ordinary Agents, Playground, session and trace surfaces remain in use. No
+custom-worker registration/status UI or runtime badge is introduced. Platform
+Agent configuration is not automatically executed by the customer binary.
+
+Slack's channel host admits messages into the bound Agent's sessions and consumes
+canonical output through the shared delivery path. The sample's contract is Direct
+replies, not native Slack action tools, Explicit communication or approval/delegation
+support. Its API/UI/SSE smoke does not constitute live Slack qualification. The
+[public guide](../../docs/how-to/custom-agent-workers.md) owns user setup and the
+support matrix; see [Slack integration](../integrations/slack-integration.md) for
+channel ownership.
+
 ## Routing and authority
 
 A deployment binds one agent in one organization. Operator provisioning is

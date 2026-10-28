@@ -273,6 +273,10 @@ pub trait ChatDriver: Send + Sync {
 /// Implement ChatDriver for `Box<dyn ChatDriver>` to allow dynamic dispatch
 #[async_trait]
 impl ChatDriver for Box<dyn ChatDriver> {
+    fn batch_driver(&self) -> Option<&dyn crate::batch::BatchDriver> {
+        (**self).batch_driver()
+    }
+
     fn native_async_driver(
         &self,
         model: &str,

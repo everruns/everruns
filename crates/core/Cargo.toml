@@ -46,7 +46,7 @@ futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 jsonschema = { version = "0.60.1", default-features = false }
-serde_yaml.workspace = true
+serde-saphyr.workspace = true
 toml = "1.1"
 # Portable archive support is selected independently of core defaults.
 zip = { version = "9", default-features = false, features = ["deflate"], optional = true }

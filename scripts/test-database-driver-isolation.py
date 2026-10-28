@@ -41,7 +41,7 @@ class DatabaseOwnership(unittest.TestCase):
 
     def test_private_data_example_exception_requires_its_identity_path_and_driver(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "src").mkdir()
             (root / "src/main.rs").write_text("Connection::open_with_flags(path, flags);")
             entry = package("everruns-custom-data-agent", "rusqlite")
