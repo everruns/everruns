@@ -8,12 +8,25 @@
 // Decision: Single-shot dedup primitive (`try_record_nonce`) is exposed for
 //   replay-protection paths (e.g. A2A signing — TM-A2A-010). Implemented via
 //   SET key value NX EX ttl — atomic and O(1).
+// Decision: Always reconnect. fred treats a missing ReconnectPolicy as "never
+//   reconnect", so one Valkey restart left every request paying the 2s command
+//   timeout until the process restarted (SaaS prod, 2026-10-26: valkey-0 was
+//   rescheduled, API floor 2.2s for ~3h). Retry forever with capped backoff, and
+//   force-close connections that stop answering (a rescheduled pod behind a
+//   ClusterIP can blackhole the old socket without a RST).
 
 use anyhow::{Context, Result};
 use fred::interfaces::{KeysInterface, LuaInterface};
 use fred::prelude::*;
+use fred::types::config::UnresponsiveConfig;
 use fred::types::{Expiration, SetOptions};
 use std::sync::Arc;
+use std::time::Duration;
+
+/// Per-command deadline. Callers fail open/closed on expiry, so keep it short.
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
+/// A connection with a frame unanswered this long is closed and re-dialed.
+const UNRESPONSIVE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Lua script for sliding-window rate limiting using a sorted set.
 ///
@@ -71,15 +84,8 @@ impl ValkeyClient {
             "Invalid VALKEY_URL format (expected valkey://host:port or redis://host:port)",
         )?;
 
-        let client = Client::new(
-            config,
-            Some(PerformanceConfig {
-                default_command_timeout: std::time::Duration::from_secs(2),
-                ..Default::default()
-            }),
-            None, // connection config (defaults)
-            None, // reconnect policy (defaults — exponential backoff)
-        );
+        let (perf, connection, policy) = client_options();
+        let client = Client::new(config, Some(perf), Some(connection), Some(policy));
 
         client.init().await.context("Failed to connect to Valkey")?;
         tracing::info!("Connected to Valkey");
@@ -179,6 +185,27 @@ impl ValkeyClient {
     }
 }
 
+/// Client tuning: bounded command latency, dead-connection detection, and an
+/// unlimited reconnect policy (see the reconnect decision at the top).
+fn client_options() -> (PerformanceConfig, ConnectionConfig, ReconnectPolicy) {
+    let perf = PerformanceConfig {
+        default_command_timeout: COMMAND_TIMEOUT,
+        ..Default::default()
+    };
+    let connection = ConnectionConfig {
+        connection_timeout: COMMAND_TIMEOUT,
+        internal_command_timeout: COMMAND_TIMEOUT,
+        unresponsive: UnresponsiveConfig {
+            max_timeout: Some(UNRESPONSIVE_TIMEOUT),
+            interval: Duration::from_secs(1),
+        },
+        ..Default::default()
+    };
+    // max_attempts 0 = unlimited; 100ms doubling up to 5s.
+    let policy = ReconnectPolicy::new_exponential(0, 100, 5_000, 2);
+    (perf, connection, policy)
+}
+
 /// Try to create a Valkey client from environment.
 /// Returns `None` if `VALKEY_URL` is not set (falls back to in-memory rate limiting).
 pub async fn from_env() -> Result<Option<ValkeyClient>> {
@@ -194,5 +221,86 @@ pub async fn from_env() -> Result<Option<ValkeyClient>> {
             );
             Ok(None)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::{Child, Command, Stdio};
+
+    fn server_binary() -> Option<&'static str> {
+        ["valkey-server", "redis-server"].into_iter().find(|bin| {
+            Command::new(bin)
+                .arg("--version")
+                .stdout(Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success())
+        })
+    }
+
+    fn spawn(bin: &str, port: u16) -> Child {
+        Command::new(bin)
+            .args([
+                "--port",
+                &port.to_string(),
+                "--save",
+                "",
+                "--appendonly",
+                "no",
+            ])
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("spawn valkey")
+    }
+
+    async fn wait_ok(client: &ValkeyClient, key: &str) -> bool {
+        for _ in 0..50 {
+            if client.check_rate_limit(key, 1000, 60).await.is_ok() {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        false
+    }
+
+    #[test]
+    fn client_always_reconnects() {
+        let (_, connection, policy) = client_options();
+        assert_eq!(policy.max_attempts(), 0, "0 = unlimited attempts");
+        assert_eq!(
+            connection.unresponsive.max_timeout,
+            Some(UNRESPONSIVE_TIMEOUT)
+        );
+    }
+
+    /// Regression (SaaS prod 2026-10-26): after a Valkey restart the client
+    /// never reconnected and every command timed out until the process restarted.
+    #[tokio::test]
+    async fn recovers_after_server_restart() {
+        let Some(bin) = server_binary() else {
+            eprintln!("skipping: no valkey-server/redis-server on PATH");
+            return;
+        };
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let mut server = spawn(bin, port);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let client = ValkeyClient::connect(&format!("redis://127.0.0.1:{port}"))
+            .await
+            .expect("connect");
+        assert!(wait_ok(&client, "rl:test:before").await);
+
+        server.kill().unwrap();
+        server.wait().unwrap();
+        let mut server = spawn(bin, port);
+
+        let recovered = wait_ok(&client, "rl:test:after").await;
+        server.kill().ok();
+        server.wait().ok();
+        assert!(recovered, "client did not reconnect after Valkey restart");
     }
 }

@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::runtime::session_services::SessionScheduleStore;
-use crate::runtime::typed_id::SessionId;
+use crate::runtime::typed_id::{ScheduleId, SessionId};
 use crate::runtime::user_facing_error::UserFacingErrorFields;
 use serde_json::Value;
 
@@ -52,12 +52,22 @@ pub struct LlmErrorContext<'a> {
 pub struct LlmErrorHookOutcome {
     /// Fields to merge into the `UserFacingError` before it is rendered/emitted.
     pub extra_error_fields: UserFacingErrorFields,
+    /// A newly created short retry of this invocation. The engine records its
+    /// source in trusted event metadata, independently of error disclosure.
+    /// This does not authorize an ordinary schedule or choose a user identity.
+    pub retry_schedule_id: Option<ScheduleId>,
 }
 
 impl LlmErrorHookOutcome {
     /// An outcome that changes nothing.
     pub fn noop() -> Self {
         Self::default()
+    }
+
+    /// Bind a newly created retry to the current invocation's failure event.
+    pub fn with_retry_schedule(mut self, schedule_id: ScheduleId) -> Self {
+        self.retry_schedule_id = Some(schedule_id);
+        self
     }
 
     /// Add a field to merge into the user-facing error.

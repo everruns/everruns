@@ -1,0 +1,78 @@
+---
+title: Slate Design System
+description: Slate is the visual language of the Everruns UI. Tokens, components, page layouts and writing rules, rendered with the app's own CSS.
+slug: design-system
+---
+
+import DsExample from "@docs-components/design-system/DsExample.astro";
+import DsIcon from "@docs-components/design-system/DsIcon.astro";
+
+Slate is the design system of the Everruns management UI. It is sharp-cornered, grayscale,
+dense, and calm: a navy primary for actions, one gold accent for the moments that matter,
+and color otherwise reserved for status.
+
+<DsExample dots caption="Slate at a glance: a create action, a commit action, a secondary action, status, and a card.">
+  <div class="ds-stack">
+    <div class="ds-row">
+      <button class="ds-btn ds-btn-accent"><DsIcon name="plus" />New agent</button>
+      <button class="ds-btn"><DsIcon name="check" />Save changes</button>
+      <button class="ds-btn ds-btn-outline">Discard</button>
+      <span class="ds-status ds-status-success">active</span>
+      <span class="ds-badge ds-badge-accent"><DsIcon name="pencil" size={12} />Editing</span>
+    </div>
+    <div class="ds-card" style="max-width: 26rem">
+      <div class="ds-card-body">
+        <div class="ds-card-head">
+          <span class="ds-card-title"><DsIcon name="facet:agent" size={20} />Support agent</span>
+          <span class="ds-status ds-status-success">active</span>
+        </div>
+        <p class="ds-card-desc">Answers product questions from the docs and opens a ticket when it cannot help.</p>
+      </div>
+      <div class="ds-card-footer"><span>12 sessions</span><span class="ds-btn ds-btn-ghost ds-btn-icon ds-btn-sm"><DsIcon name="pencil" size={14} /></span></div>
+    </div>
+  </div>
+</DsExample>
+
+## What is here
+
+- [Foundations](/design-system/foundations/): color tokens, type, spacing, shape, elevation,
+  the dot grid, and motion.
+- [Components](/design-system/components/): buttons, badges and status, inputs, tabs, cards,
+  navigation, notices.
+- [Page layouts](/design-system/layouts/): the five page zones, list, detail, edit, and chat.
+- [Icons and brand](/design-system/icons/): the Facet domain icons, action icons, and logo use.
+- [Writing](/design-system/writing/): voice, casing, vocabulary, and punctuation for UI copy.
+
+## How this site stays current
+
+The examples are not screenshots. Every example renders with the tokens, dot grid and motion
+of the app's [`apps/ui/src/app/design-system.css`](https://github.com/everruns/everruns/blob/main/apps/ui/src/app/design-system.css), read at build time, and every domain icon
+comes from the app's Facet vector masters. A token change in the app changes this site in the
+same build.
+
+The example markup is a hand-written reproduction of the production components in
+[`apps/ui/src/components/`](https://github.com/everruns/everruns/tree/main/apps/ui/src/components). Those components stay canonical. A pull request that changes a
+pattern in the app updates its page here in the same change.
+
+## Redesigning with Slate
+
+A redesign starts on this site, not in the app:
+
+1. Read the page for the area you are changing and the rules on [Writing](/design-system/writing/).
+2. Mock the change with the classes and examples from these pages. Keep tokens as they are
+   unless the redesign is about the tokens.
+3. Get the design approved, then build it in [`apps/ui`](https://github.com/everruns/everruns/tree/main/apps/ui) from the production components.
+4. In the same pull request, update the pages here so the next redesign starts from what
+   shipped.
+
+## Sources of truth
+
+When two sources disagree, use this order:
+
+1. [`apps/ui/src/app/design-system.css`](https://github.com/everruns/everruns/blob/main/apps/ui/src/app/design-system.css): runtime tokens, utilities, and motion.
+2. [`apps/ui/DESIGN.md`](https://github.com/everruns/everruns/blob/main/apps/ui/DESIGN.md): the token file in DESIGN.md format, plus composition rules.
+3. Production components in [`apps/ui/src/components/`](https://github.com/everruns/everruns/tree/main/apps/ui/src/components): exact behavior and APIs.
+4. These pages: how the parts fit together, and the starting point for new designs.
+
+Product decisions behind individual screens, such as the agent page or chat, live in the
+repository's `knowledge/ui/` folder. These pages link to them where it helps.

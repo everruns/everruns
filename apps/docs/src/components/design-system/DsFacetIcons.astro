@@ -1,0 +1,24 @@
+---
+import "../../generated/app-tokens.css";
+import "../../styles/design-system-examples.css";
+// Every Facet domain glyph, straight from the app's vector masters.
+import { facetIconData } from "../../../../ui/src/components/icons/facet-icon-data";
+import DsIcon from "./DsIcon.astro";
+
+const label = (key: string) =>
+  key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase()).trim();
+const names = Object.keys(facetIconData);
+---
+
+<div class="ds-figure not-content">
+  <div class="ds-example ds-icon-grid" data-llms-ignore>
+    {names.map((name) => (
+      <div class="ds-icon-cell">
+        <DsIcon name={`facet:${name}`} size={24} />
+        <DsIcon name={`facet:${name}`} size={16} />
+        <span>{label(name)}</span>
+        <code>{name}</code>
+      </div>
+    ))}
+  </div>
+</div>

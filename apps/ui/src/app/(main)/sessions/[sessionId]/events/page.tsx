@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +58,8 @@ function CopyButton({ data }: { data: unknown }) {
 }
 
 export default function EventsPage() {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { events, eventsLoading, sessionId } = useSessionContext();
   const [currentPage, setCurrentPage] = useState(1);
@@ -197,7 +199,7 @@ export default function EventsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {new Date(event.ts).toLocaleString()}
+                      {new Date(event.ts).toLocaleString(displayLocale)}
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       <div className="relative">

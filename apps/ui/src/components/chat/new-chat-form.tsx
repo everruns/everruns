@@ -17,8 +17,8 @@
  */
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { z } from "zod";
 import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";

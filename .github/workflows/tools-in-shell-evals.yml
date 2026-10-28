@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - 'evals/tools-in-shell/**'
+      - 'evals/common/**'
       - 'evals/platform-capability/src/friction.rs'
       - '.github/workflows/tools-in-shell-evals.yml'
   push:
     branches: [main]
     paths:
       - 'evals/tools-in-shell/**'
+      - 'evals/common/**'
       - 'evals/platform-capability/src/friction.rs'
       - '.github/workflows/tools-in-shell-evals.yml'
 
@@ -43,6 +45,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: evals/tools-in-shell
           shared-key: tools-in-shell-evals
       - name: Check formatting

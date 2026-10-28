@@ -34,7 +34,7 @@ llmsim = { version = "0.6.0", default-features = false }
 
 everruns-core = { workspace = true, optional = true, default-features = false }
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt", "time"] }
+tokio = { workspace = true, features = ["macros", "rt", "test-util", "time"] }
 
 [lints]
 workspace = true

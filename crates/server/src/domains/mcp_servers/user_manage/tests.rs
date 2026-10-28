@@ -1050,3 +1050,91 @@ async fn chat_only_servers_need_session_storage_and_a_person() {
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn a_provider_retry_can_register_personal_mcp_and_offer_the_sign_in_card() {
+    use crate::storage::{CreateEventRow, CreateSessionScheduleRow};
+    use everruns_contracts::typed_id::{MessageId, PrincipalId};
+    let fixture = Fixture::new(manage()).await;
+    fixture.catalog_preset("approved-docs", "oauth").await;
+    let input = CreateSessionScheduleRow {
+        org_id: DEFAULT_ORG_ID,
+        session_id: fixture.session.id,
+        owner_principal_id: PrincipalId::from_seed(1),
+        resolved_owner_user_id: None,
+        description:
+            "Continue the interrupted work (automatic retry after an AI provider rate limit)."
+                .into(),
+        cron_expression: None,
+        scheduled_at: Some(chrono::Utc::now() + chrono::Duration::seconds(120)),
+        timezone: "UTC".into(),
+        next_trigger_at: None,
+    };
+    let retry = fixture
+        .db
+        .create_session_schedule(input.clone())
+        .await
+        .unwrap();
+    let ordinary = fixture.db.create_session_schedule(input).await.unwrap();
+    fixture
+        .db
+        .create_event(CreateEventRow {
+            session_id: fixture.session.id,
+            event_type: "reason.completed".into(),
+            ts: chrono::Utc::now(),
+            context: json!({"input_message_id":MessageId::from_uuid(MESSAGE)}),
+            data: json!({"success":false}),
+            metadata: Some(json!({"platform_auto_retry":{"schedule_id":retry.id}})),
+            tags: None,
+        })
+        .await
+        .unwrap();
+    let message = Uuid::now_v7();
+    fixture
+        .db
+        .record_scheduled_runtime_invocation(&retry, message, None)
+        .await
+        .unwrap();
+    let reply = fixture
+        .call_for(
+            Some(message),
+            upsert("docs", catalog_entry("approved-docs")),
+        )
+        .await
+        .unwrap();
+    let UserMcpStoreReply::Server { server } = reply else {
+        panic!("unexpected reply {reply:?}");
+    };
+    assert_eq!(server.catalog.as_deref(), Some("approved-docs"));
+    assert_eq!(server.login, UserMcpLoginStatus::NotConnected);
+    let reply = fixture
+        .call_for(
+            Some(message),
+            UserMcpStoreCall::StartLogin {
+                name: "docs".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        reply,
+        UserMcpStoreReply::Login {
+            login: McpLogin::Pending { .. }
+        }
+    ));
+
+    // The same session, prompt and timer owner do not authorize the other timer.
+    let unattended = Uuid::now_v7();
+    fixture
+        .db
+        .record_scheduled_runtime_invocation(&ordinary, unattended, None)
+        .await
+        .unwrap();
+    let error = fixture
+        .call_for(Some(unattended), UserMcpStoreCall::List)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, UserMcpStoreError::Unavailable(_)));
+    assert!(error.to_string().contains("No person is chatting"));
+    assert_eq!(fixture.servers().list().await.unwrap().len(), 1);
+}

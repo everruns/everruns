@@ -294,9 +294,14 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                 biased;
                 settled = async {
                     self.hosts.flush(&host).await?;
-                    self.hosts
-                        .checkpoint(&host, &lease.read_tail().await?)
-                        .await
+                    let tail = match lease.read_tail().await {
+                        Ok(tail) => tail,
+                        // A tail too large to read, sealed from its first
+                        // event: failing here would only lease it again.
+                        Err(error) if error.is_non_retryable() => return Ok(()),
+                        Err(error) => return Err(error),
+                    };
+                    self.hosts.checkpoint(&host, &tail).await
                 } => settled,
                 // The lease is lost: nothing is released below.
                 _ = stalled.wait_for(|stalled| *stalled) => Ok(()),
@@ -360,8 +365,20 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             },
             &signals,
         ));
-        let tail = lease.read_tail().await?;
-        self.hosts.checkpoint(&setup, &tail).await?;
+        let poisoned = actor.attempts > self.config.poison_attempts;
+        let tail = match lease.read_tail().await {
+            Ok(tail) => {
+                self.hosts.checkpoint(&setup, &tail).await?;
+                tail
+            }
+            // A tail too large to transfer failed every lease here, ahead of
+            // the guard, so one turn re-read ~200 MB every few seconds for
+            // hours. The guard seals it from its first event instead.
+            Err(error) if poisoned && error.is_non_retryable() => {
+                lease.read_tail_head().await?.events
+            }
+            Err(error) => return Err(error),
+        };
         let started_at = tail
             .first()
             .filter(|event| event.event_type == crate::TURN_STARTED)
@@ -373,7 +390,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             lease.advance(sequence);
         }
 
-        if actor.attempts > self.config.poison_attempts {
+        if poisoned {
             self.seal(lease, &setup, org_id, open, actor.next_input_seq)
                 .await?;
             return Ok(Finish::Release);

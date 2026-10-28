@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -48,13 +48,15 @@ function getStateIcon(state: CircuitBreakerState) {
   }
 }
 
-function formatDate(dateStr?: string): string {
+function formatDate(dateStr?: string, locale?: string): string {
   if (!dateStr) return "Never";
   const date = new Date(dateStr);
-  return date.toLocaleString();
+  return date.toLocaleString(locale);
 }
 
 function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const queryClient = useQueryClient();
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
@@ -94,7 +96,7 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
           <div>
             <CardTitle className="text-base font-mono">{breaker.key}</CardTitle>
             <CardDescription className="text-xs">
-              {ui("Updated")} {formatDate(breaker.updated_at)}
+              {ui("Updated")} {formatDate(breaker.updated_at, displayLocale)}
             </CardDescription>
           </div>
         </div>
@@ -115,11 +117,13 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
           </div>
           <div>
             <span className="text-muted-foreground">{ui("Last Failure")}</span>
-            <p className="font-medium text-xs">{formatDate(breaker.last_failure_at)}</p>
+            <p className="font-medium text-xs">
+              {formatDate(breaker.last_failure_at, displayLocale)}
+            </p>
           </div>
           <div>
             <span className="text-muted-foreground">{ui("Opened At")}</span>
-            <p className="font-medium text-xs">{formatDate(breaker.opened_at)}</p>
+            <p className="font-medium text-xs">{formatDate(breaker.opened_at, displayLocale)}</p>
           </div>
         </div>
 

@@ -56,6 +56,7 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
     let mut router = Router::new()
         .route("/health", get(health))
         .route("/v1/agent", get(agent_card))
+        .route("/v1/doctor", get(crate::doctor::doctor))
         .route("/v1/sessions", post(create_session))
         .route("/v1/sessions/{id}", get(get_session))
         .route("/v1/sessions/{id}/messages", post(create_message))

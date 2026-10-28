@@ -302,7 +302,15 @@ pub trait Tool: Send + Sync {
 #[derive(Default, Clone)]
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
+    capability_contexts: HashMap<String, CapabilityContext>,
     search_index: std::sync::OnceLock<Arc<crate::runtime::tool_catalog::ToolSearchIndex>>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct CapabilityContext {
+    id: String,
+    name: Option<String>,
+    description: Option<String>,
 }
 
 impl ToolRegistry {
@@ -310,6 +318,7 @@ impl ToolRegistry {
     pub fn new() -> Self {
         Self {
             tools: HashMap::new(),
+            capability_contexts: HashMap::new(),
             search_index: Default::default(),
         }
     }
@@ -358,18 +367,21 @@ impl ToolRegistry {
     /// If a tool with the same name already exists, it will be replaced.
     pub fn register(&mut self, tool: impl Tool + 'static) {
         self.search_index.take();
+        self.capability_contexts.remove(tool.name());
         self.tools.insert(tool.name().to_string(), Arc::new(tool));
     }
 
     /// Register a boxed tool
     pub fn register_boxed(&mut self, tool: Box<dyn Tool>) {
         self.search_index.take();
+        self.capability_contexts.remove(tool.name());
         self.tools.insert(tool.name().to_string(), Arc::from(tool));
     }
 
     /// Register an Arc-wrapped tool
     pub fn register_arc(&mut self, tool: Arc<dyn Tool>) {
         self.search_index.take();
+        self.capability_contexts.remove(tool.name());
         self.tools.insert(tool.name().to_string(), tool);
     }
 
@@ -403,7 +415,54 @@ impl ToolRegistry {
     /// Returns a Vec of ToolDefinition that can be passed to
     /// `RuntimeAgent::with_tools()`.
     pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
-        self.tools.values().map(|t| t.to_definition()).collect()
+        self.tools
+            .keys()
+            .filter_map(|name| self.tool_definition(name))
+            .collect()
+    }
+
+    /// Canonical executor definition enriched with its current owner's declared
+    /// search context. No schema, policy or executor is taken from model state.
+    pub fn tool_definition(&self, name: &str) -> Option<ToolDefinition> {
+        let mut definition = self.tools.get(name)?.to_definition();
+        if let Some(context) = self.capability_contexts.get(name) {
+            definition =
+                definition.with_capability_attribution(context.id.clone(), context.name.clone());
+            match &mut definition {
+                ToolDefinition::Builtin(tool) => {
+                    tool.hints.capability_description = context.description.clone()
+                }
+                ToolDefinition::ClientSide(tool) => {
+                    tool.hints.capability_description = context.description.clone()
+                }
+            }
+        }
+        Some(definition)
+    }
+
+    /// Apply the current collection's capability metadata to executor tools.
+    /// Definitions alone never register a tool or override its schema/policy.
+    pub fn set_capability_contexts(&mut self, definitions: &[ToolDefinition]) {
+        let next = definitions
+            .iter()
+            .filter_map(|definition| {
+                let (id, name) = definition.capability_attribution()?;
+                self.tools.contains_key(definition.name()).then(|| {
+                    (
+                        definition.name().to_owned(),
+                        CapabilityContext {
+                            id: id.to_owned(),
+                            name: name.map(str::to_owned),
+                            description: definition.hints().capability_description.clone(),
+                        },
+                    )
+                })
+            })
+            .collect();
+        if self.capability_contexts != next {
+            self.capability_contexts = next;
+            self.search_index.take();
+        }
     }
 
     /// Reuse a lexical index until registration, replacement or removal changes
@@ -440,6 +499,7 @@ impl ToolRegistry {
     /// Remove a tool from the registry
     pub fn unregister(&mut self, name: &str) -> Option<Arc<dyn Tool>> {
         self.search_index.take();
+        self.capability_contexts.remove(name);
         self.tools.remove(name)
     }
 

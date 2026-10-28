@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import {
   useDurablePageAccess,
   useDurablePageRows,
@@ -84,6 +84,8 @@ function ScheduleRow({
   onTrigger: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   return (
     <TableRow>
@@ -129,10 +131,14 @@ function ScheduleRow({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger className="text-sm text-muted-foreground">
-                {formatDistanceToNow(new Date(schedule.last_triggered_at), { addSuffix: true })}
+                {formatDistanceToNow(
+                  new Date(schedule.last_triggered_at),
+                  { addSuffix: true },
+                  displayLocale,
+                )}
               </TooltipTrigger>
               <TooltipContent>
-                {new Date(schedule.last_triggered_at).toLocaleString()}
+                {new Date(schedule.last_triggered_at).toLocaleString(displayLocale)}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -145,9 +151,15 @@ function ScheduleRow({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger className="text-sm text-muted-foreground">
-                {formatDistanceToNow(new Date(schedule.next_trigger_at), { addSuffix: true })}
+                {formatDistanceToNow(
+                  new Date(schedule.next_trigger_at),
+                  { addSuffix: true },
+                  displayLocale,
+                )}
               </TooltipTrigger>
-              <TooltipContent>{new Date(schedule.next_trigger_at).toLocaleString()}</TooltipContent>
+              <TooltipContent>
+                {new Date(schedule.next_trigger_at).toLocaleString(displayLocale)}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (

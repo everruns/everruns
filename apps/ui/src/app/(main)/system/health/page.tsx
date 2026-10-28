@@ -33,6 +33,8 @@ function StatusIcon({ status, className }: { status: CheckStatus; className?: st
 }
 
 function Verdict({ report }: { report: DoctorReport }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { locale } = useLocale();
   const tone =
@@ -55,9 +57,13 @@ function Verdict({ report }: { report: DoctorReport }) {
               version: report.version,
               grade: report.grade,
               auth: report.auth_mode,
-              when: formatDistanceToNow(new Date(report.checked_at), {
-                addSuffix: true,
-              }),
+              when: formatDistanceToNow(
+                new Date(report.checked_at),
+                {
+                  addSuffix: true,
+                },
+                displayLocale,
+              ),
             })}
           </p>
         </div>

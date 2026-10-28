@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +21,6 @@ import {
 } from "@/lib/capability-localization";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { localizedEntityDescription } from "@/lib/entity-localization";
-import { useLocale } from "@/providers/locale-provider";
 
 interface HarnessExampleCardProps {
   example: HarnessExample;

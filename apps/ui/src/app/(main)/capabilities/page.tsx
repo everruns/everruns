@@ -1,7 +1,11 @@
 "use client";
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useFormattingLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { AgentIcon } from "@/components/icons/facet-icons";
@@ -33,10 +37,11 @@ import type { Capability, CapabilityStatus, DeclarativeCapability } from "@/lib/
 import { CapabilityIcon } from "@/lib/capability-icons";
 import { registryDomainIcons } from "@/lib/registry-navigation";
 import {
+  localizedCapabilityCategory,
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
+
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { formatCountLabel, pluralize } from "@/lib/formatting";
 import {
@@ -145,7 +150,7 @@ function CapabilityCard({ capability }: { capability: Capability }) {
       <div className="flex items-center justify-between gap-2 flex-wrap">
         {capability.category ? (
           <Badge variant="outline" className="text-xs">
-            {capability.category}
+            {localizedCapabilityCategory(capability.category, locale)}
           </Badge>
         ) : (
           <span />
@@ -164,7 +169,7 @@ function matchesLocalizations(capability: Pick<Capability, "localizations">, q: 
   );
 }
 
-function matches(capability: Capability, query: string): boolean {
+function matches(capability: Capability, query: string, locale: string): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
   return (
@@ -172,6 +177,9 @@ function matches(capability: Capability, query: string): boolean {
     capability.description.toLowerCase().includes(q) ||
     capability.id.toLowerCase().includes(q) ||
     (capability.category?.toLowerCase().includes(q) ?? false) ||
+    (capability.category
+      ? localizedCapabilityCategory(capability.category, locale).toLowerCase().includes(q)
+      : false) ||
     matchesLocalizations(capability, q)
   );
 }
@@ -226,7 +234,7 @@ export default function CapabilitiesPage() {
 
   const filtered = useMemo(() => {
     return (capabilities ?? []).filter((cap) => {
-      if (!matches(cap, searchQuery)) return false;
+      if (!matches(cap, searchQuery, displayLocale)) return false;
       if (statusTab !== "all" && cap.status !== statusTab) return false;
       if (selectedCategory) {
         const key = cap.category || UNCATEGORIZED;
@@ -234,7 +242,7 @@ export default function CapabilitiesPage() {
       }
       return true;
     });
-  }, [capabilities, searchQuery, selectedCategory, statusTab]);
+  }, [capabilities, searchQuery, selectedCategory, statusTab, displayLocale]);
 
   const filteredDeclarative = useMemo(
     () =>
@@ -311,8 +319,11 @@ export default function CapabilitiesPage() {
           <SelectContent>
             <SelectItem value="all">{ui("All categories")}</SelectItem>
             {categories.map((category) => (
-              <SelectItem key={category} value={category}>
-                {category}
+              <SelectItem
+                key={localizedCapabilityCategory(category, displayLocale)}
+                value={localizedCapabilityCategory(category, displayLocale)}
+              >
+                {localizedCapabilityCategory(category, displayLocale)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -385,9 +396,11 @@ export default function CapabilitiesPage() {
         ) : (
           <div className="space-y-8">
             {grouped.map(([category, caps]) => (
-              <section key={category}>
+              <section key={localizedCapabilityCategory(category, displayLocale)}>
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-semibold text-muted-foreground">{category}</h2>
+                  <h2 className="text-sm font-semibold text-muted-foreground">
+                    {localizedCapabilityCategory(category, displayLocale)}
+                  </h2>
                   <span className="text-xs text-muted-foreground">
                     {formatCountLabel(caps.length, "capability", "capabilities", displayLocale)}
                   </span>

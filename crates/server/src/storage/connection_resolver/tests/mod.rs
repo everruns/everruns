@@ -1074,6 +1074,62 @@ async fn concurrent_expired_resolution_coalesces_refresh() {
     assert_eq!(exchange.calls.load(Ordering::SeqCst), 1);
 }
 
+/// Two server replicas (separate resolvers, so separate in-process locks)
+/// still refresh one grant once: the second would replay the rotated-away
+/// refresh token.
+#[tokio::test]
+async fn expired_resolution_coalesces_refresh_across_replicas() {
+    let user_id = Uuid::now_v7();
+    let (db, encryption, session_id, _server_id, provider) = setup(Some(user_id)).await;
+    db.upsert_user_connection(CreateUserConnectionRow {
+        user_id,
+        provider: provider.clone(),
+        connection_type: "oauth".to_string(),
+        provider_user_id: None,
+        provider_username: Some("Resend".to_string()),
+        access_token_encrypted: Some(encryption.encrypt_string("stale-access").unwrap()),
+        refresh_token_encrypted: Some(encryption.encrypt_string("old-refresh").unwrap()),
+        scopes: None,
+        expires_at: Some(Utc::now() - Duration::minutes(1)),
+        installation_id: None,
+        provider_metadata: None,
+    })
+    .await
+    .unwrap();
+    let exchange = Arc::new(FakeRefreshExchange {
+        calls: AtomicUsize::new(0),
+        delay: StdDuration::from_millis(50),
+        result: FakeRefreshResult::Success,
+    });
+    let replicas = [0, 1].map(|_| {
+        Arc::new(
+            DbConnectionResolver::with_oauth_refresh(
+                db.clone(),
+                encryption.clone(),
+                None,
+                exchange.clone(),
+            )
+            .bound_to_input_message(INPUT_MESSAGE),
+        )
+    });
+
+    let mut tasks = Vec::new();
+    for i in 0..8 {
+        let resolver = replicas[i % 2].clone();
+        let provider = provider.clone();
+        tasks.push(tokio::spawn(async move {
+            resolver
+                .get_connection_token(session_id, &provider)
+                .await
+                .unwrap()
+        }));
+    }
+    for task in tasks {
+        assert_eq!(task.await.unwrap().as_deref(), Some("fresh-access"));
+    }
+    assert_eq!(exchange.calls.load(Ordering::SeqCst), 1);
+}
+
 #[tokio::test]
 async fn failed_refresh_fails_closed_and_preserves_existing_grant() {
     let user_id = Uuid::now_v7();

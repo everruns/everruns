@@ -570,3 +570,7 @@ the snapshot that actually answered.
 `Jev::with_provider(provider, model_spec)` supplies that same account to a Framework capability.
 Use its exact provider key in the model spec. Existing `Jev::new` and `Jev::with_client` conveniences
 remain available for applications holding a direct TypeSafe key.
+
+## Offline batches
+
+For independent requests that can wait hours, use [Batch Model Requests](/framework/batch-model-requests/) to submit through Anthropic Message Batches and persist a ticket for later collection.
