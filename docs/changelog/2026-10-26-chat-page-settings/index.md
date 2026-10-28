@@ -28,6 +28,10 @@ Command/Ctrl-J opens it beside an app page. Core Chat and subchats need no flag.
 
 See [Platform Chat](/built-ins/harnesses/platform-chat/).
 
+## Update 2026-10-28
+
+Long dialogs scroll within the page pane, keeping Save reachable after draft changes.
+
 ![A fresh subchat opens one conversation](./subchat@2x.png)
 
 ![Review the live draft before Save](./settings-draft@2x.png)

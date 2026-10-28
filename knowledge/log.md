@@ -27,6 +27,9 @@
   retaining unrelated replacement settings. See [Chat mode](ui/chat-mode.md) and
   [Knowledge pages](ui/knowledge-pages.md).
 
+- Kept tall page dialogs scrollable within the split pane so schedule previews
+  and Chat draft diffs cannot hide Save controls. See [Chat mode](ui/chat-mode.md).
+
 - Added plain-language [Agent Cost Estimation](ui/agent-cost-estimation.md) in the agent page header, with task and monthly costs and optional advanced assumptions.
 
 ## 2026-10-27

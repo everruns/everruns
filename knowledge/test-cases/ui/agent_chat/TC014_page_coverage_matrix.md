@@ -104,6 +104,9 @@ An inventory entry is a coverage decision, not a passing manual execution record
 16. Save collection name and description together. Undo only the name and verify
     the description, indexing, embedding/search account and path rules remain at
     their latest saved values. Equivalent JSON key order must not disable Undo.
+17. At a short desktop viewport and on mobile, open trigger quick edit with its
+    schedule preview and a Chat draft diff. Scroll the dialog to Save and Cancel;
+    both stay reachable within the page pane. Repeat with Chat workspace off.
 
 ## Expected Result
 

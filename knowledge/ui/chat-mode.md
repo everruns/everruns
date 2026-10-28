@@ -274,6 +274,8 @@ Chat, sidebar and global overlays retain their normal portal and modal behavior.
 non-modal and outside-pointer dismissal is disabled: focusing Chat keeps the form
 mounted. Explicit Close/Escape still work. The common two-column page body responds
 to the page pane's width. Feature-off pages retain their normal controls and shell.
+Dialogs scroll within the available page height, keeping Save and Close reachable
+when schedule previews, validation messages or draft diffs increase their content.
 
 ## Coverage of new interfaces
 
