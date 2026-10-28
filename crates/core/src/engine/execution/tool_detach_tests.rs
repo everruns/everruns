@@ -1,4 +1,6 @@
 //! A long call leaves its act for the host, and the act parks the turn.
+// Paused time keeps timer ordering independent of wall-clock scheduling delays:
+// a loaded runner must not make an immediate tool race an expired detach timer.
 use super::*;
 use crate::engine::execution::{ActAtom, ActInput, ExecutionContext};
 use crate::engine::test_fixtures::TestEventEmitter;
@@ -112,7 +114,7 @@ async fn act(
     (result, turn)
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_call_past_the_threshold_detaches_and_the_act_parks() {
     let host = Arc::new(Host {
         accept: true,
@@ -139,7 +141,7 @@ async fn a_call_past_the_threshold_detaches_and_the_act_parks() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_call_the_host_declines_stays_with_its_turn() {
     let host = Arc::new(Host::default());
     let (result, turn) = act(host.clone(), Duration::from_millis(60), input(false)).await;
@@ -158,7 +160,7 @@ async fn a_call_the_host_declines_stays_with_its_turn() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_call_under_the_threshold_never_asks_the_host() {
     let host = Arc::new(Host {
         accept: true,
@@ -170,7 +172,7 @@ async fn a_call_under_the_threshold_never_asks_the_host() {
     assert_eq!(host.asked.load(Ordering::SeqCst), 0);
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn cpu_bound_calls_never_detach() {
     let host = Arc::new(Host {
         accept: true,
