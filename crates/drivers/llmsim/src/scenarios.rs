@@ -11,6 +11,10 @@
 //! - The built-in set is llmsim's starter library, copied into `scenarios/`
 //!   because the published crate does not expose it. Timing comes from
 //!   production observations (first token 0.8 to 1.3 s, about 65 tokens/s).
+//!   `luna-agent`, `sol-agent` and `muse-agent` play the same tool-using turn
+//!   at timings measured on 2026-10-28 (Luna: first token 2.9 s, 108 tokens/s;
+//!   Sol: 2 s, 46 tokens/s; Muse Spark 1.3 Contributor in production: 12.7 s,
+//!   136 tokens/s), so a load test can ask how capacity changes with the model.
 //! - A step that needs a tool, played on a call that offers none (titles,
 //!   compaction and other side calls carry the user message but no tools),
 //!   falls back to the driver's normal answer instead of failing that call.
@@ -44,9 +48,13 @@ const BUILTIN: &[&str] = &[
     include_str!("../scenarios/file-research.json"),
     include_str!("../scenarios/flaky-429.json"),
     include_str!("../scenarios/long-answer.json"),
+    include_str!("../scenarios/long-tool.json"),
+    include_str!("../scenarios/luna-agent.json"),
+    include_str!("../scenarios/muse-agent.json"),
     include_str!("../scenarios/parallel-tools.json"),
     include_str!("../scenarios/research-3-tools.json"),
     include_str!("../scenarios/slow-first-token.json"),
+    include_str!("../scenarios/sol-agent.json"),
     include_str!("../scenarios/stream-stall.json"),
     include_str!("../scenarios/thinking.json"),
 ];
@@ -174,7 +182,10 @@ pub(crate) fn play(
         plan.push((Duration::ZERO, Ok(reasoning_item(&reasoning))));
     }
     if !tool_calls.is_empty() {
-        plan.push((Duration::ZERO, Ok(LlmStreamEvent::ToolCalls(tool_calls))));
+        plan.push((
+            tool_call_wait(&pacing, &tool_calls, completion_tokens == 0),
+            Ok(LlmStreamEvent::ToolCalls(tool_calls)),
+        ));
     }
     let mut metadata = LlmCompletionMetadata::default();
     metadata.completion_tokens = Some(completion_tokens);
@@ -184,6 +195,23 @@ pub(crate) fn play(
     metadata.finish_reason = Some("stop".to_string());
     plan.push((Duration::ZERO, Ok(LlmStreamEvent::Done(Box::new(metadata)))));
     Some(Ok(play_plan(plan)))
+}
+
+/// Time a model spends writing tool calls: their arguments are output tokens
+/// too, about four characters each, and a reply that is only tool calls still
+/// waits for its first token. Without this a tool-only step answered at once,
+/// so tool-heavy scenarios ran far faster than any real model.
+fn tool_call_wait(pacing: &Pacing, calls: &[ToolCall], first_output: bool) -> Duration {
+    let tokens: usize = calls
+        .iter()
+        .map(|call| (call.name.len() + call.arguments.to_string().len()).div_ceil(4))
+        .sum();
+    let start = if first_output {
+        pacing.ttft()
+    } else {
+        Duration::ZERO
+    };
+    start + pacing.inter_token() * tokens as u32
 }
 
 fn play_plan(
@@ -427,6 +455,83 @@ mod tests {
         let fresh = [messages[0].clone()];
         let replay = call(&fresh, &tools, &attempts).await.unwrap().unwrap();
         assert_eq!(tool_calls(&replay).len(), 1);
+    }
+
+    #[test]
+    fn every_builtin_file_loads() {
+        // A file that fails to parse is skipped at load, so count them here.
+        assert_eq!(builtin_scenario_names().len(), BUILTIN.len());
+        for name in ["luna-agent", "sol-agent", "muse-agent", "long-tool"] {
+            assert!(builtin_scenario_names().iter().any(|n| n == name), "{name}");
+        }
+    }
+
+    /// A reply that is only tool calls still waits for its first token and
+    /// for the arguments to be written, as a real model does.
+    #[tokio::test(start_paused = true)]
+    async fn tool_only_steps_take_model_time() {
+        let tools: Vec<_> = ["list_directory", "read_file", "stat_file"]
+            .into_iter()
+            .map(|name| {
+                ToolDefinition::function(name, "Local file tool", read_tool().parameters().clone())
+            })
+            .collect();
+        let mut messages = vec![Message::text(MessageRole::User, "go [[llmsim:sol-agent]]")];
+        let first = call(&messages, &tools, &Attempts::default())
+            .await
+            .unwrap()
+            .unwrap();
+        record(&mut messages, &first);
+        let started = tokio::time::Instant::now();
+        let second = call(&messages, &tools, &Attempts::default())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(text(&second).is_empty());
+        assert_eq!(tool_calls(&second).len(), 1);
+        // Sol-like: first token after 1.5 to 2.5 s.
+        assert!(
+            started.elapsed() >= Duration::from_millis(1500),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn long_tool_runs_shell_commands_that_hold_the_turn() {
+        let bash = ToolDefinition::function(
+            "bash",
+            "Run a script",
+            serde_json::json!({
+                "type": "object",
+                "properties": {"commands": {"type": "string"}, "timeout_ms": {"type": "integer"}},
+                "required": ["commands"],
+            }),
+        );
+        let tools = [bash];
+        let mut messages = vec![Message::text(
+            MessageRole::User,
+            "check [[llmsim:long-tool speed=0.001]]",
+        )];
+        for _ in 0..2 {
+            let events = call(&messages, &tools, &Attempts::default())
+                .await
+                .unwrap()
+                .unwrap();
+            let calls = tool_calls(&events);
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].name, "bash");
+            let script = calls[0].arguments["commands"].as_str().unwrap();
+            assert!(script.starts_with("sleep 25"), "{script}");
+            // 25 s stays under the virtual shell's 30 s execution limit.
+            assert_eq!(calls[0].arguments["timeout_ms"], 60000);
+            record(&mut messages, &events);
+        }
+        let answer = call(&messages, &tools, &Attempts::default())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(tool_calls(&answer).is_empty());
     }
 
     #[tokio::test]
