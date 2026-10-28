@@ -126,6 +126,7 @@ pub(super) async fn start(
 }
 
 /// End a call: stop it if it runs here, release its lease and record the end.
+/// A call running on another replica stops on the recorded end event.
 pub(super) async fn end(
     state: &AppState,
     session_id: SessionId,
@@ -230,6 +231,7 @@ async fn drive(
     let connection = driver.attach(&endpoint, &call_id).await?;
     let (agent_tx, agent_rx) = mpsc::channel(256);
     let pump_shutdown = shutdown.clone();
+    let this_call = voice_connection_id.to_string();
     let pump = tokio::spawn(async move {
         let mut mapper = AgentOutputMapper::default();
         loop {
@@ -238,6 +240,10 @@ async fn drive(
                 event = events.recv() => event,
             };
             let Some(event) = event else { break };
+            if ends_call(&event.data, &this_call) {
+                pump_shutdown.cancel();
+                break;
+            }
             // Only output, sent-message and turn events speak; skip
             // serializing the rest (tool results can be large).
             if !(event.event_type.starts_with("output.message.")
@@ -274,6 +280,17 @@ async fn drive(
     cap.abort();
     pump.abort();
     result
+}
+
+/// Whether `data` records the end of call `voice_connection_id`. A hang-up
+/// handled by another server replica reaches the replica running the call as
+/// this event (session events cross replicas), not through `AppState::calls`.
+fn ends_call(data: &everruns_core::EventData, voice_connection_id: &str) -> bool {
+    matches!(
+        data,
+        everruns_core::EventData::VoiceSessionEnded(ended)
+            if ended.voice_connection_id == voice_connection_id
+    )
 }
 
 /// The session side of a call on the platform.
@@ -466,5 +483,15 @@ mod tests {
         assert_eq!(a, safety_identifier(1, None, session));
         assert_ne!(a, safety_identifier(2, None, session));
         assert!(a.starts_with("evr_") && a.len() == 64);
+    }
+
+    #[test]
+    fn only_this_calls_end_event_stops_it() {
+        assert!(ends_call(&lifecycle::ended("vc_1", None, None), "vc_1"));
+        assert!(!ends_call(&lifecycle::ended("vc_2", None, None), "vc_1"));
+        assert!(!ends_call(
+            &lifecycle::failed("vc_1", "call_failed"),
+            "vc_1"
+        ));
     }
 }
