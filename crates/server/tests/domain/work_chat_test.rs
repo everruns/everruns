@@ -882,3 +882,67 @@ async fn work_chat_accepts_only_publisher_selected_model_controls() {
     assert_eq!(sent["controls"]["model_id"], model["id"]);
     assert_eq!(sent["controls"]["reasoning"]["effort"], "high");
 }
+
+#[tokio::test]
+async fn work_chat_shared_pages_advance_past_oversized_messages() {
+    use everruns_contracts::typed_id::SessionId;
+    use everruns_core::events::{EventRequest, InputMessageData};
+    let server = TestServer::in_memory().await;
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    publish(&server, &channel).await.assert_success();
+    let token = consumer_token(&server, &channel, "large-report-reader").await;
+    let base = format!("/v1/channels/{}", channel.channel_id);
+    let session: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions"),
+        Some(&token),
+        Some(json!({})),
+    )
+    .await
+    .assert_success()
+    .json();
+    let id = session["id"].as_str().unwrap();
+    let session_id: SessionId = id.parse().unwrap();
+    for number in 1..=101 {
+        let text = if number == 101 {
+            "oversized-marker".repeat(20000)
+        } else {
+            format!("Record {number}")
+        };
+        server
+            .event_service
+            .emit(EventRequest::new(
+                session_id,
+                Default::default(),
+                InputMessageData::new(everruns_core::RuntimeMessage::user(text)),
+            ))
+            .await
+            .unwrap();
+    }
+    let link: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions/{id}/share"),
+        Some(&token),
+        None,
+    )
+    .await
+    .assert_success()
+    .json();
+    let url = format!("{base}/chat/shared/{}", link["token"].as_str().unwrap());
+    let page: Value = server.get(&url).await.assert_success().json();
+    assert_eq!(page["data"].as_array().unwrap().len(), 99);
+    assert!(!page.to_string().contains("oversized-marker"));
+    let before = page["before"]
+        .as_i64()
+        .expect("a skipped large message retains the page position");
+    let older: Value = server
+        .get(&format!("{url}?before={before}"))
+        .await
+        .assert_success()
+        .json();
+    assert_eq!(older["data"].as_array().unwrap().len(), 1);
+    assert!(older["data"].to_string().contains("Record 1"));
+    assert!(older["before"].is_null());
+}
