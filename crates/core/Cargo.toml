@@ -106,6 +106,9 @@ tree-sitter-bash = { version = "0.25", optional = true }
 a2a-wire = { package = "a2a-lf", version = "0.4", optional = true }
 a2a-client = { workspace = true, optional = true }
 opentelemetry = { workspace = true, optional = true }
+opentelemetry-http = { workspace = true, optional = true }
+http = { workspace = true, optional = true }
+bytes = { workspace = true, optional = true }
 opentelemetry_sdk = { workspace = true, optional = true, features = ["testing"] }
 opentelemetry-otlp = { workspace = true, optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
@@ -146,7 +149,7 @@ a2a = ["dep:a2a-wire", "dep:a2a-client", "dep:reqwest"]
 # introspection, claim requirements), shared by the server's channels and
 # serve. It fetches identity-provider documents, so it is never a default.
 channel-auth = ["dep:reqwest", "dep:jsonwebtoken", "dep:moka", "tokio/net", "tokio/time"]
-otel = ["dep:reqwest", "reqwest/blocking", "host", "tokio/time", "everruns-contracts/tls-aws-lc-rs", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-opentelemetry", "dep:tracing-subscriber"]
+otel = ["dep:opentelemetry-http", "dep:http", "dep:bytes", "dep:reqwest", "reqwest/blocking", "host", "tokio/time", "everruns-contracts/tls-aws-lc-rs", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-opentelemetry", "dep:tracing-subscriber"]
 braintrust = ["direct-egress", "tokio/time"]
 observability = ["otel", "braintrust"]
 

@@ -349,6 +349,18 @@ async fn secret_columns(
     };
     let db = &ctx.db;
     match kind {
+        EntityKind::TracingDestination => {
+            match db.tracing_destination(org, id).await.ok().flatten() {
+                Some(row) => Some(vec![(
+                    "authentication",
+                    db.tracing_secrets(org, row.connection_id)
+                        .await
+                        .ok()
+                        .flatten(),
+                )]),
+                None => None,
+            }
+        }
         EntityKind::Provider => db
             .get_provider(org, id)
             .await
@@ -500,6 +512,8 @@ pub fn restore_command(kind: EntityKind) -> Option<(&'static str, &'static str)>
         EntityKind::OrganizationDecision => ("set_default_decision_model", ""),
         EntityKind::UserProfile => ("update_account_profile", "id"),
         EntityKind::OrganizationAccount => ("update_organization_account_name", "id"),
+        EntityKind::TracingPolicy => ("update_tracing_policy", "id"),
+        EntityKind::TracingDestination => ("update_tracing_destination_metadata", "id"),
         EntityKind::SandboxTemplate => ("update_sandbox_template_metadata", "id"),
         EntityKind::Agent => ("update_agent", "id"),
         EntityKind::Harness => ("update_harness", "id"),

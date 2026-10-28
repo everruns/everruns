@@ -2,6 +2,8 @@
 
 ## 2026-10-27
 
+- Shell filesystem checks now use metadata to recognize empty workspace directories across the command-backed worker transport. Recursive copy preserves destination directory layout before any child is written. See [Bashkit requirements](execution/bashkit-requirements.md).
+
 - Session trace messages render Markdown by default with a shareable plain-text view. See [Session Trace](ui/session-trace.md).
 
 - Bounded native search keeps full schemas in the function projection and returns only operation summaries, so current Agent write schemas fit without raising either byte budget. Added regression coverage for complete schema delivery and hosted native grading. See [Tool search](execution/tool-search.md).
