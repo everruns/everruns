@@ -254,6 +254,7 @@ impl ReasonAtom {
                 // effect and/or augment the user-facing error fields — before the
                 // message is built. The atom stays behavior-agnostic; each hook
                 // (e.g. `usage_limit_auto_continue`) owns its own logic.
+                let mut retry_schedule_id = None;
                 if !error_hooks.is_empty() {
                     let services = crate::engine::llm_error_hook::LlmErrorHookServices {
                         schedule_store: self.schedule_store.clone(),
@@ -269,6 +270,7 @@ impl ReasonAtom {
                             };
                             hook.on_llm_error(&ctx).await
                         };
+                        retry_schedule_id = outcome.retry_schedule_id.or(retry_schedule_id);
                         for (key, value) in outcome.extra_error_fields {
                             source_error = source_error.with_field(key, value);
                         }
@@ -332,15 +334,19 @@ impl ReasonAtom {
                     reason_span_id.clone(), // Same span_id as started
                     Some(parent_span_id.clone()),
                 );
-                if let Err(emit_err) = self
-                    .event_emitter
-                    .emit(EventRequest::new(
-                        context.session_id,
-                        completed_context,
-                        ReasonCompletedData::failure(error_msg.clone(), Some(reason_duration_ms)),
-                    ))
-                    .await
-                {
+                let mut failed_reason = EventRequest::new(
+                    context.session_id,
+                    completed_context,
+                    ReasonCompletedData::failure(error_msg.clone(), Some(reason_duration_ms)),
+                );
+                if let Some(schedule_id) = retry_schedule_id {
+                    // This trusted event context binds the retry to this exact input,
+                    // even when generic disclosure removes user-facing error fields.
+                    failed_reason = failed_reason.with_metadata(serde_json::json!({
+                        "platform_auto_retry": { "schedule_id": schedule_id }
+                    }));
+                }
+                if let Err(emit_err) = self.event_emitter.emit(failed_reason).await {
                     tracing::warn!(
                         session_id = %context.session_id,
                         error = %emit_err,
