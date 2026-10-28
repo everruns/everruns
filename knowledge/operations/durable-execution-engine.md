@@ -30,6 +30,9 @@ The durable crate owns persistence, retries, and activity scheduling.
 The worker owns no database driver; database connection construction
 belongs only to server, durable, and the `everruns` facade (embedded SQLite), enforced by
 [`check-database-driver-isolation.sh`](../../scripts/lib/check-database-driver-isolation.sh).
+The [custom data-agent application example](custom-workers.md) separately owns its
+private tool database, with a path- and package-scoped guard exception. This does
+not grant the built-in worker or other libraries connection ownership.
 
 ## Goals
 

@@ -25,6 +25,10 @@
 - Extended [page-aware Chat](ui/chat-mode.md) coverage to the tabbed Knowledge UI, Agent/Harness translations, interface language, trigger quick edits and manager notes. Added an authenticated-route inventory gate, field-level permission/conflict fixtures and protected drawer masking; [Knowledge pages](ui/knowledge-pages.md) now adapt to the split pane.
 - Unified resource pickers, form controls, page layouts and action feedback; expanded the public Slate component and layout guidance.
 
+- Added full real-model custom-worker smoke qualification, process/container credential and routing checks, public deployment/walkthrough navigation, and agent/UI acceptance cases. See [custom workers](operations/custom-workers.md).
+
+- Added [customer-hosted custom workers](operations/custom-workers.md): a separate scoped worker protocol, persistent agent routing, fenced canonical event ingestion and a Framework data-agent example.
+
 - Bounded native search keeps full schemas in the function projection and returns only operation summaries, so current Agent write schemas fit without raising either byte budget. Added regression coverage for complete schema delivery and hosted native grading. See [Tool search](execution/tool-search.md).
 
 - Rebased native Platform discovery onto the current public inventory (350 operations), preserving live authorization and documenting the portable catalog’s feature-independent metadata boundary. See [Platform Chat](harnesses/platform-chat.md) and the [threat model](security/threat-model.md).

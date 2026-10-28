@@ -66,3 +66,4 @@
 * [Work Chat](work_chat/) - Hosted consumer identity, interfaces and workspace boundaries.
 
 * [Customer tracing](tracing/) - Protected destinations, multi-target routing and delivery feedback.
+* [Custom workers](custom_workers/) - Existing Playground and trace rendering of custom execution.
