@@ -4,8 +4,8 @@
 // its Session allows. Actions go through the Session's Sandbox endpoint, so a
 // Sandbox whose Session is gone is read-only.
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useState } from "react";
 import { AlertTriangle, Pause, Play, Trash2 } from "lucide-react";
 import { useManageSandbox, useSandbox } from "@/hooks/use-sandbox-fleet";

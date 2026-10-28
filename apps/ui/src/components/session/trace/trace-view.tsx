@@ -8,7 +8,7 @@
 // view, the error filter and the selected step live in the URL so a debugging
 // link can be shared.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -75,6 +75,8 @@ export interface TraceViewProps {
 }
 
 export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const router = useRouter();
   const pathname = usePathname();
@@ -354,7 +356,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
               </span>
               {failedTurn.ended_at && (
                 <span className="ml-3 text-xs text-muted-foreground">
-                  {new Date(failedTurn.ended_at).toLocaleString()}
+                  {new Date(failedTurn.ended_at).toLocaleString(displayLocale)}
                 </span>
               )}
               <p className="mt-1 break-words">

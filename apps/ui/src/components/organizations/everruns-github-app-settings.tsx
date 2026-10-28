@@ -7,8 +7,8 @@
 // Agents then choose a link on their GitHub section. Unlinking removes every
 // agent's choice of it; it does not uninstall the App on GitHub.
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useState } from "react";
 import { Loader2, Plus } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";

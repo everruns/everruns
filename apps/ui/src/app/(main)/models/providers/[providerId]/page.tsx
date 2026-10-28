@@ -1,7 +1,7 @@
 "use client";
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import {

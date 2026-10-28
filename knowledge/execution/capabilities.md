@@ -554,6 +554,10 @@ Display strings are localized through additive overlays, keeping
   the generic editor stays capability-agnostic. Server-side
   `validate_config` errors remain canonical English; clients localize their
   own pre-submit validation messages.
+- The server enriches built-in display metadata with its maintained resource
+  catalogs before returning API DTOs. Existing capability-supplied translations
+  win; tenant MCP, skill and declarative resource metadata stays authored.
+  The larger display catalog is separate from portable Engine activity wording.
 - Localization affects display only. Prompt building and LLM-facing
   descriptions always use the canonical English strings.
 

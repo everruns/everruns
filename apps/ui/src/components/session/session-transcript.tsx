@@ -8,7 +8,7 @@
 // `ChatPanel` keeps this component and adds the composer on top, so the two
 // surfaces cannot drift.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useMemo, type ReactNode } from "react";
 import { ArrowDown } from "lucide-react";
 import { getEventData } from "@/lib/api/types";
@@ -26,7 +26,6 @@ import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { assignRunsToEvents } from "@/components/chat/run-cards";
 import { ChatNavRail, type ChatNavAnchor } from "@/components/chat/chat-nav-rail";
 import { StreamingMessage } from "@/components/streaming-message";
-import { useLocale } from "@/providers/locale-provider";
 
 export function SessionTranscript({
   /** Rendered inside the scroll container, below the transcript (e.g. composer errors). */

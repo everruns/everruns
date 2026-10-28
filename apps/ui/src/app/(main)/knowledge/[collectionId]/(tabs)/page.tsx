@@ -4,7 +4,7 @@
 // session's Filesystem tab uses. The selected file is the `?file=` query param,
 // so Search results and shared links open straight to it.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 import { use, useReducer, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -46,6 +46,8 @@ export default function KnowledgeFilesPage({
 }: {
   params: Promise<{ collectionId: string }>;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { collectionId } = use(params);
   const router = useRouter();
@@ -267,7 +269,7 @@ export default function KnowledgeFilesPage({
                     {selectedRow.version?.created_at && (
                       <span>
                         {ui("Updated {value0}", {
-                          value0: formatRelativeTime(selectedRow.version.created_at),
+                          value0: formatRelativeTime(selectedRow.version.created_at, displayLocale),
                         })}
                       </span>
                     )}

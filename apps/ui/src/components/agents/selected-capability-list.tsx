@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -21,7 +21,7 @@ import {
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
+
 import { cn } from "@/lib/utils";
 import { capabilityConfigRecord } from "./capability-config";
 import { CapabilitySettingsEditor, hasCapabilitySettings } from "./capability-settings-editor";

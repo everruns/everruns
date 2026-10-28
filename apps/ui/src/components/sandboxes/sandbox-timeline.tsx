@@ -4,7 +4,7 @@
 // paused, red while lost, with a tick where a lost resource was rebuilt.
 // Underneath, a step chart of how many ran at once.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import type { SandboxTimeline as Timeline, SandboxTimelineLane } from "@/lib/api/sandboxes";
 import { cn } from "@/lib/utils";
 import { formatRunningTime, providerLabel, sandboxStateLabel } from "./sandbox-display";
@@ -47,6 +47,8 @@ function Lane({
   span: number;
   onSelect: (id: string) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { sandbox } = lane;
   return (
@@ -90,7 +92,7 @@ function Lane({
                 style={{ left: `${left}%`, width: `${width}%` }}
                 title={ui("{value0} {value1}", {
                   value0: sandboxStateLabel(spanItem.state),
-                  value1: new Date(spanItem.start).toLocaleString(),
+                  value1: new Date(spanItem.start).toLocaleString(displayLocale),
                 })}
               />
             </span>
@@ -102,6 +104,8 @@ function Lane({
 }
 
 function Concurrency({ timeline, from, span }: { timeline: Timeline; from: number; span: number }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const peak = Math.max(1, timeline.peak_running);
   const height = 48;
@@ -127,7 +131,7 @@ function Concurrency({ timeline, from, span }: { timeline: Timeline; from: numbe
           {timeline.peak_at
             ? ui("Peak {value0} at {value1}", {
                 value0: timeline.peak_running,
-                value1: new Date(timeline.peak_at).toLocaleString(),
+                value1: new Date(timeline.peak_at).toLocaleString(displayLocale),
               })
             : ui("None in this window")}
         </span>

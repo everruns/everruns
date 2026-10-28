@@ -61,11 +61,104 @@ pub(crate) fn for_builtin(name: &str) -> EntityLocalizations {
         "sprites-coder" => ("Програміст Sprites", "Працює з кодом у середовищі Sprites."),
         _ => return EntityLocalizations::default(),
     };
-    EntityLocalizations(std::collections::BTreeMap::from([(
+    let mut entries = EntityLocalizations(std::collections::BTreeMap::from([(
         "uk".into(),
         EntityLocalization {
             display_name: Some(display_name.into()),
             description: Some(description.into()),
         },
-    )]))
+    )]));
+    let (name, description) = match name {
+        "base" => (
+            "Base",
+            "An empty foundation with no additional capabilities.",
+        ),
+        "conversation" => (
+            "Conversation",
+            "Agent conversations and essential chat capabilities.",
+        ),
+        "worker" => (
+            "Worker",
+            "A foundation for agents that perform tasks and use tools.",
+        ),
+        "bashkit-worker" => (
+            "Bashkit Worker",
+            "Run tasks in a virtual Bashkit workspace.",
+        ),
+        "sandbox-worker" => (
+            "Sandbox Worker",
+            "Run tasks in a fully isolated environment.",
+        ),
+        "worker-base" => ("Base Worker", "Legacy base worker harness."),
+        "generic" => (
+            "Generic",
+            "A general-purpose base harness with a file system and secret store.",
+        ),
+        "coding" => (
+            "Coding",
+            "A harness for working with code in an isolated environment.",
+        ),
+        "coding-session-sandbox" => (
+            "Sandbox Coding",
+            "Work with code in an isolated session environment.",
+        ),
+        "data-analyst" => (
+            "Data Analyst",
+            "Explore data, perform calculations and prepare reports.",
+        ),
+        "platform-chat" => ("Platform Chat", "Manage your Everruns organization."),
+        "dad-jokes-agent" => ("Dad Jokes Agent", "Tells short, friendly jokes."),
+        "research-agent" => (
+            "Researcher",
+            "Research topics and gather information from sources.",
+        ),
+        "microsoft-learn-assistant" => (
+            "Microsoft Learn Assistant",
+            "Find and use Microsoft Learn documentation.",
+        ),
+        "python-coder" => ("Python Coder", "Write and run Python code."),
+        "shell-assistant" => ("Shell Assistant", "Perform tasks in the command line."),
+        "image-studio-agent" => ("Image Studio", "Create and edit images."),
+        "cursor-agent-manager" => ("Cursor Agent Manager", "Manage Cursor coding agents."),
+        "e2b-coder" => ("E2B Coder", "Work with code in an E2B sandbox."),
+        "sprites-coder" => (
+            "Sprites Coder",
+            "Work with code in the Sprites environment.",
+        ),
+        _ => return entries,
+    };
+    for locale in crate::services::capability_localizations::ADDITIONAL_LOCALES {
+        entries.0.insert(
+            locale.into(),
+            EntityLocalization {
+                display_name: Some(
+                    crate::services::capability_localizations::translated(locale, name).into(),
+                ),
+                description: Some(
+                    crate::services::capability_localizations::translated(locale, description)
+                        .into(),
+                ),
+            },
+        );
+    }
+    entries
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn builtins_carry_languages_without_rewriting_unknown_resources() {
+        let names = for_builtin("conversation");
+        for locale in ["uk", "fr", "de", "es", "zh"] {
+            assert!(
+                names
+                    .0
+                    .get(locale)
+                    .and_then(|entry| entry.display_name.as_deref())
+                    .is_some()
+            );
+        }
+        assert!(for_builtin("customer-harness").is_empty());
+    }
 }

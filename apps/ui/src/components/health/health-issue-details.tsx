@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -32,6 +32,8 @@ export function HealthIssueDetails({
   issue: HealthIssue;
   canManage?: boolean;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { currentOrg } = useOrg();
   const { requiresAuth, user } = useAuth();
@@ -213,7 +215,8 @@ export function HealthIssueDetails({
               </Button>
               {issue.snoozed_until && (
                 <p className="text-xs text-muted-foreground">
-                  {ui("Snoozed until")} {new Date(issue.snoozed_until).toLocaleString()}
+                  {ui("Snoozed until")}{" "}
+                  {new Date(issue.snoozed_until).toLocaleString(displayLocale)}
                   {ui(". The issue remains open.")}
                 </p>
               )}
@@ -247,8 +250,8 @@ export function HealthIssueDetails({
         </>
       )}
       <p className="text-xs text-muted-foreground">
-        {ui("Detected")} {new Date(issue.first_detected_at).toLocaleString()} {ui("· Last checked")}{" "}
-        {new Date(issue.last_checked_at).toLocaleString()}
+        {ui("Detected")} {new Date(issue.first_detected_at).toLocaleString(displayLocale)}{" "}
+        {ui("· Last checked")} {new Date(issue.last_checked_at).toLocaleString(displayLocale)}
       </p>
       <details className="text-xs text-muted-foreground">
         <summary>{ui("Technical details")}</summary>

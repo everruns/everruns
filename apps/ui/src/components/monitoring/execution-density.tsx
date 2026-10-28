@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import type { HistoryPoint } from "./model";
 import { phases, number, duration } from "./model";
 
@@ -13,6 +13,8 @@ export function ExecutionDensity({
   selected: number | null;
   onSelect: (index: number) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   // At most 180 visible bins, independent of session population or the number
   // of retained one-second samples. Each bin uses the last observation.
@@ -65,7 +67,7 @@ export function ExecutionDensity({
                       tabIndex={row === 0 ? 0 : -1}
                       role="button"
                       aria-label={ui("{value0}: {value1} {value2}", {
-                        value0: new Date(point.at).toLocaleTimeString(),
+                        value0: new Date(point.at).toLocaleTimeString(displayLocale),
                         value1: phase.label,
                         value2: point.phases[phase.key] ?? 0,
                       })}
@@ -79,7 +81,7 @@ export function ExecutionDensity({
                       className="cursor-pointer focus:outline-2 focus:outline-ring"
                     >
                       <title>
-                        {new Date(point.at).toLocaleTimeString()} · {phase.label}:{" "}
+                        {new Date(point.at).toLocaleTimeString(displayLocale)} · {phase.label}:{" "}
                         {number(point.phases[phase.key] ?? 0)}
                       </title>
                     </rect>
@@ -88,7 +90,7 @@ export function ExecutionDensity({
               </g>
             ))}
             <text x="145" y="320" fontSize="10" fill="hsl(var(--muted-foreground))">
-              {new Date(history[0].at).toLocaleTimeString()}
+              {new Date(history[0].at).toLocaleTimeString(displayLocale)}
             </text>
             <text
               x="945"
@@ -97,7 +99,7 @@ export function ExecutionDensity({
               fontSize="10"
               fill="hsl(var(--muted-foreground))"
             >
-              {new Date(history.at(-1)!.at).toLocaleTimeString()}
+              {new Date(history.at(-1)!.at).toLocaleTimeString(displayLocale)}
             </text>
             <text x="0" y="366" fontSize="12" fill="hsl(var(--foreground))">
               {ui("Oldest runnable")}
