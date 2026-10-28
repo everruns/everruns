@@ -1,12 +1,13 @@
 import { render, waitFor } from "@testing-library/react";
 import { PageChatProvider } from "@/test-utils/page-chat-provider";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from "@/components/ui/drawer";
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 import type { ChatModeState } from "@/components/chat-mode/chat-mode-context";
 import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
 
-it.each(["dialog", "drawer"])(
+it.each(["dialog", "drawer", "confirmation"])(
   "masks the underlying writable form while a protected %s is mounted and restores it on close",
   async (kind) => {
     global.structuredClone = (v) => JSON.parse(JSON.stringify(v));
@@ -42,6 +43,18 @@ it.each(["dialog", "drawer"])(
         writable: true,
         apply: () => {},
       });
+      if (kind === "confirmation") {
+        return (
+          <ConfirmDialog
+            open={open}
+            onOpenChange={() => {}}
+            title="Delete resource"
+            description="Manual confirmation"
+            confirmLabel="Delete"
+            onConfirm={async () => {}}
+          />
+        );
+      }
       return (
         <Root open={open}>
           <Content chatProtected="Credentials">

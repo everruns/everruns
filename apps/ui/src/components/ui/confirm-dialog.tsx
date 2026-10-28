@@ -59,7 +59,7 @@ export function ConfirmDialog({
         }
       }}
     >
-      <DialogContent showCloseButton={!busy}>
+      <DialogContent chatProtected="Confirm action" showCloseButton={!busy}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
