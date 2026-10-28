@@ -19,7 +19,7 @@ def custom_data_example(package):
     return (
         package["name"] == "everruns-custom-data-agent"
         and Path(package.get("manifest_path", "")).resolve()
-        == CUSTOM_DATA_EXAMPLE_ROOT / "Cargo.toml"
+        == (CUSTOM_DATA_EXAMPLE_ROOT / "Cargo.toml").resolve()
     )
 
 
