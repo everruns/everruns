@@ -75,7 +75,6 @@ how the parts fit together or gave a redesign a starting point.
 - Layout examples render inside the docs content column (about 720px), narrower than the app's
   content area, so wide layouts wrap earlier than in the product.
 
-
 ## Reusable product patterns
 
 Resource pickers compose the shared Base UI combobox; feature wrappers own filtering,
