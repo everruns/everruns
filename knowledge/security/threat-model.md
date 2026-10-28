@@ -905,6 +905,19 @@ Workers authenticate to control plane gRPC (port 9001) via two layered mechanism
    - Provides encryption + mutual identity verification at the transport layer
    - Bearer token auth remains active as defense-in-depth even when mTLS is enabled
 
+Both worker client paths (durable/task and normal turn RPCs, including raw blob
+fetches) apply this TLS configuration. The turn client preserves the expected
+hostname, bypasses the plaintext replica balancer, and bounds connection and TLS
+handshake time. Certificate/identity errors refuse the connection without an HTTP
+fallback. CA configuration remains optional; unset or empty CA selects plaintext.
+Real-handshake regressions cover wrong trust roots, hostname mismatch, malformed
+certificates, missing/untrusted/mismatched mTLS identities and plaintext peers.
+See [turn transport tests](../../crates/worker/src/grpc_adapters/connect/tests/tls.rs).
+
+Transport identity alone does not establish executor-bound assignment authority.
+The legacy shared bearer still grants cross-org access (TM-AUTHZ-002); mTLS on a
+shared worker/process/host does not guarantee containment between its tenants.
+
 **Design decision:** Workers are intentionally cross-org. They are stateless task executors that process work from any organization's queue. Org-scoping is enforced at the application layer (HTTP API), not the internal gRPC transport.
 
 **TM-DURABLE-010, Durable API Endpoints (MITIGATED):**
