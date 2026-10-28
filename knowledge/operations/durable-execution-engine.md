@@ -626,4 +626,50 @@ a revocation committed before admission is denied; an earlier admitted read can
 finish afterward. Retained contexts and new connections both recheck. There is
 no promise to retract data already delivered or synchronously stop in-flight reads.
 
+The source-only [worker ingress floor](../../crates/server/migrations/20261028140332_worker_ingress_protection_floor.sql)
+closes canonical legacy wire access before protected capability enrollment.
+It is empty on upgrade and has no production writer or activation API. A
+capability cannot be enrolled without the supported floor, and verified reads
+without it are refused. This is a database-wide protocol requirement: legacy
+global work claims, org-wide credential lookups and signed object URLs cannot
+be safely filtered by an assignment selector. Mixed legacy/scoped execution in
+one database is unsupported. Unprotected deployments retain legacy behavior;
+a missing schema or unavailable database never implies an absent floor.
+
+Every generated RPC and raw byte route checks the floor without caching a
+positive legacy decision. Legacy, authentication-disabled development and
+selector-only journal assertions are all refused once protection is required.
+A qualified verified journal reader retains only its existing journal operation;
+an unknown future floor version refuses it too. The floor cannot be removed or
+downgraded, including after grants expire or their parent data is deleted.
+[Wire admission](../../crates/server/src/worker_link/grpc_service/authority/mod.rs)
+does not derive scope from caller org/session identifiers or identity headers.
+
+Event streams admitted earlier recheck before publishing/storing their collected
+batch; notification streams recheck before yielding each item; uploads recheck
+after body receipt before decoding/storage. New uploads are refused before body extraction. Read links authenticate their
+signature before any database access, then check the floor before object lookup;
+journal-only contexts remain refused before parsing either byte operation. This is admission enforcement,
+not a transaction coupling every operation to floor activation. Previously
+admitted finite operations or byte downloads may finish; prior disclosures
+cannot be retracted. The legacy event-stream collector still needs bounded
+memory qualification before any scoped emit operation is supported.
+
+This floor protects the canonical RPC/HTTP wire boundary, not arbitrary server
+code with database access. Default development storage initialization refuses
+protected in-process hosting. Already captured direct stores, custom embedders,
+alternate listeners and old replicas are not made safe by that startup check.
+No production listener installs the scoped verifier and no issuer exists;
+protected execution is not a runnable production mode at this stage.
+
+Before activation: migrate empty metadata first, upgrade and independently verify
+every serving replica, drain and stop all legacy workers/streams/transfers, remove
+direct/in-process and unqualified alternate worker hosting, implement and qualify
+the required scoped operations and complete authority provenance, and compose the
+verified listener. A floor record cannot enforce itself on an old binary that
+ignores it; deployment version enforcement is still required. Do not roll back
+to pre-floor binaries or reopen legacy access after protection is required.
+Production enrollment, trust, network, credential or security-setting actions
+remain separate approved rollout work. No such action is performed here.
+
 **Design decision**: Workers are intentionally cross-org. Org-scoping is enforced at the HTTP API layer, not the gRPC transport.

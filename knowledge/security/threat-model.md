@@ -355,6 +355,19 @@ provenance, including user/custom-policy revocation, before activation. No issue
 or production scoped listener is wired, and the broad legacy worker route still
 precludes a compromised-shared-worker isolation guarantee.
 
+An unactivated [protocol floor](../operations/durable-execution-engine.md#worker-communication)
+now refuses broad legacy/development and selector-only authority at every
+canonical worker RPC and byte route. Opaque capability enrollment requires the
+supported floor; it is monotonic and cannot disappear with assignment expiry or
+deletion. The requirement is database-wide: mixed legacy/scoped workers cannot
+safely share global claims, credential lookups and signed URLs. Storage failure
+and unknown future versions fail closed. Default direct development hosting is
+refused, but captured direct stores, custom/alternate hosting and old binaries
+still require separate exclusion/qualification. The metadata is empty by
+default, no production activation or issuer is wired, and the trusted-shared-worker
+assumption remains for the existing unprotected mode. Prior admissions and
+already disclosed values are not retroactively revoked.
+
 **TM-AUTHZ-004, Command Runner as Single Enforcement Point:**
 `Command::run` (`crates/server/src/domains/common/mod.rs`) evaluates `Command::policy()` against the active `PermissionResolver` before dispatching to `execute`. HTTP adapters call `run`; MCP and gRPC `ExecuteCommand` route through `dispatch()` which calls `run`. Coverage is enforced by iterating `inventory::iter::<CommandDescriptor>` in a test, so new mutating commands that forget `policy()` fail the build. The legacy `#[policy]` attribute macro was removed, service-layer checks were redundant with `Command::run` and hardcoded `DefaultPermissionResolver`, re-introducing `TM-AUTHZ-008`.
 

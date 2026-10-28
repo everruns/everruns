@@ -18,6 +18,7 @@ use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity, ServerTl
 
 mod lifecycle;
 mod negatives;
+mod protection_floor;
 mod records;
 
 const SERVER_CERT: &str = include_str!(concat!(
@@ -76,6 +77,9 @@ async fn assignment_window(
     capability_window: (i64, i64),
 ) -> Assignment {
     let db = &service.db;
+    // Test-only enrollment follows the irreversible wire protection floor.
+    sqlx::query("INSERT INTO worker_ingress_protection_floor (minimum_version) VALUES (1) ON CONFLICT DO NOTHING")
+        .execute(db.database().pool()).await.unwrap();
     let session = db
         .create_session(crate::storage::test_database::test_session_row(org))
         .await
