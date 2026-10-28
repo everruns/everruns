@@ -490,6 +490,30 @@ allows. A driver may recommend a request-specific stall timeout through the
 phase uses that recommendation only when the host has not set its own deadline;
 explicit host policy always takes precedence.
 
+### Native non-streaming completion
+
+Completion-only runtime calls set a best-effort transport preference on the
+call config. Chat Completions, Responses, Anthropic Messages, Gemini
+`generateContent` and Bedrock `Converse` implement native whole responses.
+Responses and Anthropic normalize the completed resource through their shared
+stream parsers; Gemini shares its state fold; Bedrock shares tool settlement.
+This keeps signed/opaque reasoning, replay content, tool arguments, finish
+reasons and token/cache accounting consistent. Invalid or truncated JSON fails;
+a potentially executed POST is not silently repeated after a body error.
+
+Long Anthropic decodes retain streaming rather than lowering the output budget;
+Gemini long decode keeps its continuation checkpoints. ChatGPT plan/Codex routes
+remain stream-only. OpenAI background calls retain resumable streaming and the
+existing durable response journal. Native asynchronous tool coordination and
+armed streaming guardrails continue consuming incremental provider events even
+when outward deltas are suppressed.
+
+Total deadlines and terminal validation do not require streaming. First-event
+and incremental text-byte limits do: those calls retain the bounded stream
+collector. A collected response's arrival must not be reported as measured
+first-token latency. Drivers' capability flags describe protocol support, not a
+promise that every request can avoid streaming.
+
 ### Realtime Voice Driver
 
 Realtime voice does not use `ChatDriver::chat_completion_stream()` because a
@@ -517,6 +541,10 @@ V1 adapter requirements:
 voice model with configurable reasoning efforts (`minimal`, `low`, `medium`,
 `high`, `xhigh`). It should not appear in normal text chat model pickers unless
 the UI is explicitly rendering a voice-capable picker.
+
+Malformed native JSON is a non-retryable response failure. A complete-body decode
+error must not be treated as a fresh connection failure: a provider may already
+have executed hosted tools before returning a truncated response.
 
 ## Error Handling Flow
 

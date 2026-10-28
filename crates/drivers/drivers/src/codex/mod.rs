@@ -32,6 +32,10 @@ pub const CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 pub const CODEX_CLIENT_VERSION: &str = "0.164.0";
 struct CodexRequest;
 impl OpenResponsesRequestExtension for CodexRequest {
+    fn supports_native_non_streaming(&self) -> bool {
+        false
+    }
+
     fn decorate(&self, body: &mut Value, _config: &LlmCallConfig) -> Result<()> {
         body["store"] = false.into();
         body["stream"] = true.into();

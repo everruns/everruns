@@ -177,6 +177,14 @@ where
         metadata.insert(A2A_MESSAGE_ID_METADATA.to_string(), Value::String(id));
     }
     let mut message = InputMessage::user(text);
+    // A2A projects completed artifacts and lifecycle events, including on SSE.
+    message.controls = Some(everruns_core::Controls {
+        hints: Some(HashMap::from([(
+            "output_streaming".to_string(),
+            json!(false),
+        )])),
+        ..Default::default()
+    });
     message.metadata = Some(metadata);
     message.content.extend(
         state

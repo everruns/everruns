@@ -33,6 +33,10 @@ pub const REJECTED_FIELDS: &[&str] = &[
 ];
 struct PlanRequest;
 impl OpenResponsesRequestExtension for PlanRequest {
+    fn supports_native_non_streaming(&self) -> bool {
+        false
+    }
+
     fn decorate(&self, body: &mut Value, _config: &LlmCallConfig) -> Result<()> {
         let Some(body) = body.as_object_mut() else {
             return Err(AgentLoopError::llm("Invalid ChatGPT request"));

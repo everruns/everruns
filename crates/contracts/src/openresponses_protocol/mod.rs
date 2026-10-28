@@ -52,6 +52,7 @@ mod completion_contract;
 mod computer;
 mod hosted_tools;
 mod input;
+mod non_streaming;
 mod streaming;
 mod tool_changes;
 mod websocket;
@@ -115,6 +116,11 @@ const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 /// is serialized and before it is sent; either may return an error to abort the
 /// request (e.g. failed routing validation).
 pub trait OpenResponsesRequestExtension: Send + Sync {
+    /// Plan-backed and other stream-only routes opt out of JSON transport.
+    fn supports_native_non_streaming(&self) -> bool {
+        true
+    }
+
     /// Whether a rejected stateful continuation may be retried as a repaired
     /// stateless transcript. Extensions with provider-owned pending work must
     /// opt out so the fallback cannot discard or repeat that work.

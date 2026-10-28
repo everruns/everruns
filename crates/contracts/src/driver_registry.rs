@@ -407,6 +407,26 @@ pub struct LlmResponse {
     pub metadata: LlmCompletionMetadata,
 }
 
+impl LlmResponse {
+    /// Expose a native whole response through the common runtime event reader.
+    pub fn into_stream(self) -> LlmResponseStream {
+        let mut events = Vec::new();
+        if !self.text.is_empty() {
+            events.push(Ok(LlmStreamEvent::TextDelta(self.text)));
+        }
+        events.extend(
+            self.reasoning
+                .into_iter()
+                .map(|part| Ok(LlmStreamEvent::ReasoningItem(part))),
+        );
+        if let Some(calls) = self.tool_calls.filter(|calls| !calls.is_empty()) {
+            events.push(Ok(LlmStreamEvent::ToolCalls(calls)));
+        }
+        events.push(Ok(LlmStreamEvent::Done(Box::new(self.metadata))));
+        Box::pin(futures::stream::iter(events))
+    }
+}
+
 // `LlmCallConfigBuilder` lives in `llm_call_config_builder.rs`.
 pub use crate::llm_call_config_builder::LlmCallConfigBuilder;
 

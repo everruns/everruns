@@ -258,9 +258,11 @@ impl ChatDriver for OpenAIChatDriver {
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
-        self.inner
-            .chat_completion_non_streaming(endpoint, messages, config)
-            .await
+        let mut config = config.clone();
+        config.prefer_non_streaming = true;
+        // Keep the endpoint-specific feature gates in `chat_completion_stream`
+        // when a completion selects whole-response transport.
+        self.chat_completion(endpoint, messages, &config).await
     }
 
     async fn list_models(

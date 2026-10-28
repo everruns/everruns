@@ -23,6 +23,8 @@
   retaining unrelated replacement settings. See [Chat mode](ui/chat-mode.md) and
   [Knowledge pages](ui/knowledge-pages.md).
 
+- **Completed-output execution.** Explicit agents, child sessions and completion-only consumers omit note/thinking deltas; supported drivers use native whole responses where request semantics allow. Subagent waits use server-side lifecycle notifications with durable reconciliation. See [Explicit Communication](integrations/explicit-communication.md), [LLM drivers](foundations/llm-drivers.md) and [durable execution](operations/durable-execution-engine.md).
+
 ## 2026-10-27
 
 - Shell filesystem checks now use metadata to recognize empty workspace directories across the command-backed worker transport. Recursive copy preserves destination directory layout before any child is written. See [Bashkit requirements](execution/bashkit-requirements.md).

@@ -12,6 +12,8 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
+mod session_wait;
+
 fn decode<T: DeserializeOwned>(json: &str) -> Result<T, CommandError> {
     serde_json::from_str(json).map_err(|error| anyhow::Error::from(error).into())
 }
@@ -25,6 +27,9 @@ pub(crate) async fn dispatch_runtime_view(
     params: Value,
     ctx: &Ctx,
 ) -> Result<String, CommandError> {
+    if name == "wait_session_idle" {
+        return session_wait::wait(params, ctx).await;
+    }
     // Reject unsupported projections before dispatch: a malformed internal
     // request must never execute an unrelated mutating command.
     if !matches!(

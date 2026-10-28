@@ -45,6 +45,24 @@ Slack endpoint to the agent; the endpoint's `reply_mode` is gone.
   ([`ExecutionPhase`](../../crates/contracts/src/execution_phase.rs)), some do
   not. One shared reader fixes that in both modes.
 
+## Output demand
+
+Explicit agents keep completed notes and thinking but omit their incremental
+text/thinking events by default. This is resolved in the shared reason phase,
+so workers and embedded hosts behave alike. `send_message` deliveries, tool and
+turn lifecycles, usage, message identity and recovery state remain immediate or
+durable according to their existing contracts. Output suppression never bypasses
+guardrails or executes a partial tool call.
+
+A session's `hints.output_streaming` overrides the default; the triggering
+input's `controls.hints.output_streaming` wins over that. `true` permits live
+inspection, `false` selects completed output even for a direct agent. Child
+sessions default to completed output. A2A, eval and health-check consumers select
+completed output at intake. Demand is not inferred from subscriber counts.
+
+Provider transport is a separate best-effort preference; see
+[LLM drivers](../foundations/llm-drivers.md#native-non-streaming-completion).
+
 ## Costs and how they are contained
 
 | Cost | Containment |

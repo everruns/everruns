@@ -1,3 +1,5 @@
+mod non_streaming;
+
 // Google Gemini Chat Driver
 //
 // Implementation of ChatDriver for Google's Gemini API.
@@ -572,6 +574,21 @@ impl ChatDriver for GeminiChatDriver {
         Some(self)
     }
 
+    fn supports_native_non_streaming(&self) -> bool {
+        true
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &everruns_contracts::ProviderEndpoint,
+        messages: Vec<Message>,
+        config: &LlmCallConfig,
+    ) -> Result<everruns_contracts::driver_registry::LlmResponse> {
+        let mut config = config.clone();
+        config.prefer_non_streaming = true;
+        self.chat_completion(endpoint, messages, &config).await
+    }
+
     fn stream_stall_timeout(&self, config: &LlmCallConfig) -> Option<std::time::Duration> {
         (is_argon(&config.model) && config.max_tokens.is_some_and(|tokens| tokens > 65_536))
             .then_some(std::time::Duration::from_secs(1_200))
@@ -584,6 +601,17 @@ impl ChatDriver for GeminiChatDriver {
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         let (request, grounded) = self.prepare_request(&messages, config, true)?;
+
+        // Long decodes use stream-only continuation checkpoints. Whole JSON
+        // responses use the same state fold for signatures, grounding and usage.
+        if config.prefer_non_streaming
+            && !config.limits.needs_incremental_events()
+            && config.max_tokens.is_none_or(|tokens| tokens <= 65_536)
+        {
+            return self
+                .native_response(endpoint, config, &request, grounded)
+                .await;
+        }
 
         // Establish the byte stream, transparently reconnecting on a transport
         // failure that lands before the first chunk (the "error decoding
