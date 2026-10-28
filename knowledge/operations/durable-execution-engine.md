@@ -590,4 +590,24 @@ This verifies transport peers, not an assignment or tenant. A shared worker's
 bearer still grants cross-org authority; a per-executor application identity and
 assignment admission must be enforced separately before scoped issuance.
 
+The unactivated [journal capability verifier](../../crates/server/src/worker_link/grpc_service/journal_capability/mod.rs)
+is the next component: it binds an exact TLS-verified client leaf certificate to
+a registered executor and requires an opaque proof whose stored digest selects
+that executor's journal grant. It creates a distinct verified context, strips the
+proof header, and rechecks identity, capability, grant and lease in one database
+statement at each read admission. Caller identity headers and legacy bearers
+cannot substitute for either proof. Middleware accepts only the exact journal
+RPC wire route; the RPC and raw blob gates also refuse other operations under
+the verified context.
+
+No production listener calls the verifier and no production registration or
+capability issuer exists. The migration creates empty records. Identity and
+capability bindings cannot be retargeted, extended, un-revoked or recycled;
+parent purge leaves unusable digest tombstones. Trusted issuance still needs
+certificate enrollment/validity policy, secure proof delivery, retention and
+resource budgets, and integration with underlying user/agent revocation before
+activation. A qualified listener must supply actual verified mTLS connection
+evidence; a TLS-terminating proxy's headers are insufficient. Transport peers
+sharing one process's identities or proofs still share its authority.
+
 **Design decision**: Workers are intentionally cross-org. Org-scoping is enforced at the HTTP API layer, not the gRPC transport.

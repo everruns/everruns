@@ -918,6 +918,28 @@ Transport identity alone does not establish executor-bound assignment authority.
 The legacy shared bearer still grants cross-org access (TM-AUTHZ-002); mTLS on a
 shared worker/process/host does not guarantee containment between its tenants.
 
+An unactivated [journal-only verifier](../../crates/server/src/worker_link/grpc_service/journal_capability/mod.rs)
+now checks actual Tonic mTLS peer evidence against immutable executor enrollment
+and a versioned opaque capability's digest against its grant. A separate verified
+context cannot degrade into a lease-only scope. Each read rechecks identity,
+capability, grant, session ownership and the current lease; certificate or proof
+revocation also denies retained contexts and reconnects. Neither forwarded peer
+headers nor a shared bearer can authenticate through this component. Capability
+proofs are stripped before downstream handlers and excluded from context Debug.
+The middleware's exact journal-route allowlist also blocks future routes that
+forget a downstream scope check, including HTTP requests posing as gRPC.
+
+This does **not** change the legacy listener or TM-AUTHZ-002's cross-org authority:
+no production listener uses this verifier and no issuer populates its records.
+Before activation, enrollment must enforce certificate validity and executor
+provenance, and qualification must cover protected-assignment legacy refusal,
+underlying resource-grant revocation, version floors, transport/hosting adapters,
+issuer/retention/rate budgets, and separate executor authority. Identity and digest
+tombstones remain retained; lifecycle qualification is required before issuance.
+Already admitted reads may finish after revocation commits; delivered bytes
+cannot be retracted. Live read capabilities are reusable within their assignment;
+stale or revoked proofs cannot be rebound to a fresh grant.
+
 **Design decision:** Workers are intentionally cross-org. They are stateless task executors that process work from any organization's queue. Org-scoping is enforced at the application layer (HTTP API), not the internal gRPC transport.
 
 **TM-DURABLE-010, Durable API Endpoints (MITIGATED):**
