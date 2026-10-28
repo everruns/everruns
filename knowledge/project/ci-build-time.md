@@ -100,6 +100,14 @@ normal CI cache baseline without evidence; account for repository cache pressure
 
 ## Measured Baseline
 
+A focused server [PR run](https://github.com/everruns/everruns/actions/runs/40626917933/job/122614095753)
+spent 2,095.8s compiling and 278.7s passing all 3,703 library tests, then reached
+its 40-minute job limit during integration execution. The affected-test job now
+uses the existing 45-minute repository ceiling so this cold path can finish its
+selected integration and authorization contracts. No tests, cache keys, compiler
+flags or execution concurrency changed; this is timeout headroom, not a speedup.
+
+
 Taken from the domain shard before any change ([run 35165812202](https://github.com/everruns/everruns/actions/runs/35165812202), 16.2 min total):
 
 | Step | Build | Tests |
