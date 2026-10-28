@@ -89,7 +89,7 @@ pub(super) fn build(
         Arc::new(domains::audit_logs::ApprovalAuditListener::new(db.clone())),
         mcp_events.listener(),
         A2aPushListener::shared(&db, &encryption, &host_composition, &auth_state),
-        Arc::new(listeners::TurnLatencyListener::new()),
+        Arc::new(listeners::TurnLatencyListener::new(db.clone())),
         thread_turns.clone(),
         automatic_titles.clone(),
     ];
