@@ -2,6 +2,8 @@ import path from "node:path";
 import type { NextConfig } from "next";
 const config: NextConfig = {
   output: "standalone",
+  // The build script checks generated route types with tsrs before compilation.
+  typescript: { ignoreBuildErrors: true },
   // A wrapper workspace may hoist dependencies above the OSS checkout.
   outputFileTracingRoot:
     process.env.CHAT_OUTPUT_TRACING_ROOT ?? path.resolve(import.meta.dirname, "../.."),

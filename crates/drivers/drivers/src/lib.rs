@@ -28,6 +28,12 @@ pub mod openrouter;
 #[cfg(feature = "vercel")]
 pub mod vercel;
 
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    any(feature = "openai", feature = "gemini")
+))]
+mod native_batch;
+
 // Re-export core types for convenience.
 pub use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};
 

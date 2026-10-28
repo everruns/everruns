@@ -18,6 +18,9 @@ export function webMcpPermissionsPolicy(env: {
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // `npm run build` generates route types and runs tsrs before compilation.
+  // Keep TypeScript installed for tools that consume its JavaScript API.
+  typescript: { ignoreBuildErrors: true },
   transpilePackages: [
     "@rjsf/core",
     "@rjsf/utils",

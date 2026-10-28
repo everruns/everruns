@@ -15,6 +15,23 @@ package everruns.internal;
 
 import "google/protobuf/struct.proto";
 
+// Restricted, opt-in customer-worker boundary. These credentials never grant
+// access to WorkerService. All reads and writes require a live session lease.
+service CustomWorkerService {
+    rpc LeaseActors(LeaseActorsRequest) returns (LeaseActorsResponse);
+    rpc RenewActorLease(RenewActorLeaseRequest) returns (RenewActorLeaseResponse);
+    rpc ReleaseActor(ReleaseActorRequest) returns (ReleaseActorResponse);
+    rpc ReadJournal(CustomWorkerJournalRequest) returns (ReadActorJournalResponse);
+    // The CP namespaces turn/span identities; the returned event carries the
+    // canonical ids. One recorded input owns one custom turn.
+    rpc EmitEvent(EmitEventRequest) returns (EmitEventResponse);
+}
+
+message CustomWorkerJournalRequest {
+    ReadActorJournalRequest journal = 1;
+    ActorFence actor_fence = 2;
+}
+
 // Service for workers to communicate with control plane
 service WorkerService {
     // === Batched operations (latency optimized) ===

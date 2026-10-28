@@ -170,4 +170,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Work across every session used to live at": "Trabaje en cada sesión que solía vivir en",
   yes: "si",
   "Your subchats for managing Everruns.": "Tus subchats para gestionar Everruns.",
+  "Retry window expired. Review this conversation before sending again.":
+    "El plazo de reintento ha vencido. Revisa esta conversación antes de volver a enviar.",
 };

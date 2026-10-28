@@ -16,15 +16,15 @@ Run the server migrations first. Build this directory with `pnpm install
 --frozen-lockfile && pnpm build`, or build its Dockerfile from the repository
 root. Configure these runtime variables without exposing them to the browser:
 
-| Variable | Purpose |
-| --- | --- |
-| `CHAT_DOMAIN` | Hosted content domain, independently isolated from console cookies |
-| `CHAT_API_URL` | Internal server base, including `/api` if deployed with that prefix |
-| `CHAT_OIDC_ISSUER` | HTTPS OIDC issuer, matching the server's default Work Chat issuer |
-| `CHAT_OIDC_CLIENT_ID` | Dedicated relying party, also set on the API server |
-| `CHAT_OIDC_CLIENT_SECRET` | Relying party secret |
-| `CHAT_SESSION_KEY` | Dedicated random 32-byte key encoded as 64 hexadecimal characters |
-| `CHAT_DATABASE_URL` | PostgreSQL account restricted to `hosted_chat_credentials` |
+| Variable                  | Purpose                                                             |
+| ------------------------- | ------------------------------------------------------------------- |
+| `CHAT_DOMAIN`             | Hosted content domain, independently isolated from console cookies  |
+| `CHAT_API_URL`            | Internal server base, including `/api` if deployed with that prefix |
+| `CHAT_OIDC_ISSUER`        | HTTPS OIDC issuer, matching the server's default Work Chat issuer   |
+| `CHAT_OIDC_CLIENT_ID`     | Dedicated relying party, also set on the API server                 |
+| `CHAT_OIDC_CLIENT_SECRET` | Relying party secret                                                |
+| `CHAT_SESSION_KEY`        | Dedicated random 32-byte key encoded as 64 hexadecimal characters   |
+| `CHAT_DATABASE_URL`       | PostgreSQL account restricted to `hosted_chat_credentials`          |
 
 Set `CHAT_DOMAIN`, `CHAT_OIDC_ISSUER` and `CHAT_OIDC_CLIENT_ID` on the API server.
 Register exactly `https://login.<CHAT_DOMAIN>/auth/callback` with the provider.
@@ -85,3 +85,16 @@ feature flag enables these UI features.
 Public links expose projected messages and widgets only. They do not reuse a
 consumer credential or expose workspace files. Preview frames have an opaque
 sandbox with scripts and network access disabled.
+
+## Connection recovery
+
+Drafts and uncertain message requests are retained in this tab's session storage,
+scoped to a random namespace issued for the browser login and the conversation.
+The namespace is not a login credential. Retry uses the original request body
+and Agent API idempotency key; reload never resends an old instruction. Retry is
+blocked before the server's one-day retention expires. Discard removes a local
+copy without cancelling accepted work. Logout clears local recovery.
+
+Browser quota or disabled storage produces a warning; keep the tab open and
+copy unsent text before leaving. Closing the tab or clearing site data can remove
+recovery. An offline application shell and offline inference are not provided.

@@ -5,6 +5,16 @@ import { FilePreview, downloadFile } from "./file-preview";
 import { WorkLog, workForMessages } from "./work-log";
 import { conversationMessages } from "./transcript";
 import { SharedChat } from "./shared-chat";
+import { consumeSse } from "../client/sse";
+import {
+  recoveryKey,
+  readRecovery,
+  saveRecovery,
+  saveDraft,
+  clearRecovery,
+  retryable,
+  type PendingMessage,
+} from "../client/recovery";
 
 type Config = {
   name: string;
@@ -36,9 +46,23 @@ type Session = {
   }>;
   pending_questions?: Array<{ tool_call_id: string; questions: Question[] }>;
 };
-type Event = { id?: string; sequence?: number; type: string; data: Record<string, unknown> };
-type FileInfo = { name: string; path: string; is_directory: boolean; is_readonly?: boolean };
-type FileContent = FileInfo & { content?: string; encoding?: string; revision?: string };
+type Event = {
+  id?: string;
+  sequence?: number;
+  type: string;
+  data: Record<string, unknown>;
+};
+type FileInfo = {
+  name: string;
+  path: string;
+  is_directory: boolean;
+  is_readonly?: boolean;
+};
+type FileContent = FileInfo & {
+  content?: string;
+  encoding?: string;
+  revision?: string;
+};
 type Work = {
   id: string;
   title?: string;
@@ -47,13 +71,21 @@ type Work = {
   summary?: string;
   links?: { child_session_id?: string };
 };
-async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+async function api<T>(
+  path: string,
+  method = "GET",
+  body?: unknown,
+  idempotencyKey?: string,
+): Promise<T> {
   const response = await fetch(`/api/${path}`, {
     method,
     headers:
       body === undefined
         ? {}
-        : { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+        : {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey ?? crypto.randomUUID(),
+          },
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
   });
@@ -85,6 +117,70 @@ function WorkChat({ config }: { config: Config }) {
   const [session, setSession] = useState<Session | null>(null),
     [events, setEvents] = useState<Event[]>([]),
     [draft, setDraft] = useState("");
+  const [recoveryScope, setRecoveryScope] = useState<string | null | undefined>(undefined);
+  const [pending, setPending] = useState<PendingMessage | undefined>();
+  const [storageError, setStorageError] = useState(false);
+  const recoveryRecords = useRef(new Map<string, { draft: string; pending?: PendingMessage }>());
+  const busyRef = useRef(false);
+  const accessDenied = useRef(false);
+  const retired = useRef(false);
+  const newConversationKey = useRef<string | undefined>(undefined);
+  const currentRef = useRef({ selected, scope: recoveryScope, draft });
+  currentRef.current = { selected, scope: recoveryScope, draft };
+  const localKey = recoveryScope ? recoveryKey(recoveryScope, selected ?? "new") : undefined;
+  const selectionKey = localKey ?? `memory:${selected ?? "new"}`;
+  const store = (key: string, value: { draft: string; pending?: PendingMessage }) => {
+    if (retired.current) return;
+    const previous = recoveryRecords.current.get(key);
+    recoveryRecords.current.set(key, value);
+    if (!key.startsWith("memory:")) {
+      try {
+        if (!storageError && previous?.pending === value.pending) saveDraft(key, value.draft);
+        else saveRecovery(key, value);
+        setStorageError(false);
+      } catch {
+        setStorageError(true);
+      }
+    }
+  };
+  useEffect(() => {
+    api<{ scope?: string | null }>("chat/recovery")
+      .then((value) => {
+        setRecoveryScope(value.scope ?? null);
+        setStorageError(!value.scope);
+      })
+      .catch(failRecovery);
+    function failRecovery(error: unknown) {
+      setRecoveryScope(null);
+      setStorageError(true);
+      fail(error);
+    }
+  }, []);
+  useEffect(() => {
+    let value = recoveryRecords.current.get(selectionKey) ?? {
+      draft: "",
+      pending: undefined,
+    };
+    if (localKey) {
+      try {
+        value = readRecovery(localKey);
+        setStorageError(false);
+      } catch {
+        setStorageError(true);
+      }
+    }
+    recoveryRecords.current.set(selectionKey, value);
+    setDraft(value.draft);
+    setPending(value.pending);
+    setUpload([]);
+  }, [selectionKey, localKey]);
+  const changeDraft = (text: string) => {
+    setDraft(text);
+    store(selectionKey, {
+      ...recoveryRecords.current.get(selectionKey),
+      draft: text,
+    });
+  };
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null),
     [signedIn, setSignedIn] = useState(true);
@@ -103,14 +199,16 @@ function WorkChat({ config }: { config: Config }) {
     [model, setModel] = useState(""),
     [effort, setEffort] = useState("");
   const [preview, setPreview] = useState(true);
-  const sending = useRef(false);
   const end = useRef<HTMLDivElement>(null),
     generation = useRef(0),
     lastSequence = useRef(0);
   const fail = useCallback((error: unknown) => {
     const text = error instanceof Error ? error.message : "Chat temporarily unavailable";
     setError(text);
-    if (text === "Sign in to continue") setSignedIn(false);
+    if (text === "Sign in to continue") {
+      accessDenied.current = true;
+      setSignedIn(false);
+    }
   }, []);
   useEffect(() => {
     const timer = setInterval(async () => {
@@ -158,7 +256,7 @@ function WorkChat({ config }: { config: Config }) {
     setNextPage(list.next_page_token ?? null);
     const roots = list.data.filter((session) => !session.parent_session_id);
     setSessions(roots);
-    setSignedIn(true);
+    if (!accessDenied.current) setSignedIn(true);
     if (config.interface_mode === "single_with_threads") {
       const root = await api<Session>("chat/main", "POST", {});
       setMain(root.id);
@@ -173,6 +271,9 @@ function WorkChat({ config }: { config: Config }) {
     const epoch = ++generation.current;
     let stopped = false;
     let controller: AbortController | undefined;
+    let retryDelay = 1500;
+    let wakeRetry: (() => void) | undefined;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     setEvents([]);
     setSession(null);
     setFile(null);
@@ -181,20 +282,25 @@ function WorkChat({ config }: { config: Config }) {
     lastSequence.current = 0;
     const append = (incoming: Event[]) => {
       if (stopped || generation.current !== epoch) return;
+      for (const event of incoming)
+        lastSequence.current = Math.max(lastSequence.current, event.sequence ?? 0);
       setEvents((old) => {
         const byId = new Map(
           old.map((event) => [event.id ?? `${event.type}:${event.sequence}`, event]),
         );
         for (const event of incoming) {
           byId.set(event.id ?? `${event.type}:${event.sequence}`, event);
-          lastSequence.current = Math.max(lastSequence.current, event.sequence ?? 0);
         }
-        return [...byId.values()];
+        return [...byId.values()].slice(-5000);
       });
     };
+    const report = (error: unknown) => {
+      if (!stopped && generation.current === epoch) fail(error);
+    };
     const status = async () => {
+      if (accessDenied.current) return;
       const value = await api<Session>(`sessions/${selected}`);
-      if (!stopped) {
+      if (!stopped && !accessDenied.current) {
         setSession(value);
         setSessions((old) =>
           old.map((item) => (item.id === value.id ? { ...item, ...value } : item)),
@@ -204,7 +310,7 @@ function WorkChat({ config }: { config: Config }) {
       const result = await api<{ data: Work[] }>(
         `sessions/${config.interface_mode === "single_with_threads" && main ? main : selected}/work`,
       );
-      if (!stopped) setWork(result.data);
+      if (!stopped && !accessDenied.current) setWork(result.data);
     };
     const stream = async () => {
       while (!stopped) {
@@ -214,48 +320,67 @@ function WorkChat({ config }: { config: Config }) {
             `/api/sessions/${selected}/sse?after_sequence=${lastSequence.current}`,
             { signal: controller.signal },
           );
+          if (stopped || generation.current !== epoch) {
+            await response.body?.cancel();
+            return;
+          }
           if (!response.ok) {
-            if (response.status === 401) throw new Error("Sign in to continue");
+            if ([401, 403, 404].includes(response.status)) {
+              report(
+                new Error(
+                  response.status === 401
+                    ? "Sign in to continue"
+                    : "This conversation is no longer available",
+                ),
+              );
+              return;
+            }
             throw new Error("Reconnecting to your conversation…");
           }
-          const reader = response.body!.getReader(),
-            decoder = new TextDecoder();
-          let buffer = "";
-          while (!stopped) {
-            const chunk = await reader.read();
-            if (chunk.done) break;
-            buffer += decoder.decode(chunk.value, { stream: true }).replace(/\r\n/g, "\n");
-            let boundary;
-            while ((boundary = buffer.indexOf("\n\n")) >= 0) {
-              const frame = buffer.slice(0, boundary);
-              buffer = buffer.slice(boundary + 2);
-              const data = frame
-                .split("\n")
-                .filter((line) => line.startsWith("data:"))
-                .map((line) => line.slice(5).trimStart())
-                .join("\n");
-              if (data) {
-                try {
-                  const event = JSON.parse(data);
-                  if (event.type && event.data) append([event]);
-                } catch {
-                  /* heartbeat/control frame */
-                }
-              }
+          retryDelay = 1500;
+          setError(null);
+          await consumeSse(response.body!, (_type, data) => {
+            try {
+              const event = JSON.parse(data);
+              if (event.type && event.data) append([event]);
+            } catch {
+              /* heartbeat/control frame */
             }
-          }
+          });
         } catch (error) {
-          if (!stopped) fail(error);
+          report(error);
         }
-        if (!stopped) await new Promise((resolve) => setTimeout(resolve, 1500));
+        if (!stopped)
+          await new Promise<void>((resolve) => {
+            const done = () => {
+              clearTimeout(retryTimer);
+              wakeRetry = undefined;
+              resolve();
+            };
+            wakeRetry = done;
+            retryTimer = setTimeout(done, retryDelay * (0.8 + Math.random() * 0.4));
+            retryDelay = Math.min(retryDelay * 2, 30000);
+          });
       }
     };
-    status().catch(fail);
-    stream();
-    const interval = setInterval(() => status().catch(fail), 4000);
+    const wake = () => {
+      if (navigator.onLine) {
+        wakeRetry?.();
+        void status().catch(report);
+      }
+    };
+    window.addEventListener("online", wake);
+    window.addEventListener("focus", wake);
+    status().catch(report);
+    void stream();
+    const interval = setInterval(() => status().catch(report), 4000);
     return () => {
       stopped = true;
       controller?.abort();
+      wakeRetry?.();
+      clearTimeout(retryTimer);
+      window.removeEventListener("online", wake);
+      window.removeEventListener("focus", wake);
       clearInterval(interval);
     };
   }, [selected, main, config.interface_mode, config.features.threads, fail]);
@@ -273,59 +398,128 @@ function WorkChat({ config }: { config: Config }) {
       fail(error);
     }
   };
-  const send = async (text = draft, { fromWidget = false } = {}) => {
-    const pendingFiles = fromWidget ? [] : upload;
-    if (sending.current || (!text.trim() && !pendingFiles.length) || session?.archived) return;
-    sending.current = true;
-    const epoch = generation.current;
+  const send = async (text = draft, { fromWidget = false, retry = false } = {}) => {
+    const submittedFiles = fromWidget ? [] : upload;
+    if (
+      retired.current ||
+      busyRef.current ||
+      session?.archived ||
+      recoveryScope === undefined ||
+      (pending && !retry) ||
+      (!pending && !text.trim() && !submittedFiles.length)
+    )
+      return;
+    const submittedDraft = draft,
+      scope = recoveryScope;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
+    let id = selected;
+    const currentIntent = () => !retired.current && currentRef.current.scope === scope;
     try {
-      let id = selected;
       if (!id) {
-        const chat = await api<Session>("sessions", "POST", {});
+        const chat = await api<Session>(
+          "sessions",
+          "POST",
+          {},
+          (newConversationKey.current ??= crypto.randomUUID()),
+        );
+        if (!currentIntent()) return;
+        newConversationKey.current = undefined;
         id = chat.id;
         setSelected(id);
         setSessions((old) => [chat, ...old]);
       }
-      const attachments = await Promise.all(
-        pendingFiles.map(async (file) => ({
-          name: file.name,
-          media_type: file.type || "application/octet-stream",
-          data: await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result).split(",")[1]);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          }),
-        })),
-      );
-      await api(`sessions/${id}/messages`, "POST", {
-        message: { role: "user", content: text.trim() ? [{ type: "text", text }] : [] },
-        files: attachments,
-        controls: {
-          ...(model ? { model_id: model } : {}),
-          ...(effort ? { reasoning: { effort } } : {}),
-        },
-      });
-      if (!fromWidget && (epoch === generation.current || !selected)) {
-        setDraft("");
-        setUpload([]);
+      if (!currentIntent()) return;
+      const key = scope ? recoveryKey(scope, id) : `memory:${id}`;
+      let submission = pending;
+      if (!submission) {
+        const attachments = await Promise.all(
+          submittedFiles.map(async (file) => ({
+            name: file.name,
+            media_type: file.type || "application/octet-stream",
+            data: await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(String(reader.result).split(",")[1]);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            }),
+          })),
+        );
+        if (!currentIntent()) return;
+        submission = {
+          key: crypto.randomUUID(),
+          createdAt: Date.now(),
+          fromWidget,
+          body: {
+            message: {
+              role: "user",
+              content: text.trim() ? [{ type: "text", text }] : [],
+            },
+            files: attachments,
+            controls: {
+              ...(model ? { model_id: model } : {}),
+              ...(effort ? { reasoning: { effort } } : {}),
+            },
+          },
+        };
+        store(key, { draft: submittedDraft, pending: submission });
+        if (!selected && scope) store(recoveryKey(scope, "new"), { draft: "" });
+        if (
+          currentRef.current.scope === scope &&
+          (currentRef.current.selected === id || currentRef.current.selected === null)
+        )
+          setPending(submission);
+      }
+      if (!retryable(submission))
+        throw new Error(
+          "This pending send is older than the retry window. Review the conversation before sending again.",
+        );
+      if (!currentIntent()) return;
+      await api(`sessions/${id}/messages`, "POST", submission.body, submission.key);
+      const live = currentRef.current.scope === scope && currentRef.current.selected === id;
+      const originalText = (
+        (
+          submission.body as {
+            message?: { content?: Array<{ type: string; text?: string }> };
+          }
+        ).message?.content ?? []
+      )
+        .filter((part) => part.type === "text")
+        .map((part) => part.text ?? "")
+        .join("\n");
+      const savedDraft = recoveryRecords.current.get(key)?.draft ?? submittedDraft;
+      const nextDraft = !submission.fromWidget && savedDraft === originalText ? "" : savedDraft;
+      store(key, { draft: nextDraft });
+      if (live) {
+        setDraft(nextDraft);
+        setPending(undefined);
+        if (!submission.fromWidget) setUpload([]);
       }
     } catch (error) {
-      fail(error);
+      if (
+        currentRef.current.scope === scope &&
+        (currentRef.current.selected === id || currentRef.current.selected === null)
+      )
+        fail(error);
     } finally {
-      sending.current = false;
+      busyRef.current = false;
       setBusy(false);
     }
+  };
+  const discard = () => {
+    store(selectionKey, { draft });
+    setPending(undefined);
   };
   const browse = async (next: string) => {
     if (!selected) return;
     const epoch = generation.current;
     try {
-      const data = await api<{ data?: FileInfo[]; file?: FileContent; revision?: string }>(
-        `sessions/${selected}/files?path=${encodeURIComponent(next)}`,
-      );
+      const data = await api<{
+        data?: FileInfo[];
+        file?: FileContent;
+        revision?: string;
+      }>(`sessions/${selected}/files?path=${encodeURIComponent(next)}`);
       if (epoch !== generation.current) return;
       setError(null);
       if (data.file) {
@@ -469,7 +663,10 @@ function WorkChat({ config }: { config: Config }) {
             <button
               onClick={async () => {
                 try {
-                  const page = await api<{ data: Session[]; next_page_token?: string }>(
+                  const page = await api<{
+                    data: Session[];
+                    next_page_token?: string;
+                  }>(
                     `sessions?include_archived=true&limit=100&page_token=${encodeURIComponent(nextPage)}`,
                   );
                   setSessions((old) => [
@@ -494,6 +691,14 @@ function WorkChat({ config }: { config: Config }) {
           {signedIn ? (
             <button
               onClick={async () => {
+                retired.current = true;
+                accessDenied.current = true;
+                setRecoveryScope(null);
+                setSignedIn(false);
+                clearRecovery();
+                recoveryRecords.current.clear();
+                setDraft("");
+                setPending(undefined);
                 await fetch("/auth/logout", { method: "POST" });
                 location.reload();
               }}
@@ -684,7 +889,12 @@ function WorkChat({ config }: { config: Config }) {
                   <button
                     onClick={() =>
                       api(`sessions/${selected}/tool-approvals`, "POST", {
-                        decisions: [{ tool_call_id: approval.tool_call_id, decision: "allow" }],
+                        decisions: [
+                          {
+                            tool_call_id: approval.tool_call_id,
+                            decision: "allow",
+                          },
+                        ],
                       }).catch(fail)
                     }
                   >
@@ -693,7 +903,12 @@ function WorkChat({ config }: { config: Config }) {
                   <button
                     onClick={() =>
                       api(`sessions/${selected}/tool-approvals`, "POST", {
-                        decisions: [{ tool_call_id: approval.tool_call_id, decision: "reject" }],
+                        decisions: [
+                          {
+                            tool_call_id: approval.tool_call_id,
+                            decision: "reject",
+                          },
+                        ],
                       }).catch(fail)
                     }
                   >
@@ -731,6 +946,28 @@ function WorkChat({ config }: { config: Config }) {
               Archived conversation.{" "}
               <button onClick={() => settings({ archived: false })}>Reopen</button>
             </p>
+          )}
+          {storageError && (
+            <p role="alert">
+              Recovery storage is unavailable. Keep this tab open and copy unsent text before
+              leaving.
+            </p>
+          )}
+          {pending && (
+            <div className="request" role="status">
+              Message delivery is unconfirmed. Retry checks the original send. Discard only removes
+              the local copy.
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void send(draft, { retry: true })}
+              >
+                Retry message
+              </button>
+              <button type="button" disabled={busy} onClick={discard}>
+                Discard local copy
+              </button>
+            </div>
           )}
           {error && (
             <div role="alert" className="error">
@@ -786,7 +1023,6 @@ function WorkChat({ config }: { config: Config }) {
               ))}
               <textarea
                 aria-label="Message"
-                disabled={session?.archived || busy}
                 onPaste={(event) => {
                   if (event.clipboardData.files.length) {
                     event.preventDefault();
@@ -795,7 +1031,8 @@ function WorkChat({ config }: { config: Config }) {
                 }}
                 placeholder="Ask anything, or describe the work…"
                 value={draft}
-                onChange={(event) => setDraft(event.target.value)}
+                disabled={session?.archived || recoveryScope === undefined}
+                onChange={(event) => changeDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault();
@@ -854,7 +1091,13 @@ function WorkChat({ config }: { config: Config }) {
                 )}
                 <button
                   className="primary"
-                  disabled={busy || session?.archived || (!draft.trim() && !upload.length)}
+                  disabled={
+                    busy ||
+                    !!pending ||
+                    session?.archived ||
+                    recoveryScope === undefined ||
+                    (!draft.trim() && !upload.length)
+                  }
                 >
                   {busy ? "Sending…" : "Send ↑"}
                 </button>
@@ -960,7 +1203,11 @@ function QuestionForm({
 }: {
   questions: Question[];
   onSubmit: (
-    answers: Array<{ id: string; selected: string[]; other_text: string | null }>,
+    answers: Array<{
+      id: string;
+      selected: string[];
+      other_text: string | null;
+    }>,
   ) => Promise<void>;
 }) {
   const [answers, setAnswers] = useState<
@@ -1025,7 +1272,10 @@ function QuestionForm({
                 onChange={(event) =>
                   setAnswers((old) => ({
                     ...old,
-                    [question.id]: { ...answer, other_text: event.target.value },
+                    [question.id]: {
+                      ...answer,
+                      other_text: event.target.value,
+                    },
                   }))
                 }
               />

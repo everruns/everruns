@@ -83,3 +83,7 @@ reviews the latest definition. Marker dismissal never bypasses that conflict.
   page-level Save changes or Discard. Built-in resources keep their read-only policy.
   Display text falls back per field; stable addresses and execution configuration
   remain independent.
+
+- **Cost planning is a header action.** Estimate cost opens a side sheet for the current draft
+  without saving or running it. Task choices and daily volume produce task and monthly estimates;
+  technical controls stay under Advanced assumptions. See [Agent Cost Estimation](agent-cost-estimation.md).

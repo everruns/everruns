@@ -1,5 +1,5 @@
 import { channelOf, settings, safeMutation, bootstrap } from "../../../server/config";
-import { tokenFor } from "../../../server/auth";
+import { tokenFor, recoveryScope } from "../../../server/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const allowed =
@@ -7,7 +7,8 @@ const allowed =
 async function proxy(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   try {
     const path = (await params).path.join("/");
-    if (!allowed.test(path)) return new Response("Not found", { status: 404 });
+    if (path !== "chat/recovery" && !allowed.test(path))
+      return new Response("Not found", { status: 404 });
     const channel = channelOf(request);
     if (path === "chat/config") {
       if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
@@ -37,6 +38,13 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
       return new Response("Forbidden", { status: 403 });
     const token = await tokenFor(request);
     if (!token) return new Response("Sign in to continue", { status: 401 });
+    if (path === "chat/recovery") {
+      if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
+      return Response.json(
+        { scope: await recoveryScope(request) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
     const search = new URL(request.url).search;
     const route = path.startsWith("virtual-users/")
       ? `/v1/${path}`

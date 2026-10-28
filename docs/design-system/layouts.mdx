@@ -254,3 +254,25 @@ Product decisions: [chat experience](https://github.com/everruns/everruns/blob/m
   token. No pills in prose.
 - The composer is a bordered card: the text area, then attach, the model and effort chip, and
   send or stop in one slot on the right.
+
+
+## Reuse the page composition
+
+Standard product routes use `PageContainer`, `PageBreadcrumb`, `PageMasthead`,
+`PageControlStrip`, `PageMain` and `PageFooter`. List pages add `PageColumns` and `PageRail`
+when facets are useful. Creation and editing pages reuse the masthead and section cards;
+do not wrap an already card-based form in an extra card. Keep the same outer composition
+while data loads or a query fails.
+
+Reports and dense operational routes use the same primitives with full-width content as
+needed. Chat and session workspaces retain their own reading and split-pane compositions.
+The older `PageShell`, `PageHeader` and `PageBody` API is retired.
+
+Settings uses its existing destination model in both presentations: a sidebar on large
+screens and one destination selector on narrow screens. The form should be reachable in the
+first viewport rather than following a full screen of navigation.
+
+A form field consists of its label, control, optional hint and validation message. Keep
+feature-specific draft state and validation in its owner; share the presentation. Changing a
+control on an explicit-save page must not silently adopt autosave behavior. Pending, saved
+and failed states must remain visible wherever autosave is used.

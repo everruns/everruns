@@ -1,4 +1,11 @@
 "use client";
+import {
+  Select as SharedSelect,
+  SelectTrigger as SharedSelectTrigger,
+  SelectContent as SharedSelectContent,
+  SelectValue as SharedSelectValue,
+  SelectItem as SharedSelectItem,
+} from "@/components/ui/select";
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -39,17 +46,20 @@ export function WorkChatFields({
   return (
     <div className="space-y-4">
       <Label htmlFor="chat-interface">{ui("Interface")}</Label>
-      <select
-        id="chat-interface"
-        className="w-full border bg-background p-2"
-        value={mode}
-        onChange={(event) => onModeChange(event.target.value as typeof mode)}
+      <SharedSelect
+        value={String(mode)}
+        onValueChange={(selection) => onModeChange(selection as typeof mode)}
       >
-        <option value="multi_chat">{ui("Multiple conversations")}</option>
-        <option value="single_with_threads" disabled={!features.data?.threads}>
-          {ui("Single chat with threads")}
-        </option>
-      </select>
+        <SharedSelectTrigger id="chat-interface" className="w-full border bg-background p-2">
+          <SharedSelectValue />
+        </SharedSelectTrigger>
+        <SharedSelectContent>
+          <SharedSelectItem value="multi_chat">{ui("Multiple conversations")}</SharedSelectItem>
+          <SharedSelectItem value="single_with_threads" disabled={!features.data?.threads}>
+            {ui("Single chat with threads")}
+          </SharedSelectItem>
+        </SharedSelectContent>
+      </SharedSelect>
       {!features.data?.threads && (
         <p className="text-sm text-muted-foreground">
           {ui(

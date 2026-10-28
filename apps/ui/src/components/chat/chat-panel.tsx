@@ -27,6 +27,7 @@ import { getDisplayName } from "@/lib/entity-lifecycle";
 import { getSessionParticipantLabel } from "@/lib/session-participant-label";
 import type { ParticipantMentionOption } from "@/components/chat/participant-mention-autocomplete";
 import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
+import { useChatDraft } from "@/hooks/use-chat-draft";
 import { useIntelligenceStatus } from "@/hooks/use-intelligence";
 import { executeSessionCommand } from "@/lib/api/commands";
 import { ApiError } from "@/lib/api/client";
@@ -202,7 +203,7 @@ export function ChatPanel({
   const { data: participants, refetch: refetchParticipants } = useSessionParticipants(sessionId);
   const { data: agents } = useAgents();
   const [draftSending, setDraftSending] = useState(false);
-  const [inputValue, setInputValue] = useState("");
+  const [inputValue, setInputValue, draftRecoveryError] = useChatDraft(chatSends.storageKey);
   const [addressedParticipantId, setAddressedParticipantId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<VoiceErrorState | null>(null);
@@ -689,6 +690,15 @@ export function ChatPanel({
             }
             footer={
               <>
+                {(chatSends.recoveryError || draftRecoveryError) && (
+                  <div className="mt-4" role="alert">
+                    <ChatErrorAlert
+                      message={ui(
+                        "Recovery storage is unavailable. Keep this tab open and copy unsent text before leaving.",
+                      )}
+                    />
+                  </div>
+                )}
                 {submitError && (
                   <div className="mt-4">
                     <ChatErrorAlert message={submitError} />

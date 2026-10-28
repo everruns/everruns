@@ -303,9 +303,10 @@ impl Batch {
             return Err(BatchError::NotReady);
         }
         let results = driver
-            .collect(
+            .collect_for_requests(
                 self.provider.endpoint(),
                 &ticket.job_id,
+                &ticket.request_ids,
                 self.timeout,
                 self.max_response_bytes,
             )

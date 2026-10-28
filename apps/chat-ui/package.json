@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 9110",
-    "build": "next build",
+    "build": "npm run typecheck && next build",
+    "typecheck": "next typegen && tsrs --noEmit --fast",
     "start": "next start",
     "test": "tsx --test src/server/*.test.ts src/components/*.test.ts",
     "e2e": "playwright test",
@@ -25,6 +26,7 @@
     "@types/pg": "^8.15.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "tsrs": "0.20.1-ts7.1.0-beta",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }

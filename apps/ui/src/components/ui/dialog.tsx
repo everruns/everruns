@@ -7,24 +7,7 @@ import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
-import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
-
-function ManualDialogContext({ label }: { label: string }) {
-  // This child mounts only with the popup. Never inspect dialog text or inputs;
-  // a credential/approval dialog must also mask an underlying editable form.
-  usePageReadContext({
-    fields: ["interaction"],
-    values: {
-      interaction:
-        "Use this dialog's manual controls; its protected values and actions are unavailable to Chat.",
-    },
-    entityType: "manual_dialog",
-    label,
-    formId: "manual_dialog",
-    priority: 100,
-  });
-  return null;
-}
+import { ManualPageContext } from "@/components/chat-mode/manual-page-context";
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   const mode = usePageChatMode();
@@ -110,7 +93,7 @@ function DialogContent({
         )}
         {...props}
       >
-        {chatProtected && <ManualDialogContext label={chatProtected} />}
+        {chatProtected && <ManualPageContext label={chatProtected} />}
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close

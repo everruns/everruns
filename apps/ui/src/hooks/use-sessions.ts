@@ -41,10 +41,10 @@ import {
 import { useOrg } from "@/providers/org-provider";
 import { useLocale } from "@/providers/locale-provider";
 import { createReconnectTracker } from "@/lib/sse-reconnect";
-import { createEventStream, type EventStreamLike } from "@/lib/event-stream";
+import { createEventStream, eventStreamScope, type EventStreamLike } from "@/lib/event-stream";
 import { listSessionTasks } from "@/lib/api/session-tasks";
 import { isTerminalTaskState } from "@/lib/api/types";
-import { subscribeSessionActivity } from "@/lib/session-activity";
+import { subscribeSessionActivity, notifySessionChange } from "@/lib/session-activity";
 import { useResourceOrgFallback } from "./use-resource-org-fallback";
 
 /**
@@ -456,6 +456,7 @@ export interface UseEventsOptions {
  * Pagination uses X-Total-Count header for scroll estimation.
  */
 export function useEvents(sessionId: string | undefined, options?: UseEventsOptions) {
+  const streamCache = useQueryClient();
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;
 
@@ -700,7 +701,10 @@ export function useEvents(sessionId: string | undefined, options?: UseEventsOpti
         sessionId,
         lastEventIdRef.current ? { sinceId: lastEventIdRef.current } : { afterSequence: 0 },
       );
-      const eventSource = createEventStream(sseUrl, { withCredentials: true });
+      const eventSource = createEventStream(sseUrl, {
+        withCredentials: true,
+        shareScope: eventStreamScope(streamCache, org),
+      });
       eventSourceRef.current = eventSource;
       const isCurrent = () => !disposed && eventSourceRef.current === eventSource;
 
@@ -747,6 +751,19 @@ export function useEvents(sessionId: string | undefined, options?: UseEventsOpti
             // sequence): reconnecting with one as `since_id` matches nothing,
             // so durable events missed during the gap were never replayed.
             if (event.sequence != null) lastEventIdRef.current = event.id;
+            if (
+              [
+                "session.activated",
+                "session.idled",
+                "turn.completed",
+                "turn.failed",
+                "turn.cancelled",
+                "task.created",
+                "task.updated",
+              ].includes(event.type)
+            ) {
+              notifySessionChange(org, sessionId);
+            }
             // Keep this updater pure: React may invoke a state updater more than
             // once for a single update (StrictMode, concurrent replays). The
             // dedup set is reconciled to the in-memory window by the effect
@@ -789,12 +806,17 @@ export function useEvents(sessionId: string | undefined, options?: UseEventsOpti
           if (!pending) void checkIdle();
         });
     const wake = () => {
-      if (!eventSourceRef.current) connectSSE();
+      if (navigator.onLine && !eventSourceRef.current) {
+        reconnectRef.current.forceReset();
+        connectSSE();
+      }
     };
-    if (!followIdle) {
-      window.addEventListener("focus", wake);
-      window.addEventListener("online", wake);
-    }
+    const visible = () => {
+      if (document.visibilityState === "visible") wake();
+    };
+    window.addEventListener("focus", wake);
+    window.addEventListener("online", wake);
+    document.addEventListener("visibilitychange", visible);
     if (!eventSourceRef.current) connectSSE();
 
     return () => {
@@ -802,10 +824,11 @@ export function useEvents(sessionId: string | undefined, options?: UseEventsOpti
       unsubscribe();
       window.removeEventListener("focus", wake);
       window.removeEventListener("online", wake);
+      document.removeEventListener("visibilitychange", visible);
       resumeRef.current = () => {};
       close();
     };
-  }, [org, sessionId, isEnabled, restLoaded, followIdle, cleanup]);
+  }, [org, sessionId, isEnabled, restLoaded, followIdle, cleanup, streamCache]);
 
   return {
     data: events,

@@ -64,6 +64,25 @@ The host's database role needs only the browser credential/admission table.
 It has no platform-management credentials. The backend-for-frontend allowlist
 reaches consumer execution and self-service routes only.
 
+## Browser recovery
+
+The host supplies a random, non-credential recovery namespace after authenticating
+the browser session. It changes on login and remains stable across credential
+refresh. Tab-local drafts and unconfirmed message requests are bound to that
+namespace and conversation, including the original Agent API idempotency key.
+Reload never resends them automatically. Retry preserves the original body and
+key; requests beyond the local retry window require review rather than silently
+exceeding the server's idempotency retention. Discard removes only the local copy.
+Logout clears all local recovery. Legacy sessions without a recovery namespace
+keep memory-only behavior and show the storage warning.
+
+SSE framing handles split UTF-8 and CRLF delimiters, bounds partial frames and
+retained events, and advances its durable sequence before a React state update.
+Reconnects use bounded backoff; access rejection ends the stream loop. API reads
+and each stream reconnect still renew channel authority through the existing BFF.
+See [Chat recovery](../ui/chat-recovery.md) for the transport decision and
+[consumer recovery tests](../../apps/chat-ui/src/server/client-recovery.test.ts).
+
 ## Sources
 
 - [Channel configuration](../../crates/server/src/domains/agent_channels/record/work_chat.rs)

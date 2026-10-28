@@ -198,6 +198,7 @@ export function AgentSettingsSheet({
                   : ((
                       {
                         files: "initial_files",
+                        localization: "localizations",
                         network: "network_access",
                         sandbox: "sandbox_policy",
                         max_output_tokens: "max_output_tokens",
@@ -207,7 +208,13 @@ export function AgentSettingsSheet({
                     )[active] ?? active)
               }
             >
-              {active === "tracing" && <TracingRoutingForm key={agent.id} agentId={agent.id} />}
+              {active === "tracing" && (
+                <TracingRoutingForm
+                  key={agent.id}
+                  agentId={agent.id}
+                  active={section === "tracing"}
+                />
+              )}
               {active === "localization" && (
                 <EntityLocalizationsEditor
                   value={draft.localizations}

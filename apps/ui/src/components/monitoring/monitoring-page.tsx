@@ -1,4 +1,12 @@
 "use client";
+import {
+  Select as SharedSelect,
+  SelectTrigger as SharedSelectTrigger,
+  SelectContent as SharedSelectContent,
+  SelectValue as SharedSelectValue,
+  SelectItem as SharedSelectItem,
+} from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageRows, useChatPageFilters } from "@/components/chat-mode/page-view-state";
@@ -344,42 +352,54 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           ) : tab === "workers" ? (
             <label className="text-xs text-muted-foreground">
               {ui("Group size")}{" "}
-              <select
-                aria-label={ui("Worker group size")}
-                value={groupSize}
-                onChange={(e) => {
-                  setGroupSize(Number(e.target.value));
+              <SharedSelect
+                value={String(groupSize)}
+                onValueChange={(selection) => {
+                  setGroupSize(Number(selection));
                   setGroupId(null);
                 }}
-                className="ml-2 border bg-background px-3 py-1.5 text-foreground"
               >
-                <option value={1}>{ui("Individual workers")}</option>
-                <option value={8}>{ui("8 workers")}</option>
-                <option value={32}>{ui("32 workers")}</option>
-              </select>
+                <SharedSelectTrigger
+                  aria-label={ui("Worker group size")}
+                  className="ml-2 border bg-background px-3 py-1.5 text-foreground"
+                >
+                  <SharedSelectValue />
+                </SharedSelectTrigger>
+                <SharedSelectContent>
+                  <SharedSelectItem value={String(1)}>{ui("Individual workers")}</SharedSelectItem>
+                  <SharedSelectItem value={String(8)}>{ui("8 workers")}</SharedSelectItem>
+                  <SharedSelectItem value={String(32)}>{ui("32 workers")}</SharedSelectItem>
+                </SharedSelectContent>
+              </SharedSelect>
             </label>
           ) : tab === "actors" ? (
             <div className="flex flex-wrap items-center gap-3 text-xs">
               <span className="text-muted-foreground">
                 {worker ? ui("Holder {value0}", { value0: worker }) : ui("All holders")}
               </span>
-              <select
-                aria-label={ui("Actor phase filter")}
-                value={phase ?? ""}
+              <SharedSelect
+                value={String(phase ?? "")}
                 disabled={paused}
-                onChange={(e) => {
-                  setPhase(e.target.value || null);
+                onValueChange={(selection) => {
+                  setPhase(selection || null);
                   setOffset(0);
                 }}
-                className="border bg-background px-3 py-1.5"
               >
-                <option value="">{ui("All phases")}</option>
-                {phases.map((p) => (
-                  <option key={p.key} value={p.key}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
+                <SharedSelectTrigger
+                  aria-label={ui("Actor phase filter")}
+                  className="border bg-background px-3 py-1.5"
+                >
+                  <SharedSelectValue />
+                </SharedSelectTrigger>
+                <SharedSelectContent>
+                  <SharedSelectItem value="">{ui("All phases")}</SharedSelectItem>
+                  {phases.map((p) => (
+                    <SharedSelectItem key={p.key} value={String(p.key)}>
+                      {p.label}
+                    </SharedSelectItem>
+                  ))}
+                </SharedSelectContent>
+              </SharedSelect>
               {worker && (
                 <Button
                   variant="ghost"
@@ -424,8 +444,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           <span>
             {replay ? ui("Replay") : ui("Paused")} {ui("· observed history")}
           </span>
-          <input
-            type="range"
+          <Slider
             aria-label={ui("Replay time")}
             className="min-w-32 flex-1 accent-accent"
             min={0}

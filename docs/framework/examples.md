@@ -103,9 +103,17 @@ advanced-host examples, not alternative Framework entrypoints.
 
 ## Provider-native batches
 
-The [batch guide](/framework/batch-model-requests/) shows offline work through the real Anthropic Message Batches API. Both examples require `ANTHROPIC_API_KEY` and can incur charges.
+The [batch guide](/framework/batch-model-requests/) shows offline work through Anthropic, OpenAI and Gemini. Set `BATCH_PROVIDER=anthropic|openai|gemini`, enable its Cargo feature and configure its API key. Both examples can incur charges.
 
 | Example | Behavior | Run |
 | --- | --- | --- |
 | [`batch_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/batch_classification.rs) | Persist submission intent and ticket; resume classification, collect or cancel | `cargo run -p everruns --features anthropic --example batch_classification -- submit /tmp/reviews-001` |
 | [`batch_eval.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/batch_eval.rs) | Submit typed message lists, poll and score three eval cases | `cargo run -p everruns --features anthropic --example batch_eval` |
+
+## Custom platform workers
+
+The [Custom Data Agent Worker](/framework/examples/custom-data-agent/) packages a
+Framework agent with private SQLite tools behind the restricted Platform worker
+protocol. Its complete smoke runner uses a real model, the ordinary session APIs
+and SSE, and checks replica replacement and credential rotation. This advanced
+host example needs a self-hosted CP; its shared history lives there.

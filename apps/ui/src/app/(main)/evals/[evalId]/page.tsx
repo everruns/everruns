@@ -1,4 +1,11 @@
 "use client";
+import {
+  Select as SharedSelect,
+  SelectTrigger as SharedSelectTrigger,
+  SelectContent as SharedSelectContent,
+  SelectValue as SharedSelectValue,
+  SelectItem as SharedSelectItem,
+} from "@/components/ui/select";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
@@ -358,16 +365,23 @@ function AddCaseForm({ evalId, onCreated }: { evalId: string; onCreated: () => v
           <div className="space-y-2">
             <Label>{ui("Scorers")}</Label>
             <div className="flex gap-2">
-              <select
-                value={scorerType}
-                onChange={(e) => setScorerType(e.target.value as typeof scorerType)}
-                className="border rounded px-2 py-1 text-sm bg-background"
+              <SharedSelect
+                value={String(scorerType)}
+                onValueChange={(selection) => setScorerType(selection as typeof scorerType)}
               >
-                <option value="contains">{ui("contains")}</option>
-                <option value="not_contains">not_contains</option>
-                <option value="regex">{ui("regex")}</option>
-                <option value="tool_called">tool_called</option>
-              </select>
+                <SharedSelectTrigger
+                  className="border rounded px-2 py-1 text-sm bg-background"
+                  aria-label="Scorer type"
+                >
+                  <SharedSelectValue />
+                </SharedSelectTrigger>
+                <SharedSelectContent>
+                  <SharedSelectItem value="contains">{ui("contains")}</SharedSelectItem>
+                  <SharedSelectItem value="not_contains">not_contains</SharedSelectItem>
+                  <SharedSelectItem value="regex">{ui("regex")}</SharedSelectItem>
+                  <SharedSelectItem value="tool_called">tool_called</SharedSelectItem>
+                </SharedSelectContent>
+              </SharedSelect>
               <Input
                 placeholder={ui("Value (comma-separated for multiple)")}
                 value={scorerValue}

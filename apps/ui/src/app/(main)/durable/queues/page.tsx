@@ -1,4 +1,6 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
+import { PageContainer, PageMasthead } from "@/components/layout";
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
@@ -54,6 +56,7 @@ import { EnqueueDialog } from "./enqueue-dialog";
 type TabValue = "overview" | "tasks" | "dlq";
 
 export default function QueuesPage() {
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   usePageTitle(ui("Queues"), ui("Durable"));
   const [activeTab, setActiveTab] = useState<TabValue>("overview");
@@ -151,29 +154,29 @@ export default function QueuesPage() {
     ? Object.values(stats.by_activity_type).reduce((sum, s) => sum + s.failed_last_hour, 0)
     : 0;
 
-  const handleRequeue = (dlqId: string) => {
-    if (confirm("Requeue this task?")) {
+  const handleRequeue = async (dlqId: string) => {
+    if (await requestConfirmation("Requeue this task?")) {
       requeueMutation.mutate(dlqId);
     }
   };
 
-  const handleDeleteDlq = (dlqId: string) => {
-    if (confirm("Delete this DLQ entry permanently?")) {
+  const handleDeleteDlq = async (dlqId: string) => {
+    if (await requestConfirmation("Delete this DLQ entry permanently?")) {
       deleteDlqMutation.mutate(dlqId);
     }
   };
 
-  const handlePurgeDlq = () => {
-    if (confirm("Purge ALL dead letter queue entries? This cannot be undone.")) {
+  const handlePurgeDlq = async () => {
+    if (await requestConfirmation("Purge ALL dead letter queue entries? This cannot be undone.")) {
       purgeDlqMutation.mutate();
     }
   };
 
   if (tasksLoading && statsLoading) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Queues")}</h1>
+          <PageMasthead title={ui("Queues")} className="min-w-0 flex-1" />
         </div>
         <div className="space-y-6">
           <Skeleton className="h-10 w-full" />
@@ -184,15 +187,15 @@ export default function QueuesPage() {
           </div>
           <Skeleton className="h-96" />
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (tasksError) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Queues")}</h1>
+          <PageMasthead title={ui("Queues")} className="min-w-0 flex-1" />
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -207,14 +210,14 @@ export default function QueuesPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="operational-page container mx-auto p-6">
+    <PageContainer className="operational-page">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">{ui("Queues")}</h1>
+        <PageMasthead title={ui("Queues")} className="min-w-0 flex-1" />
         <Button onClick={() => setEnqueueOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
           {ui("Enqueue Task")}
@@ -580,6 +583,6 @@ export default function QueuesPage() {
       </div>
 
       <EnqueueDialog open={enqueueOpen} onOpenChange={setEnqueueOpen} />
-    </div>
+    </PageContainer>
   );
 }

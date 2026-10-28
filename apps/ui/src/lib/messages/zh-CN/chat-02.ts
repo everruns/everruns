@@ -165,4 +165,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Work across every session used to live at": "跨越曾经居住过的每个会话",
   yes: "是的",
   "Your subchats for managing Everruns.": "用于管理 Everruns 的子聊天。",
+  "Retry window expired. Review this conversation before sending again.":
+    "重试期限已过。再次发送前，请先检查此对话。",
 };

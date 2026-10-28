@@ -1355,6 +1355,8 @@ impl ServerAppBuilder {
             error_reporter: error_reporter.clone(),
         };
 
+        background::spawn_custom_worker_server(&mut supervisor, db.clone(), event_service.clone())?;
+
         let worker_link = background::WorkerLinkDeps {
             db: db.clone(),
             encryption: encryption.clone(),

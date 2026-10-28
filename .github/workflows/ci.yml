@@ -2819,7 +2819,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm test
-          pnpm exec tsc --noEmit
+          pnpm typecheck
           pnpm build
           pnpm exec playwright install --with-deps chromium
           pnpm e2e

@@ -39,7 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PageBody, PageHeader, PageShell } from "@/components/layout";
+import { PageMain, PageMasthead, PageContainer } from "@/components/layout";
 import {
   useBackfillReporting,
   useCreateSavedReport,
@@ -310,23 +310,23 @@ export default function ReportsPage() {
 
   if (catalog.isLoading) {
     return (
-      <PageShell fullWidth>
-        <PageHeader title={ui("Reports")} />
-        <PageBody>
+      <PageContainer fullWidth>
+        <PageMasthead title={ui("Reports")} />
+        <PageMain>
           <div className="grid gap-4 md:grid-cols-4">
             {[...Array(4)].map((_, index) => (
               <Skeleton key={index} className="h-28" />
             ))}
           </div>
           <Skeleton className="h-96" />
-        </PageBody>
-      </PageShell>
+        </PageMain>
+      </PageContainer>
     );
   }
 
   return (
-    <PageShell fullWidth>
-      <PageHeader
+    <PageContainer fullWidth>
+      <PageMasthead
         title={ui("Reports")}
         description={ui("Org-scoped analytics from reporting projections.")}
         actions={
@@ -359,7 +359,7 @@ export default function ReportsPage() {
         }
       />
 
-      <PageBody className="space-y-6">
+      <PageMain className="gap-6">
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="pb-2">
@@ -682,7 +682,7 @@ export default function ReportsPage() {
             )}
           </aside>
         </section>
-      </PageBody>
-    </PageShell>
+      </PageMain>
+    </PageContainer>
   );
 }

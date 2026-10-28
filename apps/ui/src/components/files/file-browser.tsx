@@ -1,6 +1,8 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 import { useUiTranslations } from "@/providers/locale-provider";
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 import { relativeFilePath } from "@/lib/path-utils";
 import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -38,6 +40,7 @@ import { useQuery } from "@tanstack/react-query";
 import { formatFileSize, joinPath } from "@/lib/api/session-files";
 import type { FileInfo } from "@/lib/api/types";
 import type { FileSource } from "./file-source";
+import { visibleFileRows } from "./visible-file-rows";
 
 interface FileBrowserProps {
   /**
@@ -119,6 +122,7 @@ export function FileBrowser({
   decorateFile,
   emptyState,
 }: FileBrowserProps) {
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   const root = source.root;
   const writes = source.writes;
@@ -135,6 +139,7 @@ export function FileBrowser({
   const {
     data: rootFiles,
     isLoading,
+    error: listError,
     refetch: refetchRoot,
   } = useQuery({
     queryKey: ["file-source", source.key, "list", root],
@@ -142,6 +147,10 @@ export function FileBrowser({
     enabled: !!source.key,
   });
   const writable = !!writes;
+  useChatPageRows("Visible files", visibleFileRows(root, loadedDirs, expandedPaths), {
+    loading: isLoading,
+    error: !!listError,
+  });
 
   // Sync root files into loadedDirs when root data changes.
   useEffect(() => {
@@ -256,7 +265,11 @@ export function FileBrowser({
   const handleDelete = async (file: FileInfo, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!writes) return;
-    if (!confirm(`Delete ${file.is_directory ? "directory" : "file"} "${file.name}"?`)) {
+    if (
+      !(await requestConfirmation(
+        `Delete ${file.is_directory ? "directory" : "file"} "${file.name}"?`,
+      ))
+    ) {
       return;
     }
 
@@ -458,7 +471,7 @@ export function FileBrowser({
 
       {/* Create File Dialog */}
       <Dialog open={writable && isCreateFileOpen} onOpenChange={setIsCreateFileOpen}>
-        <DialogContent>
+        <DialogContent chatProtected="Create file">
           <DialogHeader>
             <DialogTitle>{ui("Create File")}</DialogTitle>
             <DialogDescription>
@@ -497,7 +510,7 @@ export function FileBrowser({
 
       {/* Create Directory Dialog */}
       <Dialog open={writable && isCreateDirOpen} onOpenChange={setIsCreateDirOpen}>
-        <DialogContent>
+        <DialogContent chatProtected="Create folder">
           <DialogHeader>
             <DialogTitle>{ui("Create Folder")}</DialogTitle>
             <DialogDescription>

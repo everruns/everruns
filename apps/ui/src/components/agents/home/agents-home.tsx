@@ -1,4 +1,5 @@
 "use client";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 
 import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
 
@@ -339,20 +340,15 @@ export function AgentsHome() {
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex border" role="tablist" aria-label={ui("View")}>
-              <ViewButton
-                active={view === "agents"}
-                onClick={() => setView("agents")}
-                icon={<AgentIcon className="size-4" />}
-                label={ui("Agents")}
-              />
-              <ViewButton
-                active={view === "channels"}
-                onClick={() => setView("channels")}
-                icon={<Radio className="size-4" />}
-                label={ui("Channels")}
-              />
-            </div>
+            <SegmentedControl
+              label={ui("View")}
+              value={view}
+              onValueChange={(value) => setView(value as View)}
+              options={[
+                { value: "agents", label: ui("Agents"), icon: <AgentIcon className="size-4" /> },
+                { value: "channels", label: ui("Channels"), icon: <Radio className="size-4" /> },
+              ]}
+            />
             <SearchInput
               placeholder={view === "agents" ? ui("Search agents…") : ui("Search channels…")}
               value={search}
@@ -477,34 +473,6 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dt>{label}</dt>
       <dd className="font-medium text-foreground">{value}</dd>
     </div>
-  );
-}
-
-function ViewButton({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-8 items-center gap-2 px-3 text-[13px] font-medium first:border-r",
-        active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50",
-      )}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }
 

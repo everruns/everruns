@@ -231,6 +231,20 @@ pnpm run format:check  # Check formatting (CI)
 
 Config: `apps/ui/oxfmt.json` (100 char width, single quotes, trailing commas)
 
+### UI type checking
+
+The console and standalone Work Chat use the pinned experimental `tsrs` compiler
+for type checking. Their build scripts first generate Next.js route types, then
+run `tsrs` with strictness controlled by each app's existing `tsconfig.json`.
+A diagnostic must stop the build before Next.js compilation starts. Next.js's
+built-in TypeScript checker is disabled only because that mandatory gate replaces
+it; invoke the package build script rather than `next build` directly.
+
+Keep the `typescript` package for editor integrations and tools that consume its
+JavaScript compiler API. It is not the build checker. The console's release-age
+exception covers only the explicitly pinned compiler and matching native binaries;
+normal dependency maintenance retains the seven-day floor.
+
 ### Running All Formatters
 
 ```bash

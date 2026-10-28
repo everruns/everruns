@@ -27,6 +27,16 @@ onlyBuiltDependencies:
   - unrs-resolver
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
+# The explicitly selected compiler migration is pinned, including native binaries.
+minimumReleaseAgeExclude:
+  - 'tsrs@0.20.1-ts7.1.0-beta'
+  - '@tsrs/win32-x64@0.20.1-ts7.1.0-beta'
+  - '@tsrs/darwin-x64@0.20.1-ts7.1.0-beta'
+  - '@tsrs/darwin-arm64@0.20.1-ts7.1.0-beta'
+  - '@tsrs/linux-x64-gnu@0.20.1-ts7.1.0-beta'
+  - '@tsrs/linux-x64-musl@0.20.1-ts7.1.0-beta'
+  - '@tsrs/linux-arm64-gnu@0.20.1-ts7.1.0-beta'
+  - '@tsrs/linux-arm64-musl@0.20.1-ts7.1.0-beta'
 # Security fixes for GHSA advisories remain pinned to exact patched versions via
 # the overrides above: postcss 8.5.23 (GHSA-r28c-9q8g-f849), sharp 0.35.5
 # (GHSA-wq5f-xc86-pv6w, superseding the 0.35.4 pin for GHSA-rgj7-g3m4-5g8c — libheif GHSA-g89c-p67h-r497 and GHSA-2jg2-4ch7-h545,

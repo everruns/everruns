@@ -1,8 +1,8 @@
 "use client";
+import { Pagination } from "@/components/ui/pagination";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useModels, useSessions } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -260,37 +260,13 @@ function AllSessions({
         ))}
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-          <p className="text-sm text-muted-foreground">
-            {ui("Showing")} {offset + 1}-{Math.min(offset + PAGE_SIZE, totalSessions)} {ui("of")}{" "}
-            {totalSessions} {ui("sessions")}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-            >
-              <ChevronLeft className="size-4" />
-              {ui("Previous")}
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              {ui("Page")} {page + 1} {ui("of")} {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-              disabled={page >= totalPages - 1}
-            >
-              {ui("Next")}
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        className="border-t pt-3"
+        summary={`${ui("Showing")} ${offset + 1}-${Math.min(offset + PAGE_SIZE, totalSessions)} ${ui("of")} ${totalSessions} ${ui("sessions")}`}
+      />
     </div>
   );
 }

@@ -79,9 +79,9 @@ const rawPaletteExceptions: Record<string, Record<string, number>> = {
     "text-violet-600": 1,
   },
   "components/models/model-picker.tsx": {
-    "fill-yellow-400": 4,
+    "fill-yellow-400": 1,
     "hover:text-yellow-400": 1,
-    "text-yellow-400": 4,
+    "text-yellow-400": 1,
   },
   "components/observers/quality-summary.tsx": {
     "text-green-600": 1,
