@@ -23,6 +23,8 @@ pub mod grpc_saved_scripts;
 pub mod grpc_slack_actions;
 pub mod grpc_sqldb_adapter;
 mod grpc_task_store;
+#[cfg(test)]
+mod grpc_test_env;
 pub mod grpc_user_mcp;
 pub mod grpc_worker_adapters;
 pub mod internal_commands;
