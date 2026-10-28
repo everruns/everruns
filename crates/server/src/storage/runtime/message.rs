@@ -227,7 +227,7 @@ pub(crate) async fn retrieve_message(
             Ok(message) if message.id == message_id => return Ok(Some(message)),
             Ok(_) => {}
             Err(e) => {
-                tracing::warn!("Failed to parse message from event {}: {}", event.id, e);
+                tracing::warn!(event_id = %event.id, error = %e, "Failed to parse message from event");
             }
         }
     }

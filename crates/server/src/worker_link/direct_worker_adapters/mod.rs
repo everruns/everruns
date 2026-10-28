@@ -563,16 +563,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         session_id: Uuid,
         message_id: Uuid,
     ) -> Result<Option<RuntimeMessage>> {
-        crate::storage::runtime::message::retrieve_message(
-            &self.db,
-            session_id.into(),
-            message_id.into(),
-        )
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to load message: {}", e);
-            store_error("Failed to load message")
-        })
+        message_projection::get_message(&self.db, session_id, message_id).await
     }
 
     async fn load_messages(&self, session_id: Uuid) -> Result<Vec<RuntimeMessage>> {
