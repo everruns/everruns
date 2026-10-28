@@ -331,8 +331,8 @@ that repeats JSON transfer and parsing on every turn and hides older inputs behi
 the history safety cap. The [retriever](../../crates/server/src/storage/runtime/message.rs)
 retains legacy event-envelope support and skips malformed duplicate records in log
 order. Tool-result messages have generated, unstored IDs and are not point-addressable.
-The [lookup regression and benchmark](../../crates/server/src/storage/runtime/message_lookup_tests.rs)
-cover the history boundary, formats, isolation and retrieval cost at increasing depth.
+The [lookup regressions](../../crates/server/src/storage/runtime/message.rs) and
+[benchmark](../../crates/server/benches/message_lookup.rs) cover the history boundary, formats, isolation and retrieval cost at increasing depth.
 
 ### Customer-hosted custom execution
 
