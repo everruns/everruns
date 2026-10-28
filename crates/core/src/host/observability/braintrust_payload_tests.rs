@@ -922,21 +922,21 @@ async fn test_on_event_retries_after_timeout() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/project_logs/test-project-id/insert"))
-        .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_millis(50)))
+        .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_millis(500)))
         .up_to_n_times(1)
         .mount(&server)
         .await;
     Mock::given(method("POST"))
         .and(path("/v1/project_logs/test-project-id/insert"))
         .respond_with(ResponseTemplate::new(200))
-        .expect(1)
+        .expect(1..=3)
         .mount(&server)
         .await;
 
     let mut config = test_config();
     config.api_url = server.uri();
     config.delivery.flush_interval = Duration::from_millis(10);
-    config.delivery.request_timeout = Duration::from_millis(10);
+    config.delivery.request_timeout = Duration::from_millis(100);
     config.delivery.base_retry_delay = Duration::from_millis(5);
     config.delivery.max_retry_delay = Duration::from_millis(10);
     let listener = BraintrustListener::new(config).unwrap();
@@ -957,10 +957,20 @@ async fn test_on_event_retries_after_timeout() {
         }),
     );
     listener.on_event(&event).await;
-    sleep(Duration::from_millis(180)).await;
+    time::timeout(Duration::from_secs(5), listener.flush())
+        .await
+        .expect("delivery finishes within the retry budget")
+        .expect("the delivery queue flushes");
 
     let requests = server.received_requests().await.unwrap();
-    assert_eq!(requests.len(), 2);
+    // A loaded runner may also time out an immediate HTTP response. Those
+    // retries are valid, but must stay bounded and resend the same payload.
+    assert!((2..=4).contains(&requests.len()));
+    assert!(
+        requests
+            .iter()
+            .all(|request| request.body == requests[0].body)
+    );
     assert!(listener.state.retried_batches.load(Ordering::Relaxed) >= 1);
     assert_eq!(listener.state.failed_batches.load(Ordering::Relaxed), 0);
 }

@@ -6,7 +6,7 @@ overrides:
   katex: 0.18.2
   '@astrojs/mdx': 6.0.2
   esbuild: 0.28.1
-  fast-uri: 3.1.8
+  fast-uri: 3.1.9
   form-data: 4.0.6
   lodash: 4.17.23
   nanoid: 3.3.18
@@ -15,6 +15,7 @@ overrides:
   source-map-js: 1.2.2
   postcss-selector-parser: 7.1.6
   yaml: 2.8.4
+  undici@8: 8.12.2
 onlyBuiltDependencies:
   - esbuild
   - sharp
@@ -30,7 +31,9 @@ minimumReleaseAgeStrict: true
 # through 3.1.5, and GHSA-58mr-gqgx-xq4g, GHSA-qw65-cvwx-89v3 and GHSA-hrr3-gc8f-f4qj
 # cover 3.1.6 — host confusion, authority injection, and case normalization —
 # reached via @astrojs/check > @astrojs/language-server > volar-service-json.
-# 3.1.8 is the only patched 3.x release),
+# 3.1.9 also fixes encoded schemes, unchecked WHATWG host canonicalization,
+# relative-path equivalence and suffix scheme injection (GHSA-w74x-v6f9-j3xg,
+# GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h, GHSA-333x-w4r6-6crp)),
 # nanoid 3.3.18 (custom generators loop indefinitely at size 0; reached via
 # postcss). GHSA-2v37-7h3g-55p8
 # was widened to `<3.3.18` on 2026-08-13 after 3.3.17 proved an incomplete fix, so
@@ -43,5 +46,8 @@ minimumReleaseAgeStrict: true
 # source-map-js 1.2.2 (GHSA-68fv-2mgg-jv7q) and postcss-selector-parser 7.1.6
 # (GHSA-rj75-hqrm-r3gf) are reached via expressive-code; 6.x has no patched
 # release, so the override lifts postcss-nested's copy onto the 7.x line.
+# undici 8.12.2 fixes TLS validation, cross-origin cache disclosure and parser
+# DoS advisories in Astro's unifont dependency. Scope the override to 8.x so
+# other consumers retain their declared major version.
 allowBuilds:
   esbuild: true
