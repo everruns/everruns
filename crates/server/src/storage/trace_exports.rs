@@ -19,6 +19,7 @@ pub struct TracingDestinationRow {
     pub connection_id: Uuid,
     pub config: serde_json::Value,
     pub revision: i64,
+    pub configured_at: DateTime<Utc>,
     pub last_accepted_at: Option<DateTime<Utc>>,
     pub last_attempt_at: Option<DateTime<Utc>>,
     pub last_error: Option<String>,
@@ -110,7 +111,7 @@ impl StorageBackend {
             .bind(org)
             .execute(&mut *tx)
             .await?;
-        let connection:Option<Uuid>=sqlx::query_scalar("UPDATE tracing_destinations SET config=$4,revision=revision+1,last_error=NULL,last_accepted_at=NULL,last_attempt_at=NULL WHERE org_id=$1 AND id=$2 AND revision=$3 RETURNING connection_id").bind(org).bind(id).bind(revision).bind(serde_json::to_value(config)?).fetch_optional(&mut *tx).await?;
+        let connection:Option<Uuid>=sqlx::query_scalar("UPDATE tracing_destinations SET config=$4,revision=revision+1,configured_at=clock_timestamp(),last_error=NULL,last_accepted_at=NULL,last_attempt_at=NULL WHERE org_id=$1 AND id=$2 AND revision=$3 RETURNING connection_id").bind(org).bind(id).bind(revision).bind(serde_json::to_value(config)?).fetch_optional(&mut *tx).await?;
         if let (Some(connection), Some(secrets)) = (connection, secrets) {
             sqlx::query(
                 "UPDATE tracing_connections SET secrets_encrypted=$3 WHERE org_id=$1 AND id=$2",
@@ -200,10 +201,20 @@ impl StorageBackend {
             count as usize == policy.destination_ids.len(),
             "Unknown destination selection"
         );
-        sqlx::query("INSERT INTO tracing_policies (org_id,agent_id,policy) VALUES ($1,$2,$3) ON CONFLICT (org_id,agent_id) DO UPDATE SET policy=EXCLUDED.policy,revision=tracing_policies.revision+1,updated_at=NOW()")
+        sqlx::query("INSERT INTO tracing_policies (org_id,agent_id,policy) VALUES ($1,$2,$3) ON CONFLICT (org_id,agent_id) DO UPDATE SET policy=EXCLUDED.policy,revision=tracing_policies.revision+1,updated_at=clock_timestamp()")
             .bind(org).bind(agent).bind(serde_json::to_value(policy)?).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(true)
+    }
+    /// Check after reading policies so a queued start cannot acquire consent saved later.
+    pub async fn tracing_policy_changed_after(
+        &self,
+        org: i64,
+        agent: Uuid,
+        started_at: DateTime<Utc>,
+    ) -> Result<bool> {
+        Ok(sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tracing_policies WHERE org_id=$1 AND (agent_id IS NULL OR agent_id=$2) AND updated_at>$3)")
+            .bind(org).bind(agent).bind(started_at).fetch_one(self.database().tx_pool()).await?)
     }
     pub async fn record_tracing_delivery(
         &self,

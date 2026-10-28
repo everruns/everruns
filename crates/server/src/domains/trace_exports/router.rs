@@ -318,11 +318,18 @@ async fn resolve(
     let policy = db
         .tracing_policy(session.org_id, Some(agent.uuid()))
         .await?;
+    // THREAT[TM-OBS-016]: asynchronous admission must not apply newer consent backward.
+    if db
+        .tracing_policy_changed_after(session.org_id, agent.uuid(), event.ts)
+        .await?
+    {
+        return Ok((vec![], EgressScope::default()));
+    }
     let ids = policy.policy.effective(&defaults.policy.destination_ids);
     let mut rows = Vec::new();
     for row in destinations {
         let config: DestinationConfig = serde_json::from_value(row.config.clone())?;
-        if ids.contains(&row.id) && config.enabled {
+        if ids.contains(&row.id) && config.enabled && row.configured_at <= event.ts {
             rows.push(row);
         }
     }

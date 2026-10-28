@@ -200,7 +200,7 @@ async fn customer_tracing_excludes_private_chat_and_uses_turn_routing() {
         .await
         .unwrap();
     let context = EventContext::turn(TurnId::new(), root_input);
-    let event = Event::new(
+    let mut event = Event::new(
         session.id,
         context,
         everruns_core::events::TurnStartedData {
@@ -212,6 +212,65 @@ async fn customer_tracing_excludes_private_chat_and_uses_turn_routing() {
             agent_description: None,
         },
     );
+    assert_eq!(
+        router::resolve_for_test(&db, &event).await.unwrap(),
+        vec![id]
+    );
+    // A queued start must not acquire policy or content consent saved after it began.
+    assert!(
+        db.save_tracing_policy(
+            1,
+            None,
+            1,
+            &RoutingPolicy {
+                mode: RoutingMode::Replace,
+                destination_ids: vec![id],
+            },
+        )
+        .await
+        .unwrap()
+    );
+    assert!(
+        router::resolve_for_test(&db, &event)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    event.ts = chrono::Utc::now();
+    assert_eq!(
+        router::resolve_for_test(&db, &event).await.unwrap(),
+        vec![id]
+    );
+    let mut changed_config = config();
+    changed_config.capture_content = true;
+    assert!(
+        db.update_tracing_destination(1, id, 1, &changed_config, None)
+            .await
+            .unwrap()
+    );
+    assert!(
+        router::resolve_for_test(&db, &event)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    event.ts = chrono::Utc::now();
+    assert_eq!(
+        router::resolve_for_test(&db, &event).await.unwrap(),
+        vec![id]
+    );
+    assert!(
+        db.save_tracing_policy(1, Some(agent.uuid()), 0, &RoutingPolicy::default())
+            .await
+            .unwrap()
+    );
+    assert!(
+        router::resolve_for_test(&db, &event)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    event.ts = chrono::Utc::now();
     assert_eq!(
         router::resolve_for_test(&db, &event).await.unwrap(),
         vec![id]

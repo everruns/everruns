@@ -65,7 +65,9 @@ credentials, receiver, and content settings.
 Exports use independent, bounded queues and retries. A slow or failing receiver
 does not stop agent execution or other destinations. Delivery is best effort:
 queue overflow, exporter limits, process restart or a routing lookup failure can
-lose events. There is no historical replay or guaranteed delivery. After an exporter restart,
+lose events. A queued turn-start is omitted if its organization or agent policy changed
+after the turn began; destinations configured later are also excluded. New consent never
+applies backward to delayed starts. There is no historical replay or guaranteed delivery. After an exporter restart,
 already-running turns are omitted rather than re-routed under newer settings. The table shows
 receiver acceptance, safe failure messages and destination queue drops. Global
 router drops also have a server metric, `everruns_customer_tracing_router_dropped`.

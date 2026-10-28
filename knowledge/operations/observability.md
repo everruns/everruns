@@ -18,7 +18,7 @@ Customer exports are organization-owned operational settings, separate from
 platform exporters and immutable agent packages. New turns resolve the
 organization defaults and the authoritative invocation responder's policy;
 that routing stays fixed through the turn. Missing invocation identity fails
-closed. Replayed or pre-restart turns never acquire newer routing consent. Child sessions resolve their own
+closed. Delayed starts reject policies and destination configuration saved after the turn began. Replayed or pre-restart turns never acquire newer routing consent. Child sessions resolve their own
 policy. Personal Chat and its descendants never enter customer export routing.
 
 [Routing and fan-out](../../crates/server/src/domains/trace_exports/router.rs) own
