@@ -32,9 +32,89 @@ tokio = { version = "1", features = ["macros", "rt"] }
 
 ## Submit now, collect later
 
-The batch owns one configured provider. Build each completion with a **bare
-model ID**, then give it a unique request ID. A completion carrying its own
-provider is rejected so a batch cannot silently route it to a different account.
+The batch owns one configured provider. Supply typed request values directly,
+or describe each request with a completion builder. Both paths share validation,
+submission and the same resumable tickets.
+
+### Pass message lists directly
+
+`submit_requests` accepts a `Vec<BatchRequest>`. Each value contains its ID,
+existing messages, and `LlmCallConfig`, so code that already has a conversation
+can submit it without rebuilding it through `.system()` and `.user()` calls.
+The client stays available for polling, collection and cancellation.
+
+```rust
+use everruns::{
+    batch::{Batch, BatchRequest},
+    llm::{Message, MessageRole},
+    providers::anthropic::Anthropic,
+    LlmCallConfig,
+};
+
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let mut config = LlmCallConfig::new("claude-sonnet-5");
+config.max_tokens = Some(64);
+let requests = vec![
+    BatchRequest {
+        id: "review_001".into(),
+        messages: vec![
+            Message::text(MessageRole::System, "Classify as positive, negative, or neutral."),
+            Message::text(MessageRole::User, "Delivery arrived early."),
+        ],
+        config: config.clone(),
+    },
+    BatchRequest {
+        id: "review_002".into(),
+        messages: vec![
+            Message::text(MessageRole::System, "Classify as positive, negative, or neutral."),
+            Message::text(MessageRole::User, "The replacement does not turn on."),
+        ],
+        config,
+    },
+];
+let client = Batch::new(Anthropic::from_env()?, "tenant-42/anthropic-account-7");
+let ticket = client.submit_requests(requests).await?;
+let saved_ticket = serde_json::to_vec(&ticket)?;
+# let _ = saved_ticket;
+# Ok(())
+# }
+```
+
+`everruns::llm::Message` is the provider-message contract used by core. Stored
+`everruns_core::RuntimeMessage` records are a different type: core hosts reuse the
+existing [message conversion helpers](https://github.com/everruns/everruns/blob/main/crates/core/src/llm_conversions.rs).
+For a text-only core conversation:
+
+```rust
+use everruns::{batch::BatchRequest, LlmCallConfig};
+use everruns_core::{RuntimeMessage, llm_conversions::llm_message_from_message};
+
+let conversation = vec![
+    RuntimeMessage::system("Classify the review."),
+    RuntimeMessage::user("Delivery arrived early."),
+];
+let request = BatchRequest {
+    id: "review_001".into(),
+    messages: conversation.iter().map(llm_message_from_message).collect(),
+    config: LlmCallConfig::new("claude-sonnet-5"),
+};
+// Pass vec![request] to client.submit_requests(...).
+# let _ = request;
+```
+
+For stored images or files, core hosts use the attachment-aware conversion helper
+with their resolved attachments. This direct API does not load session history or
+resolve stored file references itself.
+
+All request IDs must be unique, and each request needs messages. The entire
+list is validated before submission. Mixing an explicit list with buffered
+`.request(...)` builder entries is rejected to avoid silently discarding work.
+
+### Completion builder
+
+Build each completion with a **bare model ID**, then give it a unique request
+ID. A completion carrying its own provider is rejected so a batch cannot
+silently route it to a different account.
 
 ```rust
 use everruns::{Model, batch::Batch, providers::anthropic::Anthropic};
@@ -55,6 +135,8 @@ let saved_ticket = serde_json::to_vec(&ticket)?;
 # Ok(())
 # }
 ```
+
+### Resume and collect
 
 In another process, reconstruct the provider from current credentials and use
 exactly the same application scope and endpoint. Credential rotation is allowed
@@ -115,7 +197,8 @@ uses `claude-sonnet-5`; set `BATCH_MODEL` on submission to choose another active
 Anthropic model. Protect the state directory: intents and results contain user
 content even though tickets do not contain prompts.
 
-**Batch eval:** a single process submits three capital-city cases, polls every
+**Batch eval:** a single process submits an explicit list of message-based
+requests for three capital-city cases, polls every
 60 seconds, and scores exact-match accuracy, correlating each answer by ID.
 This example keeps its ticket only in memory; restarting submits a new job.
 
