@@ -625,33 +625,7 @@ async fn session_creation_authority_uses_owner_permission_and_returns_root() {
     assert!(denied.to_string().contains("Access denied"));
 }
 
-/// Regression: the direct platform store's command ctx must carry the
-/// event service — wait_for_idle probes terminal turn events through the
-/// list_events command, and without it every subagent wait failed with
-/// "Event service not configured".
-#[tokio::test]
-async fn platform_store_wait_for_idle_reaches_event_service() {
-    use everruns_core::DEFAULT_ORG_ID;
-
-    let adapters = test_adapters();
-    let user_id = seed_platform_owner(&adapters.db, DEFAULT_ORG_ID, "waiter@example.com").await;
-    let harness_id =
-        seed_harness_for_platform_store(&adapters.db, DEFAULT_ORG_ID, "wait-harness", false).await;
-    let session_id =
-        seed_platform_session(&adapters.db, DEFAULT_ORG_ID, harness_id, Some(user_id)).await;
-    let store = adapters
-        .platform_store(DEFAULT_ORG_ID, session_id)
-        .for_execution(session_id.uuid())
-        .unwrap();
-
-    // No terminal turn events exist, so a zero-timeout wait reports a
-    // timeout — the point is it must NOT fail on a missing event service.
-    let status = store
-        .wait_for_idle(session_id, Some(0))
-        .await
-        .expect("wait_for_idle should reach the event service");
-    assert!(status.starts_with("timeout"), "unexpected status: {status}");
-}
+mod session_wait;
 
 /// EVE-1234: platform-tool commands run with the `/v1/providers` service
 /// instances. Without them `sync_provider_models` answered 503 "Model sync is

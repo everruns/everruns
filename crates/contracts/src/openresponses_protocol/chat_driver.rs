@@ -33,12 +33,28 @@ use crate::driver_registry::{
 };
 use crate::error::{AgentLoopError, Result};
 use crate::openresponses_types::StreamingEvent;
-use crate::stream_reconnect::connect_sse_with_reconnect;
 
 use super::*;
 
 #[async_trait]
 impl ChatDriver for OpenResponsesProtocolChatDriver {
+    fn supports_native_non_streaming(&self) -> bool {
+        self.request_extension
+            .as_ref()
+            .is_none_or(|extension| extension.supports_native_non_streaming())
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &crate::ProviderEndpoint,
+        messages: Vec<Message>,
+        config: &LlmCallConfig,
+    ) -> Result<crate::driver_registry::LlmResponse> {
+        let mut config = config.clone();
+        config.prefer_non_streaming = true;
+        self.chat_completion(endpoint, messages, &config).await
+    }
+
     fn supports_stateful_responses(&self) -> bool {
         self.stateful_responses.unwrap_or(false)
     }
@@ -234,6 +250,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             tools,
             update_state.is_some(),
         );
+        request.stream = !(config.prefer_non_streaming
+            && !config.limits.needs_incremental_events()
+            && self.supports_native_non_streaming()
+            && !(self.background_mode && super::background::wants_background(config)));
 
         // Log request details for debugging LLM errors.
         // Only log request shape to avoid leaking prompt or metadata contents.
@@ -297,7 +317,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // not wanted or failed before committing, and the call goes over SSE.
         #[cfg(all(feature = "responses-websocket", not(target_arch = "wasm32")))]
         let websocket_stream = match reattached {
-            None if self.websocket.wants(config, background) => {
+            None if request.stream && self.websocket.wants(config, background) => {
                 super::websocket_transport::open_stream(
                     endpoint,
                     &api_url,
@@ -315,19 +335,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let first_connect = match (reattached, websocket_stream) {
             (Some((stream, _)), _) | (None, Some(stream)) => Ok((stream, RetryMetadata::default())),
             (None, None) => {
-                connect_sse_with_reconnect(
-                    &self.retry_config,
-                    "OpenResponsesProtocolDriver",
-                    |attempts| {
-                        self.send_responses_request(
-                            endpoint,
-                            &api_url,
-                            &request_body,
-                            &extension_headers,
-                            config,
-                            attempts,
-                        )
-                    },
+                self.connect_response(
+                    endpoint,
+                    &api_url,
+                    &request_body,
+                    &extension_headers,
+                    config,
                 )
                 .await
             }
@@ -337,19 +350,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 tracing::warn!(model = %request.model, %error, "background mode rejected; retrying in foreground");
                 background = false;
                 super::background::mark(&mut request_body, false);
-                connect_sse_with_reconnect(
-                    &self.retry_config,
-                    "OpenResponsesProtocolDriver",
-                    |attempts| {
-                        self.send_responses_request(
-                            endpoint,
-                            &api_url,
-                            &request_body,
-                            &extension_headers,
-                            config,
-                            attempts,
-                        )
-                    },
+                self.connect_response(
+                    endpoint,
+                    &api_url,
+                    &request_body,
+                    &extension_headers,
+                    config,
                 )
                 .await
             }
@@ -396,19 +402,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 apply_cache_options(&mut request_body, config, self.native_prompt_cache_options);
                 super::background::mark(&mut request_body, background);
                 crate::openai_compat::validate_body(&request_body, endpoint, true)?;
-                connect_sse_with_reconnect(
-                    &self.retry_config,
-                    "OpenResponsesProtocolDriver",
-                    |attempts| {
-                        self.send_responses_request(
-                            endpoint,
-                            &api_url,
-                            &request_body,
-                            &extension_headers,
-                            config,
-                            attempts,
-                        )
-                    },
+                self.connect_response(
+                    endpoint,
+                    &api_url,
+                    &request_body,
+                    &extension_headers,
+                    config,
                 )
                 .await?
             }

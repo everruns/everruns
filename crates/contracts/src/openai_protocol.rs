@@ -497,6 +497,8 @@ impl ChatDriver for OpenAIProtocolChatDriver {
     ) -> Result<LlmResponse> {
         // Same request as the streaming path, but with streaming disabled so
         // the provider answers with one JSON body instead of SSE.
+        crate::openai_compat::validate_config(config)?;
+        let messages = drop_orphaned_tool_messages(&messages);
         let api_url = chat_completions_url(endpoint)?;
         let request = self.completion_request(&api_url, &messages, config, true)?;
         let captured_request = capture_request_body(config, &request);
@@ -511,7 +513,10 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             )
             .await?;
         let body: OpenAiChatCompletionResponse = response.json().await.map_err(|error| {
-            AgentLoopError::llm(format!("failed to decode non-streaming response: {error}"))
+            AgentLoopError::llm_kind(
+                crate::llm_error::LlmErrorKind::MalformedResponse,
+                format!("failed to decode non-streaming response: {error}"),
+            )
         })?;
         let mut response = self.decode_completion(body, config)?;
         response.metadata.retry_metadata = retry_metadata.had_retries().then_some(retry_metadata);
@@ -529,6 +534,12 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
+        if config.prefer_non_streaming && !config.limits.needs_incremental_events() {
+            return self
+                .chat_completion_non_streaming(endpoint, messages, config)
+                .await
+                .map(LlmResponse::into_stream);
+        }
         crate::openai_compat::validate_config(config)?;
         // Note: OTel instrumentation is handled via event listeners.
         // ReasonAtom emits llm.generation events, and OtelEventListener

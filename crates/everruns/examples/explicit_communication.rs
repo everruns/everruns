@@ -67,7 +67,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok((sent, notes))
     });
 
-    let turn = session.run("How is the deploy going?").await?;
+    // This example inspects live private notes. Ordinary explicit turns omit
+    // these deltas and keep only completed notes in the session transcript.
+    let mut input = InputMessage::user("How is the deploy going?");
+    input.controls = Some(everruns::Controls {
+        hints: Some(std::collections::HashMap::from([(
+            "output_streaming".to_string(),
+            serde_json::json!(true),
+        )])),
+        ..Default::default()
+    });
+    let turn = session.run(input).await?;
     drop(session); // closes the stream after every buffered event is drained
     let (sent, notes) = observer.await??;
 

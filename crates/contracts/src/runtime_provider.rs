@@ -546,7 +546,7 @@ impl RuntimeProvider {
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponse> {
         self.check_response_format(config)?;
-        if !config.limits.is_unbounded() {
+        if config.limits.needs_incremental_events() {
             // Native JSON responses cannot enforce a byte cap before buffering
             // the body. Route bounded calls through the streaming collector so
             // every advertised limit is applied while bytes are arriving.
@@ -557,10 +557,14 @@ impl RuntimeProvider {
                     .into_response(),
             );
         }
-        self.driver()?
-            .chat_completion_non_streaming(&self.endpoint, messages, config)
-            .await
-            .map_err(|error| error.with_provider(self.id.as_str()))
+        let (response, _) = crate::turn_collector::connect_within(
+            &config.limits,
+            self.driver()?
+                .chat_completion_non_streaming(&self.endpoint, messages, config),
+        )
+        .await
+        .map_err(|error| error.with_provider(self.id.as_str()))?;
+        Ok(response)
     }
 
     pub async fn list_models(
@@ -1001,6 +1005,8 @@ mod tests {
             _config: &crate::LlmCallConfig,
         ) -> Result<crate::LlmResponse> {
             self.native_called.store(true, Ordering::SeqCst);
+            tokio::time::sleep(self.connect_delay).await;
+            tokio::time::sleep(self.event_delay).await;
             Ok(crate::LlmResponse {
                 text: self.response.clone(),
                 reasoning: vec![],
@@ -1072,7 +1078,7 @@ mod tests {
             .expect_err("the call must time out");
 
         assert!(error.to_string().contains("did not finish"));
-        assert!(!native_called.load(Ordering::SeqCst));
+        assert!(native_called.load(Ordering::SeqCst));
     }
 
     #[tokio::test]
@@ -1097,7 +1103,7 @@ mod tests {
             .expect_err("the body must time out");
 
         assert!(error.to_string().contains("did not finish"));
-        assert!(!native_called.load(Ordering::SeqCst));
+        assert!(native_called.load(Ordering::SeqCst));
     }
 
     #[tokio::test]

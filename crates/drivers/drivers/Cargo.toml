@@ -188,3 +188,12 @@ required-features = ["codex"]
 
 [lints]
 workspace = true
+
+[[test]]
+name = "non_streaming_wire"
+required-features = ["openai", "anthropic", "gemini"]
+
+[[bench]]
+name = "native_transport"
+harness = false
+required-features = ["openai"]

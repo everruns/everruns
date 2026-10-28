@@ -14,6 +14,8 @@
 
 - Added explicit shared-message request lists to the [Framework batch API](framework/batch-model-requests.md), preserving builder validation, scoped tickets and uncertainty handling.
 
+- **Completed-output execution.** Explicit agents, child sessions and completion-only consumers omit note/thinking deltas; supported drivers use native whole responses where request semantics allow. Subagent waits use server-side lifecycle notifications with durable reconciliation. See [Explicit Communication](integrations/explicit-communication.md), [LLM drivers](foundations/llm-drivers.md) and [durable execution](operations/durable-execution-engine.md).
+
 - Required short, compilable Rust API examples for Framework changelog entries and updated the batch entry to demonstrate submission and ticket serialization. See [Public Changelog](docs/changelog.md).
 
 - Extended interface, built-in resource display and deterministic backend localization

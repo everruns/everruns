@@ -66,3 +66,8 @@ everruns-core = { path = "../core", version = "0.49.0", default-features = false
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 everruns-core = { workspace = true, default-features = false, features = ["builtins", "mcp"] }
+
+[[bench]]
+name = "output_streaming"
+harness = false
+required-features = ["host", "fixtures"]

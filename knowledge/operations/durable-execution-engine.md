@@ -161,6 +161,15 @@ Push-based via gRPC streaming (`SubscribeTaskNotifications`), backed by NATS whe
 
 Session actors ride the same channel with their own payloads: `session_actor` when an actor becomes leasable and `session_actor_cancel` when a cancel lands on a leased one. The worker subscribes to each under its own subscriber id (the control plane keeps one subscription per id): the first wakes the actor lease loop, the second makes every running lease renew at once, which is how its holder learns of the cancel. Under PostgreSQL a trigger on `session_actors` notifies on commit; under NATS the server's turn backend publishes after the intake transaction commits. The in-process DEV_MODE worker has no channel: the turn backend wakes its lease loop and its running leases directly, also after the commit (`ActorWakeups`). A release that leaves the actor runnable wakes the releasing worker's own loop once the turn's slot is free. A lease that expires sends nothing, so the actor loop's poll backoff is capped at 1 s (`ACTOR_POLL_BACKOFF_MAX`), which bounds how long past its TTL a dead holder's turn waits.
 
+Subagent completion waits execute at the authorized server command edge through
+`wait_session_idle`, shared by direct and gRPC platform adapters. After checking
+session access, the server subscribes before probing durable state; only lifecycle
+notifications trigger another probe. Active subscriptions reconcile every five
+seconds after a lost notification; unavailable delivery falls back to polling.
+Zero-timeout probes allocate no subscription. Idle without a terminal turn event
+is not guessed successful. This removes the worker's repeated half-second
+control-plane lookups without weakening the durable result or tenant policy.
+
 History: before session actors, every turn phase (`process_input`, `reason`, `act`) was its own queued task, and the measurements of that path explain choices the actor runtime kept. Before the worker consumed these notifications, an idle worker sat in a backoff of up to 5 s, so a new message waited up to 5 s to start and each tool call paid that wait twice; pickup fell from about 1.5 s to about 70 ms. `crates/server/tests/workflow_test/latency.rs` guards the pickup end to end.
 
 Per-phase host setup reads the session, harness, and agent several times over, and each read from a gRPC worker is a control-plane round trip. With the production database a few milliseconds away, that setup took about 600 ms of each ~700 ms phase hand-off, against about 130 ms locally. The worker memoizes those reads for the length of a phase's setup (`crates/worker/src/phase_reads.rs`, logged as `phase setup` with `setup_ms`) and keeps them per turn (`crates/worker/src/turn_reads.rs`), so a turn's configuration is pinned for the turn: an edit made mid-turn applies from the next turn. Conversation history is not cached and is read fresh by every reason. The input step's events join the first reason's ordered write-behind queue instead of being stored before the model call.
