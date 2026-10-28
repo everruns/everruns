@@ -182,5 +182,9 @@ required-features = ["openai"]
 name = "chatgpt_wire"
 required-features = ["chatgpt", "codex"]
 
+[[test]]
+name = "codex_builder_wire"
+required-features = ["codex"]
+
 [lints]
 workspace = true

@@ -450,6 +450,10 @@ session per hour, counted from the schedules it created) so a provider that
 keeps refusing cannot turn it into a loop. Hooks run on every terminal error,
 transient ones included: a transient error reaching the atom has already spent
 its in-call retries.
+The hook identifies a newly created retry separately from user-facing error
+fields. The engine records its link to the failed input even under generic
+error disclosure. [Runtime identity](../runtime-resources/virtual-users.md#request-session-and-execution-contracts)
+owns the continuation authorization boundary; prompt text is not that boundary.
 
 ##### System Prompt Methods
 

@@ -20,6 +20,13 @@ The loopback helper returns a plain-text completion message by default. A host
 can call `LoginAttempt::with_success_page_html` before `finish` to show its own
 branded completion page after a valid callback.
 
+In code, `everruns_drivers::codex::driver(store)` builds one provider for chat
+and model listing from a host token store, and
+`codex::driver::ephemeral(grant)` does the same for a grant held only in
+memory. Select the grant's route with `TokenRoute::Codex` or
+`TokenRoute::ChatGptPlan`. Settings the route cannot use fail when the
+provider is built, with a `CodexDriverError` that names the setting.
+
 The driver uses streaming, stateless Responses requests with `store=false`.
 Local function and custom tools use namespaces. Web search is available when
 the selected model and account support it. Text, image, and file inputs depend

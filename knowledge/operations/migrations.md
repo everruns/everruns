@@ -100,6 +100,21 @@ covers it.
 - **Tracking table:** `_sqlx_migrations` (version, description, checksum, installed_on)
 - **Build integration:** `crates/server/build.rs` watches the migrations directory so binaries rebuild when migrations change
 
+## Running Instances
+
+A migration runs while the previous release still serves traffic: deploys roll, and the first
+new instance migrates before the old ones stop. Every migration must therefore be safe for the
+code that is already running against it.
+
+Additive DDL is not automatically safe. sqlx caches prepared statements per connection, and
+PostgreSQL refuses to re-plan a cached statement whose result columns changed ("cached plan must
+not change result type", SQLSTATE `0A000`). A query that selects or returns `*` changes its
+result columns when the table gains one, so the old instance fails that query on every pooled
+connection until it restarts. EVERRUNS-4C was the session scheduler's claim query failing this
+way after the soft-delete column landed. Queries that background loops run on every instance
+name their columns; `crates/server/src/storage/repositories/schedules/` is the reference, with a
+test that adds a column under a live connection.
+
 ## Conflict Resolution
 
 Two branches no longer compete for a number. If the validator ever reports a shared version, give

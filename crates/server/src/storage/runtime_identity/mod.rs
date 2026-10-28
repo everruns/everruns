@@ -4,6 +4,8 @@ use anyhow::{Result, bail};
 use everruns_contracts::typed_id::{SessionId, VirtualUserId};
 use uuid::Uuid;
 
+mod continuations;
+
 #[derive(Debug, Clone)]
 pub struct VerifiedRuntimeIdentity {
     pub org_id: i64,
@@ -378,47 +380,14 @@ impl StorageBackend {
         responder_agent_id: Option<Uuid>,
         rows: InvocationRows<'_>,
     ) -> Result<()> {
-        // `default_subject` is `default_virtual_user(org_id, management_user)`
-        // as resolved by the caller in this request.
-        let default_subject = rows
-            .default_subject
-            .filter(|(user, row)| Some(*user) == management_user_id && row.org_id == org_id)
-            .map(|(_, row)| row);
-        if let Some(id) = subject {
-            let reused = default_subject.filter(|row| row.id == id).cloned();
-            let row = match reused {
-                Some(row) => row,
-                None => self
-                    .get_virtual_user(org_id, id)
-                    .await?
-                    .ok_or_else(|| anyhow::anyhow!("Runtime subject not found"))?,
-            };
-            if row.status != "active" || row.usage != "end_user" {
-                bail!("Runtime subject is not an active end user");
-            }
-        }
-        if let Some(agent) = responder_agent_id {
-            let reused = rows
-                .responder
-                .filter(|row| row.id.uuid() == agent && row.org_id == org_id)
-                .cloned();
-            let row = match reused {
-                Some(row) => Some(row),
-                None => self.get_agent_config(org_id, agent.into()).await?,
-            };
-            if row.is_none_or(|a| a.status != "active") {
-                bail!("Responder not available in this organization");
-            }
-        }
-        if let Some(user) = management_user_id {
-            let id = match default_subject {
-                Some(row) => row.id,
-                None => self.default_virtual_user(org_id, user).await?.id,
-            };
-            if subject != Some(id) {
-                bail!("Management authorization must match the verified default runtime subject");
-            }
-        }
+        self.validate_runtime_invocation_identity(
+            org_id,
+            subject,
+            management_user_id,
+            responder_agent_id,
+            rows,
+        )
+        .await?;
         {
             let db = self.database();
             let result=sqlx::query("INSERT INTO runtime_invocations (input_message_id,org_id,session_id,virtual_user_id,management_user_id,responder_agent_id) SELECT $1,$2,$3,$4,$5,$6 FROM sessions WHERE id=$3 AND org_id=$2 ON CONFLICT (input_message_id) DO UPDATE SET input_message_id=EXCLUDED.input_message_id WHERE runtime_invocations.org_id=EXCLUDED.org_id AND runtime_invocations.session_id=EXCLUDED.session_id AND runtime_invocations.virtual_user_id IS NOT DISTINCT FROM EXCLUDED.virtual_user_id AND runtime_invocations.management_user_id IS NOT DISTINCT FROM EXCLUDED.management_user_id AND runtime_invocations.responder_agent_id IS NOT DISTINCT FROM EXCLUDED.responder_agent_id")
@@ -505,6 +474,57 @@ impl StorageBackend {
             let db = self.database();
             Ok(sqlx::query_scalar::<_, Option<VirtualUserId>>("SELECT r.virtual_user_id FROM runtime_invocations r JOIN virtual_users v ON v.id=r.virtual_user_id AND v.org_id=r.org_id WHERE r.session_id=$1 AND r.input_message_id=$2 AND v.status='active' AND v.usage='end_user'").bind(session_id).bind(message_id).fetch_optional(db.pool()).await?.flatten())
         }
+    }
+    async fn validate_runtime_invocation_identity(
+        &self,
+        org_id: i64,
+        subject: Option<VirtualUserId>,
+        management_user_id: Option<Uuid>,
+        responder_agent_id: Option<Uuid>,
+        rows: InvocationRows<'_>,
+    ) -> Result<()> {
+        // `default_subject` is `default_virtual_user(org_id, management_user)`
+        // as resolved by the caller in this request.
+        let default_subject = rows
+            .default_subject
+            .filter(|(user, row)| Some(*user) == management_user_id && row.org_id == org_id)
+            .map(|(_, row)| row);
+        if let Some(id) = subject {
+            let reused = default_subject.filter(|row| row.id == id).cloned();
+            let row = match reused {
+                Some(row) => row,
+                None => self
+                    .get_virtual_user(org_id, id)
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("Runtime subject not found"))?,
+            };
+            if row.status != "active" || row.usage != "end_user" {
+                bail!("Runtime subject is not an active end user");
+            }
+        }
+        if let Some(agent) = responder_agent_id {
+            let reused = rows
+                .responder
+                .filter(|row| row.id.uuid() == agent && row.org_id == org_id)
+                .cloned();
+            let row = match reused {
+                Some(row) => Some(row),
+                None => self.get_agent_config(org_id, agent.into()).await?,
+            };
+            if row.is_none_or(|a| a.status != "active") {
+                bail!("Responder not available in this organization");
+            }
+        }
+        if let Some(user) = management_user_id {
+            let id = match default_subject {
+                Some(row) => row.id,
+                None => self.default_virtual_user(org_id, user).await?.id,
+            };
+            if subject != Some(id) {
+                bail!("Management authorization must match the verified default runtime subject");
+            }
+        }
+        Ok(())
     }
 }
 
