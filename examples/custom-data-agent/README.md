@@ -213,7 +213,8 @@ python3 examples/custom-data-agent/smoke.py \
 The runner checks the actual container is non-root, unprivileged, uses a read-only
 root and mounts, drops capabilities, enforces memory/PID limits and uses bridge
 networking. It also verifies CP credential names are absent from the container's
-environment. The credential env-file is private and removed during cleanup.
+environment. Credentials are passed through name-only Docker environment options; the smoke
+runner writes no credential env-file or secret command arguments.
 
 In environments with an HTTPS inspection proxy, preserve the configured Docker
 proxy defaults and supply its CA trust. Both Dockerfiles accept an optional

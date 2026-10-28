@@ -93,11 +93,18 @@ class SmokeContracts(unittest.TestCase):
                 self.assertIn("--read-only", command)
                 self.assertIn("--cap-drop=ALL", command)
                 self.assertIn("--user=65532:65532", command)
+                self.assertNotIn("--env-file", command)
+                self.assertNotIn(smoke.token, command)
+                self.assertNotIn("application-model-key", command)
+                self.assertEqual(popen.call_args.kwargs["env"]["CUSTOM_WORKER_TOKEN"], smoke.token)
+                self.assertEqual(popen.call_args.kwargs["env"]["OPENAI_API_KEY"], "application-model-key")
+                forwarded = [command[i + 1] for i, arg in enumerate(command) if arg == "--env"]
+                self.assertCountEqual(forwarded, ["CUSTOM_WORKER_URL", "CUSTOM_WORKER_TOKEN", "OPENAI_API_KEY", "DATA_AGENT_DATABASE", "CUSTOM_WORKER_CA_CERT"])
             copy = smoke.root / "worker-ca.pem"
             self.assertEqual(original.stat().st_mode & 0o777, 0o600)
             self.assertEqual(copy.stat().st_mode & 0o777, 0o644)
             self.assertEqual(copy.read_bytes(), original.read_bytes())
-            self.assertEqual((smoke.root / "container.env").stat().st_mode & 0o777, 0o600)
+            self.assertFalse((smoke.root / "container.env").exists())
             smoke.worker_log.close()
 
 

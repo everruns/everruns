@@ -121,12 +121,11 @@ class Smoke:
             env["CUSTOM_WORKER_CA_CERT"] = str(Path(self.args.ca).resolve())
         require("DATABASE_URL" not in env and "WORKER_GRPC_AUTH_TOKEN" not in env, "Worker inherited CP credentials")
         if self.args.image:
-            envfile = self.root / "container.env"
             values = {"CUSTOM_WORKER_URL": self.args.worker_url, "CUSTOM_WORKER_TOKEN": self.token,
                 "OPENAI_API_KEY": os.environ["OPENAI_API_KEY"], "DATA_AGENT_DATABASE": "/data/sales.sqlite"}
             command = ["docker", "--host=unix:///var/run/docker.sock", "run", "--rm", "--name", self.container,
                 "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--user=65532:65532",
-                "--pids-limit=128", "--memory=512m", "--cpus=1", "--env-file", str(envfile),
+                "--pids-limit=128", "--memory=512m", "--cpus=1",
                 "--mount", f"type=bind,src={self.database},dst=/data/sales.sqlite,readonly"]
             if self.args.ca:
                 # A public CA created under umask 077 may not be readable by
@@ -138,10 +137,13 @@ class Smoke:
                 values["CUSTOM_WORKER_CA_CERT"] = "/run/cp-ca.pem"
             if self.args.proxy_ca:
                 command += ["--mount", f"type=bind,src={Path(self.args.proxy_ca).resolve()},dst=/etc/ssl/certs/ca-certificates.crt,readonly"]
-            envfile.write_text("".join(key + "=" + value + "\n" for key, value in values.items()))
-            os.chmod(envfile, 0o600)
+            # Docker resolves name-only --env options from the CLI environment:
+            # secrets never appear in command arguments or a plaintext env file.
+            for key in values:
+                command += ["--env", key]
             command.append(self.args.image)
             env = os.environ.copy()  # Docker CLI retains the configured daemon/proxy identity.
+            env.update(values)
             for key in ["DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"]:
                 env.pop(key, None)
         else:
