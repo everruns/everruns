@@ -239,6 +239,10 @@ test("renders inline interactive widgets and sends their message actions", async
         children: [
           { type: "Textarea", props: { name: "notes", label: "Review notes" } },
           { type: "Checkbox", props: { name: "approved", label: "Approve report" } },
+          {
+            type: "TextField",
+            props: { name: "scope", label: "Review scope", defaultValue: "Entire migration" },
+          },
         ],
       },
       {
@@ -283,6 +287,7 @@ test("renders inline interactive widgets and sends their message actions", async
   await page.getByRole("button", { name: "Send review", exact: true }).click();
   await expect.poll(() => sent).toContain('"notes":"Ready to share"');
   expect(sent).toContain('"approved":true');
+  expect(sent).toContain('"scope":"Entire migration"');
   await expect(page.getByText("255 migration PRs")).toBeVisible();
   await page.getByRole("tab", { name: "Details" }).click();
   await expect(page.getByText("Lit imports: zero")).toBeVisible();

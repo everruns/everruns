@@ -6817,6 +6817,57 @@
         }
       }
     },
+    "/v1/channels/{channel_id}/chat/shared/{token}": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Read work chat share",
+        "operationId": "read_work_chat_share",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read-only transcript page"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "security": [],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/channels/{channel_id}/fcp": {
       "post": {
         "tags": [
@@ -6996,6 +7047,14 @@
                 "string",
                 "null"
               ]
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -7839,6 +7898,152 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/sessions/{session_id}/settings": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Update work chat conversation",
+        "operationId": "update_work_chat_conversation",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Settings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/sessions/{session_id}/share": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Share work chat conversation",
+        "operationId": "share_work_chat_conversation",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revocable link token"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Revoke work chat share",
+        "operationId": "revoke_work_chat_share",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked"
+          },
+          "404": {
+            "description": "Unavailable"
           }
         },
         "security": [
@@ -11071,11 +11276,7 @@
           }
         },
         "deprecated": true,
-        "security": [
-          {
-            "AgentCredential": []
-          }
-        ],
+        "security": [],
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
@@ -11138,6 +11339,62 @@
           "support": "preview"
         },
         "x-superseded-by": "resolve_work_chat_main"
+      }
+    },
+    "/v1/e/{channel_id}/chat/shared/{token}": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Read work chat share legacy",
+        "operationId": "read_work_chat_share_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read-only transcript page"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "read_work_chat_share"
       }
     },
     "/v1/e/{channel_id}/fcp": {
@@ -11951,6 +12208,167 @@
           "support": "preview"
         },
         "x-superseded-by": "agent_api_answer_questions"
+      }
+    },
+    "/v1/e/{channel_id}/sessions/{session_id}/settings": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Update work chat conversation legacy",
+        "operationId": "update_work_chat_conversation_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Settings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "update_work_chat_conversation"
+      }
+    },
+    "/v1/e/{channel_id}/sessions/{session_id}/share": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Share work chat conversation legacy",
+        "operationId": "share_work_chat_conversation_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revocable link token"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "share_work_chat_conversation"
+      },
+      "delete": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Revoke work chat share legacy",
+        "operationId": "revoke_work_chat_share_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "revoke_work_chat_share"
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}/sse": {
@@ -34769,12 +35187,17 @@
         "type": "object",
         "description": "A session as an execution caller sees it: no instructions, tools, owners\nor costs, which are management's.",
         "required": [
+          "archived",
+          "pinned",
           "id",
           "status",
           "created_at",
           "updated_at"
         ],
         "properties": {
+          "archived": {
+            "type": "boolean"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -34815,6 +35238,9 @@
               "$ref": "#/components/schemas/PendingQuestionView"
             },
             "description": "Question sets the session waits on. Only `GET …/sessions/{id}` reads\nthem; a list leaves them out."
+          },
+          "pinned": {
+            "type": "boolean"
           },
           "status": {
             "type": "string",
@@ -65346,6 +65772,30 @@
             ]
           }
         }
+      },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "archived": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "pinned": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "SideEffectClass": {
         "type": "string",

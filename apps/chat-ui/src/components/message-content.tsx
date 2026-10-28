@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Component, createContext, useContext, useState, type ReactNode } from "react";
+import { Component, useState, type ReactNode } from "react";
 import { Streamdown } from "streamdown";
 import "@openuidev/react-ui/components.css";
 
@@ -42,10 +42,6 @@ function safeUrl(value: unknown): value is string {
     return false;
   }
 }
-const FormValues = createContext<{
-  values: Record<string, string | boolean>;
-  set: (name: string, value: string | boolean) => void;
-} | null>(null);
 function WidgetForm({
   node,
   onMessage,
@@ -55,29 +51,34 @@ function WidgetForm({
   onMessage?: (text: string) => void;
   children: ReactNode;
 }) {
-  const [values, setValues] = useState<Record<string, string | boolean>>({});
   return (
-    <FormValues.Provider
-      value={{ values, set: (name, value) => setValues((old) => ({ ...old, [name]: value })) }}
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        const values: Record<string, string | boolean> = Object.create(null);
+        for (const [name, value] of new FormData(event.currentTarget)) {
+          if (typeof value === "string") values[name] = value;
+        }
+        for (const checkbox of event.currentTarget.querySelectorAll<HTMLInputElement>(
+          'input[type="checkbox"][name]',
+        )) {
+          values[checkbox.name] = checkbox.checked;
+        }
+        onMessage?.(
+          typeof node.props?.submitMessage === "string"
+            ? node.props.submitMessage
+            : `Submitted ${String(node.props?.name ?? "form")}: ${JSON.stringify(values)}`,
+        );
+      }}
     >
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          onMessage?.(
-            typeof node.props?.submitMessage === "string"
-              ? node.props.submitMessage
-              : `Submitted ${String(node.props?.name ?? "form")}: ${JSON.stringify(values)}`,
-          );
-        }}
-      >
-        {children}
-        <button disabled={!onMessage} type="submit">
-          {String(node.props?.submitLabel ?? "Submit")}
-        </button>
-      </form>
-    </FormValues.Provider>
+      {children}
+      <button disabled={!onMessage} type="submit">
+        {String(node.props?.submitLabel ?? "Submit")}
+      </button>
+    </form>
   );
 }
+
 type Node = { type?: string; props?: Record<string, unknown>; children?: Node[] };
 function A2Node({
   node,
@@ -94,7 +95,6 @@ function A2Node({
       ? node.props.defaultValue
       : node?.props?.defaultChecked === true,
   );
-  const form = useContext(FormValues);
   if (!node || typeof node !== "object" || depth > 24) return null;
   const p = node.props ?? {},
     children = (Array.isArray(node.children) ? node.children : []).slice(0, 200);
@@ -220,10 +220,10 @@ function A2Node({
         <label>
           <input
             type="checkbox"
-            checked={(form?.values[name] ?? field) === true}
+            name={name}
+            checked={field === true}
             onChange={(event) => {
               setField(event.target.checked);
-              form?.set(name, event.target.checked);
             }}
           />
           {text(p.label)}
@@ -236,16 +236,16 @@ function A2Node({
     case "Input":
     case "Select": {
       const name = text(p.name),
-        value = text(form?.values[name] ?? field);
+        value = text(field);
       const change = (value: string) => {
         setField(value);
-        form?.set(name, value);
       };
       return (
         <label className="widget-field">
           {text(p.label)}
           {node.type === "Select" ? (
             <select
+              name={name}
               aria-label={text(p.label) || name}
               value={value}
               onChange={(event) => change(event.target.value)}
@@ -269,9 +269,10 @@ function A2Node({
               ))}
             </select>
           ) : node.type === "TextArea" || node.type === "Textarea" ? (
-            <textarea value={value} onChange={(event) => change(event.target.value)} />
+            <textarea name={name} value={value} onChange={(event) => change(event.target.value)} />
           ) : (
             <input
+              name={name}
               required={p.required === true}
               value={value}
               placeholder={text(p.placeholder)}
