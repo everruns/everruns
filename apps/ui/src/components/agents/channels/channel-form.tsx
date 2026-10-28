@@ -112,6 +112,7 @@ export type ChannelFormSection = "all" | "schedule" | "invocation" | "session" |
 
 export type ChannelFormState = {
   kind: ChannelType;
+  chatModels: string[];
   chatInterface: "single_with_threads" | "multi_chat";
   enabled: boolean;
   slackSigningSecret: string;
@@ -233,6 +234,7 @@ export function getDefaultChannelFormState(
     publicChatAgentIdClientId: "",
     voice: voiceFormStateFromConfig(),
     api: apiFormStateFromConfig(),
+    chatModels: [],
     chatInterface: "multi_chat",
   };
 
@@ -344,11 +346,13 @@ export function getDefaultChannelFormState(
   if (channel.channel_type === "work_chat") {
     const config = channel.channel_config as {
       interface_mode?: "single_with_threads" | "multi_chat";
+      allowed_model_ids?: string[];
       execution?: ApiChannelConfig;
     };
     return {
       ...base,
       kind: "work_chat",
+      chatModels: config.allowed_model_ids ?? [],
       chatInterface: config.interface_mode ?? "multi_chat",
       api: apiFormStateFromConfig(config.execution),
     };
@@ -496,6 +500,7 @@ export function buildChannelConfig(state: ChannelFormState) {
     case "work_chat":
       return {
         interface_mode: state.chatInterface,
+        allowed_model_ids: state.chatModels,
         execution: { ...buildApiChannelConfig(state.api), errors: "public", visibility: "full" },
       };
     case "api":
@@ -1190,6 +1195,8 @@ export function ChannelForm({
 
       {state.kind === "work_chat" && (section === "all" || section === "invocation") && (
         <WorkChatFields
+          modelIds={state.chatModels}
+          onModelsChange={(ids) => update("chatModels", ids)}
           mode={state.chatInterface}
           onModeChange={(mode) => update("chatInterface", mode)}
           value={state.api}

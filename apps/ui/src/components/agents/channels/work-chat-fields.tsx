@@ -4,20 +4,26 @@ import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { ApiFields, type ApiFormState } from "./api-fields";
+import { useModels } from "@/hooks";
 import { Label } from "@/components/ui/label";
 
 export function WorkChatFields({
+  modelIds,
+  onModelsChange,
   mode,
   onModeChange,
   value,
   onChange,
 }: {
+  modelIds: string[];
+  onModelsChange: (ids: string[]) => void;
   mode: "single_with_threads" | "multi_chat";
   onModeChange: (mode: "single_with_threads" | "multi_chat") => void;
   value: ApiFormState;
   onChange: (value: ApiFormState) => void;
 }) {
   const ui = useUiTranslations();
+  const { data: models = [] } = useModels();
   const params = useParams();
   const agentId = String(params.agentId ?? "");
   const features = useQuery({
@@ -56,6 +62,32 @@ export function WorkChatFields({
           "Consumers sign in separately from the console. Your configured approvals and spending limits apply.",
         )}
       </p>
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">Models consumers may select</legend>
+        <p className="text-sm text-muted-foreground">
+          Leave all unchecked to use the Agent default.
+        </p>
+        <div className="max-h-48 space-y-2 overflow-auto">
+          {models
+            .filter((model) => model.enabled)
+            .map((model) => (
+              <label key={model.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={modelIds.includes(model.id)}
+                  onChange={(event) =>
+                    onModelsChange(
+                      event.target.checked
+                        ? [...modelIds, model.id]
+                        : modelIds.filter((id) => id !== model.id),
+                    )
+                  }
+                />
+                {model.display_name}
+              </label>
+            ))}
+        </div>
+      </fieldset>
       <ApiFields
         hosted
         value={value}

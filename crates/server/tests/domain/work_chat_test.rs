@@ -671,6 +671,13 @@ async fn work_chat_org_members_require_full_scope_on_both_url_spellings() {
             (Method::POST, format!("{base}/chat/main"), Some(json!({}))),
             (
                 Method::POST,
+                format!("{base}/sessions/{id}/settings"),
+                Some(json!({"title":"Denied"})),
+            ),
+            (Method::POST, format!("{base}/sessions/{id}/share"), None),
+            (Method::DELETE, format!("{base}/sessions/{id}/share"), None),
+            (
+                Method::POST,
                 format!("{base}/sessions/{id}/files"),
                 Some(json!({"path":"/workspace/member.md","content":"hello"})),
             ),
@@ -687,4 +694,191 @@ async fn work_chat_org_members_require_full_scope_on_both_url_spellings() {
             assert_eq!(body["code"], "insufficient_scope", "{path}: {body}");
         }
     }
+}
+
+#[tokio::test]
+async fn work_chat_organizes_owned_conversations_and_revokes_read_only_links() {
+    use everruns_contracts::typed_id::SessionId;
+    use everruns_core::events::{EventRequest, InputMessageData};
+    let server = TestServer::in_memory().await;
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    publish(&server, &channel).await.assert_success();
+    let alice = consumer_token(&server, &channel, "publisher").await;
+    let bob = consumer_token(&server, &channel, "reader").await;
+    let base = format!("/v1/channels/{}", channel.channel_id);
+    let session: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions"),
+        Some(&alice),
+        Some(json!({})),
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json();
+    let id = session["id"].as_str().unwrap();
+    let path = format!("{base}/sessions/{id}");
+    for (method, suffix, body) in [
+        (Method::POST, "settings", json!({"title":"stolen"})),
+        (Method::POST, "share", json!({})),
+        (Method::DELETE, "share", json!({})),
+    ] {
+        call(
+            &server,
+            method,
+            &format!("{path}/{suffix}"),
+            Some(&bob),
+            Some(body),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    }
+    let settings: Value = call(
+        &server,
+        Method::POST,
+        &format!("{path}/settings"),
+        Some(&alice),
+        Some(json!({"title":"Migration timeline","pinned":true,"archived":true})),
+    )
+    .await
+    .assert_success()
+    .json();
+    assert_eq!(settings["title"], "Migration timeline");
+    assert_eq!(settings["pinned"], true);
+    assert_eq!(settings["archived"], true);
+    let ordinary: Value = call(
+        &server,
+        Method::GET,
+        &format!("{base}/sessions"),
+        Some(&alice),
+        None,
+    )
+    .await
+    .assert_success()
+    .json();
+    assert!(ordinary["data"].as_array().unwrap().is_empty());
+    let archived: Value = call(
+        &server,
+        Method::GET,
+        &format!("{base}/sessions?include_archived=true"),
+        Some(&alice),
+        None,
+    )
+    .await
+    .assert_success()
+    .json();
+    assert_eq!(archived["data"][0]["id"], id);
+    call(
+        &server,
+        Method::POST,
+        &format!("{path}/messages"),
+        Some(&alice),
+        Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Continue"}]}})),
+    )
+    .await
+    .assert_status(StatusCode::CONFLICT);
+    call(
+        &server,
+        Method::POST,
+        &format!("{path}/settings"),
+        Some(&alice),
+        Some(json!({"archived":false})),
+    )
+    .await
+    .assert_success();
+    let sid: SessionId = id.parse().unwrap();
+    let event = EventRequest::new(
+        sid,
+        Default::default(),
+        InputMessageData::new(everruns_core::RuntimeMessage::user(
+            "Show the migration timeline",
+        )),
+    );
+    server.event_service.emit(event).await.unwrap();
+    let link: Value = call(
+        &server,
+        Method::POST,
+        &format!("{path}/share"),
+        Some(&alice),
+        Some(json!({})),
+    )
+    .await
+    .assert_success()
+    .json();
+    let url = format!("{base}/chat/shared/{}", link["token"].as_str().unwrap());
+    let public: Value = server.get(&url).await.assert_success().json();
+    assert_eq!(public["title"], "Migration timeline");
+    assert!(
+        public["data"]
+            .to_string()
+            .contains("Show the migration timeline")
+    );
+    assert!(!public.to_string().contains(id));
+    assert!(public.get("pending_questions").is_none());
+    assert!(public.get("files").is_none());
+    call(
+        &server,
+        Method::GET,
+        &path,
+        Some(link["token"].as_str().unwrap()),
+        None,
+    )
+    .await
+    .assert_status(StatusCode::UNAUTHORIZED);
+    call(
+        &server,
+        Method::DELETE,
+        &format!("{path}/share"),
+        Some(&alice),
+        None,
+    )
+    .await
+    .assert_success();
+    server.get(&url).await.assert_status(StatusCode::NOT_FOUND);
+    call(&server,Method::POST,&format!("{path}/messages"),Some(&alice),Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Hi"}]},"controls":{"model_id":"model_01933b5a000070008000000000000001"}}))).await.assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn work_chat_accepts_only_publisher_selected_model_controls() {
+    let server = TestServer::in_memory().await;
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    let provider: Value = server
+        .post(
+            "/v1/providers",
+            json!({"name":format!("chat-models-{}",uuid::Uuid::new_v4()),"provider_type":"llmsim"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let model: Value = server
+        .post(
+            &format!("/v1/providers/{}/models", provider["id"].as_str().unwrap()),
+            json!({"model_id":"llmsim","display_name":"Work Chat test model","enabled":true}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    server.patch(&format!("/v1/agents/{}/channels/{}",channel.agent_id,channel.channel_id),json!({"channel_config":{"interface_mode":"multi_chat","allowed_model_ids":[model["id"]],"execution":{"visibility":"full"}}})).await.assert_success();
+    publish(&server, &channel).await.assert_success();
+    let token = consumer_token(&server, &channel, "model-user").await;
+    let base = format!("/v1/channels/{}", channel.channel_id);
+    let config: Value = server
+        .get(&format!("{base}/chat/config"))
+        .await
+        .assert_success()
+        .json();
+    assert_eq!(config["models"][0]["name"], "Work Chat test model");
+    let session: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions"),
+        Some(&token),
+        Some(json!({})),
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json();
+    let sent:Value=call(&server,Method::POST,&format!("{base}/sessions/{}/messages",session["id"].as_str().unwrap()),Some(&token),Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Hello"}]},"controls":{"model_id":model["id"],"reasoning":{"effort":"high"}}}))).await.assert_status(StatusCode::CREATED).json();
+    assert_eq!(sent["controls"]["model_id"], model["id"]);
+    assert_eq!(sent["controls"]["reasoning"]["effort"], "high");
 }

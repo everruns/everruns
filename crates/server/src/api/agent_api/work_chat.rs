@@ -1,6 +1,7 @@
 //! Consumer-only Work Chat extensions. Every resource is reached through an
 //! authenticated channel and session; this router never accepts management ids.
 use super::*;
+pub(crate) mod experience;
 use crate::domains::agent_channels::record::work_chat::{
     ChatFeatures, ChatInterface, WorkChatConfig,
 };
@@ -39,7 +40,7 @@ pub(super) fn routes() -> Router<ChannelApiState> {
                     .delete(delete_work_chat_file),
             );
     }
-    router
+    router.merge(experience::routes())
 }
 
 fn public_url(channel: &str) -> Option<String> {
@@ -104,7 +105,7 @@ pub(crate) async fn get_work_chat_config(
         let features = validate_agent(&state, &context, &channel).await?;
         Ok(Json(json!({"channel_id":channel.public_id,"name":context.name,"description":context.description,
             "experience":"work_chat","interface_mode":cfg.interface_mode,"features":features,
-            "org_members":cfg.execution.org_members,"public_url":public_url(&channel.public_id.to_string())})).into_response())
+            "org_members":cfg.execution.org_members,"models":experience::models(&state, context.org_id, &cfg).await?,"public_url":public_url(&channel.public_id.to_string())})).into_response())
     }.await;
     result.unwrap_or_else(|response| response)
 }

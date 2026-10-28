@@ -233,3 +233,51 @@ impl Database {
         }
     }
 }
+
+impl Database {
+    pub async fn replace_work_chat_share(
+        &self,
+        channel: Uuid,
+        session: Uuid,
+        token: Option<&str>,
+    ) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SELECT id FROM sessions WHERE id = $1 AND channel_id = $2 FOR UPDATE")
+            .bind(session)
+            .bind(channel)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM channel_bindings WHERE channel_id = $1 AND session_id = $2 AND binding_key LIKE 'work_chat:share:%'").bind(channel).bind(session).execute(&mut *tx).await?;
+        if let Some(token) = token {
+            sqlx::query("INSERT INTO channel_bindings (channel_id, binding_key, session_id) VALUES ($1, $2, $3)").bind(channel).bind(format!("work_chat:share:{token}")).bind(session).execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+}
+
+impl Database {
+    /// Anonymous reads never materialize an unbounded message body. Keep the
+    /// channel/session index and backward cursor, with a decoded JSON size cap.
+    pub async fn work_chat_share_events(
+        &self,
+        session: everruns_contracts::typed_id::SessionId,
+        before: Option<i32>,
+    ) -> Result<Vec<crate::storage::EventRow>> {
+        sqlx::query_as::<_, crate::storage::EventRow>(
+            "SELECT * FROM (
+                SELECT * FROM events
+                WHERE session_id = $1
+                  AND event_type IN ('input.message', 'output.message.completed')
+                  AND ($2::int IS NULL OR sequence < $2)
+                  AND octet_length(data::text) <= 262144
+                ORDER BY sequence DESC LIMIT 101
+             ) page ORDER BY sequence ASC",
+        )
+        .bind(session)
+        .bind(before)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(Into::into)
+    }
+}

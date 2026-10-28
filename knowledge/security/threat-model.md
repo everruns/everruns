@@ -22,6 +22,9 @@ This document defines the security threat model for Everruns, a durable agentic 
 | TM-FS-022 | Workspace aliases expose private runtime context | Canonicalize before private-mount exclusion, authorize session ownership, deny shared workspaces, respect existing read-only/quota service, cap uploads. |
 | TM-DOS-049 | Anonymous broker requests exhaust credential storage | Peer admission buckets, bounded expiry cleanup and request bodies, provider/upstream timeouts and existing channel execution limits. Edge must replace peer headers. |
 
+| TM-WEB-023 | A published conversation grants execution access or remains readable after revocation | Cryptographically random channel-bound share capability; only projected conversation messages are returned; no consumer token, workspace or mutation route accepts it. Owned create/revoke operations serialize against the session. Live-channel checks, page limits, read admission and no-store responses apply. |
+| TM-WEB-024 | Generated widgets or artifact previews execute untrusted code | Structured OpenUI/A2UI components render escaped data with URL checks, bounded tree depth and source fallback. Message actions use the existing consumer API and are unavailable on public views. HTML/SVG previews use an opaque sandbox without script permission and an embedded CSP denying network and navigation targets. |
+
 See [Work Chat](../integrations/work-chat.md) and its linked implementation.
 The browser credential role has access only to its dedicated table. Domain/TLS,
 provider registration, secrets and ingress isolation are deployment prerequisites.

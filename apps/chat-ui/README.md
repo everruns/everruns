@@ -56,6 +56,7 @@ Those rendering tests do not assert real identity-provider or Agent execution.
 The server's Work Chat domain tests cover publication, concurrent main creation,
 consumer isolation and bounded thread delegation.
 
+After `pnpm build`,
 `TEST_CHAT_DATABASE_URL=<disposable-local-connection> pnpm test:broker` runs a
 real HTTPS browser, PostgreSQL handoff/session storage and protocol fixtures for
 the OIDC provider and execution admission. It needs OpenSSL and permission to
@@ -71,3 +72,16 @@ hoisted dependencies without importing the console app at runtime.
 Login admission defaults to 120 requests per peer per ten minutes. Set the
 optional `CHAT_LOGIN_LIMIT_PER_10_MINUTES` (1–10,000) for your deployment's NAT
 and traffic profile. Limited requests return HTTP 429 with `Retry-After`.
+
+## Conversation features
+
+Work Chat includes structured OpenUI/A2UI rendering, reply work logs, task cards,
+multiple attachments, Markdown/image/CSV/HTML artifact previews, downloads and
+revision-checked source editing. Conversation actions support rename, pin,
+archive/reopen and explicit revocable read-only links. Publishers curate the
+optional model list on the channel; empty retains the Agent default. No separate
+feature flag enables these UI features.
+
+Public links expose projected messages and widgets only. They do not reuse a
+consumer credential or expose workspace files. Preview frames have an opaque
+sandbox with scripts and network access disabled.

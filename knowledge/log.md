@@ -3,6 +3,7 @@
 ## 2026-10-28
 
 - Clarified unreleased Framework batch installation and pinned its source revision in the [public guide](../docs/framework/batch-model-requests.md).
+- Expanded [Work Chat](integrations/work-chat.md) with structured widgets, per-reply work logs, artifact previews, conversation organization, curated model controls and revocable read-only conversation links.
 
 - Added explicit shared-message request lists to the [Framework batch API](framework/batch-model-requests.md), preserving builder validation, scoped tickets and uncertainty handling.
 

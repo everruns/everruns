@@ -74,3 +74,39 @@ reaches consumer execution and self-service routes only.
 - [Execution API](agent-execution-api.md)
 - [Virtual users](../runtime-resources/virtual-users.md)
 - [Coordination](../runtime-resources/coordination.md)
+
+## Rich worker experience
+
+The browser host renders Markdown together with structured OpenUI and A2UI blocks,
+using component renderers rather than executing generated JavaScript. Widget
+message actions use the consumer's existing conversation and execution policy.
+Read-only shares disable those actions. Malformed widgets fall back to source.
+
+Work logs belong to individual replies. Task chips link to the existing delegated
+sessions. Conversation search, pagination, pinning, renaming and archive/reopen
+operate within the caller's channel history. The permanent main conversation
+cannot be archived or renamed through consumer settings. Archived conversations
+remain readable and require reopening before another message.
+
+The channel owner may curate model choices. Empty selection retains the Agent's
+default. Message controls accept those models and typed reasoning effort only;
+other execution channels keep ignoring caller model controls. Existing budgets
+and approval rules apply, with no new rollout flags.
+
+The composer accepts up to three files with a combined four-megabyte limit,
+including paste and drag-and-drop. Workspace previews support Markdown, raster
+images, searchable CSV and text. HTML/SVG previews run without scripts in an
+opaque iframe whose content policy denies network access. Editing retains the
+existing revision check; downloading is available for text and binary files.
+
+## Published conversations
+
+A consumer can explicitly publish the messages and structured widgets of one
+owned conversation. The random link grants read authority only, never session,
+workspace, tool, question or approval authority. Shares remain bound to the live
+channel; revocation and replacement serialize against the session. History is
+paged and rate limited. Public views use the channel's safe message projection,
+exclude tool output and routing metadata, and do not cache responses.
+
+Publishing is a user action, not the default visibility of consumer history.
+Source: [experience routes](../../crates/server/src/api/agent_api/work_chat/experience.rs).
