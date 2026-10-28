@@ -37,6 +37,14 @@ with durable execution.
 6. Provide a supported host adapter contract so durable/server-backed execution
    can reuse runtime-owned phase orchestration.
 
+## Stack use
+
+Nested in-process delegation must fit ordinary thread stacks. Turn entry keeps
+engine-loop state on the heap so entry wrappers do not embed and repeatedly move
+that state on the caller's stack. The [nested delegation acceptance test](../../crates/everruns/tests/local/local_spawn_agent_runtime_test.rs)
+guards the entry future footprint and exercises both background spawning and
+foreground handoff.
+
 ## Position in the Stack
 
 Core’s optional `host` module composes its `engine` module over the portable

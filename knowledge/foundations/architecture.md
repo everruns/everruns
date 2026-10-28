@@ -325,6 +325,17 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
 
 See [knowledge/operations/durable-execution-engine.md](../operations/durable-execution-engine.md) for the durable engine architecture.
 
+Single-message reads at turn startup resolve the session-scoped message ID through
+an expression index on message events. They must not load the conversation window:
+that repeats JSON transfer and parsing on every turn and hides older inputs behind
+the history safety cap. The [retriever](../../crates/server/src/storage/runtime/message.rs)
+retains legacy event-envelope support and skips malformed duplicate records in log
+order. In-process workers also resolve their event-derived tool-result IDs through
+the event primary key; generated tool-result IDs in the runtime/gRPC projection
+remain unstored.
+The [lookup regressions](../../crates/server/src/storage/runtime/message.rs) and
+[benchmark](../../crates/server/benches/message_lookup.rs) cover the history boundary, formats, isolation and retrieval cost at increasing depth.
+
 ### Customer-hosted custom execution
 
 Custom agent implementations use a separate, opt-in, agent-scoped service, never

@@ -55,7 +55,7 @@ let id = format!("agent_{}", uuid.simple()); // agent_0193...
 | Class | UUID version | Rationale |
 |-------|--------------|-----------|
 | **Time-ordered** (default), DB-backed keys: `agent`, `session`, `event`, `turn`, `org`, and all other entities with a table/PK/index | UUIDv7 | Time-ordering gives B-tree insert locality and lets the id double as a sort key. |
-| **Random-public**: `message` | UUIDv4 (`TypedId::new_random()`) | Messages are **not** DB entities: they live embedded in `events.data` JSONB with no table, FK, index, or sort dependency on the id, and the id is the *public* identifier serialized to clients (`output.message.completed`, `EventContext.input_message_id`). UUIDv7's time-ordering does no work here and would leak a creation timestamp into a client-visible id, so message ids are random. Same wire format → no migration; legacy UUIDv7 message ids keep parsing. |
+| **Random-public**: `message` | UUIDv4 (`TypedId::new_random()`) | Messages live embedded in `events.data` JSONB with no separate table, FK, or chronological sort dependency on the id. The server indexes it for equality lookups. The id is the *public* identifier serialized to clients (`output.message.completed`, `EventContext.input_message_id`); UUIDv7 would leak a creation timestamp, so message ids remain random. Same wire format; legacy UUIDv7 message ids keep parsing. |
 
 `TurnId` stays UUIDv7: turn ordering is used by durable execution, and the raw turn UUID's current public exposure via AG-UI is being removed by the streaming `message_id` work rather than by re-randomizing the turn id. To make a new id class random, override `generate_uuid()` on its marker in `crates/contracts/src/typed_id.rs`.
 
@@ -113,7 +113,7 @@ For the full list of well-known IDs and range allocations, see `crates/contracts
 |----------|----------|
 | Why prefixed IDs? | Type safety, debuggability, prevents mixing ID types |
 | Why UUIDv7 for DB-backed ids? | Time-ordering gives B-tree insert locality + sortability; globally unique |
-| Why UUIDv4 for message ids? | Messages are not DB entities (embedded in `events.data` JSONB, no index/sort on the id) and the id is client-visible; v7 would leak a creation timestamp with no benefit, see the ID-class table |
+| Why UUIDv4 for message ids? | Messages are embedded in `events.data` JSONB and indexed for equality, not chronological sorting. The id is client-visible; v7 would leak a creation timestamp, see the ID-class table |
 | Why dual-ID? | Internal UUID PK for FK integrity; external public_id for client-facing API, client-supplied IDs, upsert |
 | Why not expose UUID? | Decouples internal PK from API contract; allows client-supplied IDs |
 | Why lowercase hex? | Consistency, case-insensitive matching, URL-safe |
