@@ -124,8 +124,21 @@ async fn verified_assignment_cannot_outlive_its_sessions_actual_tenant_binding()
     let server = Server::start(service.clone(), true, Some((CLIENT_A, KEY_A))).await;
     server.read(a.session, a.byte).await.unwrap();
     let context = server.context();
-    // Deliberately contradict the stored grant/actor org; selectors and equal
-    // holder/fence values must never replace the actual session owner.
+    // Canonical session-service prerequisites prevent moving their session.
+    assert!(
+        sqlx::query("UPDATE sessions SET org_id=3 WHERE id=$1")
+            .bind(a.session)
+            .execute(service.db.database().pool())
+            .await
+            .is_err()
+    );
+    // Removing that prerequisite permits the lifecycle edit, never the old proof.
+    sqlx::query("DELETE FROM resource_grants WHERE consumer_session_id=$1")
+        .bind(a.session)
+        .execute(service.db.database().pool())
+        .await
+        .unwrap();
+    // Selectors and equal holder/fence values never replace the actual owner.
     sqlx::query("UPDATE sessions SET org_id=3 WHERE id=$1")
         .bind(a.session)
         .execute(service.db.database().pool())

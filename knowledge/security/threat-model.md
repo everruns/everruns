@@ -344,6 +344,21 @@ Stronger worker isolation requires an executor identity and authority boundary p
 
 Session-scoped worker surfaces that route through `ExecuteCommand` rather than a bespoke RPC gain one layer inside this boundary: the command verifies that the session belongs to the `org_id` the caller claims (`q::verify_session_ownership`), where the bespoke RPCs took `session_id` from the request and addressed the store directly. This does not constrain a token holder, who can claim the victim's `org_id` and satisfy the check; it catches the confused-deputy case where a worker addresses a session from one org while acting for another. The session-database, session-schedule, session-resource-registry, tool-side leased-resource, session key/value storage, and session task RPCs moved onto the command surface for this reason among others; the remaining bespoke session RPCs still address their stores by `session_id` alone. The resource-registry RPCs carried no `org_id` at all, so before the move a worker could register, update, list, or remove any session's resources by naming it; the leased-resource upsert, release, and list RPCs, the five key/value storage RPCs, and the seven session-task RPCs likewise took the session alone. The session-storage secret RPCs still do, until they move with connections and credentials. The leased-resource cleanup sweeper's claim and mark RPCs, and the session-task reaper's orphan scan and prune RPCs, remain cross-org by design: they work across every org. Session schedules, the session resource registry, the tool-side leased resource store, session key/value storage, and the session task registry use internal commands (`/internal/` path), which `Command::run` refuses to any caller but `Caller::internal`, so a worker request that names a `user_id` or platform session cannot reach them. The image and file RPCs (`GetImageArtifact`, `ResolveImage(s)`, `ResolveFiles`) stay dedicated RPCs that answer with signed byte paths, and generated images are uploaded by a POST on the worker endpoint (`api/internal_blobs.rs`); both take the `org_id` from the request and read or write within it, under the same bearer token as every worker RPC. The unused metadata-only `GetImageArtifactInfo` RPC was removed.
 
+The unactivated verified journal path additionally checks immutable assignment
+origins and explicit supporting-grant versions at each admission. Database
+lifecycle triggers revoke grants on authority-relevant session, configured-agent,
+actor lease and linked resource/grant changes, including delete/recreate and
+restore of old values. Expiry is checked online, including after reconnect.
+[Lifecycle enforcement and its limitations](../operations/durable-execution-engine.md#worker-communication)
+cover the first supported dependency class: session-scoped service grants to
+organization-owned service resources. Other resource ownership and consumer
+scopes remain rejected without verified invocation provenance.
+These dependencies only narrow independently established journal authority;
+they never establish it. A future issuer must capture the complete authorized
+provenance, including user/custom-policy revocation, before activation. No issuer
+or production scoped listener is wired, and the broad legacy worker route still
+precludes a compromised-shared-worker isolation guarantee.
+
 **TM-AUTHZ-004, Command Runner as Single Enforcement Point:**
 `Command::run` (`crates/server/src/domains/common/mod.rs`) evaluates `Command::policy()` against the active `PermissionResolver` before dispatching to `execute`. HTTP adapters call `run`; MCP and gRPC `ExecuteCommand` route through `dispatch()` which calls `run`. Coverage is enforced by iterating `inventory::iter::<CommandDescriptor>` in a test, so new mutating commands that forget `policy()` fail the build. The legacy `#[policy]` attribute macro was removed, service-layer checks were redundant with `Command::run` and hardcoded `DefaultPermissionResolver`, re-introducing `TM-AUTHZ-008`.
 

@@ -24,13 +24,21 @@ impl Database {
             "SELECT EXISTS (SELECT 1 FROM session_actors a \
              JOIN sessions s ON s.id = a.session_id \
              JOIN worker_journal_read_grants g ON g.session_id = a.session_id \
+             LEFT JOIN agents ag ON ag.id=g.agent_id AND ag.org_id=g.org_id \
              WHERE a.session_id = $1 AND a.org_id = $2 AND s.org_id = $2 \
                AND a.lease_holder = $3 AND a.lease_fence = $4 \
                AND a.lease_expires_at > clock_timestamp() \
                AND g.id = $5 AND g.executor_id = $6 AND g.org_id = $2 \
                AND g.lease_holder = $3 AND g.lease_fence = $4 \
                AND g.revoked_at IS NULL AND g.created_at <= clock_timestamp() \
-               AND g.expires_at > clock_timestamp())",
+               AND g.expires_at > clock_timestamp() \
+               AND g.actor_session_id=a.session_id AND a.cancel_requested_at IS NULL \
+               AND s.archived_at IS NULL \
+               AND g.actor_authorization_epoch=a.worker_authorization_epoch \
+               AND g.session_authorization_epoch=s.worker_authorization_epoch \
+               AND g.agent_id IS NOT DISTINCT FROM s.agent_id \
+               AND (g.agent_id IS NULL OR (ag.status='active' \
+                    AND g.agent_authorization_epoch=ag.worker_authorization_epoch)))",
         )
         .bind(session_id)
         .bind(org_id)

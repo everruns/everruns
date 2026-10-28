@@ -15,7 +15,8 @@ impl Database {
              JOIN worker_journal_read_grants g ON g.id = c.grant_id \
              JOIN worker_executor_identities i ON i.executor_id = g.executor_id \
              JOIN sessions s ON s.id = g.session_id AND s.org_id = g.org_id \
-             JOIN session_actors a ON a.session_id = s.id AND a.org_id = g.org_id \
+             JOIN session_actors a ON a.session_id = g.actor_session_id AND a.org_id = g.org_id \
+             LEFT JOIN agents ag ON ag.id=g.agent_id AND ag.org_id=g.org_id \
              WHERE c.capability_sha256 = $1 AND i.certificate_sha256 = $2 \
                AND c.revoked_at IS NULL AND c.created_at <= clock_timestamp() \
                AND c.expires_at > clock_timestamp() \
@@ -24,7 +25,25 @@ impl Database {
                AND g.revoked_at IS NULL AND g.created_at <= clock_timestamp() \
                AND g.expires_at > clock_timestamp() \
                AND a.lease_holder = g.lease_holder AND a.lease_fence = g.lease_fence \
-               AND a.lease_expires_at > clock_timestamp()",
+               AND a.lease_expires_at > clock_timestamp() \
+               AND a.cancel_requested_at IS NULL AND s.archived_at IS NULL \
+               AND g.actor_authorization_epoch=a.worker_authorization_epoch \
+               AND g.session_authorization_epoch=s.worker_authorization_epoch \
+               AND g.agent_id IS NOT DISTINCT FROM s.agent_id \
+               AND (g.agent_id IS NULL OR (ag.status='active' \
+                    AND g.agent_authorization_epoch=ag.worker_authorization_epoch)) \
+               AND EXISTS (SELECT 1 FROM worker_journal_grant_dependencies d WHERE d.grant_id=g.id) \
+               AND NOT EXISTS (SELECT 1 FROM worker_journal_grant_dependencies d \
+                 LEFT JOIN resource_grants rg ON rg.id=d.source_grant_id AND rg.org_id=g.org_id \
+                 LEFT JOIN resource_access ra ON ra.id=d.source_resource_id AND ra.org_id=g.org_id \
+                 WHERE d.grant_id=g.id AND (rg.id IS NULL OR ra.id IS NULL \
+                   OR rg.resource_id<>ra.id OR rg.revoked_at IS NOT NULL OR ra.revoked_at IS NOT NULL \
+                   OR rg.revision<>d.grant_revision OR ra.revision<>d.resource_revision \
+                   OR rg.worker_authorization_epoch<>d.grant_epoch \
+                   OR ra.worker_authorization_epoch<>d.resource_epoch \
+                   OR (rg.expires_at IS NOT NULL AND rg.expires_at<=clock_timestamp()) \
+                   OR rg.consumer_scope<>'session' OR rg.consumer_session_id IS DISTINCT FROM g.session_id \
+                   OR rg.usage<>'service' OR ra.scope<>'organization' OR ra.usage<>'service'))",
         )
         .bind(capability_sha256.as_slice())
         .bind(certificate_sha256.as_slice())

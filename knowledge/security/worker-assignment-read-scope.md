@@ -58,8 +58,12 @@ not grant access. Foreign and absent selectors receive the same refusal.
 Admission linearizes at the database statement's snapshot. A read admitted
 before lease release/reassignment may finish afterward; already delivered bytes
 cannot be retracted. A revocation committed before a new admission is refused.
-The journal authorization grant is independently revocable. Credential and
-underlying user/agent resource-grant integration remain unimplemented.
+The journal authorization grant is independently revocable. The unactivated
+[verified journal path](../operations/durable-execution-engine.md#worker-communication)
+now checks exact mTLS executor enrollment, opaque proof and explicit supporting
+session-service grants to organization-owned service resources. Lifecycle triggers revoke linked assignments;
+complete user/custom-policy provenance, issuance and production activation
+remain unimplemented.
 
 ## Independent journal authorization
 
@@ -72,9 +76,9 @@ a retained old reference. Missing, foreign and mismatched grants all refuse
 without revealing a foreign journal.
 
 These records and executor references are not credentials. Matching an executor
-identifier does not authenticate a workload. A future identity adapter must
-resolve that identifier from verified identity and bind an actual capability
-to the grant; caller headers and grant IDs are insufficient. No production
+identifier does not authenticate a workload. The unactivated verified adapter
+resolves it from exact mTLS peer enrollment and a stored opaque capability;
+caller headers and grant IDs are insufficient. No production
 producer creates grants or scopes, and no worker/public API exposes grant
 creation or the trusted control plane's org-scoped revocation operation.
 
@@ -113,9 +117,10 @@ boundary, not an end-to-end worker-isolation guarantee.
 ## Dependencies before activation
 
 The broader [assignment-bound design proposal](https://github.com/everruns/everruns/pull/4987)
-requires a separate executor identity and capability issuer, online credential
-and underlying user/agent grant revocation, protected-assignment routing/storage and a security version
-floor. Every legacy and alternate route must refuse protected assignments.
+requires production executor enrollment and capability issuance, complete
+underlying user/custom-policy revocation provenance, protected-assignment
+routing/storage and a security version floor. The source verifier and declared
+session-service dependency revocation cover only part of that boundary. Every legacy and alternate route must refuse protected assignments.
 Standard bearer-authenticated wire clients keep their existing protocol. Custom
 server adapters and direct calls to the public RPC implementation must establish
 explicit server-owned authority; bypassing the authenticator now fails closed.
