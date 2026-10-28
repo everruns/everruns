@@ -651,3 +651,67 @@ async fn gateway_server_tool_use_reaches_completion_metadata() {
     assert_eq!(done.hosted_tool_calls.get("web_search_call"), Some(&2));
     assert_eq!(done.provider_cost_usd, Some(0.021));
 }
+
+#[tokio::test]
+async fn unfinished_search_keeps_partial_answer_and_citations_without_retry() {
+    for status in ["searching", "in_progress", "failed", "incomplete"] {
+        let server = server().await;
+        let frames: Vec<Value> = web_search_stream()
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .filter(|frame| frame["type"] != "response.web_search_call.completed")
+            .map(|mut frame| {
+                if frame["type"] == "response.output_item.done"
+                    && frame["item"]["type"] == "web_search_call"
+                {
+                    frame["item"]["status"] = json!(status);
+                }
+                if frame["type"] == "response.completed" {
+                    frame["response"]["output"][0]["status"] = json!(status);
+                }
+                frame
+            })
+            .collect();
+        mount(&server, sse(&frames)).await;
+        let events = drain(
+            &hosted_driver(&server, true),
+            &web_search_config("gpt-6.1-sol"),
+        )
+        .await;
+        let mut text = String::new();
+        let mut hosted = Vec::new();
+        let mut completion = None;
+        for event in events {
+            match event {
+                LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
+                LlmStreamEvent::HostedToolCall(call) => hosted.push(call),
+                LlmStreamEvent::Done(meta) => completion = Some(meta),
+                LlmStreamEvent::Error(error) => {
+                    panic!("search status must not fail the response: {error:?}")
+                }
+                LlmStreamEvent::ToolCalls(calls) => {
+                    panic!("must not dispatch hosted calls: {calls:?}")
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(text, "Released");
+        assert_eq!(hosted.len(), 2);
+        assert_eq!(hosted[0].status, HostedToolCallStatus::InProgress);
+        assert_eq!(hosted[1].status, HostedToolCallStatus::Failed, "{status}");
+        assert_eq!(hosted[1].summary.as_deref(), Some("everruns release"));
+        let completion = completion.expect("partial answer still completes");
+        assert_eq!(completion.web_citations.len(), 1);
+        assert_eq!(
+            completion.web_citations[0].url,
+            "https://everruns.com/blog/"
+        );
+        assert_eq!(
+            completion.hosted_tool_calls.get("web_search_call"),
+            Some(&1)
+        );
+        assert_eq!(completion.finish_reason.as_deref(), Some("stop"));
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    }
+}
