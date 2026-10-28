@@ -142,6 +142,30 @@ it("keeps built-in collection identity read-only and rejects mixed patches atomi
   expect(read().values).toEqual(before.values);
 });
 
+it("recognizes saved rules despite server key ordering and follows a later field Undo", () => {
+  const tree = (initial: KnowledgeCollection) => (
+    <PageChatProvider value={mode}>
+      <CollectionForm initial={initial} onSave={jest.fn()} />
+    </PageChatProvider>
+  );
+  const view = render(tree(collection));
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Reviewed" } });
+  // A native Save returns canonical JSON, rather than the textarea's key order.
+  const saved = {
+    ...collection,
+    name: "Reviewed",
+    revision: 2,
+    rules: { index_exclude: [], ingest_exclude: [], read_exclude: [] },
+  };
+  view.rerender(tree(saved));
+  expect(read().dirty).toBe(false);
+  expect(screen.getByRole("button", { name: "Save settings" })).toBeEnabled();
+  expect(screen.queryByText("The saved version changed")).not.toBeInTheDocument();
+  view.rerender(tree({ ...saved, name: collection.name, revision: 3 }));
+  expect(screen.getByLabelText("Name")).toHaveValue(collection.name);
+  expect(read().dirty).toBe(false);
+});
+
 it("never reads or patches the new search account's write-only key", () => {
   const onSaved = jest.fn();
   render(
