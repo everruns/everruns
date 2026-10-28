@@ -62,7 +62,8 @@ impl GrpcClient {
                 });
             return Ok(Self::from_channel(channel));
         }
-        let scheme = if tls.is_some() { "https" } else { "http" };
+        let uses_tls = tls.is_some();
+        let scheme = if uses_tls { "https" } else { "http" };
         let mut endpoint = tonic::transport::Endpoint::from_shared(format!("{scheme}://{addr}"))
             .map_err(|e| AgentLoopError::store(format!("Invalid gRPC endpoint: {}", e)))?
             .timeout(timeout);
@@ -76,10 +77,17 @@ impl GrpcClient {
                     AgentLoopError::store(format!("Invalid gRPC client TLS configuration: {e}"))
                 })?;
         }
-        let channel = endpoint
-            .connect()
-            .await
-            .map_err(|e| AgentLoopError::store(format!("gRPC connection failed: {e}")))?;
+        // Hyper's TCP timeout excludes DNS. Bound the complete initial TLS
+        // connection too; retain connector/handshake limits for reconnects.
+        let connecting = endpoint.connect();
+        let channel = if uses_tls {
+            tokio::time::timeout(timeout, connecting)
+                .await
+                .map_err(|_| AgentLoopError::store("gRPC TLS connection deadline exceeded"))?
+        } else {
+            connecting.await
+        }
+        .map_err(|e| AgentLoopError::store(format!("gRPC connection failed: {e}")))?;
         Ok(Self::from_channel(channel))
     }
 
