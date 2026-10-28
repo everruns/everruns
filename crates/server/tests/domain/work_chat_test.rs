@@ -946,3 +946,41 @@ async fn work_chat_shared_pages_advance_past_oversized_messages() {
     assert!(older["data"].to_string().contains("Record 1"));
     assert!(older["before"].is_null());
 }
+
+#[tokio::test]
+async fn work_chat_message_submission_fits_worker_thread_stack() {
+    let server = std::sync::Arc::new(TestServer::in_memory().await);
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    publish(&server, &channel).await.assert_success();
+    let token = consumer_token(&server, &channel, "small-stack-consumer").await;
+    let base = format!("/v1/channels/{}", channel.channel_id);
+    let session: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions"),
+        Some(&token),
+        Some(json!({})),
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json();
+    let path = format!(
+        "{base}/sessions/{}/messages",
+        session["id"].as_str().unwrap()
+    );
+    let request_server = server.clone();
+    let response = tokio::task::spawn_blocking(move || {
+        std::thread::Builder::new()
+            .name("work-chat-http-stack".into())
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || {
+                tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
+                    .block_on(async {
+                        call(&request_server, Method::POST, &path, Some(&token),
+                            Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Render a report"}]},"controls":{"reasoning":{"effort":"low"}}})))
+                            .await
+                    })
+            }).unwrap().join().unwrap()
+    }).await.unwrap();
+    response.assert_status(StatusCode::CREATED);
+}

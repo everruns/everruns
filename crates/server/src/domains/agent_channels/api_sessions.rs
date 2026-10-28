@@ -487,33 +487,32 @@ pub async fn send_api_message(
             json!(user.virtual_user_id.to_string()),
         );
     }
-    Ok(message_service
-        .create(
-            CreateMessageContext {
-                runtime_subject_principal_id: caller.end_user_id().map(|user| user.principal_id),
-                org_id: context.org_id,
-                user_id: None,
-                harness_id: context.harness_id.uuid(),
-                agent_id: Some(context.agent_internal_id),
-                session_id: session_id.uuid(),
-                event_metadata: Some(execution_metadata::channel_message_metadata(
-                    context.public_id,
-                    context.owner_principal_id,
-                    context.virtual_user_id,
-                )),
-                request_id,
-            },
-            CreateMessageRequest {
-                message,
-                addressed_participant_id: None,
-                controls,
-                metadata: Some(metadata),
-                tags: None,
-                external_actor: None,
-                client_message_id: None,
-            },
-        )
-        .await?)
+    Ok(Box::pin(message_service.create(
+        CreateMessageContext {
+            runtime_subject_principal_id: caller.end_user_id().map(|user| user.principal_id),
+            org_id: context.org_id,
+            user_id: None,
+            harness_id: context.harness_id.uuid(),
+            agent_id: Some(context.agent_internal_id),
+            session_id: session_id.uuid(),
+            event_metadata: Some(execution_metadata::channel_message_metadata(
+                context.public_id,
+                context.owner_principal_id,
+                context.virtual_user_id,
+            )),
+            request_id,
+        },
+        CreateMessageRequest {
+            message,
+            addressed_participant_id: None,
+            controls,
+            metadata: Some(metadata),
+            tags: None,
+            external_actor: None,
+            client_message_id: None,
+        },
+    ))
+    .await?)
 }
 
 /// Event types each visibility reads from storage. `None` reads every type.

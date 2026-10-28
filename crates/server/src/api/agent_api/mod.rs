@@ -678,7 +678,9 @@ async fn send_message(
         target: format!("{}/{session_id}", auth.channel.public_id),
         body,
     };
-    let send = send_message_now(state, &auth, session_id, request_id, body);
+    // Message submission carries a large service future in debug builds. Keep
+    // it off the HTTP task state so ordinary Tokio worker stacks remain safe.
+    let send = Box::pin(send_message_now(state, &auth, session_id, request_id, body));
     run_once(state, headers, retry, send).await
 }
 
