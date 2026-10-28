@@ -3,6 +3,8 @@ pub mod auth;
 mod driver;
 pub mod login;
 pub mod oauth;
+#[cfg(feature = "codex")]
+pub(crate) use driver::list_catalog;
 pub use driver::{ChatGptChatDriver, REJECTED_FIELDS, descriptor, provider, register_driver};
 use serde::{Deserialize, Serialize};
 
