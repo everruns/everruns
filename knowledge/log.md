@@ -6,7 +6,6 @@
 
 - Clarified custom-worker Agent identity, operator provisioning, inline tool code, ordinary API invocation and the Slack Direct-reply boundary, including unqualified live Slack behavior. See [Custom workers](operations/custom-workers.md).
 
-
 - Clarified unreleased Framework batch installation and pinned its source revision in the [public guide](../docs/framework/batch-model-requests.md).
 
 - Move console and Work Chat type checks to pinned `tsrs`, with route generation and a mandatory build gate. Retain TypeScript for API consumers. See [Code Organization](foundations/code-organization.md).

@@ -343,7 +343,6 @@ an internal fleet credential. The control plane retains intake, actor leases and
 canonical event fan-out. See [Custom workers](../operations/custom-workers.md)
 for authority, persistent routing, recovery responsibilities and isolation limits.
 
-
 ### Worker ↔ Control-Plane Communication
 
 Workers communicate with the control-plane via gRPC instead of direct database access:
