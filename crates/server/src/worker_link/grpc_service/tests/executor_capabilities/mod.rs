@@ -16,6 +16,7 @@ use std::{sync::Mutex, time::Duration};
 use tonic::codegen::{Service as _, http};
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity, ServerTlsConfig};
 
+mod journal_snapshot;
 mod lifecycle;
 mod negatives;
 mod protection_floor;

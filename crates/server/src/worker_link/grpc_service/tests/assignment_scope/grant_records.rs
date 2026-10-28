@@ -43,7 +43,7 @@ async fn a_retained_grant_cannot_be_retargeted_extended_unrevoked_or_recreated()
                 .unwrap_err(),
         );
     }
-    scope.admit_read(db, own).await.unwrap();
+    scope.read_journal(db, own, None, 1).await.unwrap();
     assert!(
         db.revoke_worker_journal_read_grant(2, scope.grant_id)
             .await
@@ -84,7 +84,11 @@ async fn a_retained_grant_cannot_be_retargeted_extended_unrevoked_or_recreated()
         Some("23505")
     );
     assert_eq!(
-        scope.admit_read(db, own).await.unwrap_err().code(),
+        scope
+            .read_journal(db, own, None, 1)
+            .await
+            .unwrap_err()
+            .code(),
         tonic::Code::PermissionDenied
     );
 }
@@ -142,7 +146,7 @@ async fn revoking_one_org_cannot_revoke_another_orgs_grant() {
             .await
             .unwrap()
     );
-    b.admit_read(&service.db, foreign).await.unwrap();
+    b.read_journal(&service.db, foreign, None, 1).await.unwrap();
     assert!(
         service
             .db
@@ -151,10 +155,13 @@ async fn revoking_one_org_cannot_revoke_another_orgs_grant() {
             .unwrap()
     );
     assert_eq!(
-        b.admit_read(&service.db, foreign).await.unwrap_err().code(),
+        b.read_journal(&service.db, foreign, None, 1)
+            .await
+            .unwrap_err()
+            .code(),
         tonic::Code::PermissionDenied
     );
-    a.admit_read(&service.db, own).await.unwrap();
+    a.read_journal(&service.db, own, None, 1).await.unwrap();
 }
 
 #[tokio::test]
@@ -176,7 +183,11 @@ async fn retained_grant_tombstones_allow_parent_session_deletion() {
             .unwrap();
     assert_eq!(count, 0);
     assert_eq!(
-        scope.admit_read(&service.db, own).await.unwrap_err().code(),
+        scope
+            .read_journal(&service.db, own, None, 1)
+            .await
+            .unwrap_err()
+            .code(),
         tonic::Code::PermissionDenied
     );
 }

@@ -310,7 +310,7 @@ async fn scoped_journal_does_not_fall_back_when_online_admission_is_unavailable(
     db.database().pool().close().await;
     // The grant admission remains independently fail-closed; wire calls now
     // stop at the earlier, uncached ingress-floor lookup.
-    let grant_failure = scope.admit_read(&db, own).await.unwrap_err();
+    let grant_failure = scope.read_journal(&db, own, None, 1).await.unwrap_err();
     assert_eq!(grant_failure.code(), tonic::Code::Internal);
     assert_eq!(
         grant_failure.message(),

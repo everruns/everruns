@@ -18,6 +18,15 @@ pub struct WorkerJournalCapabilityBinding {
     pub(crate) fence: i64,
 }
 
+/// Explicit proof mode; absence cannot promote verified authority to a selector.
+pub(crate) enum WorkerJournalReadIdentity<'a> {
+    Assignment,
+    Verified {
+        certificate_sha256: &'a [u8; 32],
+        capability_sha256: &'a [u8; 32],
+    },
+}
+
 /// One `session_actors` row: whether a session has work for a worker, and who
 /// runs it. Holds no turn state; the session's event log is that.
 #[derive(Debug, Clone, FromRow, Columns)]

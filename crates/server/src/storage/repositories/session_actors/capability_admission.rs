@@ -8,6 +8,20 @@ impl Database {
         certificate_sha256: &[u8; 32],
         capability_sha256: &[u8; 32],
     ) -> anyhow::Result<Option<WorkerJournalCapabilityBinding>> {
+        let mut connection = self.pool.acquire().await?;
+        Self::resolve_worker_journal_capability_on(
+            &mut connection,
+            certificate_sha256,
+            capability_sha256,
+        )
+        .await
+    }
+
+    pub(super) async fn resolve_worker_journal_capability_on(
+        connection: &mut sqlx::PgConnection,
+        certificate_sha256: &[u8; 32],
+        capability_sha256: &[u8; 32],
+    ) -> anyhow::Result<Option<WorkerJournalCapabilityBinding>> {
         Ok(sqlx::query_as(
             "SELECT g.id AS grant_id, g.executor_id, g.org_id, g.session_id, \
                     g.lease_holder AS holder, g.lease_fence AS fence \
@@ -47,7 +61,7 @@ impl Database {
         )
         .bind(capability_sha256.as_slice())
         .bind(certificate_sha256.as_slice())
-        .fetch_optional(&self.pool)
+        .fetch_optional(connection)
         .await?)
     }
 

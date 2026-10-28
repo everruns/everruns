@@ -633,10 +633,14 @@ without captured origins or dependencies fail closed rather than being backfille
 Registration locks source records before the assignment. Creation serializes
 against lifecycle changes. Online admission checks current versions as well as
 revocation, so a racing uncommitted registration cannot escape by missing an
-update notification. Admission linearizes at the database statement snapshot:
-a revocation committed before admission is denied; an earlier admitted read can
-finish afterward. Retained contexts and new connections both recheck. There is
-no promise to retract data already delivered or synchronously stop in-flight reads.
+update notification. Scoped reads use one
+[read-only snapshot](../../crates/server/src/storage/repositories/session_actors/journal_snapshot.rs)
+for the protection floor, authority, journal page and head metadata. A revocation
+committed before that snapshot is denied. An earlier snapshot may finish afterward,
+but cannot fetch later-committed journal events or head metadata. Retained contexts,
+subsequent pages and new connections all recheck. This does not retract delivered
+data or synchronously stop in-flight reads. Snapshot lifetime and transaction round
+trips still need production-scale budget qualification before activation.
 
 The source-only [worker ingress floor](../../crates/server/migrations/20261028140332_worker_ingress_protection_floor.sql)
 closes canonical legacy wire access before protected capability enrollment.
