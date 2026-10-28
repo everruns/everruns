@@ -409,7 +409,8 @@ Each step is one PR and leaves `main` working.
 3. **Anthropic driver** renders changes inline and Session Trace shows them;
    profile flag for verified families; live tests once the key has credit.
    Done: the request side; Session Trace listing each call's change
-   (`llm.generation` carries it as `metadata.tool_changes`; a cache reset is
+   (stored `llm.generation` carries it as `metadata.tool_changes`, withheld
+   from public event responses while Trace retains its name summary; a cache reset is
    blamed on tools only when the provider body's tools changed); and the live
    cache test, which widened the flag to Opus 5 and 4.8, Haiku 5.5 and Fable
    5.1 (see the 2026-10-12 driver results above).

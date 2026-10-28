@@ -162,7 +162,9 @@ impl MessageService {
         req: CreateMessageRequest,
         prefetch: CreateMessagePrefetch,
     ) -> Result<Message> {
-        self.create_inner(ctx, req, prefetch, None).await
+        // Keep the intake future off nested HTTP handler stacks. Agent API
+        // sends add enough wrappers to overflow a default debug worker stack.
+        Box::pin(self.create_inner(ctx, req, prefetch, None)).await
     }
 
     /// [`Self::create`] for a message whose turn runs a saved script instead
@@ -552,6 +554,7 @@ impl MessageService {
                 (runtime_message, stored_event.sequence.unwrap_or(0))
             };
 
+            let runtime_message = runtime_message.into_public();
             let message = Message {
                 id: runtime_message.id,
                 session_id,
@@ -817,20 +820,18 @@ impl MessageService {
                     _ => return Err("unexpected event type".to_string()),
                 };
 
+                let core_message = core_message.clone().into_public();
                 Ok(Message {
                     id: core_message.id,
                     session_id: SessionId::from_uuid(session_id),
                     sequence,
                     role: MessageRole::from(core_message.role.to_string().as_str()),
-                    // `to_public` drops signatures and encrypted payloads:
-                    // replay state is not content and must not cross an API
-                    // boundary.
-                    content: core_message.clone().into_public().content,
+                    content: core_message.content,
                     phase: core_message.phase,
                     phase_source: core_message.phase_source,
-                    controls: core_message.controls.clone(),
-                    metadata: core_message.metadata.clone(),
-                    external_actor: core_message.external_actor.clone(),
+                    controls: core_message.controls,
+                    metadata: core_message.metadata,
+                    external_actor: core_message.external_actor,
                     delivery: None,
                     created_at: core_message.created_at,
                 })
@@ -868,7 +869,7 @@ impl MessageService {
 /// The stored user message a duplicate send resolves to.
 fn stored_input_message(row: crate::storage::EventRow) -> Result<Message> {
     let data: InputMessageData = serde_json::from_value(row.data)?;
-    let message = data.message;
+    let message = data.message.into_public();
     Ok(Message {
         id: message.id,
         session_id: row.session_id,

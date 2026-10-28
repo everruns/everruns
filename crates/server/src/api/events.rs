@@ -325,10 +325,9 @@ pub async fn stream_sse(
 /// Ephemeral events (no sequence) get no `id:` field — the client's last-event-id
 /// stays pointing to the most recent durable event.
 fn canonical_sse(event: &Event, retry: Duration) -> Option<SseEvent> {
-    // Same projection the list path applies (EVE-933): reasoning replay
-    // state is stored but never published. Cloning only for the variants
-    // that carry a message keeps the delta stream allocation-free.
-    let json = if event.data.needs_public_projection() {
+    // The list path and every SSE delivery (live or replayed) share the
+    // metadata/replay projection. Deltas without metadata need no clone.
+    let json = if event.metadata.is_some() || event.data.needs_public_projection() {
         serde_json::to_string(&event.clone().into_public())
     } else {
         serde_json::to_string(event)
@@ -904,6 +903,30 @@ mod tests {
     use everruns_contracts::typed_id::{MessageId, TurnId};
     use everruns_core::VALID_EVENT_TYPES;
     use everruns_core::events::{EventData, OutputMessageDeltaData};
+
+    #[tokio::test]
+    async fn live_and_replayed_sse_filter_metadata_even_without_message_payloads() {
+        use axum::response::IntoResponse;
+        for sequence in [None, Some(1)] {
+            let mut event = test_event(Uuid::now_v7(), "output.message.delta");
+            event.sequence = sequence;
+            event.metadata = Some(
+                serde_json::json!({"initiator":{"type":"user","user_id":"u1"},"authority":"CANARY"}),
+            );
+            let frame = canonical_sse(&event, Duration::from_secs(1)).unwrap();
+            let response = Sse::new(futures::stream::iter([Ok::<_, std::convert::Infallible>(
+                frame,
+            )]))
+            .into_response();
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let text = String::from_utf8(body.to_vec()).unwrap();
+            assert!(!text.contains("CANARY"));
+            assert!(text.contains("u1"));
+            assert_eq!(text.contains("id:"), sequence.is_some());
+        }
+    }
 
     fn test_event(session_id: Uuid, event_type: &str) -> Event {
         Event {

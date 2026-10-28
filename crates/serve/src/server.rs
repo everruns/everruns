@@ -454,7 +454,7 @@ pub(crate) async fn create_message(
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     if let Some(metadata) = body.metadata {
-        message["metadata"] = metadata;
+        message["metadata"] = everruns_contracts::public_metadata::message(&metadata);
     }
     Ok((StatusCode::CREATED, Json(message)).into_response())
 }

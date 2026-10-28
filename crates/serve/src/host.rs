@@ -1413,9 +1413,8 @@ impl AskUser for Gate {
 use everruns::hosting::validate_question_answers as validate_answers;
 
 /// The event envelope the wire API sends: the complete canonical envelope,
-/// with reasoning replay state stripped the way the everruns server's public
-/// projection does (opaque provider parts dropped; reasoning signatures and
-/// encrypted payloads removed).
+/// with runtime metadata and reasoning replay state projected the way the
+/// everruns server's public responses are.
 pub(crate) fn wire_json(event: &SessionEvent) -> Value {
     everruns_contracts::execution_api::public_event(event.canonical_json())
 }

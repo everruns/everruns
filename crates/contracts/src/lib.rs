@@ -88,6 +88,7 @@ pub mod openresponses_types;
 pub mod provider;
 pub mod provider_limit;
 mod provider_managed;
+pub mod public_metadata;
 pub mod reasoning;
 pub mod retry_failure;
 pub mod rt;
