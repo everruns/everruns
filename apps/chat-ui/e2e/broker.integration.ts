@@ -4,13 +4,18 @@ import assert from "node:assert/strict";
 import { createServer as httpServer, request as proxyRequest } from "node:http";
 import { createServer as httpsServer } from "node:https";
 import { generateKeyPairSync, sign, randomUUID, createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { Pool } from "pg";
 import { chromium } from "@playwright/test";
 async function main() {
+  // Exercise the shipped build: the HTTPS fixture deliberately does not proxy
+  // Next's development-only HMR websocket, which can hold hydration open.
+  assert.ok(existsSync(".next/BUILD_ID"), "Run pnpm build before the HTTPS broker test");
+  const serverRoot = join(".next", "standalone", "apps", "chat-ui");
+  cpSync(".next/static", join(serverRoot, ".next", "static"), { recursive: true });
   const database = process.env.TEST_CHAT_DATABASE_URL;
   assert.ok(database, "TEST_CHAT_DATABASE_URL must name a disposable local database");
   const pool = new Pool({ connectionString: database }),
@@ -113,17 +118,43 @@ async function main() {
   });
   let admissions = 0;
   const api = httpServer((request, response) => {
-    if (request.url?.endsWith("/chat/config"))
+    const path = new URL(request.url!, "http://execution.test").pathname;
+    if (path.endsWith("/chat/config"))
       return json(response, {
         name: "Broker integration",
         interface_mode: "multi_chat",
         features: { threads: false, files: false },
       });
-    if (request.url?.endsWith("/runtime-auth")) {
+    if (path.includes("/chat/shared/")) {
+      assert.equal(
+        request.headers["x-forwarded-for"],
+        "127.0.0.1",
+        "public read uses the ingress peer chain",
+      );
+      assert.equal(
+        request.headers.authorization,
+        undefined,
+        "public read forwards no consumer credential",
+      );
+      return json(response, { title: "Public report", data: [], before: null });
+    }
+    if (path.endsWith("/runtime-auth")) {
       admissions++;
       return json(response, { access_token: "execution-fixture-token" });
     }
-    if (request.url?.endsWith("/sessions")) return json(response, { data: [] });
+    if (path.endsWith("/sessions")) return json(response, { data: [] });
+    if (path.endsWith("/sessions/session_broker_test"))
+      return json(response, {
+        id: "session_broker_test",
+        title: "Broker integration",
+        status: "idle",
+      });
+    if (path.endsWith("/work")) return json(response, { data: [] });
+    if (path.endsWith("/sse")) {
+      response.setHeader("Content-Type", "text/event-stream");
+      response.end();
+      return;
+    }
     response.writeHead(404);
     response.end();
   });
@@ -164,10 +195,12 @@ async function main() {
       new Promise<void>((r) => api.listen(9152, "127.0.0.1", r)),
       new Promise<void>((r) => edge.listen(443, r)),
     ]);
-    next = spawn("node", ["node_modules/next/dist/bin/next", "dev", "--port", "9150"], {
+    next = spawn("node", [join(serverRoot, "server.js")], {
       stdio: "inherit",
       env: {
         ...process.env,
+        PORT: "9150",
+        HOSTNAME: "127.0.0.1",
         NODE_EXTRA_CA_CERTS: cert,
         CHAT_DOMAIN: "localhost",
         CHAT_LOGIN_LIMIT_PER_10_MINUTES: "6",
@@ -193,19 +226,51 @@ async function main() {
       host = "01933b5a000070008000000000000001.localhost",
       origin = `https://${host}`;
 
+    page.on("console", (entry) => {
+      if (entry.type() === "error") console.error("Browser console:", entry.text());
+    });
+    page.on("pageerror", (error) => console.error("Browser error:", error.message));
+    page.on("requestfailed", (request) =>
+      console.error(
+        "Browser request failed:",
+        new URL(request.url()).pathname,
+        request.failure()?.errorText,
+      ),
+    );
+    assert.equal(
+      (
+        await context.request.get(
+          `${origin}/api/chat/shared/01933b5a-0000-7000-8000-000000000001`,
+          {
+            headers: { "x-forwarded-for": "203.0.113.9" },
+          },
+        )
+      ).status(),
+      200,
+      "signed-out shared transcript uses the public proxy path",
+    );
     let handoff = "";
     page.on("response", (res) => {
+      if (res.status() >= 400)
+        console.error("Browser HTTP:", res.status(), new URL(res.url()).pathname);
       const location = res.headers()["location"];
       if (location?.includes("/auth/complete?")) handoff = location;
     });
-    await page.goto(`${origin}/auth/start?session=session_broker_test`);
+    await page.goto(`${origin}/auth/start?session=session_broker_test`, { timeout: 120000 });
     await page
       .waitForURL(`${origin}/?session=session_broker_test`, { timeout: 60000 })
       .catch(async (error) => {
-        console.log("FAILED PAGE", await page.textContent("body"));
+        console.log("FAILED PAGE", await page.locator("body").innerText());
         throw error;
       });
-    await page.waitForFunction(() => document.body.textContent?.includes("New conversation"));
+    await page
+      .waitForFunction(() => document.body.textContent?.includes("New conversation"), undefined, {
+        timeout: 120000,
+      })
+      .catch(async (error) => {
+        console.log("FAILED PAGE", await page.locator("body").innerText());
+        throw error;
+      });
     const cookies = await context.cookies(),
       session = cookies.find((cookie) => cookie.name === "__Host-everruns_chat");
     assert.ok(session);

@@ -3,7 +3,7 @@ import { tokenFor, recoveryScope } from "../../../server/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const allowed =
-  /^(sessions(?:\/[a-zA-Z0-9_-]+(?:\/(?:messages|events|sse|cancel|question-answers|tool-approvals|files|work))?)?|chat\/(?:main|config)|virtual-users\/me(?:\/connections(?:\/[a-zA-Z0-9_-]+(?:\/authorize)?)?)?)$/;
+  /^(sessions(?:\/[a-zA-Z0-9_-]+(?:\/(?:messages|events|sse|cancel|question-answers|tool-approvals|files|work|settings|share))?)?|chat\/(?:main|config|shared\/[a-zA-Z0-9_-]+)|virtual-users\/me(?:\/connections(?:\/[a-zA-Z0-9_-]+(?:\/authorize)?)?)?)$/;
 async function proxy(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   try {
     const path = (await params).path.join("/");
@@ -13,6 +13,26 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
     if (path === "chat/config") {
       if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
       return Response.json(await bootstrap(channel), { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path.startsWith("chat/shared/")) {
+      if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
+      const response = await fetch(
+        `${settings().upstream}/v1/channels/${channel}/${path}${new URL(request.url).search}`,
+        {
+          cache: "no-store",
+          redirect: "error",
+          signal: AbortSignal.timeout(10000),
+          // The private host sits behind an ingress that sets this chain.
+          // Preserve it so the API can apply its trusted-proxy hop policy per viewer.
+          headers: request.headers.has("x-forwarded-for")
+            ? { "X-Forwarded-For": request.headers.get("x-forwarded-for")! }
+            : undefined,
+        },
+      );
+      return new Response(response.body, {
+        status: response.status,
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
     }
     if (request.method !== "GET" && !safeMutation(request))
       return new Response("Forbidden", { status: 403 });

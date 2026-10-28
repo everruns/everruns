@@ -1,5 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MessageContent } from "./message-content";
+import { FilePreview, downloadFile } from "./file-preview";
+import { WorkLog, workForMessages } from "./work-log";
+import { conversationMessages } from "./transcript";
+import { SharedChat } from "./shared-chat";
 import { consumeSse } from "../client/sse";
 import {
   recoveryKey,
@@ -10,25 +15,29 @@ import {
   retryable,
   type PendingMessage,
 } from "../client/recovery";
-import { Streamdown } from "streamdown";
 
 type Config = {
   name: string;
   description?: string;
   interface_mode: "single_with_threads" | "multi_chat";
   features: { threads: boolean; files: boolean };
+  models?: Array<{ id: string; name: string }>;
 };
 type Question = {
   id: string;
   question: string;
   options?: Array<{ label: string; description?: string }>;
   multi_select?: boolean;
+  kind?: string;
+  allow_other?: boolean;
 };
 type Session = {
   id: string;
   title?: string;
   parent_session_id?: string;
   status: string;
+  archived?: boolean;
+  pinned?: boolean;
   pending_approvals?: Array<{
     tool_call_id: string;
     answerable: boolean;
@@ -37,10 +46,23 @@ type Session = {
   }>;
   pending_questions?: Array<{ tool_call_id: string; questions: Question[] }>;
 };
-type Event = { id?: string; sequence?: number; type: string; data: Record<string, unknown> };
-type Message = { id: string; role: string; text: string };
-type FileInfo = { name: string; path: string; is_directory: boolean; is_readonly?: boolean };
-type FileContent = FileInfo & { content?: string; encoding?: string; revision?: string };
+type Event = {
+  id?: string;
+  sequence?: number;
+  type: string;
+  data: Record<string, unknown>;
+};
+type FileInfo = {
+  name: string;
+  path: string;
+  is_directory: boolean;
+  is_readonly?: boolean;
+};
+type FileContent = FileInfo & {
+  content?: string;
+  encoding?: string;
+  revision?: string;
+};
 type Work = {
   id: string;
   title?: string;
@@ -80,52 +102,15 @@ async function api<T>(
   }
   return response.json();
 }
-function messageOf(event: Event): Message | null {
-  if (!["input.message", "output.message.completed"].includes(event.type)) return null;
-  const data = event.data as {
-    message?: { id?: string; role?: string; content?: Array<{ type: string; text?: string }> };
-    id?: string;
-    role?: string;
-    content?: Array<{ type: string; text?: string }>;
-  };
-  const message = data.message ?? data;
-  const text = (message.content ?? [])
-    .filter((part) => part.type === "text")
-    .map((part) => part.text ?? "")
-    .join("\n");
-  return text
-    ? {
-        id: message.id ?? event.id ?? "",
-        role: message.role ?? (event.type === "input.message" ? "user" : "assistant"),
-        text,
-      }
-    : null;
-}
-function conversationMessages(events: Event[]): Message[] {
-  const messages = new Map<string, Message>();
-  for (const event of events) {
-    const message = messageOf(event);
-    if (message) {
-      messages.set(message.id, message);
-      continue;
-    }
-    if (event.type === "output.message.delta") {
-      const id = String(event.data.message_id ?? "");
-      if (!id) continue;
-      const previous = messages.get(id);
-      messages.set(id, {
-        id,
-        role: "assistant",
-        text:
-          typeof event.data.accumulated === "string"
-            ? event.data.accumulated
-            : (previous?.text ?? "") + String(event.data.delta ?? ""),
-      });
-    }
-  }
-  return [...messages.values()];
-}
 export function Chat({ config }: { config: Config }) {
+  const [share, setShare] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    setShare(new URLSearchParams(window.location.search).get("share"));
+  }, []);
+  if (share === undefined) return <p role="status">Loading chat…</p>;
+  return share ? <SharedChat token={share} name={config.name} /> : <WorkChat config={config} />;
+}
+function WorkChat({ config }: { config: Config }) {
   const [sessions, setSessions] = useState<Session[]>([]),
     [selected, setSelected] = useState<string | null>(null),
     [main, setMain] = useState<string | null>(null);
@@ -172,7 +157,10 @@ export function Chat({ config }: { config: Config }) {
     }
   }, []);
   useEffect(() => {
-    let value = recoveryRecords.current.get(selectionKey) ?? { draft: "", pending: undefined };
+    let value = recoveryRecords.current.get(selectionKey) ?? {
+      draft: "",
+      pending: undefined,
+    };
     if (localKey) {
       try {
         value = readRecovery(localKey);
@@ -184,11 +172,14 @@ export function Chat({ config }: { config: Config }) {
     recoveryRecords.current.set(selectionKey, value);
     setDraft(value.draft);
     setPending(value.pending);
-    setUpload(null);
+    setUpload([]);
   }, [selectionKey, localKey]);
   const changeDraft = (text: string) => {
     setDraft(text);
-    store(selectionKey, { ...recoveryRecords.current.get(selectionKey), draft: text });
+    store(selectionKey, {
+      ...recoveryRecords.current.get(selectionKey),
+      draft: text,
+    });
   };
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null),
@@ -199,8 +190,15 @@ export function Chat({ config }: { config: Config }) {
     [path, setPath] = useState("/workspace"),
     [file, setFile] = useState<FileContent | null>(null),
     [edit, setEdit] = useState("");
-  const [upload, setUpload] = useState<File | null>(null),
+  const [upload, setUpload] = useState<File[]>([]),
     [sidebar, setSidebar] = useState(false);
+  const [search, setSearch] = useState(""),
+    [archived, setArchived] = useState(false),
+    [nextPage, setNextPage] = useState<string | null>(null);
+  const [notice, setNotice] = useState(""),
+    [model, setModel] = useState(""),
+    [effort, setEffort] = useState("");
+  const [preview, setPreview] = useState(true);
   const end = useRef<HTMLDivElement>(null),
     generation = useRef(0),
     lastSequence = useRef(0);
@@ -223,7 +221,8 @@ export function Chat({ config }: { config: Config }) {
           next.name !== config.name ||
           next.description !== config.description ||
           next.features.files !== config.features.files ||
-          next.features.threads !== config.features.threads
+          next.features.threads !== config.features.threads ||
+          JSON.stringify(next.models) !== JSON.stringify(config.models)
         )
           window.location.reload();
       } catch {
@@ -251,7 +250,10 @@ export function Chat({ config }: { config: Config }) {
     window.history.replaceState(null, "", url);
   }, [selected]);
   const refresh = useCallback(async () => {
-    const list = await api<{ data: Session[] }>("sessions?limit=100");
+    const list = await api<{ data: Session[]; next_page_token?: string }>(
+      "sessions?limit=100&include_archived=true",
+    );
+    setNextPage(list.next_page_token ?? null);
     const roots = list.data.filter((session) => !session.parent_session_id);
     setSessions(roots);
     if (!accessDenied.current) setSignedIn(true);
@@ -396,17 +398,18 @@ export function Chat({ config }: { config: Config }) {
       fail(error);
     }
   };
-  const send = async (retry = false) => {
+  const send = async (text = draft, { fromWidget = false, retry = false } = {}) => {
+    const submittedFiles = fromWidget ? [] : upload;
     if (
       retired.current ||
       busyRef.current ||
+      session?.archived ||
       recoveryScope === undefined ||
       (pending && !retry) ||
-      (!pending && !draft.trim() && !upload)
+      (!pending && !text.trim() && !submittedFiles.length)
     )
       return;
     const submittedDraft = draft,
-      submittedUpload = upload,
       scope = recoveryScope;
     busyRef.current = true;
     setBusy(true);
@@ -431,30 +434,33 @@ export function Chat({ config }: { config: Config }) {
       const key = scope ? recoveryKey(scope, id) : `memory:${id}`;
       let submission = pending;
       if (!submission) {
-        const attachments = submittedUpload
-          ? [
-              {
-                name: submittedUpload.name,
-                media_type: submittedUpload.type || "application/octet-stream",
-                data: await new Promise<string>((resolve, reject) => {
-                  const reader = new FileReader();
-                  reader.onload = () => resolve(String(reader.result).split(",")[1]);
-                  reader.onerror = reject;
-                  reader.readAsDataURL(submittedUpload);
-                }),
-              },
-            ]
-          : [];
+        const attachments = await Promise.all(
+          submittedFiles.map(async (file) => ({
+            name: file.name,
+            media_type: file.type || "application/octet-stream",
+            data: await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(String(reader.result).split(",")[1]);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            }),
+          })),
+        );
         if (!currentIntent()) return;
         submission = {
           key: crypto.randomUUID(),
           createdAt: Date.now(),
+          fromWidget,
           body: {
             message: {
               role: "user",
-              content: submittedDraft.trim() ? [{ type: "text", text: submittedDraft }] : [],
+              content: text.trim() ? [{ type: "text", text }] : [],
             },
             files: attachments,
+            controls: {
+              ...(model ? { model_id: model } : {}),
+              ...(effort ? { reasoning: { effort } } : {}),
+            },
           },
         };
         store(key, { draft: submittedDraft, pending: submission });
@@ -473,19 +479,22 @@ export function Chat({ config }: { config: Config }) {
       await api(`sessions/${id}/messages`, "POST", submission.body, submission.key);
       const live = currentRef.current.scope === scope && currentRef.current.selected === id;
       const originalText = (
-        (submission.body as { message?: { content?: Array<{ type: string; text?: string }> } })
-          .message?.content ?? []
+        (
+          submission.body as {
+            message?: { content?: Array<{ type: string; text?: string }> };
+          }
+        ).message?.content ?? []
       )
         .filter((part) => part.type === "text")
         .map((part) => part.text ?? "")
         .join("\n");
       const savedDraft = recoveryRecords.current.get(key)?.draft ?? submittedDraft;
-      const nextDraft = savedDraft === originalText ? "" : savedDraft;
+      const nextDraft = !submission.fromWidget && savedDraft === originalText ? "" : savedDraft;
       store(key, { draft: nextDraft });
       if (live) {
         setDraft(nextDraft);
         setPending(undefined);
-        setUpload(null);
+        if (!submission.fromWidget) setUpload([]);
       }
     } catch (error) {
       if (
@@ -504,14 +513,19 @@ export function Chat({ config }: { config: Config }) {
   };
   const browse = async (next: string) => {
     if (!selected) return;
+    const epoch = generation.current;
     try {
-      const data = await api<{ data?: FileInfo[]; file?: FileContent; revision?: string }>(
-        `sessions/${selected}/files?path=${encodeURIComponent(next)}`,
-      );
+      const data = await api<{
+        data?: FileInfo[];
+        file?: FileContent;
+        revision?: string;
+      }>(`sessions/${selected}/files?path=${encodeURIComponent(next)}`);
+      if (epoch !== generation.current) return;
       setError(null);
       if (data.file) {
         setFile({ ...data.file, revision: data.revision });
         setEdit(data.file.content ?? "");
+        setPreview(/\.(html?|svg|csv|md|png|jpe?g|webp|gif)$/i.test(data.file.name));
       } else {
         setPath(next);
         setFiles(data.data ?? []);
@@ -535,21 +549,53 @@ export function Chat({ config }: { config: Config }) {
       fail(error);
     }
   };
+  const settings = async (change: Record<string, unknown>) => {
+    if (!selected) return;
+    try {
+      const next = await api<Session>(`sessions/${selected}/settings`, "POST", change);
+      setSession(next);
+      await refresh();
+    } catch (error) {
+      fail(error);
+    }
+  };
+  const addFiles = (incoming: FileList | File[]) => {
+    if (busy) return;
+    const files = [...upload, ...Array.from(incoming)];
+    if (files.length > 3 || files.reduce((size, file) => size + file.size, 0) > 4 * 1024 * 1024) {
+      fail(new Error("Attach up to 3 files, totaling at most 4 MB"));
+      return;
+    }
+    setUpload(files);
+  };
   const messages = conversationMessages(events);
-  const activity = events.filter(
-    (event) => event.type.startsWith("tool.") && event.type !== "tool.call_requested",
+  const turnWork = workForMessages(events);
+  const turnState = events.findLast((event) =>
+    ["turn.started", "turn.completed", "turn.failed", "turn.cancelled"].includes(event.type),
   );
-  const running = ["active", "started"].includes(session?.status ?? "");
+  const running = turnState
+    ? turnState.type === "turn.started"
+    : ["active", "started"].includes(session?.status ?? "");
   const choose = (id: string) => {
     const url = new URL(window.location.href);
     url.searchParams.set("session", id);
     window.history.pushState(null, "", url);
     setSelected(id);
+    setDraft("");
+    setUpload([]);
+    setNotice("");
     setSidebar(false);
     setWork([]);
   };
   return (
-    <div className="app">
+    <div
+      className="app"
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault();
+        addFiles(event.dataTransfer.files);
+      }}
+    >
       <aside className={sidebar ? "sidebar open" : "sidebar"}>
         <div className="brand">
           ◉ <span>{config.name}</span>
@@ -566,19 +612,43 @@ export function Chat({ config }: { config: Config }) {
         <div className="section-label">
           {config.interface_mode === "multi_chat" ? "Conversations" : "Threads"}
         </div>
+        <input
+          aria-label="Search conversations"
+          className="conversation-search"
+          placeholder="Search conversations…"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+        {config.interface_mode === "multi_chat" && (
+          <button className="archive-filter" onClick={() => setArchived(!archived)}>
+            {archived ? "Show active" : "Show archived"}
+          </button>
+        )}
         <nav aria-label="Conversations">
           {config.interface_mode === "multi_chat"
-            ? sessions.map((chat) => (
-                <button
-                  key={chat.id}
-                  className={selected === chat.id ? "row selected" : "row"}
-                  onClick={() => choose(chat.id)}
-                >
-                  {chat.title || "New conversation"}
-                </button>
-              ))
+            ? sessions
+                .filter(
+                  (chat) =>
+                    Boolean(chat.archived) === archived &&
+                    (chat.title ?? "New conversation").toLowerCase().includes(search.toLowerCase()),
+                )
+                .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)))
+                .map((chat) => (
+                  <button
+                    key={chat.id}
+                    className={selected === chat.id ? "row selected" : "row"}
+                    onClick={() => choose(chat.id)}
+                  >
+                    {chat.pinned ? "⌖ " : ""}
+                    {chat.title || "New conversation"}
+                  </button>
+                ))
             : work
-                .filter((task) => task.links?.child_session_id)
+                .filter(
+                  (task) =>
+                    task.links?.child_session_id &&
+                    (task.title ?? "Work thread").toLowerCase().includes(search.toLowerCase()),
+                )
                 .map((task) => (
                   <button
                     key={task.id}
@@ -589,6 +659,32 @@ export function Chat({ config }: { config: Config }) {
                     <small>{task.state}</small>
                   </button>
                 ))}
+          {nextPage && config.interface_mode === "multi_chat" && (
+            <button
+              onClick={async () => {
+                try {
+                  const page = await api<{
+                    data: Session[];
+                    next_page_token?: string;
+                  }>(
+                    `sessions?include_archived=true&limit=100&page_token=${encodeURIComponent(nextPage)}`,
+                  );
+                  setSessions((old) => [
+                    ...old,
+                    ...page.data.filter(
+                      (item) =>
+                        !item.parent_session_id && !old.some((existing) => existing.id === item.id),
+                    ),
+                  ]);
+                  setNextPage(page.next_page_token ?? null);
+                } catch (error) {
+                  fail(error);
+                }
+              }}
+            >
+              More conversations
+            </button>
+          )}
         </nav>
         <footer>
           <span>Work Chat</span>
@@ -634,6 +730,74 @@ export function Chat({ config }: { config: Config }) {
             <small>{running ? "Working" : "Ready"}</small>
           </div>
           <div className="header-actions">
+            {selected && (
+              <details className="conversation-menu">
+                <summary aria-label="Conversation actions">•••</summary>
+                <div>
+                  {(config.interface_mode === "multi_chat" || session?.parent_session_id) && (
+                    <>
+                      <button
+                        onClick={() => {
+                          const title = prompt("Conversation title", session?.title ?? "");
+                          if (title !== null) void settings({ title });
+                        }}
+                      >
+                        Rename
+                      </button>
+                      <button onClick={() => settings({ pinned: !session?.pinned })}>
+                        {session?.pinned ? "Unpin" : "Pin"}
+                      </button>
+                      <button onClick={() => settings({ archived: !session?.archived })}>
+                        {session?.archived ? "Reopen" : "Archive"}
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={async () => {
+                      if (
+                        !confirm(
+                          "Share this conversation's messages and widgets, including future messages, with anyone who has the link? Workspace files stay private.",
+                        )
+                      )
+                        return;
+                      try {
+                        const result = await api<{ token: string }>(
+                          `sessions/${selected}/share`,
+                          "POST",
+                          {},
+                        );
+                        const url = new URL(location.href);
+                        url.search = "";
+                        url.searchParams.set("share", result.token);
+                        try {
+                          await navigator.clipboard.writeText(url.toString());
+                          setNotice("Read-only link copied. A new link replaces the previous one.");
+                        } catch {
+                          setNotice(`Read-only link: ${url.toString()}`);
+                        }
+                      } catch (error) {
+                        fail(error);
+                      }
+                    }}
+                  >
+                    Share read-only link
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api(`sessions/${selected}/share`, "DELETE");
+                        setNotice("Public links revoked.");
+                      } catch (error) {
+                        fail(error);
+                      }
+                    }}
+                  >
+                    Revoke public links
+                  </button>
+                </div>
+              </details>
+            )}
+
             <button onClick={() => setPanel(panel === "work" ? null : "work")}>
               {config.features.threads ? "Threads" : "Work"} <span>{work.length || ""}</span>
             </button>
@@ -665,28 +829,52 @@ export function Chat({ config }: { config: Config }) {
               className={message.role === "user" ? "message user" : "message assistant"}
             >
               <span className="sr-only">{message.role}</span>
-              <Streamdown>{message.text}</Streamdown>
+              {message.role !== "user" && <WorkLog events={turnWork.logs.get(message.id) ?? []} />}
+              <MessageContent
+                text={message.text}
+                streaming={running && message.id === messages.at(-1)?.id}
+                onMessage={(text) => void send(text, { fromWidget: true })}
+                onFile={
+                  config.features.files
+                    ? (path) => {
+                        setPanel("files");
+                        void browse(path);
+                      }
+                    : undefined
+                }
+              />
+              {message.role !== "user" && (
+                <button
+                  className="copy-message"
+                  aria-label="Copy message"
+                  onClick={() =>
+                    navigator.clipboard
+                      .writeText(message.text)
+                      .then(() => setNotice("Message copied."))
+                      .catch(fail)
+                  }
+                >
+                  Copy
+                </button>
+              )}
             </article>
           ))}
-          {!!activity.length && (
-            <details className="activity">
-              <summary>
-                {running ? "Working" : "Work activity"} · {activity.length} updates
-              </summary>
-              {activity.slice(-50).map((event, index) => (
-                <div key={event.id ?? index}>
-                  {String(
-                    event.data.narration ??
-                      event.data.display_name ??
-                      event.data.tool_name ??
-                      event.data.activity ??
-                      (event.data.tool_call as { name?: string })?.name ??
-                      event.data.tool_name ??
-                      (event.type === "tool.started" ? "Running a tool" : "Tool completed"),
-                  )}
-                </div>
+          {running && <WorkLog events={turnWork.pending} running />}
+          {!!work.length && (
+            <div className="work-chips">
+              {work.slice(0, 8).map((task) => (
+                <button
+                  key={task.id}
+                  onClick={() =>
+                    task.links?.child_session_id
+                      ? choose(task.links.child_session_id)
+                      : setPanel("work")
+                  }
+                >
+                  {task.title || "Background work"} <small>{task.state.replaceAll("_", " ")}</small>
+                </button>
               ))}
-            </details>
+            </div>
           )}
           {session?.pending_approvals?.map((approval) => (
             <section className="request" key={approval.tool_call_id}>
@@ -701,7 +889,12 @@ export function Chat({ config }: { config: Config }) {
                   <button
                     onClick={() =>
                       api(`sessions/${selected}/tool-approvals`, "POST", {
-                        decisions: [{ tool_call_id: approval.tool_call_id, decision: "allow" }],
+                        decisions: [
+                          {
+                            tool_call_id: approval.tool_call_id,
+                            decision: "allow",
+                          },
+                        ],
                       }).catch(fail)
                     }
                   >
@@ -710,7 +903,12 @@ export function Chat({ config }: { config: Config }) {
                   <button
                     onClick={() =>
                       api(`sessions/${selected}/tool-approvals`, "POST", {
-                        decisions: [{ tool_call_id: approval.tool_call_id, decision: "reject" }],
+                        decisions: [
+                          {
+                            tool_call_id: approval.tool_call_id,
+                            decision: "reject",
+                          },
+                        ],
                       }).catch(fail)
                     }
                   >
@@ -738,6 +936,17 @@ export function Chat({ config }: { config: Config }) {
           <div ref={end} />
         </section>
         <div className="composer-area">
+          {notice && (
+            <p role="status" className="notice">
+              {notice}
+            </p>
+          )}
+          {session?.archived && (
+            <p className="notice">
+              Archived conversation.{" "}
+              <button onClick={() => settings({ archived: false })}>Reopen</button>
+            </p>
+          )}
           {storageError && (
             <p role="alert">
               Recovery storage is unavailable. Keep this tab open and copy unsent text before
@@ -748,7 +957,11 @@ export function Chat({ config }: { config: Config }) {
             <div className="request" role="status">
               Message delivery is unconfirmed. Retry checks the original send. Discard only removes
               the local copy.
-              <button type="button" disabled={busy} onClick={() => void send(true)}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void send(draft, { retry: true })}
+              >
                 Retry message
               </button>
               <button type="button" disabled={busy} onClick={discard}>
@@ -796,23 +1009,29 @@ export function Chat({ config }: { config: Config }) {
                 send();
               }}
             >
-              {upload && (
-                <div className="attachment">
-                  {upload.name}
+              {upload.map((file, index) => (
+                <div className="attachment" key={`${file.name}-${index}`}>
+                  {file.name}
                   <button
                     type="button"
-                    aria-label="Remove attachment"
-                    onClick={() => setUpload(null)}
+                    aria-label={`Remove ${file.name}`}
+                    onClick={() => setUpload((old) => old.filter((_, i) => i !== index))}
                   >
                     ×
                   </button>
                 </div>
-              )}
+              ))}
               <textarea
                 aria-label="Message"
+                onPaste={(event) => {
+                  if (event.clipboardData.files.length) {
+                    event.preventDefault();
+                    addFiles(event.clipboardData.files);
+                  }
+                }}
                 placeholder="Ask anything, or describe the work…"
                 value={draft}
-                disabled={recoveryScope === undefined}
+                disabled={session?.archived || recoveryScope === undefined}
                 onChange={(event) => changeDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -826,16 +1045,39 @@ export function Chat({ config }: { config: Config }) {
                   ＋ Attach
                   <input
                     type="file"
+                    disabled={busy}
+                    multiple
+                    aria-label="Attach files"
                     onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file && file.size > 4 * 1024 * 1024) {
-                        fail(new Error("Attachments must be under 4 MB"));
-                        return;
-                      }
-                      setUpload(file ?? null);
+                      if (event.target.files) addFiles(event.target.files);
+                      event.target.value = "";
                     }}
                   />
                 </label>
+                {!!config.models?.length && (
+                  <select
+                    aria-label="Model"
+                    value={model}
+                    onChange={(event) => setModel(event.target.value)}
+                  >
+                    <option value="">Agent default</option>
+                    {config.models.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <select
+                  aria-label="Reasoning effort"
+                  value={effort}
+                  onChange={(event) => setEffort(event.target.value)}
+                >
+                  <option value="">Default effort</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
                 <span>Enter to send · Shift + Enter for a new line</span>
                 {(running ||
                   !!session?.pending_questions?.length ||
@@ -850,7 +1092,11 @@ export function Chat({ config }: { config: Config }) {
                 <button
                   className="primary"
                   disabled={
-                    busy || !!pending || recoveryScope === undefined || (!draft.trim() && !upload)
+                    busy ||
+                    !!pending ||
+                    session?.archived ||
+                    recoveryScope === undefined ||
+                    (!draft.trim() && !upload.length)
                   }
                 >
                   {busy ? "Sending…" : "Send ↑"}
@@ -899,25 +1145,14 @@ export function Chat({ config }: { config: Config }) {
                   <button onClick={() => setFile(null)}>← Files</button>
                   <h3>{file.name}</h3>
                   <button onClick={() => browse(file.path)}>Reload file</button>
-                  {file.encoding === "base64" ? (
-                    <p>
-                      Binary file{" "}
-                      <button
-                        onClick={() => {
-                          const bytes = Uint8Array.from(atob(file.content ?? ""), (char) =>
-                            char.charCodeAt(0),
-                          );
-                          const url = URL.createObjectURL(new Blob([bytes]));
-                          const a = document.createElement("a");
-                          a.href = url;
-                          a.download = file.name;
-                          a.click();
-                          URL.revokeObjectURL(url);
-                        }}
-                      >
-                        Download
-                      </button>
-                    </p>
+                  <button onClick={() => downloadFile(file)}>Download</button>
+                  {file.encoding !== "base64" && (
+                    <button onClick={() => setPreview(!preview)}>
+                      {preview ? "Edit source" : "Preview"}
+                    </button>
+                  )}
+                  {preview ? (
+                    <FilePreview file={file} />
                   ) : (
                     <>
                       <textarea
@@ -968,10 +1203,16 @@ function QuestionForm({
 }: {
   questions: Question[];
   onSubmit: (
-    answers: Array<{ id: string; selected: string[]; other_text: string | null }>,
+    answers: Array<{
+      id: string;
+      selected: string[];
+      other_text: string | null;
+    }>,
   ) => Promise<void>;
 }) {
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<
+    Record<string, { selected: string[]; other_text: string }>
+  >({});
   const [sending, setSending] = useState(false);
   return (
     <form
@@ -981,10 +1222,10 @@ function QuestionForm({
         setSending(true);
         try {
           await onSubmit(
-            questions.map((question) => ({
-              id: question.id,
-              selected: question.options?.length ? [answers[question.id]] : [],
-              other_text: question.options?.length ? null : (answers[question.id] ?? ""),
+            questions.map((q) => ({
+              id: q.id,
+              selected: answers[q.id]?.selected ?? [],
+              other_text: answers[q.id]?.other_text || null,
             })),
           );
         } finally {
@@ -992,31 +1233,56 @@ function QuestionForm({
         }
       }}
     >
-      {questions.map((question) => (
-        <label key={question.id}>
-          {question.question}
-          {question.options?.length ? (
-            <select
-              required
-              value={answers[question.id] ?? ""}
-              onChange={(event) => setAnswers({ ...answers, [question.id]: event.target.value })}
-            >
-              <option value="">Choose…</option>
-              {question.options.map((option) => (
-                <option key={option.label} value={option.label}>
+      {questions.map((question) => {
+        const answer = answers[question.id] ?? { selected: [], other_text: "" };
+        return (
+          <fieldset key={question.id}>
+            <legend>{question.question}</legend>
+            {question.options?.map((option) => (
+              <label className="question-option" key={option.label}>
+                <input
+                  type={question.multi_select ? "checkbox" : "radio"}
+                  name={question.id}
+                  checked={answer.selected.includes(option.label)}
+                  onChange={() =>
+                    setAnswers((old) => ({
+                      ...old,
+                      [question.id]: {
+                        ...answer,
+                        selected: question.multi_select
+                          ? answer.selected.includes(option.label)
+                            ? answer.selected.filter((v) => v !== option.label)
+                            : [...answer.selected, option.label]
+                          : [option.label],
+                      },
+                    }))
+                  }
+                />
+                <span>
                   {option.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              required
-              value={answers[question.id] ?? ""}
-              onChange={(event) => setAnswers({ ...answers, [question.id]: event.target.value })}
-            />
-          )}
-        </label>
-      ))}
+                  {option.description && <small>{option.description}</small>}
+                </span>
+              </label>
+            ))}
+            {(!question.options?.length || question.allow_other) && (
+              <input
+                aria-label={`Answer: ${question.question}`}
+                placeholder={question.options?.length ? "Another answer…" : "Your answer…"}
+                value={answer.other_text}
+                onChange={(event) =>
+                  setAnswers((old) => ({
+                    ...old,
+                    [question.id]: {
+                      ...answer,
+                      other_text: event.target.value,
+                    },
+                  }))
+                }
+              />
+            )}
+          </fieldset>
+        );
+      })}
       <button disabled={sending}>Continue</button>
     </form>
   );

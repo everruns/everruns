@@ -229,3 +229,25 @@ Self-hosters deploy the optional standalone browser app separately from the
 console. Follow its [deployment instructions](https://github.com/everruns/everruns/tree/main/apps/chat-ui)
 for the content domain, TLS, OIDC broker and least-privilege credential storage.
 Publishing a channel alone does not provision hosting or DNS.
+
+### Work Chat interface
+
+The hosted chat renders Markdown, OpenUI charts and A2UI component trees inline.
+Enable the corresponding capabilities on the Agent when it should produce those
+formats. Replies include expandable work logs, and background task cards open
+their delegated conversation.
+
+Consumers can search, pin, rename and archive independent conversations. Archived
+conversations retain their history and can be reopened. A channel owner can choose
+which models appear in the composer's model selector; leaving the list empty
+uses the Agent default. Reasoning effort and existing spending controls apply.
+
+Attach up to three files totaling 4 MB through the composer, paste or drag-and-drop.
+The Workspace panel previews Markdown, images, CSV tables and text, supports
+revision-checked editing, and downloads both text and binary files. HTML/SVG
+previews display in a sandbox without scripts or external network access.
+
+**Conversation actions → Share read-only link** publishes that conversation's
+messages and widgets, including future messages, to anyone holding the link.
+Files, approvals and execution controls remain private. **Revoke public links** removes access; creating another
+link replaces the earlier one. Channel unpublication also removes public access.

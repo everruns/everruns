@@ -1,3 +1,4 @@
+mod list_by_tags;
 // PostgreSQL repository: Sessions (instance of agentic loop), Pinned Sessions
 
 mod automatic_titles;
@@ -1042,53 +1043,6 @@ impl Database {
     /// Keyset pagination on `(updated_at, id)`: `after` is the last row of
     /// the previous page. `activities` filters on the derived activity (the
     /// same `ACTIVITY_SQL` the sessions list uses); empty means any.
-    pub async fn list_sessions_by_tags(
-        &self,
-        org_id: i64,
-        tags: &[String],
-        activities: &[crate::domains::sessions::record::SessionActivity],
-        updated_after: Option<DateTime<Utc>>,
-        after: Option<(DateTime<Utc>, Uuid)>,
-        limit: u32,
-    ) -> Result<(Vec<SessionRow>, u32)> {
-        // THREAT[TM-API-001]: `activity_predicate` is the only interpolated
-        // text, built by `sql_string_list` from closed-enum literals.
-        let activity_predicate = if activities.is_empty() {
-            String::new()
-        } else {
-            format!(
-                " AND ({ACTIVITY_SQL}) IN ({})",
-                sql_string_list(activities.iter().map(|a| a.as_str()))
-            )
-        };
-        let filter = format!(
-            "WHERE org_id = $1 AND tags @> $2 AND archived_at IS NULL \
-             AND ($3::timestamptz IS NULL OR updated_at >= $3){activity_predicate}"
-        );
-        let count_sql = format!("SELECT COUNT(*) FROM sessions {filter}");
-        let total: (i64,) = sqlx::query_as(sqlx::AssertSqlSafe(count_sql.as_str()))
-            .bind(org_id)
-            .bind(tags)
-            .bind(updated_after)
-            .fetch_one(&self.pool)
-            .await?;
-        let page_sql = format!(
-            "SELECT {SESSION_COLUMNS} FROM sessions {filter} \
-             AND ($4::timestamptz IS NULL OR (updated_at, id) < ($4, $5)) \
-             ORDER BY updated_at DESC, id DESC LIMIT $6"
-        );
-        let rows = sqlx::query_as::<_, SessionRow>(sqlx::AssertSqlSafe(page_sql.as_str()))
-            .bind(org_id)
-            .bind(tags)
-            .bind(updated_after)
-            .bind(after.map(|(at, _)| at))
-            .bind(after.map(|(_, id)| id))
-            .bind(i64::from(limit))
-            .fetch_all(&self.pool)
-            .await?;
-        Ok((rows, total.0 as u32))
-    }
-
     /// Find a native endpoint session matching ALL given tags + owner within an org.
     pub async fn find_channel_session_by_tags_and_owner(
         &self,

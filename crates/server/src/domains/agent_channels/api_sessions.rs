@@ -284,7 +284,9 @@ pub fn session_is_callers(
     caller: &ApiCaller,
 ) -> bool {
     session.channel_id == Some(channel.internal_id)
-        && session.archived_at.is_none()
+        && (session.archived_at.is_none()
+            || channel.channel_type
+                == crate::domains::agent_channels::record::ChannelType::WorkChat)
         && caller
             .session_tags(channel)
             .iter()
@@ -295,6 +297,8 @@ pub fn session_is_callers(
 /// or costs, which are management's.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentSessionView {
+    pub archived: bool,
+    pub pinned: bool,
     #[schema(example = "session_01933b5a000070008000000000000001")]
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -336,6 +340,8 @@ impl AgentSessionView {
 impl From<&SessionRow> for AgentSessionView {
     fn from(row: &SessionRow) -> Self {
         Self {
+            archived: row.archived_at.is_some(),
+            pinned: row.tags.iter().any(|tag| tag == "work_chat:pinned"),
             id: row.id.to_string(),
             title: row.title.clone(),
             parent_session_id: row.parent_session_id.map(|id| id.to_string()),
@@ -461,6 +467,7 @@ pub async fn send_api_message(
     mut message: InputMessage,
     files: Vec<everruns_core::InputContentPart>,
     request_id: Option<String>,
+    controls: Option<everruns_contracts::runtime::Controls>,
 ) -> Result<crate::domains::messages::types::Message, CommandError> {
     check_api_message(&message, !files.is_empty())?;
     message.content.extend(files);
@@ -480,33 +487,32 @@ pub async fn send_api_message(
             json!(user.virtual_user_id.to_string()),
         );
     }
-    Ok(message_service
-        .create(
-            CreateMessageContext {
-                runtime_subject_principal_id: caller.end_user_id().map(|user| user.principal_id),
-                org_id: context.org_id,
-                user_id: None,
-                harness_id: context.harness_id.uuid(),
-                agent_id: Some(context.agent_internal_id),
-                session_id: session_id.uuid(),
-                event_metadata: Some(execution_metadata::channel_message_metadata(
-                    context.public_id,
-                    context.owner_principal_id,
-                    context.virtual_user_id,
-                )),
-                request_id,
-            },
-            CreateMessageRequest {
-                message,
-                addressed_participant_id: None,
-                controls: None,
-                metadata: Some(metadata),
-                tags: None,
-                external_actor: None,
-                client_message_id: None,
-            },
-        )
-        .await?)
+    Ok(Box::pin(message_service.create(
+        CreateMessageContext {
+            runtime_subject_principal_id: caller.end_user_id().map(|user| user.principal_id),
+            org_id: context.org_id,
+            user_id: None,
+            harness_id: context.harness_id.uuid(),
+            agent_id: Some(context.agent_internal_id),
+            session_id: session_id.uuid(),
+            event_metadata: Some(execution_metadata::channel_message_metadata(
+                context.public_id,
+                context.owner_principal_id,
+                context.virtual_user_id,
+            )),
+            request_id,
+        },
+        CreateMessageRequest {
+            message,
+            addressed_participant_id: None,
+            controls,
+            metadata: Some(metadata),
+            tags: None,
+            external_actor: None,
+            client_message_id: None,
+        },
+    ))
+    .await?)
 }
 
 /// Event types each visibility reads from storage. `None` reads every type.

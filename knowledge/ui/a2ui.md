@@ -156,6 +156,11 @@ Ref: `crates/core/src/builtins/a2ui.rs`.
 
 ## UI Integration
 
+Standalone [Work Chat](../integrations/work-chat.md) renders the same fenced
+component trees with its own semantic HTML components. Its renderer keeps
+message and form actions on the consumer API and disables execution actions on
+read-only shares. See [Work Chat message rendering](../../apps/chat-ui/src/components/message-content.tsx).
+
 ### Block detection
 
 `apps/ui/src/lib/a2ui-utils.ts` splits message text into alternating markdown and

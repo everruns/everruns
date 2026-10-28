@@ -17,6 +17,9 @@ pub enum ChatInterface {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorkChatConfig {
+    /// Owner-curated models available to consumers; empty keeps the Agent default.
+    #[serde(default)]
+    pub allowed_model_ids: Vec<everruns_contracts::typed_id::ModelId>,
     #[serde(default)]
     #[schema(example = "multi_chat")]
     pub interface_mode: ChatInterface,
@@ -58,6 +61,7 @@ fn default_execution() -> AgentApiChannelConfig {
 impl Default for WorkChatConfig {
     fn default() -> Self {
         Self {
+            allowed_model_ids: Vec::new(),
             interface_mode: ChatInterface::MultiChat,
             execution: default_execution(),
         }

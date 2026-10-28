@@ -4,6 +4,7 @@ export interface PendingMessage {
   key: string;
   body: unknown;
   createdAt: number;
+  fromWidget?: boolean;
 }
 export interface Recovery {
   draft: string;

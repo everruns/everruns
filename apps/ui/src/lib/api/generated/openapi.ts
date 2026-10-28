@@ -1783,6 +1783,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}/chat/shared/{token}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read work chat share */
+    get: operations["read_work_chat_share"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/fcp": {
     parameters: {
       query?: never;
@@ -1967,6 +1984,41 @@ export interface paths {
      */
     post: operations["agent_api_answer_questions"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Update work chat conversation */
+    post: operations["update_work_chat_conversation"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/share": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Share work chat conversation */
+    post: operations["share_work_chat_conversation"];
+    /** Revoke work chat share */
+    delete: operations["revoke_work_chat_share"];
     options?: never;
     head?: never;
     patch?: never;
@@ -2824,6 +2876,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/e/{channel_id}/chat/shared/{token}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read work chat share legacy
+     * @deprecated
+     */
+    get: operations["read_work_chat_share_legacy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/e/{channel_id}/fcp": {
     parameters: {
       query?: never;
@@ -2976,6 +3048,50 @@ export interface paths {
      */
     post: operations["agent_api_answer_questions_legacy"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Update work chat conversation legacy
+     * @deprecated
+     */
+    post: operations["update_work_chat_conversation_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/share": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Share work chat conversation legacy
+     * @deprecated
+     */
+    post: operations["share_work_chat_conversation_legacy"];
+    /**
+     * Revoke work chat share legacy
+     * @deprecated
+     */
+    delete: operations["revoke_work_chat_share_legacy"];
     options?: never;
     head?: never;
     patch?: never;
@@ -9388,6 +9504,7 @@ export interface components {
      *     or costs, which are management's.
      */
     AgentSessionView: {
+      archived: boolean;
       /** Format: date-time */
       created_at: string;
       /** @example session_01933b5a000070008000000000000001 */
@@ -9405,6 +9522,7 @@ export interface components {
        *     them; a list leaves them out.
        */
       pending_questions?: components["schemas"]["PendingQuestionView"][] | null;
+      pinned: boolean;
       /**
        * @description `started`, `active`, `idle`, `waitingforinput` or `failed`.
        * @example idle
@@ -26360,6 +26478,11 @@ export interface components {
     SetUserMcpToolLabelRequest: {
       label?: components["schemas"]["McpToolLabel"] | null;
     };
+    Settings: {
+      archived?: boolean | null;
+      pinned?: boolean | null;
+      title?: string | null;
+    };
     /**
      * @description How many times a tool call may safely be executed given the same inputs.
      *
@@ -36654,6 +36777,36 @@ export interface operations {
       };
     };
   };
+  read_work_chat_share: {
+    parameters: {
+      query?: {
+        before?: number;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        token: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Read-only transcript page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   message_channel: {
     parameters: {
       query?: never;
@@ -36795,6 +36948,7 @@ export interface operations {
         limit?: number | null;
         /** @description `next_page_token` of the previous page. */
         page_token?: string | null;
+        include_archived?: boolean;
       };
       header?: never;
       path: {
@@ -37340,6 +37494,94 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  update_work_chat_conversation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Settings"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  share_work_chat_conversation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revocable link token */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_work_chat_share: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -39576,6 +39818,36 @@ export interface operations {
       };
     };
   };
+  read_work_chat_share_legacy: {
+    parameters: {
+      query?: {
+        before?: number;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        token: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Read-only transcript page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   message_endpoint: {
     parameters: {
       query?: never;
@@ -40107,6 +40379,94 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  update_work_chat_conversation_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Settings"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  share_work_chat_conversation_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revocable link token */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_work_chat_share_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
