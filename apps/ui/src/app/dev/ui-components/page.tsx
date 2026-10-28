@@ -1,4 +1,5 @@
 "use client";
+import { SharedPatterns } from "./shared-patterns";
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { AgentIcon } from "@/components/icons/facet-icons";
@@ -754,6 +755,8 @@ export default function DevUiComponentsPage() {
             </div>
           </div>
         </ShowcaseSection>
+
+        <SharedPatterns />
 
         <ShowcaseSection
           id="feedback"

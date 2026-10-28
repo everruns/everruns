@@ -1,4 +1,11 @@
 "use client";
+import {
+  Select as SharedSelect,
+  SelectTrigger as SharedSelectTrigger,
+  SelectContent as SharedSelectContent,
+  SelectValue as SharedSelectValue,
+  SelectItem as SharedSelectItem,
+} from "@/components/ui/select";
 
 import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { getDisplayName } from "@/lib/entity-lifecycle";
@@ -118,20 +125,26 @@ export function AgentImportDialog({
           <div className="grid gap-3 border-b bg-muted/30 p-4 sm:px-6">
             <label className="grid gap-2 text-sm sm:grid-cols-[auto_minmax(0,320px)] sm:items-center sm:justify-start">
               {ui("Destination")}
-              <select
-                aria-label={ui("Import destination")}
-                className="rounded border bg-background p-2"
-                value={target}
+              <SharedSelect
+                value={String(target)}
                 disabled={busy}
-                onChange={(e) => setTarget(e.target.value)}
+                onValueChange={(selection) => setTarget(selection)}
               >
-                <option value="">{ui("Create a new agent")}</option>
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.name}>
-                    {ui("Update")} {getDisplayName(agent, displayLocale)}
-                  </option>
-                ))}
-              </select>
+                <SharedSelectTrigger
+                  aria-label={ui("Import destination")}
+                  className="rounded border bg-background p-2"
+                >
+                  <SharedSelectValue />
+                </SharedSelectTrigger>
+                <SharedSelectContent>
+                  <SharedSelectItem value="">{ui("Create a new agent")}</SharedSelectItem>
+                  {agents.map((agent) => (
+                    <SharedSelectItem key={agent.id} value={String(agent.name)}>
+                      {ui("Update")} {getDisplayName(agent, displayLocale)}
+                    </SharedSelectItem>
+                  ))}
+                </SharedSelectContent>
+              </SharedSelect>
             </label>
             {busy && (
               <p role="status" className="text-sm text-muted-foreground">

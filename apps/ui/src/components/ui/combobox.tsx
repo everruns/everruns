@@ -11,9 +11,14 @@ export interface ComboboxOption {
   label: string;
   group?: string;
   disabled?: boolean;
+  description?: string;
+  icon?: React.ReactNode;
 }
 
 interface ComboboxProps {
+  id?: string;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
   options: ComboboxOption[];
   value: string;
   onValueChange: (value: string) => void;
@@ -33,12 +38,15 @@ interface ComboboxProps {
 }
 
 export function Combobox({
+  id,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy,
   options,
   value,
   onValueChange,
   placeholder = "Select...",
   searchPlaceholder = "Search...",
-  ariaLabel = placeholder,
+  ariaLabel,
   disabled = false,
   className,
   clearable = true,
@@ -82,7 +90,10 @@ export function Combobox({
         disabled={disabled}
       >
         <ComboboxPrimitive.Trigger
-          aria-label={ariaLabel}
+          id={id}
+          aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedBy}
+          aria-label={ariaLabel ?? (id ? undefined : placeholder)}
           className="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-8 w-full min-w-0 items-center justify-between gap-2 border bg-transparent px-2.5 py-1.5 text-[13px] shadow-xs outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <span className={cn("truncate", !selectedLabel && "text-muted-foreground")}>
@@ -95,7 +106,7 @@ export function Combobox({
         {clearable && value && !disabled && (
           <button
             type="button"
-            aria-label={`Clear ${ariaLabel}`}
+            aria-label={ui("Clear {value0}", { value0: ariaLabel ?? placeholder })}
             onClick={() => onValueChange("")}
             className="absolute right-2 text-muted-foreground hover:text-foreground"
           >
@@ -141,7 +152,15 @@ export function Combobox({
                       disabled={option.disabled}
                       className="flex cursor-default items-center gap-2 px-2 py-1.5 text-sm select-none data-[highlighted]:bg-muted data-[selected]:font-medium data-[disabled]:opacity-50"
                     >
-                      <span className="min-w-0 flex-1 break-words">{option.label}</span>
+                      {option.icon}
+                      <span className="min-w-0 flex-1 break-words">
+                        <span>{option.label}</span>
+                        {option.description && (
+                          <span className="block text-xs text-muted-foreground">
+                            {option.description}
+                          </span>
+                        )}
+                      </span>
                       <ComboboxPrimitive.ItemIndicator>
                         <CheckIcon className="size-4" />
                       </ComboboxPrimitive.ItemIndicator>

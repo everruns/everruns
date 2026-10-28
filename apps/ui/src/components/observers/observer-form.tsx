@@ -1,4 +1,5 @@
 "use client";
+import { Field } from "@/components/ui/field";
 
 import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
 
@@ -23,7 +24,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+import { ResourceMultiSelect } from "@/components/ui/resource-multi-select";
+import { TagInput } from "@/components/ui/tag-input";
+import { Slider } from "@/components/ui/slider";
 import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
 import { useAgents, useHarnesses } from "@/hooks";
 import { useCreateObserver, useUpdateObserver } from "@/hooks";
@@ -155,14 +158,6 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
     },
   });
 
-  const toggleAgent = (id: string) => {
-    setAgentIds((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
-  };
-
-  const toggleHarness = (id: string) => {
-    setHarnessIds((prev) => (prev.includes(id) ? prev.filter((h) => h !== id) : [...prev, id]));
-  };
-
   const buildMatch = () => {
     const tags = parseTagList(sessionTags);
     return {
@@ -219,18 +214,20 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
           <CardTitle>{ui("Details")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="observer-name">{ui("Name")}</Label>
+          <Field
+            id="observer-name"
+            label={ui("Name")}
+            error={submitted && nameMissing ? ui("Name is required") : undefined}
+          >
             <Input
               id="observer-name"
+              aria-describedby="observer-name-hint"
+              aria-invalid={submitted && nameMissing}
               placeholder={ui("Production quality monitor")}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-            {submitted && nameMissing && (
-              <p className="text-sm text-destructive">{ui("Name is required")}</p>
-            )}
-          </div>
+          </Field>
 
           <div className="space-y-2">
             <Label htmlFor="observer-description">{ui("Description")}</Label>
@@ -249,9 +246,8 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
               {Math.round(samplingRate * 100)}
               {ui("% of turns)")}
             </Label>
-            <Input
+            <Slider
               id="observer-sampling"
-              type="range"
               min={0}
               max={1}
               step={0.05}
@@ -276,54 +272,34 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
             )}
           </p>
 
-          <div className="space-y-2">
-            <Label>{ui("Agents")}</Label>
-            {agents.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{ui("No agents available.")}</p>
-            ) : (
-              <div className="flex max-h-48 flex-col gap-2 overflow-y-auto border p-3">
-                {agents.map((agent) => (
-                  <label key={agent.id} className="flex cursor-pointer items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={agentIds.includes(agent.id)}
-                      onCheckedChange={() => toggleAgent(agent.id)}
-                    />
-                    {getDisplayName(agent, displayLocale)}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label>{ui("Harnesses")}</Label>
-            {harnesses.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{ui("No harnesses available.")}</p>
-            ) : (
-              <div className="flex max-h-48 flex-col gap-2 overflow-y-auto border p-3">
-                {harnesses.map((harness) => (
-                  <label
-                    key={harness.id}
-                    className="flex cursor-pointer items-center gap-2 text-sm"
-                  >
-                    <Checkbox
-                      checked={harnessIds.includes(harness.id)}
-                      onCheckedChange={() => toggleHarness(harness.id)}
-                    />
-                    {getDisplayName(harness, displayLocale)}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
+          <ResourceMultiSelect
+            label={ui("Agents")}
+            emptyMessage={ui("No agents available.")}
+            value={agentIds}
+            onChange={setAgentIds}
+            options={agents.map((agent) => ({
+              value: agent.id,
+              label: getDisplayName(agent, displayLocale),
+            }))}
+          />
+          <ResourceMultiSelect
+            label={ui("Harnesses")}
+            emptyMessage={ui("No harnesses available.")}
+            value={harnessIds}
+            onChange={setHarnessIds}
+            options={harnesses.map((harness) => ({
+              value: harness.id,
+              label: getDisplayName(harness, displayLocale),
+            }))}
+          />
 
           <div className="space-y-2">
             <Label htmlFor="observer-tags">{ui("Session tags")}</Label>
-            <Input
+            <TagInput
               id="observer-tags"
-              placeholder={ui("comma, separated, tags")}
+              placeholder={ui("Add a tag…")}
               value={sessionTags}
-              onChange={(e) => setSessionTags(e.target.value)}
+              onChange={setSessionTags}
             />
           </div>
         </CardContent>

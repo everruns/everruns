@@ -1,3 +1,4 @@
+import { messages as sharedControls } from "./zh-CN/shared-controls";
 import { messages as tracing } from "./zh-CN/tracing";
 import { messages as catalog0 } from "./zh-CN/agents-01";
 import { messages as catalog1 } from "./zh-CN/agents-02";
@@ -44,4 +45,5 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   catalog19,
   catalog20,
   tracing,
+  sharedControls,
 );

@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageRows } from "@/components/chat-mode/page-view-state";
@@ -121,6 +122,7 @@ export function FileBrowser({
   decorateFile,
   emptyState,
 }: FileBrowserProps) {
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   const root = source.root;
   const writes = source.writes;
@@ -263,7 +265,11 @@ export function FileBrowser({
   const handleDelete = async (file: FileInfo, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!writes) return;
-    if (!confirm(`Delete ${file.is_directory ? "directory" : "file"} "${file.name}"?`)) {
+    if (
+      !(await requestConfirmation(
+        `Delete ${file.is_directory ? "directory" : "file"} "${file.name}"?`,
+      ))
+    ) {
       return;
     }
 

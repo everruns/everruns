@@ -1,4 +1,5 @@
 "use client";
+import { Label } from "@/components/ui/label";
 
 // The agent page's narrow config column. Primary settings (harness,
 // capabilities, model, communication, tags) are always visible; everything set once and
@@ -43,14 +44,6 @@ interface AgentConfigColumnProps {
   className?: string;
 }
 
-function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: React.ReactNode }) {
-  return (
-    <label htmlFor={htmlFor} className="text-xs font-medium text-muted-foreground">
-      {children}
-    </label>
-  );
-}
-
 export function AgentConfigColumn({
   agent,
   draft,
@@ -81,7 +74,9 @@ export function AgentConfigColumn({
     >
       <div className="flex flex-col gap-4 border-b p-4">
         <ChatChangeMark field="harness_id" className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="harness">{ui("Harness")}</FieldLabel>
+          <Label className="text-xs font-medium text-muted-foreground" htmlFor="harness">
+            {ui("Harness")}
+          </Label>
           {readOnly ? (
             <span className="text-[13px] text-muted-foreground">
               {agent.effective_harness?.display_name ||
@@ -141,7 +136,9 @@ export function AgentConfigColumn({
         </ChatChangeMark>
 
         <ChatChangeMark field="default_model_id" className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="default-model">{ui("Default model")}</FieldLabel>
+          <Label className="text-xs font-medium text-muted-foreground" htmlFor="default-model">
+            {ui("Default model")}
+          </Label>
           {readOnly ? (
             <span className="text-[13px] text-muted-foreground">
               {defaultModel?.display_name ?? ui("Organization default")}
@@ -158,7 +155,9 @@ export function AgentConfigColumn({
         </ChatChangeMark>
 
         <ChatChangeMark field="communication" className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="communication">{ui("Communication")}</FieldLabel>
+          <Label className="text-xs font-medium text-muted-foreground" htmlFor="communication">
+            {ui("Communication")}
+          </Label>
           {readOnly ? (
             <span className="text-[13px] text-muted-foreground">
               {ui(getCommunicationOption(agent.communication).label)}
@@ -174,7 +173,9 @@ export function AgentConfigColumn({
         </ChatChangeMark>
 
         <ChatChangeMark field="tags" className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="tags">{ui("Tags")}</FieldLabel>
+          <Label className="text-xs font-medium text-muted-foreground" htmlFor="tags">
+            {ui("Tags")}
+          </Label>
           {readOnly ? (
             <div className="flex flex-wrap gap-1">
               {normalizeTags(agent.tags).length === 0 ? (

@@ -1,4 +1,6 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
+import { PageContainer, PageMasthead } from "@/components/layout";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import {
@@ -392,6 +394,7 @@ function EditScheduleDialog({
 export default function ScheduleDetailPage() {
   const { displayLocale } = useLocale();
 
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   const params = useParams();
   const router = useRouter();
@@ -451,24 +454,24 @@ export default function ScheduleDetailPage() {
 
   if (scheduleLoading) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Schedule Details")}</h1>
+          <PageMasthead title={ui("Schedule Details")} className="min-w-0 flex-1" />
         </div>
         <div className="space-y-6">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-48" />
           <Skeleton className="h-96" />
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (scheduleError || !schedule) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Schedule Details")}</h1>
+          <PageMasthead title={ui("Schedule Details")} className="min-w-0 flex-1" />
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -489,7 +492,7 @@ export default function ScheduleDetailPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -503,14 +506,18 @@ export default function ScheduleDetailPage() {
     resumeMutation.mutate(scheduleId);
   };
 
-  const handleTrigger = () => {
-    if (confirm("Manually trigger this schedule now?")) {
+  const handleTrigger = async () => {
+    if (await requestConfirmation("Manually trigger this schedule now?")) {
       triggerMutation.mutate(scheduleId);
     }
   };
 
-  const handleDelete = () => {
-    if (confirm("Are you sure you want to delete this schedule? This cannot be undone.")) {
+  const handleDelete = async () => {
+    if (
+      await requestConfirmation(
+        "Are you sure you want to delete this schedule? This cannot be undone.",
+      )
+    ) {
       deleteMutation.mutate(scheduleId, {
         onSuccess: () => {
           router.push("/durable/schedules");
@@ -520,9 +527,9 @@ export default function ScheduleDetailPage() {
   };
 
   return (
-    <div className="operational-page container mx-auto p-6">
+    <PageContainer className="operational-page">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">{schedule.name}</h1>
+        <PageMasthead title={schedule.name} className="min-w-0 flex-1" />
       </div>
       <div className="space-y-6">
         {/* Back Link */}
@@ -786,6 +793,6 @@ export default function ScheduleDetailPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

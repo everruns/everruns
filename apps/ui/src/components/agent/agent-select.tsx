@@ -1,14 +1,9 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
 import { useMemo } from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import { useAgents } from "@/hooks";
 import type { Agent } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
@@ -53,8 +48,9 @@ export function AgentSelect({
   ariaLabel = "Agent",
 }: AgentSelectProps) {
   const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const noneValue = "__none__";
-  const { data: agents = [] } = useAgents();
+  const { data: agents = [], isLoading, error } = useAgents();
 
   const agentMap = useMemo(() => {
     return new Map<string, Agent>(agents.map((a) => [a.id, a]));
@@ -71,25 +67,32 @@ export function AgentSelect({
   const displayValue = selectedAgent
     ? getDisplayName(selectedAgent, displayLocale)
     : includeNoneOption
-      ? noneLabel
+      ? ui(noneLabel)
       : includeAll
-        ? allLabel
+        ? ui(allLabel)
         : undefined;
 
   return (
-    <Select value={selectValue} onValueChange={handleChange} disabled={disabled}>
-      <SelectTrigger className={className} aria-label={ariaLabel}>
-        <SelectValue placeholder={placeholder}>{displayValue}</SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {includeNoneOption && <SelectItem value={noneValue}>{noneLabel}</SelectItem>}
-        {includeAll && <SelectItem value="all">{allLabel}</SelectItem>}
-        {agents.map((agent) => (
-          <SelectItem key={agent.id} value={agent.id}>
-            {getDisplayName(agent, displayLocale)}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <Combobox
+      value={selectValue}
+      onValueChange={handleChange}
+      valueLabel={displayValue}
+      ariaLabel={ui(ariaLabel)}
+      placeholder={ui(placeholder)}
+      searchPlaceholder={ui("Search agents")}
+      disabled={disabled}
+      loading={isLoading}
+      error={error ? ui("Could not load agents. Try again.") : undefined}
+      className={className}
+      clearable={false}
+      options={[
+        ...(includeNoneOption ? [{ value: noneValue, label: ui(noneLabel) }] : []),
+        ...(includeAll ? [{ value: "all", label: ui(allLabel) }] : []),
+        ...agents.map((agent) => ({
+          value: agent.id,
+          label: getDisplayName(agent, displayLocale),
+        })),
+      ]}
+    />
   );
 }

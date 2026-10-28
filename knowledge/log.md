@@ -23,6 +23,7 @@
 
 - Session trace messages render Markdown by default with a shareable plain-text view. See [Session Trace](ui/session-trace.md).
 - Extended [page-aware Chat](ui/chat-mode.md) coverage to the tabbed Knowledge UI, Agent/Harness translations, interface language, trigger quick edits and manager notes. Added an authenticated-route inventory gate, field-level permission/conflict fixtures and protected drawer masking; [Knowledge pages](ui/knowledge-pages.md) now adapt to the split pane.
+- Unified resource pickers, form controls, page layouts and action feedback; expanded the public Slate component and layout guidance.
 
 - Bounded native search keeps full schemas in the function projection and returns only operation summaries, so current Agent write schemas fit without raising either byte budget. Added regression coverage for complete schema delivery and hosted native grading. See [Tool search](execution/tool-search.md).
 

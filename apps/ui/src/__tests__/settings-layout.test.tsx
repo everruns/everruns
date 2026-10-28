@@ -38,6 +38,7 @@ const mockNotFound = jest.fn(() => {
   throw new Error("NEXT_NOT_FOUND");
 });
 jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
   usePathname: () => mockPathname(),
   notFound: () => mockNotFound(),
 }));
