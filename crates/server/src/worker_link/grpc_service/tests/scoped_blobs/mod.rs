@@ -134,7 +134,7 @@ async fn fixture() -> (
         .unwrap()
         .remove(0);
     assert_eq!(lease.session_id, own);
-    let scope = ActorJournalScope::new(1, own, "reader-a".into(), lease.fence).unwrap();
+    let scope = super::journal_grants::seed_scope(&db, 1, own, "reader-a", lease.fence).await;
     (service, db, scope, own)
 }
 
