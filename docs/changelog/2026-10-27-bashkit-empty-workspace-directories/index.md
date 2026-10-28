@@ -2,6 +2,7 @@
 title: Bashkit recognizes empty workspace directories
 description: Bashkit shell commands recognize newly created empty workspace directories, so recursive copies preserve their source folders on remote workers.
 date: 2026-10-27
+cloud: 2026-10-28
 kind: fix
 significance: notable
 products: [framework, platform, cloud]
