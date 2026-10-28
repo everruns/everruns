@@ -45,6 +45,7 @@ use crate::user_facing_error::{is_provider_quota_message, is_usage_limit_message
 // Split out of one 6000-line file. Every item keeps its visibility, so the
 // module's public surface is unchanged.
 mod background;
+mod batch_codec;
 mod chat_driver;
 mod citations;
 mod completion_contract;
@@ -679,8 +680,17 @@ impl OpenResponsesProtocolChatDriver {
     }
 
     fn function_tool(tool: &ToolDefinition, defer_loading: Option<bool>) -> ResponsesTool {
-        let strict_parameters =
-            crate::tool_schema_compat::strict_openai_tool_schema(tool.parameters());
+        Self::function_tool_mode(tool, defer_loading, true)
+    }
+
+    fn function_tool_mode(
+        tool: &ToolDefinition,
+        defer_loading: Option<bool>,
+        normalize: bool,
+    ) -> ResponsesTool {
+        let strict_parameters = normalize
+            .then(|| crate::tool_schema_compat::strict_openai_tool_schema(tool.parameters()))
+            .flatten();
         ResponsesTool::Function {
             r#type: "function".to_string(),
             name: tool.name().to_string(),

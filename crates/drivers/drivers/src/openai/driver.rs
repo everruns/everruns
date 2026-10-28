@@ -8,6 +8,9 @@
 // 2. OpenAICompletionsChatDriver - Uses Chat Completions API
 //    For backward compatibility with /v1/chat/completions endpoint.
 
+#[cfg(not(target_arch = "wasm32"))]
+mod batch;
+
 use async_trait::async_trait;
 use chrono::TimeZone;
 
@@ -193,6 +196,11 @@ impl OpenAIChatDriver {
 
 #[async_trait]
 impl ChatDriver for OpenAIChatDriver {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn batch_driver(&self) -> Option<&dyn everruns_contracts::batch::BatchDriver> {
+        Some(self)
+    }
+
     fn native_async_driver(
         &self,
         model: &str,
@@ -380,6 +388,11 @@ impl OpenAICompletionsChatDriver {
 
 #[async_trait]
 impl ChatDriver for OpenAICompletionsChatDriver {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn batch_driver(&self) -> Option<&dyn everruns_contracts::batch::BatchDriver> {
+        Some(self)
+    }
+
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,

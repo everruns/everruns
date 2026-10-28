@@ -222,61 +222,18 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 .extend(hosted_tools.into_iter().map(ResponsesTool::Hosted));
         }
 
-        // Build reasoning config if specified.
-        // Skip when effort is "none" — sending reasoning params to models that
-        // don't support them (or with effort=none) causes OpenAI API errors.
-        let reasoning = config
+        let should_include_reasoning = config
             .reasoning_effort
-            .filter(crate::model::ReasoningEffort::requests_reasoning)
-            .map(|effort| ResponsesReasoning {
-                effort: effort.as_str().to_string(),
-                summary: "detailed".to_string(),
-            });
-
-        // Reasoning items are only replayable when the provider hands back
-        // their encrypted payload, and it only does so on request. Stateful
-        // continuations already retain that state server-side; Meta rejects
-        // this include when paired with `previous_response_id`.
-        let should_include_reasoning = reasoning.is_some() || update_state.is_some();
-        let include = previous_response_id
-            .is_none()
-            .then_some(should_include_reasoning)
-            .filter(|include| *include)
-            .map(|_| vec!["reasoning.encrypted_content".to_string()]);
-
-        // Build metadata for request tracking
-        let metadata = if config.metadata.is_empty() {
-            None
-        } else {
-            Some(config.metadata.clone())
-        };
-        let prompt_cache_key =
-            Self::build_prompt_cache_key(config, &input_items, &instructions, &tools);
-        let mut request = ResponsesRequest {
-            model: config.model.clone(),
-            input: input_items,
+            .is_some_and(|effort| effort.requests_reasoning())
+            || update_state.is_some();
+        let mut request = self.completion_request(
+            config,
+            input_items,
             instructions,
             previous_response_id,
-            temperature: config.temperature,
-            max_output_tokens: config.max_tokens,
-            stream: true,
             tools,
-            reasoning,
-            metadata,
-            prompt_cache_key,
-            parallel_tool_calls: config
-                .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
-            service_tier: config.speed.clone(),
-            text: ResponsesText {
-                verbosity: config.verbosity.clone(),
-                format: config
-                    .response_format
-                    .as_ref()
-                    .map(|f| f.responses_text_format()),
-            }
-            .into_option(),
-            include,
-        };
+            update_state.is_some(),
+        );
 
         // Log request details for debugging LLM errors.
         // Only log request shape to avoid leaking prompt or metadata contents.
