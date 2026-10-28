@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Reduce caller-stack pressure during nested in-process delegation by keeping turn-loop state on the heap.
+
 - Replace unmaintained libyaml in framework skill and agent-package parsing with a maintained parser, preserving YAML 1.2 scalar behavior and enforcing parser resource limits.
 
 ## [0.49.0] - 2026-10-26
