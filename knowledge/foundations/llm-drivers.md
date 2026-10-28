@@ -417,6 +417,15 @@ Remaining gaps: a worker that dies after OpenAI accepted the POST but before `re
 
 ### Strict tool argument round-trip
 
+Inferred OpenAI strict tool conversion stays within the provider's object nesting
+and total property limits. Over-limit schemas use the existing sanitized
+non-strict fallback before sending a request; the original tool schema remains
+the execution validation boundary. Arrays and union wrappers do not add object
+levels, but properties in all union branches share the schema's budget.
+References and definitions continue to use the existing non-strict fallback.
+Explicit structured response formats are unaffected. See
+[`tool_schema_compat`](../../crates/contracts/src/tool_schema_compat.rs).
+
 OpenAI strict schemas encode omitted optional properties as required nullable
 values. The shared protocol drivers reverse those introduced null placeholders
 before emitting executable tool calls, so the canonical call, fingerprint and
