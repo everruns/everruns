@@ -59,6 +59,7 @@ jobs:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: evals/mcp-scale
           shared-key: mcp-scale-evals
       - name: Check formatting
