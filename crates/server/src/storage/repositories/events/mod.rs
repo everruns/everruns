@@ -678,6 +678,16 @@ impl Database {
         .await?)
     }
 
+    /// The session's highest stored event sequence, `None` when it has none.
+    pub async fn last_event_sequence(&self, session_id: SessionId) -> Result<Option<i32>> {
+        Ok(
+            sqlx::query_scalar("SELECT MAX(sequence) FROM events WHERE session_id = $1")
+                .bind(session_id.uuid())
+                .fetch_one(&self.pool)
+                .await?,
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn list_events(
         &self,

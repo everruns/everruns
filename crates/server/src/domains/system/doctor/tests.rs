@@ -414,7 +414,7 @@ async fn the_report_reads_versions_and_drains_from_the_registry() {
 
 // --- server replicas -------------------------------------------------------
 
-use super::checks::messaging::{disagreement, nats_check, valkey_check};
+use super::checks::messaging::{disagreement, event_delivery, nats_check, valkey_check};
 use super::checks::replicas::{Replicas, servers_check, versions_check as server_versions_check};
 use super::instances::{Instance, InstanceDetails, InstanceRow, KIND_SERVER, recent, record};
 use chrono::TimeDelta;
@@ -538,6 +538,40 @@ async fn several_servers_need_nats_and_valkey_and_must_agree_on_them() {
         "{}",
         split.summary
     );
+}
+
+#[test]
+fn servers_that_cannot_share_live_updates_are_flagged() {
+    let on = |id: &str, backend: &str| {
+        let mut row = replica(id, "1.0.0", 60, 5);
+        row.details.event_delivery = Some(backend.to_string());
+        row
+    };
+    let ok = || DoctorCheck::new(CheckArea::Messaging, "messaging.nats", "NATS").ok("Connected.");
+
+    // One server on in-memory delivery is the single-server setup.
+    assert_eq!(
+        event_delivery(ok(), &[on("a", "in_memory")]).status,
+        CheckStatus::Ok
+    );
+
+    // With two, the in-memory one streams only to its own clients.
+    let split = event_delivery(ok(), &[on("a", "nats"), on("b", "in_memory")]);
+    assert_eq!(split.status, CheckStatus::Problem);
+    assert!(split.summary.contains("host-b"), "{}", split.summary);
+
+    // Polling keeps clients current, but it is degraded.
+    let polling = event_delivery(ok(), &[on("a", "polling"), on("b", "polling")]);
+    assert_eq!(polling.status, CheckStatus::Warning);
+    assert!(
+        polling.summary.contains("host-a, host-b"),
+        "{}",
+        polling.summary
+    );
+
+    // Heartbeats from builds that do not report it change nothing.
+    let old = [replica("a", "1.0.0", 60, 5), replica("b", "1.0.0", 60, 5)];
+    assert_eq!(event_delivery(ok(), &old).status, CheckStatus::Ok);
 }
 
 #[tokio::test]

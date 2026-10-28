@@ -827,7 +827,7 @@ Multiple control-plane instances can run behind a load balancer for HA.
 | Task claiming (SKIP LOCKED) | Naturally partitions work |
 | Worker registration | Database-backed, any server can serve any worker |
 | PgListener (task_available) | Each instance runs its own listener; all receive NOTIFY |
-| Live session events | NATS carries them across instances; without NATS, in-memory delivery covers a single instance only |
+| Live session events | NATS carries them across instances; without NATS, in-memory delivery covers a single instance only, and a server that expects others (`EXPECTED_INSTANCES` > 1) or cannot reach its configured NATS polls PostgreSQL instead and reports `degraded` in `/health` and the doctor |
 | Rate limiting (Valkey) | Shared sliding-window counters when `VALKEY_URL` set |
 
 ### Configuration (`EXPECTED_INSTANCES`)

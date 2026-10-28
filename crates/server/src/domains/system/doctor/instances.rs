@@ -41,6 +41,10 @@ pub struct InstanceDetails {
     pub nats: bool,
     #[serde(default)]
     pub valkey: bool,
+    /// How this server delivers live session events (`nats`, `in_memory`,
+    /// `polling`); unset before it chose, or from an older build.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_delivery: Option<String>,
 }
 
 /// One running process, as it reports itself.
@@ -75,6 +79,7 @@ impl Instance {
             details: InstanceDetails {
                 nats: env_opt_string("NATS_URL").is_some(),
                 valkey: env_opt_string("VALKEY_URL").is_some(),
+                event_delivery: None,
             },
             started_at: Utc::now(),
         })
@@ -104,7 +109,12 @@ impl InstanceRow {
 
 /// Write `instance`'s heartbeat, creating its row on the first beat.
 pub async fn record(pool: &PgPool, instance: &Instance) -> sqlx::Result<()> {
-    let details = serde_json::to_value(&instance.details).unwrap_or_default();
+    let mut details = instance.details.clone();
+    if details.event_delivery.is_none() {
+        details.event_delivery =
+            crate::live_updates::event_delivery::active_backend().map(str::to_string);
+    }
+    let details = serde_json::to_value(&details).unwrap_or_default();
     sqlx::query(
         "INSERT INTO system_instances
              (id, kind, hostname, version, schema_version, details, started_at, last_seen_at)
