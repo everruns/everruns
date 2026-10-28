@@ -31,6 +31,8 @@
 
 - Added the [System Doctor](operations/system-doctor.md): platform-wide checks with plain-language fixes over `/v1/system/doctor` and `everruns system doctor`, and a `/health/ready` readiness probe.
 
+- Attested short provider retries retain their own verified invocation without granting ordinary schedules personal authority. Added bounded proof and membership checks plus native MCP continuation coverage; clarified automatic question-default attribution and incomplete work reports. See [runtime identity](runtime-resources/virtual-users.md), [Ask User](execution/ask-user.md) and [work reports](execution/work-reports.md).
+
 ## 2026-10-26
 
 - Added persistent Ukrainian interface selection and generic agent/harness display

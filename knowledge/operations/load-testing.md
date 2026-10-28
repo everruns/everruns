@@ -301,6 +301,14 @@ only with an offered tool set whose generated placeholder arguments are valid.
 Changing the tool mix changes the workload, so keep both mix and revision with
 results rather than comparing the two as equivalent baselines.
 
+`luna-agent`, `sol-agent` and `muse-agent` play those same tool rounds with
+first-token delay and streaming speed measured from GPT-6 Luna, GPT-6.1 Sol and
+Muse Spark 1.3 Contributor, so a mix can ask how capacity changes when agents
+wait on a slower or faster model. `long-tool` runs two 25 s shell commands
+(the virtual shell caps a command at 30 s), which holds a turn and its tool slot
+open the way builds and test runs do. A reply that is only tool calls also takes
+model time: the first-token delay plus the arguments written as tokens.
+
 The driver checks the model's provider is llmsim before creating work, waits
 for a successful SSE response before sending messages, reports p50/p95/p99
 and mean for full-turn, first-delta and POST latency, and exits unsuccessfully
