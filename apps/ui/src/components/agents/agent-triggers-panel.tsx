@@ -1,6 +1,9 @@
 "use client";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
+import { usePolicies } from "@/hooks/use-policies";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
 import { useState, type ReactNode } from "react";
 import {
   Clock3,
@@ -26,6 +29,7 @@ import {
   EMPTY_TRIGGER_FORM,
   isTriggerFormValid,
   TriggerFormFields,
+  scheduleTriggerDraftSchema,
   type TriggerFormState,
 } from "@/components/agents/trigger-form";
 import {
@@ -86,6 +90,43 @@ export function AgentTriggersPanel({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<TriggerFormState>(EMPTY_TRIGGER_FORM);
   const [error, setError] = useState<string | null>(null);
+  const policy = usePolicies("agents");
+  const canManage = !policy.isLoading && !policy.error && policy.can("agent.manage");
+  const savedTrigger = triggers.find((trigger) => trigger.id === editing?.id);
+  const savedConfig = savedTrigger ? getScheduleTriggerConfig(savedTrigger) : undefined;
+  const saved = {
+    cron_expression: savedConfig?.cron_expression ?? EMPTY_TRIGGER_FORM.cron_expression,
+    timezone: savedConfig?.timezone ?? "UTC",
+    session_mode: savedConfig?.session_mode ?? "shared_session",
+    message: savedConfig?.message ?? "",
+    enabled: savedTrigger?.enabled ?? true,
+  };
+  const values = {
+    ...form,
+    timezone: form.timezone ?? "UTC",
+    session_mode: form.session_mode ?? "shared_session",
+  };
+  usePageFormPrefill({
+    identity: editing?.id ?? "none",
+    open: dialogOpen,
+    values,
+    saved,
+    apply: setForm,
+  });
+  const chatDraft = usePageFormDraft({
+    schema: scheduleTriggerDraftSchema,
+    entityType: "agent_trigger",
+    entityId: editing?.id,
+    formId: "schedule",
+    label: "Edit trigger",
+    priority: 30,
+    enabled: dialogOpen && !!savedTrigger,
+    baseline: savedTrigger?.updated_at ?? "new",
+    values,
+    dirty: JSON.stringify(values) !== JSON.stringify(saved),
+    writable: canManage && !updateTrigger.isPending,
+    apply: setForm,
+  });
 
   const openEdit = (trigger: AgentTrigger) => {
     const config = getScheduleTriggerConfig(trigger);
@@ -102,7 +143,7 @@ export function AgentTriggersPanel({
   };
 
   const save = async () => {
-    if (!editing) return;
+    if (!editing || !canManage || chatDraft.blocked || updateTrigger.isPending) return;
     if (!isTriggerFormValid(form)) {
       setError("Enter a valid schedule and a non-empty message.");
       return;
@@ -210,6 +251,7 @@ export function AgentTriggersPanel({
                   </div>
                   <div className="flex items-center gap-2">
                     <Switch
+                      disabled={!canManage || updateTrigger.isPending}
                       checked={trigger.enabled}
                       aria-label={trigger.enabled ? ui("Disable trigger") : ui("Enable trigger")}
                       onCheckedChange={(enabled) =>
@@ -232,11 +274,16 @@ export function AgentTriggersPanel({
                           size="sm"
                           variant="outline"
                           onClick={() => runTrigger.mutate(trigger.id)}
-                          disabled={!trigger.enabled || runTrigger.isPending}
+                          disabled={!canManage || !trigger.enabled || runTrigger.isPending}
                         >
                           <Play className="size-4" /> {ui("Run now")}
                         </Button>
-                        <Button size="icon-sm" variant="ghost" onClick={() => openEdit(trigger)}>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          disabled={!canManage}
+                          onClick={() => openEdit(trigger)}
+                        >
                           <Pencil className="size-4" />
                           <span className="sr-only">{ui("Quick edit trigger")}</span>
                         </Button>
@@ -253,6 +300,7 @@ export function AgentTriggersPanel({
                     <Button
                       size="icon-sm"
                       variant="ghost"
+                      disabled={!canManage || deleteTrigger.isPending}
                       onClick={() => deleteTrigger.mutate(trigger.id)}
                     >
                       <Trash2 className="size-4" />
@@ -282,12 +330,21 @@ export function AgentTriggersPanel({
             </DialogDescription>
           </DialogHeader>
           <TriggerFormFields value={form} onChange={setForm} />
+          {chatDraft.notice}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               {ui("Cancel")}
             </Button>
-            <Button onClick={save} disabled={updateTrigger.isPending}>
+            {chatDraft.blocked && (
+              <Button variant="outline" onClick={() => setForm(saved)}>
+                {ui("Discard")}
+              </Button>
+            )}
+            <Button
+              onClick={save}
+              disabled={!canManage || updateTrigger.isPending || chatDraft.blocked}
+            >
               {ui("Save changes")}
             </Button>
           </DialogFooter>

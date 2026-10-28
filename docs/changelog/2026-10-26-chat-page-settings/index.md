@@ -22,6 +22,13 @@ model selections apply and undo atomically. Private profile history stays owner-
 Connected-account names, Sandbox Template labels, and your organization profile
 share the guarded review flow through REST and Chat.
 
+The tabbed Knowledge pages provide current collection, source, search and visible
+file context. Clean settings follow refreshes; conflicting drafts stay intact.
+Agent and Harness translations join the draft and saved-review flow, and interface
+language changes wait for Save in the adopted workspace. Trigger quick edits and
+manager-note drafts also show review and local Undo. Protected sheets keep Chat
+from changing the form underneath them.
+
 **New subchat** starts an independent conversation on the same assistant. Selecting
 it replaces the conversation. Full Chat shows one conversation; Command/Ctrl-J
 opens page-side Chat from an app page. Core Chat and subchats need no feature flag.

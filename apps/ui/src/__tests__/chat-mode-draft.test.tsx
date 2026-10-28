@@ -85,6 +85,18 @@ it("reads unsaved form values and applies an atomic draft patch without losing o
   });
 });
 
+it("invalidates a captured Agent adapter when its page unmounts", () => {
+  const { result, unmount } = setup();
+  const adapter = result.current.adapter;
+  const before = adapter.read(adapter.describe().binding);
+  unmount();
+  expect(adapter.describe().writable).toBe(false);
+  expect(() => adapter.read(before.binding)).toThrow(/page has changed/);
+  expect(() =>
+    adapter.patch(before.binding, before.revision, { system_prompt: "Late edit" }),
+  ).toThrow(/page has changed/);
+});
+
 it("rejects stale, wrong-page, read-only and conflicting patches without changing any field", () => {
   const { result, rerender } = setup();
   const adapter = result.current.adapter;

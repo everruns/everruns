@@ -2,6 +2,7 @@
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
 import { collectionDraftSchema } from "@/components/chat-mode/page-form-schemas";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -71,6 +72,21 @@ export function CollectionForm({
       2,
     ),
   };
+  const apply = (next: typeof values) => {
+    setName(next.name);
+    setDescription(next.description);
+    setMode(next.mode);
+    setModel(next.model);
+    setIndexer(next.indexer);
+    setRules(next.rules);
+  };
+  usePageFormPrefill({
+    identity: initial?.id ?? "new",
+    open: !!initial,
+    values,
+    saved: savedValues,
+    apply,
+  });
   const chatDraft = usePageFormDraft({
     schema: collectionDraftSchema,
     values,
@@ -82,14 +98,7 @@ export function CollectionForm({
     dirty: JSON.stringify(values) !== JSON.stringify(savedValues),
     writable: !pending && ["owner", "admin"].includes(currentOrg?.role ?? ""),
     readonlyFields: initial?.name === "everruns-docs" ? ["name"] : [],
-    apply: (next) => {
-      setName(next.name);
-      setDescription(next.description);
-      setMode(next.mode);
-      setModel(next.model);
-      setIndexer(next.indexer);
-      setRules(next.rules);
-    },
+    apply,
   });
   return (
     <form

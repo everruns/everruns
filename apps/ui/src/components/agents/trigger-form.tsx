@@ -1,6 +1,15 @@
 "use client";
 
 import { useUiTranslations } from "@/providers/locale-provider";
+import { z } from "zod";
+
+export const scheduleTriggerDraftSchema = z.strictObject({
+  message: z.string().max(256 * 1024),
+  cron_expression: z.string().max(256),
+  timezone: z.string().max(128),
+  session_mode: z.enum(["shared_session", "session_per_invocation"]),
+  enabled: z.boolean(),
+});
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { CronInput, isSupportedCronExpression } from "@/components/apps/cron-label";
 import { Label } from "@/components/ui/label";

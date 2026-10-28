@@ -102,6 +102,7 @@ export function AgentImportDialog({
       }}
     >
       <DialogContent
+        chatProtected="Import agent"
         className={`flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl ${preview ? "h-[90vh]" : ""}`}
       >
         <DialogHeader className="shrink-0 border-b p-4 pr-12 sm:px-6">

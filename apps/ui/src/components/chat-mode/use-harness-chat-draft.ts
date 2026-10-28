@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import type { HarnessDraft, HarnessDraftFields } from "@/components/harnesses/use-harness-draft";
-import { agentDraftPatchSchema } from "./page-draft";
+import { agentDraftPatchSchema, entityLocalizationsDraftSchema } from "./page-draft";
 import { draftText, usePageFormDraft } from "./use-page-form-draft";
 
 const schema = z.strictObject({
@@ -15,6 +15,7 @@ const schema = z.strictObject({
   tags: draftText,
   parent_harness_id: draftText,
   default_model_id: draftText,
+  localizations: entityLocalizationsDraftSchema,
   capabilities: agentDraftPatchSchema.shape.capabilities.unwrap(),
   starters: agentDraftPatchSchema.shape.starters.unwrap(),
   initial_files: agentDraftPatchSchema.shape.initial_files.unwrap(),
@@ -50,6 +51,7 @@ export function useHarnessChatDraft({
       starters: draft.starters,
       initial_files: draft.files,
       network_access: draft.networkAccess ?? {},
+      localizations: draft.localizations ?? {},
     },
     dirty: draft.isDirty,
     writable,
@@ -63,6 +65,8 @@ export function useHarnessChatDraft({
         draft.setCapabilities(values.capabilities);
       if (differs(values.starters, draft.starters)) draft.setStarters(values.starters);
       if (differs(values.initial_files, draft.files)) draft.setFiles(values.initial_files);
+      if (differs(values.localizations, draft.localizations ?? {}))
+        draft.setLocalizations(values.localizations);
       // Null means inherit; normalizing it for reading must not create an
       // explicit empty override when Chat edited an unrelated field.
       if (differs(values.network_access, draft.networkAccess ?? {}))

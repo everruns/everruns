@@ -198,6 +198,7 @@ export function AgentSettingsSheet({
                   : ((
                       {
                         files: "initial_files",
+                        localization: "localizations",
                         network: "network_access",
                         sandbox: "sandbox_policy",
                         max_output_tokens: "max_output_tokens",
