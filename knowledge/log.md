@@ -2,15 +2,36 @@
 
 ## 2026-10-28
 
+- Clarified unreleased Framework batch installation and pinned its source revision in the [public guide](../docs/framework/batch-model-requests.md).
+
+- Move console and Work Chat type checks to pinned `tsrs`, with route generation and a mandatory build gate. Retain TypeScript for API consumers. See [Code Organization](foundations/code-organization.md).
+
+- Added [tab-local Chat recovery and shared SSE subscriptions](ui/chat-recovery.md), using atomic, time-bounded send identities and preserving independent transcript replay cursors.
+
+- Added explicit shared-message request lists to the [Framework batch API](framework/batch-model-requests.md), preserving builder validation, scoped tickets and uncertainty handling.
+
+- Required short, compilable Rust API examples for Framework changelog entries and updated the batch entry to demonstrate submission and ticket serialization. See [Public Changelog](docs/changelog.md).
+
 - Extended interface, built-in resource display and deterministic backend localization
   with French, German, Spanish, Simplified Chinese and British English. Browser
   preference negotiation and regional formatting remain separate from execution locale.
+
+- Qualified page-aware Chat against the new language catalog and Tracing surfaces.
+  Fixed collection saved-state comparisons and selected-field history inverses
+  retaining unrelated replacement settings. See [Chat mode](ui/chat-mode.md) and
+  [Knowledge pages](ui/knowledge-pages.md).
 
 ## 2026-10-27
 
 - Shell filesystem checks now use metadata to recognize empty workspace directories across the command-backed worker transport. Recursive copy preserves destination directory layout before any child is written. See [Bashkit requirements](execution/bashkit-requirements.md).
 
 - Session trace messages render Markdown by default with a shareable plain-text view. See [Session Trace](ui/session-trace.md).
+- Extended [page-aware Chat](ui/chat-mode.md) coverage to the tabbed Knowledge UI, Agent/Harness translations, interface language, trigger quick edits and manager notes. Added an authenticated-route inventory gate, field-level permission/conflict fixtures and protected drawer masking; [Knowledge pages](ui/knowledge-pages.md) now adapt to the split pane.
+- Unified resource pickers, form controls, page layouts and action feedback; expanded the public Slate component and layout guidance.
+
+- Added full real-model custom-worker smoke qualification, process/container credential and routing checks, public deployment/walkthrough navigation, and agent/UI acceptance cases. See [custom workers](operations/custom-workers.md).
+
+- Added [customer-hosted custom workers](operations/custom-workers.md): a separate scoped worker protocol, persistent agent routing, fenced canonical event ingestion and a Framework data-agent example.
 
 - Bounded native search keeps full schemas in the function projection and returns only operation summaries, so current Agent write schemas fit without raising either byte budget. Added regression coverage for complete schema delivery and hosted native grading. See [Tool search](execution/tool-search.md).
 

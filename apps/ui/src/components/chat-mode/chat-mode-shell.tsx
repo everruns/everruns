@@ -1,4 +1,5 @@
 "use client";
+import { ConfirmationProvider } from "@/components/ui/confirmation-provider";
 import { useUiTranslations } from "@/providers/locale-provider";
 import { PageChangeReviewProvider, SavedPageChanges } from "./page-change-review-provider";
 
@@ -60,13 +61,21 @@ export function ChatModeShell({
   navigation?: NavigationSection[];
 }) {
   const enabled = useFeatureFlag("chat_mode");
+  const confirmationPath = usePathname();
+  const confirmationSearch = useSearchParams();
   const { currentOrg } = useOrg();
   if (!enabled) {
     return (
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <Sidebar className="hidden md:flex" />
         <MobileSidebar />
-        <main className="min-w-0 flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
+        <main className="min-w-0 flex-1 overflow-auto bg-background bg-brand-dots">
+          <ConfirmationProvider
+            scope={`${currentOrg?.public_id}:${confirmationPath}?${confirmationSearch}`}
+          >
+            {children}
+          </ConfirmationProvider>
+        </main>
       </div>
     );
   }
@@ -352,7 +361,13 @@ function EnabledShell({
                 </div>
               )}
               <main className="chat-mode-page-content min-h-0 min-w-0 flex-1 overflow-auto bg-background bg-brand-dots">
-                {fullChat ? null : children}
+                {fullChat ? null : (
+                  <ConfirmationProvider
+                    scope={`${currentOrg?.public_id}:${pathname}?${searchParams}`}
+                  >
+                    {children}
+                  </ConfirmationProvider>
+                )}
               </main>
               <SavedPageChanges />
             </section>

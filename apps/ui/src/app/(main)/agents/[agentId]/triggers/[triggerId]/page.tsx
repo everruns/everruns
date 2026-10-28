@@ -29,6 +29,7 @@ import {
   EMPTY_TRIGGER_FORM,
   isTriggerFormValid,
   TriggerFormFields,
+  scheduleTriggerDraftSchema,
   type TriggerConfig,
   type TriggerFormState,
 } from "@/components/agents/trigger-form";
@@ -60,13 +61,7 @@ const githubDraftSchema = z.strictObject({
   session_mode: z.enum(["per_thread", "shared_session", "session_per_invocation"]),
   enabled: z.boolean(),
 });
-const scheduleDraftSchema = z.strictObject({
-  message: z.string(),
-  cron_expression: z.string(),
-  timezone: z.string(),
-  session_mode: z.enum(["shared_session", "session_per_invocation"]),
-  enabled: z.boolean(),
-});
+const scheduleDraftSchema = scheduleTriggerDraftSchema;
 
 /// Full-page trigger editor, matching the channel editors rather than the
 /// dialog the inline panel still uses for quick edits (EVE-1009). `new` creates;

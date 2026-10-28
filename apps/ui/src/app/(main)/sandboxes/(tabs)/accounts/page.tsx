@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { ProviderAccountIcon } from "@/components/icons/facet-icons";
@@ -25,6 +26,7 @@ import { EmptyState, PageMain } from "@/components/layout";
 export default function SandboxProviderAccountsPage() {
   const { displayLocale } = useLocale();
 
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   usePageTitle(ui("Provider accounts"), ui("Sandboxes"));
   const connections = useOrganizationConnections();
@@ -116,9 +118,9 @@ export default function SandboxProviderAccountsPage() {
                           aria-label={ui("Disconnect {value0}", { value0: account.name })}
                           onClick={async () => {
                             if (
-                              !window.confirm(
+                              !(await requestConfirmation(
                                 `Disconnect ${account.name}? Templates using this account must be changed first.`,
-                              )
+                              ))
                             )
                               return;
                             try {

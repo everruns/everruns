@@ -714,6 +714,41 @@ impl Database {
         .await?)
     }
 
+    /// One turn's events of the given types, oldest first: from the turn's
+    /// `turn.started` (found through the partial turns index, newest first, so
+    /// usually the first row it reads) to the end of the session.
+    pub async fn list_turn_events(
+        &self,
+        session_id: SessionId,
+        turn_id: &str,
+        event_types: &[String],
+    ) -> Result<Vec<EventRow>> {
+        Ok(sqlx::query_as::<_, EventRow>(sql!(
+            r#"
+            WITH started AS (
+                SELECT sequence FROM events
+                WHERE session_id = $1
+                  AND event_type = 'turn.started'
+                  AND context->>'turn_id' = $2
+                ORDER BY sequence DESC
+                LIMIT 1
+            )
+            SELECT {EventRow}
+            FROM events
+            WHERE session_id = $1
+              AND sequence >= (SELECT sequence FROM started)
+              AND event_type = ANY($3)
+              AND context->>'turn_id' = $2
+            ORDER BY sequence ASC
+            "#
+        ))
+        .bind(session_id.uuid())
+        .bind(turn_id)
+        .bind(event_types)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn list_events(
         &self,

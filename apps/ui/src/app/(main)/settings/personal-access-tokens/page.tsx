@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { TokenIcon } from "@/components/icons/facet-icons";
@@ -404,6 +405,7 @@ function ShowPersonalAccessTokenDialog({
 }
 
 export default function PersonalAccessTokensPage() {
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   usePageTitle(ui("Personal access tokens"), ui("Settings"));
   const { requiresAuth } = useAuth();
@@ -419,7 +421,7 @@ export default function PersonalAccessTokensPage() {
 
   const handleDeleteToken = async (id: string) => {
     if (
-      confirm(
+      await requestConfirmation(
         "Are you sure you want to delete this personal access token? This action cannot be undone.",
       )
     ) {

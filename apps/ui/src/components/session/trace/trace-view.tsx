@@ -1,4 +1,5 @@
 "use client";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 
 // The session Trace tab: control strip, turn rail, virtualized turn list and
 // inspector. See knowledge/ui/session-trace.md.
@@ -373,44 +374,21 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
         </div>
       )}
       <div className="flex flex-wrap items-center gap-3 border-b bg-card px-6 py-3">
-        <div role="radiogroup" aria-label={ui("View")} className="flex border">
-          {VIEWS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={view === option.value}
-              onClick={() => setParams({ view: option.value === "all" ? null : option.value })}
-              className={cn(
-                "h-7 px-3 text-xs font-medium",
-                view === option.value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted",
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-        <div role="radiogroup" aria-label={ui("Message format")} className="flex border">
-          {([false, true] as const).map((plain) => (
-            <button
-              key={String(plain)}
-              type="button"
-              role="radio"
-              aria-checked={plainText === plain}
-              onClick={() => setParams({ text: plain ? "plain" : null })}
-              className={cn(
-                "h-7 px-3 text-xs font-medium",
-                plainText === plain
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted",
-              )}
-            >
-              {plain ? ui("Plain text") : ui("Markdown")}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label={ui("View")}
+          value={view}
+          onValueChange={(value) => setParams({ view: value === "all" ? null : value })}
+          options={VIEWS}
+        />
+        <SegmentedControl
+          label={ui("Message format")}
+          value={plainText ? "plain" : "markdown"}
+          onValueChange={(value) => setParams({ text: value === "plain" ? "plain" : null })}
+          options={[
+            { value: "markdown", label: ui("Markdown") },
+            { value: "plain", label: ui("Plain text") },
+          ]}
+        />
         <label className="flex items-center gap-2 text-xs">
           <Checkbox
             checked={errorsOnly}

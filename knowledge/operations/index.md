@@ -24,3 +24,5 @@
 * [OpenRouter Decisions Proposal](openrouter-decisions-proposal.md) - Provider service and catalog design.
 * [Voice Channels on the Platform Server](voice.md) - How the server runs voice calls: voice channel type, call routes, delegated voice loop, leases and events.
 * [Session Counts](session-counts.md) - Denormalized session counters and the reads they exist to keep cheap.
+
+* [Customer-hosted Custom Workers](custom-workers.md) - Restricted agent-scoped execution, persistent routing and customer-owned private tools.

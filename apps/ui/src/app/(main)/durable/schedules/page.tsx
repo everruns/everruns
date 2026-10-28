@@ -1,4 +1,6 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
+import { PageContainer, PageMasthead } from "@/components/layout";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import {
@@ -419,6 +421,7 @@ function CreateScheduleDialog({ open, onClose }: { open: boolean; onClose: () =>
 }
 
 export default function SchedulesPage() {
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   usePageTitle(ui("Schedules"), ui("Durable"));
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -465,23 +468,23 @@ export default function SchedulesPage() {
 
   if (isLoading) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Schedules")}</h1>
+          <PageMasthead title={ui("Schedules")} className="min-w-0 flex-1" />
         </div>
         <div className="space-y-6">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-96" />
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (error) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Schedules")}</h1>
+          <PageMasthead title={ui("Schedules")} className="min-w-0 flex-1" />
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -496,7 +499,7 @@ export default function SchedulesPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -508,22 +511,26 @@ export default function SchedulesPage() {
     resumeMutation.mutate(scheduleId);
   };
 
-  const handleTrigger = (scheduleId: string) => {
-    if (confirm("Manually trigger this schedule now?")) {
+  const handleTrigger = async (scheduleId: string) => {
+    if (await requestConfirmation("Manually trigger this schedule now?")) {
       triggerMutation.mutate(scheduleId);
     }
   };
 
-  const handleDelete = (scheduleId: string) => {
-    if (confirm("Are you sure you want to delete this schedule? This cannot be undone.")) {
+  const handleDelete = async (scheduleId: string) => {
+    if (
+      await requestConfirmation(
+        "Are you sure you want to delete this schedule? This cannot be undone.",
+      )
+    ) {
       deleteMutation.mutate(scheduleId);
     }
   };
 
   return (
-    <div className="container mx-auto p-6 overflow-hidden">
+    <PageContainer className="operational-page overflow-hidden">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">{ui("Schedules")}</h1>
+        <PageMasthead title={ui("Schedules")} className="min-w-0 flex-1" />
       </div>
       <div className="space-y-6">
         {/* Filters and Actions */}
@@ -620,6 +627,6 @@ export default function SchedulesPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

@@ -325,6 +325,13 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
 
 See [knowledge/operations/durable-execution-engine.md](../operations/durable-execution-engine.md) for the durable engine architecture.
 
+### Customer-hosted custom execution
+
+Custom agent implementations use a separate, opt-in, agent-scoped service, never
+an internal fleet credential. The control plane retains intake, actor leases and
+canonical event fan-out. See [Custom workers](../operations/custom-workers.md)
+for authority, persistent routing, recovery responsibilities and isolation limits.
+
 ### Worker ↔ Control-Plane Communication
 
 Workers communicate with the control-plane via gRPC instead of direct database access:

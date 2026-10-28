@@ -14,6 +14,7 @@ import {
 } from "@/lib/api/tracing";
 import { TracingDestinationDialog } from "./destination-dialog";
 import { TracingRoutingForm } from "./routing-form";
+import { useTracingDestinationRows } from "./use-tracing-page-context";
 import { HistorySheet } from "@/components/entity-actions/history-sheet";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -49,6 +50,7 @@ function OrganizationTracing() {
   usePageTitle(ui("Tracing"), ui("Settings"));
   const { currentOrg, hasRole } = useOrg();
   const query = useTracingDestinations();
+  useTracingDestinationRows(query.data ?? [], { loading: query.isLoading, error: !!query.error });
   const refresh = useRefreshTracing();
   const canManage = hasRole("admin");
   const [editor, setEditor] = useState<TracingDestination | "new" | null>(null);

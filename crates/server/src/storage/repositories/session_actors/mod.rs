@@ -208,6 +208,20 @@ impl Database {
         ttl: Duration,
         max_per_org: i64,
     ) -> Result<Vec<LeasedActorRow>> {
+        self.lease_session_actors_for_worker(holder, limit, ttl, max_per_org, None)
+            .await
+    }
+
+    /// `None` is the built-in fleet; a deployment id selects only that custom
+    /// worker's agent. Filtering happens before the bounded candidate scan.
+    pub async fn lease_session_actors_for_worker(
+        &self,
+        holder: &str,
+        limit: i64,
+        ttl: Duration,
+        max_per_org: i64,
+        custom_worker_id: Option<uuid::Uuid>,
+    ) -> Result<Vec<LeasedActorRow>> {
         let limit = limit.clamp(0, MAX_ACTOR_LEASE_BATCH);
         if limit == 0 {
             return Ok(Vec::new());
@@ -227,6 +241,16 @@ impl Database {
                       SELECT 1 FROM detached_tool_calls d
                       WHERE d.session_id = session_actors.session_id
                   )
+                  AND CASE WHEN $6::uuid IS NULL THEN NOT EXISTS (
+                      SELECT 1 FROM sessions s JOIN custom_workers w
+                        ON w.agent_id = s.agent_id AND w.org_id = s.org_id
+                      WHERE s.id = session_actors.session_id
+                  ) ELSE EXISTS (
+                      SELECT 1 FROM sessions s JOIN custom_workers w
+                        ON w.agent_id = s.agent_id AND w.org_id = s.org_id
+                      WHERE s.id = session_actors.session_id
+                        AND w.id = $6 AND w.enabled
+                  ) END
                 ORDER BY runnable_since, session_id
                 LIMIT $2
                 FOR UPDATE SKIP LOCKED
@@ -282,6 +306,7 @@ impl Database {
         .bind(max_per_org.max(0))
         .bind(holder)
         .bind(ttl_millis(ttl))
+        .bind(custom_worker_id)
         .fetch_all(&self.pool)
         .await?)
     }

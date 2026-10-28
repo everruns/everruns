@@ -1,3 +1,4 @@
+import { messages as sharedControls } from "./messages/uk/shared-controls";
 import { messages as tracing } from "./messages/uk/tracing";
 import { messages as zh } from "./messages/zh-CN";
 import { messages as es } from "./messages/es";
@@ -49,6 +50,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   catalog18,
   catalog19,
   tracing,
+  sharedControls,
 );
 
 /** Product catalogs use null-prototype maps so hostile lookup keys fall back safely. */

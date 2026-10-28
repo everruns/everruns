@@ -1,4 +1,11 @@
 "use client";
+import {
+  Select as SharedSelect,
+  SelectTrigger as SharedSelectTrigger,
+  SelectContent as SharedSelectContent,
+  SelectValue as SharedSelectValue,
+  SelectItem as SharedSelectItem,
+} from "@/components/ui/select";
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
@@ -259,19 +266,29 @@ export function AgentSourcePanel({
             <>
               <div className="space-y-2">
                 <Label htmlFor="source-mode">{ui("Sync direction")}</Label>
-                <select
-                  id="source-mode"
-                  className="h-9 w-full border bg-background px-3 text-sm"
-                  value={mode}
+                <SharedSelect
+                  value={String(mode)}
                   disabled={busy}
-                  onChange={(event) => {
-                    setMode(event.target.value as "pull" | "two_way");
+                  onValueChange={(selection) => {
+                    setMode(selection as "pull" | "two_way");
                     setPreview(null);
                   }}
                 >
-                  <option value="pull">{ui("Sync from GitHub · read-only in Everruns")}</option>
-                  <option value="two_way">{ui("Sync with GitHub · edit on either side")}</option>
-                </select>
+                  <SharedSelectTrigger
+                    id="source-mode"
+                    className="h-9 w-full border bg-background px-3 text-sm"
+                  >
+                    <SharedSelectValue />
+                  </SharedSelectTrigger>
+                  <SharedSelectContent>
+                    <SharedSelectItem value="pull">
+                      {ui("Sync from GitHub · read-only in Everruns")}
+                    </SharedSelectItem>
+                    <SharedSelectItem value="two_way">
+                      {ui("Sync with GitHub · edit on either side")}
+                    </SharedSelectItem>
+                  </SharedSelectContent>
+                </SharedSelect>
                 {mode === "two_way" && (
                   <p className="text-sm text-muted-foreground">
                     {ui(
@@ -293,24 +310,30 @@ export function AgentSourcePanel({
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="source-repository">{ui("Repository")}</Label>
-                  <select
-                    id="source-repository"
-                    className="h-9 w-full border bg-background px-3 text-sm"
-                    value={location.repository}
+                  <SharedSelect
+                    value={String(location.repository)}
                     disabled={busy}
-                    onChange={(event) => {
-                      const repo = event.target.value;
+                    onValueChange={(selection) => {
+                      const repo = selection;
                       setOptions(null);
                       perform(() => browse({ repository: repo, branch: "", path: "" }));
                     }}
                   >
-                    <option value="">{ui("Select a repository")}</option>
-                    {repositories?.map((repo) => (
-                      <option key={repo.full_name} value={repo.full_name}>
-                        {repo.full_name}
-                      </option>
-                    ))}
-                  </select>
+                    <SharedSelectTrigger
+                      id="source-repository"
+                      className="h-9 w-full border bg-background px-3 text-sm"
+                    >
+                      <SharedSelectValue />
+                    </SharedSelectTrigger>
+                    <SharedSelectContent>
+                      <SharedSelectItem value="">{ui("Select a repository")}</SharedSelectItem>
+                      {repositories?.map((repo) => (
+                        <SharedSelectItem key={repo.full_name} value={String(repo.full_name)}>
+                          {repo.full_name}
+                        </SharedSelectItem>
+                      ))}
+                    </SharedSelectContent>
+                  </SharedSelect>
                   {repoError && (
                     <p role="alert" className="break-words text-sm text-destructive">
                       {ui("Could not list repositories. Check the GitHub connection.")}

@@ -1,4 +1,5 @@
 "use client";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
@@ -148,36 +149,15 @@ export default function HarnessesPageClient() {
           onValueChange={(v) => setStatusTab(v as StatusTab)}
           items={statusItems.map((item) => ({ ...item, count: counts[item.value] }))}
         />
-        <div className="flex border">
-          <button
-            type="button"
-            aria-label={ui("Grid view")}
-            aria-pressed={view === "grid"}
-            onClick={() => setView("grid")}
-            className={cn(
-              "inline-flex size-8 items-center justify-center border-r",
-              view === "grid"
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:bg-muted/50",
-            )}
-          >
-            <LayoutGrid className="size-4" />
-          </button>
-          <button
-            type="button"
-            aria-label={ui("List view")}
-            aria-pressed={view === "list"}
-            onClick={() => setView("list")}
-            className={cn(
-              "inline-flex size-8 items-center justify-center",
-              view === "list"
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:bg-muted/50",
-            )}
-          >
-            <ListIcon className="size-4" />
-          </button>
-        </div>
+        <SegmentedControl
+          label={ui("View")}
+          value={view}
+          onValueChange={(value) => setView(value as "grid" | "list")}
+          options={[
+            { value: "grid", label: ui("Grid view"), icon: <LayoutGrid className="size-4" /> },
+            { value: "list", label: ui("List view"), icon: <ListIcon className="size-4" /> },
+          ]}
+        />
       </PageControlStrip>
 
       <PageMain>

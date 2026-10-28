@@ -22,7 +22,7 @@ const resources: Record<string, { type: string; roots: string[] }> = {
   "virtual-users": { type: "virtual_user", roots: ["identities", "identity", "virtual-users"] },
   knowledge: {
     type: "knowledge_collection",
-    roots: ["knowledge", "knowledge-collections", "knowledge-indexes"],
+    roots: ["knowledge", "knowledge-collections", "knowledge-indexes", "knowledge-indexers"],
   },
   "knowledge-indexes": { type: "knowledge_index", roots: ["knowledge-indexes"] },
   memory: { type: "memory", roots: ["memory"] },
@@ -39,6 +39,10 @@ const resources: Record<string, { type: string; roots: string[] }> = {
   monitoring: { type: "monitoring", roots: ["monitoring"] },
   durable: { type: "durable", roots: ["durable"] },
   settings: { type: "settings", roots: [] },
+  // Installation-wide data is projected by its authorized page, never through
+  // the tenant query-cache fallback.
+  system: { type: "system", roots: [] },
+  orgs: { type: "organization", roots: [] },
 };
 const reserved = new Set([
   "new",
@@ -52,6 +56,12 @@ const reserved = new Set([
   "templates",
   "history",
   "declarative",
+  "health",
+  "workers",
+  "workflows",
+  "queues",
+  "schedules",
+  "circuit-breakers",
 ]);
 
 export function pageLocation(route: string, label?: string): ChatPageContext {
@@ -75,7 +85,7 @@ export function pageLocation(route: string, label?: string): ChatPageContext {
     segments.at(-1) === "new"
       ? undefined
       : (segments.findLast((segment) =>
-          /^(?:[a-z]+_)?[0-9a-f]{8}-?[0-9a-f-]{20,}$/i.test(segment),
+          /^(?:[a-z][a-z_]*_)?[0-9a-f]{8}-?[0-9a-f-]{20,}$/i.test(segment),
         ) ??
         (segments[1] && !reserved.has(segments[1]) && root !== "settings"
           ? segments[1]

@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 // Web search → Providers: one card per way the organization can search.
 // Model provider search lists which connected model providers offer it and
@@ -149,6 +150,7 @@ export function SearchProvidersTab({
 }) {
   const { displayLocale } = useLocale();
 
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   const remove = useDeleteOrganizationConnection();
   const [testing, setTesting] = useState<string | null>(null);
@@ -347,7 +349,11 @@ export function SearchProvidersTab({
                     title={ui("Disconnect")}
                     disabled={remove.isPending}
                     onClick={async () => {
-                      if (!window.confirm(`Disconnect ${label}? Agents set to it fall back.`)) {
+                      if (
+                        !(await requestConfirmation(
+                          `Disconnect ${label}? Agents set to it fall back.`,
+                        ))
+                      ) {
                         return;
                       }
                       try {

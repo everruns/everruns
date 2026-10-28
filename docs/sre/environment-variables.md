@@ -1057,3 +1057,17 @@ For setup instructions and configuration details, see the [Braintrust Integratio
 | `BRAINTRUST_TOOL_ARGS_MODE` | No | `redacted` | Tool argument export mode: `full`, `redacted`, `none` |
 | `BRAINTRUST_TOOL_RESULTS_MODE` | No | `summary` | Tool result export mode: `full`, `summary`, `redacted`, `none` |
 | `BRAINTRUST_DEBUG_PAYLOADS` | No | `false` | Print full outbound Braintrust payload JSON to local debug logs |
+
+### CUSTOM_WORKER_GRPC_BIND_ADDR
+
+**Component:** Control plane. **Default:** unset (listener disabled).
+
+Enables the restricted customer-worker gRPC listener, separate from the trusted
+fleet service. Loopback development example: `127.0.0.1:28704`. Non-loopback
+binds require server TLS; see [Custom agent workers](/how-to/custom-agent-workers/)
+for provisioning, process-specific TLS settings, ingress and revocation.
+
+Customer binaries receive their own deployment token, never the internal fleet
+token. The reference data-agent worker uses `CUSTOM_WORKER_URL`,
+`CUSTOM_WORKER_TOKEN`, `DATA_AGENT_DATABASE` and `OPENAI_API_KEY`; HTTPS additionally
+uses `CUSTOM_WORKER_CA_CERT`. These are application settings, not CP secrets.

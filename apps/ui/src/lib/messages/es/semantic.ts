@@ -1,5 +1,8 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  Discard: "Descartar",
+  "Recovery storage is unavailable. Keep this tab open and copy unsent text before leaving.":
+    "El almacenamiento de recuperación no está disponible. Mantén esta pestaña abierta y copia el texto sin enviar antes de salir.",
   "Message format": "Formato del mensaje",
   "Plain text": "Texto sin formato",
   Markdown: "Markdown",

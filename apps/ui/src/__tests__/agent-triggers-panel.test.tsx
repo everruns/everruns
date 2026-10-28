@@ -1,10 +1,19 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
 import type { AgentTrigger } from "@/lib/api/types";
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
+import type { ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
 
 const update = jest.fn();
 const run = jest.fn();
 const remove = jest.fn();
+const save = jest.fn();
+let canManage = true;
+let hideSchedule = false;
+jest.mock("@/hooks/use-policies", () => ({
+  usePolicies: () => ({ can: () => canManage, isLoading: false, error: null }),
+}));
 
 jest.mock("@/hooks/use-agent-triggers", () => ({
   useAgentTriggers: () => ({
@@ -67,7 +76,7 @@ jest.mock("@/hooks/use-agent-triggers", () => ({
         created_at: "2026-07-17T00:00:00Z",
         updated_at: "2026-07-17T00:00:00Z",
       } as unknown as AgentTrigger,
-    ],
+    ].filter((trigger) => !hideSchedule || trigger.id !== "trg_123"),
     isLoading: false,
   }),
   useAgentTriggerRuns: () => ({
@@ -82,13 +91,114 @@ jest.mock("@/hooks/use-agent-triggers", () => ({
     isLoading: false,
   }),
   useCreateAgentTrigger: () => ({ mutateAsync: jest.fn(), isPending: false }),
-  useUpdateAgentTrigger: () => ({ mutate: update, mutateAsync: jest.fn(), isPending: false }),
+  useUpdateAgentTrigger: () => ({ mutate: update, mutateAsync: save, isPending: false }),
   useDeleteAgentTrigger: () => ({ mutate: remove }),
   useRunAgentTrigger: () => ({ mutate: run, isPending: false }),
 }));
 
 describe("AgentTriggersPanel", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    canManage = true;
+    hideSchedule = false;
+    global.structuredClone = (v) => JSON.parse(JSON.stringify(v));
+  });
+
+  it("stages every quick-edit field, shows diffs and Undo, and invalidates the closed dialog", () => {
+    const entries = new Map<string, PageDraftAdapter>();
+    const mode: ChatModeState = {
+      page: { route: "/agents/agent_123", label: "Agent" },
+      pageContainer: { current: null },
+      open: true,
+      setOpen: () => {},
+      actions: [],
+      recordAction: () => {},
+      registerPage: (_, value) => {
+        const key = crypto.randomUUID();
+        if (value) entries.set(key, value);
+        return () => {
+          entries.delete(key);
+        };
+      },
+    };
+    render(
+      <PageChatProvider value={mode}>
+        <AgentTriggersPanel agentId="agent_123" />
+      </PageChatProvider>,
+    );
+    expect(entries.size).toBe(0);
+    fireEvent.click(screen.getByRole("button", { name: "Quick edit trigger" }));
+    const adapter = [...entries.values()][0];
+    const before = adapter.read(adapter.describe().binding);
+    act(() => {
+      adapter.patch(before.binding, before.revision, {
+        cron_expression: "0 0 9 * * * *",
+        timezone: "Europe/London",
+        session_mode: "shared_session",
+        message: "Review the digest",
+        enabled: false,
+      });
+    });
+    expect(screen.getByLabelText("Message")).toHaveValue("Review the digest");
+    expect(screen.getAllByText("Before")).toHaveLength(5);
+    expect(save).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByLabelText("Message")).toHaveValue("Prepare the hourly report");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(() => adapter.read(before.binding)).toThrow(/no longer available/);
+  });
+
+  it("denies quick edits and execution controls without agent management permission", () => {
+    canManage = false;
+    render(<AgentTriggersPanel agentId="agent_123" />);
+    expect(screen.getByRole("button", { name: "Quick edit trigger" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Run now" })).toBeDisabled();
+    screen
+      .getAllByRole("button", { name: "Delete trigger" })
+      .forEach((b) => expect(b).toBeDisabled());
+    screen.getAllByRole("switch").forEach((b) => expect(b).toBeDisabled());
+    expect(run).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("keeps a removed trigger's dialog read-only instead of exposing the underlying page", () => {
+    let active!: PageDraftAdapter;
+    const mode: ChatModeState = {
+      page: { route: "/agents/agent_123", label: "Agent" },
+      pageContainer: { current: null },
+      open: true,
+      setOpen: () => {},
+      actions: [],
+      recordAction: () => {},
+      registerPage: (_, value) => {
+        if (value) active = value;
+        return () => {};
+      },
+    };
+    const tree = (
+      <PageChatProvider value={mode}>
+        <AgentTriggersPanel agentId="agent_123" />
+      </PageChatProvider>
+    );
+    const view = render(tree);
+    fireEvent.click(screen.getByRole("button", { name: "Quick edit trigger" }));
+    const adapter = active;
+    const before = adapter.read(adapter.describe().binding);
+    hideSchedule = true;
+    view.rerender(
+      <PageChatProvider value={mode}>
+        <AgentTriggersPanel agentId="agent_123" />
+      </PageChatProvider>,
+    );
+    const current = active.read(active.describe().binding);
+    expect(current.entity_type).toBe("agent_trigger");
+    expect(current.writable).toBe(false);
+    expect(() => adapter.patch(before.binding, before.revision, { message: "Late" })).toThrow();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    expect(save).not.toHaveBeenCalled();
+  });
 
   it("labels MCP event triggers without webhook setup guidance", () => {
     render(<AgentTriggersPanel agentId="agent_123" />);
