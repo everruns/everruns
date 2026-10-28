@@ -928,6 +928,9 @@ server tools: model-decided, executed inside the response, never dispatched by t
   counts calls in `hosted_tool_calls`, and the engine adds their list price
   (`hosted_call_price_usd`) to the estimated cost. The engine counts the option as
   provider-executed, so a mid-stream failure is not reissued.
+  A terminal web-search item succeeds only with an explicit `completed` status.
+  Unfinished searches are failed hosted calls, preserving partial answer text,
+  citations and usage without turning the response into a retryable failure.
 - **Containers**: `code_interpreter` and `shell` use OpenAI's auto container, which is not the
   session sandbox. They stay unpriced in the estimate because OpenAI bills per container
   session, and one container serves calls across turns.
