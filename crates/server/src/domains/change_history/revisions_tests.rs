@@ -80,6 +80,56 @@ fn knowledge_field_inverse_keeps_unselected_replacement_settings() {
 }
 
 #[tokio::test]
+async fn guarded_knowledge_name_undo_preserves_current_collection_configuration() {
+    let ctx = owner();
+    ctx.db
+        .replace_org_feature_flags(
+            DEFAULT_ORG_ID,
+            &std::collections::HashMap::from([("knowledge".into(), true)]),
+        )
+        .await
+        .unwrap();
+    let original = run(
+        "create_knowledge",
+        json!({
+            "name":"knowledge-inverse", "description":"Original", "indexing":"off",
+            "rules":{"index_exclude":[]}
+        }),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let id = original["id"].as_str().unwrap();
+    run(
+        "update_knowledge",
+        json!({
+            "collection_id":id, "name":"Reviewed", "description":"Keep this description",
+            "indexing":"off", "rules":{"index_exclude":["drafts/**"]}
+        }),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let restored = run(
+        "restore_entity_revision",
+        json!({
+            "entity_ref":id, "revision":1, "expected_revision":2, "fields":["name"]
+        }),
+        &with_reason(&ctx, "Undo reviewed collection name"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(restored["entity"]["name"], "knowledge-inverse");
+    assert_eq!(restored["entity"]["description"], "Keep this description");
+    assert_eq!(
+        restored["entity"]["rules"],
+        json!({"index_exclude":["drafts/**"]})
+    );
+    assert_eq!(restored["entity"]["indexing"], "off");
+    assert_eq!(restored["revision"], 3);
+}
+
+#[tokio::test]
 async fn guarded_harness_restore_preserves_other_fields_and_refuses_stale_undo() {
     let ctx = owner();
     crate::setup::org_init::initialize_org_harnesses(&ctx.db, DEFAULT_ORG_ID)
