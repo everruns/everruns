@@ -6,6 +6,7 @@ use uuid::Uuid;
 pub const MAX_DESTINATIONS: usize = 32;
 pub const MAX_SELECTED: usize = 8;
 
+/// How an agent combines its destinations with organization defaults.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RoutingMode {
@@ -16,12 +17,16 @@ pub enum RoutingMode {
     Off,
 }
 
+/// Customer destinations selected for future turns; never changes platform telemetry.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RoutingPolicy {
     #[serde(default)]
+    /// Use organization defaults, add selections, replace defaults, or disable customer exports.
+    #[schema(example = "inherit")]
     pub mode: RoutingMode,
     #[serde(default)]
+    /// Distinct destination identifiers from this organization; at most eight selections.
     pub destination_ids: Vec<Uuid>,
 }
 impl RoutingPolicy {
@@ -52,6 +57,7 @@ impl RoutingPolicy {
     }
 }
 
+/// Receiver protocol used for customer trace delivery.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TraceProvider {
@@ -59,18 +65,33 @@ pub enum TraceProvider {
     Otlp,
 }
 
+/// Non-secret receiver settings and explicit content capture consent.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DestinationConfig {
+    /// Human-readable destination name, from 1 to 128 characters.
+    #[schema(example = "Production traces")]
     pub name: String,
+    /// Receiver protocol: Braintrust project or generic OTLP over HTTPS.
+    #[schema(example = "otlp")]
     pub provider: TraceProvider,
+    /// HTTPS receiver endpoint without embedded credentials, query parameters, or fragments.
+    #[schema(example = "https://collector.example.com/v1/traces")]
     pub endpoint: String,
+    /// Braintrust project identifier; required for Braintrust receivers.
+    #[schema(example = "00000000-0000-0000-0000-000000000002")]
     pub project_id: Option<Uuid>,
     #[serde(default)]
+    /// Explicit consent to export message and tool content; defaults to metadata only.
+    #[schema(example = false)]
     pub capture_content: bool,
     #[serde(default)]
+    /// Explicit consent to export reasoning; also requires content capture.
+    #[schema(example = false)]
     pub capture_reasoning: bool,
     #[serde(default = "enabled")]
+    /// Whether customer exports may be sent to this receiver; false pauses delivery.
+    #[schema(example = true)]
     pub enabled: bool,
 }
 fn enabled() -> bool {
@@ -106,10 +127,12 @@ impl DestinationConfig {
     }
 }
 
+/// Write-only receiver authentication, encrypted at rest and never returned.
 #[derive(Clone, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TraceSecrets {
     #[serde(default)]
+    /// Authentication headers: Authorization, X-API-Key, or Api-Key. Values are write-only.
     pub headers: std::collections::BTreeMap<String, String>,
 }
 impl TraceSecrets {

@@ -45,16 +45,34 @@ fn admin(state: &ApiState, org: &ResolvedOrg, write: bool) -> Result<()> {
     }
     Ok(())
 }
+/// Destination settings, safe delivery health, and routing usage; excludes credentials.
 #[derive(Serialize, ToSchema)]
 pub struct DestinationView {
+    /// Destination identifier owned by the current organization.
+    #[schema(example = "00000000-0000-0000-0000-000000000001")]
     pub id: Uuid,
+    /// Non-secret destination settings, including capture consent and pause state.
     pub config: DestinationConfig,
+    /// Current revision used to reject stale saves and deletes.
+    #[schema(example = 1)]
     pub revision: i64,
+    /// Time the receiver last accepted an export, or null before any acceptance.
+    #[schema(example = "2026-10-28T00:00:00Z")]
     pub last_accepted_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Time of the latest delivery attempt, or null before the first attempt.
+    #[schema(example = "2026-10-28T00:00:00Z")]
     pub last_attempt_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Sanitized delivery failure; never includes receiver credentials or response bodies.
+    #[schema(example = "Receiver unavailable")]
     pub last_error: Option<String>,
+    /// Number of events omitted by bounded customer export delivery.
+    #[schema(example = 0)]
     pub dropped_events: i64,
+    /// Whether this destination is selected in organization defaults.
+    #[schema(example = false)]
     pub organization_default: bool,
+    /// Number of agent policies that explicitly select this destination.
+    #[schema(example = 0)]
     pub agent_selections: i64,
 }
 impl TryFrom<crate::storage::trace_exports::TracingDestinationRow> for DestinationView {
@@ -75,27 +93,41 @@ impl TryFrom<crate::storage::trace_exports::TracingDestinationRow> for Destinati
         })
     }
 }
+/// Create or update a receiver; omitted authentication preserves existing credentials.
 #[derive(Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SaveDestinationRequest {
+    /// Non-secret destination settings, including capture consent and pause state.
     pub config: DestinationConfig,
     #[schema(write_only)]
+    /// Receiver authentication. Required for creation or a receiver change; never returned.
     pub secrets: Option<TraceSecrets>,
+    /// Expected current revision for updates; omit when creating a destination.
+    #[schema(example = 1)]
     pub revision: Option<i64>,
 }
+/// Save routing only when the supplied revision still matches the current policy.
 #[derive(Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SaveRoutingRequest {
+    /// Routing mode and the organization-owned destination selections to save.
     pub policy: RoutingPolicy,
+    /// Current revision used to reject stale saves and deletes.
+    #[schema(example = 1)]
     pub revision: i64,
 }
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct DestinationRevision {
     pub revision: i64,
 }
+/// Result of sending synthetic data to the receiver; contains no customer turn content.
 #[derive(Serialize, ToSchema)]
 pub struct TestTraceResponse {
+    /// Whether the receiver accepted the synthetic export; partial OTLP rejection is false.
+    #[schema(example = true)]
     pub accepted: bool,
+    /// Safe explanation of the synthetic test result.
+    #[schema(example = "Receiver accepted the test trace")]
     pub message: String,
 }
 

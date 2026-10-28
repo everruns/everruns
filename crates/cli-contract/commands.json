@@ -14420,7 +14420,8 @@
         "field": "id",
         "long": "id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Destination identifier owned by the current organization."
       }
     ],
     "examples": [
@@ -14445,19 +14446,22 @@
         "field": "enabled",
         "long": "enabled",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Whether customer exports may be sent to this receiver; false pauses delivery."
       },
       {
         "field": "id",
         "long": "id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Destination identifier owned by the current organization."
       },
       {
         "field": "name",
         "long": "name",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Human-readable destination name, from 1 to 128 characters."
       }
     ],
     "examples": [
@@ -14482,7 +14486,8 @@
         "field": "id",
         "long": "id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Organization public ID or agent public ID whose routing policy is selected."
       }
     ],
     "examples": [
@@ -14507,25 +14512,29 @@
         "field": "destination_ids",
         "long": "destination-ids",
         "kind": "string_list",
-        "required": true
+        "required": true,
+        "help": "Distinct destination identifiers from this organization; at most eight selections."
       },
       {
         "field": "expected_revision",
         "long": "expected-revision",
         "kind": "integer",
-        "required": false
+        "required": false,
+        "help": "Current policy revision; omit to use the revision read during this command."
       },
       {
         "field": "id",
         "long": "id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Organization public ID or agent public ID whose routing policy is selected."
       },
       {
         "field": "mode",
         "long": "mode",
         "kind": "string",
         "required": true,
+        "help": "How an agent combines its destinations with organization defaults.",
         "choices": [
           "inherit",
           "add",

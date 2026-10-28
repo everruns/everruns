@@ -27,7 +27,7 @@ everruns tracing destinations get [OPTIONS] --id <id>
 
 | Flag | Description |
 |---|---|
-| `--id <ID>` | Required. |
+| `--id <ID>` | Required. Destination identifier owned by the current organization. |
 
 Example:
 
@@ -46,9 +46,9 @@ everruns tracing destinations update [OPTIONS] --id <id>
 
 | Flag | Description |
 |---|---|
-| `--enabled` |  |
-| `--id <ID>` | Required. |
-| `--name <NAME>` |  |
+| `--enabled` | Whether customer exports may be sent to this receiver; false pauses delivery. |
+| `--id <ID>` | Required. Destination identifier owned by the current organization. |
+| `--name <NAME>` | Human-readable destination name, from 1 to 128 characters. |
 
 Example:
 
@@ -67,7 +67,7 @@ everruns tracing routing get [OPTIONS] --id <id>
 
 | Flag | Description |
 |---|---|
-| `--id <ID>` | Required. |
+| `--id <ID>` | Required. Organization public ID or agent public ID whose routing policy is selected. |
 
 Example:
 
@@ -86,10 +86,10 @@ everruns tracing routing update [OPTIONS] --destination-ids <destination_ids> --
 
 | Flag | Description |
 |---|---|
-| `--destination-ids <DESTINATION_IDS>` | Required. Comma-separated or a JSON array of strings. Repeatable. |
-| `--expected-revision <EXPECTED_REVISION>` |  |
-| `--id <ID>` | Required. |
-| `--mode <MODE>` | Required. One of `inherit`, `add`, `replace`, `off`. |
+| `--destination-ids <DESTINATION_IDS>` | Required. Distinct destination identifiers from this organization; at most eight selections. Comma-separated or a JSON array of strings. Repeatable. |
+| `--expected-revision <EXPECTED_REVISION>` | Current policy revision; omit to use the revision read during this command. |
+| `--id <ID>` | Required. Organization public ID or agent public ID whose routing policy is selected. |
+| `--mode <MODE>` | Required. How an agent combines its destinations with organization defaults. One of `inherit`, `add`, `replace`, `off`. |
 
 Example:
 

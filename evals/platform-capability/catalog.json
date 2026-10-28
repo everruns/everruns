@@ -12855,8 +12855,11 @@
     "cli": "tracing destinations get",
     "description": "Read safe destination metadata. Never returns receiver authentication.",
     "input_schema": {
+      "description": "Identify a destination without reading its authentication.",
       "properties": {
         "id": {
+          "description": "Destination identifier owned by the current organization.",
+          "example": "00000000-0000-0000-0000-000000000001",
           "format": "uuid",
           "type": "string"
         }
@@ -12878,8 +12881,11 @@
     "cli": "tracing routing get",
     "description": "Read organization or agent trace routing without credentials.",
     "input_schema": {
+      "description": "Identify the organization or agent whose routing policy should be read.",
       "properties": {
         "id": {
+          "description": "Organization public ID or agent public ID whose routing policy is selected.",
+          "example": "agent_01933b5a000070008000000000000001",
           "type": "string"
         }
       },
@@ -25387,18 +25393,25 @@
     "cli": "tracing destinations update",
     "description": "Update safe destination metadata while preserving its receiver and current authentication.",
     "input_schema": {
+      "description": "Change a destination name or pause state while preserving authentication.",
       "properties": {
         "enabled": {
+          "description": "Whether customer exports may be sent to this receiver; false pauses delivery.",
+          "example": true,
           "type": [
             "boolean",
             "null"
           ]
         },
         "id": {
+          "description": "Destination identifier owned by the current organization.",
+          "example": "00000000-0000-0000-0000-000000000001",
           "format": "uuid",
           "type": "string"
         },
         "name": {
+          "description": "Human-readable destination name, from 1 to 128 characters.",
+          "example": "Production traces",
           "type": [
             "string",
             "null"
@@ -25424,6 +25437,7 @@
     "input_schema": {
       "$defs": {
         "RoutingMode": {
+          "description": "How an agent combines its destinations with organization defaults.",
           "enum": [
             "inherit",
             "add",
@@ -25433,8 +25447,10 @@
           "type": "string"
         }
       },
+      "description": "Set future-turn routing with an optional optimistic revision guard.",
       "properties": {
         "destination_ids": {
+          "description": "Distinct destination identifiers from this organization; at most eight selections.",
           "items": {
             "format": "uuid",
             "type": "string"
@@ -25442,6 +25458,8 @@
           "type": "array"
         },
         "expected_revision": {
+          "description": "Current policy revision; omit to use the revision read during this command.",
+          "example": 1,
           "format": "int64",
           "type": [
             "integer",
@@ -25449,10 +25467,13 @@
           ]
         },
         "id": {
+          "description": "Organization public ID or agent public ID whose routing policy is selected.",
+          "example": "agent_01933b5a000070008000000000000001",
           "type": "string"
         },
         "mode": {
-          "$ref": "#/$defs/RoutingMode"
+          "$ref": "#/$defs/RoutingMode",
+          "description": "Use organization defaults, add selections, replace defaults, or disable customer exports."
         }
       },
       "required": [

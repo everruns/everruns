@@ -27,9 +27,13 @@ pub struct TracingDestinationRow {
     pub organization_default: bool,
     pub agent_selections: i64,
 }
+/// Current routing policy and the revision required for a guarded save.
 #[derive(Clone, Serialize, Deserialize, ToSchema)]
 pub struct TracingPolicyView {
+    /// Routing mode and the organization-owned destination selections to save.
     pub policy: RoutingPolicy,
+    /// Current revision used to reject stale saves and deletes.
+    #[schema(example = 1)]
     pub revision: i64,
 }
 impl StorageBackend {

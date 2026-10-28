@@ -13383,31 +13383,91 @@ export interface components {
     DeleteQuery: {
       recursive?: boolean;
     };
+    /** @description Non-secret receiver settings and explicit content capture consent. */
     DestinationConfig: {
+      /**
+       * @description Explicit consent to export message and tool content; defaults to metadata only.
+       * @example false
+       */
       capture_content?: boolean;
+      /**
+       * @description Explicit consent to export reasoning; also requires content capture.
+       * @example false
+       */
       capture_reasoning?: boolean;
+      /**
+       * @description Whether customer exports may be sent to this receiver; false pauses delivery.
+       * @example true
+       */
       enabled?: boolean;
+      /**
+       * @description HTTPS receiver endpoint without embedded credentials, query parameters, or fragments.
+       * @example https://collector.example.com/v1/traces
+       */
       endpoint: string;
+      /**
+       * @description Human-readable destination name, from 1 to 128 characters.
+       * @example Production traces
+       */
       name: string;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Braintrust project identifier; required for Braintrust receivers.
+       * @example 00000000-0000-0000-0000-000000000002
+       */
       project_id?: string | null;
+      /** @description Receiver protocol: Braintrust project or generic OTLP over HTTPS. */
       provider: components["schemas"]["TraceProvider"];
     };
+    /** @description Destination settings, safe delivery health, and routing usage; excludes credentials. */
     DestinationView: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Number of agent policies that explicitly select this destination.
+       * @example 0
+       */
       agent_selections: number;
+      /** @description Non-secret destination settings, including capture consent and pause state. */
       config: components["schemas"]["DestinationConfig"];
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Number of events omitted by bounded customer export delivery.
+       * @example 0
+       */
       dropped_events: number;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Destination identifier owned by the current organization.
+       * @example 00000000-0000-0000-0000-000000000001
+       */
       id: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Time the receiver last accepted an export, or null before any acceptance.
+       * @example 2026-10-28T00:00:00Z
+       */
       last_accepted_at?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Time of the latest delivery attempt, or null before the first attempt.
+       * @example 2026-10-28T00:00:00Z
+       */
       last_attempt_at?: string | null;
+      /**
+       * @description Sanitized delivery failure; never includes receiver credentials or response bodies.
+       * @example Receiver unavailable
+       */
       last_error?: string | null;
+      /**
+       * @description Whether this destination is selected in organization defaults.
+       * @example false
+       */
       organization_default: boolean;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Current revision used to reject stale saves and deletes.
+       * @example 1
+       */
       revision: number;
     };
     /** @description Query for diff endpoint */
@@ -23957,10 +24017,16 @@ export interface components {
        */
       overlap_hours?: number | null;
     };
-    /** @enum {string} */
+    /**
+     * @description How an agent combines its destinations with organization defaults.
+     * @enum {string}
+     */
     RoutingMode: "inherit" | "add" | "replace" | "off";
+    /** @description Customer destinations selected for future turns; never changes platform telemetry. */
     RoutingPolicy: {
+      /** @description Distinct destination identifiers from this organization; at most eight selections. */
       destination_ids?: string[];
+      /** @description Use organization defaults, add selections, replace defaults, or disable customer exports. */
       mode?: components["schemas"]["RoutingMode"];
     };
     /** @description Turns started and failed in one bucket. */
@@ -24622,9 +24688,15 @@ export interface components {
       /** @description Spans clipped to the window, oldest first. */
       spans: components["schemas"]["SandboxStateSpan"][];
     };
+    /** @description Create or update a receiver; omitted authentication preserves existing credentials. */
     SaveDestinationRequest: {
+      /** @description Non-secret destination settings, including capture consent and pause state. */
       config: components["schemas"]["DestinationConfig"];
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Expected current revision for updates; omit when creating a destination.
+       * @example 1
+       */
       revision?: number | null;
       secrets?: components["schemas"]["TraceSecrets"] | null;
     };
@@ -24636,9 +24708,15 @@ export interface components {
        */
       name: string;
     };
+    /** @description Save routing only when the supplied revision still matches the current policy. */
     SaveRoutingRequest: {
+      /** @description Routing mode and the organization-owned destination selections to save. */
       policy: components["schemas"]["RoutingPolicy"];
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Current revision used to reject stale saves and deletes.
+       * @example 1
+       */
       revision: number;
     };
     /**
@@ -26805,8 +26883,17 @@ export interface components {
       display_name: string;
       id: components["schemas"]["sbxtplId"];
     };
+    /** @description Result of sending synthetic data to the receiver; contains no customer turn content. */
     TestTraceResponse: {
+      /**
+       * @description Whether the receiver accepted the synthetic export; partial OTLP rejection is false.
+       * @example true
+       */
       accepted: boolean;
+      /**
+       * @description Safe explanation of the synthetic test result.
+       * @example Receiver accepted the test trace
+       */
       message: string;
     };
     /**
@@ -27705,7 +27792,10 @@ export interface components {
       /** @description The value, when it fits or `full` was asked for. */
       value?: unknown;
     };
-    /** @enum {string} */
+    /**
+     * @description Receiver protocol used for customer trace delivery.
+     * @enum {string}
+     */
     TraceProvider: "braintrust" | "otlp";
     /** @description One message of a model request. */
     TraceRequestMessage: {
@@ -27942,7 +28032,9 @@ export interface components {
      * @enum {string}
      */
     TraceScoreStatus: "pending" | "scoring" | "completed" | "errored" | "skipped";
+    /** @description Write-only receiver authentication, encrypted at rest and never returned. */
     TraceSecrets: {
+      /** @description Authentication headers: Authorization, X-API-Key, or Api-Key. Values are write-only. */
       headers?: {
         [key: string]: string;
       };
@@ -28202,18 +28294,36 @@ export interface components {
       /** @description Turns in turn order. */
       turns: components["schemas"]["TraceTurn"][];
     };
+    /** @description Safe destination settings used by native reads and change history. */
     TracingDestinationMetadata: components["schemas"]["DestinationConfig"] & {
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Destination identifier owned by the current organization.
+       * @example 00000000-0000-0000-0000-000000000001
+       */
       id: string;
     };
+    /** @description Safe organization or agent routing metadata returned by native commands. */
     TracingPolicyMetadata: {
+      /** @description Distinct destination identifiers from this organization; at most eight selections. */
       destination_ids: string[];
+      /**
+       * @description Organization public ID or agent public ID whose routing policy is selected.
+       * @example agent_01933b5a000070008000000000000001
+       */
       id: string;
+      /** @description Use organization defaults, add selections, replace defaults, or disable customer exports. */
       mode: components["schemas"]["RoutingMode"];
     };
+    /** @description Current routing policy and the revision required for a guarded save. */
     TracingPolicyView: {
+      /** @description Routing mode and the organization-owned destination selections to save. */
       policy: components["schemas"]["RoutingPolicy"];
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Current revision used to reject stale saves and deletes.
+       * @example 1
+       */
       revision: number;
     };
     /**

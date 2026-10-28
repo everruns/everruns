@@ -41969,6 +41969,7 @@
       },
       "DestinationConfig": {
         "type": "object",
+        "description": "Non-secret receiver settings and explicit content capture consent.",
         "required": [
           "name",
           "provider",
@@ -41976,35 +41977,49 @@
         ],
         "properties": {
           "capture_content": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Explicit consent to export message and tool content; defaults to metadata only.",
+            "example": false
           },
           "capture_reasoning": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Explicit consent to export reasoning; also requires content capture.",
+            "example": false
           },
           "enabled": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether customer exports may be sent to this receiver; false pauses delivery.",
+            "example": true
           },
           "endpoint": {
-            "type": "string"
+            "type": "string",
+            "description": "HTTPS receiver endpoint without embedded credentials, query parameters, or fragments.",
+            "example": "https://collector.example.com/v1/traces"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable destination name, from 1 to 128 characters.",
+            "example": "Production traces"
           },
           "project_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Braintrust project identifier; required for Braintrust receivers.",
+            "example": "00000000-0000-0000-0000-000000000002"
           },
           "provider": {
-            "$ref": "#/components/schemas/TraceProvider"
+            "$ref": "#/components/schemas/TraceProvider",
+            "description": "Receiver protocol: Braintrust project or generic OTLP over HTTPS."
           }
         },
         "additionalProperties": false
       },
       "DestinationView": {
         "type": "object",
+        "description": "Destination settings, safe delivery health, and routing usage; excludes credentials.",
         "required": [
           "id",
           "config",
@@ -42016,45 +42031,62 @@
         "properties": {
           "agent_selections": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Number of agent policies that explicitly select this destination.",
+            "example": 0
           },
           "config": {
-            "$ref": "#/components/schemas/DestinationConfig"
+            "$ref": "#/components/schemas/DestinationConfig",
+            "description": "Non-secret destination settings, including capture consent and pause state."
           },
           "dropped_events": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Number of events omitted by bounded customer export delivery.",
+            "example": 0
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Destination identifier owned by the current organization.",
+            "example": "00000000-0000-0000-0000-000000000001"
           },
           "last_accepted_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Time the receiver last accepted an export, or null before any acceptance.",
+            "example": "2026-10-28T00:00:00Z"
           },
           "last_attempt_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Time of the latest delivery attempt, or null before the first attempt.",
+            "example": "2026-10-28T00:00:00Z"
           },
           "last_error": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Sanitized delivery failure; never includes receiver credentials or response bodies.",
+            "example": "Receiver unavailable"
           },
           "organization_default": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether this destination is selected in organization defaults.",
+            "example": false
           },
           "revision": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Current revision used to reject stale saves and deletes.",
+            "example": 1
           }
         }
       },
@@ -60755,6 +60787,7 @@
       },
       "RoutingMode": {
         "type": "string",
+        "description": "How an agent combines its destinations with organization defaults.",
         "enum": [
           "inherit",
           "add",
@@ -60764,16 +60797,19 @@
       },
       "RoutingPolicy": {
         "type": "object",
+        "description": "Customer destinations selected for future turns; never changes platform telemetry.",
         "properties": {
           "destination_ids": {
             "type": "array",
             "items": {
               "type": "string",
               "format": "uuid"
-            }
+            },
+            "description": "Distinct destination identifiers from this organization; at most eight selections."
           },
           "mode": {
-            "$ref": "#/components/schemas/RoutingMode"
+            "$ref": "#/components/schemas/RoutingMode",
+            "description": "Use organization defaults, add selections, replace defaults, or disable customer exports."
           }
         },
         "additionalProperties": false
@@ -62149,24 +62185,29 @@
       },
       "SaveDestinationRequest": {
         "type": "object",
+        "description": "Create or update a receiver; omitted authentication preserves existing credentials.",
         "required": [
           "config"
         ],
         "properties": {
           "config": {
-            "$ref": "#/components/schemas/DestinationConfig"
+            "$ref": "#/components/schemas/DestinationConfig",
+            "description": "Non-secret destination settings, including capture consent and pause state."
           },
           "revision": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "Expected current revision for updates; omit when creating a destination.",
+            "example": 1
           },
           "secrets": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/TraceSecrets"
+                "$ref": "#/components/schemas/TraceSecrets",
+                "description": "Receiver authentication. Required for creation or a receiver change; never returned."
               },
               {
                 "type": "null"
@@ -62201,17 +62242,21 @@
       },
       "SaveRoutingRequest": {
         "type": "object",
+        "description": "Save routing only when the supplied revision still matches the current policy.",
         "required": [
           "policy",
           "revision"
         ],
         "properties": {
           "policy": {
-            "$ref": "#/components/schemas/RoutingPolicy"
+            "$ref": "#/components/schemas/RoutingPolicy",
+            "description": "Routing mode and the organization-owned destination selections to save."
           },
           "revision": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Current revision used to reject stale saves and deletes.",
+            "example": 1
           }
         },
         "additionalProperties": false
@@ -66357,16 +66402,21 @@
       },
       "TestTraceResponse": {
         "type": "object",
+        "description": "Result of sending synthetic data to the receiver; contains no customer turn content.",
         "required": [
           "accepted",
           "message"
         ],
         "properties": {
           "accepted": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the receiver accepted the synthetic export; partial OTLP rejection is false.",
+            "example": true
           },
           "message": {
-            "type": "string"
+            "type": "string",
+            "description": "Safe explanation of the synthetic test result.",
+            "example": "Receiver accepted the test trace"
           }
         }
       },
@@ -67876,6 +67926,7 @@
       },
       "TraceProvider": {
         "type": "string",
+        "description": "Receiver protocol used for customer trace delivery.",
         "enum": [
           "braintrust",
           "otlp"
@@ -68290,9 +68341,11 @@
       },
       "TraceSecrets": {
         "type": "object",
+        "description": "Write-only receiver authentication, encrypted at rest and never returned.",
         "properties": {
           "headers": {
             "type": "object",
+            "description": "Authentication headers: Authorization, X-API-Key, or Api-Key. Values are write-only.",
             "additionalProperties": {
               "type": "string"
             },
@@ -68746,7 +68799,8 @@
       "TracingDestinationMetadata": {
         "allOf": [
           {
-            "$ref": "#/components/schemas/DestinationConfig"
+            "$ref": "#/components/schemas/DestinationConfig",
+            "description": "Non-secret destination settings, including capture consent and pause state."
           },
           {
             "type": "object",
@@ -68756,14 +68810,18 @@
             "properties": {
               "id": {
                 "type": "string",
-                "format": "uuid"
+                "format": "uuid",
+                "description": "Destination identifier owned by the current organization.",
+                "example": "00000000-0000-0000-0000-000000000001"
               }
             }
           }
-        ]
+        ],
+        "description": "Safe destination settings used by native reads and change history."
       },
       "TracingPolicyMetadata": {
         "type": "object",
+        "description": "Safe organization or agent routing metadata returned by native commands.",
         "required": [
           "id",
           "mode",
@@ -68775,29 +68833,37 @@
             "items": {
               "type": "string",
               "format": "uuid"
-            }
+            },
+            "description": "Distinct destination identifiers from this organization; at most eight selections."
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Organization public ID or agent public ID whose routing policy is selected.",
+            "example": "agent_01933b5a000070008000000000000001"
           },
           "mode": {
-            "$ref": "#/components/schemas/RoutingMode"
+            "$ref": "#/components/schemas/RoutingMode",
+            "description": "Use organization defaults, add selections, replace defaults, or disable customer exports."
           }
         }
       },
       "TracingPolicyView": {
         "type": "object",
+        "description": "Current routing policy and the revision required for a guarded save.",
         "required": [
           "policy",
           "revision"
         ],
         "properties": {
           "policy": {
-            "$ref": "#/components/schemas/RoutingPolicy"
+            "$ref": "#/components/schemas/RoutingPolicy",
+            "description": "Routing mode and the organization-owned destination selections to save."
           },
           "revision": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Current revision used to reject stale saves and deletes.",
+            "example": 1
           }
         }
       },
