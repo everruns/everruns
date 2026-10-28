@@ -7569,7 +7569,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Read organization or agent trace routing without credentials */
+    /**
+     * Get tracing policy
+     * @description Read organization or agent trace routing without credentials.
+     */
     get: operations["get_tracing_policy"];
     put?: never;
     post?: never;

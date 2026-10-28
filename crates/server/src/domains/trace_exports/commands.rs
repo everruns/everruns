@@ -39,7 +39,7 @@ pub struct TracingPolicyMetadata {
     pub mode: RoutingMode,
     pub destination_ids: Vec<Uuid>,
 }
-#[command(name="get_tracing_policy",http=plain,params(("id"=String,Path,description="Tracing resource ID")),category="tracing",description="Read organization or agent trace routing without credentials.",method="GET",path="/v1/tracing/policies/{id}",policy=TRACING_MANAGE,cli=CliRoute::new(&["tracing","routing"],"get").with_examples(&[CliExample::new("Read an agent's external tracing policy","everruns tracing routing get --id agent_01933b5a000070008000000000000001")]))]
+#[command(name="get_tracing_policy",http=plain,summary="Get tracing policy",params(("id"=String,Path,description="Tracing resource ID")),category="tracing",description="Read organization or agent trace routing without credentials.",method="GET",path="/v1/tracing/policies/{id}",policy=TRACING_MANAGE,cli=CliRoute::new(&["tracing","routing"],"get").with_examples(&[CliExample::new("Read an agent's external tracing policy","everruns tracing routing get --id agent_01933b5a000070008000000000000001")]))]
 impl Command for GetTracingPolicy {
     type Output = TracingPolicyMetadata;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {

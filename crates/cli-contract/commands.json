@@ -14406,6 +14406,142 @@
     ]
   },
   {
+    "wire_name": "get_tracing_destination_metadata",
+    "path": [
+      "tracing",
+      "destinations"
+    ],
+    "verb": "get",
+    "description": "Read safe destination metadata. Never returns receiver authentication.",
+    "method": "GET",
+    "http_path": "/v1/tracing/destination-metadata/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect a destination without credentials",
+        "command": "everruns tracing destinations get --id 00000000-0000-0000-0000-000000000001"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_tracing_destination_metadata",
+    "path": [
+      "tracing",
+      "destinations"
+    ],
+    "verb": "update",
+    "description": "Update safe destination metadata while preserving its receiver and current authentication.",
+    "method": "PATCH",
+    "http_path": "/v1/tracing/destination-metadata/{id}",
+    "args": [
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Pause external exports",
+        "command": "everruns tracing destinations update --id 00000000-0000-0000-0000-000000000001 --enabled false --reason 'Pause exports'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_tracing_policy",
+    "path": [
+      "tracing",
+      "routing"
+    ],
+    "verb": "get",
+    "description": "Read organization or agent trace routing without credentials.",
+    "method": "GET",
+    "http_path": "/v1/tracing/policies/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read an agent's external tracing policy",
+        "command": "everruns tracing routing get --id agent_01933b5a000070008000000000000001"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_tracing_policy",
+    "path": [
+      "tracing",
+      "routing"
+    ],
+    "verb": "update",
+    "description": "Set organization or agent destinations for future turns. Requires organization settings authority; never accepts credentials.",
+    "method": "PATCH",
+    "http_path": "/v1/tracing/policies/{id}",
+    "args": [
+      {
+        "field": "destination_ids",
+        "long": "destination-ids",
+        "kind": "string_list",
+        "required": true
+      },
+      {
+        "field": "expected_revision",
+        "long": "expected-revision",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "mode",
+        "long": "mode",
+        "kind": "string",
+        "required": true,
+        "choices": [
+          "inherit",
+          "add",
+          "replace",
+          "off"
+        ]
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop an agent's external trace exports",
+        "command": "everruns tracing routing update --id agent_01933b5a000070008000000000000001 --mode off --destination-ids '[]' --reason 'Disable external exports'"
+      }
+    ]
+  },
+  {
     "wire_name": "list_user_connections",
     "path": [
       "user",

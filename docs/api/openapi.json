@@ -29739,7 +29739,8 @@
         "tags": [
           "tracing"
         ],
-        "summary": "Read organization or agent trace routing without credentials",
+        "summary": "Get tracing policy",
+        "description": "Read organization or agent trace routing without credentials.",
         "operationId": "get_tracing_policy",
         "parameters": [
           {
