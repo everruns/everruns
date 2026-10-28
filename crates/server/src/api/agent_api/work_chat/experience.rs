@@ -9,15 +9,15 @@ pub(super) fn routes() -> Router<ChannelApiState> {
         routes = routes
             .route(
                 &format!("{prefix}/{{channel_id}}/sessions/{{session_id}}/settings"),
-                post(settings),
+                post(update_work_chat_conversation),
             )
             .route(
                 &format!("{prefix}/{{channel_id}}/sessions/{{session_id}}/share"),
-                post(share).delete(unshare),
+                post(share_work_chat_conversation).delete(revoke_work_chat_share),
             )
             .route(
                 &format!("{prefix}/{{channel_id}}/chat/shared/{{token}}"),
-                get(shared),
+                get(read_work_chat_share),
             );
     }
     routes
@@ -96,7 +96,7 @@ pub(crate) struct Settings {
     pinned: Option<bool>,
 }
 #[utoipa::path(post, operation_id="update_work_chat_conversation", path="/v1/channels/{channel_id}/sessions/{session_id}/settings", params(("channel_id"=String,Path),("session_id"=String,Path)), responses((status=200,description="Updated"),(status=404,description="Unavailable")),tag="agent-execution")]
-pub(crate) async fn settings(
+pub(crate) async fn update_work_chat_conversation(
     State(state): State<ChannelApiState>,
     Path((channel, session)): Path<(String, String)>,
     headers: HeaderMap,
@@ -189,7 +189,7 @@ async fn publish(
     result.unwrap_or_else(|response| response)
 }
 #[utoipa::path(post, operation_id="share_work_chat_conversation", path="/v1/channels/{channel_id}/sessions/{session_id}/share", params(("channel_id"=String,Path),("session_id"=String,Path)), responses((status=200,description="Revocable link token"),(status=404,description="Unavailable")),tag="agent-execution")]
-pub(crate) async fn share(
+pub(crate) async fn share_work_chat_conversation(
     State(state): State<ChannelApiState>,
     Path((channel, session)): Path<(String, String)>,
     headers: HeaderMap,
@@ -197,7 +197,7 @@ pub(crate) async fn share(
     publish(state, channel, session, headers, false).await
 }
 #[utoipa::path(delete, operation_id="revoke_work_chat_share", path="/v1/channels/{channel_id}/sessions/{session_id}/share", params(("channel_id"=String,Path),("session_id"=String,Path)), responses((status=200,description="Revoked"),(status=404,description="Unavailable")),tag="agent-execution")]
-pub(crate) async fn unshare(
+pub(crate) async fn revoke_work_chat_share(
     State(state): State<ChannelApiState>,
     Path((channel, session)): Path<(String, String)>,
     headers: HeaderMap,
@@ -210,7 +210,7 @@ pub(crate) struct History {
     before: Option<i32>,
 }
 #[utoipa::path(get, operation_id="read_work_chat_share", path="/v1/channels/{channel_id}/chat/shared/{token}", params(("channel_id"=String,Path),("token"=String,Path),("before"=Option<i32>,Query)), responses((status=200,description="Read-only transcript page"),(status=404,description="Unavailable")),tag="agent-execution")]
-pub(crate) async fn shared(
+pub(crate) async fn read_work_chat_share(
     State(state): State<ChannelApiState>,
     Path((channel, token)): Path<(String, String)>,
     Query(query): Query<History>,
