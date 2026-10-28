@@ -72,8 +72,8 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
             <Link
               href={newSideChat.href}
               prefetch={false}
-              aria-label={newSideChat.name}
-              title={newSideChat.name}
+              aria-label={ui(newSideChat.name)}
+              title={ui(newSideChat.name)}
               className="flex size-7 shrink-0 items-center justify-center hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
               <newSideChat.icon className="size-3.5" aria-hidden="true" />
@@ -114,7 +114,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
             "mt-1 font-medium text-foreground underline-offset-4 hover:bg-muted hover:underline focus-visible:underline",
           )}
         >
-          {chatHistory.name}
+          {ui(chatHistory.name)}
           <chatHistory.icon className="size-3.5 shrink-0" aria-hidden="true" />
         </Link>
       )}

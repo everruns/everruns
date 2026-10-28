@@ -237,7 +237,8 @@ This preserves the rendered message while keeping enough context for future anal
 
 ### Interface preference
 
-The UI offers System, English and Ukrainian in Account settings. The choice is a
+The UI offers System and the explicit languages in the shared
+[interface locale registry](../../apps/ui/src/lib/locale-registry.ts). The choice is a
 persistent device preference, synchronized between tabs, and updates the document
 language and translated presentation. System follows the browser. Runtime locale
 transport and session/virtual-user preferences remain independent; changing the
@@ -266,8 +267,16 @@ guard the server, terminal CLI and evaluation surfaces against drift. See
 ### Browser locale detection
 
 - The browser client should detect locale from `navigator.languages` / `navigator.language`
-- System UI copy switches by supported language family (`uk` → Ukrainian, otherwise English); an explicit device preference overrides it
-- The raw normalized browser locale (for example `uk-UA`) should still be forwarded to the backend so later locales can be enabled without changing the transport
+- System selects the first supported entry in the browser’s ordered language preferences; an explicit device preference overrides it
+- British English retains its regional identity for spelling and date/number formatting. Display locale never changes the currency of a financial amount
+- Simplified Chinese has its own catalog. Traditional Chinese preferences fall through to the next supported browser preference rather than being labelled as Simplified Chinese
+- The raw normalized primary browser locale (for example `fr-CA`) should still be forwarded to the backend so later locales can be enabled without changing the transport
+
+The [source catalogs](../../apps/ui/src/lib/ui-messages.ts) and semantic chat
+messages share locale selection and interpolation checks. Built-in capability
+display overlays are enriched at the server boundary, keeping the larger API
+metadata catalog out of portable Engine activity code. Activity prefixes use a
+separate small catalog; authored arguments are appended only after translation.
 
 ### Catalog structure
 
@@ -328,3 +337,7 @@ This is important for debugging disagreements between browser, session, schedule
 ## Implementation Notes
 
 - Resolve execution context once per turn, then pass it through the worker pipeline -- keep resolution logic centralized
+
+Built-in capability category labels use the UI catalog in lists, selectors and
+details. API category values and filter keys remain stable; unknown tenant
+categories display verbatim. Search accepts both source and translated labels.

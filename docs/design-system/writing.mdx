@@ -1,0 +1,66 @@
+---
+title: Slate Writing Rules
+description: "How the Everruns UI is written: voice, sentence case, product vocabulary, button labels, empty states, errors, and punctuation."
+slug: design-system/writing
+---
+
+## Voice
+
+Technical, direct, and calm. The reader is a developer or an operator; they know what an agent,
+a harness, or an MCP server is. Say the plain thing in a short sentence. Even error states use
+neutral words: the product handles the chaos, the UI does not perform it.
+
+- "You" is the reader; "we" is the Everruns team or platform.
+- Name features directly. No slogans, taglines, or pitch adjectives in product copy,
+  announcements, or release cards.
+- No exclamation marks. A period or no terminator.
+
+## Casing
+
+Sentence case for every heading, button, menu item, tab, badge, and navigation label. No title
+case and no uppercase labels.
+
+| Write | Not |
+|---|---|
+| New session | New Session |
+| Agent identities | Agent Identities |
+| Library | LIBRARY |
+
+API-facing names stay verbatim and in Geist Mono when they are code-adjacent: `agent_id`,
+`system_prompt`, `?mode=edit`. Never paraphrase them to "Agent ID" next to code.
+
+## Vocabulary
+
+| Use | Not |
+|---|---|
+| Agent | Bot, assistant |
+| Session | Conversation. A chat is a session a person talks in. |
+| Harness | Wrapper, framework |
+| Capability | Tool, when you mean the entity (capabilities provide tools) |
+| Run, runs | Execution, invocation |
+| Durable execution | Persistent, retryable |
+| Enabled | Unlocked |
+
+## Labels and messages
+
+- **Buttons** are imperative verbs: Run agent, Create harness, Connect MCP. A create action is
+  "New" plus the entity, with a plus glyph: New agent, New session.
+- **Card footers** show usage only: "12 sessions". Slugs, ids, and dates move to the detail page.
+- **Empty states** say what the thing is and offer the first action. Do not show "0" counters.
+- **Consequences** are stated before a save that has them: "Changes apply to new sessions only.
+  Running sessions keep the current definition."
+- **Errors** for ordinary users are short and generic, with what to do next. Full error
+  detail belongs to developer surfaces such as the session trace.
+- A path through the UI uses a comma: "Settings, Providers". Use `→` only sparingly in prose.
+
+## Punctuation and words
+
+UI copy follows the same writing mechanics as the docs and `knowledge/`:
+
+- No em dashes. Use a comma, colon, semicolon, parentheses, or two sentences.
+- Avoid filler and AI-tell words such as seamless, delve, elevate, empower, unlock (as
+  a metaphor), and "it's worth noting". Name the interface or the behavior instead.
+- No emoji.
+
+The full rules live in the
+[brand specification](https://github.com/everruns/everruns/blob/main/knowledge/ui/brand.md#voice--tone).

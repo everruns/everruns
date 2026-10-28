@@ -58,7 +58,6 @@ members = [
 exclude = [
     # Independently resolved, source-only hosting reference.
     "crates/durable-object",
-    "vendor/postgresql_archive",
     "research/infinity_context",
     "research/lua-vs-bash",
     "examples/weekend-concierge-host",
@@ -172,6 +171,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # OpenTelemetry (exporter deps are activated only by everruns-core's
 # observability feature; scripts/lib/check-observability-isolation.sh enforces it)
 opentelemetry = "0.33"
+opentelemetry-http = "0.33"
+http = "1"
 opentelemetry_sdk = { version = "0.33", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.33", features = ["http-proto", "reqwest-blocking-client"] }
 tracing-opentelemetry = "0.34"
@@ -296,7 +297,7 @@ moka = { version = "0.12", features = ["future", "sync"] }
 
 # Fault injection testing
 fail = "0.5"
-rstest = "0.27"
+rstest = "0.28"
 tempfile = "3"
 
 # File watching and gitignore
@@ -370,8 +371,3 @@ codegen-units = 256
 # must stay actionable. line-tables-only keeps that signal at modest cost.
 debug = "line-tables-only"
 strip = false
-
-# Upstream archive0.21 still selects vulnerable ZIP8; see vendor patch provenance.
-[patch.crates-io]
-
-postgresql_archive = { path = "vendor/postgresql_archive" }

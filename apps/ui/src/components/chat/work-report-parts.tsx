@@ -13,7 +13,7 @@
  */
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import {
   Check,
   CheckCircle2,
@@ -27,7 +27,6 @@ import {
 import type { WorkPlan, WorkReport } from "@/lib/api/types";
 import { formatWorkFact } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { useLocale } from "@/providers/locale-provider";
 
 type CountedFact = "files_changed" | "tasks_started";
 const SHOWN_FACTS: readonly CountedFact[] = ["files_changed", "tasks_started"];

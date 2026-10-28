@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 
 import { useSearchParams } from "next/navigation";
@@ -45,6 +45,8 @@ function ConnectionRow({
   onDisconnect: (provider: string) => void;
   isDisconnecting: boolean;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const displayName = provider?.display_name ?? connection.provider;
   const icon = provider?.icon ?? "link";
@@ -89,7 +91,7 @@ function ConnectionRow({
             )}
           </div>
           <div className="text-sm text-muted-foreground">
-            {ui("Connected")} {new Date(connection.connected_at).toLocaleDateString()}
+            {ui("Connected")} {new Date(connection.connected_at).toLocaleDateString(displayLocale)}
             {connection.scopes && <span className="ml-2">({connection.scopes})</span>}
           </div>
           {verifyStatus === "valid" && (

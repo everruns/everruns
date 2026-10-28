@@ -5,7 +5,7 @@ use everruns_core::agent_package::{AgentPackage, Format};
 fn localizations_survive_every_agent_file_format_and_zip() {
     let original = AgentPackage::parse(r#"{
       "schema_version":1,"name":"support","display_name":"Support","instructions":"Help customers.",
-      "localizations":{"uk_UA":{"display_name":"Підтримка"},"uk":{"description":"Допомога клієнтам"},"de":{"display_name":"Kundensupport"}}
+      "localizations":{"uk_UA":{"display_name":"Підтримка"},"uk":{"description":"Допомога клієнтам"},"de":{"display_name":"Kundensupport"},"fr":{"display_name":"Assistance"},"es":{"display_name":"Asistencia"},"zh_CN":{"display_name":"客户支持"},"en_GB":{"display_name":"Customer support"}}
     }"#, Format::Json).unwrap();
     for format in [Format::Markdown, Format::Toml, Format::Yaml, Format::Json] {
         let text = original.to_string(format).unwrap();
@@ -29,6 +29,20 @@ fn localizations_survive_every_agent_file_format_and_zip() {
                 .resolve("de-DE", |entry| entry.display_name.as_deref()),
             Some("Kundensupport")
         );
+        for (locale, expected) in [
+            ("fr-CA", "Assistance"),
+            ("es-MX", "Asistencia"),
+            ("zh-CN", "客户支持"),
+            ("en-GB", "Customer support"),
+        ] {
+            assert_eq!(
+                restored
+                    .manifest
+                    .localizations
+                    .resolve(locale, |entry| entry.display_name.as_deref()),
+                Some(expected)
+            );
+        }
     }
     let restored = AgentPackage::from_zip(&original.to_zip().unwrap()).unwrap();
     assert!(original.diff(&restored).unwrap().is_empty());

@@ -1,0 +1,373 @@
+// Product-owned copy. Preserve interpolation tokens and stable identifiers.
+export const messages: Readonly<Record<string, string>> = {
+  " (optional)": " (facultatif)",
+  " by {value0}": " par {value0}",
+  ", and then appear as {value0}[bot]": ", puis apparaît sous la forme {value0}[bot]",
+  ", once per workspace.": ", une fois par espace de travail.",
+  ", or an": ", ou un",
+  ". Adoption features start disabled. Production features start enabled and can be turned off.":
+    ". Les fonctionnalités d’adoption commencent à être désactivées. Les fonctionnalités de production sont activées et peuvent être désactivées.",
+  ". Choose a model to repair this setting.": ". Choisissez un modèle pour réparer ce paramètre.",
+  ". Keys are encrypted at rest.": ". Les clés sont chiffrées au repos.",
+  ". Recommended ones are ticked: the newest of each family and calibrated decision models.":
+    ". Les recommandations sont cochées : les plus récents de chaque famille et les modèles de décision calibrés.",
+  "(not recommended)": "(non recommandé)",
+  "{value0} of {value1} models enabled →": "{value0} des modèles {value1} activés →",
+  "A platform administrator must enable this before the organization can add hosts.":
+    "Un administrateur de plateforme doit activer cette fonctionnalité avant que l'organisation puisse ajouter des hôtes.",
+  "A preset does nothing until an agent or a person adds it.":
+    "Un préréglage ne fait rien jusqu'à ce qu'un agent ou une personne l'ajoute.",
+  "A provider with this name already exists. Names must be unique.":
+    "Un fournisseur portant ce nom existe déjà. Les noms doivent être uniques.",
+  "About thirty seconds": "Une trentaine de secondes",
+  "Account-wide access": "Accès à l'ensemble du compte",
+  "Action required ·": "Action requise ·",
+  "Active agents only. Archived agents are excluded.":
+    "Agents actifs uniquement. Les agents archivés sont exclus.",
+  "Add a new model to an existing provider.":
+    "Ajoutez un nouveau modèle à un fournisseur existant.",
+  "Add an MCP preset so agents can attach a shared transport and authentication policy.":
+    "Ajoutez un préréglage MCP afin que les agents puissent attacher une stratégie de transport et d'authentification partagée.",
+  "Add another": "Ajouter un autre",
+  "Add model": "Ajouter un modèle",
+  "Add Model": "Ajouter un modèle",
+  "Add Policy": "Ajouter une politique",
+  "Add Server": "Ajouter un serveur",
+  "Add to favorites": "Ajouter aux favoris",
+  "Add Wallet": "Ajouter un portefeuille",
+  Address: "Adresse",
+  Adoption: "Adoption",
+  "Advanced request settings": "Paramètres de requête avancés",
+  "Advanced settings saved.": "Paramètres avancés enregistrés.",
+  "Agents already in this workspace keep working; each has its own Slack app. You will not be able to add agents to it, or update their Slack apps, until you connect it again.":
+    "Les agents déjà présents dans cet espace de travail continuent de travailler ; chacun a sa propre application Slack. Vous ne pourrez pas y ajouter d'agents ni mettre à jour leurs applications Slack tant que vous ne l'aurez pas reconnecté.",
+  "Agents using this account through the Everruns App lose their GitHub identity, and their GitHub triggers stop firing. The App stays installed on GitHub.":
+    "Les agents utilisant ce compte via l'application Everruns perdent leur identité GitHub et leurs déclencheurs GitHub cessent de se déclencher. L'application reste installée sur GitHub.",
+  "AI clients": "Clients IA",
+  "All organizations you are a member of.": "Toutes les organisations dont vous êtes membre.",
+  "Already connected": "Déjà connecté",
+  Amount: "Montant",
+  Any: "N'importe lequel",
+  "API Key:": "Clé API :",
+  "Ask an administrator to review integration health.":
+    "Demandez à un administrateur d'examiner l'état de l'intégration.",
+  "Ask an organization admin for access. MCP servers you add for yourself live in Settings, MCP servers.":
+    "Demandez l'accès à un administrateur de l'organisation. Les serveurs MCP que vous ajoutez vous-même vivent dans Paramètres, Serveurs MCP.",
+  "Ask the provider to report where the prompt prefix diverged when a cache read is unexpectedly missing, instead of leaving a silent miss. Supported by Anthropic connections today; other providers ignore it.":
+    "Demandez au fournisseur de signaler où le préfixe d'invite a divergé lorsqu'une lecture du cache est manquante de manière inattendue, au lieu de laisser un échec silencieux. Soutenu par Anthropic Connections aujourd'hui ; d'autres fournisseurs l'ignorent.",
+  Attachments: "Pièces jointes",
+  Auth: "Authentification",
+  "Authentication Disabled": "Authentification désactivée",
+  "Authorize in your browser to set up a key automatically, with no copy & paste. Or enter credentials manually below.":
+    "Autorisez dans votre navigateur à configurer une clé automatiquement, sans copier-coller. Ou entrez les informations d'identification manuellement ci-dessous.",
+  available: "disponible",
+  "Back to Providers": "Retour aux fournisseurs",
+  "Base harness": "Base cadre d'exécution",
+  "Base URL": "URL de base",
+  "Cache:": "Cache :",
+  Calibrated: "Calibré",
+  "Catalog preset": "Préréglage du catalogue",
+  "Change in Defaults": "Modification des valeurs par défaut",
+  "Chat models for conversations and lightweight work.":
+    "Modèles de chat pour les conversations et les travaux légers.",
+  "Checking key…": "Vérification de la clé…",
+  "Choose {value0} models": "Choisissez les modèles {value0}",
+  "Choose models": "Choisir les modèles",
+  "Choose which features are enabled for": "Choisissez les fonctionnalités activées pour",
+  "Clear provider filter →": "Effacer le filtre du fournisseur →",
+  "Collapse profile details": "Réduire les détails du profil",
+  "Configure a model": "Configurer un modèle",
+  "Connect a workspace once, and every agent you put in Slack gets its own Slack app there, its own name in the Agents menu, with one click and one Slack approval.":
+    "Connectez un espace de travail une fois, et chaque agent que vous mettez dans Slack y obtient sa propre application Slack, son propre nom dans le menu Agents, en un seul clic et une seule approbation Slack.",
+  "Connect another workspace": "Connecter un autre espace de travail",
+  "Connect provider": "Connecter le fournisseur",
+  "Connect providers and choose which of their models your agents can use.":
+    "Connectez les fournisseurs et choisissez lequel de leurs modèles vos agents peuvent utiliser.",
+  "Connect with": "Connectez-vous avec",
+  connected: "connecté\nConnexion",
+  "Context:": "Contexte :",
+  "Copy token": "Copier le jeton",
+  "Copy your token now. You won't be able to see it again!":
+    "Copiez votre token maintenant. Vous ne pourrez plus le revoir !",
+  "Cost / 1M Tokens": "Coût / 1 million de jetons",
+  "Could not load health issues.": "Impossible de charger les problèmes de santé.",
+  "Could not load this health issue. It may no longer be available.":
+    "Impossible de charger ce problème de santé. Il se peut qu'il ne soit plus disponible.",
+  "Counts active agents with an explicit attachment to this catalog preset. Archived agents are excluded.":
+    "Compte les agents actifs avec un attachement explicite à ce préréglage de catalogue. Les agents archivés sont exclus.",
+  "Create a personal access token to access the Everruns API programmatically.":
+    "Créez un jeton d'accès personnel pour accéder à l'API Everruns par programme.",
+  "Create an organization to start managing shared resources.":
+    "Créez une organisation pour commencer à gérer des ressources partagées.",
+  "Create Model": "Créer un modèle",
+  "Create organization": "Créer une organisation",
+  "Create personal access token": "Créer un jeton d'accès personnel",
+  "Create token": "Créer un jeton",
+  "Custom headers": "En-têtes personnalisés",
+  "Custom model": "Modèle personnalisé",
+  days: "jours",
+  "Days until expiration": "Jours jusqu'à l'expiration",
+  "Decision default": "Décision par défaut",
+  "Decision model": "Modèle de décision",
+  "Decision models return structured verdicts for the Jev capability":
+    "Les modèles de décision renvoient des verdicts structurés pour la fonctionnalité Jev",
+  Decisions: "Décisions",
+  "Default decision model": "Modèle de décision par défaut",
+  "Default for agents and sessions without an explicit model. Everruns Chat has its own selection in Chat settings.":
+    "Par défaut pour les agents et les sessions sans modèle explicite. Everruns Chat a sa propre sélection dans les paramètres de chat.",
+  "Default harness": "Cadre d’exécution par défaut",
+  "Delete {value0}": "Supprimer {value0}",
+  "Delete MCP Server": "Supprimer le serveur MCP",
+  "Delete model": "Supprimer le modèle",
+  "Disable model (hide from UI pickers)":
+    "Désactiver le modèle (masquer des sélecteurs d'interface utilisateur)",
+  "Discard allowlist changes": "Supprimer les modifications de la liste autorisée",
+  "Disconnect workspace": "Déconnecter l'espace de travail",
+  "Disconnecting…": "Déconnexion…",
+  discovered: "découvert",
+  "Discovering models…": "Découverte des modèles…",
+  "Dismiss notification": "Rejeter la notification",
+  "Driver default": "Pilote par défaut",
+  "Each defaults to a provider. A provider whose driver lacks the service is rejected when it runs.":
+    "Chacun est par défaut un fournisseur. Un fournisseur dont le chauffeur ne dispose pas du service est rejeté lors de son exécution.",
+  "Edit model": "Modifier le modèle",
+  "Edit Model": "Modifier le modèle",
+  "Email cannot be changed.": "L'e-mail ne peut pas être modifié.",
+  Embeddings: "Intégrations",
+  "Enable {value0}": "Activer {value0}",
+  "Enable model (show in UI pickers)":
+    "Activer le modèle (afficher dans les sélecteurs d'interface utilisateur)",
+  "Enable model (visible in UI model pickers)":
+    "Activer le modèle (visible dans les sélecteurs de modèles de l'interface utilisateur)",
+  "Enable trace links": "Activer les liens de trace",
+  Endpoint: "Point de terminaison",
+  "Enter new credentials to replace the existing ones.":
+    "Saisissez de nouvelles informations d'identification pour remplacer celles existantes.",
+  "Enter the credentials for this provider.":
+    "Saisissez les informations d'identification de ce fournisseur.",
+  "Enter your full name": "Entrez votre nom complet",
+  "Everruns GitHub App": "Application GitHub Everruns",
+  "Expand profile details": "Développer les détails du profil",
+  Expiration: "Expiration",
+  "Expires on": "Expire le",
+  "Expires:": "Expire :",
+  "Failed to create:": "Échec de la création :",
+  "Failed to load feature settings. Try refreshing the page.":
+    "Échec du chargement des paramètres de fonctionnalité. Essayez d'actualiser la page.",
+  "Failed to load models:": "Échec du chargement des modèles :",
+  "Failed to load providers:": "Échec du chargement des fournisseurs :",
+  "Failed to update:": "Échec de la mise à jour :",
+  Features: "Fonctionnalités",
+  "Full Name": "Nom complet",
+  "Generate one at": "Générez-en un à",
+  "Generation URL template": "Modèle d'URL de génération",
+  "GitHub accounts where the shared Everruns App is installed for this organization. Agents can choose a linked account instead of creating their own App":
+    "Comptes GitHub sur lesquels l'application Everruns partagée est installée pour cette organisation. Les agents peuvent choisir un compte associé au lieu de créer leur propre application",
+  "GPT-4o": "GPT-4o",
+  "gpt-5.2": "gpt-5.2",
+  "Harness fallbacks applied when Sessions do not set their own runtime Sandbox.":
+    "les solutions de repli du cadre d'exécution sont appliquées lorsque les sessions ne définissent pas leur propre sandbox d'exécution.",
+  "Harnesses will appear after org init.":
+    "les cadres d’exécution apparaîtront après l’initialisation de l’org.",
+  "Header {value0} name": "Nom de l'en-tête {value0}",
+  "Header {value0} value": "Valeur d'en-tête {value0}",
+  "Host patterns": "Modèles d'hôte",
+  Hosts: "Hôtes",
+  "Hosts this organization's agents, MCP servers and integrations may send data to, in addition to the deployment's allowlist.":
+    "Hôtes auxquels les agents, les serveurs MCP et les intégrations de cette organisation peuvent envoyer des données, en plus de la liste verte du déploiement.",
+  "Input:": "Entrée :",
+  "Invitations that haven't been accepted yet.": "Invitations qui n'ont pas encore été acceptées.",
+  "Invite member": "Inviter un membre",
+  "is connected, but it listed no models yet. Sync it from its card once the account has access, or add a model by hand.":
+    "est connecté, mais il n'a encore répertorié aucun modèle. Synchronisez-le depuis sa carte une fois que le compte y a accès, ou ajoutez un modèle manuellement.",
+  Joined: "Rejoint",
+  "Key rejected": "Clé rejetée",
+  "Key valid": "Clé valide",
+  "Key valid, {value0} models": "Clé valide, modèles {value0}",
+  "Knowledge:": "Connaissance :",
+  "Last synced": "Dernière synchronisation",
+  "Last used:": "Dernière utilisation :",
+  "Leave empty to use the platform default, GPT-6 Luna.":
+    "Laissez vide pour utiliser la valeur par défaut de la plateforme, GPT-6 Luna.",
+  Link: "Lien",
+  lists: "listes",
+  "Load more presets": "Charger plus de préréglages",
+  "Loading health issues…": "Chargement des problèmes de santé…",
+  "Loading permissions…": "Chargement des autorisations…",
+  "Loading your profile…": "Chargement de votre profil…",
+  "Local development": "Développement local",
+  "Manage members of": "Gérer les membres de",
+  "Manage organization-level defaults and identity.":
+    "Gérer les paramètres par défaut et l'identité au niveau de l'organisation.",
+  "Manage your personal access tokens for programmatic access.":
+    "Gérez vos jetons d'accès personnels pour l'accès par programmation.",
+  "Manage your personal access tokens for programmatic access. Tokens are tied to your user account, not to an organization.":
+    "Gérez vos jetons d'accès personnels pour l'accès par programmation. Les jetons sont liés à votre compte utilisateur et non à une organisation.",
+  "MCP catalog": "Catalogue MCP",
+  "MCP server presets your organization registers once, with their transport and authentication, so agents and people can add them by name.":
+    "Le serveur MCP prédéfinit les enregistrements de votre organisation une fois, avec leur transport et leur authentification, afin que les agents et les personnes puissent les ajouter par leur nom.",
+  member: "membre",
+  Members: "Membres",
+  model: "modèle",
+  "Model card": "Carte modèle",
+  "Model defaults": "Paramètres par défaut du modèle",
+  "Model healthy": "Modèle sain",
+  "Model ID": "ID du modèle",
+  "Model Info": "Informations sur le modèle",
+  "Model is configured and ready for use": "Le modèle est configuré et prêt à l'emploi",
+  "Model not ready": "Modèle non prêt",
+  "Model profile": "Profil du modèle",
+  "Model service": "Service modèle",
+  "Model status": "Statut du modèle",
+  "Model type": "Type de modèle",
+  models: "Modèles",
+  Models: "Modèles",
+  "Models sections": "Rubriques Modèles",
+  "models.": ".",
+  "models.dev": "modèles.dev",
+  "MPP / Tempo": "MPP / Tempo",
+  "My personal access token": "Mon jeton d'accès personnel",
+  "Name and stable identifier for this organization.":
+    "Nom et identifiant stable de cette organisation.",
+  "Never expires": "N'expire jamais",
+  "New model": "Nouveau modèle",
+  "No catalog presets match your search":
+    "Aucun préréglage de catalogue ne correspond à votre recherche",
+  "No configurable features are currently available for your organization.":
+    "Aucune fonctionnalité configurable n'est actuellement disponible pour votre organisation.",
+  "No configured": "Non configuré",
+  "No custom headers.": "Aucun en-tête personnalisé.",
+  "No default": "Aucun défaut",
+  "No GitHub account is linked yet.": "Aucun compte GitHub n'est encore lié.",
+  "No longer listed": "N'est plus répertorié",
+  "No MCP presets": "Aucun préréglage MCP",
+  "No members": "Aucun membre",
+  "No members have been added to this organization yet.":
+    "Aucun membre n'a encore été ajouté à cette organisation.",
+  "No models match your search.": "Aucun modèle ne correspond à votre recherche.",
+  "No models to choose from.": "Aucun modèle au choix.",
+  "No models yet": "Aucun modèle pour l'instant",
+  "No organizations": "Aucune organisation",
+  "No payment attempts.": "Aucune tentative de paiement.",
+  "No payment wallets.": "Aucun portefeuille de paiement.",
+  "No pending issues detected. Checks reflect the latest available observations.":
+    "Aucun problème en attente détecté. Les contrôles reflètent les dernières observations disponibles.",
+  "No personal access tokens": "Aucun jeton d'accès personnel",
+  "No providers are connected yet. Ask an organization admin to connect one.":
+    "Aucun fournisseur n'est encore connecté. Demandez à un administrateur de l’organisation d’en connecter un.",
+  "No Slack workspace is connected yet. Ask an organization administrator to connect one here.":
+    "Aucun espace de travail Slack n'est encore connecté. Demandez à un administrateur de l'organisation d'en connecter un ici.",
+  "No spend policies.": "Aucune politique de dépenses.",
+  "Not enabled": "Non activé",
+  "Not saved": "Non enregistré",
+  "Not set · titles use session model": "Non défini · les titres utilisent le modèle de session",
+  "One per line, up to": "Un par ligne, jusqu'à",
+  "One Slack approval": "Une approbation Slack",
+  "Only calibrated models can be the decision default. Default:":
+    "Seuls les modèles calibrés peuvent être la décision par défaut. Par défaut :",
+  "Only organization admins change defaults.":
+    "Seuls les administrateurs de l'organisation modifient les valeurs par défaut.",
+  "Only organization admins connect, rotate or delete providers. You can see what is connected and which models it serves.":
+    "Seuls les administrateurs de l'organisation connectent, alternent ou suppriment des fournisseurs. Vous pouvez voir ce qui est connecté et quels modèles il dessert.",
+  "Only organization owners and admins can change feature settings.":
+    "Seuls les propriétaires et les administrateurs de l'organisation peuvent modifier les paramètres des fonctionnalités.",
+  "Only organization owners and admins can change these settings. You have read-only access as a member.":
+    "Seuls les propriétaires et les administrateurs de l'organisation peuvent modifier ces paramètres. Vous disposez d'un accès en lecture seule en tant que membre.",
+  "Open MCP servers": "Ouvrir les serveurs MCP",
+  Operation: "Fonctionnement",
+  "or {value0}": "ou {value0}",
+  "Organization defaults, members, and your personal preferences.":
+    "Paramètres par défaut de l'organisation, membres et vos préférences personnelles.",
+  "Organization ID": "ID de l'organisation",
+  "Organization settings": "Paramètres de l'organisation",
+  "Other services": "Autres services",
+  "Outbound allowlist": "Liste autorisée sortante",
+  "Output:": "Sortie :",
+  "Owner ID": "ID du propriétaire",
+  "Payment Wallets": "Portefeuilles de paiement",
+  Payments: "Paiements",
+  "Pending organization and integration issues, and the actions that restore them. Reading or snoozing a notification does not resolve an issue.":
+    "Problèmes d'organisation et d'intégration en suspens, et les actions qui les rétablissent. Lire ou répéter une notification ne résout pas le problème.",
+  "Per Request": "Par demande",
+  "Permanently delete the archived MCP server": "Supprimer définitivement le serveur MCP archivé",
+  "Personal access token created": "Jeton d'accès personnel créé",
+  "Personal access tokens are only available when authentication is enabled. Contact your administrator to enable authentication.":
+    "Les jetons d'accès personnels ne sont disponibles que lorsque l'authentification est activée. Contactez votre administrateur pour activer l'authentification.",
+  "Personal access tokens are tied to your user account (not an organization) and reach every organization available to your account. A full-access token can do anything you can; a read-only token can still read everything you can. Treat both like passwords — do not share or commit them to source control.":
+    "Les jetons d'accès personnels sont liés à votre compte utilisateur (et non à une organisation) et atteignent toutes les organisations disponibles pour votre compte. Un jeton d’accès complet peut faire tout ce que vous pouvez ; un jeton en lecture seule peut toujours lire tout ce que vous pouvez. Traitez les deux comme des mots de passe : ne les partagez pas et ne les confiez pas au contrôle de code source.",
+  "Personal access tokens are tied to your user account, not to an organization. The token inherits access to every organization and resource available to your account, limited by the access you choose below.":
+    "Les jetons d'accès personnels sont liés à votre compte utilisateur, et non à une organisation. Le jeton hérite de l'accès à chaque organisation et ressource disponible pour votre compte, limité par l'accès que vous choisissez ci-dessous.",
+  "placeholders.": "espaces réservés.",
+  "Platform default · GPT-6 Luna": "Plateforme par défaut · GPT-6 Luna",
+  "prefix. Public hostnames only; the deployment's deny list still applies.":
+    ". Noms d'hôtes publics uniquement ; la liste de refus du déploiement s'applique toujours.",
+  "Private Key": "Clé privée",
+  "Profile data from provider discovery and":
+    "Données de profil issues de la découverte du fournisseur et",
+  "Prompt cache diagnostics": "Diagnostic rapide du cache",
+  "Provider details": "Détails du fournisseur",
+  "Provider is missing an API key or is disabled":
+    "Il manque une clé API au fournisseur ou il est désactivé",
+  "Provider not found": "Fournisseur introuvable",
+  "Provider settings": "Paramètres du fournisseur",
+  "Provider Settings": "Paramètres du fournisseur",
+  "provider with its own credentials and models. Give it a name that tells them apart in model pickers.":
+    "fournisseur avec ses propres références et modèles. Donnez-lui un nom qui les distingue dans les sélecteurs de modèles.",
+  Rail: "Rail",
+  "Recent Attempts": "Tentatives récentes",
+  "Reconnect required": "Reconnexion requise",
+  "Redirecting…": "Redirection…",
+  Reject: "Rejeter",
+  Released: "Libéré",
+  "Released {value0}": "Sortie {value0}",
+  "Released:": "Libéré :",
+  "Remove from favorites": "Supprimer des favoris",
+  "Remove header {value0}": "Supprimer l'en-tête {value0}",
+  "Remove member": "Supprimer un membre",
+  "Reports labels, not calibrated certainty. Hidden from decision pickers.":
+    "Étiquettes de rapports, certitude non calibrée. Caché des décideurs.",
+  "Returns calibrated probabilities": "Renvoie des probabilités calibrées",
+  "Review new models": "Examiner les nouveaux modèles",
+  "Revoke invitation": "Révoquer l'invitation",
+  "Save Advanced Settings": "Enregistrer les paramètres avancés",
+  "Save Credentials": "Enregistrer les informations d'identification",
+  "Save profile": "Enregistrer le profil",
+  "Save Trace Settings": "Enregistrer les paramètres de trace",
+  Saved: "Enregistré",
+  "Saved successfully": "Enregistré avec succès",
+  Saving: "Sauvegarde",
+  "Search catalog…": "Rechercher dans le catalogue…",
+  "Search models": "Rechercher des modèles",
+  "Search models…": "Rechercher des modèles…",
+  "Select a decision model": "Sélectionnez un modèle de décision",
+  "Select all": "Sélectionner tout",
+  "Select base harness": "Sélectionnez la base cadre d’exécution",
+  "Select default harness": "Sélectionnez le cadre d’exécution par défaut",
+  "Select owner": "Sélectionnez le propriétaire",
+  "Select provider": "Sélectionnez le fournisseur",
+  "Select wallet": "Sélectionnez le portefeuille",
+  "Sent with every request to this provider, useful for gateways and proxies that require their own headers. A header set here replaces the one the driver would send under the same name. Saved values are never read back; leave one blank to keep it, or type a new value to replace it.":
+    "Envoyé avec chaque demande à ce fournisseur, utile pour les passerelles et les proxys qui nécessitent leurs propres en-têtes. Un en-tête défini ici remplace celui que le pilote enverrait sous le même nom. Les valeurs enregistrées ne sont jamais relues ; laissez-en un vide pour le conserver ou saisissez une nouvelle valeur pour le remplacer.",
+  "Session URL template": "Modèle d'URL de session",
+  "Set key": "Définir la clé",
+  "Set Key": "Définir la clé",
+  "Settings for {value0}": "Paramètres pour {value0}",
+  "Several providers of one kind can be connected, for example two Azure resources.":
+    "Plusieurs fournisseurs d'un même type peuvent être connectés, par exemple deux ressources Azure.",
+  "Shared model for lightweight work, including automatic session titles.":
+    "Modèle partagé pour un travail léger, incluant des titres de session automatiques.",
+  "Show all models": "Afficher tous les modèles",
+  "Show links from session chats to this provider's trace/logs dashboard. Enable this only after turning on request logging for the account; most providers retain prompt/completion content only when logging is enabled. Templates support the":
+    "Afficher les liens des discussions de session vers le tableau de bord de trace/journaux de ce fournisseur. Activez-le uniquement après avoir activé la journalisation des demandes pour le compte ; la plupart des fournisseurs conservent le contenu d'invite/d'achèvement uniquement lorsque la journalisation est activée. Les modèles prennent en charge le",
+  "Shown in model pickers as “Model (Name)”.":
+    "Affiché dans les sélecteurs de modèles sous la forme « Modèle (Nom) ».",
+  "Shown in navigation, resource ownership, and member-facing views.":
+    "Affiché dans les vues de navigation, de propriété des ressources et destinées aux membres.",
+  "Sign in with {value0}": "Connectez-vous avec {value0}",
+  "Slack stopped accepting the saved credential. Agents already in this workspace keep working; new agents cannot be added until it is reconnected.":
+    "Slack n'accepte plus les informations d'identification enregistrées. Les agents déjà présents dans cet espace de travail continuent de travailler ; de nouveaux agents ne peuvent pas être ajoutés tant qu'il n'est pas reconnecté.",
+  "Slack workspaces": "Espaces de travail Slack",
+  "Small model": "Petit modèle",
+  "Spend Policies": "Politiques de dépenses",
+  "Structured Output": "Sortie structurée",
+};

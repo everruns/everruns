@@ -1024,8 +1024,9 @@ impl FileSystem for SessionFileSystemAdapter {
 
         let session_path = Self::store_path(path);
 
-        // Check if it's a file
-        match self.store.read_file(self.session_id, &session_path).await {
+        // Metadata is authoritative: command-backed stores return no content
+        // for directory reads, including directories just created by mkdir.
+        match self.store.stat_file(self.session_id, &session_path).await {
             Ok(Some(file)) => {
                 let now = SystemTime::now();
 
@@ -1114,8 +1115,8 @@ impl FileSystem for SessionFileSystemAdapter {
 
         let session_path = Self::store_path(path);
 
-        // A row exists for both files and materialized directories.
-        if let Ok(Some(_)) = self.store.read_file(self.session_id, &session_path).await {
+        // Metadata covers files and empty materialized directories alike.
+        if let Ok(Some(_)) = self.store.stat_file(self.session_id, &session_path).await {
             return Ok(true);
         }
 
@@ -1350,28 +1351,6 @@ mod tests {
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 }))
-            } else if self
-                .directories
-                .lock()
-                .unwrap()
-                .contains_key(&(session_id, path.clone()))
-            {
-                // Production stores materialize directories as rows that `read_file`
-                // returns (see `InMemorySessionFileStore::create_directory`), so the
-                // double must too — otherwise `exists`/`stat` cannot see an empty dir.
-                Ok(Some(SessionFile {
-                    id: uuid::Uuid::new_v4(),
-                    session_id: session_id.into(),
-                    path: path.clone(),
-                    name: path.split('/').next_back().unwrap_or("").to_string(),
-                    is_directory: true,
-                    is_readonly: false,
-                    content: None,
-                    encoding: "text".to_string(),
-                    size_bytes: 0,
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
-                }))
             } else {
                 Ok(None)
             }
@@ -1498,18 +1477,8 @@ mod tests {
                 });
             }
 
-            // Return error if directory doesn't exist (not root, not explicitly created,
-            // and no files have it as parent)
-            if !is_root && entries.is_empty() && !dirs.contains_key(&(session_id, path.clone())) {
-                // Also check if any file has this as an ancestor (implicit directory)
-                let has_children = files
-                    .keys()
-                    .any(|(sid, fp)| *sid == session_id && fp.starts_with(&format!("{}/", path)));
-                if !has_children {
-                    return Err(anyhow::anyhow!("Directory not found: {}", path).into());
-                }
-            }
-
+            // Match the command transport: missing and empty directories both
+            // have empty listings, so callers must use metadata for existence.
             Ok(entries)
         }
 
@@ -1527,6 +1496,21 @@ mod tests {
                     is_directory: false,
                     is_readonly: false,
                     size_bytes: content.len() as i64,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }))
+            } else if self
+                .directories
+                .lock()
+                .unwrap()
+                .contains_key(&(session_id, path.clone()))
+            {
+                Ok(Some(FileStat {
+                    path: path.clone(),
+                    name: path.split('/').next_back().unwrap_or("").to_string(),
+                    is_directory: true,
+                    is_readonly: false,
+                    size_bytes: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 }))

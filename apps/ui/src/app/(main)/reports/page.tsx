@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { z } from "zod";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
@@ -134,6 +134,8 @@ function defaultQuery(dataset: DatasetCatalogEntry | undefined, days = 7): Repor
 }
 
 export default function ReportsPage() {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   usePageTitle(ui("Reports"));
   const { hasRole } = useOrg();
@@ -364,7 +366,9 @@ export default function ReportsPage() {
               <CardTitle className="text-sm font-medium">{ui("Rows")}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-semibold">{activeRows.length.toLocaleString()}</div>
+              <div className="text-2xl font-semibold">
+                {activeRows.length.toLocaleString(displayLocale)}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {ui("Limit")} {query?.limit ?? 100}
               </p>
@@ -392,7 +396,9 @@ export default function ReportsPage() {
                 {freshnessLabel(activeResult?.freshness_lag_ms)}
               </div>
               <p className="text-xs text-muted-foreground">
-                {activeResult?.as_of ? new Date(activeResult.as_of).toLocaleTimeString() : "-"}
+                {activeResult?.as_of
+                  ? new Date(activeResult.as_of).toLocaleTimeString(displayLocale)
+                  : "-"}
               </p>
             </CardContent>
           </Card>
@@ -403,7 +409,7 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold">
-                  {(diagnostics.data?.outbox.pending ?? 0).toLocaleString()}
+                  {(diagnostics.data?.outbox.pending ?? 0).toLocaleString(displayLocale)}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {diagnostics.data?.outbox.failed ?? 0} {ui("failed,")}{" "}

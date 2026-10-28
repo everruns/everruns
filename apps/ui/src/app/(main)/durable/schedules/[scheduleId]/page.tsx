@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import {
   useDurablePageAccess,
   useDurablePageRows,
@@ -101,6 +101,8 @@ function getStatusIcon(status: ScheduleExecutionStatus) {
 }
 
 function ExecutionRow({ execution }: { execution: ScheduleExecution }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   return (
     <TableRow>
@@ -116,9 +118,15 @@ function ExecutionRow({ execution }: { execution: ScheduleExecution }) {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(execution.scheduled_at), { addSuffix: true })}
+              {formatDistanceToNow(
+                new Date(execution.scheduled_at),
+                { addSuffix: true },
+                displayLocale,
+              )}
             </TooltipTrigger>
-            <TooltipContent>{new Date(execution.scheduled_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>
+              {new Date(execution.scheduled_at).toLocaleString(displayLocale)}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -126,9 +134,15 @@ function ExecutionRow({ execution }: { execution: ScheduleExecution }) {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(execution.started_at), { addSuffix: true })}
+              {formatDistanceToNow(
+                new Date(execution.started_at),
+                { addSuffix: true },
+                displayLocale,
+              )}
             </TooltipTrigger>
-            <TooltipContent>{new Date(execution.started_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>
+              {new Date(execution.started_at).toLocaleString(displayLocale)}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -137,9 +151,15 @@ function ExecutionRow({ execution }: { execution: ScheduleExecution }) {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger className="text-sm text-muted-foreground">
-                {formatDistanceToNow(new Date(execution.completed_at), { addSuffix: true })}
+                {formatDistanceToNow(
+                  new Date(execution.completed_at),
+                  { addSuffix: true },
+                  displayLocale,
+                )}
               </TooltipTrigger>
-              <TooltipContent>{new Date(execution.completed_at).toLocaleString()}</TooltipContent>
+              <TooltipContent>
+                {new Date(execution.completed_at).toLocaleString(displayLocale)}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
@@ -370,6 +390,8 @@ function EditScheduleDialog({
 }
 
 export default function ScheduleDetailPage() {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const params = useParams();
   const router = useRouter();
@@ -600,7 +622,11 @@ export default function ScheduleDetailPage() {
                 <p className="text-sm text-muted-foreground">{ui("Last Triggered")}</p>
                 <p className="text-sm font-medium">
                   {schedule.last_triggered_at
-                    ? formatDistanceToNow(new Date(schedule.last_triggered_at), { addSuffix: true })
+                    ? formatDistanceToNow(
+                        new Date(schedule.last_triggered_at),
+                        { addSuffix: true },
+                        displayLocale,
+                      )
                     : ui("Never")}
                 </p>
               </div>
@@ -608,14 +634,18 @@ export default function ScheduleDetailPage() {
                 <p className="text-sm text-muted-foreground">{ui("Next Trigger")}</p>
                 <p className="text-sm font-medium">
                   {schedule.next_trigger_at && schedule.enabled
-                    ? formatDistanceToNow(new Date(schedule.next_trigger_at), { addSuffix: true })
+                    ? formatDistanceToNow(
+                        new Date(schedule.next_trigger_at),
+                        { addSuffix: true },
+                        displayLocale,
+                      )
                     : "-"}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{ui("Created")}</p>
                 <p className="text-sm font-medium">
-                  {new Date(schedule.created_at).toLocaleDateString()}
+                  {new Date(schedule.created_at).toLocaleDateString(displayLocale)}
                 </p>
               </div>
               <div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { TokenIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
@@ -107,10 +107,12 @@ function PersonalAccessTokenRow({
   token: PersonalAccessTokenListItem;
   onDelete: (id: string) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const formatDate = (dateStr: string | undefined) => {
     if (!dateStr) return "Never";
-    return new Date(dateStr).toLocaleDateString();
+    return new Date(dateStr).toLocaleDateString(displayLocale);
   };
 
   return (

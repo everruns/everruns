@@ -1,7 +1,11 @@
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useDisplayLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
 import { use, useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { ResourceNotFound } from "@/components/resource-not-found";
@@ -16,7 +20,6 @@ import { usePageTitle } from "@/hooks";
 import { useProviders } from "@/hooks/use-providers";
 import { buildTraceConfigByDriver, resolveSessionTraceUrl } from "@/lib/chat-trace";
 import { getDisplayName } from "@/lib/entity-lifecycle";
-import { useLocale } from "@/providers/locale-provider";
 
 const SESSION_TAB_LABELS: Record<SessionNavKey, string> = {
   trace: "Trace",
@@ -137,7 +140,7 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
               // one exists, and fall back for chat threads, runs that have not
               // finished, and deployments with no utility LLM.
               (session.run_summary?.trim() ??
-              `Started ${new Date(session.created_at).toLocaleString()}`)
+              `Started ${new Date(session.created_at).toLocaleString(displayLocale)}`)
         }
         sessionTraceUrl={sessionTraceUrl}
         sessionTraceLabel={t("trace_view_session")}

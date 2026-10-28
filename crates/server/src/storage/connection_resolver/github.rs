@@ -311,12 +311,9 @@ impl DbConnectionResolver {
         else {
             return Ok(None);
         };
-        let lock = self
-            .refresh_locks
-            .get_with(format!("github-person:{}", row.id), || {
-                Arc::new(Mutex::new(()))
-            });
-        let _guard = lock.lock().await;
+        let _guard = self
+            .refresh_guard(format!("github-person:{}", row.id))
+            .await?;
         // Another use may have refreshed it while this one waited.
         let Some(row) = self
             .db

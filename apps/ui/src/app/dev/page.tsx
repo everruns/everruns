@@ -30,8 +30,7 @@ const devPages = [
   },
   {
     title: "Slate Reference",
-    description:
-      "Pinned design-export rules, visual foundations, hierarchy, and conformance checks",
+    description: "Slate rules, visual foundations, hierarchy, and conformance checks",
     href: "/dev/design-reference",
     icon: Palette,
   },

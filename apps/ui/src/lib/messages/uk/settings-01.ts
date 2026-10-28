@@ -246,7 +246,7 @@ export const messages: Readonly<Record<string, string>> = {
   "No payment attempts.": "Немає спроб оплати.",
   "No payment wallets.": "Без платіжних гаманців.",
   "No pending issues detected. Checks reflect the latest available observations.":
-    "Невирішених проблем не виявлено. Чеки відображають останні доступні спостереження.",
+    "Невирішених проблем не виявлено. Перевірки відображають останні доступні спостереження.",
   "No personal access tokens": "Без особистих токенів доступу",
   "No providers are connected yet. Ask an organization admin to connect one.":
     "Ще не підключено жодного провайдера. Попросіть адміністратора організації підключити його.",

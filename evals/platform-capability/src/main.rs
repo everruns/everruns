@@ -19,7 +19,10 @@
 //! Configure the target server and model matrix via env (see `subject.rs` and
 //! `EVERRUNS_EVAL_TARGETS`).
 
+mod bounded;
 mod control_plane;
+#[path = "../../common/everruns_usage.rs"]
+mod everruns_usage;
 mod friction;
 mod offline;
 mod scorers;
@@ -31,8 +34,8 @@ use mira::{Dataset, Eval, Target, eval};
 use crate::friction::FrictionRun;
 use crate::offline::OfflineSubject;
 use crate::scorers::{
-    cli_friction, confirmation_boundary, expected_tools, forbidden_tools, platform_commands,
-    response_matches, scheduled_agent_state, tool_budget,
+    cli_friction, confirmation_boundary, expected_tools, forbidden_tools, operation_state,
+    platform_commands, response_matches, scheduled_agent_state, tool_budget,
 };
 use crate::subject::EverrunsServerSubject;
 
@@ -81,9 +84,18 @@ fn trials() -> usize {
 
 #[eval]
 fn platform_capability() -> Eval {
-    let dataset = Dataset::from_jsonl_str(DATASET).expect("embedded dataset.jsonl must parse");
+    let mut dataset = Dataset::from_jsonl_str(DATASET).expect("embedded dataset.jsonl must parse");
+    if !offline() {
+        dataset.samples.retain(|sample| {
+            sample
+                .metadata
+                .get("surface_comparison")
+                .and_then(serde_json::Value::as_bool)
+                != Some(true)
+        });
+    }
     let eval = Eval::new("platform_capability")
-        .describe("Drive the everruns platform via discover/query/execute from natural language")
+        .describe("Compare real platform operation surfaces and evaluate hosted Platform Chat")
         .dataset(dataset)
         .targets(targets())
         .trials(trials());
@@ -97,6 +109,7 @@ fn platform_capability() -> Eval {
         .scorer(succeeded())
         // expected_tools()/forbidden_tools()/response_matches(): per-sample,
         // driven by each sample's `metadata` (see scorers.rs).
+        .scorer(operation_state())
         .scorer(expected_tools())
         .scorer(forbidden_tools())
         .scorer(confirmation_boundary())
@@ -179,6 +192,25 @@ async fn main() -> std::io::Result<()> {
         println!("friction report: {path}");
     }
 
+    if let Some(path) =
+        value_of("--runs-report").or_else(|| std::env::var("EVERRUNS_EVAL_RUNS_REPORT").ok())
+    {
+        let lines = report.outcomes.iter().map(|outcome| serde_json::json!({
+            "case": outcome.sample_id, "target": outcome.target, "trial": outcome.trial.index,
+            "passed": outcome.passed,
+            "scores": outcome.scores.iter().map(|score| serde_json::json!({"name":score.scorer,"passed":score.pass,"na":score.na,"value":score.value,"reason":score.reason})).collect::<Vec<_>>(),
+            "error": outcome.transcript.error, "error_kind": format!("{:?}", outcome.transcript.error_kind),
+            "duration_ms": outcome.transcript.timing.duration_ms,
+            "usage": outcome.transcript.usage, "iterations": outcome.transcript.iterations,
+            "tool_calls_count": outcome.transcript.tool_calls_count,
+            "metrics": outcome.transcript.metrics, "metadata": outcome.transcript.metadata,
+            "final_response": outcome.transcript.final_response,
+            "events": outcome.transcript.events,
+        }).to_string()).collect::<Vec<_>>().join("\n");
+        std::fs::write(&path, lines + "\n")?;
+        println!("runs report: {path}");
+    }
+
     if report.all_passed() {
         Ok(())
     } else {
@@ -224,7 +256,8 @@ mod tests {
             let has_expectation = s.metadata.contains_key("expect_tools")
                 || s.metadata.contains_key("forbid_tools")
                 || s.metadata.contains_key("expect_commands")
-                || s.metadata.contains_key("expect_scheduled_agent");
+                || s.metadata.contains_key("expect_scheduled_agent")
+                || s.metadata.contains_key("expect_state");
             assert!(has_expectation, "{} declares no scorable expectation", s.id);
             assert!(
                 !s.tags.is_empty(),
@@ -450,6 +483,36 @@ mod tests {
         assert_eq!(lines[2]["calls"], 0);
         assert_eq!(lines[2]["error"], "OPENROUTER_API_KEY is not set");
         assert!(lines[0]["error"].is_null());
+    }
+
+    #[test]
+    fn matched_samples_do_not_grade_cli_or_discovery_spelling() {
+        let dataset = Dataset::from_jsonl_str(DATASET).unwrap();
+        let matched: Vec<_> = dataset
+            .samples
+            .iter()
+            .filter(|s| s.tags.iter().any(|tag| tag == "surface-comparison"))
+            .collect();
+        assert!(matched.len() >= 8);
+        for sample in matched {
+            assert_eq!(
+                sample.metadata.get("surface_comparison"),
+                Some(&serde_json::json!(true))
+            );
+            for key in [
+                "expect_commands",
+                "forbid_commands",
+                "expect_tools",
+                "requires_live",
+            ] {
+                assert!(
+                    !sample.metadata.contains_key(key),
+                    "{} has interface-specific {key}",
+                    sample.id
+                );
+            }
+            assert!(sample.metadata.contains_key("expect_state"));
+        }
     }
 
     #[test]

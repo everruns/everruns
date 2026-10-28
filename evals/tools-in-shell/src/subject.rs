@@ -11,7 +11,8 @@
 use std::time::Instant;
 
 use everruns::{Agent, EventStreamError, InMemoryEngine, Provider, Session, SessionEvent};
-use mira::subject::summarize_events;
+#[path = "../../common/everruns_usage.rs"]
+mod event_usage;
 use mira::{ErrorKind, RunCx, Sample, Subject, Target, Transcript};
 use serde_json::Value;
 
@@ -114,8 +115,7 @@ pub async fn run_turns(session: &Session, sample: &Sample) -> Transcript {
 
 /// Usage, the model's own tool calls, the fake tools' call log and friction.
 pub fn finish(transcript: &mut Transcript, log: &CallLog) {
-    let (usage, _) = summarize_events(&transcript.events);
-    transcript.usage = usage;
+    event_usage::summarize_events(&transcript.events).apply_to(transcript);
     transcript.tool_calls = transcript
         .events
         .iter()

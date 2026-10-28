@@ -72,7 +72,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Tool calls ({value0})": "Виклики інструментів ({value0})",
   "Tool-level scoring": "Оцінка на рівні інструменту",
   Total: "Разом",
-  "Total Executions": "Загальна кількість страт",
+  "Total Executions": "Загальна кількість виконань",
   "Trends are computed from recent sampled scores; full aggregation is a follow-up.":
     "Тенденції обчислюються на основі останніх вибіркових результатів; повне агрегування є наступним.",
   Trigger: "Тригер",

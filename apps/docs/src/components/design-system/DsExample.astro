@@ -1,0 +1,29 @@
+---
+// A live example rendered with the app's own tokens. The tokens are generated
+// from apps/ui/src/app/design-system.css (scripts/copy-design-tokens.mjs) and
+// scoped to `.ds-example`, so the docs theme around it is untouched and the
+// example follows the docs light/dark switch. `not-content` opts out of
+// Starlight's prose spacing, which would otherwise push the mock UI apart.
+// `data-llms-ignore` keeps the mock markup out of the Markdown and llms.txt
+// copies, where it would read as run-together labels; the caption stays.
+import "../../generated/app-tokens.css";
+import "../../styles/design-system-examples.css";
+
+interface Props {
+  /** Short caption under the example. */
+  caption?: string;
+  /** Paint the branded dot grid behind the example, as the app body does. */
+  dots?: boolean;
+  /** Remove the inner padding, for full page layouts. */
+  flush?: boolean;
+}
+
+const { caption, dots = false, flush = false } = Astro.props;
+---
+
+<figure class="ds-figure not-content">
+  <div class:list={["ds-example", { "bg-brand-dots": dots, "ds-flush": flush }]} data-llms-ignore>
+    <slot />
+  </div>
+  {caption && <figcaption class="ds-caption">{caption}</figcaption>}
+</figure>

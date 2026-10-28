@@ -64,3 +64,5 @@ pub mod users;
 pub mod validation;
 pub mod virtual_users;
 pub mod workspaces;
+
+pub mod trace_exports;

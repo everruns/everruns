@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState } from "react";
 import Link from "next/link";
 import {
@@ -111,6 +111,8 @@ export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
 }
 
 function HealthCheckResults({ run }: { run: HealthCheckRun }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   if (run.status === "failed") {
     return (
@@ -141,8 +143,8 @@ function HealthCheckResults({ run }: { run: HealthCheckRun }) {
       )}
       {summary && (summary.total_input_tokens > 0 || summary.total_output_tokens > 0) && (
         <p className="text-xs text-muted-foreground">
-          {summary.total_input_tokens.toLocaleString()} {ui("input /")}{" "}
-          {summary.total_output_tokens.toLocaleString()} {ui("output tokens")}
+          {summary.total_input_tokens.toLocaleString(displayLocale)} {ui("input /")}{" "}
+          {summary.total_output_tokens.toLocaleString(displayLocale)} {ui("output tokens")}
         </p>
       )}
       {(run.results?.length ?? 0) > 0 && (

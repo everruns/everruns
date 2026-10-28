@@ -31,12 +31,12 @@ pub fn narrate_shell_exec(
         ("Running", "Ran", "Failed to run"),
         ("Запускаю", "Запустив", "Не вдалося запустити"),
     );
-    let line = phrase3(verbs, Some(command), phase);
+    let line = phrase3(locale, verbs, Some(command), phase);
     if phase != ToolNarrationPhase::Completed {
         return line;
     }
     match ctx.result.and_then(shell_outcome) {
-        Some(outcome) => format!("{line}, {}", outcome.phrase(is_uk(locale))),
+        Some(outcome) => format!("{line}, {}", outcome.localized_phrase(locale)),
         None => line,
     }
 }
@@ -53,16 +53,18 @@ pub fn narrate_grep_files(
     if phase == ToolNarrationPhase::Completed
         && let Some(found) = ctx.result.and_then(grep_outcome)
     {
-        return found.phrase(pattern.as_deref(), uk);
+        return found.localized_phrase(pattern.as_deref(), locale);
     }
     if uk {
         match pattern {
             Some(pattern) => phrase3(
+                locale,
                 ("Шукаю", "Знайшов", "Не вдалося знайти"),
                 Some(format!("`{pattern}` у файлах")),
                 phase,
             ),
             None => phrase3(
+                locale,
                 (
                     "Шукаю у файлах",
                     "Завершив пошук у файлах",
@@ -77,6 +79,7 @@ pub fn narrate_grep_files(
             .map(|pattern| format!("files for {pattern}"))
             .unwrap_or_else(|| "files".to_string());
         phrase3(
+            locale,
             ("Searching", "Searched", "Failed to search"),
             Some(target),
             phase,
@@ -91,6 +94,38 @@ enum ShellOutcome {
 }
 
 impl ShellOutcome {
+    fn localized_phrase(&self, locale: Option<&str>) -> String {
+        use crate::runtime::localization::{BackendLocale, resolve_backend_locale, runtime_text};
+        if matches!(
+            resolve_backend_locale(locale),
+            BackendLocale::En | BackendLocale::Uk
+        ) {
+            return self.phrase(is_uk(locale));
+        }
+        let (source, total, failed, code) = match *self {
+            Self::Tests { passed, failed } => {
+                let total = passed + failed;
+                (
+                    if failed > 0 {
+                        "{failed} of {total} tests failed"
+                    } else if total == 1 {
+                        "1 test passed"
+                    } else {
+                        "{total} tests passed"
+                    },
+                    total,
+                    failed,
+                    0,
+                )
+            }
+            Self::Exit(code) => ("exit code {code}", 0, 0, code),
+        };
+        runtime_text(locale, source)
+            .replace("{total}", &total.to_string())
+            .replace("{failed}", &failed.to_string())
+            .replace("{code}", &code.to_string())
+    }
+
     fn phrase(&self, uk: bool) -> String {
         match *self {
             ShellOutcome::Tests { passed, failed } => {
@@ -236,6 +271,43 @@ struct GrepOutcome {
 }
 
 impl GrepOutcome {
+    fn localized_phrase(&self, pattern: Option<&str>, locale: Option<&str>) -> String {
+        use crate::runtime::localization::{BackendLocale, resolve_backend_locale, runtime_text};
+        if matches!(
+            resolve_backend_locale(locale),
+            BackendLocale::En | BackendLocale::Uk
+        ) {
+            return self.phrase(pattern, is_uk(locale));
+        }
+        let pattern = pattern.map(|value| format!("`{value}`"));
+        if self.total == 0 {
+            return match pattern {
+                Some(value) => {
+                    runtime_text(locale, "No matches for {pattern}").replace("{pattern}", &value)
+                }
+                None => runtime_text(locale, "No matches").into(),
+            };
+        }
+        let template = if self.total == 1 {
+            "Found 1 match"
+        } else {
+            "Found {count} matches"
+        };
+        let mut line = runtime_text(locale, template).replace("{count}", &self.total.to_string());
+        if let Some(value) = pattern {
+            line.push_str(&runtime_text(locale, " for {pattern}").replace("{pattern}", &value));
+        }
+        if let Some(files) = self.files {
+            let template = if files == 1 {
+                " in 1 file"
+            } else {
+                " in {count} files"
+            };
+            line.push_str(&runtime_text(locale, template).replace("{count}", &files.to_string()));
+        }
+        line
+    }
+
     fn phrase(&self, pattern: Option<&str>, uk: bool) -> String {
         let pattern = pattern.map(|pattern| format!("`{pattern}`"));
         if self.total == 0 {

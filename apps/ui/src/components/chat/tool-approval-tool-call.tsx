@@ -12,7 +12,7 @@
  * the server never hears about is not approved.
  */
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Check, ShieldAlert, X } from "lucide-react";
@@ -110,6 +110,8 @@ export function ToolApprovalRequests({
   requests,
   toolResultsMap,
 }: ToolApprovalRequestsProps) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const [choices, setChoices] = useState<Record<string, ToolApprovalDecision>>({});
   const [submitted, setSubmitted] = useState<Record<string, string>>({});
@@ -220,7 +222,8 @@ export function ToolApprovalRequests({
                 )}
                 {expires && !Number.isNaN(expires.getTime()) && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {ui("Counts as rejected if not answered by")} {expires.toLocaleTimeString()}.
+                    {ui("Counts as rejected if not answered by")}{" "}
+                    {expires.toLocaleTimeString(displayLocale)}.
                   </p>
                 )}
                 {chosen && requests.length > 1 && !submitting && (

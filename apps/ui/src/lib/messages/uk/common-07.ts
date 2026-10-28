@@ -156,6 +156,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Skip for now": "Поки що пропустити",
   "Slack agent pane": "Панель агента Slack",
   "Slate Design System": "Slate Design System",
+  "Slate design system": "Дизайн-система Slate",
   "Slate Reference": "Посилання на шифер",
   "Sliding 1 hour": "Ковзання 1 година",
   "Sliding 24 hours": "Ковзні 24 години",
@@ -278,6 +279,8 @@ export const messages: Readonly<Record<string, string>> = {
   "The account belongs to the organization. Every agent can search with it, and its key never reaches an agent.":
     "Рахунок належить організації. Кожен агент може шукати з ним, і його ключ ніколи не досягає агента.",
   "The action failed.": "Дія не виконана.",
+  "The public design system pages are where redesigns start. They read their tokens and icons from this app;":
+    "Публічні сторінки дизайн-системи є відправною точкою для редизайну. Вони беруть токени та іконки з цього застосунку;",
   "The agent and virtual user stay fixed for this chat.":
     "Агент і віртуальний користувач залишаються незмінними для цього чату.",
   "The agent uses $": "Агент використовує $",
@@ -326,7 +329,7 @@ export const messages: Readonly<Record<string, string>> = {
     "Сонце випромінює менше фіолетового світла, ніж синього",
   "The timeline could not be loaded": "Не вдалося завантажити шкалу часу",
   "The Workspace-tab panel, in the four sandbox states a session can actually have. The capability rows are the point: they answer “can this session run a build?” before a run proves it cannot.":
-    "Панель вкладок «Робоча область» у чотирьох станах ізольованого програмного середовища, які може мати сеанс. Рядки можливостей — це суть: вони відповідають «чи може ця сесія запускати збірку?» перш ніж пробіжка доведе, що це неможливо.",
+    "Панель вкладок «Робоча область» у чотирьох станах ізольованого програмного середовища, які може мати сеанс. Рядки можливостей — це суть: вони відповідають «чи може ця сесія запускати збірку?» перш ніж запуск доведе, що це неможливо.",
   Theme: "Тема",
   "These are the exact badge components used inside the session header.":
     "Це точні компоненти значка, які використовуються в заголовку сеансу.",

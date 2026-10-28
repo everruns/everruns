@@ -36,7 +36,6 @@ export const messages: Readonly<Record<string, string>> = {
     ". Everruns все ще стабілізується, тож очікуйте різких змін і нерівностей.",
   ". It never reads the value.": ". Він ніколи не читає значення.",
   ". SHA-256": ". SHA-256",
-  ". The export is a pinned visual reference;": ". Експорт — це закріплена візуальна посилання;",
   ". The issue remains open.": ". Питання залишається відкритим.",
   "·": "·",
   "· 1-second refresh ·": "· 1-секундне оновлення ·",
@@ -112,8 +111,8 @@ export const messages: Readonly<Record<string, string>> = {
     "Запит і грант, записаний для нього, на одній картці. Відкритий запит і грант без зареєстрованого запиту знаходяться поруч.",
   "A restore never brings secrets back. These differ from this point and will not be restored:":
     "Відновлення ніколи не повертає секретів. Вони відрізняються від цього пункту і не будуть відновлені:",
-  "A review surface for the adopted Everruns Design System export and its production implementation contract.":
-    "Поверхня огляду для експорту прийнятої системи дизайну Everruns і контракту на її виробництво.",
+  "A review surface for Slate as implemented in this app, next to the public design system pages.":
+    "Огляд Slate у цьому застосунку поруч із публічними сторінками дизайн-системи.",
   "A search account of this organization. Every agent can search with it; the key stays encrypted and never reaches an agent.":
     "Пошуковий обліковий запис цієї організації. Кожен агент може шукати з ним; ключ залишається зашифрованим і ніколи не досягає агента.",
   "A section-per-output reference page built entirely from the production tool transcript components.":

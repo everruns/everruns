@@ -534,6 +534,35 @@ async fn a_turn_that_keeps_killing_its_worker_is_sealed() {
     fixture.assert_idle();
 }
 
+// Production, 2026-10-27: one turn's log grew to ~200 MB encoded, over the
+// gRPC cap, so every lease failed reading it, ahead of the poison guard, and
+// the session re-read the whole turn every few seconds for hours. The guard
+// runs before the read and seals the turn from its first event.
+#[tokio::test]
+async fn a_turn_whose_log_cannot_be_read_is_still_sealed() {
+    let mut fixture = Fixture::new(model("Never.", vec![])).await;
+    fixture.poison_attempts = 1;
+    let (crashing, probe) = fixture.worker("w1");
+    probe.hang_at_flush.store(1, Ordering::SeqCst);
+    fixture.send("Crash.").await;
+    crash_at(&fixture, &crashing, &probe.hung).await;
+    fixture.store.oversize_reads();
+
+    let (next, _) = fixture.worker("w2");
+    let mut leases = 0;
+    while run_once(&next).await {
+        leases += 1;
+        assert!(leases < 5, "the turn keeps being leased");
+        fixture.store.expire(fixture.session_id);
+    }
+
+    let types = fixture.types().await;
+    assert_eq!(fixture.count("turn.started").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.sealed").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.completed").await, 0, "{types:?}");
+    fixture.assert_idle();
+}
+
 // EVE-1301, chaos harness: a PostgreSQL pool exhaustion ended three leases in
 // a row on control-plane errors (harness load, journal read, transport), and
 // the fourth lease sealed the turn as one that keeps killing its worker: the

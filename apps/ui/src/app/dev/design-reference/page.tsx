@@ -15,12 +15,15 @@ import {
   Save,
   Type,
 } from "lucide-react";
-import reference from "../../../../design-reference.json";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
+
+// Slate's public design system pages (docs/design-system/), built from this app's tokens
+// and icons. They replaced the external design export as the starting point for redesigns.
+const DESIGN_SYSTEM_URL = "https://everruns.com/docs/design-system/";
 
 const foundations = [
   { name: "Background", token: "--background", className: "bg-background" },
@@ -110,34 +113,32 @@ export default function DevDesignReferencePage() {
   const ui = useUiTranslations();
   return (
     <DevPageShell
-      eyebrow="Pinned design export"
+      eyebrow="Design system"
       title={ui("Slate Reference")}
       description={ui(
-        "A review surface for the adopted Everruns Design System export and its production implementation contract.",
+        "A review surface for Slate as implemented in this app, next to the public design system pages.",
       )}
       widthClassName="max-w-7xl"
     >
       <div className="space-y-6">
         <Notice variant="info" icon={<FileCode2 />}>
-          <NoticeTitle>{reference.name}</NoticeTitle>
+          <NoticeTitle>{ui("Slate design system")}</NoticeTitle>
           <NoticeDescription>
-            {ui("Reviewed")} {reference.reviewedOn} {ui("from")}{" "}
-            <code>{reference.archiveFile}</code>
-            {ui(". SHA-256")}{" "}
-            <code className="break-all text-foreground">{reference.archiveSha256}</code>
-            {ui(". The export is a pinned visual reference;")}{" "}
-            <code>{reference.canonicalRuntime}</code> {ui("and")}{" "}
-            <code>{reference.canonicalGuidance}</code> {ui("remain canonical.")}
+            {ui(
+              "The public design system pages are where redesigns start. They read their tokens and icons from this app;",
+            )}{" "}
+            <code>src/app/design-system.css</code> {ui("and")} <code>DESIGN.md</code>{" "}
+            {ui("remain canonical.")}
           </NoticeDescription>
         </Notice>
 
         <div className="flex flex-wrap gap-2">
-          <LinkButton variant="accent" href={reference.componentShowcase}>
+          <LinkButton variant="accent" href="/dev/ui-components">
             <Blocks /> {ui("Production components")} <ArrowRight />
           </LinkButton>
-          <a href={reference.sourceUrl} target="_blank" rel="noreferrer">
+          <a href={DESIGN_SYSTEM_URL} target="_blank" rel="noreferrer">
             <Button variant="outline">
-              {ui("External design project")} <ExternalLink />
+              {ui("Design system pages")} <ExternalLink />
             </Button>
           </a>
         </div>

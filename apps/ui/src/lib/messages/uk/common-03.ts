@@ -74,7 +74,7 @@ export const messages: Readonly<Record<string, string>> = {
   Dark: "Темний",
   "Darker bins contain more sessions. Each state has its own scale. Empty history is unavailable, not zero. Select a bucket to replay its population summary.":
     "Темніші контейнери містять більше сеансів. Кожна держава має свій масштаб. Порожня історія недоступна, а не нульова. Виберіть сегмент, щоб відтворити зведення про населення.",
-  Dashboard: "Приладова панель",
+  Dashboard: "Огляд",
   Default: "Типово",
   "Default (1 day)": "За умовчанням (1 день)",
   "Default model": "Типова модель",
@@ -93,6 +93,7 @@ export const messages: Readonly<Record<string, string>> = {
   Density: "Щільність",
   "Deployment default": "Стандартне розгортання",
   Deprecated: "Застаріло",
+  "Design system pages": "Сторінки дизайн-системи",
   "Describe this virtual user...": "Опишіть цього віртуального користувача...",
   Description: "Опис",
   "Description (optional)": "Опис (необов’язково)",
@@ -275,7 +276,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Execution flow: runnable work, model iterations, tools, waiting, and completion":
     "Потік виконання: виконувана робота, ітерації моделі, інструменти, очікування та завершення",
   "Execution pressure": "Тиск виконання",
-  Executions: "Страти",
+  Executions: "Виконання",
   Exhausted: "Виснажений",
   "Existing App channels keep working. New external integrations will use agent-owned endpoints as they become available.":
     "Існуючі канали програми продовжують працювати. Нові зовнішні інтеграції використовуватимуть кінцеві точки, що належать агентам, щойно вони стануть доступними.",

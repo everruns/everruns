@@ -71,6 +71,12 @@ pub struct DbConnectionResolver {
     refresh_locks: Cache<String, Arc<Mutex<()>>>,
 }
 
+/// Held while one grant refreshes; see `DbConnectionResolver::refresh_guard`.
+struct RefreshGuard {
+    _replica: sqlx::Transaction<'static, sqlx::Postgres>,
+    _local: tokio::sync::OwnedMutexGuard<()>,
+}
+
 #[derive(Debug)]
 struct OAuthClientConfig {
     token_endpoint: String,
@@ -484,6 +490,32 @@ impl DbConnectionResolver {
             .map(|seconds| Utc::now() + Duration::seconds(seconds))
     }
 
+    /// Single-flight one grant's refresh: the in-process mutex queues this
+    /// replica's callers, and a polling advisory lock keeps another server
+    /// replica from spending the same rotating refresh token at once (a
+    /// provider can revoke a grant whose refresh token is replayed). The guard
+    /// holds both until the refresh is persisted.
+    async fn refresh_guard(&self, key: String) -> Result<RefreshGuard> {
+        let lock = self
+            .refresh_locks
+            .get_with(key.clone(), || Arc::new(Mutex::new(())));
+        let local = lock.lock_owned().await;
+        let replica = self
+            .db
+            .database()
+            .advisory_xact_lock_polling(
+                "oauth_refresh",
+                &key,
+                crate::storage::repositories::ADVISORY_LOCK_WAIT,
+            )
+            .await
+            .map_err(|e| AgentLoopError::store(format!("OAuth refresh lock: {e}")))?;
+        Ok(RefreshGuard {
+            _replica: replica,
+            _local: local,
+        })
+    }
+
     async fn resolve_session_oauth_token(
         &self,
         session_id: SessionId,
@@ -499,11 +531,9 @@ impl DbConnectionResolver {
                 .map(Some);
         }
 
-        let key = format!("session:{session_id}:{server_id}");
-        let lock = self
-            .refresh_locks
-            .get_with(key, || Arc::new(Mutex::new(())));
-        let _guard = lock.lock().await;
+        let _guard = self
+            .refresh_guard(format!("session:{session_id}:{server_id}"))
+            .await?;
 
         // Re-read after taking the lock: another waiter may have refreshed it.
         let Some(credentials) = self
@@ -604,11 +634,9 @@ impl DbConnectionResolver {
                 .map(Some);
         }
 
-        let key = format!("identity-connection:{}", row.id);
-        let lock = self
-            .refresh_locks
-            .get_with(key, || Arc::new(Mutex::new(())));
-        let _guard = lock.lock().await;
+        let _guard = self
+            .refresh_guard(format!("identity-connection:{}", row.id))
+            .await?;
         let Some(row) = self
             .db
             .get_virtual_user_connection(row.virtual_user_id, &row.provider)

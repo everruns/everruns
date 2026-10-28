@@ -11,6 +11,7 @@ import {
   TokenIcon,
   VirtualUserIcon,
 } from "@/components/icons/facet-icons";
+import { Activity } from "lucide-react";
 import { SlackIcon } from "@/components/icons/slack-icon";
 import type { NavigationSection } from "@/lib/navigation";
 import { registryDomainIcons } from "@/lib/registry-navigation";
@@ -64,6 +65,13 @@ export const settingsNavigationSections: NavigationSection[] = [
         href: "/settings/slack",
         icon: SlackIcon,
         description: "Connect Slack workspaces your agents can join",
+      },
+      {
+        name: "Tracing",
+        href: "/settings/tracing",
+        icon: Activity,
+        keywords: ["braintrust", "otel", "otlp", "traces"],
+        description: "Manage agent trace exports",
       },
       {
         name: "Health",

@@ -27,6 +27,7 @@ fn env(grade: DeploymentGrade) -> DoctorEnv {
         otel_disabled: false,
         rust_log: None,
         provider_keys: vec!["OpenAI"],
+        email: Ok(Some("Resend")),
     }
 }
 
@@ -441,7 +442,7 @@ fn stopped_servers_are_listed_and_a_missing_own_beat_is_flagged() {
         replica("a", "1.0.0", 60, 5),
         replica("b", "1.0.0", 60, 600),
     ]);
-    let check = servers_check(&seen, "a", TimeDelta::minutes(5));
+    let check = servers_check(&seen, Some("a"), TimeDelta::minutes(5));
     assert_eq!(check.status, CheckStatus::Ok);
     assert!(
         check.summary.contains("One server is running."),
@@ -458,15 +459,21 @@ fn stopped_servers_are_listed_and_a_missing_own_beat_is_flagged() {
 
     // This process just started: its first beat may not be in yet.
     assert_eq!(
-        servers_check(&seen, "c", TimeDelta::seconds(10)).status,
+        servers_check(&seen, Some("c"), TimeDelta::seconds(10)).status,
         CheckStatus::Ok
     );
     assert_eq!(
-        servers_check(&seen, "c", TimeDelta::minutes(5)).status,
+        servers_check(&seen, Some("c"), TimeDelta::minutes(5)).status,
         CheckStatus::Warning
     );
-    assert_eq!(seen.live_count("c"), 2);
-    assert_eq!(seen.live_count("a"), 1);
+    assert_eq!(seen.live_count(Some("c")), 2);
+    assert_eq!(seen.live_count(Some("a")), 1);
+    // A command-line run never counts itself.
+    assert_eq!(seen.live_count(None), 1);
+    let preflight = servers_check(&seen, None, TimeDelta::zero());
+    assert_eq!(preflight.summary, "One server is running: host-a (1.0.0).");
+    let none = servers_check(&replicas(vec![]), None, TimeDelta::zero());
+    assert_eq!(none.status, CheckStatus::Info);
 }
 
 #[test]
@@ -560,4 +567,124 @@ async fn heartbeats_round_trip_and_a_running_doctor_sees_its_own_server() {
             .iter()
             .all(|c| c.id != "control_plane.server_versions")
     );
+}
+
+#[test]
+fn gauges_put_notes_with_healthy_checks_and_problems_highest() {
+    use super::status_gauge;
+    assert_eq!(status_gauge(CheckStatus::Ok), 0.0);
+    assert_eq!(status_gauge(CheckStatus::Info), 0.0);
+    assert_eq!(status_gauge(CheckStatus::Warning), 1.0);
+    assert_eq!(status_gauge(CheckStatus::Problem), 2.0);
+}
+
+#[test]
+fn preflight_output_shows_fixes_for_failing_checks_and_exits_non_zero() {
+    use super::preflight::{exit_code, render};
+    let failing = DoctorCheck::new(
+        CheckArea::Database,
+        "database.migrations",
+        "Migrations applied",
+    )
+    .problem("2 migrations are missing.")
+    .why("New features fail.")
+    .fix("Run everruns-migrate.");
+    let note = DoctorCheck::new(CheckArea::Messaging, "messaging.nats", "NATS")
+        .info("Not used.")
+        .why("hidden for notes");
+    let report = DoctorReport {
+        status: CheckStatus::Problem,
+        checked_at: chrono::Utc::now(),
+        version: "1.0.0".to_string(),
+        grade: "prod".to_string(),
+        auth_mode: "full".to_string(),
+        setup: vec!["PostgreSQL 17.2".to_string()],
+        checks: vec![failing, note],
+    };
+    let text = render(&report);
+    assert!(
+        text.starts_with("Everruns 1.0.0 system doctor: problems\nSetup: PostgreSQL 17.2\n"),
+        "{text}"
+    );
+    assert!(text.contains("✗ Migrations applied: 2 migrations are missing.\n    Why: New features fail.\n    Fix: Run everruns-migrate.\n"), "{text}");
+    assert!(text.contains("· NATS: Not used.\n"), "{text}");
+    assert!(!text.contains("hidden for notes"), "{text}");
+    assert_eq!(exit_code(&report), 1);
+    let ok = DoctorReport {
+        status: CheckStatus::Warning,
+        ..report
+    };
+    assert_eq!(exit_code(&ok), 0);
+}
+
+struct Gateway;
+
+#[async_trait::async_trait]
+impl DoctorExtension for Gateway {
+    fn name(&self) -> &str {
+        "gateway"
+    }
+
+    async fn run(&self) -> DoctorFindings {
+        let mut findings = DoctorFindings::default();
+        findings.fact("Model gateway");
+        findings.check(
+            DoctorCheck::new(
+                CheckArea::Integrations,
+                "integrations.gateway",
+                "Model gateway",
+            )
+            .problem("The model gateway does not answer.")
+            .fix("Start it."),
+        );
+        findings
+    }
+}
+
+struct Hangs;
+
+#[async_trait::async_trait]
+impl DoctorExtension for Hangs {
+    fn name(&self) -> &str {
+        "billing"
+    }
+
+    async fn run(&self) -> DoctorFindings {
+        std::future::pending().await
+    }
+}
+
+#[tokio::test]
+async fn host_checks_join_the_report_and_its_verdict() {
+    let report = doctor(env(DeploymentGrade::Dev))
+        .with_extensions(DoctorExtensions::new(vec![Arc::new(Gateway)]))
+        .run()
+        .await;
+    let gateway = check(&report, "integrations.gateway");
+    assert_eq!(gateway.status, CheckStatus::Problem);
+    assert_eq!(report.status, CheckStatus::Problem);
+    assert!(report.setup.iter().any(|fact| fact == "Model gateway"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_host_check_that_hangs_is_a_warning_not_a_stuck_report() {
+    let findings = super::extension::run_bounded(&Hangs).await;
+    assert_eq!(findings.checks.len(), 1);
+    assert_eq!(findings.checks[0].id, "integrations.billing");
+    assert_eq!(findings.checks[0].status, CheckStatus::Warning);
+}
+
+#[test]
+fn system_email_is_needed_only_where_people_sign_in_with_accounts() {
+    use super::checks::control_plane::email_check;
+    let mut env = env(DeploymentGrade::Prod);
+    assert_eq!(email_check(&env).status, CheckStatus::Ok);
+    env.email = Ok(None);
+    assert_eq!(email_check(&env).status, CheckStatus::Warning);
+    env.auth_mode = AuthMode::Admin;
+    assert_eq!(email_check(&env).status, CheckStatus::Info);
+    env.email = Err("RESEND_API_KEY is empty".to_string());
+    let broken = email_check(&env);
+    assert_eq!(broken.status, CheckStatus::Problem);
+    assert!(broken.summary.contains("RESEND_API_KEY is empty"));
 }

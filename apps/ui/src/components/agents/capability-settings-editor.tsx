@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { DecisionModelPicker, ModelPicker } from "@/components/models/model-picker";
 import Form from "@rjsf/core";
 import validator from "@rjsf/validator-ajv8";
@@ -25,7 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Capability } from "@/lib/api/types";
 import { localizedConfigDescription, localizedConfigSchema } from "@/lib/capability-localization";
 import { formatMessage, type MessageKey, type SupportedLocale } from "@/lib/i18n";
-import { useLocale } from "@/providers/locale-provider";
+
 import { GuardrailsConfigEditor } from "./guardrails-config-editor";
 import { KnowledgeConfigEditor } from "./knowledge-config-editor";
 import { KnowledgeIndexConfigEditor } from "./knowledge-index-config-editor";

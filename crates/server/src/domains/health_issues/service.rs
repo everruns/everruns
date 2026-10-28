@@ -200,6 +200,9 @@ impl SlackHealthService {
 }
 
 pub fn issue_copy(row: &HealthIssueRow) -> (String, String) {
+    if row.code == crate::domains::trace_exports::health::CODE {
+        return ("Trace delivery needs attention".into(),"One or more enabled destinations cannot accept exports. Review endpoints and authentication in Settings → Tracing.".into());
+    }
     if row.code == super::active_turns::ACTIVE_TURN_LIMIT {
         return super::active_turns::copy(&row.status);
     }

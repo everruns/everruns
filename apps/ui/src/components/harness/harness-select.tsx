@@ -1,8 +1,8 @@
 "use client";
 
 import { localizedEntityDescription } from "@/lib/entity-localization";
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useId, useMemo, useState } from "react";
 import {
   Select,
@@ -83,9 +83,9 @@ export function HarnessSelect({
   const selected = value ? harnessMap.get(value) : undefined;
   const displayValue = value
     ? getDisplayName(selected, displayLocale) ||
-      (filteredHarnesses.length === 0 ? "Loading…" : value)
+      (filteredHarnesses.length === 0 ? ui("Loading…") : value)
     : includeNoneOption
-      ? noneLabel
+      ? ui(noneLabel)
       : undefined;
   const purpose = selected ? localizedEntityDescription(selected, displayLocale).trim() : "";
 
@@ -101,10 +101,10 @@ export function HarnessSelect({
           className={className}
           aria-describedby={purpose ? purposeId : undefined}
         >
-          <SelectValue placeholder={placeholder}>{displayValue}</SelectValue>
+          <SelectValue placeholder={ui(placeholder)}>{displayValue}</SelectValue>
         </SelectTrigger>
         <SelectContent className="w-72">
-          {includeNoneOption && <SelectItem value={noneValue}>{noneLabel}</SelectItem>}
+          {includeNoneOption && <SelectItem value={noneValue}>{ui(noneLabel)}</SelectItem>}
           {harnesses.some(isHarnessDeprecated) && (
             <button
               type="button"

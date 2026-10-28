@@ -1,7 +1,7 @@
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 // Harness page: one layout for reading and editing a harness.
@@ -262,10 +262,14 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
       summary:
         network.allowed.length || network.blocked.length
           ? [
-              ...(network.allowed.length ? [`${network.allowed.length} allowed`] : []),
-              ...(network.blocked.length ? [`${network.blocked.length} blocked`] : []),
+              ...(network.allowed.length
+                ? [ui("{value0} allowed", { value0: network.allowed.length })]
+                : []),
+              ...(network.blocked.length
+                ? [ui("{value0} blocked", { value0: network.blocked.length })]
+                : []),
             ].join(" · ")
-          : "Unrestricted",
+          : ui("Unrestricted"),
     },
     {
       id: "usage",

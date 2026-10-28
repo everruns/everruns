@@ -41,6 +41,9 @@ pub enum CheckArea {
     Storage,
     Observability,
     Models,
+    /// Services a host distribution adds (its identity provider, billing,
+    /// model gateway), reported through a doctor extension.
+    Integrations,
 }
 
 /// One check's outcome, written for an operator: what is true, why it
@@ -93,7 +96,7 @@ pub struct DoctorReport {
 }
 
 impl DoctorCheck {
-    pub(super) fn new(area: CheckArea, id: &str, title: &str) -> Self {
+    pub fn new(area: CheckArea, id: &str, title: &str) -> Self {
         Self {
             id: id.to_string(),
             area,
@@ -112,25 +115,25 @@ impl DoctorCheck {
         self
     }
 
-    pub(super) fn ok(self, summary: impl Into<String>) -> Self {
+    pub fn ok(self, summary: impl Into<String>) -> Self {
         self.with(CheckStatus::Ok, summary)
     }
 
-    pub(super) fn info(self, summary: impl Into<String>) -> Self {
+    pub fn info(self, summary: impl Into<String>) -> Self {
         self.with(CheckStatus::Info, summary)
     }
 
-    pub(super) fn warning(self, summary: impl Into<String>) -> Self {
+    pub fn warning(self, summary: impl Into<String>) -> Self {
         self.with(CheckStatus::Warning, summary)
     }
 
-    pub(super) fn problem(self, summary: impl Into<String>) -> Self {
+    pub fn problem(self, summary: impl Into<String>) -> Self {
         self.with(CheckStatus::Problem, summary)
     }
 
     /// A problem in production, a warning on a lower grade. Used for settings
     /// that are fine to skip on a laptop and unsafe on a real install.
-    pub(super) fn problem_if(self, strict: bool, summary: impl Into<String>) -> Self {
+    pub fn problem_if(self, strict: bool, summary: impl Into<String>) -> Self {
         let status = if strict {
             CheckStatus::Problem
         } else {
@@ -139,12 +142,12 @@ impl DoctorCheck {
         self.with(status, summary)
     }
 
-    pub(super) fn why(mut self, why: impl Into<String>) -> Self {
+    pub fn why(mut self, why: impl Into<String>) -> Self {
         self.why = Some(why.into());
         self
     }
 
-    pub(super) fn fix(mut self, fix: impl Into<String>) -> Self {
+    pub fn fix(mut self, fix: impl Into<String>) -> Self {
         self.fix = Some(fix.into());
         self
     }

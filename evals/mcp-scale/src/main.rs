@@ -1,3 +1,6 @@
+mod accounting;
+#[path = "../../common/everruns_usage.rs"]
+mod event_usage;
 mod fixture;
 mod scorers;
 mod stress;
@@ -67,6 +70,11 @@ async fn main() -> std::io::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|arg| arg == "--mcp-fixture") {
         return fixture::serve(&args);
+    }
+    if let Some(input) = value_after(&args, "--reaccount-report") {
+        let output = value_after(&args, "--output")
+            .ok_or_else(|| std::io::Error::other("--reaccount-report requires --output"))?;
+        return accounting::reaccount_report(&input, &output);
     }
     if args.iter().any(|arg| arg == "--offline-catalog") {
         for size in [50, 600, 2_000, 10_000] {

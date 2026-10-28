@@ -207,6 +207,7 @@ impl Manifest {
             "POST /v1/sessions/{id}/question-answers".into(),
             "POST /v1/sessions/{id}/approvals/{tool_call_id}".into(),
             "GET /v1/agent".into(),
+            "GET /v1/doctor".into(),
             "GET /health".into(),
         ];
         routes.extend(

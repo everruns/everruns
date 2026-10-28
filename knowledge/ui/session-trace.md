@@ -180,6 +180,10 @@ redirect: `?tab=transcript` to Trace with `view=messages`, `?tab=timeline` to Tr
 Evidence chips (answer claim to step) need a contract from the agent or a post-hoc mapping.
 Trace ships without them; the answer renders as prose. This is designed separately.
 
+Model narration and answers render as Markdown by default, using the same renderer as chat.
+The trace controls also offer plain text for inspecting the original Markdown source. The
+choice applies across the trace, including expanded sub-agent steps, and is shareable in the URL.
+
 ## Relation to the actor-based design
 
 The proposed actor-based design for durable sessions (not yet in this bundle) makes the events table the session journal and

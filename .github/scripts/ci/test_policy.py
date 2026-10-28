@@ -26,11 +26,17 @@ def load(name):
 plan, focused, tracker, release = map(load, ['plan','focused','track_failures','wait_full'])
 
 
-def evaluate(expression, values):
+def expression_value(expression, values):
+    if not isinstance(expression, str):
+        return expression
     expression = expression.removeprefix('${{').removesuffix('}}').strip()
     expression = re.sub(r'\b(?:github|needs|steps|matrix)(?:\.[a-zA-Z_][a-zA-Z_0-9-]*)+',
                         lambda m: repr(values.get(m.group(), '')), expression)
-    return bool(eval(expression.replace('&&',' and ').replace('||',' or '), {'__builtins__':{}}, {'always':lambda:True}))
+    return eval(expression.replace('&&',' and ').replace('||',' or '), {'__builtins__':{}}, {'always':lambda:True})
+
+
+def evaluate(expression, values):
+    return bool(expression_value(expression, values))
 
 
 class Policy(unittest.TestCase):
@@ -55,6 +61,35 @@ class Policy(unittest.TestCase):
                     self.assertFalse(evaluate(condition, {'github.event_name': event, 'github.ref': ref,
                         'matrix.shard': 'domain', 'needs.changes.outputs.rust': 'true'}))
         self.assertGreater(producers, 5)
+
+    def test_offline_eval_caches_do_not_compete_with_main_from_prs(self):
+        workflows = sorted((ROOT/'.github/workflows').glob('*-evals.yml'))
+        self.assertGreater(len(workflows), 0)
+        for path in workflows:
+            workflow = yaml.safe_load(path.read_text())
+            for name, job in workflow['jobs'].items():
+                for step in job.get('steps', []):
+                    if not step.get('uses', '').startswith('Swatinem/rust-cache@'):
+                        continue
+                    with self.subTest(workflow=path.name, job=name):
+                        condition = step.get('with', {}).get('save-if', True)
+                        if condition is False:
+                            continue
+                        for event, ref in [('pull_request', 'refs/pull/7/merge'),
+                                           ('workflow_dispatch', 'refs/heads/experiment')]:
+                            self.assertFalse(evaluate(condition, {
+                                'github.event_name': event, 'github.ref': ref}))
+                        self.assertTrue(evaluate(condition, {
+                            'github.event_name': 'push', 'github.ref': 'refs/heads/main'}))
+
+    def test_focused_server_budget_covers_cold_compile_and_full_tests(self):
+        timeout = self.jobs['focused-rust']['timeout-minutes']
+        server = expression_value(timeout, {'matrix.group': 'server'})
+        # The measured cold compile plus selected tests exceeds forty minutes.
+        self.assertGreaterEqual(server, 50)
+        self.assertLessEqual(server, 60)
+        for group in ['foundation', 'runtime', 'facade']:
+            self.assertEqual(expression_value(timeout, {'matrix.group': group}), 40)
 
     def test_cleanup_preserves_active_pr_and_all_branch_caches(self):
         cleanup = load('cache_cleanup')

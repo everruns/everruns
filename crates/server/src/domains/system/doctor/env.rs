@@ -1,4 +1,5 @@
 use crate::auth::config::{AuthConfig, AuthMode};
+use crate::records::email::SystemEmailConfig;
 use crate::storage::blob_store::BlobStoreConfig;
 use everruns_core::DeploymentGrade;
 use everruns_core::config::{env_bool, env_opt_string, env_string};
@@ -44,6 +45,9 @@ pub struct DoctorEnv {
     pub rust_log: Option<String>,
     /// Display names of the providers with a platform key set.
     pub provider_keys: Vec<&'static str>,
+    /// System email provider (`None` when off), or why its settings do not
+    /// parse.
+    pub email: Result<Option<&'static str>, String>,
 }
 
 impl DoctorEnv {
@@ -74,6 +78,17 @@ impl DoctorEnv {
                 .filter(|(var, _)| env_opt_string(var).is_some())
                 .map(|(_, name)| *name)
                 .collect(),
+            email: SystemEmailConfig::from_env()
+                .map(|config| match config {
+                    SystemEmailConfig::Disabled => None,
+                    SystemEmailConfig::Resend(_) => Some("Resend"),
+                })
+                .map_err(|error| {
+                    let error = error.to_string();
+                    error
+                        .trim_start_matches("Email configuration error: ")
+                        .to_string()
+                }),
         }
     }
 

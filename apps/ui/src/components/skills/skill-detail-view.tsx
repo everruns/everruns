@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Archive, FileText, FolderTree, Info, ScrollText } from "lucide-react";
@@ -33,6 +33,7 @@ export function SkillDetailView({
   contentError,
 }: SkillDetailViewProps) {
   const ui = useUiTranslations();
+  const { displayLocale } = useLocale();
   const [activeTab, setActiveTab] = useState<SkillDetailTab>("overview");
   const split = useMemo(
     () => (content ? splitFrontmatter(content.skill_md) : { frontmatter: "", body: "" }),
@@ -83,8 +84,12 @@ export function SkillDetailView({
               <DetailField label={ui("License")}>{skill.license ?? "-"}</DetailField>
               <DetailField label={ui("Compatibility")}>{skill.compatibility ?? "-"}</DetailField>
               <DetailField label={ui("Allowed tools")}>{skill.allowed_tools ?? "-"}</DetailField>
-              <DetailField label={ui("Created")}>{formatDateTime(skill.created_at)}</DetailField>
-              <DetailField label={ui("Updated")}>{formatDateTime(skill.updated_at)}</DetailField>
+              <DetailField label={ui("Created")}>
+                {formatDateTime(skill.created_at, displayLocale)}
+              </DetailField>
+              <DetailField label={ui("Updated")}>
+                {formatDateTime(skill.updated_at, displayLocale)}
+              </DetailField>
               <div className="md:col-span-2">
                 <Label className="text-muted-foreground">{ui("Used by")}</Label>
                 <div className="mt-1">
@@ -193,8 +198,8 @@ function toReadonlySkillFiles(content: SkillContent | undefined): InitialFile[] 
   ];
 }
 
-function formatDateTime(value: string): string {
+function formatDateTime(value: string, locale?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return date.toLocaleString(locale);
 }

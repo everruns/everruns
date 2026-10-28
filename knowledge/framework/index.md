@@ -18,3 +18,5 @@
 * [The Execution Kernel in a JavaScript Isolate](wasm-kernel.md) - Why provider, core and engine build for wasm32, how time and tasks port, and the shared Framework Engine application used by Cloudflare and celld.
 * [Voice Agents](voice-agents.md) - Accepted design (phase 1 built) for building and serving voice agents: voice as a channel next to text, one voice loop in core shared by the Framework, serve and the server, and speech drivers as provider services.
 * [Shared Execution with Durable Object Authority](durable-object-native.md) - Native and Wasm profiles, shared actor driver, trust boundary and backend qualification.
+
+* [Provider-Native Batch Requests](batch-model-requests.md) - Offline completion lifecycle, scoped tickets, provider boundary and uncertain submission recovery.

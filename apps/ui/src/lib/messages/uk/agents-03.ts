@@ -20,9 +20,9 @@ export const messages: Readonly<Record<string, string>> = {
   "Run {{app.name}} now.": "Запустіть {{app.name}} зараз.",
   "Run history will appear here when channel run aggregation is available.":
     "Історія запуску з’явиться тут, коли доступне агрегування запуску каналу.",
-  "Run now": "Біжи зараз",
+  "Run now": "Запустити зараз",
   "Run the daily digest": "Запустити щоденний дайджест",
-  "Running…": "Біжить…",
+  "Running…": "Виконується…",
   "Runs · 24h": "Працює · 24 год",
   "Runs generated smoke tests as real sessions, then scores them with an AI judge. Takes a minute or two.":
     "Виконує згенеровані димові тести як реальні сесії, а потім оцінює їх за допомогою судді ШІ. Займає хвилину або дві.",
@@ -248,7 +248,7 @@ export const messages: Readonly<Record<string, string>> = {
   "unknown error": "невідома помилка",
   Unpublish: "Скасувати публікацію",
   "Unsaved draft. Save changes to update the Agent definition. Running turns continue.":
-    "Незбережена чернетка. Збережіть зміни, щоб оновити визначення агента. Продовжуються бігові повороти.",
+    "Незбережена чернетка. Збережіть зміни, щоб оновити визначення агента. Поточні ходи продовжують виконуватися.",
   "Upload a logo in the App's settings, or give the agent an avatar first.":
     "Завантажте логотип у налаштуваннях програми або спочатку дайте агенту аватар.",
   "Upload avatar": "Завантажити аватар",
@@ -308,7 +308,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Who allows held-back tool calls": "Хто дозволяє утримувані виклики інструментів",
   "Who should this server act as?": "Кого повинен виконувати цей сервер?",
   "with a JSON-RPC 2.0 envelope. Only the": "з конвертом JSON-RPC 2.0. Тільки",
-  "With failed turns": "З невдалими поворотами",
+  "With failed turns": "З невдалими ходами",
   Words: "Слова",
   "Work on": "Працюй далі",
   "Working on it": "Працюю над цим",

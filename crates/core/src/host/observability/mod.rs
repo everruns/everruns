@@ -11,6 +11,8 @@
 #[cfg(feature = "braintrust")]
 pub mod braintrust;
 mod braintrust_delivery;
+#[cfg(feature = "braintrust")]
+mod braintrust_egress;
 pub mod composite;
 #[cfg(any(feature = "otel", feature = "braintrust"))]
 mod generation_attrs;
@@ -36,3 +38,6 @@ pub use opentelemetry_sdk::trace::SdkTracerProvider;
 pub use otel::{OtelEventListener, TraceConventions};
 #[cfg(feature = "otel")]
 pub use telemetry::{TelemetryConfig, TelemetryGuard, init_telemetry};
+
+#[cfg(feature = "otel")]
+pub mod customer;
