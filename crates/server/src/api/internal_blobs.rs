@@ -10,9 +10,10 @@
 //   the public API listener. Workers already reach that address with the same
 //   TLS and bearer token, so no deployment needs a new address, port or
 //   network rule, and the route is never exposed through the public edge.
-// - The path is HMAC-signed with WORKER_GRPC_AUTH_TOKEN over kind, id, org and
-//   expiry, so a worker can only fetch what the server just handed out and the
-//   tenant check stays on the server.
+// - Legacy paths are HMAC-signed with WORKER_GRPC_AUTH_TOKEN over kind, id,
+//   org and expiry. Holders of that shared worker key can mint paths within
+//   the existing trusted-worker boundary. Journal-only assignment scopes are
+//   refused before signature or body processing.
 // - Uploads go the other way on the same server: a worker POSTs a generated
 //   image as raw bytes (`blob_wire`), authorized by the worker bearer token
 //   like the gRPC call it replaces, which also named its org.
@@ -24,7 +25,7 @@ use axum::{
     body::{Body, Bytes},
     extract::{DefaultBodyLimit, Path, Query, State},
     http::{StatusCode, header},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use everruns_internal_protocol::blob_wire::{
@@ -131,7 +132,28 @@ pub fn routes(state: AppState) -> Router {
                 crate::api::images::MAX_IMAGE_SIZE + 1024 * 1024,
             )),
         )
+        // A journal reader has no byte authority, even for a valid legacy URL.
+        // Run before extractors: do not buffer an upload or touch storage first.
+        .layer(axum::middleware::from_fn(deny_journal_reader))
         .with_state(state)
+}
+
+async fn deny_journal_reader(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if request
+        .extensions()
+        .get::<crate::worker_link::grpc_service::assignment_scope::ActorJournalScope>()
+        .is_some()
+    {
+        return (
+            StatusCode::FORBIDDEN,
+            "Worker assignment does not permit blob access",
+        )
+            .into_response();
+    }
+    next.run(request).await
 }
 
 #[derive(Debug, Deserialize)]
