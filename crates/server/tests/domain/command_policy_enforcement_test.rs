@@ -830,6 +830,9 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     "analyze_agent",
     // Returns a revised draft from the utility LLM; creates nothing.
     "draft_agent",
+    // Suggests workloads from a draft and spends utility budget; never runs
+    // or changes an agent, including a built-in definition.
+    "plan_agent_costs",
     // --- Operational state on the agents row (EVE-1007) ----------------------
     // Unlike the bindings above these do write the `agents` row, so they are
     // exempted on a narrower ground: `exposures_suspended` is deployment state,
