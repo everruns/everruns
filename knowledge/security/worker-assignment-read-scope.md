@@ -131,6 +131,13 @@ any database lookup; new uploads are refused before buffering. Empty metadata pr
 plane; storage/schema errors fail closed. Floor removal and downgrade are
 refused, so revoking or deleting assignments cannot reopen broad worker access.
 
+The floor also refuses the separate customer-worker protocol before deployment
+lookup or operation dispatch. Its agent-bound deployment token and live lease
+are not verified assignment authority; every unary call rechecks the floor,
+including calls on an existing channel and after reconnect. Unknown floors and
+storage/schema errors do not restore access. The customer protocol has no
+protected-mode compatibility, even for an unrelated custom deployment.
+
 The floor is database-wide because global claims, provider credentials and
 object links do not carry trustworthy assignment scope. Per-assignment mixed
 legacy compatibility is deliberately unsupported. Verified journal reads remain

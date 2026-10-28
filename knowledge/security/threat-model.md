@@ -361,7 +361,11 @@ precludes a compromised-shared-worker isolation guarantee.
 
 An unactivated [protocol floor](../operations/durable-execution-engine.md#worker-communication)
 now refuses broad legacy/development and selector-only authority at every
-canonical worker RPC and byte route. Opaque capability enrollment requires the
+canonical worker RPC and byte route, and the separate customer-worker listener.
+The customer protocol refuses every operation with any floor present; a
+deployment token and actor fence are insufficient verified assignment authority.
+Existing channels and reconnects recheck rather than cache an absent floor.
+Opaque capability enrollment requires the
 supported floor; it is monotonic and cannot disappear with assignment expiry or
 deletion. The requirement is database-wide: mixed legacy/scoped workers cannot
 safely share global claims, credential lookups and signed URLs. Storage failure
@@ -899,7 +903,7 @@ an unparseable verdict.
 |----|--------|----------|------------|--------|
 | TM-DURABLE-001 | Task hijacking | High | Ownership verified on completion; late finisher gets `TaskNotOwned`. Local background attempts use executor instance ownership and attempt fencing; recovery checks the observed ownership/activity snapshot atomically with persistence, preserves live and unknown owners, and never replays interrupted commands. | MITIGATED |
 | TM-DURABLE-002 | gRPC unauthenticated access | High | Bearer token auth via `WORKER_GRPC_AUTH_TOKEN` (required in production); optional mTLS via `WORKER_GRPC_TLS_*` env vars; workers are cross-org by design | MITIGATED |
-| TM-DURABLE-013 | Customer agent code uses the internal fleet authority or claims another tenant's sessions | Critical | Opt-in [custom worker service](../operations/custom-workers.md) runs on a separate listener; its digest-stored token resolves one org and agent, never `Caller::internal`. Leasing filters before scanning and built-in workers exclude persistent bindings even when revoked. Journal and event requests require the deployment's namespaced live holder and fence; durable writes reuse transactional fencing. Only execution events and same-session recorded invocations are accepted. No provider secrets, management commands or global queues are exposed. Customer code remains trusted for its own tool policy and truthful tracing; arbitrary image hosting in Cloud is not enabled. | MITIGATED (CP authority boundary; customer process isolation operator-owned) |
+| TM-DURABLE-013 | Customer agent code uses the internal fleet authority or claims another tenant's sessions | Critical | Opt-in [custom worker service](../operations/custom-workers.md) runs on a separate listener; its digest-stored token resolves one org and agent, never `Caller::internal`. Leasing filters before scanning and built-in workers exclude persistent bindings even when revoked. Journal and event requests require the deployment's namespaced live holder and fence; durable writes reuse transactional fencing. Only execution events and same-session recorded invocations are accepted. No provider secrets, management commands or global queues are exposed. Every customer RPC refuses when the database-wide worker ingress protection floor is present or unavailable; this token/lease protocol does not support protected assignment authority. Customer code remains trusted for its own tool policy and truthful tracing; arbitrary image hosting in Cloud is not enabled. | MITIGATED (CP authority boundary; customer process isolation operator-owned) |
 | TM-DURABLE-003 | Event injection | Medium | Events created via gRPC only; validated for session membership | MITIGATED |
 | TM-DURABLE-004 | Queue flooding | Medium | Per-workflow pending task limit (default 100, configurable via `MAX_PENDING_TASKS_PER_WORKFLOW`) | MITIGATED |
 | TM-DURABLE-005 | Heartbeat timeout manipulation | Low | 30s timeout is reasonable for LLM operations; reclaimed tasks re-queued | MITIGATED |

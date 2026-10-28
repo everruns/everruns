@@ -3,9 +3,9 @@ use everruns_contracts::typed_id::{MessageId, TurnId};
 use everruns_core::{EventContext, EventRequest, OutputMessageCompletedData, RuntimeMessage};
 use everruns_internal_protocol::schema_event_request_to_proto;
 
-const TOKEN: &str = "custom_worker_test_credential_1234567890";
+pub(super) const TOKEN: &str = "custom_worker_test_credential_1234567890";
 
-fn request<T>(value: T) -> Request<T> {
+pub(super) fn request<T>(value: T) -> Request<T> {
     let mut request = Request::new(value);
     request
         .metadata_mut()
@@ -13,7 +13,7 @@ fn request<T>(value: T) -> Request<T> {
     request
 }
 
-async fn fixture() -> (CustomWorkerServiceImpl, uuid::Uuid, SessionId) {
+pub(super) async fn fixture() -> (CustomWorkerServiceImpl, uuid::Uuid, SessionId) {
     let db = Arc::new(StorageBackend::test_database());
     let agent = db.create_test_agent(1, uuid::Uuid::now_v7()).await;
     let session = db.create_test_session().await;
@@ -39,7 +39,7 @@ async fn fixture() -> (CustomWorkerServiceImpl, uuid::Uuid, SessionId) {
     )
 }
 
-async fn lease(svc: &CustomWorkerServiceImpl) -> proto::LeasedActor {
+pub(super) async fn lease(svc: &CustomWorkerServiceImpl) -> proto::LeasedActor {
     svc.lease_actors(request(proto::LeaseActorsRequest {
         holder: "replica-1".into(),
         limit: 1,
@@ -52,7 +52,7 @@ async fn lease(svc: &CustomWorkerServiceImpl) -> proto::LeasedActor {
     .remove(0)
 }
 
-fn journal(session: SessionId, fence: i64) -> proto::CustomWorkerJournalRequest {
+pub(super) fn journal(session: SessionId, fence: i64) -> proto::CustomWorkerJournalRequest {
     proto::CustomWorkerJournalRequest {
         journal: Some(proto::ReadActorJournalRequest {
             session_id: Some(uuid_to_proto_uuid(session.uuid())),
