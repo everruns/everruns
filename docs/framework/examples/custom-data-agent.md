@@ -13,6 +13,21 @@ provisioning, TLS, credential rotation and smoke-test instructions. The
 [source and README](https://github.com/everruns/everruns/tree/main/examples/custom-data-agent)
 contain the executable and container packaging.
 
+## Agent code and invocation
+
+The guide includes the [complete private database tool and Agent builder](/how-to/custom-agent-workers/#define-the-custom-agent-and-tool),
+[database seed code](/how-to/custom-agent-workers/#4-start-the-data-agent), and
+[ordinary session API calls](/how-to/custom-agent-workers/#invoke-it-through-the-cp)
+to create a conversation and send a message. The Agent is listed in **Agents**;
+operator provisioning binds that identity to the worker. Starting this executable
+does not register an Agent automatically.
+
+For Slack, use the same Agent's **Integrations** page and Direct communication.
+Read the [channel support and limitations](/how-to/custom-agent-workers/#connect-the-same-agent-to-slack)
+before deployment: basic CP reply routing does not install native Slack tools,
+approvals or delegated-task behavior into this implementation, and live
+custom-worker Slack qualification is still required.
+
 ## Follow the code
 
 | Source | What it owns |
