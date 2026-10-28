@@ -927,6 +927,9 @@ jobs:
         fetch-depth: 0
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@1.96.0
+    - name: Install source scanner
+      timeout-minutes: 5
+      run: sudo apt-get update && sudo apt-get install -y ripgrep
     - name: Check capability contract ownership
       run: bash scripts/lib/check-capability-contract.sh
     - name: Check every crate test file is run by a workflow or allowlisted
