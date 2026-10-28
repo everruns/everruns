@@ -35,6 +35,33 @@ fn mcp_search_metadata_is_optional_for_older_servers() {
 }
 
 #[test]
+fn mcp_search_metadata_preserves_capability_description_alongside_server_context() {
+    let metadata = serde_json::json!({
+        "mcp_server":{"name":"alpha", "description":"Borehole records"},
+        "capability":{"id":"minerals", "name":"Minerals", "description":"Scandium prospecting"}
+    });
+    let definition = proto_mcp_tool_def_to_tool_definition(proto::McpToolDef {
+        name: "mcp_alpha__inspect".into(),
+        description: "Inspect records".into(),
+        capability_id: "minerals".into(),
+        capability_name: "Minerals".into(),
+        search_metadata: Some(everruns_internal_protocol::json_to_proto_struct(&metadata)),
+        ..Default::default()
+    });
+    assert_eq!(
+        definition.hints().capability_description.as_deref(),
+        Some("Scandium prospecting")
+    );
+    let index = everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&[definition]);
+    for query in ["borehole", "scandium"] {
+        let hits = index.search(query, 8, |_| true);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].server_match);
+        assert!(!hits[0].tool_match);
+    }
+}
+
+#[test]
 fn worker_parses_the_neutral_capability_reference_shape() {
     // EVE-873: worker resolution consumes the same `{"ref", "config"}`
     // representation the Framework serializes and the control plane

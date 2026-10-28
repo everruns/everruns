@@ -2,7 +2,7 @@
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { relativeFilePath } from "@/lib/path-utils";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -34,28 +34,26 @@ import {
   FileTreeActions,
   FileTreeName,
 } from "@/components/ai-elements/file-tree";
-import {
-  useFiles,
-  useCreateFile,
-  useCreateDirectory,
-  useDeleteFile,
-} from "@/hooks/use-session-files";
-import { formatFileSize, joinPath, listFiles } from "@/lib/api/session-files";
+import { useQuery } from "@tanstack/react-query";
+import { formatFileSize, joinPath } from "@/lib/api/session-files";
 import type { FileInfo } from "@/lib/api/types";
+import type { FileSource } from "./file-source";
 
 interface FileBrowserProps {
-  /** The session's attached workspace id; undefined while the session loads. */
-  workspaceId: string | undefined;
+  /**
+   * The filesystem to browse. A source without `writes` renders read-only: the
+   * session detail page is a recording (EVE-854), and connected Knowledge files
+   * belong to their source, so neither shows create or delete.
+   */
+  source: FileSource;
   onFileSelect?: (file: FileInfo) => void;
   selectedPath?: string;
   /** Increment to trigger a full refresh (e.g. after file upload) */
   refreshToken?: number;
-  /**
-   * Browse without write affordances. The session detail page is a recording
-   * (EVE-854), so it renders the same tree with create/delete removed — no
-   * mutating request can be issued from it.
-   */
-  readOnly?: boolean;
+  /** Extra status shown at the end of a file's row, such as a failed extraction. */
+  decorateFile?: (file: FileInfo) => ReactNode;
+  /** Shown when the root folder is empty. */
+  emptyState?: ReactNode;
 }
 
 // Get file icon based on extension with muted colors matching app theme
@@ -114,41 +112,45 @@ function getFileIcon(filename: string) {
 }
 
 export function FileBrowser({
-  workspaceId,
+  source,
   onFileSelect,
   selectedPath,
   refreshToken,
-  readOnly = false,
+  decorateFile,
+  emptyState,
 }: FileBrowserProps) {
   const ui = useUiTranslations();
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set(["/workspace"]));
+  const root = source.root;
+  const writes = source.writes;
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set([root]));
   const [loadedDirs, setLoadedDirs] = useState<Map<string, FileInfo[]>>(new Map());
   const [isCreateFileOpen, setIsCreateFileOpen] = useState(false);
   const [isCreateDirOpen, setIsCreateDirOpen] = useState(false);
   const [newFileName, setNewFileName] = useState("");
   const [newDirName, setNewDirName] = useState("");
   const [newFileContent, setNewFileContent] = useState("");
-  const [createPath, setCreatePath] = useState("/workspace");
+  const [createPath, setCreatePath] = useState(root);
 
   // Load root directory
   const {
     data: rootFiles,
     isLoading,
     refetch: refetchRoot,
-  } = useFiles(workspaceId, "/workspace", false);
-  const createFile = useCreateFile();
-  const createDir = useCreateDirectory();
-  const deleteFile = useDeleteFile();
-  const writable = !readOnly;
+  } = useQuery({
+    queryKey: ["file-source", source.key, "list", root],
+    queryFn: () => source.list(root),
+    enabled: !!source.key,
+  });
+  const writable = !!writes;
 
   // Sync root files into loadedDirs when root data changes.
   useEffect(() => {
     if (!rootFiles) return;
     setLoadedDirs((prev) => {
-      if (prev.get("/workspace") === rootFiles) return prev;
-      return new Map(prev).set("/workspace", rootFiles);
+      if (prev.get(root) === rootFiles) return prev;
+      return new Map(prev).set(root, rootFiles);
     });
-  }, [rootFiles]);
+  }, [rootFiles, root]);
 
   // Auto-refresh when Files tab becomes active (component remounts on tab switch)
   useEffect(() => {
@@ -174,15 +176,15 @@ export function FileBrowser({
   // Function to load a directory's contents
   const loadDirectory = useCallback(
     async (path: string) => {
-      if (!workspaceId) return;
+      if (!source.key) return;
       try {
-        const files = await listFiles(workspaceId, path);
+        const files = await source.list(path);
         setLoadedDirs((prev) => new Map(prev).set(path, files));
       } catch {
         // Error loading directory
       }
     },
-    [workspaceId],
+    [source],
   );
 
   const handleExpandedChange = useCallback(
@@ -191,12 +193,12 @@ export function FileBrowser({
 
       // Load any newly expanded directories that haven't been loaded
       for (const path of newExpanded) {
-        if (!loadedDirs.has(path) && path !== "/workspace") {
+        if (!loadedDirs.has(path) && path !== root) {
           loadDirectory(path);
         }
       }
     },
-    [loadedDirs, loadDirectory],
+    [loadedDirs, loadDirectory, root],
   );
 
   const handleRefresh = useCallback(async () => {
@@ -205,15 +207,15 @@ export function FileBrowser({
     // (if server returns identical data, rootFiles ref won't change and the useEffect won't fire)
     const { data } = await refetchRoot();
     if (data) {
-      setLoadedDirs((prev) => new Map(prev).set("/workspace", data));
+      setLoadedDirs((prev) => new Map(prev).set(root, data));
     }
     // Reload expanded subdirectories
     for (const path of expandedPaths) {
-      if (path !== "/workspace") {
+      if (path !== root) {
         loadDirectory(path);
       }
     }
-  }, [refetchRoot, expandedPaths, loadDirectory]);
+  }, [refetchRoot, expandedPaths, loadDirectory, root]);
 
   // External refresh trigger (e.g. after drag-and-drop upload)
   const prevRefreshToken = useRef(refreshToken);
@@ -225,58 +227,44 @@ export function FileBrowser({
   }, [refreshToken, handleRefresh]);
 
   const handleCreateFile = async () => {
-    if (!newFileName.trim() || !workspaceId) return;
+    if (!newFileName.trim() || !writes) return;
 
     try {
-      await createFile.mutateAsync({
-        workspaceId,
-        request: {
-          path: joinPath(createPath, newFileName),
-          content: newFileContent,
-          encoding: "text",
-        },
-      });
+      await writes.createFile(joinPath(createPath, newFileName), newFileContent);
       setIsCreateFileOpen(false);
       setNewFileName("");
       setNewFileContent("");
       handleRefresh();
     } catch {
-      // Error handling done by react-query
+      // The dialog stays open so the name can be corrected.
     }
   };
 
   const handleCreateDir = async () => {
-    if (!newDirName.trim() || !workspaceId) return;
+    if (!newDirName.trim() || !writes?.mkdir) return;
 
     try {
-      await createDir.mutateAsync({
-        workspaceId,
-        path: joinPath(createPath, newDirName),
-      });
+      await writes.mkdir(joinPath(createPath, newDirName));
       setIsCreateDirOpen(false);
       setNewDirName("");
       handleRefresh();
     } catch {
-      // Error handling done by react-query
+      // The dialog stays open so the name can be corrected.
     }
   };
 
   const handleDelete = async (file: FileInfo, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!workspaceId) return;
+    if (!writes) return;
     if (!confirm(`Delete ${file.is_directory ? "directory" : "file"} "${file.name}"?`)) {
       return;
     }
 
     try {
-      await deleteFile.mutateAsync({
-        workspaceId,
-        path: file.path,
-        recursive: file.is_directory,
-      });
+      await writes.remove(file.path, file.is_directory);
       handleRefresh();
     } catch {
-      // Error handling done by react-query
+      // The entry stays in the tree; refresh shows the current state.
     }
   };
 
@@ -322,7 +310,7 @@ export function FileBrowser({
             name={file.name}
             actions={
               <FileTreeActions>
-                {file.is_readonly && <Lock className="size-3 text-muted-foreground" />}
+                {file.is_readonly && writable && <Lock className="size-3 text-muted-foreground" />}
                 {writable && (
                   <Button
                     variant="ghost"
@@ -337,7 +325,7 @@ export function FileBrowser({
                     <Plus className="size-3" />
                   </Button>
                 )}
-                {writable && (
+                {writable && writes?.mkdir && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -377,7 +365,8 @@ export function FileBrowser({
           {getFileIcon(file.name)}
           <FileTreeName className="flex-1">{file.name}</FileTreeName>
           <FileTreeActions>
-            {file.is_readonly && <Lock className="size-3 text-muted-foreground" />}
+            {decorateFile?.(file)}
+            {file.is_readonly && writable && <Lock className="size-3 text-muted-foreground" />}
             <span className="text-xs text-muted-foreground tabular-nums">
               {formatFileSize(file.size_bytes)}
             </span>
@@ -414,21 +403,23 @@ export function FileBrowser({
         </Button>
         {writable && (
           <>
+            {writes?.mkdir && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 gap-1.5"
+                onClick={() => openCreateDirDialog(root)}
+                title={ui("New folder")}
+              >
+                <FolderPlus className="size-3.5" />
+                <span className="text-xs">{ui("Folder")}</span>
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
               className="h-7 px-2 gap-1.5"
-              onClick={() => openCreateDirDialog("/workspace")}
-              title={ui("New folder")}
-            >
-              <FolderPlus className="size-3.5" />
-              <span className="text-xs">{ui("Folder")}</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 gap-1.5"
-              onClick={() => openCreateFileDialog("/workspace")}
+              onClick={() => openCreateFileDialog(root)}
               title={ui("New file")}
             >
               <Plus className="size-3.5" />
@@ -446,11 +437,13 @@ export function FileBrowser({
             <span className="text-sm">{ui("Loading files...")}</span>
           </div>
         ) : !rootFiles?.length ? (
-          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-            <File className="size-8 mb-2 opacity-40" />
-            <p className="text-sm">{ui("No files yet")}</p>
-            <p className="text-xs mt-1">{ui("Create a file or folder to get started")}</p>
-          </div>
+          (emptyState ?? (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <File className="size-8 mb-2 opacity-40" />
+              <p className="text-sm">{ui("No files yet")}</p>
+              <p className="text-xs mt-1">{ui("Create a file or folder to get started")}</p>
+            </div>
+          ))
         ) : (
           <FileTree
             expanded={expandedPaths}
@@ -458,7 +451,7 @@ export function FileBrowser({
             onSelect={handleSelect}
             onExpandedChange={handleExpandedChange}
           >
-            {renderDirectoryContents("/workspace")}
+            {renderDirectoryContents(root)}
           </FileTree>
         )}
       </ScrollArea>

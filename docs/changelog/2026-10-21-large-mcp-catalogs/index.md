@@ -11,11 +11,10 @@ links:
   docs: [/features/large-mcp-catalogs/, /capabilities/tool-search/, /capabilities/tools-in-shell/]
 ---
 
-Everruns now discovers every page of a large MCP catalog and searches its
-server descriptions, tool descriptions, and parameter schemas within the
-current agent's access. Bounded `tool_search` reveals selected schemas as the
-agent needs them. The same operations can be called as native tools, through
-the session's `tools` command, or through both surfaces:
+Everruns discovers every MCP catalog page and searches server/tool descriptions
+and parameter schemas within current access. Bounded `tool_search` reveals selected schemas as the
+agent needs them. Run selected operations through native tools, the session
+shell, or both:
 
 ```json
 {
@@ -40,6 +39,12 @@ Search and invocation both check current authorization, so a disclosed schema
 does not preserve access after a server is removed or its connection is
 revoked. CLI search loads at most eight matching deferred servers per query;
 other servers stay pending, and search, help, and calls remain within the
-current turn's visible scope. Custom Framework egress adapters must support
-`send_stream` for discovery. See [Large MCP catalogs and tool surfaces](/features/large-mcp-catalogs/),
+current turn's visible scope. Root/server help stays within 64 entries and
+12 KiB with explicit omission guidance. Exact operation searches avoid padding
+results with incidental matches. See [Large MCP catalogs and tool surfaces](/features/large-mcp-catalogs/),
 [Tool Search](/capabilities/tool-search/), and [Tools in Shell](/capabilities/tools-in-shell/).
+
+## Update 2026-10-24
+
+Verbose schemas no longer bury name matches. Exact names also accept spaces,
+hyphens or underscores. Byte-omitted candidates include names for exact refinement.

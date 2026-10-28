@@ -165,7 +165,8 @@ impl Capability for PlatformCapability {
         ]
     }
 
-    /// In shell mode this capability contributes no model-facing tools.
+    /// Native mode registers individual catalog operations; shell mode
+    /// contributes no model-facing tools. The default keeps the scripted tools.
     ///
     /// The catalog is still here: the mounts, the permission checks and the
     /// docs tree are the capability's, and none of them move. What goes is the
@@ -175,6 +176,9 @@ impl Capability for PlatformCapability {
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
         if shell_surface(config) {
             return vec![];
+        }
+        if config.get("surface").and_then(Value::as_str) == Some("native") {
+            return super::platform_native::tools();
         }
         self.tools()
     }
@@ -200,6 +204,14 @@ impl Capability for PlatformCapability {
         ctx: &SystemPromptContext,
         config: &Value,
     ) -> Option<String> {
+        if config.get("surface").and_then(Value::as_str) == Some("native") {
+            return Some(format!(
+                "{}\n{}\n{}",
+                skills_prompt_addition(),
+                super::platform_native::SYSTEM_PROMPT,
+                shell_prompt_addition().unwrap_or_default()
+            ));
+        }
         if shell_surface(config) {
             return Some(format!(
                 "{}\n{}",

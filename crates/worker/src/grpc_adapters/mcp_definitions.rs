@@ -24,6 +24,13 @@ pub(super) fn proto_mcp_tool_def_to_tool_definition(
             (!t.capability_name.is_empty()).then_some(t.capability_name.clone()),
         );
     }
+    hints.capability_description = hints
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("capability"))
+        .and_then(|capability| capability.get("description"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned);
     ToolDefinition::Builtin(BuiltinTool {
         name: t.name,
         display_name: t.display_name,

@@ -177,6 +177,16 @@ pub(super) fn build(
         event_listeners.push(Arc::new(braintrust_listener));
     }
 
+    if let Some(encryption) = &encryption {
+        event_listeners.push(Arc::new(
+            crate::domains::trace_exports::router::CustomerTracingListener::new(
+                db.clone(),
+                encryption.clone(),
+                host_composition.egress_service(),
+            ),
+        ));
+    }
+
     // Append custom event listeners
     event_listeners.extend(custom_listeners);
 
