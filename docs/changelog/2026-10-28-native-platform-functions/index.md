@@ -1,7 +1,7 @@
 ---
 title: Platform Chat uses native functions for platform operations
 description: Platform Chat discovers typed platform operations on demand and uses its shell to aggregate results across many resources.
-date: 2026-10-27
+date: 2026-10-28
 kind: improvement
 significance: notable
 products: [platform, cloud]
