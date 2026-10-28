@@ -477,6 +477,11 @@ impl Host {
         let _ = self.auth.set(auth);
     }
 
+    /// Whether sessions outlive the process (a data directory, not memory).
+    pub(crate) fn persistent(&self) -> bool {
+        self.data_dir.is_some()
+    }
+
     /// The enforced method list; `None` when the API is open.
     pub(crate) fn auth(&self) -> Option<&crate::auth::Auth> {
         self.auth.get()

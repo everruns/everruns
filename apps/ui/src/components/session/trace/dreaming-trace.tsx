@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useQuery } from "@tanstack/react-query";
 import { Moon } from "lucide-react";
 import { listEvents } from "@/lib/api/events";
@@ -11,6 +11,8 @@ import type { DreamingActivityData as Activity } from "@/lib/api/types";
  * THREAT[TM-LLM-053]: Render only activity metadata, never notes or evidence.
  */
 export function DreamingTrace({ sessionId }: { sessionId: string }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { data, error } = useQuery({
     queryKey: ["dreaming-trace", sessionId],
@@ -60,7 +62,7 @@ export function DreamingTrace({ sessionId }: { sessionId: string }) {
                 {activity.note_count} {activity.note_count === 1 ? ui("note") : ui("notes")}
               </span>
               <time className="text-muted-foreground">
-                {new Date(timestamp).toLocaleTimeString()}
+                {new Date(timestamp).toLocaleTimeString(displayLocale)}
               </time>
             </div>
             {started && (

@@ -156,6 +156,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Skip for now": "Поки що пропустити",
   "Slack agent pane": "Панель агента Slack",
   "Slate Design System": "Slate Design System",
+  "Slate design system": "Дизайн-система Slate",
   "Slate Reference": "Посилання на шифер",
   "Sliding 1 hour": "Ковзання 1 година",
   "Sliding 24 hours": "Ковзні 24 години",
@@ -278,6 +279,8 @@ export const messages: Readonly<Record<string, string>> = {
   "The account belongs to the organization. Every agent can search with it, and its key never reaches an agent.":
     "Рахунок належить організації. Кожен агент може шукати з ним, і його ключ ніколи не досягає агента.",
   "The action failed.": "Дія не виконана.",
+  "The public design system pages are where redesigns start. They read their tokens and icons from this app;":
+    "Публічні сторінки дизайн-системи є відправною точкою для редизайну. Вони беруть токени та іконки з цього застосунку;",
   "The agent and virtual user stay fixed for this chat.":
     "Агент і віртуальний користувач залишаються незмінними для цього чату.",
   "The agent uses $": "Агент використовує $",

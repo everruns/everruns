@@ -100,3 +100,12 @@ For copyable command details and behavior notes, use the
 [example catalog](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/README.md)
 next to the source. Examples that demonstrate low-level host internals remain
 advanced-host examples, not alternative Framework entrypoints.
+
+## Provider-native batches
+
+The [batch guide](/framework/batch-model-requests/) shows offline work through the real Anthropic Message Batches API. Both examples require `ANTHROPIC_API_KEY` and can incur charges.
+
+| Example | Behavior | Run |
+| --- | --- | --- |
+| [`batch_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/batch_classification.rs) | Persist submission intent and ticket; resume classification, collect or cancel | `cargo run -p everruns --features anthropic --example batch_classification -- submit /tmp/reviews-001` |
+| [`batch_eval.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/batch_eval.rs) | Poll a batch and score three eval cases | `cargo run -p everruns --features anthropic --example batch_eval` |

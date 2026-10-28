@@ -13,8 +13,8 @@
 //   to the agent.
 // See knowledge/execution/change-reasons-and-manager-context.md (UI).
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useState } from "react";
 import { NotebookPen, Pencil } from "lucide-react";
 import { ChangeReasonField } from "@/components/entity-actions/change-reason-field";

@@ -36,6 +36,7 @@ client.messages().create(&session.id, "What was revenue last week?").await?;
 | `POST /v1/sessions/{id}/tool-approvals` | `{decisions: [{tool_call_id, decision: "allow" \| "allow_always" \| "reject" \| "reject_always"}]}` | `{resolved: [{tool_call_id, tool, outcome}], status}`. A pending approval left out is settled `not_approved`. |
 | `POST /v1/sessions/{id}/approvals/{tool_call_id}` (serve) | `{decision: "approve" \| "deny", note?}` | `{status, tool_call_id, session_status}`, `404` when nothing is pending |
 | `GET /v1/agent` (serve) | | agent card: agents, tools, skills, channels, schedules, version |
+| `GET /v1/doctor` (serve) | `GET /v1/system/doctor` | whether the app is set up right: session store, a model route per agent, schedules keeping time, open routes; the server report's shape |
 | `POST /v1/channels/{name}` (serve) | the provider's webhook | whatever the channel answers |
 | `GET /v1/channels/{agent}` | | `AgentCard`, see [Agent Execution API](#agent-execution-api) |
 | `GET`, `POST /v1/channels/{agent}/sessions`, `…/sessions/{id}/…` | as the `/v1/sessions` routes, without `agent_name` | the same answers, confined to that agent |

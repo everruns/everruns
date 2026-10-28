@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -66,6 +66,9 @@ pub(super) struct MemoryActors {
     failing_renews: AtomicUsize,
     /// Journal reads still to fail with a store error (a pool timeout).
     failing_reads: AtomicUsize,
+    /// Fail every journal read of more than one event the way an oversized
+    /// gRPC reply does (a tail too large to transfer).
+    oversized_reads: AtomicBool,
     /// Detached tool call records: holder and expiry.
     detached: Mutex<HashMap<DetachedCallKey, (String, Instant)>>,
 }
@@ -79,6 +82,7 @@ impl MemoryActors {
             renews: AtomicUsize::new(0),
             failing_renews: AtomicUsize::new(0),
             failing_reads: AtomicUsize::new(0),
+            oversized_reads: AtomicBool::new(false),
             detached: Mutex::new(HashMap::new()),
         }
     }
@@ -111,6 +115,11 @@ impl MemoryActors {
     /// Fail the next `count` journal reads with a store error.
     pub(super) fn fail_reads(&self, count: usize) {
         self.failing_reads.store(count, Ordering::SeqCst);
+    }
+
+    /// Fail every journal read of more than one event from now on.
+    pub(super) fn oversize_reads(&self) {
+        self.oversized_reads.store(true, Ordering::SeqCst);
     }
 
     /// Renews that reached the index, by any holder.
@@ -438,6 +447,11 @@ impl SessionActorStore for MemoryActors {
         {
             return Err(AgentLoopError::store(
                 "Failed to read actor journal: pool timed out while waiting for an open connection",
+            ));
+        }
+        if limit != 1 && self.oversized_reads.load(Ordering::SeqCst) {
+            return Err(AgentLoopError::config(
+                "Message exceeds the gRPC size cap: encoded message length too large",
             ));
         }
         let events = self.runtime.events().await?;

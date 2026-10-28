@@ -581,6 +581,13 @@
         "ToolHints": {
           "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
           "properties": {
+            "capability_description": {
+              "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "capability_id": {
               "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload.",
               "type": [
@@ -2602,6 +2609,13 @@
         "ToolHints": {
           "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
           "properties": {
+            "capability_description": {
+              "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "capability_id": {
               "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload.",
               "type": [
@@ -8548,6 +8562,13 @@
         "ToolHints": {
           "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
           "properties": {
+            "capability_description": {
+              "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "capability_id": {
               "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload.",
               "type": [
@@ -12830,6 +12851,57 @@
     "read_only": true
   },
   {
+    "category": "tracing",
+    "cli": "tracing destinations get",
+    "description": "Read safe destination metadata. Never returns receiver authentication.",
+    "input_schema": {
+      "description": "Identify a destination without reading its authentication.",
+      "properties": {
+        "id": {
+          "description": "Destination identifier owned by the current organization.",
+          "example": "00000000-0000-0000-0000-000000000001",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_tracing_destination_metadata",
+    "output_shape": "unknown",
+    "path": "/v1/tracing/destination-metadata/{id}",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "tracing",
+    "cli": "tracing routing get",
+    "description": "Read organization or agent trace routing without credentials.",
+    "input_schema": {
+      "description": "Identify the organization or agent whose routing policy should be read.",
+      "properties": {
+        "id": {
+          "description": "Organization public ID or agent public ID whose routing policy is selected.",
+          "example": "agent_01933b5a000070008000000000000001",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_tracing_policy",
+    "output_shape": "unknown",
+    "path": "/v1/tracing/policies/{id}",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "virtual_users",
     "cli": "virtual-users get",
     "description": "Get a single virtual user by ID.",
@@ -14583,6 +14655,13 @@
             "path": {
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "tree": {
+              "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+              "type": [
+                "boolean",
                 "null"
               ]
             },
@@ -17148,6 +17227,13 @@
         "ToolHints": {
           "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
           "properties": {
+            "capability_description": {
+              "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "capability_id": {
               "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload.",
               "type": [
@@ -20294,6 +20380,13 @@
         "ToolHints": {
           "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
           "properties": {
+            "capability_description": {
+              "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "capability_id": {
               "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload.",
               "type": [
@@ -25296,6 +25389,108 @@
     "read_only": false
   },
   {
+    "category": "tracing",
+    "cli": "tracing destinations update",
+    "description": "Update safe destination metadata while preserving its receiver and current authentication.",
+    "input_schema": {
+      "description": "Change a destination name or pause state while preserving authentication.",
+      "properties": {
+        "enabled": {
+          "description": "Whether customer exports may be sent to this receiver; false pauses delivery.",
+          "example": true,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Destination identifier owned by the current organization.",
+          "example": "00000000-0000-0000-0000-000000000001",
+          "format": "uuid",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable destination name, from 1 to 128 characters.",
+          "example": "Production traces",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "PATCH",
+    "name": "update_tracing_destination_metadata",
+    "output_shape": "unknown",
+    "path": "/v1/tracing/destination-metadata/{id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "tracing",
+    "cli": "tracing routing update",
+    "description": "Set organization or agent destinations for future turns. Requires organization settings authority; never accepts credentials.",
+    "input_schema": {
+      "$defs": {
+        "RoutingMode": {
+          "description": "How an agent combines its destinations with organization defaults.",
+          "enum": [
+            "inherit",
+            "add",
+            "replace",
+            "off"
+          ],
+          "type": "string"
+        }
+      },
+      "description": "Set future-turn routing with an optional optimistic revision guard.",
+      "properties": {
+        "destination_ids": {
+          "description": "Distinct destination identifiers from this organization; at most eight selections.",
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "expected_revision": {
+          "description": "Current policy revision; omit to use the revision read during this command.",
+          "example": 1,
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Organization public ID or agent public ID whose routing policy is selected.",
+          "example": "agent_01933b5a000070008000000000000001",
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/$defs/RoutingMode",
+          "description": "Use organization defaults, add selections, replace defaults, or disable customer exports."
+        }
+      },
+      "required": [
+        "id",
+        "mode",
+        "destination_ids"
+      ],
+      "type": "object"
+    },
+    "method": "PATCH",
+    "name": "update_tracing_policy",
+    "output_shape": "unknown",
+    "path": "/v1/tracing/policies/{id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "virtual_users",
     "cli": "virtual-users update",
     "description": "Update a virtual user. Only provided fields are changed.",
@@ -26609,6 +26804,13 @@
         "ToolHints": {
           "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
           "properties": {
+            "capability_description": {
+              "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "capability_id": {
               "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload.",
               "type": [
@@ -26990,6 +27192,13 @@
             "path": {
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "tree": {
+              "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+              "type": [
+                "boolean",
                 "null"
               ]
             },

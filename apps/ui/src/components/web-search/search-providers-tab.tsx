@@ -6,7 +6,7 @@
 // Automatic; free search is always there. Admins connect, test, rotate and
 // disconnect accounts here (knowledge/integrations/web-search.md, UI).
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState, type ReactNode } from "react";
 import { FlaskConical, KeyRound, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -147,6 +147,8 @@ export function SearchProvidersTab({
   onGoToDefaults: () => void;
   onNotice: (notice: Notice) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const remove = useDeleteOrganizationConnection();
   const [testing, setTesting] = useState<string | null>(null);
@@ -311,7 +313,7 @@ export function SearchProvidersTab({
                   </span>
                 ),
               ],
-              ["Connected", new Date(account.connected_at).toLocaleDateString()],
+              ["Connected", new Date(account.connected_at).toLocaleDateString(displayLocale)],
               ["Cost", "Billed on this key by the provider"],
               ["Role", role(account)],
             ]}

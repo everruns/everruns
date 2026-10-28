@@ -10,8 +10,8 @@
 // The controls are live in view mode too: changing one puts the page into
 // edit mode with that change pending, so nothing is saved until Save.
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { TagInput } from "@/components/ui/tag-input";

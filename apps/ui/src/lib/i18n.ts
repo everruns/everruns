@@ -1,11 +1,14 @@
 /**
  * Decisions:
  * - Keep catalogs in code for now so adding new locales is a small, typed change.
- * - Separate UI locale (`en`/`uk`) from backend locale (`en-US`, `uk-UA`, etc.).
+ * - Keep interface language separate from execution locale and preserve formatting regions.
  * - Fall back to English for unsupported browser languages until more locales land.
  */
 
-export type SupportedLocale = "en" | "uk";
+import { type SupportedLocale } from "./locale-registry";
+import { semanticMessages } from "./semantic-messages";
+import { uiMessagesByLocale } from "./ui-messages";
+export { getSupportedLocale, type SupportedLocale } from "./locale-registry";
 
 const messages = {
   en: {
@@ -627,7 +630,8 @@ const messages = {
   },
 } as const;
 
-export type MessageKey = keyof typeof messages.en;
+export const englishMessages = messages.en;
+export type MessageKey = keyof typeof englishMessages;
 
 export function normalizeBackendLocale(input?: string | null): string {
   const normalized = input?.trim().replace(/_/g, "-");
@@ -643,157 +647,71 @@ export function detectBrowserLocale(
   return normalizeBackendLocale(candidate);
 }
 
-export function getSupportedLocale(locale: string): SupportedLocale {
-  return normalizeBackendLocale(locale).toLowerCase().split("-")[0] === "uk" ? "uk" : "en";
-}
-
 export function formatMessage(
   locale: SupportedLocale,
   key: MessageKey,
   values?: Record<string, string | number>,
 ): string {
-  const template = messages[locale][key] ?? messages.en[key];
+  const source = messages.en[key];
+  const overrides = semanticMessages[locale];
+  const contextual = overrides && Object.hasOwn(overrides, key) ? overrides[key] : undefined;
+  const template =
+    locale === "uk"
+      ? messages.uk[key]
+      : (contextual ?? uiMessagesByLocale[locale]?.[source] ?? source);
   if (!values) return template;
   return template.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? `{${name}}`));
 }
 
-function getUkrainianPluralForm(count: number): "one" | "few" | "many" {
-  const absCount = Math.abs(count);
-  const lastTwoDigits = absCount % 100;
-  const lastDigit = absCount % 10;
+export function getPluralForm(locale: SupportedLocale, count: number): "one" | "few" | "many" {
+  const category = new Intl.PluralRules(locale).select(count);
+  return category === "one" ? "one" : category === "few" ? "few" : "many";
+}
 
-  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
-    return "many";
-  }
+type CountMessagePrefix =
+  | "image_count"
+  | "work_log_errors"
+  | "work_log_issues"
+  | "work_files_changed"
+  | "work_tasks_started"
+  | "atif_images_omitted"
+  | "atif_parts_exported"
+  | "atif_export_stopped"
+  | "edit_count";
 
-  if (lastDigit === 1) {
-    return "one";
-  }
-
-  if (lastDigit >= 2 && lastDigit <= 4) {
-    return "few";
-  }
-
-  return "many";
+function formatPluralMessage(
+  locale: SupportedLocale,
+  prefix: CountMessagePrefix,
+  count: number,
+): string {
+  return formatMessage(locale, `${prefix}_${getPluralForm(locale, count)}`, { count });
 }
 
 export function formatImageCount(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    if (form === "one") {
-      return formatMessage(locale, "image_count_one", { count });
-    }
-    if (form === "few") {
-      return formatMessage(locale, "image_count_few", { count });
-    }
-    return formatMessage(locale, "image_count_many", { count });
-  }
-
-  return formatMessage(locale, count === 1 ? "image_count_one" : "image_count_many", { count });
+  return formatPluralMessage(locale, "image_count", count);
 }
-
 export function formatWorkLogErrorCount(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    return formatMessage(locale, `work_log_errors_${form}`, { count });
-  }
-
-  return formatMessage(locale, count === 1 ? "work_log_errors_one" : "work_log_errors_many", {
-    count,
-  });
+  return formatPluralMessage(locale, "work_log_errors", count);
 }
-
 export function formatWorkLogIssueCount(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    return formatMessage(locale, `work_log_issues_${form}`, { count });
-  }
-
-  return formatMessage(locale, count === 1 ? "work_log_issues_one" : "work_log_issues_many", {
-    count,
-  });
+  return formatPluralMessage(locale, "work_log_issues", count);
 }
-
-/** A work report fact ("2 files changed"), pluralized for the locale. */
 export function formatWorkFact(
   locale: SupportedLocale,
   kind: "files_changed" | "tasks_started",
   count: number,
 ): string {
-  const form = locale === "uk" ? getUkrainianPluralForm(count) : count === 1 ? "one" : "many";
-  return formatMessage(locale, `work_${kind}_${form}`, { count });
+  return formatPluralMessage(locale, `work_${kind}`, count);
 }
-
 export function formatAtifImagesOmitted(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    if (form === "one") {
-      return formatMessage(locale, "atif_images_omitted_one", { count });
-    }
-    if (form === "few") {
-      return formatMessage(locale, "atif_images_omitted_few", { count });
-    }
-    return formatMessage(locale, "atif_images_omitted_many", { count });
-  }
-
-  return formatMessage(
-    locale,
-    count === 1 ? "atif_images_omitted_one" : "atif_images_omitted_many",
-    {
-      count,
-    },
-  );
+  return formatPluralMessage(locale, "atif_images_omitted", count);
 }
-
 export function formatAtifPartsExported(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    if (form === "one") {
-      return formatMessage(locale, "atif_parts_exported_one", { count });
-    }
-    if (form === "few") {
-      return formatMessage(locale, "atif_parts_exported_few", { count });
-    }
-    return formatMessage(locale, "atif_parts_exported_many", { count });
-  }
-
-  return formatMessage(
-    locale,
-    count === 1 ? "atif_parts_exported_one" : "atif_parts_exported_many",
-    { count },
-  );
+  return formatPluralMessage(locale, "atif_parts_exported", count);
 }
-
 export function formatAtifExportStopped(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    if (form === "one") {
-      return formatMessage(locale, "atif_export_stopped_one", { count });
-    }
-    if (form === "few") {
-      return formatMessage(locale, "atif_export_stopped_few", { count });
-    }
-    return formatMessage(locale, "atif_export_stopped_many", { count });
-  }
-
-  return formatMessage(
-    locale,
-    count === 1 ? "atif_export_stopped_one" : "atif_export_stopped_many",
-    { count },
-  );
+  return formatPluralMessage(locale, "atif_export_stopped", count);
 }
-
 export function formatEditCount(locale: SupportedLocale, count: number): string {
-  if (locale === "uk") {
-    const form = getUkrainianPluralForm(count);
-    if (form === "one") {
-      return formatMessage(locale, "edit_count_one", { count });
-    }
-    if (form === "few") {
-      return formatMessage(locale, "edit_count_few", { count });
-    }
-    return formatMessage(locale, "edit_count_many", { count });
-  }
-
-  return formatMessage(locale, count === 1 ? "edit_count_one" : "edit_count_many", { count });
+  return formatPluralMessage(locale, "edit_count", count);
 }

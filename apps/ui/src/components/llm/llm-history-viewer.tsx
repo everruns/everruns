@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -316,6 +316,8 @@ function MetadataSection({ metadata }: { metadata: LlmGenerationMetadata }) {
 }
 
 function UsageDisplay({ usage }: { usage: TokenUsage }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const total = usage.input_tokens + usage.output_tokens;
   // Best-effort cost: prefer the provider's actual cost, fall back to the
@@ -346,22 +348,24 @@ function UsageDisplay({ usage }: { usage: TokenUsage }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
         <div>
           <p className="text-muted-foreground">{ui("Input")}</p>
-          <p className="font-medium">{usage.input_tokens.toLocaleString()}</p>
+          <p className="font-medium">{usage.input_tokens.toLocaleString(displayLocale)}</p>
         </div>
         <div>
           <p className="text-muted-foreground">{ui("Output")}</p>
-          <p className="font-medium">{usage.output_tokens.toLocaleString()}</p>
+          <p className="font-medium">{usage.output_tokens.toLocaleString(displayLocale)}</p>
         </div>
         {usage.cache_read_tokens !== undefined && usage.cache_read_tokens > 0 && (
           <div>
             <p className="text-muted-foreground">{ui("Cache Read")}</p>
-            <p className="font-medium">{usage.cache_read_tokens.toLocaleString()}</p>
+            <p className="font-medium">{usage.cache_read_tokens.toLocaleString(displayLocale)}</p>
           </div>
         )}
         {usage.cache_creation_tokens !== undefined && usage.cache_creation_tokens > 0 && (
           <div>
             <p className="text-muted-foreground">{ui("Cache Created")}</p>
-            <p className="font-medium">{usage.cache_creation_tokens.toLocaleString()}</p>
+            <p className="font-medium">
+              {usage.cache_creation_tokens.toLocaleString(displayLocale)}
+            </p>
           </div>
         )}
       </div>
@@ -452,6 +456,8 @@ export function LlmHistoryViewer({
   timestamp,
   compact = false,
 }: LlmHistoryViewerProps) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { messages, tools, output, metadata } = data;
 
@@ -513,7 +519,7 @@ export function LlmHistoryViewer({
           </div>
           {timestamp && (
             <span className="text-xs text-muted-foreground">
-              {new Date(timestamp).toLocaleString()}
+              {new Date(timestamp).toLocaleString(displayLocale)}
             </span>
           )}
         </div>

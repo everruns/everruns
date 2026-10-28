@@ -1,7 +1,7 @@
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useChannelChatDraft } from "@/components/chat-mode/use-channel-chat-draft";
 
 import { useAgentSource } from "@/hooks/use-agent-source";

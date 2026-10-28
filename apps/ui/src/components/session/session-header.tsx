@@ -1,7 +1,11 @@
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useDisplayLocale,
+  useLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { SessionCredentialsDialog } from "@/components/credentials/session-credentials-dialog";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ComponentType } from "react";
@@ -21,7 +25,7 @@ import {
 import { IconTile, PageBreadcrumb, SectionTabs } from "@/components/layout/page-layout";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { downloadSessionExport } from "@/lib/session-export";
-import { useLocale } from "@/providers/locale-provider";
+
 import { useOptionalNotificationsContext } from "@/providers/notifications-provider";
 import {
   getDisplayName,
@@ -61,6 +65,8 @@ export interface SessionNavItem {
 }
 
 export function SessionUsageBadge({ usage }: { usage: TokenUsage }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   return (
     <TooltipProvider>
@@ -74,19 +80,19 @@ export function SessionUsageBadge({ usage }: { usage: TokenUsage }) {
         <TooltipContent>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
             <dt className="text-muted-foreground">{ui("Input")}</dt>
-            <dd>{usage.input_tokens.toLocaleString()}</dd>
+            <dd>{usage.input_tokens.toLocaleString(displayLocale)}</dd>
             <dt className="text-muted-foreground">{ui("Output")}</dt>
-            <dd>{usage.output_tokens.toLocaleString()}</dd>
+            <dd>{usage.output_tokens.toLocaleString(displayLocale)}</dd>
             {(usage.cache_read_tokens ?? 0) > 0 && (
               <>
                 <dt className="text-muted-foreground">{ui("Cache read")}</dt>
-                <dd>{usage.cache_read_tokens!.toLocaleString()}</dd>
+                <dd>{usage.cache_read_tokens!.toLocaleString(displayLocale)}</dd>
               </>
             )}
             {(usage.cache_creation_tokens ?? 0) > 0 && (
               <>
                 <dt className="text-muted-foreground">{ui("Cache created")}</dt>
-                <dd>{usage.cache_creation_tokens!.toLocaleString()}</dd>
+                <dd>{usage.cache_creation_tokens!.toLocaleString(displayLocale)}</dd>
               </>
             )}
           </dl>

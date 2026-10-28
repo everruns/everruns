@@ -8,8 +8,12 @@
 // Every number here is derived from the event stream or from read endpoints;
 // nothing on this page can change the session.
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useDisplayLocale,
+  useLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { HarnessDomainIcon } from "@/components/icons/facet-icons";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { useMemo } from "react";
@@ -229,7 +233,7 @@ export default function CostPage() {
                   style={{ width: `${total > 0 ? (section.tokens / total) * 100 : 0}%` }}
                   title={ui("{value0}: {value1} tokens", {
                     value0: section.label,
-                    value1: section.tokens.toLocaleString(),
+                    value1: section.tokens.toLocaleString(displayLocale),
                   })}
                 />
               ))}
@@ -248,7 +252,7 @@ export default function CostPage() {
                     </span>
                   </div>
                   <span className="tabular-nums text-muted-foreground">
-                    {section.tokens.toLocaleString()}
+                    {section.tokens.toLocaleString(displayLocale)}
                   </span>
                 </div>
               ))}
@@ -285,7 +289,9 @@ export default function CostPage() {
                         </div>
                         <div className="text-right tabular-nums text-muted-foreground">
                           <div>{contributionPercent}%</div>
-                          <div className="text-xs">{contribution.tokens.toLocaleString()}</div>
+                          <div className="text-xs">
+                            {contribution.tokens.toLocaleString(displayLocale)}
+                          </div>
                         </div>
                       </div>
                     );

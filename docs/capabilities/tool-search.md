@@ -23,7 +23,9 @@ Four capabilities provide it:
 Use `auto_tool_search` unless you know the model and want one mechanism
 explicitly. It is what the [Worker](/built-ins/harnesses/worker/) harness
 uses. Do not combine `auto_tool_search` with any of the other three on the same
-agent; it already provides all three paths.
+agent; it already provides all three paths. An explicit `tool_search` with
+`bounded: true` overrides inherited automatic or hosted search, so an Agent can
+enforce a bounded catalog on a Worker harness.
 
 All four capabilities have category Optimization, no features, and no
 dependencies.

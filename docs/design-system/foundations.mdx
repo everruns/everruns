@@ -1,0 +1,160 @@
+---
+title: Slate Foundations
+description: Slate color tokens, typography, spacing, sharp corners, elevation, the branded dot grid, and motion, with values read from the app's CSS.
+slug: design-system/foundations
+---
+
+import DsExample from "@docs-components/design-system/DsExample.astro";
+import DsTokenTable from "@docs-components/design-system/DsTokenTable.astro";
+
+## Color
+
+The palette is grayscale. Navy (`primary`) carries actions and selection, gold (`accent`) marks
+the few moments that matter, and the four status colors carry meaning. Everything else is a
+gray. The values below are read from [`apps/ui/src/app/design-system.css`](https://github.com/everruns/everruns/blob/main/apps/ui/src/app/design-system.css) when this site builds.
+
+### Surfaces and text
+
+<DsTokenTable names={["background", "foreground", "card", "card-foreground", "popover", "muted", "muted-foreground", "secondary", "border", "input"]} />
+
+### Brand
+
+<DsTokenTable names={["primary", "primary-foreground", "accent", "accent-foreground", "ring"]} />
+
+Gold appears at full strength in one place: the create button. Elsewhere it is a tint:
+`accent / 0.1` for the masthead icon tile, `accent / 0.12` for a user chat turn, `accent / 0.15`
+for the Editing badge, and the focus ring. Hover is never gold; it is `muted`.
+
+Never use gold for body text, and never set text on a solid gold surface except the create
+button's navy label.
+
+### Status
+
+<DsTokenTable names={["success", "warning", "info", "destructive"]} />
+
+Use status colors as dots, text, and tints of 12% or less. Each has a `-foreground` pair for
+text on a solid fill. Destructive is for errors and irreversible actions only.
+
+Raw palette hues are allowed only where they encode categories or order rather than status:
+chart series, pass-rate and load ramps, workflow event types, file-type and folder icons,
+model-family labels, favorite stars, and the loading wave.
+
+<DsExample caption="Status as dot, text, and tint.">
+  <div class="ds-row" style="gap: 1.5rem">
+    <span class="ds-status ds-status-success">active</span>
+    <span class="ds-status ds-status-destructive">failed</span>
+    <span class="ds-status">archived</span>
+    <span style="color: hsl(var(--warning)); font-size: 13px">Waiting for approval</span>
+    <span style="color: hsl(var(--info)); font-size: 13px">Running</span>
+    <span class="ds-badge ds-badge-success">Enabled</span>
+  </div>
+</DsExample>
+
+### Dark mode
+
+Every token has a dark value. Dark mode shifts surfaces to a navy-tinted charcoal, inverts
+`primary` to near-white so actions stay prominent, and lifts the status colors so they read on
+dark surfaces. In the app, dark mode is the `.dark` class on `<html>`, set from the
+`everruns_theme` cookie; this site follows its own theme switch. Use the switch in the header
+to see every example in both themes.
+
+## Typography
+
+Geist Sans for everything, Geist Mono for code, identifiers, logs, and counters. No other
+families. Body text carries `-0.01em` tracking. The UI is dense: 14px is the default body size.
+
+<DsExample>
+  <div>
+    <div class="ds-type-row"><code>headline-lg 30/600</code><span style="font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2">Agents</span></div>
+    <div class="ds-type-row"><code>headline-md 28/600</code><span style="font-size: 28px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.25">Support agent</span></div>
+    <div class="ds-type-row"><code>title 18/600</code><span style="font-size: 18px; font-weight: 600">Card title and section head</span></div>
+    <div class="ds-type-row"><code>body-lg 16/400</code><span style="font-size: 16px; line-height: 1.6">Long-form reading, such as a rendered system prompt.</span></div>
+    <div class="ds-type-row"><code>body-md 14/400</code><span>The dense default for tables, cards, and forms.</span></div>
+    <div class="ds-type-row"><code>ui 13/500</code><span style="font-size: 13px; font-weight: 500">Navigation, breadcrumbs, tabs, metadata</span></div>
+    <div class="ds-type-row"><code>label-md 12/500</code><span style="font-size: 12px; font-weight: 500">Buttons, chips, field labels</span></div>
+    <div class="ds-type-row"><code>badge 11/500</code><span style="font-size: 11px; font-weight: 500">Badge text</span></div>
+    <div class="ds-type-row"><code>code 14 mono</code><span class="ds-mono">agent_01a17a55c3e94c0b</span></div>
+  </div>
+</DsExample>
+
+Line height is 1.6 for long-form text, 1.5 for dense body, and 1.2 to 1.4 for headings.
+Headings, buttons, menu items, badges, and navigation labels use sentence case. There are no
+uppercase eyebrow labels.
+
+## Spacing
+
+A 4px base scale, the Tailwind defaults. Common rhythms: 8px between chips, 16px inside cards,
+24px between page zones and as page padding, 32px for inputs and default buttons. Avoid values
+off the scale.
+
+<DsExample>
+  <div class="ds-stack" style="gap: 0.5rem">
+    <div class="ds-space-row"><span>xs 4</span><span class="ds-space-bar" style="width: 4px" /></div>
+    <div class="ds-space-row"><span>sm 8</span><span class="ds-space-bar" style="width: 8px" /></div>
+    <div class="ds-space-row"><span>md 16</span><span class="ds-space-bar" style="width: 16px" /></div>
+    <div class="ds-space-row"><span>lg 24</span><span class="ds-space-bar" style="width: 24px" /></div>
+    <div class="ds-space-row"><span>xl 32</span><span class="ds-space-bar" style="width: 32px" /></div>
+    <div class="ds-space-row"><span>2xl 48</span><span class="ds-space-bar" style="width: 48px" /></div>
+  </div>
+</DsExample>
+
+The app shell has a 240px sidebar. Page content sits in a centered container with 24px
+padding and 24px between zones. Long-form content never stretches edge to edge.
+
+## Shape
+
+Every corner radius is zero: cards, buttons, badges, inputs, dialogs, menus, avatars, and the
+user chat turn. Icons use square line caps and mitered joins (`.icon-sharp`). The only round
+things in the UI are status dots, circular glyphs, and the rings of the logo.
+
+## Elevation
+
+Slate is flat. Hierarchy comes from the near-white page, white cards, and 1px borders.
+
+- Content cards have a border and no shadow. Hover darkens the border to
+  `muted-foreground / 0.4`.
+- Buttons and inputs may use `shadow-xs` (`0 1px 2px rgb(10 22 54 / 0.05)`).
+- Popovers and dialogs rise to `shadow-md` at most. Dialog backdrops are flat 50% black.
+- No inner shadows, glows, colored shadows, gradients, or frosted glass. Gradients exist only
+  inside the logo.
+
+## The dot grid
+
+The page background is a branded dot grid: 1px dots on a 24px cell, navy at 3.5% in light mode
+and gold at 4.5% in dark. It is applied to the page body, never to cards; cards rise from it by
+being flat.
+
+<DsExample dots caption="The dot grid behind a flat card (.bg-brand-dots).">
+  <div class="ds-card" style="max-width: 20rem">
+    <div class="ds-card-body"><span class="ds-card-title">A flat card</span><p class="ds-card-desc">No texture, no shadow, one border.</p></div>
+  </div>
+</DsExample>
+
+## Motion
+
+Motion is short and quiet: `ease-out`, 220ms for rows entering and 260ms for surfaces, with no
+bounces, springs, parallax, or page transitions. Every animation stops under
+`prefers-reduced-motion`.
+
+| Class | Use |
+|---|---|
+| `animate-chat-row-in`, `animate-tool-row-in` | New transcript and tool rows: 8 to 10px rise with a fade. |
+| `animate-chat-surface-in` | A surface appearing, such as the empty chat card. |
+| `animate-tool-pulse` | Opacity 0.45 to 1 over 1.6s for something running. |
+| `animate-tool-progress-active` | A gold sheen sliding across an in-flight tool call. |
+| `work-log-shimmer` | A sheen across "Working for 12s" while a turn runs. |
+| `loading-wave-bar-0..4` | The thinking indicator (`thinking-indicator.tsx`): five bars, navy to gold, 80ms apart. |
+
+<DsExample caption="Thinking indicator and a running pulse, from the app's own classes.">
+  <div class="ds-row" style="gap: 2rem">
+    <span class="ds-row" style="gap: 2px; height: 16px; align-items: flex-end">
+      <span class="loading-wave-bar loading-wave-bar-0" style="width: 3px; animation-delay: 0ms; animation-duration: 0.7s" />
+      <span class="loading-wave-bar loading-wave-bar-1" style="width: 3px; animation-delay: 80ms; animation-duration: 0.7s" />
+      <span class="loading-wave-bar loading-wave-bar-2" style="width: 3px; animation-delay: 160ms; animation-duration: 0.7s" />
+      <span class="loading-wave-bar loading-wave-bar-3" style="width: 3px; animation-delay: 240ms; animation-duration: 0.7s" />
+      <span class="loading-wave-bar loading-wave-bar-4" style="width: 3px; animation-delay: 320ms; animation-duration: 0.7s" />
+    </span>
+    <span class="ds-status ds-status-success animate-tool-pulse">running</span>
+    <span class="work-log-shimmer" style="font-size: 13px">Working for 12s</span>
+  </div>
+</DsExample>

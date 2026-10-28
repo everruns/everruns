@@ -93,6 +93,7 @@ export const messages: Readonly<Record<string, string>> = {
   Density: "Щільність",
   "Deployment default": "Стандартне розгортання",
   Deprecated: "Застаріло",
+  "Design system pages": "Сторінки дизайн-системи",
   "Describe this virtual user...": "Опишіть цього віртуального користувача...",
   Description: "Опис",
   "Description (optional)": "Опис (необов’язково)",

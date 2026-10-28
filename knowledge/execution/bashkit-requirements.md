@@ -9,7 +9,7 @@ tags:
 # Bashkit Requirements for Custom FileSystem Adapters
 
 > **Status: IMPLEMENTED** - bashkit v0.13.0 exports all required types and
-> `SessionFileSystemAdapter` is implemented in `crates/integrations/src/bashkit/lib.rs`.
+> `SessionFileSystemAdapter` is implemented in `crates/integrations/src/bashkit/mod.rs`.
 >
 > **Workspace Mount**: Session files are mounted at `/workspace` in the bash environment.
 > Both `bashkit_shell` and `session_file_system` capabilities normalize paths, enabling
@@ -23,7 +23,18 @@ tags:
 
 Everruns implements a custom `FileSystem` adapter that bridges bashkit to the session file store. This enables live visibility of files during bash execution - if another tool writes to the session filesystem while bash is running, those files are immediately visible.
 
-The implementation is in `crates/integrations/src/bashkit/lib.rs` with `SessionFileSystemAdapter`.
+The implementation is in `crates/integrations/src/bashkit/mod.rs` with `SessionFileSystemAdapter`.
+
+## Filesystem metadata
+
+Shell existence and type checks use the session store's metadata operation.
+Content reads can return no file for an existing directory, and an empty listing
+cannot distinguish an empty directory from a missing path. A newly created empty
+directory must therefore remain visible to recursive copies and embedded
+interpreters before its first file is written. Non-empty implicit directories
+remain discoverable through their entries.
+
+See [File Store](../runtime-resources/file-store.md) for the shared store contract.
 
 ## Indexed Search
 
@@ -33,7 +44,7 @@ Bashkit v0.13.0 restored `SearchCapable`/`SearchProvider` traits. When a `FileSy
 
 The sync-to-async bridge uses `std::thread::scope` with a dedicated thread and its own tokio runtime to avoid nesting `block_on` calls.
 
-See `crates/integrations/src/bashkit/lib.rs` for the full implementation.
+See `crates/integrations/src/bashkit/mod.rs` for the full implementation.
 
 ## Output Sanitization
 
@@ -45,7 +56,7 @@ This reduces token waste from verbose build output (`cargo build`, `pnpm install
 
 ## Observability Hooks
 
-`bashkit_shell` installs observational-only bashkit interceptors on every `Bash` instance it builds (`install_observability_hooks` in `crates/integrations/src/bashkit/lib.rs`). The hooks emit structured `tracing` events at the `bashkit.hook` target, tagged with the active `session_id` for audit correlation:
+`bashkit_shell` installs observational-only bashkit interceptors on every `Bash` instance it builds (`install_observability_hooks` in `crates/integrations/src/bashkit/mod.rs`). The hooks emit structured `tracing` events at the `bashkit.hook` target, tagged with the active `session_id` for audit correlation:
 
 - `before_tool` / `after_tool`, per-builtin invocation and completion. Logs tool name, arg count, exit code, and stdout byte length. Argument values and stdout bytes are never logged (tenant paths, URLs, or embedded secrets may appear there).
 - `on_error`, interpreter errors. The error message is truncated to 256 bytes on a UTF-8 boundary before logging to bound per-event payload size.
