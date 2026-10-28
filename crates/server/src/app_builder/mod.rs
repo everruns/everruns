@@ -595,6 +595,10 @@ impl ServerAppBuilder {
             );
             None
         };
+        // Only the PostgreSQL SSE listener reads `event_available`; without it
+        // each event write would still take the database-wide NOTIFY lock at
+        // commit (`Database::notify_event_available`).
+        db.set_pg_event_notify(event_broadcaster.is_some());
         let notification_broadcaster = if let Some(database_url) =
             resolve_listener_database_url()?.as_ref()
         {

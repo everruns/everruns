@@ -198,11 +198,7 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        self.enqueue_event_projections(std::slice::from_ref(&row))
-            .await;
-        if Self::ends_trace_turn(&row.event_type) {
-            self.schedule_session_trace_projection(row.session_id.uuid());
-        }
+        self.after_events_stored(std::slice::from_ref(&row)).await;
         Ok(row)
     }
 
@@ -279,11 +275,7 @@ impl Database {
         .await?;
         tx.commit().await?;
 
-        self.enqueue_event_projections(std::slice::from_ref(&row))
-            .await;
-        if Self::ends_trace_turn(&row.event_type) {
-            self.schedule_session_trace_projection(row.session_id.uuid());
-        }
+        self.after_events_stored(std::slice::from_ref(&row)).await;
         Ok(row)
     }
 
@@ -449,8 +441,13 @@ impl Database {
         Ok(ordered)
     }
 
-    /// The reporting projection and session trace work a stored batch owes.
+    /// The listener wake-up, reporting projection and session trace work a
+    /// stored batch owes.
     async fn after_events_stored(&self, ordered: &[EventRow]) {
+        let mut sessions: Vec<Uuid> = ordered.iter().map(|row| row.session_id.uuid()).collect();
+        sessions.sort();
+        sessions.dedup();
+        self.notify_event_available(&sessions).await;
         self.enqueue_event_projections(ordered).await;
         let mut traced: Vec<Uuid> = Vec::new();
         for row in ordered {
@@ -460,6 +457,38 @@ impl Database {
         }
         for session_id in traced {
             self.schedule_session_trace_projection(session_id);
+        }
+    }
+
+    /// Wake PostgreSQL LISTEN subscribers (`event_available`, payload: the
+    /// session id) for sessions that just got events.
+    ///
+    /// Decision: this used to be an `AFTER INSERT` trigger on `events`. Every
+    /// transaction that queues a NOTIFY takes one database-wide lock at commit
+    /// to keep notification order, whether or not anyone listens, so every
+    /// event write in the cluster committed one at a time. Production at 500
+    /// concurrent agents spent more than half its database load in COMMIT
+    /// waiting for that lock (Performance Insights `Lock:object`). Under NATS
+    /// event delivery nothing listens on `event_available`, and the server
+    /// turns this off (`set_pg_event_notify(false)`); without NATS the SSE
+    /// broadcaster still needs it.
+    ///
+    /// Decision: sent after the insert, on the same pool, as a best-effort
+    /// hint: subscribers re-read the log, so a lost wake-up only delays SSE
+    /// until the next one. Inside a command transaction the NOTIFY joins it
+    /// and is delivered at its commit, as the trigger's was.
+    async fn notify_event_available(&self, sessions: &[Uuid]) {
+        if sessions.is_empty() || !self.pg_event_notify() {
+            return;
+        }
+        if let Err(error) = sqlx::query(
+            "SELECT pg_notify('event_available', id::text) FROM UNNEST($1::uuid[]) AS id",
+        )
+        .bind(sessions)
+        .execute(&self.pool)
+        .await
+        {
+            warn!(%error, "event_available notify failed; SSE listeners wake on the next event");
         }
     }
 
@@ -557,6 +586,7 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
         if let Some(row) = inserted {
+            self.notify_event_available(&[row.session_id.uuid()]).await;
             if !crate::storage::reporting::outbox::event_needs_projection(&row.event_type) {
                 return Ok((row, true));
             }
@@ -678,6 +708,7 @@ impl Database {
         .execute(&mut *tx)
         .await?;
         tx.commit().await?;
+        self.notify_event_available(&[session_id.uuid()]).await;
         Ok(true)
     }
 
@@ -1490,3 +1521,6 @@ impl Database {
         Ok(rows.into_iter().collect())
     }
 }
+
+#[cfg(test)]
+mod tests;
