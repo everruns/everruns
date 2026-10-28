@@ -69,6 +69,7 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`skills`](/reference/cli/skills/) | Skill packages and their content. |
 | [`system`](/reference/cli/system/) | Server status. |
 | [`tasks`](/reference/cli/tasks/) | Background tasks across every session in the organization. |
+| [`tracing`](/reference/cli/tracing/) | Customer tracing destinations and routing. |
 | [`user`](/reference/cli/user/) | Your own account settings. |
 | [`users`](/reference/cli/users/) | People in the current organization. |
 | [`virtual-users`](/reference/cli/virtual-users/) | Runtime accounts for consumers or services. |

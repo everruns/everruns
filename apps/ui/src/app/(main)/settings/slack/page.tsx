@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 
 import { useEffect, useState } from "react";
@@ -170,6 +170,8 @@ function WorkspaceRow({
   managerApp: boolean;
   onChanged: () => Promise<unknown>;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const [pending, setPending] = useState<"test" | "disconnect" | "reconnect" | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -206,7 +208,7 @@ function WorkspaceRow({
           <div>
             <p className="text-sm font-medium">{slackWorkspaceLabel(workspace)}</p>
             <p className="text-xs text-muted-foreground">
-              {ui("Connected")} {new Date(workspace.connected_at).toLocaleDateString()}
+              {ui("Connected")} {new Date(workspace.connected_at).toLocaleDateString(displayLocale)}
               {workspace.connected_with === "manager_app" && " with Slack approval"}
             </p>
           </div>

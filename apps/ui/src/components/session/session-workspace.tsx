@@ -12,11 +12,11 @@
 // also had a filesystem. A sandbox or storage session never opened this tab,
 // so the values (and the sandbox's files) were unreachable.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Clock, File, Key, Lock } from "lucide-react";
 import type { FileInfo, KeyValueInfo, ListResponse, SecretInfo } from "@/lib/api/types";
-import { FileBrowser, FileViewer } from "@/components/files";
+import { FileBrowser, FileViewer, useWorkspaceFileSource } from "@/components/files";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
@@ -42,6 +42,8 @@ function useSessionStorage(sessionId: string) {
 }
 
 function StoragePanel({ sessionId }: { sessionId: string }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { data, isLoading } = useSessionStorage(sessionId);
 
@@ -70,7 +72,7 @@ function StoragePanel({ sessionId }: { sessionId: string }) {
                       </Badge>
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
-                        {new Date(entry.updated_at).toLocaleString()}
+                        {new Date(entry.updated_at).toLocaleString(displayLocale)}
                       </span>
                     </div>
                     <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-muted p-2 text-sm">
@@ -101,7 +103,7 @@ function StoragePanel({ sessionId }: { sessionId: string }) {
                     </Badge>
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Clock className="h-3 w-3" />
-                      {new Date(secret.updated_at).toLocaleString()}
+                      {new Date(secret.updated_at).toLocaleString(displayLocale)}
                     </span>
                   </div>
                 ))}
@@ -129,27 +131,23 @@ function FilesystemPane({
 }) {
   const ui = useUiTranslations();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
+  const source = useWorkspaceFileSource(workspaceId, { readOnly: true });
 
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden">
       <div className="w-72 flex-shrink-0 overflow-hidden border-r bg-card/50">
         <FileBrowser
-          workspaceId={workspaceId}
+          key={source.key}
+          source={source}
           onFileSelect={setSelectedFile}
           selectedPath={selectedFile?.path}
-          readOnly
         />
       </div>
 
       <div className="flex flex-1 flex-col overflow-y-auto">
         <div className="min-h-0 flex-1 overflow-hidden">
           {selectedFile && !selectedFile.is_directory ? (
-            <FileViewer
-              workspaceId={workspaceId}
-              file={selectedFile}
-              onClose={() => setSelectedFile(null)}
-              readOnly
-            />
+            <FileViewer source={source} file={selectedFile} onClose={() => setSelectedFile(null)} />
           ) : (
             <div className="flex h-full flex-col items-center justify-center py-16 text-muted-foreground">
               <File className="mb-4 size-12 opacity-30" />

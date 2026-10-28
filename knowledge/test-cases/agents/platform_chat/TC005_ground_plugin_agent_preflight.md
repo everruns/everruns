@@ -29,10 +29,13 @@ capability, Agent, connector, and current-user connection reads.
 
 1. Open Platform Chat — `/chats` → **New chat** → built-in **Platform Chat** harness — and send: `Create another agent with resend plugin.`
 2. Before confirming, inspect the tool trace.
-3. Verify Platform Chat uses `query` to read the installed plugins,
-   capabilities, Agents, connection providers, and current-user connections.
-   The reads may be combined into one bounded script. Discovery, if needed,
-   identifies operations only and is not repeated for the same concept.
+3. Verify bounded `tool_search` reveals the needed native schemas and Platform
+   Chat reads all five authoritative views through prefixed native functions:
+   installed plugins, capabilities, Agents, connection providers, and
+   current-user connections. Each function receives its canonical typed input
+   under `params`. `everruns` shell composition is allowed when useful and uses
+   progressive `--help` with supported flags rather than guessed flags.
+   Search results identify operations; they do not establish resource state.
 4. Verify the response identifies the installed Resend plugin by name/link,
    reports it active/available and already attached to one Agent, and separately
    reports the current user's OAuth connection state.
@@ -45,7 +48,7 @@ capability, Agent, connector, and current-user connection reads.
 7. Disable the target plugin and repeat. Verify Platform Chat reports the
    disabled state and does not propose attaching it as available.
 8. Use a unique absent name and repeat. Verify absence is concluded only after
-   authoritative resource reads, never from a zero-match `discover` result.
+   authoritative resource reads, never from a zero-match `tool_search` result.
 
 ## Expected
 

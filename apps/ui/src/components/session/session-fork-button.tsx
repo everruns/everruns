@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { GitFork, Loader2 } from "lucide-react";
@@ -9,7 +9,6 @@ import Link from "next/link";
 import { useForkSession } from "@/hooks/use-sessions";
 import { CHAT_THREAD_TAG, PLATFORM_CHAT_STARTER_TAG } from "@/lib/chat-threads";
 import { cn } from "@/lib/utils";
-import { useLocale } from "@/providers/locale-provider";
 
 export function SessionForkButton({
   sessionId,

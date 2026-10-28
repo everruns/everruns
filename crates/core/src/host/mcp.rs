@@ -289,26 +289,6 @@ pub(crate) async fn discover_turn_tool_definitions(
     let (listed, deferred) = crate::partition_deferred_mcp_servers(servers, &revealed);
     let mut definitions =
         discover_tool_definitions(cache, client, session_id.uuid(), &listed).await;
-    let descriptions: HashMap<_, _> = servers
-        .iter()
-        .map(|(name, server)| {
-            (
-                crate::mcp_server::sanitize_mcp_server_name(name),
-                (name, server),
-            )
-        })
-        .collect();
-    for definition in &mut definitions {
-        if let Some((prefix, _)) = crate::mcp_server::parse_mcp_tool_name(definition.name())
-            && let Some((name, server)) = descriptions.get(&prefix)
-        {
-            let metadata = serde_json::json!({"mcp_server": {"name": name, "description": server.description.as_deref().unwrap_or_default()}});
-            match definition {
-                ToolDefinition::Builtin(tool) => tool.hints.metadata = Some(metadata),
-                ToolDefinition::ClientSide(_) => {}
-            }
-        }
-    }
     if definitions.len().saturating_add(deferred.len())
         > crate::mcp::MCP_SESSION_DISCOVERY_MAX_TOOLS
     {
@@ -328,6 +308,7 @@ pub(crate) async fn discover_turn_tool_definitions(
                 .and_then(|server| server.description.as_deref()),
         )
     }));
+    attach_server_search_metadata(&mut definitions, servers);
     if let Err(error) = validate_session_catalog(&definitions) {
         tracing::error!(
             %error,
@@ -339,6 +320,52 @@ pub(crate) async fn discover_turn_tool_definitions(
         return Vec::new();
     }
     definitions
+}
+
+/// Apply current source context after discovery-cache lookup and placeholder assembly.
+fn attach_server_search_metadata(definitions: &mut [ToolDefinition], servers: &ScopedMcpServers) {
+    let by_prefix: HashMap<_, _> = servers
+        .iter()
+        .map(|(name, server)| {
+            (
+                crate::mcp_server::sanitize_mcp_server_name(name),
+                (name, server),
+            )
+        })
+        .collect();
+    for definition in definitions {
+        let prefix = crate::deferred_mcp_server_prefix(definition.name())
+            .map(str::to_owned)
+            .or_else(|| {
+                crate::mcp_server::parse_mcp_tool_name(definition.name()).map(|(prefix, _)| prefix)
+            });
+        let Some((name, server)) = prefix
+            .as_deref()
+            .and_then(|prefix| by_prefix.get(prefix).copied())
+        else {
+            continue;
+        };
+        let ToolDefinition::Builtin(tool) = definition else {
+            continue;
+        };
+        if let Some(context) = &server.capability_context {
+            tool.hints.capability_id = Some(context.id.clone());
+            tool.hints.capability_name = Some(context.name.clone());
+            tool.hints.capability_description = Some(context.description.clone());
+        }
+        let metadata = tool
+            .hints
+            .metadata
+            .get_or_insert_with(|| serde_json::json!({}));
+        if let Some(metadata) = metadata.as_object_mut() {
+            metadata.insert(
+                "mcp_server".into(),
+                serde_json::json!({
+                    "name": name, "description": server.description.as_deref().unwrap_or_default(),
+                }),
+            );
+        }
+    }
 }
 
 /// Map a server's raw `tools/list` result into prefixed tool definitions.
@@ -670,5 +697,96 @@ mod tests {
         let resolved = resolve_servers(&servers_with("docs_api", server));
         assert_eq!(resolved.len(), 1);
         assert_eq!(resolved[0].connection.name, "docs_api");
+    }
+
+    #[tokio::test]
+    async fn current_owner_context_updates_cached_tools_and_deferred_placeholders() {
+        use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
+        for deferred in [false, true] {
+            let egress = Arc::new(DiscoveryEgress {
+                requests: AtomicUsize::new(0),
+                status: AtomicU16::new(200),
+            });
+            let client = Arc::new(McpClient::new(
+                egress.clone(),
+                Arc::new(crate::mcp::NoAuthProvider),
+            ));
+            let cache = Arc::new(McpDiscoveryCache::new());
+            let storage = crate::host::in_memory::InMemorySessionStorageStore::new();
+            let session_id = crate::typed_id::SessionId::new();
+            let mut servers = servers_with(
+                "gateway",
+                ScopedMcpServer {
+                    url: "https://93.184.216.34/mcp".into(),
+                    deferred,
+                    description: Some("Geothermal telemetry".into()),
+                    capability_context: Some(crate::mcp_server::McpCapabilityContext {
+                        id: "retail".into(),
+                        name: "Retail operations".into(),
+                        description: "Cobalt warehouse".into(),
+                    }),
+                    ..Default::default()
+                },
+            );
+            let definitions = discover_turn_tool_definitions(
+                &cache,
+                client.clone(),
+                session_id,
+                &servers,
+                &storage,
+            )
+            .await;
+            assert_eq!(definitions.len(), 1);
+            assert_eq!(
+                definitions[0].hints().capability_description.as_deref(),
+                Some("Cobalt warehouse")
+            );
+            let index =
+                everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&definitions);
+            for query in ["cobalt", "geothermal"] {
+                let hits = index.search(query, 8, |_| true);
+                assert_eq!(hits.len(), 1, "{query}");
+                assert!(hits[0].server_match);
+                assert_eq!(hits[0].source.as_ref().unwrap().id, "gateway");
+            }
+            assert_eq!(
+                definitions[0].hints().metadata.as_ref().unwrap()["mcp_server"]["description"],
+                "Geothermal telemetry"
+            );
+            let requests = egress.requests.load(Ordering::SeqCst);
+            servers
+                .get_mut("gateway")
+                .unwrap()
+                .capability_context
+                .as_mut()
+                .unwrap()
+                .description = "Fresh invoice reconciliation".into();
+            let updated = discover_turn_tool_definitions(
+                &cache,
+                client.clone(),
+                session_id,
+                &servers,
+                &storage,
+            )
+            .await;
+            let index = everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&updated);
+            assert!(index.search("cobalt", 8, |_| true).is_empty());
+            assert_eq!(index.search("reconciliation", 8, |_| true).len(), 1);
+            servers.get_mut("gateway").unwrap().capability_context = None;
+            let unowned =
+                discover_turn_tool_definitions(&cache, client, session_id, &servers, &storage)
+                    .await;
+            assert!(
+                everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&unowned)
+                    .search("reconciliation", 8, |_| true)
+                    .is_empty()
+            );
+            assert_eq!(
+                egress.requests.load(Ordering::SeqCst),
+                requests,
+                "owner metadata must not invalidate transport discovery cache"
+            );
+            assert_eq!(requests == 0, deferred);
+        }
     }
 }

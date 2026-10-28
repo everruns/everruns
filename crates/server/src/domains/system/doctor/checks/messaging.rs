@@ -1,6 +1,6 @@
 use super::Findings;
-use super::replicas::Replicas;
-use crate::domains::system::doctor::instances::{Instance, InstanceRow};
+use super::replicas::{self, Replicas};
+use crate::domains::system::doctor::instances::InstanceRow;
 use crate::domains::system::doctor::{CheckArea, DoctorCheck, PROBE_TIMEOUT, SystemDoctor};
 use crate::live_updates::nats;
 use crate::valkey::ValkeyClient;
@@ -10,7 +10,7 @@ const AREA: CheckArea = CheckArea::Messaging;
 pub(super) async fn run(doctor: &SystemDoctor, replicas: &Replicas) -> Findings {
     let mut found = Findings::default();
     let env = &doctor.env;
-    let servers = replicas.live_count(&Instance::this_server().id);
+    let servers = replicas.live_count(replicas::this_id(doctor));
 
     let (nats_check, valkey_check) = tokio::join!(
         nats_check(env.nats_url.as_deref(), servers),

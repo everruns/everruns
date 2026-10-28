@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
@@ -19,10 +19,11 @@ import { Plus, ChevronRight, Plug, Link, Lock, Shield } from "lucide-react";
 import type { Capability, CapabilityId } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import {
+  localizedCapabilityCategory,
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
+
 import { cn } from "@/lib/utils";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { capabilitySelectable, rolloutFlagMap } from "@/lib/capability-availability";
@@ -71,7 +72,9 @@ export function CapabilityDialog({
             c.name.toLowerCase().includes(query) ||
             c.description.toLowerCase().includes(query) ||
             c.id.toLowerCase().includes(query) ||
-            (c.category && c.category.toLowerCase().includes(query)),
+            (c.category &&
+              (c.category.toLowerCase().includes(query) ||
+                localizedCapabilityCategory(c.category, locale).toLowerCase().includes(query))),
         )
       : available;
 
@@ -101,7 +104,7 @@ export function CapabilityDialog({
         capabilities: grouped.get(category)!,
       })),
     };
-  }, [capabilities, rolloutFlags, searchQuery]);
+  }, [capabilities, rolloutFlags, searchQuery, locale]);
 
   const toggleCategory = useCallback((category: string) => {
     setCollapsedCategories((prev) => {
@@ -161,7 +164,7 @@ export function CapabilityDialog({
                 const selectedInCategory = caps.filter((c) => selectedIds.has(c.id)).length;
 
                 return (
-                  <div key={category}>
+                  <div key={localizedCapabilityCategory(category, locale)}>
                     {/* Category header */}
                     <button
                       type="button"
@@ -171,7 +174,7 @@ export function CapabilityDialog({
                       <ChevronRight
                         className={cn("w-4 h-4 transition-transform", !isCollapsed && "rotate-90")}
                       />
-                      {category}
+                      {localizedCapabilityCategory(category, locale)}
                       <Badge variant="secondary" className="ml-auto">
                         {selectedInCategory}/{caps.length}
                       </Badge>

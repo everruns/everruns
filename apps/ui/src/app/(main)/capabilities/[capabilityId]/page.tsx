@@ -1,7 +1,11 @@
 "use client";
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useFormattingLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { use } from "react";
 import { useCapability, useCapabilities, usePageTitle } from "@/hooks";
@@ -24,11 +28,12 @@ import {
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import {
+  localizedCapabilityCategory,
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
 import { capabilityTurnedOff, rolloutFlagMap } from "@/lib/capability-availability";
-import { useLocale } from "@/providers/locale-provider";
+
 import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
 import { formatCountLabel } from "@/lib/formatting";
@@ -183,7 +188,10 @@ export default function CapabilityDetailPage({
             </span>
             {capability.category && (
               <span>
-                {ui("Category")} <span className="text-foreground">{capability.category}</span>
+                {ui("Category")}{" "}
+                <span className="text-foreground">
+                  {localizedCapabilityCategory(capability.category, locale)}
+                </span>
               </span>
             )}
           </>
@@ -289,7 +297,7 @@ export default function CapabilityDetailPage({
                 <div>
                   <p className="text-sm font-medium">{ui("Category")}</p>
                   <Badge variant="outline" className="mt-1">
-                    {capability.category}
+                    {localizedCapabilityCategory(capability.category, locale)}
                   </Badge>
                 </div>
               )}

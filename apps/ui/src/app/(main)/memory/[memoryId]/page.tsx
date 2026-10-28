@@ -1,7 +1,7 @@
 "use client";
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { MemoryIcon } from "@/components/icons/facet-icons";
 import { use, useState } from "react";
 import { AlertCircle, GitBranch, HardDrive, Pencil, RefreshCw } from "lucide-react";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { BarChart3, Clock, DollarSign, Play, Zap } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,8 +27,12 @@ function formatDuration(ms: number | null | undefined): string {
   return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
 }
 
-function formatOptionalDate(value: string | null | undefined): string {
-  return value ? formatDate(value) : "Never";
+function formatOptionalDate(
+  value: string | null | undefined,
+  locale: string,
+  never: string,
+): string {
+  return value ? formatDate(value, locale) : never;
 }
 
 function StatCard({
@@ -58,6 +62,7 @@ function StatCard({
 
 export function ResourceStatsPanel({ stats, isLoading, error }: ResourceStatsPanelProps) {
   const ui = useUiTranslations();
+  const { displayLocale } = useLocale();
   if (isLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -166,19 +171,19 @@ export function ResourceStatsPanel({ stats, isLoading, error }: ResourceStatsPan
             <div className="flex items-center justify-between gap-4 text-sm">
               <span className="text-muted-foreground">{ui("First session")}</span>
               <span className="text-right font-medium">
-                {formatOptionalDate(stats.first_session_at)}
+                {formatOptionalDate(stats.first_session_at, displayLocale, ui("Never"))}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4 text-sm">
               <span className="text-muted-foreground">{ui("Latest session")}</span>
               <span className="text-right font-medium">
-                {formatOptionalDate(stats.last_session_at)}
+                {formatOptionalDate(stats.last_session_at, displayLocale, ui("Never"))}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4 text-sm">
               <span className="text-muted-foreground">{ui("Latest execution")}</span>
               <span className="text-right font-medium">
-                {formatOptionalDate(stats.last_execution_at)}
+                {formatOptionalDate(stats.last_execution_at, displayLocale, ui("Never"))}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4 text-sm">

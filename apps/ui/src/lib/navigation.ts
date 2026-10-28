@@ -17,6 +17,7 @@ import {
   DurableIcon,
   EvalsIcon,
   HarnessDomainIcon,
+  HealthIcon,
   KnowledgeIcon,
   MemoryIcon,
   ObserverIcon,
@@ -171,7 +172,15 @@ export const defaultRegistriesNavigation: NavigationItem[] = [
   ...registryNavigationItems.map<NavigationItem>(
     ({ name, href, icon, keywords, description }: RegistryNavigationItem) => {
       const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
-      return { name, href, icon, keywords, description, flag, experimental: Boolean(flag) };
+      return {
+        name,
+        href,
+        icon,
+        keywords,
+        description,
+        flag,
+        experimental: Boolean(flag),
+      };
     },
   ),
   {
@@ -238,6 +247,13 @@ export const defaultBottomNavigation: NavigationItem[] = [
 
 export const defaultDurableNavigation: NavigationItem[] = [
   {
+    name: "Health",
+    description: "Check that every part of the install is set up right and working.",
+    href: "/system/health",
+    icon: HealthIcon,
+    keywords: ["doctor", "status", "diagnostics", "setup", "install", "versions"],
+  },
+  {
     name: "Monitoring",
     description: "Inspect running sessions, actors and leases.",
     href: "/durable",
@@ -294,7 +310,7 @@ export const defaultNavigationSections: NavigationSection[] = [
   { label: "Library", items: defaultRegistriesNavigation },
   { label: "Quality", items: defaultQualityNavigation },
   { items: defaultBottomNavigation },
-  { label: "Durable Execution", items: defaultDurableNavigation, defaultCollapsed: true },
+  { label: "System", items: defaultDurableNavigation, defaultCollapsed: true },
   { label: "Dev", items: defaultDevNavigation, devOnly: true },
 ];
 
@@ -372,8 +388,9 @@ export function visibleNavigationSections(
     .filter((section) => section.items.length > 0);
 }
 
+/** The System section: platform users only, like the pages it links to. */
 export function isDurableNavigationSection(section: NavigationSection): boolean {
   return section.items.some(
-    (item) => item.href === "/durable" || item.href.startsWith("/durable/"),
+    (item) => isUnder(item.href, "/durable") || isUnder(item.href, "/system"),
   );
 }

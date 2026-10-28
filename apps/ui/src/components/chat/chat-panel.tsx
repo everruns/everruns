@@ -1,7 +1,11 @@
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useDisplayLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
 import { usePageDraftTools } from "@/components/chat-mode/use-page-draft-tools";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -47,7 +51,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useLocale } from "@/providers/locale-provider";
+
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 interface ParsedSystemCommand {

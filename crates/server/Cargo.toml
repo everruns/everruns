@@ -96,7 +96,7 @@ cron = "0.17"
 inventory.workspace = true
 everruns-server-macros = { path = "../server-macros" }
 libc = "0.2"
-postgresql_embedded = { version = "0.21", default-features = false, features = ["tokio", "zonky", "tls-rustls-aws-lc-rs"] }
+postgresql_embedded = { version = "0.22", default-features = false, features = ["tokio", "zonky", "tls-rustls-aws-lc-rs"] }
 moka.workspace = true
 zip = { version = "9", default-features = false, features = ["deflate"] }
 urlencoding = "2"
@@ -137,6 +137,7 @@ image.workspace = true  # For image thumbnail generation
 
 # gRPC
 tonic.workspace = true
+prost.workspace = true
 prost-types.workspace = true
 serde_urlencoded = "0.7.1"
 url = "2"
@@ -156,7 +157,7 @@ everruns-sdk.workspace = true
 everruns-test-support = { path = "../test-support", default-features = false }
 # Template tests check the `github` capability enforces template settings.
 wiremock = "0.6"
-jsonschema = { version = "0.58.1", default-features = false }
+jsonschema = { version = "0.60.1", default-features = false }
 flate2.workspace = true
 tar.workspace = true
 # Mints ES256 personal-agent keys for the PACT tests (already linked via rustls).

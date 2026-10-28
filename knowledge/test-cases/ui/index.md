@@ -64,3 +64,5 @@
 
 * [Knowledge](knowledge/) - File collections, original binaries, extracted views and optional indexing.
 * [Work Chat](work_chat/) - Hosted consumer identity, interfaces and workspace boundaries.
+
+* [Customer tracing](tracing/) - Protected destinations, multi-target routing and delivery feedback.

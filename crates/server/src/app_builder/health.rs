@@ -1,10 +1,11 @@
 use crate::auth::config::AuthConfig;
 use crate::background::supervised_task::TaskSupervisor;
 use crate::domains::health_issues::service::SlackHealthService;
-use crate::domains::system::doctor::{self, DoctorEnv, SystemDoctor, instances};
+use crate::domains::system::doctor::{self, DoctorEnv, DoctorExtensions, SystemDoctor, instances};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::http::StatusCode;
 use axum::{Json, extract::State};
+use everruns_core::host::HostComposition;
 use everruns_durable::WorkflowEventStore;
 use serde::Serialize;
 use std::sync::Arc;
@@ -51,20 +52,30 @@ async fn ready(State(state): State<HealthState>) -> (StatusCode, Json<ReadyRespo
     }
 }
 
-/// The system doctor over this server's own services.
+/// The system doctor over this server's own services, exporting its
+/// findings as Prometheus gauges.
 pub(super) fn system_doctor(
     db: &Arc<StorageBackend>,
     workflow_store: &Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     encryption: &Option<Arc<EncryptionService>>,
     auth_config: &AuthConfig,
-    utility_llm_configured: bool,
+    host_composition: &HostComposition,
 ) -> Arc<SystemDoctor> {
-    Arc::new(SystemDoctor::new(
+    let utility_llm_configured = host_composition.utility_llm_service().is_configured();
+    let mut doctor = SystemDoctor::new(
         db.clone(),
         workflow_store.clone(),
         encryption.clone(),
         DoctorEnv::from_env(auth_config, utility_llm_configured),
-    ))
+    );
+    // A host's own checks (see `doctor::extension`).
+    if let Some(extensions) = host_composition.extension::<DoctorExtensions>() {
+        doctor = doctor.with_extensions(extensions.as_ref().clone());
+    }
+    let doctor = Arc::new(doctor);
+    // Its gauges are how alerting learns about a problem; see the sweep.
+    doctor::spawn_metrics_sweep(doctor.clone());
+    doctor
 }
 
 /// `/health` (liveness) and `/health/ready` (readiness).

@@ -1,0 +1,85 @@
+---
+title: Slate Icons and Brand
+description: The Facet domain icons, Lucide action icons, icon sizes, and how the Everruns logo is used in the UI and on documentation.
+slug: design-system/icons
+---
+
+import DsExample from "@docs-components/design-system/DsExample.astro";
+import DsFacetIcons from "@docs-components/design-system/DsFacetIcons.astro";
+import DsIcon from "@docs-components/design-system/DsIcon.astro";
+
+## Two families
+
+- **Facet** draws Everruns' own domain entities: agents, harnesses, sessions, models,
+  capabilities, sandboxes, and the rest. One glyph per domain, used everywhere that domain
+  appears: navigation, Settings, search, page mastheads, and as the fallback image of a record.
+- **Lucide** draws conventional actions, directions, and states: add, search, edit, close,
+  chevrons, alerts. Always with square caps and mitered joins (`.icon-sharp`).
+
+Official third-party marks (MCP, Slack, model providers) keep their own identity and are
+shown at native color, small, on white or smoke surfaces. Uploaded agent avatars and icons a
+person chose for a harness or capability also keep theirs.
+
+## Facet
+
+The agent mark, **Intent**, is solid: three separated, ascending planes. Every other glyph is a
+quiet geometric outline on a 24-unit artboard with a 1.75-unit stroke. Judge a glyph at 16px,
+the navigation size, first. The intent and acceptance bar live in
+[Facet iconography](https://github.com/everruns/everruns/blob/main/knowledge/ui/iconography.md);
+the paths live in [`apps/ui/src/components/icons/facet-icon-data.ts`](https://github.com/everruns/everruns/blob/main/apps/ui/src/components/icons/facet-icon-data.ts).
+
+The catalog below is rendered from those vector masters when this site builds, at 24px and at
+the 16px navigation size.
+
+<DsFacetIcons />
+
+Glyphs inherit the color of their surface. Selection uses the surrounding active state; there
+is no icon accent palette.
+
+## Sizes
+
+<DsExample>
+  <div class="ds-row" style="gap: 2rem; align-items: flex-end">
+    <span class="ds-stack" style="gap: 0.375rem; align-items: center; font-size: 12px"><DsIcon name="facet:agent" size={12} /><span class="ds-muted">12 badge</span></span>
+    <span class="ds-stack" style="gap: 0.375rem; align-items: center; font-size: 12px"><DsIcon name="facet:agent" size={14} /><span class="ds-muted">14 inline</span></span>
+    <span class="ds-stack" style="gap: 0.375rem; align-items: center; font-size: 12px"><DsIcon name="facet:agent" size={16} /><span class="ds-muted">16 default</span></span>
+    <span class="ds-stack" style="gap: 0.375rem; align-items: center; font-size: 12px"><DsIcon name="facet:agent" size={20} /><span class="ds-muted">20 card, tile</span></span>
+    <span class="ds-stack" style="gap: 0.375rem; align-items: center; font-size: 12px"><DsIcon name="facet:agent" size={40} /><span class="ds-muted">40 empty state</span></span>
+  </div>
+</DsExample>
+
+| Size | Where |
+|---|---|
+| 12px | Inside badges and chips. |
+| 14px | Inline with 12 to 13px text: search fields, detail rows, small buttons. |
+| 16px | The default: buttons, navigation, table actions. |
+| 20px | Card titles and the glyph inside the 40px masthead tile. |
+| 40px | Empty states. |
+
+Icons next to text are decorative and hidden from screen readers. An icon-only button needs an
+accessible name on the button.
+
+## Symbols in copy
+
+A small, deliberate set: `⌘` in shortcut hints (`⌘K`), `·` between inline metadata
+("12 sessions · 3 channels"), and `→` sparingly in copy, never as a control. No emoji anywhere:
+not in the product, the docs, or marketing. Experimental features use the Lucide flask, not
+a stamp or an emoji.
+
+## Logo
+
+Three interlocking rings in a navy to gold gradient: durability, scalability, reliability. The
+gradient exists only inside the logo.
+
+<DsExample>
+  <div class="ds-row" style="gap: 2rem">
+    <img src="/docs/favicon.svg" alt="Everruns logo" width="64" height="64" />
+    <span class="ds-row" style="gap: 0.5rem; font-size: 18px; font-weight: 600"><img src="/docs/favicon.svg" alt="" width="28" height="28" />Everruns</span>
+  </div>
+</DsExample>
+
+- Use the color logo on white, smoke, or a plain dark surface, and the mono logo where only one
+  color is available. Never clip, recolor, or set it on a busy background or on the dot grid.
+- Every logo asset is centered on the rings' centroid, not on its bounding box. The geometry,
+  the file list, and the rule for regenerating raster copies live in the
+  [brand specification](https://github.com/everruns/everruns/blob/main/knowledge/ui/brand.md).

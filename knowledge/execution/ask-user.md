@@ -62,6 +62,8 @@ The result distinguishes answered, declined, cancelled, and timed-out
 decisions. A decline is final and must not be re-asked. The result also says
 whether a user, timeout, or unattended policy supplied the answer; it does not
 carry user identity. Authenticated server-side handling owns attribution.
+The model must describe timeout and unattended values as automatic defaults,
+never as a person's answer or confirmation.
 
 ## Execution strategies
 

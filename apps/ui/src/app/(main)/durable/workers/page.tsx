@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -56,6 +56,8 @@ function WorkerRow({
   onDrain: (id: string) => void;
   onResume: (id: string) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const loadPercentage =
     worker.max_concurrency > 0 ? (worker.current_load / worker.max_concurrency) * 100 : 0;
@@ -138,7 +140,9 @@ function WorkerRow({
       </TableCell>
       <TableCell>
         <div className="text-sm">
-          <p className="text-success">{(worker.tasks_completed ?? 0).toLocaleString()}</p>
+          <p className="text-success">
+            {(worker.tasks_completed ?? 0).toLocaleString(displayLocale)}
+          </p>
           {(worker.tasks_failed ?? 0) > 0 && (
             <p className="text-xs text-destructive">
               {worker.tasks_failed} {ui("failed")}
@@ -153,9 +157,15 @@ function WorkerRow({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(worker.last_heartbeat_at), { addSuffix: true })}
+              {formatDistanceToNow(
+                new Date(worker.last_heartbeat_at),
+                { addSuffix: true },
+                displayLocale,
+              )}
             </TooltipTrigger>
-            <TooltipContent>{new Date(worker.last_heartbeat_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>
+              {new Date(worker.last_heartbeat_at).toLocaleString(displayLocale)}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>

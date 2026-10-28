@@ -64,6 +64,11 @@ pub use crate::model_discovery::DiscoveredModel;
 /// reports it under a transient status like 429.
 #[async_trait]
 pub trait ChatDriver: Send + Sync {
+    /// Provider-native offline requests, when implemented. Never falls back to chat.
+    fn batch_driver(&self) -> Option<&dyn crate::batch::BatchDriver> {
+        None
+    }
+
     /// Opt in on a supported provider/model, retaining the synchronous fallback.
     fn native_async_driver(
         &self,

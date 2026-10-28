@@ -2,6 +2,7 @@
 title: "Agents can discover approved MCP servers"
 description: "Agents can list approved organization MCP presets before adding a personal or chat-only server, using exact names without exposing credentials."
 date: 2026-10-26
+cloud: 2026-10-26
 kind: fix
 significance: notable
 products: [platform, cloud]

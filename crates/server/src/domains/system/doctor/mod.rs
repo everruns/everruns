@@ -15,7 +15,9 @@
 
 mod checks;
 mod env;
+pub mod extension;
 pub mod instances;
+pub mod preflight;
 pub mod types;
 
 #[cfg(test)]
@@ -23,6 +25,7 @@ mod tests;
 
 pub(crate) use checks::readiness;
 pub use env::DoctorEnv;
+pub use extension::{DoctorExtension, DoctorExtensions, DoctorFindings};
 pub use types::{CheckArea, CheckStatus, DoctorCheck, DoctorReport};
 
 use crate::storage::StorageBackend;
@@ -59,12 +62,70 @@ pub(crate) fn last_metrics_scrape() -> Option<DateTime<Utc>> {
     }
 }
 
+/// How often each server refreshes its doctor gauges.
+const METRICS_SWEEP: Duration = Duration::from_secs(60);
+
+/// A check's status as a gauge value: what an alert compares against.
+pub(crate) fn status_gauge(status: CheckStatus) -> f64 {
+    match status {
+        CheckStatus::Ok | CheckStatus::Info => 0.0,
+        CheckStatus::Warning => 1.0,
+        CheckStatus::Problem => 2.0,
+    }
+}
+
+/// Export the report as Prometheus gauges every [`METRICS_SWEEP`], so
+/// existing alerting covers the doctor with no new alert channel.
+///
+/// Decision: every replica sweeps, like the other DB-derived gauges, rather
+/// than one replica under a cluster lock. A gauge set only by the current
+/// lock holder would keep its last value on the replicas that lost the lock.
+/// The report cache keeps it to one run per replica per minute.
+pub fn spawn_metrics_sweep(doctor: Arc<SystemDoctor>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(METRICS_SWEEP);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            let report = doctor.report(false).await;
+            for check in &report.checks {
+                metrics::gauge!(
+                    crate::metrics_names::DOCTOR_CHECK_STATUS,
+                    "area" => area_label(check.area),
+                    "check" => check.id.clone(),
+                )
+                .set(status_gauge(check.status));
+            }
+            metrics::gauge!(crate::metrics_names::DOCTOR_STATUS).set(status_gauge(report.status));
+        }
+    })
+}
+
+fn area_label(area: CheckArea) -> &'static str {
+    match area {
+        CheckArea::ControlPlane => "control_plane",
+        CheckArea::Database => "database",
+        CheckArea::Workers => "workers",
+        CheckArea::Security => "security",
+        CheckArea::Messaging => "messaging",
+        CheckArea::Storage => "storage",
+        CheckArea::Observability => "observability",
+        CheckArea::Models => "models",
+        CheckArea::Integrations => "integrations",
+    }
+}
+
 /// Runs the checks against the live services of this server.
 pub struct SystemDoctor {
     pub(crate) db: Arc<StorageBackend>,
     pub(crate) workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub(crate) encryption: Option<Arc<EncryptionService>>,
     pub(crate) env: DoctorEnv,
+    /// Run from the command line rather than inside a server: the replica
+    /// checks must not count this process as a server.
+    pub(crate) preflight: bool,
+    /// Checks the host adds; see [`extension`].
+    pub(crate) extensions: DoctorExtensions,
     started: Instant,
     cache: Mutex<Option<(Instant, DoctorReport)>>,
 }
@@ -81,9 +142,23 @@ impl SystemDoctor {
             workflow_store,
             encryption,
             env,
+            preflight: false,
+            extensions: DoctorExtensions::default(),
             started: Instant::now(),
             cache: Mutex::new(None),
         }
+    }
+
+    /// Mark this doctor as a command-line run (see `preflight`).
+    pub fn preflight(mut self) -> Self {
+        self.preflight = true;
+        self
+    }
+
+    /// Add the host's own checks to every report.
+    pub fn with_extensions(mut self, extensions: DoctorExtensions) -> Self {
+        self.extensions = extensions;
+        self
     }
 
     /// How long this server has been running.

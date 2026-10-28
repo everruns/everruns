@@ -3,10 +3,10 @@ use everruns_contracts::knowledge::{IndexMode, KnowledgeQuery};
 use serde_json::{Value, json};
 use types::*;
 
-fn fixture() -> KnowledgeService {
+pub(super) fn fixture() -> KnowledgeService {
     KnowledgeService::files(Arc::new(crate::storage::StorageBackend::test_database()))
 }
-async fn create(service: &KnowledgeService, indexing: IndexMode) -> Collection {
+pub(super) async fn create(service: &KnowledgeService, indexing: IndexMode) -> Collection {
     service
         .db
         .replace_org_feature_flags(
@@ -31,7 +31,7 @@ async fn create(service: &KnowledgeService, indexing: IndexMode) -> Collection {
         .await
         .unwrap()
 }
-async fn write(
+pub(super) async fn write(
     service: &KnowledgeService,
     c: &Collection,
     p: &str,
@@ -1093,6 +1093,8 @@ async fn files_page_reads_the_path_index() {
     assert_eq!(page["next_cursor"], "/docs/0010100.md");
 }
 
+/// The file browser walks a collection one folder at a time: files directly in
+/// the folder, plus one entry per subfolder, in path order and paged by cursor.
 #[tokio::test]
 async fn streamed_original_memory_is_bounded_and_failed_transfer_cleans_segments() {
     let s = fixture();

@@ -14,16 +14,19 @@ tags:
 
 Verify that a user can use the Platform Chat global session to create a new agent end-to-end and then ask Platform Chat to invoke that agent — all from a single conversation. The chat must surface the new agent through clickable navigation links (not raw prefixed IDs), the run-agent flow must produce a coherent reply with structured tool blocks, and no harness-deletion error banners or raw tool-call leakage may appear.
 
-This test exercises the Platform Chat harness's catalog-backed `platform`
-capability path (`discover`, `query`, and `execute`) plus the chat UI's link
-rendering, tool-call formatting, and error-banner suppression.
+This test exercises the managed Platform Chat Agent's native Platform
+capability surface: bounded `tool_search` reveals prefixed operations, and
+individual calls use the canonical `{params, reason, context_revision}`
+envelope. The `everruns` shell remains available for composition when useful.
+The test also covers chat link rendering, tool-call formatting, and error-banner
+suppression.
 
 ## Preconditions
 
 - Control-plane running (`just start-dev` or `just start-all`)
 - An LLM API key configured (OpenAI, Anthropic, or Gemini — Platform Chat works with any frontier chat model)
-- The signed-in user has a fresh Platform Chat thread (or is willing to start one). The old singleton `/chat` page was retired with EVE-855; a Platform Chat conversation is now an ordinary chat thread bound to the managed Platform Chat on Generic
-- Default org has the managed Platform Chat and the canonical levels and deprecated Generic provisioned (handled by org init)
+- The signed-in user has a fresh Platform Chat thread (or is willing to start one). The old singleton `/chat` page was retired with EVE-855; a Platform Chat conversation is now an ordinary chat thread bound to the managed Platform Chat Agent on Bashkit Worker.
+- Default org has the managed Platform Chat Agent and Bashkit Worker provisioned (handled by org init).
 
 ## Test Data
 
@@ -88,9 +91,11 @@ rendering, tool-call formatting, and error-banner suppression.
 
 ### Capability Wiring
 
-- Platform Chat session uses the managed Platform Chat on Generic.
-- The trace uses `discover` when command names or schemas are unknown, `query`
-  for reads, and `execute` for the requested mutations.
+- Platform Chat session uses the managed Platform Chat Agent on Bashkit Worker.
+- Bounded `tool_search` reveals operation schemas as needed; the trace calls
+  individual `platform_<wire_name>` functions with canonical payloads under
+  `params`. Change calls carry `reason` and `context_revision` as separate
+  metadata. The shell may be used for useful multi-operation composition.
 - Underlying agent/session commands succeed without authorization,
   multitenancy, or quota errors.
 

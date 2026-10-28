@@ -14,28 +14,9 @@ pub(super) mod workers;
 
 pub(crate) use database::readiness;
 
-use super::{DoctorCheck, SystemDoctor};
+use super::{SystemDoctor, extension};
 
-#[derive(Default)]
-pub(super) struct Findings {
-    pub checks: Vec<DoctorCheck>,
-    pub setup: Vec<String>,
-}
-
-impl Findings {
-    fn check(&mut self, check: DoctorCheck) {
-        self.checks.push(check);
-    }
-
-    fn fact(&mut self, fact: impl Into<String>) {
-        self.setup.push(fact.into());
-    }
-
-    fn extend(&mut self, other: Findings) {
-        self.checks.extend(other.checks);
-        self.setup.extend(other.setup);
-    }
-}
+pub(super) type Findings = super::DoctorFindings;
 
 /// Run every area concurrently; the slowest network probe bounds the run.
 pub(super) async fn run_all(doctor: &SystemDoctor) -> Findings {
@@ -51,6 +32,13 @@ pub(super) async fn run_all(doctor: &SystemDoctor) -> Findings {
         observability::run(doctor),
         models::run(doctor),
     );
+    let extensions = futures::future::join_all(
+        doctor
+            .extensions
+            .iter()
+            .map(|extension| extension::run_bounded(extension.as_ref())),
+    );
+    let extensions = extensions.await;
     let mut all = Findings::default();
     all.extend(replicas::run(doctor, &replicas));
     for area in [
@@ -64,6 +52,9 @@ pub(super) async fn run_all(doctor: &SystemDoctor) -> Findings {
         models,
     ] {
         all.extend(area);
+    }
+    for found in extensions {
+        all.extend(found);
     }
     all
 }

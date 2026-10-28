@@ -1,5 +1,6 @@
 use super::Findings;
-use crate::domains::system::doctor::{CheckArea, DoctorCheck, SystemDoctor};
+use crate::auth::config::AuthMode;
+use crate::domains::system::doctor::{CheckArea, DoctorCheck, DoctorEnv, SystemDoctor};
 
 const AREA: CheckArea = CheckArea::ControlPlane;
 
@@ -41,7 +42,25 @@ pub(super) async fn run(doctor: &SystemDoctor) -> Findings {
             )
             .fix("Set UTILITY_OPENAI_API_KEY or UTILITY_OPENROUTER_API_KEY.")
     });
+    found.check(email_check(env));
     found
+}
+
+/// System email: password resets, invitations and sign-up confirmations.
+pub(crate) fn email_check(env: &DoctorEnv) -> DoctorCheck {
+    let check = DoctorCheck::new(AREA, "control_plane.email", "System email");
+    match &env.email {
+        Ok(Some(provider)) => check.ok(format!("System email is sent through {provider}.")),
+        Ok(None) if matches!(env.auth_mode, AuthMode::Full | AuthMode::External) => check
+            .warning("System email is off.")
+            .why("Invitations, password resets and sign-up confirmations are never sent.")
+            .fix("Set EMAIL_PROVIDER=resend and RESEND_API_KEY."),
+        Ok(None) => check.info("System email is off. Nothing on this install needs it."),
+        Err(error) => check
+            .problem(format!("System email is misconfigured: {error}."))
+            .why("The server sends no email, so invitations and password resets are lost.")
+            .fix("Set EMAIL_PROVIDER=resend with RESEND_API_KEY, or unset EMAIL_PROVIDER."),
+    }
 }
 
 /// Whether `url` points at this machine.

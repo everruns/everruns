@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useRef, useState } from "react";
@@ -105,6 +105,8 @@ function MarketplaceCard({
   onRemove: (m: Marketplace) => void;
   onBrowse: (m: Marketplace) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const syncMutation = useSyncMarketplace();
   const updateMutation = useUpdateMarketplace(marketplace.id);
@@ -139,7 +141,8 @@ function MarketplaceCard({
         <div className="space-y-1 text-sm text-muted-foreground mb-4">
           {marketplace.last_synced_at ? (
             <p>
-              {ui("Last synced:")} {new Date(marketplace.last_synced_at).toLocaleString()}
+              {ui("Last synced:")}{" "}
+              {new Date(marketplace.last_synced_at).toLocaleString(displayLocale)}
               {marketplace.last_synced_sha && (
                 <span className="ml-1 font-mono text-xs">
                   ({truncateSha(marketplace.last_synced_sha)})
