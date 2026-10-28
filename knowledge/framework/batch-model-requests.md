@@ -21,7 +21,8 @@ optional [provider contract](../../crates/contracts/src/batch.rs), never a
 synchronous fallback or a streaming driver wrapper.
 
 Built-in implementations cover Anthropic Message Batches, OpenAI Responses and
-Chat Completions batches, and Gemini Developer API inline batches. They reuse
+Chat Completions batches, Gemini Developer API inline batches, Mistral inline jobs, Groq Files/Batches,
+and explicitly configured Fireworks dataset jobs. They reuse
 the interactive codecs so request layout and response normalization have one
 owner. Capability is exposed through the optional driver hook and a local
 provider query; it does not promise account/model eligibility. Providers must explicitly expose batch support. Wasm and Engine-hosted
@@ -48,7 +49,7 @@ be retried automatically. A caller records durable intent before submitting and
 reconciles with the provider when acceptance or ticket persistence is lost.
 Polling and collecting may repeat with the same ticket. Cancellation is
 asynchronous; collect available completed requests or handle a provider job-level
-failure when no per-item output exists. OpenAI's staged upload and job creation
+failure when no per-item output exists. OpenAI's and Groq's staged upload and job creation
 are separate effects. Neither ambiguous mutation is replayed or cleaned up
 automatically, since a staging file can already belong to a live job.
 Partial OpenAI cancellation uses trusted ticket IDs only after output counts
@@ -78,3 +79,15 @@ submit-now/collect-later job must survive client/future drops. Only an explicit
 application decision cancels its whole job; borrowed/shared provider jobs are
 never cancelled as cleanup. An abandoned submission future still requires intent
 reconciliation because remote acceptance may have happened.
+
+Fireworks requires an explicit account and exact trusted artifact origins. Its
+control plane stays on the configured inference origin; signed storage requests
+carry no provider authentication and follow no redirects. Artifact origins never
+come from tickets or returned job metadata. Dataset creation, upload and job
+creation are independent external effects, with no implicit cleanup or replay.
+The published Fireworks API exposes deletion without a cancellation contract;
+the batch cancellation operation therefore fails explicitly rather than deleting
+collectable state. The public guide owns provider-specific limits and partial
+result support. Native HTTP peers in the
+[additional-provider acceptance suite](../../crates/everruns/tests/provider_batch_additional.rs)
+cover these boundaries without paid calls.

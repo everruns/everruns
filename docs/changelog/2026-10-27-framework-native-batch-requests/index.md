@@ -44,6 +44,6 @@ hosting limitations, with a second example for offline evals.
 You can also [submit existing message lists](/changelog/2026-10-28-framework-batch-message-lists/)
 through the same batch client.
 
-The same batch API now supports OpenAI Responses, OpenAI Chat Completions and
-Gemini inline jobs. See [Batch Model Requests](/framework/batch-model-requests/)
-for provider limits and the updated multi-provider examples.
+Batch support includes OpenAI, Gemini, Mistral, Groq and Fireworks. See
+[Batch Model Requests](/framework/batch-model-requests/) for configuration and
+limits. Fireworks cancellation is unsupported.

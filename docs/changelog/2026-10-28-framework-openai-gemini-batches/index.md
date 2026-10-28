@@ -34,3 +34,9 @@ Persist the ticket in application storage and reconstruct the same scoped
 provider to collect later. Gemini uses its `gemini` feature and `Gemini` provider.
 Provider limits and cancellation outcomes remain explicit; ambiguous uploads or
 submissions require reconciliation before creating more work.
+
+## Update 2026-10-28
+
+The same API also supports Mistral inline jobs, Groq Files/Batches and Fireworks
+dataset jobs. Fireworks requires explicit account/artifact configuration and
+does not support cancellation.

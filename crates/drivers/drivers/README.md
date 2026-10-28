@@ -29,6 +29,7 @@ vendor features turn on the matching features here and re-export this crate as
 | `codex` | `codex` | Legacy Codex | Codex Responses |
 | `cloudflare` | `cloudflare` | Cloudflare AI Gateway | OpenAI Chat Completions |
 | `fireworks` | `fireworks` | Fireworks AI | OpenAI Chat Completions |
+| `groq` | `groq` | Groq | OpenAI Chat Completions |
 | `gemini` | `gemini` | Google Gemini | Gemini API |
 | `mai` | `mai` | Microsoft AI (Foundry) | OpenAI Chat Completions |
 | `meta` | `meta` | Meta | Open Responses |
@@ -314,3 +315,13 @@ login-complete response with their own HTML page.
 
 The `chatgpt-login` example provides a private-file handoff for remote self-hosted
 installations. See [ChatGPT plan](https://everruns.com/docs/features/chatgpt/).
+
+## Native offline batches
+
+Native Rust providers expose `ChatDriver::batch_driver()` for Anthropic,
+OpenAI Responses / Chat Completions, Gemini inline, Mistral inline and Groq
+Files/Batches. Fireworks requires `FireworksChatDriver::with_batch` with an
+explicit account and trusted signed-artifact origins. The Framework
+[`Batch` guide](https://everruns.com/docs/framework/batch-model-requests/)
+shows persistence, recovery, limits and unsupported hosting modes. There is no
+synchronous fallback. Fireworks cancellation is explicitly unsupported.

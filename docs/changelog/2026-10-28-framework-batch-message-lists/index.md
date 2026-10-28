@@ -43,6 +43,6 @@ for both styles and the updated runnable eval example.
 
 ## Update 2026-10-28
 
-The same batch API now supports OpenAI Responses, OpenAI Chat Completions and
-Gemini inline jobs. See [Batch Model Requests](/framework/batch-model-requests/)
-for provider limits and the updated multi-provider examples.
+Batch support includes OpenAI, Gemini, Mistral, Groq and Fireworks. See
+[Batch Model Requests](/framework/batch-model-requests/) for configuration and
+limits. Fireworks cancellation is unsupported.

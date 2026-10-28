@@ -6,6 +6,7 @@
 //! `openrouter` for [`openrouter::OpenRouter`], `anthropic` for
 //! `anthropic::Anthropic`, `gemini` for `gemini::Gemini`, or `bedrock` for
 //! `bedrock::Bedrock` (static AWS keys or the AWS default credential chain).
+//! `mistral`, `groq` and `fireworks` enable their corresponding provider values.
 //!
 //! When an application does not care *which* vendor it reaches — a script, a
 //! test harness, a tool that runs on whoever's machine — [`from_env`] picks the
@@ -17,8 +18,14 @@ use std::fmt;
 pub mod anthropic;
 #[cfg(feature = "bedrock")]
 pub mod bedrock;
+#[cfg(feature = "fireworks")]
+pub mod fireworks;
 #[cfg(feature = "gemini")]
 pub mod gemini;
+#[cfg(feature = "groq")]
+pub mod groq;
+#[cfg(feature = "mistral")]
+pub mod mistral;
 #[cfg(feature = "openai")]
 pub mod openai;
 #[cfg(feature = "openrouter")]
@@ -48,7 +55,7 @@ impl fmt::Display for FromEnvError {
                 vars.join(", ")
             ),
             FromEnvError::NoProvidersCompiled => f.write_str(
-                "no provider feature is enabled; build `everruns` with `openai`, `openrouter`, `anthropic` or `gemini`",
+                "no provider feature is enabled; build `everruns` with `openai`, `openrouter`, `anthropic`, `gemini`, `mistral`, `groq` or `fireworks`",
             ),
         }
     }
@@ -59,7 +66,7 @@ impl std::error::Error for FromEnvError {}
 /// Configure whichever provider the environment carries credentials for.
 ///
 /// Enabled providers are tried in a fixed, documented order — OpenAI,
-/// OpenRouter, Anthropic, then Gemini — so the choice is reproducible rather
+/// OpenRouter, Anthropic, Gemini, Mistral, Groq, then Fireworks — so the choice is reproducible rather
 /// than dependent on feature resolution or iteration order. Each is resolved
 /// through its own `from_env`, which reads the variables that provider's
 /// driver declares
@@ -126,6 +133,22 @@ pub fn from_env() -> Result<crate::Provider, FromEnvError> {
             Ok(config) => return Ok(config.into()),
             Err(gemini::GeminiError::MissingEnvVar { vars: declared }) => vars.extend(declared),
         }
+    }
+
+    #[cfg(feature = "mistral")]
+    match mistral::Mistral::from_env() {
+        Ok(config) => return Ok(config.into()),
+        Err(mistral::MistralError::MissingEnvVar { vars: declared }) => vars.extend(declared),
+    }
+    #[cfg(feature = "groq")]
+    match groq::Groq::from_env() {
+        Ok(config) => return Ok(config.into()),
+        Err(groq::GroqError::MissingEnvVar { vars: declared }) => vars.extend(declared),
+    }
+    #[cfg(feature = "fireworks")]
+    match fireworks::Fireworks::from_env() {
+        Ok(config) => return Ok(config.into()),
+        Err(_) => vars.extend(everruns_drivers::fireworks::descriptor().declared_env_vars()),
     }
 
     if vars.is_empty() {

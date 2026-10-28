@@ -11,6 +11,8 @@ use crate::{LlmCallConfig, LlmResponse, ProviderEndpoint, driver_registry::Messa
 pub enum BatchError {
     #[error("provider does not support native batches")]
     Unsupported,
+    #[error("provider batch operation is unsupported: {0}")]
+    UnsupportedOperation(&'static str),
     #[error("invalid batch request: {0}")]
     InvalidRequest(&'static str),
     #[error("ticket does not belong to this batch client")]

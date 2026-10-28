@@ -8,9 +8,6 @@
 // 2. OpenAICompletionsChatDriver - Uses Chat Completions API
 //    For backward compatibility with /v1/chat/completions endpoint.
 
-#[cfg(not(target_arch = "wasm32"))]
-mod batch;
-
 use async_trait::async_trait;
 use chrono::TimeZone;
 
@@ -97,7 +94,7 @@ pub fn completions_provider(
 /// ```
 #[derive(Clone)]
 pub struct OpenAIChatDriver {
-    inner: OpenResponsesProtocolChatDriver,
+    pub(crate) inner: OpenResponsesProtocolChatDriver,
 }
 
 impl OpenAIChatDriver {
@@ -348,7 +345,7 @@ impl std::fmt::Debug for OpenAIChatDriver {
 /// ```
 #[derive(Clone)]
 pub struct OpenAICompletionsChatDriver {
-    inner: OpenAIProtocolChatDriver,
+    pub(crate) inner: OpenAIProtocolChatDriver,
 }
 
 impl OpenAICompletionsChatDriver {

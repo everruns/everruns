@@ -1,6 +1,6 @@
 ---
 title: Batch Model Requests
-description: Submit independent model completions through Anthropic, OpenAI or Gemini batch APIs, persist a credential-free ticket, and collect results in another process.
+description: Submit independent model completions through native provider batch APIs, persist a credential-free ticket, and collect results in another process.
 ---
 
 Use `everruns::batch::Batch` for offline classification, extraction, or evaluation
@@ -18,8 +18,11 @@ sessions keep their existing behavior.
 | OpenAI direct Responses API | Native Rust, `openai` feature; Files upload and Batches submit, poll, collect, cancel |
 | OpenAI direct Chat Completions API | Same lifecycle, using `OpenAICompletionsChatDriver`; tickets are separate from Responses tickets |
 | Gemini Developer API | Native Rust, `gemini` feature; inline batch submit, poll, collect, cancel; Files and Vertex AI modes are unsupported |
-| OpenAI/Gemini custom endpoints | Must implement the complete corresponding native batch API; a chat-compatible endpoint alone is insufficient. Azure batch configurations are not qualified here |
-| OpenRouter, Bedrock, ChatGPT, Fireworks and remaining built-in drivers | Unsupported; returns `BatchError::Unsupported`, with no synchronous fallback |
+| Mistral La Plateforme | Native Rust, `mistral` feature; inline request submission, polling, inline/file result collection and cancellation |
+| Groq Chat Completions | Native Rust, `groq` feature; Files/Batches submit, poll, collect and cancel; audio batches are outside this completion API |
+| Fireworks | Native Rust, `fireworks` feature; explicit account and artifact policy; dataset upload, native batch job submission, poll and collect. Cancellation returns `UnsupportedOperation` |
+| Custom endpoints | Must implement the complete corresponding native batch API; a chat-compatible endpoint alone is insufficient. Azure batch configurations are not qualified here |
+| OpenRouter, Bedrock, ChatGPT and remaining built-in drivers | Unsupported; returns `BatchError::Unsupported`, with no synchronous fallback |
 | Legacy endpoint-bound `into_boxed_driver()` / `DriverRegistry::create_chat_driver()` adapters | No batch hook: retain the configured `Provider` for ticket endpoint binding instead. Registry request-option/credential wrappers also fail closed |
 | Custom providers | Implement the optional `batch::BatchDriver` SPI and expose it through `ChatDriver::batch_driver` |
 | Native applications with memory, files, SQLite or another application database | Supported direct API; application owns ticket persistence and scheduling |
@@ -218,7 +221,7 @@ let ticket = client.request("review_001", Model::from("gpt-6.1-sol")
 For Gemini, enable `gemini`, use `Gemini::from_env()` from
 `everruns::providers::gemini`, select a Gemini model and its own tenant/account
 scope. `submit_requests(Vec<BatchRequest>)`, tickets and lifecycle operations
-stay the same. Requests in each OpenAI or Gemini job must use one model.
+stay the same. Requests in each OpenAI, Gemini, Mistral, Groq or Fireworks job must use one model.
 
 To select OpenAI Chat Completions explicitly, assemble the provider with its
 re-exported driver and your trusted credential source:
@@ -232,12 +235,54 @@ let provider = Provider::new("openai", OpenAICompletionsChatDriver::new())
 assert!(provider.supports_batch());
 ```
 
+### Mistral, Groq and Fireworks
+
+Mistral and Groq use the same lifecycle with their own features and provider
+values: `Mistral::from_env()` (`MISTRAL_API_KEY`) and `Groq::from_env()`
+(`GROQ_API_KEY`). Groq is also a first-class interactive Chat Completions driver,
+with model discovery and the shared message/tool codec. Only batch-compatible
+models are eligible; driver support does not imply account or model access.
+
+Fireworks separates its inference and management paths and requires an account.
+Configure exact trusted storage origins before submitting; obtain your account's
+artifact origin from its storage configuration or a trusted existing dataset.
+For example, an account whose signed downloads use `storage.googleapis.com`:
+
+```rust
+use everruns::{batch::Batch, providers::fireworks::{Fireworks, FireworksBatchConfig}};
+
+# fn example() -> Result<(), Box<dyn std::error::Error>> {
+let config = FireworksBatchConfig::new("my-fireworks-account")?
+    .artifact_origin("https://storage.googleapis.com")?;
+let client = Batch::new(Fireworks::from_env()?.batch(config), "tenant/fireworks-account");
+# let _ = client;
+# Ok(())
+# }
+```
+
+Enable `fireworks`. The key comes from `FIREWORKS_API_KEY`; account and artifact
+policy stay explicit. Add each exact storage origin your account uses. Downloads
+carry only the signed URL, never provider authentication or configured headers;
+redirects and untrusted origins fail closed. A custom endpoint must serve both
+management `/v1` and inference `/inference/v1` paths on the configured origin.
+Changing the account requires a separate client even if its tenant scope was
+accidentally reused.
+
+Fireworks' published API offers job deletion rather than a cancellation contract.
+`cancel` returns `BatchError::UnsupportedOperation`; it never deletes jobs or
+datasets. Manage deletion explicitly in the provider console after preserving
+needed results. Failed/cancelled/expired Fireworks jobs return `JobFailed`; this
+version does not collect partial datasets from those job states.
+
 ### Provider limits and terminal results
 
 | Driver | Submission boundary | Collection and cancellation |
 | --- | --- | --- |
 | Anthropic | 100,000 requests, 256 MiB | Native result for every request; completed work remains collectable after cancellation |
 | OpenAI Responses / Chat Completions | 50,000 requests, 200 MB including this implementation's small multipart envelope; one model | Merges output and error JSONL by `custom_id`. Cancelled/expired jobs may omit unprocessed requests: ticket IDs and validated provider counts identify these, preserving completed results |
+| Mistral | Inline submission only, at most 10,000 requests and 20 MB encoded body; one model, 24-hour job timeout | Native inline results or output/error files, correlated by `custom_id`; cancelled/expired omissions require verified counts and original ticket IDs |
+| Groq | 50,000 requests, 200 MB including the multipart envelope; one model, 24-hour processing window | Native output/error files and verified count mapping preserve completed requests on cancellation or expiry |
+| Fireworks | At most 50,000 requests and 100 MB including the multipart envelope; one model; provider default job window | Downloads up to 16 signed artifacts with an aggregate configured response-byte budget. Missing/duplicate/unknown request IDs fail closed |
 | Gemini Developer API | Inline only, 20 MB encoded body, at most 100,000 requests; one model | Maps `metadata.key`, including inline per-item errors. A failed/cancelled job without inline outputs returns `BatchError::JobFailed`; missing outputs are never invented |
 
 Account/model quotas can impose lower limits. Split jobs explicitly. Gemini's
@@ -246,13 +291,23 @@ OpenAI global validation failures also return `JobFailed`, separate from a list
 of per-item failures. Missing successful/error files or inconsistent counts fail
 collection rather than being relabelled as cancellation.
 
-OpenAI submission uploads a `purpose=batch` file before creating a job. These
+OpenAI and Groq submission upload a `purpose=batch` file before creating a job. These
 are separate effects. An uncertain upload or job creation returns
 `SubmissionUncertain`; a definite rejection can still leave an uploaded file.
 The library does not automatically delete input/output files, cancel shared jobs,
 or follow provider-supplied URLs. Reconcile files and jobs in your own account,
 apply your retention policy and collect results before provider retention expires.
-See the current [OpenAI batch lifecycle](https://developers.openai.com/api/docs/guides/batch)
+Fireworks dataset creation, upload and job creation are separate external effects
+too. No stage is automatically replayed or deleted, including staging artifacts
+left after rejection. Persist intent before submitting and reconcile ambiguous
+responses through provider job/dataset listings before trying again. Mistral
+inline submission has one create operation; an ambiguous response still needs
+reconciliation. Provider retention and account quotas apply to all artifacts.
+
+See the current [Mistral batch lifecycle](https://docs.mistral.ai/studio/batch-processing),
+[Groq batch lifecycle](https://console.groq.com/docs/batch),
+[Fireworks batch lifecycle](https://docs.fireworks.ai/guides/batch-inference),
+[OpenAI batch lifecycle](https://developers.openai.com/api/docs/guides/batch)
 and [Gemini batch lifecycle](https://ai.google.dev/gemini-api/docs/batch-api).
 
 OpenAI batch function schemas explicitly use non-strict arguments, preserving
@@ -298,6 +353,13 @@ cargo run -p everruns --features openai --example batch_classification -- collec
 
 # Gemini uses GEMINI_API_KEY (or GOOGLE_API_KEY).
 BATCH_PROVIDER=gemini cargo run -p everruns --features gemini --example batch_eval
+# Mistral and Groq use MISTRAL_API_KEY and GROQ_API_KEY respectively.
+BATCH_PROVIDER=mistral cargo run -p everruns --features mistral --example batch_eval
+BATCH_PROVIDER=groq cargo run -p everruns --features groq --example batch_eval
+# Fireworks also needs explicit account and trusted storage origin.
+export FIREWORKS_ACCOUNT_ID=my-fireworks-account
+export FIREWORKS_ARTIFACT_ORIGIN=https://storage.googleapis.com
+BATCH_PROVIDER=fireworks cargo run -p everruns --features fireworks --example batch_eval
 ```
 
 The [classification example](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/batch_classification.rs)
@@ -375,7 +437,9 @@ ended jobs return `Ended`.
 - Tickets are serialized routing data, not signed capabilities. Authorize their
   storage and use through your application. Do not pool work across tenants.
   Provider error bodies and endpoint URLs are excluded from batch errors.
-  Result URLs are ignored; collection stays on the configured provider endpoint.
+  Result URLs are ignored except for Fireworks signed artifacts: those are
+  fetched only from explicitly trusted origins with no provider credentials.
+  Job operations stay on the configured provider origin.
 - Usage reports token counts, not a locally estimated bill. Consult the
   provider's [current batch pricing and retention rules](https://platform.claude.com/docs/en/build-with-claude/batch-processing).
 
