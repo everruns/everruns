@@ -46,43 +46,50 @@ describe("interface language preference", () => {
     expect(screen.getByText("Agents")).toBeInTheDocument();
   });
 
-  it("stages adopted language changes, supports Undo, and applies only on Save", async () => {
-    global.structuredClone = (v) => JSON.parse(JSON.stringify(v));
-    let adapter!: PageDraftAdapter;
-    const mode: ChatModeState = {
-      page: { route: "/settings/profile", label: "Account" },
-      pageContainer: { current: null },
-      open: true,
-      setOpen: () => {},
-      actions: [],
-      recordAction: () => {},
-      registerPage: (_, value) => {
-        if (value) adapter = value;
-        return () => {};
-      },
-    };
-    render(
-      <LocaleProvider>
-        <PageChatProvider value={mode}>
-          <Sample />
-        </PageChatProvider>
-      </LocaleProvider>,
-    );
-    const before = adapter.read(adapter.describe().binding);
-    act(() => {
-      adapter.patch(before.binding, before.revision, { language: "uk" });
-    });
-    expect(screen.getByText("Agents")).toBeInTheDocument();
-    expect(localStorage.getItem("everruns.ui-language")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Interface language"), { target: { value: "uk" } });
-    expect(screen.getByText("Agents")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(screen.getByText("Агенти")).toBeInTheDocument());
-    expect(screen.getByText("en-US")).toBeInTheDocument();
-    expect(localStorage.getItem("everruns.ui-language")).toBe("uk");
-  });
+  it.each(["uk", "fr", "de", "es", "zh-CN", "en-GB"])(
+    "stages adopted %s changes, supports Undo, and applies only on Save",
+    async (language) => {
+      global.structuredClone = (v) => JSON.parse(JSON.stringify(v));
+      let adapter!: PageDraftAdapter;
+      const mode: ChatModeState = {
+        page: { route: "/settings/profile", label: "Account" },
+        pageContainer: { current: null },
+        open: true,
+        setOpen: () => {},
+        actions: [],
+        recordAction: () => {},
+        registerPage: (_, value) => {
+          if (value) adapter = value;
+          return () => {};
+        },
+      };
+      render(
+        <LocaleProvider>
+          <PageChatProvider value={mode}>
+            <Sample />
+          </PageChatProvider>
+        </LocaleProvider>,
+      );
+      const before = adapter.read(adapter.describe().binding);
+      act(() => {
+        adapter.patch(before.binding, before.revision, { language });
+      });
+      expect(screen.getByText("Agents")).toBeInTheDocument();
+      expect(localStorage.getItem("everruns.ui-language")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+      expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText("Interface language"), {
+        target: { value: language },
+      });
+      expect(screen.getByText("Agents")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() =>
+        expect(document.documentElement.lang).toBe(language === "zh-CN" ? "zh-Hans" : language),
+      );
+      expect(screen.getByText("en-US")).toBeInTheDocument();
+      expect(localStorage.getItem("everruns.ui-language")).toBe(language);
+    },
+  );
 });
 
 describe.each([

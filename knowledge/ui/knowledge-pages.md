@@ -67,6 +67,10 @@ The adopted workspace shares [the page-aware Chat contract](chat-mode.md).
 Collection settings, source connection and search-account metadata keep their
 typed drafts; explicit submit controls persist them. Clean settings follow server
 refreshes, while dirty work is preserved and conflicting saves are blocked.
+JSON formatting alone does not leave a saved collection dirty. A selected-field
+history inverse preserves every other current collection setting, including
+indexing, model/account selection and path rules, even though the update command
+replaces the complete definition.
 Displayed collection/source/search state and visible tree entries have bounded
 metadata projections, without file bodies, search excerpts, credential bindings or
 raw source errors. File-write and upload controls stay manual. A split workspace

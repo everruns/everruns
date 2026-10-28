@@ -8,6 +8,10 @@ import {
 // Independent field fixtures make additions/removals visible in review. Every
 // declared field exercises the real patch controller and authorization checks.
 const fixtures: Record<string, [Record<string, unknown>, Record<string, unknown>]> = {
+  tracingRoutingDraftSchema: [
+    { mode: "inherit", destination_ids: [] },
+    { mode: "replace", destination_ids: ["00000000-0000-4000-8000-000000000001"] },
+  ],
   virtualUserCreateDraftSchema: [
     { usage: "service", name: "", description: "", locale: "en", timezone: "UTC" },
     {

@@ -93,6 +93,17 @@ An inventory entry is a coverage decision, not a passing manual execution record
 13. Repeat the four flag combinations and display modes. Preserve form and Chat
     drafts while opening/closing the split. Full Chat has one composer; history
     has none. New subchat creates an independent conversation on first send.
+14. Include Tracing settings and the Agent routing drawer. Destination rows expose
+    bounded status metadata without endpoints, credentials or raw delivery errors.
+    Stage routing and destination selections; organization defaults keep their
+    fixed routing mode. Loading/error states mask underlying editors even with
+    cached data. Destination credentials and receiver actions remain manual.
+15. Repeat interface-language draft/Save/Undo with every offered language, including
+    regional English and Simplified Chinese. The registered language choices and
+    the Chat patch schema must agree.
+16. Save collection name and description together. Undo only the name and verify
+    the description, indexing, embedding/search account and path rules remain at
+    their latest saved values. Equivalent JSON key order must not disable Undo.
 
 ## Expected Result
 

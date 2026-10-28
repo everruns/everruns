@@ -369,6 +369,8 @@ starts a fresh observation baseline while History remains available.
 Selected-field Undo runs through the resource's normal update validation,
 permissions and manager context. Unsupported old values refuse the inverse and
 keep its receipt; the UI must not treat a failed inverse as a successful Undo.
+Replacement-style update commands receive current values for unselected settings
+so a field inverse cannot reset other saved configuration through input defaults.
 Secrets and protected authority remain current. A dirty form keeps its values
 when the saved definition changes and blocks Save until Discard rebases it.
 Dismissing review markers does not remove that conflict.

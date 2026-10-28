@@ -1,6 +1,65 @@
 import { expect, test } from "@playwright/test";
 import { DOCS_ID, PLAYBOOKS_ID, mockKnowledgeApi } from "./fixtures/knowledge-app";
 
+for (const role of ["owner", "admin", "member"] as const) {
+  test(`new Tracing UI respects ${role} access beside Chat`, async ({ context, page, baseURL }) => {
+    await context.addCookies([
+      { name: "access_token", value: "e2e-only", domain: new URL(baseURL!).hostname, path: "/" },
+    ]);
+    await mockKnowledgeApi(page, { chat: true, role });
+    await page.route("**/api/v1/tracing/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const json = path.endsWith("/defaults")
+        ? { revision: 1, policy: { mode: "replace", destination_ids: [] } }
+        : [
+            {
+              id: "00000000-0000-4000-8000-000000000001",
+              revision: 1,
+              config: {
+                name: "Fictional receiver",
+                provider: "otlp",
+                endpoint: "https://example.test",
+                project_id: null,
+                capture_content: false,
+                capture_reasoning: false,
+                enabled: false,
+              },
+              last_error: null,
+              last_attempt_at: null,
+              last_accepted_at: null,
+              dropped_events: 0,
+              organization_default: false,
+              agent_selections: 0,
+            },
+          ];
+      await route.fulfill({ json });
+    });
+    await page.goto("/settings/tracing");
+    await expect(page.getByRole("cell", { name: /Fictional receiver/ })).toBeVisible();
+    await page.keyboard.press("Control+j");
+    await expect(page.getByRole("region", { name: "Current page" })).toBeVisible();
+    await page
+      .getByRole("button", {
+        name: role === "member" ? "View defaults" : "Edit defaults",
+        exact: true,
+      })
+      .click();
+    const selection = page.getByRole("checkbox");
+    if (role === "member") {
+      await expect(selection).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Add destination", exact: true })).toHaveCount(
+        0,
+      );
+    } else {
+      await selection.check();
+      await expect(page.getByRole("button", { name: "Save changes", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "Add destination", exact: true }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    }
+  });
+}
+
 // Rendered browser coverage uses fictional API fixtures. Real LLM protocol,
 // authority and revision checks have separate integration/controller coverage.
 for (const chat of [false, true])

@@ -19,6 +19,7 @@ selections apply atomically; private profile history stays owner-only.
 Knowledge tabs provide current collection, source, search and visible-file context.
 Agent/Harness translations join saved review; interface language, trigger quick
 edits and manager notes support staged changes. Conflicting drafts stay intact.
+Tracing routing joins review; collection field Undo preserves other settings.
 Protected sheets, credentials and approvals retain their manual controls.
 
 **New subchat** starts an independent conversation. Full Chat shows one conversation;

@@ -2,6 +2,11 @@
 
 ## 2026-10-28
 
+- Qualified page-aware Chat against the new language catalog and Tracing surfaces.
+  Fixed collection saved-state comparisons and selected-field history inverses
+  retaining unrelated replacement settings. See [Chat mode](ui/chat-mode.md) and
+  [Knowledge pages](ui/knowledge-pages.md).
+
 - Extended interface, built-in resource display and deterministic backend localization
   with French, German, Spanish, Simplified Chinese and British English. Browser
   preference negotiation and regional formatting remain separate from execution locale.

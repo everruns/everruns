@@ -38,6 +38,7 @@
     "settings/organization/page.tsx",
     "settings/personal-access-tokens/page.tsx",
     "settings/profile/page.tsx",
+    "settings/tracing/page.tsx",
     "settings/user-profile/page.tsx",
     "skills/[skillId]/page.tsx",
     "skills/page.tsx",

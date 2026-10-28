@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { HistorySheet } from "@/components/entity-actions/history-sheet";
-import { z } from "zod";
+import { tracingRoutingDraftSchema } from "@/components/chat-mode/page-form-schemas";
 import { useOrg } from "@/providers/org-provider";
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useTracingDestinations, useTracingPolicy, useRefreshTracing } from "@/hooks/use-tracing";
@@ -13,6 +13,7 @@ import {
   type RoutingMode,
 } from "@/lib/api/tracing";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { ManualPageContext } from "@/components/chat-mode/manual-page-context";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -25,12 +26,6 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 
-const schema = z
-  .object({
-    mode: z.enum(["inherit", "add", "replace", "off"]),
-    destination_ids: z.array(z.string().uuid()).max(8),
-  })
-  .strict();
 const modes: [RoutingMode, string][] = [
   ["inherit", "Use organization defaults"],
   ["add", "Add to organization defaults"],
@@ -71,10 +66,19 @@ export function TracingRoutingForm({ agentId }: { agentId?: string }) {
     entityType: "tracing_policy",
     entityId: agentId ?? currentOrg?.public_id,
     label: ui("Tracing"),
-    schema,
+    schema: tracingRoutingDraftSchema,
     values: draft,
     dirty,
-    writable: canManage && !busy,
+    writable:
+      canManage &&
+      !busy &&
+      !query.isLoading &&
+      !query.error &&
+      !destinations.isLoading &&
+      !destinations.error &&
+      !defaults.isLoading &&
+      !defaults.error,
+    readonlyFields: agentId ? [] : ["mode"],
     baseline: String(query.data?.revision ?? 0),
     apply: (values) => {
       setDraft(values);
@@ -114,10 +118,16 @@ export function TracingRoutingForm({ agentId }: { agentId?: string }) {
     }
   }
   if (query.isLoading || destinations.isLoading || defaults.isLoading)
-    return <p className="text-sm text-muted-foreground">{ui("Loading tracing…")}</p>;
+    return (
+      <>
+        <ManualPageContext label="Loading tracing" />
+        <p className="text-sm text-muted-foreground">{ui("Loading tracing…")}</p>
+      </>
+    );
   if (query.error || destinations.error || defaults.error)
     return (
       <div role="alert" className="space-y-2">
+        <ManualPageContext label="Tracing unavailable" />
         <p>{ui("Could not load tracing")}</p>
         <Button
           variant="outline"

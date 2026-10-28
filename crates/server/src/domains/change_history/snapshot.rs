@@ -579,6 +579,27 @@ pub(super) fn update_params(command: &str) -> Option<Map<String, Value>> {
     Some(params)
 }
 
+/// Replacement-style commands default omitted settings instead of patching them.
+/// A field inverse must send CURRENT values for every unselected setting.
+pub(super) fn preserve_replacement_fields(
+    kind: EntityKind,
+    entity_ref: &str,
+    params: &mut Value,
+    current: &Value,
+    fields: &[String],
+) -> Result<(), CommandError> {
+    if !matches!(kind, EntityKind::Knowledge | EntityKind::TracingPolicy) {
+        return Ok(());
+    }
+    let (_, preserved) = restore_call(kind, entity_ref, current, current)?;
+    for (field, value) in preserved.as_object().into_iter().flatten() {
+        if !fields.contains(field) {
+            params[field] = value.clone();
+        }
+    }
+    Ok(())
+}
+
 /// `kind`'s update command and the params that make the entity look like
 /// `snapshot`: every snapshot field the command takes, never a secret.
 pub(super) fn restore_call(

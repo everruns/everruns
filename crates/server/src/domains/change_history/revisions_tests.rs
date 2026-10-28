@@ -47,6 +47,38 @@ fn with_reason(ctx: &Ctx, reason: &str) -> Ctx {
     )
 }
 
+#[test]
+fn knowledge_field_inverse_keeps_unselected_replacement_settings() {
+    let id = "kn_00000000000040008000000000000001";
+    let current = json!({
+        "name": "Reviewed", "description": "Keep the new description",
+        "indexing": "hybrid",
+        "embedding_model_id": "00000000-0000-4000-8000-000000000002",
+        "indexer_id": "00000000-0000-4000-8000-000000000003",
+        "rules": {"index_exclude": ["drafts/**"]}
+    });
+    let mut inverse = json!({"collection_id": id, "name": "Original"});
+    snapshot::preserve_replacement_fields(
+        EntityKind::Knowledge,
+        id,
+        &mut inverse,
+        &current,
+        &["name".into()],
+    )
+    .unwrap();
+    let mut expected = current.clone();
+    expected["name"] = json!("Original");
+    expected["collection_id"] = json!(id);
+    assert_eq!(inverse, expected);
+    // Exercise the real replacement input, whose defaults previously erased
+    // every omitted field even though the selected name inverse succeeded.
+    inverse.as_object_mut().unwrap().remove("collection_id");
+    let input: crate::domains::knowledge::types::CollectionInput =
+        serde_json::from_value(inverse).unwrap();
+    assert_eq!(input.description, "Keep the new description");
+    assert_eq!(input.rules, current["rules"]);
+}
+
 #[tokio::test]
 async fn guarded_harness_restore_preserves_other_fields_and_refuses_stale_undo() {
     let ctx = owner();

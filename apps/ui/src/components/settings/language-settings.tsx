@@ -1,12 +1,14 @@
 "use client";
 
 import { useLocale } from "@/providers/locale-provider";
-import { interfaceLocales } from "@/lib/locale-registry";
+import { interfaceLocales, type SupportedLocale } from "@/lib/locale-registry";
 import { Label } from "@/components/ui/label";
 import { z } from "zod";
 import { usePageSettingsDraft } from "@/components/chat-mode/use-page-settings-draft";
 
-const schema = z.strictObject({ language: z.union([z.literal("system"), z.enum(interfaceLocales)]) });
+const schema = z.strictObject({
+  language: z.enum(["system", ...(Object.keys(interfaceLocales) as SupportedLocale[])]),
+});
 
 /** UI language is a device preference, independent of the runtime virtual-user locale. */
 export function LanguageSettings() {
