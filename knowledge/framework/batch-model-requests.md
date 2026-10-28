@@ -14,7 +14,8 @@ tags:
 
 Provider-native batch work begins at the direct Framework completion boundary.
 The public [Batch API](../../crates/everruns/src/batch.rs) accepts independent
-completions, returns a credential-free ticket and exposes explicit lifecycle
+completions or explicit shared message/configuration values, returns a
+credential-free ticket and exposes explicit lifecycle
 operations. Existing interactive calls keep their behavior. Batch support is an
 optional [provider contract](../../crates/contracts/src/batch.rs), never a
 synchronous fallback or a streaming driver wrapper.
@@ -24,6 +25,10 @@ the Messages encoder so reasoning, tool schemas and message layout have one
 owner. Providers must explicitly expose batch support. Wasm and Engine-hosted
 batch execution are outside this implementation; the public
 [guide](../../docs/framework/batch-model-requests.md) owns the support matrix.
+
+The two input paths share whole-batch validation and ticket creation. Explicit
+request lists reuse the provider-message contract already used by core; they do
+not introduce a second wire schema or implicitly resolve stored attachments.
 
 ## Recovery and isolation
 

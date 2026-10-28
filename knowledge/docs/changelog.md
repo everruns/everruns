@@ -161,6 +161,11 @@ Rules for the body:
   describing it; a breaking change shows the before and after. The changelog
   check fails an entry without one, unless a UI-only entry names the screenshot
   still to capture in `visual:` (a build warning until it is captured).
+- Entries describing Framework API or behavior changes must include a short,
+  compilable Rust example showing the affected public API, including relevant
+  imports and required Cargo features. An example-launch command, screenshot
+  or link alone does not satisfy this requirement. Show before and after for
+  breaking changes. Compile-check provider examples without executing live calls.
 - Docs links sit in the text, with the page title or the feature name as
   the link text in the sentence that needs it, never as a list beside the
   entry. `links.docs` stays as the machine-readable index, and the check fails
