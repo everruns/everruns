@@ -75,6 +75,7 @@
 //   observability records, never a turn's input or state. `head_sequence`
 //   is still the log's, so the cursor and the fence see every event.
 
+mod capability_admission;
 mod detached;
 mod journal_admission;
 pub(super) mod rows;

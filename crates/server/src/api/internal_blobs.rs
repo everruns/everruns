@@ -146,7 +146,7 @@ async fn require_blob_authority(
     use crate::worker_link::grpc_service::authority::{self, WorkerAuthority};
     match authority::resolve(request.extensions()) {
         Ok(WorkerAuthority::LegacyWorker | WorkerAuthority::Development) => next.run(request).await,
-        Ok(WorkerAuthority::ActorJournal(_)) => (
+        Ok(WorkerAuthority::ActorJournal(_) | WorkerAuthority::VerifiedJournal(_)) => (
             StatusCode::FORBIDDEN,
             "Worker assignment does not permit blob access",
         )

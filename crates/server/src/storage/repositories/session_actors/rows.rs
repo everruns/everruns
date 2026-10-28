@@ -7,6 +7,17 @@ use sqlx::FromRow;
 
 use crate::storage::EventRow;
 
+/// Server-resolved journal selectors; references, not credential material.
+#[derive(Clone, Debug, PartialEq, Eq, FromRow)]
+pub struct WorkerJournalCapabilityBinding {
+    pub(crate) grant_id: uuid::Uuid,
+    pub(crate) executor_id: uuid::Uuid,
+    pub(crate) org_id: i64,
+    pub(crate) session_id: SessionId,
+    pub(crate) holder: String,
+    pub(crate) fence: i64,
+}
+
 /// One `session_actors` row: whether a session has work for a worker, and who
 /// runs it. Holds no turn state; the session's event log is that.
 #[derive(Debug, Clone, FromRow, Columns)]
