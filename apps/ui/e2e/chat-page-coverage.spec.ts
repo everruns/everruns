@@ -35,7 +35,7 @@ for (const role of ["owner", "admin", "member"] as const) {
       await route.fulfill({ json });
     });
     await page.goto("/settings/tracing");
-    await expect(page.getByRole("cell", { name: /Fictional receiver/ })).toBeVisible();
+      await expect(page.getByRole("cell", { name: /^Fictional receiver/ })).toBeVisible();
     await page.keyboard.press("Control+j");
     await expect(page.getByRole("region", { name: "Current page" })).toBeVisible();
     await page

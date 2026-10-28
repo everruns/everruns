@@ -178,6 +178,13 @@ with their scorer collection read-only; metadata edits preserve them.
 Credential-bearing URL fields disable their adapter and incoming URL patches are
 validated. No redacted credential is ever written back as a form value.
 
+Tracing provides bounded destination status rows and a routing draft with normal
+Save/Discard and history. Organization defaults retain their fixed routing mode.
+Loading or failed policy reads mask underlying editors, including cached-data
+failures. Receiver credentials, content capture and delivery actions remain manual.
+Interface-language drafts use the registered locale catalog and affect this device
+only; execution locale and resource history remain separate.
+
 Providers have independent details, tracing and advanced Save forms. Their shared
 page binding returns named forms and permits one named form per patch. A collection
 uses the page title for its context chip, rather than the last registered form. Child
