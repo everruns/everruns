@@ -1,5 +1,10 @@
 import { messages as tracing } from "./messages/uk/tracing";
+import { messages as zh } from "./messages/zh-CN";
+import { messages as es } from "./messages/es";
+import { messages as de } from "./messages/de";
+import { messages as fr } from "./messages/fr";
 // Product-owned source messages are gettext-style IDs. Never pass user content.
+import { messages as britishMessages } from "./messages/en-GB";
 import { messages as catalog0 } from "./messages/uk/agents-01";
 import { messages as catalog1 } from "./messages/uk/agents-02";
 import { messages as catalog2 } from "./messages/uk/agents-03";
@@ -45,3 +50,14 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   catalog19,
   tracing,
 );
+
+/** Product catalogs use null-prototype maps so hostile lookup keys fall back safely. */
+export const uiMessagesByLocale: Readonly<Record<string, Readonly<Record<string, string>>>> =
+  Object.assign(Object.create(null), {
+    uk: uiMessages,
+    fr,
+    de,
+    es,
+    "zh-CN": zh,
+    "en-GB": Object.assign(Object.create(null), britishMessages),
+  });

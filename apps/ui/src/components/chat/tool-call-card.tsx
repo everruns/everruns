@@ -1,10 +1,10 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState } from "react";
 import type { Message } from "@/lib/api/types";
 import { isToolCallContent, isToolResultContent } from "@/lib/api/types";
-import { useLocale } from "@/providers/locale-provider";
+
 import { failureTextClass } from "./failure-severity";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 import {

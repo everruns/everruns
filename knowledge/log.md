@@ -1,5 +1,11 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-28
+
+- Extended interface, built-in resource display and deterministic backend localization
+  with French, German, Spanish, Simplified Chinese and British English. Browser
+  preference negotiation and regional formatting remain separate from execution locale.
+
 ## 2026-10-27
 
 - Shell filesystem checks now use metadata to recognize empty workspace directories across the command-backed worker transport. Recursive copy preserves destination directory layout before any child is written. See [Bashkit requirements](execution/bashkit-requirements.md).
@@ -20,6 +26,8 @@
 - History and manager-context changes now select their REST/command integration contract before merge, including the first mutation's restorable baseline. See [CI Build Time](project/ci-build-time.md).
 
 - Added the [System Doctor](operations/system-doctor.md): platform-wide checks with plain-language fixes over `/v1/system/doctor` and `everruns system doctor`, and a `/health/ready` readiness probe.
+
+- Attested short provider retries retain their own verified invocation without granting ordinary schedules personal authority. Added bounded proof and membership checks plus native MCP continuation coverage; clarified automatic question-default attribution and incomplete work reports. See [runtime identity](runtime-resources/virtual-users.md), [Ask User](execution/ask-user.md) and [work reports](execution/work-reports.md).
 
 ## 2026-10-26
 

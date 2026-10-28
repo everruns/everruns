@@ -1,7 +1,11 @@
 "use client";
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useFormattingLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { AgentIcon } from "@/components/icons/facet-icons";
@@ -37,7 +41,7 @@ import {
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
+
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { formatCountLabel, pluralize } from "@/lib/formatting";
 import {

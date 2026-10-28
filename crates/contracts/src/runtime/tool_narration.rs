@@ -14,6 +14,9 @@
 
 mod action;
 mod outcome;
+mod phrasing;
+use phrasing::{localized_labeled_phrase, operation_narration, phrase3, pick};
+
 pub use action::{narrate_labeled_action, narration_detail};
 pub use outcome::{narrate_grep_files, narrate_shell_exec};
 
@@ -21,7 +24,7 @@ use serde_json::Value;
 
 use crate::runtime::localization::{
     BackendLocale, backend_strings, format_more_actions, localized_tool_display_name,
-    resolve_backend_locale,
+    resolve_backend_locale, runtime_text,
 };
 use crate::runtime::session_files::SessionFileSystem;
 use crate::runtime::session_path::WORKSPACE_PREFIX;
@@ -203,12 +206,6 @@ fn is_uk(locale: Option<&str>) -> bool {
     resolve_backend_locale(locale) == BackendLocale::Uk
 }
 
-type Verbs<'a> = (&'a str, &'a str, &'a str);
-
-fn pick<'a>(locale: Option<&str>, en: Verbs<'a>, uk: Verbs<'a>) -> Verbs<'a> {
-    if is_uk(locale) { uk } else { en }
-}
-
 /// `"{verb} {target}"`, or the bare verb when `target` is empty/absent.
 pub fn generic_phrase(
     verb_started: &str,
@@ -227,10 +224,6 @@ pub fn generic_phrase(
         Some(target) if !target.is_empty() => format!("{verb} {target}"),
         _ => verb.to_string(),
     }
-}
-
-fn phrase3(verbs: Verbs, target: Option<String>, phase: ToolNarrationPhase) -> String {
-    generic_phrase(verbs.0, verbs.1, verbs.2, target, phase)
 }
 
 /// `"{verb}: {value}"` when a value is present, otherwise the bare `"{verb}"`.
@@ -320,12 +313,13 @@ pub fn narrate_read_file(
     let target = path_target(arguments, &["path"]);
     if is_uk(locale) {
         phrase3(
+            locale,
             ("Читаю", "Прочитав", "Не вдалося прочитати"),
             Some(target.unwrap_or_else(|| "файл".to_string())),
             phase,
         )
     } else {
-        phrase3(("Reading", "Read", "Failed to read"), target, phase)
+        phrase3(locale, ("Reading", "Read", "Failed to read"), target, phase)
     }
 }
 
@@ -333,6 +327,7 @@ pub fn narrate_read_file(
 pub fn narrate_read_many_files(phase: ToolNarrationPhase, locale: Option<&str>) -> String {
     if is_uk(locale) {
         phrase3(
+            locale,
             (
                 "Читаю кілька файлів",
                 "Прочитав кілька файлів",
@@ -343,6 +338,7 @@ pub fn narrate_read_many_files(phase: ToolNarrationPhase, locale: Option<&str>) 
         )
     } else {
         phrase3(
+            locale,
             ("Reading", "Read", "Failed to read"),
             Some("multiple files".to_string()),
             phase,
@@ -359,12 +355,18 @@ pub fn narrate_write_file(
     let target = path_target(arguments, &["path"]);
     if is_uk(locale) {
         phrase3(
+            locale,
             ("Записую", "Записав", "Не вдалося записати"),
             Some(target.unwrap_or_else(|| "файл".to_string())),
             phase,
         )
     } else {
-        phrase3(("Writing", "Wrote", "Failed to write"), target, phase)
+        phrase3(
+            locale,
+            ("Writing", "Wrote", "Failed to write"),
+            target,
+            phase,
+        )
     }
 }
 
@@ -377,12 +379,18 @@ pub fn narrate_edit_file(
     let target = path_target(arguments, &["path"]);
     if is_uk(locale) {
         phrase3(
+            locale,
             ("Редагую", "Відредагував", "Не вдалося відредагувати"),
             Some(target.unwrap_or_else(|| "файл".to_string())),
             phase,
         )
     } else {
-        phrase3(("Editing", "Edited", "Failed to edit"), target, phase)
+        phrase3(
+            locale,
+            ("Editing", "Edited", "Failed to edit"),
+            target,
+            phase,
+        )
     }
 }
 
@@ -395,12 +403,14 @@ pub fn narrate_append_file(
     let target = path_target(arguments, &["path"]);
     if is_uk(locale) {
         phrase3(
+            locale,
             ("Дописую у", "Дописав у", "Не вдалося дописати у"),
             Some(target.unwrap_or_else(|| "файл".to_string())),
             phase,
         )
     } else {
         phrase3(
+            locale,
             ("Appending to", "Appended to", "Failed to append to"),
             target,
             phase,
@@ -418,12 +428,13 @@ pub fn narrate_move_file(
         .or_else(|| path_target(arguments, &["path"]));
     if is_uk(locale) {
         phrase3(
+            locale,
             ("Переміщую", "Перемістив", "Не вдалося перемістити"),
             Some(target.unwrap_or_else(|| "файл".to_string())),
             phase,
         )
     } else {
-        phrase3(("Moving", "Moved", "Failed to move"), target, phase)
+        phrase3(locale, ("Moving", "Moved", "Failed to move"), target, phase)
     }
 }
 
@@ -436,12 +447,18 @@ pub fn narrate_delete_file(
     let target = path_target(arguments, &["path"]);
     if is_uk(locale) {
         phrase3(
+            locale,
             ("Видаляю", "Видалив", "Не вдалося видалити"),
             Some(target.unwrap_or_else(|| "файл".to_string())),
             phase,
         )
     } else {
-        phrase3(("Deleting", "Deleted", "Failed to delete"), target, phase)
+        phrase3(
+            locale,
+            ("Deleting", "Deleted", "Failed to delete"),
+            target,
+            phase,
+        )
     }
 }
 
@@ -461,7 +478,7 @@ pub fn narrate_mkdir(arguments: &Value, phase: ToolNarrationPhase, locale: Optio
             "Не вдалося створити директорію",
         ),
     );
-    phrase3(verbs, target, phase)
+    phrase3(locale, verbs, target, phase)
 }
 
 /// `stat_file` narration.
@@ -473,12 +490,18 @@ pub fn narrate_stat_file(
     let target = path_target(arguments, &["path"]);
     if is_uk(locale) {
         phrase3(
+            locale,
             ("Перевіряю", "Перевірив", "Не вдалося перевірити"),
             Some(target.unwrap_or_else(|| "файл".to_string())),
             phase,
         )
     } else {
-        phrase3(("Checking", "Checked", "Failed to check"), target, phase)
+        phrase3(
+            locale,
+            ("Checking", "Checked", "Failed to check"),
+            target,
+            phase,
+        )
     }
 }
 
@@ -503,7 +526,7 @@ pub fn narrate_list_directory(
             "Не вдалося переглянути файли у",
         ),
     );
-    phrase3(verbs, Some(target), phase)
+    phrase3(locale, verbs, Some(target), phase)
 }
 
 /// Web-search narration ("Searched web for rust").
@@ -515,7 +538,8 @@ pub fn narrate_search_web(
     let query = arg_str(arguments, &["query", "q", "search"]).map(|query| truncate(query, 48));
     if is_uk(locale) {
         match query {
-            Some(query) => labeled_phrase(
+            Some(query) => localized_labeled_phrase(
+                locale,
                 "Шукаю у вебі",
                 "Завершив пошук у вебі",
                 "Не вдалося знайти у вебі",
@@ -523,6 +547,7 @@ pub fn narrate_search_web(
                 phase,
             ),
             None => phrase3(
+                locale,
                 (
                     "Шукаю у вебі",
                     "Завершив пошук у вебі",
@@ -534,9 +559,10 @@ pub fn narrate_search_web(
         }
     } else {
         let target = query
-            .map(|query| format!("web for {query}"))
-            .unwrap_or_else(|| "web".to_string());
+            .map(|query| runtime_text(locale, "web for {query}").replace("{query}", &query))
+            .unwrap_or_else(|| runtime_text(locale, "web").to_string());
         phrase3(
+            locale,
             ("Searching", "Searched", "Failed to search"),
             Some(target),
             phase,
@@ -553,9 +579,23 @@ pub fn narrate_provider_search(
     let query = safe_arg_str(arguments, &["query", "q", "search", "pattern"])
         .map(|query| truncate(query, 48));
     if is_uk(locale) {
-        labeled_phrase("Шукаю", "Завершив пошук", "Не вдалося знайти", query, phase)
+        localized_labeled_phrase(
+            locale,
+            "Шукаю",
+            "Завершив пошук",
+            "Не вдалося знайти",
+            query,
+            phase,
+        )
     } else {
-        labeled_phrase("Searching", "Searched", "Could not search", query, phase)
+        localized_labeled_phrase(
+            locale,
+            "Searching",
+            "Searched",
+            "Could not search",
+            query,
+            phase,
+        )
     }
 }
 
@@ -594,7 +634,7 @@ pub fn narrate_secret_store(
             "list" => ("Listing", "Listed", "Failed to list"),
             _ => ("Using", "Used", "Failed to use"),
         };
-        phrase3(verbs, Some(target), phase)
+        phrase3(locale, verbs, Some(target), phase)
     }
 }
 
@@ -639,7 +679,7 @@ pub fn narrate_subagent_spawn(
     locale: Option<&str>,
 ) -> String {
     let uk = is_uk(locale);
-    let kind = spawn_agent_kind(arguments, uk);
+    let kind = runtime_text(locale, spawn_agent_kind(arguments, uk));
     let name = arg_str(arguments, &["name"]).map(|name| truncate(name, 40));
     let identity = spawn_agent_identity(arguments);
 
@@ -657,7 +697,7 @@ pub fn narrate_subagent_spawn(
         ("Launching", "Launched", "Failed to launch"),
         ("Запускаю", "Запустив", "Не вдалося запустити"),
     );
-    phrase3(verbs, Some(target), phase)
+    phrase3(locale, verbs, Some(target), phase)
 }
 
 /// `write_todos` narration.
@@ -672,9 +712,14 @@ pub fn narrate_write_todos(phase: ToolNarrationPhase, locale: Option<&str>) -> S
         ),
     );
     if is_uk(locale) {
-        phrase3(verbs, None, phase)
+        phrase3(locale, verbs, None, phase)
     } else {
-        phrase3(verbs, Some("task list".to_string()), phase)
+        phrase3(
+            locale,
+            verbs,
+            Some(runtime_text(locale, "task list").to_string()),
+            phase,
+        )
     }
 }
 
@@ -710,7 +755,7 @@ pub fn narrate_web_fetch(
             ("Отримую URL", "Отримав URL", "Не вдалося отримати URL"),
         )
     };
-    labeled_phrase(verbs.0, verbs.1, verbs.2, value, phase)
+    localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, value, phase)
 }
 
 /// `tool_search` narration.
@@ -733,7 +778,7 @@ pub fn narrate_tool_search(
             "Не вдалося знайти інструменти",
         ),
     );
-    labeled_phrase(verbs.0, verbs.1, verbs.2, value, phase)
+    localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, value, phase)
 }
 
 /// Skill family narration: `activate_skill`, `read_skill`, `list_skills`.
@@ -741,25 +786,28 @@ pub fn narrate_skill(
     tool_name: &str,
     arguments: &Value,
     phase: ToolNarrationPhase,
-    _locale: Option<&str>,
+    locale: Option<&str>,
 ) -> Option<String> {
     let value = safe_arg_str(arguments, &["name", "skill", "id"]).map(|v| truncate(v, 48));
     let phrase = match tool_name {
-        "activate_skill" => labeled_phrase(
+        "activate_skill" => localized_labeled_phrase(
+            locale,
             "Activating skill",
             "Activated skill",
             "Could not activate skill",
             value,
             phase,
         ),
-        "read_skill" => labeled_phrase(
+        "read_skill" => localized_labeled_phrase(
+            locale,
             "Reading skill",
             "Read skill",
             "Could not read skill",
             value,
             phase,
         ),
-        "write_skill" => labeled_phrase(
+        "write_skill" => localized_labeled_phrase(
+            locale,
             "Writing skill",
             "Wrote skill",
             "Could not write skill",
@@ -799,7 +847,7 @@ pub fn narrate_write_session_title(
             "Не вдалося оновити назву сесії",
         ),
     );
-    labeled_phrase(verbs.0, verbs.1, verbs.2, title, phase)
+    localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, title, phase)
 }
 
 /// `get_session_info` narration.
@@ -817,7 +865,7 @@ pub fn narrate_get_session_info(phase: ToolNarrationPhase, locale: Option<&str>)
             "Не вдалося прочитати інформацію про сесію",
         ),
     );
-    phrase3(verbs, None, phase)
+    phrase3(locale, verbs, None, phase)
 }
 
 /// Session-schedule family narration: `create_schedule`, `cancel_schedule`,
@@ -844,7 +892,7 @@ pub fn narrate_session_schedule(
                     "Не вдалося створити розклад",
                 ),
             );
-            labeled_phrase(verbs.0, verbs.1, verbs.2, detail, phase)
+            localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, detail, phase)
         }
         "cancel_schedule" => {
             let verbs = pick(
@@ -860,7 +908,7 @@ pub fn narrate_session_schedule(
                     "Не вдалося скасувати розклад",
                 ),
             );
-            phrase3(verbs, None, phase)
+            phrase3(locale, verbs, None, phase)
         }
         "list_schedules" => {
             let verbs = pick(
@@ -876,7 +924,7 @@ pub fn narrate_session_schedule(
                     "Не вдалося переглянути розклади",
                 ),
             );
-            phrase3(verbs, None, phase)
+            phrase3(locale, verbs, None, phase)
         }
         _ => return None,
     };
@@ -904,7 +952,7 @@ pub fn narrate_session_task(
                     "Не вдалося переглянути завдання",
                 ),
             );
-            phrase3(verbs, None, phase)
+            phrase3(locale, verbs, None, phase)
         }
         "get_task" => {
             let verbs = pick(
@@ -916,7 +964,7 @@ pub fn narrate_session_task(
                     "Не вдалося прочитати завдання",
                 ),
             );
-            labeled_phrase(verbs.0, verbs.1, verbs.2, task, phase)
+            localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, task, phase)
         }
         "message_task" => {
             let verbs = pick(
@@ -928,7 +976,7 @@ pub fn narrate_session_task(
                     "Не вдалося надіслати повідомлення завданню",
                 ),
             );
-            labeled_phrase(verbs.0, verbs.1, verbs.2, task, phase)
+            localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, task, phase)
         }
         "cancel_task" => {
             let verbs = pick(
@@ -940,7 +988,7 @@ pub fn narrate_session_task(
                     "Не вдалося скасувати завдання",
                 ),
             );
-            labeled_phrase(verbs.0, verbs.1, verbs.2, task, phase)
+            localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, task, phase)
         }
         "wait_task" => {
             let verbs = pick(
@@ -956,7 +1004,7 @@ pub fn narrate_session_task(
                     "Не вдалося дочекатися завдання",
                 ),
             );
-            labeled_phrase(verbs.0, verbs.1, verbs.2, task, phase)
+            localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, task, phase)
         }
         _ => return None,
     };
@@ -978,7 +1026,7 @@ pub fn narrate_sandbox_status(phase: ToolNarrationPhase, locale: Option<&str>) -
             "Не вдалося перевірити стан пісочниці",
         ),
     );
-    phrase3(verbs, None, phase)
+    phrase3(locale, verbs, None, phase)
 }
 
 /// `sandbox_manage` narration; the lifecycle `action` (pause/resume/delete) is
@@ -1002,7 +1050,7 @@ pub fn narrate_sandbox_manage(
             "Не вдалося виконати дію над пісочницею",
         ),
     );
-    labeled_phrase(verbs.0, verbs.1, verbs.2, action, phase)
+    localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, action, phase)
 }
 
 /// Session SQL family narration: `sql_execute`, `sql_query`, `sql_schema`.
@@ -1020,7 +1068,7 @@ pub fn narrate_sql(
                 ("Running SQL", "Ran SQL", "Failed to run SQL"),
                 ("Виконую SQL", "Виконав SQL", "Не вдалося виконати SQL"),
             );
-            phrase3(verbs, None, phase)
+            phrase3(locale, verbs, None, phase)
         }
         "sql_query" => {
             let verbs = pick(
@@ -1032,7 +1080,7 @@ pub fn narrate_sql(
                     "Не вдалося виконати SQL-запит",
                 ),
             );
-            phrase3(verbs, None, phase)
+            phrase3(locale, verbs, None, phase)
         }
         "sql_schema" => {
             let verbs = pick(
@@ -1048,7 +1096,7 @@ pub fn narrate_sql(
                     "Не вдалося прочитати схему бази даних",
                 ),
             );
-            phrase3(verbs, None, phase)
+            phrase3(locale, verbs, None, phase)
         }
         _ => return None,
     };
@@ -1075,7 +1123,7 @@ pub fn narrate_search_knowledge(
             "Не вдалося знайти у знаннях",
         ),
     );
-    labeled_phrase(verbs.0, verbs.1, verbs.2, query, phase)
+    localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, query, phase)
 }
 
 /// `get_current_time` narration.
@@ -1093,7 +1141,7 @@ pub fn narrate_current_time(phase: ToolNarrationPhase, locale: Option<&str>) -> 
             "Не вдалося перевірити поточний час",
         ),
     );
-    phrase3(verbs, None, phase)
+    phrase3(locale, verbs, None, phase)
 }
 
 /// `check_budget` narration.
@@ -1111,7 +1159,7 @@ pub fn narrate_check_budget(phase: ToolNarrationPhase, locale: Option<&str>) -> 
             "Не вдалося перевірити бюджет",
         ),
     );
-    phrase3(verbs, None, phase)
+    phrase3(locale, verbs, None, phase)
 }
 
 /// `query_history` narration ("Searched history: deploy").
@@ -1134,7 +1182,7 @@ pub fn narrate_query_history(
             "Не вдалося знайти в історії",
         ),
     );
-    labeled_phrase(verbs.0, verbs.1, verbs.2, query, phase)
+    localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, query, phase)
 }
 
 /// `spawn_background` narration; the target tool name (a safe, bounded
@@ -1158,7 +1206,7 @@ pub fn narrate_spawn_background(
             "Не вдалося запустити фоновий процес",
         ),
     );
-    labeled_phrase(verbs.0, verbs.1, verbs.2, target, phase)
+    localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, target, phase)
 }
 
 /// Delegation-result family narration: `report_result`, `report_task_progress`.
@@ -1196,38 +1244,7 @@ pub fn narrate_delegation_result(
         ),
         _ => return None,
     };
-    Some(phrase3(verbs, None, phase))
-}
-
-/// Map a CRUD operation to (started, completed, failed) verb forms.
-fn operation_verbs(operation: &str) -> Verbs<'static> {
-    match operation {
-        "create" => ("Creating", "Created", "Failed to create"),
-        "update" => ("Updating", "Updated", "Failed to update"),
-        "delete" | "destroy" => ("Deleting", "Deleted", "Failed to delete"),
-        "copy" | "clone" | "duplicate" => ("Copying", "Copied", "Failed to copy"),
-        "list" => ("Listing", "Listed", "Failed to list"),
-        "get" | "read" => ("Reading", "Read", "Failed to read"),
-        "set" => ("Setting", "Set", "Failed to set"),
-        "send" => ("Sending", "Sent", "Failed to send"),
-        "run" | "execute" => ("Running", "Ran", "Failed to run"),
-        _ => ("Running", "Ran", "Failed to run"),
-    }
-}
-
-/// Build narration from `narration_noun` + `operation` arg.
-/// E.g. noun="agent", operation="create", name="Neon Cartographer"
-/// → "Creating agent: Neon Cartographer".
-fn operation_narration(noun: &str, arguments: &Value, phase: ToolNarrationPhase) -> Option<String> {
-    let operation = arg_str(arguments, &["operation", "action"])?;
-    let verbs = operation_verbs(operation);
-    let name =
-        arg_str(arguments, &["display_name", "name", "title", "new_name"]).map(|v| truncate(v, 40));
-    let target = match name {
-        Some(name) => format!("{noun}: {name}"),
-        None => noun.to_string(),
-    };
-    Some(phrase3(verbs, Some(target), phase))
+    Some(phrase3(locale, verbs, None, phase))
 }
 
 /// Render the generic fallback narration for a tool call.
@@ -1246,7 +1263,7 @@ pub fn render_tool_narration_with_locale(
 
     if let Some(narration) = tool_def
         .and_then(|def| def.hints().narration_noun.as_deref())
-        .and_then(|noun| operation_narration(noun, &tool_call.arguments, phase))
+        .and_then(|noun| operation_narration(locale, noun, &tool_call.arguments, phase))
     {
         return narration;
     }
@@ -1269,7 +1286,7 @@ pub fn render_tool_narration_with_locale(
         Some(detail) => format!("{label}: {detail}"),
         None => label,
     };
-    phrase3(verbs, Some(target), phase)
+    phrase3(locale, verbs, Some(target), phase)
 }
 
 pub fn render_tool_narration(
@@ -1409,6 +1426,10 @@ pub fn summarize_group_actions(actions: &[GroupHeadlineAction], locale: Option<&
         [only] => only.clone(),
         [first, second] if omitted_count == 0 => match resolve_backend_locale(locale) {
             BackendLocale::Uk => format!("{first} і {second}"),
+            BackendLocale::Fr => format!("{first} et {second}"),
+            BackendLocale::De => format!("{first} und {second}"),
+            BackendLocale::Es => format!("{first} y {second}"),
+            BackendLocale::Zh => format!("{first}，{second}"),
             BackendLocale::En => format!("{first} and {second}"),
         },
         [first, second, ..] => {
@@ -1422,6 +1443,13 @@ fn format_repeated_action(action: &str, count: usize, locale: Option<&str>) -> S
     match resolve_backend_locale(locale) {
         BackendLocale::En if count == 2 => format!("{action} twice"),
         BackendLocale::En => format!("{action} {count} times"),
+        BackendLocale::Fr => format!("{action} {count} fois"),
+        BackendLocale::De => format!("{action} {count} Mal"),
+        BackendLocale::Es => format!(
+            "{action} {count} {}",
+            if count == 1 { "vez" } else { "veces" }
+        ),
+        BackendLocale::Zh => format!("{action} {count} 次"),
         BackendLocale::Uk if count == 2 => format!("{action} двічі"),
         BackendLocale::Uk => {
             let suffix = if (11..=14).contains(&(count % 100)) {

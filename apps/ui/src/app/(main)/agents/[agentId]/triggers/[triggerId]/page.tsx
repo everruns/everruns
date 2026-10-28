@@ -1,7 +1,7 @@
 "use client";
 
-import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 
 import { z } from "zod";

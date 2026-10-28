@@ -10,8 +10,12 @@
 // and React bubbles synthetic events through portals, so the name form below
 // stops its submit event from reaching (and saving) the channel form.
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import {
+  useLocale as useFormattingLocale,
+  useLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { useState } from "react";
 import { KeyRound, Plus, RotateCw, ShieldOff } from "lucide-react";
 import {
@@ -146,7 +150,9 @@ export function AgentKeysCard({
                         : ui("Never used")}
                       {overlapActive && key.previous_valid_until
                         ? ui(" · previous secret works until {value0}", {
-                            value0: new Date(key.previous_valid_until).toLocaleString(),
+                            value0: new Date(key.previous_valid_until).toLocaleString(
+                              displayLocale,
+                            ),
                           })
                         : ""}
                     </p>

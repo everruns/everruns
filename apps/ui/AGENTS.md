@@ -10,8 +10,9 @@ rules; do not add a separate command-palette page list.
 
 ### Localization
 
-Mark product-owned copy with `useUiTranslations` and add its Ukrainian message in
-`src/lib/messages/uk/`, preserving interpolation tokens. Use the entity localization
+Mark product-owned copy with `useUiTranslations` and update every shipped catalog in
+`src/lib/messages/`, preserving interpolation tokens. The locale registry owns the
+supported language choices; keep browser regions available for formatting. Use the entity localization
 helpers with `displayLocale` for agent and harness presentation. Keep authored
 content, stable identifiers and execution instructions outside translation calls.
 Interface and execution locales are separate; follow the

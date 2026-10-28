@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useModels, useSessions } from "@/hooks";
@@ -103,6 +103,8 @@ function FailedSessionsWindow({
   before: string;
   onWindow: (days: number) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const [page, onPage] = useState(0);
   const { data, isLoading, error, refetch } = useAgentFailures(
@@ -125,7 +127,8 @@ function FailedSessionsWindow({
             </p>
           )}
           <p className="mt-1 text-xs">
-            {new Date(after).toLocaleString()} – {new Date(before).toLocaleString()}
+            {new Date(after).toLocaleString(displayLocale)} –{" "}
+            {new Date(before).toLocaleString(displayLocale)}
           </p>
         </div>
         <Select

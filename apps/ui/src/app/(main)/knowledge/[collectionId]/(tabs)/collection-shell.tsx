@@ -6,7 +6,7 @@
 // Settings holds the collection form. Each tab is its own path under
 // `/knowledge/{id}`; the shell is the tabs' layout.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { FolderTree, RefreshCw, Search, Settings2, Unplug } from "lucide-react";
@@ -36,6 +36,8 @@ export function CollectionShell({
   collectionId: string;
   children: ReactNode;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const base = `/knowledge/${collectionId}`;
   const tab = tabFromPath(usePathname(), base, TABS, "files");
@@ -113,12 +115,16 @@ export function CollectionShell({
           c && (
             <>
               <span>
-                {ui("{value0} files", { value0: (c.file_count ?? 0).toLocaleString() })}
+                {ui("{value0} files", {
+                  value0: (c.file_count ?? 0).toLocaleString(displayLocale),
+                })}
                 {c.indexing !== "off" &&
-                  ` · ${ui("{value0} indexed", { value0: (c.indexed_count ?? 0).toLocaleString() })}`}
+                  ` · ${ui("{value0} indexed", { value0: (c.indexed_count ?? 0).toLocaleString(displayLocale) })}`}
               </span>
               {synced && (
-                <span>{ui("Synced {value0}", { value0: formatRelativeTime(synced) })}</span>
+                <span>
+                  {ui("Synced {value0}", { value0: formatRelativeTime(synced, displayLocale) })}
+                </span>
               )}
               {state && <EntityStatus status={state.label} tone={state.tone} label={state.label} />}
             </>

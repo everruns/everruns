@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageRows, useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useEffect, useState } from "react";
@@ -96,6 +96,8 @@ export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
 }
 
 function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: string }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const [tab, setTab] = useState("execution");
   const [view, setView] = useState("flow");
@@ -397,7 +399,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           <span className="text-xs text-muted-foreground">
             {data
               ? ui("{value0} snapshot", {
-                  value0: new Date(data.generated_at).toLocaleTimeString(),
+                  value0: new Date(data.generated_at).toLocaleTimeString(displayLocale),
                 })
               : ui("Waiting for a snapshot")}
           </span>
@@ -436,8 +438,8 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
             }}
           />
           <span>
-            {new Date(history[0].at).toLocaleTimeString()} –{" "}
-            {new Date(history.at(-1)!.at).toLocaleTimeString()}
+            {new Date(history[0].at).toLocaleTimeString(displayLocale)} –{" "}
+            {new Date(history.at(-1)!.at).toLocaleTimeString(displayLocale)}
           </span>
           <Button variant="ghost" size="sm" onClick={resume}>
             {ui("Return to live")}
