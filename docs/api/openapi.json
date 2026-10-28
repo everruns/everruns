@@ -4429,6 +4429,88 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/tracing": {
+      "get": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Get agent routing",
+        "operationId": "get_agent_routing",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingPolicyView"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "put": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Save agent routing",
+        "operationId": "save_agent_routing",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveRoutingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingPolicyView"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/triggers": {
       "get": {
         "tags": [
@@ -29310,6 +29392,442 @@
         }
       }
     },
+    "/v1/tracing/defaults": {
+      "get": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Get defaults",
+        "operationId": "get_defaults",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingPolicyView"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "put": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Save defaults",
+        "operationId": "save_defaults",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveRoutingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingPolicyView"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/tracing/destination-metadata/{id}": {
+      "get": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Read safe destination metadata",
+        "description": "Read safe destination metadata. Never returns receiver authentication.",
+        "operationId": "get_tracing_destination_metadata",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Tracing resource ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingDestinationMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Update tracing destination metadata",
+        "description": "Update safe destination metadata while preserving its receiver and current authentication.",
+        "operationId": "update_tracing_destination_metadata",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Tracing resource ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingDestinationMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/tracing/destinations": {
+      "get": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "List destinations",
+        "operationId": "list_destinations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DestinationView"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Create destination",
+        "operationId": "create_destination",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveDestinationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DestinationView"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/tracing/destinations/{id}": {
+      "put": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Update destination",
+        "operationId": "update_destination",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Destination ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveDestinationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DestinationView"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Delete destination",
+        "operationId": "delete_destination",
+        "parameters": [
+          {
+            "name": "revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Destination ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {}
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/tracing/destinations/{id}/test": {
+      "post": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Test destination",
+        "operationId": "test_destination",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Destination ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestTraceResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/tracing/policies/{id}": {
+      "get": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Get tracing policy",
+        "description": "Read organization or agent trace routing without credentials.",
+        "operationId": "get_tracing_policy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Tracing resource ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingPolicyMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Set organization or agent destinations for future turns",
+        "description": "Set organization or agent destinations for future turns. Requires organization settings authority; never accepts credentials.",
+        "operationId": "update_tracing_policy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Tracing resource ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingPolicyMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/user/connected-clients": {
       "get": {
         "tags": [
@@ -41446,6 +41964,129 @@
         "properties": {
           "recursive": {
             "type": "boolean"
+          }
+        }
+      },
+      "DestinationConfig": {
+        "type": "object",
+        "description": "Non-secret receiver settings and explicit content capture consent.",
+        "required": [
+          "name",
+          "provider",
+          "endpoint"
+        ],
+        "properties": {
+          "capture_content": {
+            "type": "boolean",
+            "description": "Explicit consent to export message and tool content; defaults to metadata only.",
+            "example": false
+          },
+          "capture_reasoning": {
+            "type": "boolean",
+            "description": "Explicit consent to export reasoning; also requires content capture.",
+            "example": false
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether customer exports may be sent to this receiver; false pauses delivery.",
+            "example": true
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "HTTPS receiver endpoint without embedded credentials, query parameters, or fragments.",
+            "example": "https://collector.example.com/v1/traces"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable destination name, from 1 to 128 characters.",
+            "example": "Production traces"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Braintrust project identifier; required for Braintrust receivers.",
+            "example": "00000000-0000-0000-0000-000000000002"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/TraceProvider",
+            "description": "Receiver protocol: Braintrust project or generic OTLP over HTTPS."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DestinationView": {
+        "type": "object",
+        "description": "Destination settings, safe delivery health, and routing usage; excludes credentials.",
+        "required": [
+          "id",
+          "config",
+          "revision",
+          "dropped_events",
+          "organization_default",
+          "agent_selections"
+        ],
+        "properties": {
+          "agent_selections": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of agent policies that explicitly select this destination.",
+            "example": 0
+          },
+          "config": {
+            "$ref": "#/components/schemas/DestinationConfig",
+            "description": "Non-secret destination settings, including capture consent and pause state."
+          },
+          "dropped_events": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of events omitted by bounded customer export delivery.",
+            "example": 0
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Destination identifier owned by the current organization.",
+            "example": "00000000-0000-0000-0000-000000000001"
+          },
+          "last_accepted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Time the receiver last accepted an export, or null before any acceptance.",
+            "example": "2026-10-28T00:00:00Z"
+          },
+          "last_attempt_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Time of the latest delivery attempt, or null before the first attempt.",
+            "example": "2026-10-28T00:00:00Z"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Sanitized delivery failure; never includes receiver credentials or response bodies.",
+            "example": "Receiver unavailable"
+          },
+          "organization_default": {
+            "type": "boolean",
+            "description": "Whether this destination is selected in organization defaults.",
+            "example": false
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Current revision used to reject stale saves and deletes.",
+            "example": 1
           }
         }
       },
@@ -60144,6 +60785,35 @@
           }
         }
       },
+      "RoutingMode": {
+        "type": "string",
+        "description": "How an agent combines its destinations with organization defaults.",
+        "enum": [
+          "inherit",
+          "add",
+          "replace",
+          "off"
+        ]
+      },
+      "RoutingPolicy": {
+        "type": "object",
+        "description": "Customer destinations selected for future turns; never changes platform telemetry.",
+        "properties": {
+          "destination_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Distinct destination identifiers from this organization; at most eight selections."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/RoutingMode",
+            "description": "Use organization defaults, add selections, replace defaults, or disable customer exports."
+          }
+        },
+        "additionalProperties": false
+      },
       "RunBucket": {
         "type": "object",
         "description": "Turns started and failed in one bucket.",
@@ -61513,6 +62183,41 @@
           }
         }
       },
+      "SaveDestinationRequest": {
+        "type": "object",
+        "description": "Create or update a receiver; omitted authentication preserves existing credentials.",
+        "required": [
+          "config"
+        ],
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/DestinationConfig",
+            "description": "Non-secret destination settings, including capture consent and pause state."
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Expected current revision for updates; omit when creating a destination.",
+            "example": 1
+          },
+          "secrets": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TraceSecrets",
+                "description": "Receiver authentication. Required for creation or a receiver change; never returned."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "writeOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
       "SaveOrganizationConnectionRequest": {
         "allOf": [
           {
@@ -61534,6 +62239,27 @@
           }
         ],
         "description": "Organization-owned provider account input (sandbox provider or search account)."
+      },
+      "SaveRoutingRequest": {
+        "type": "object",
+        "description": "Save routing only when the supplied revision still matches the current policy.",
+        "required": [
+          "policy",
+          "revision"
+        ],
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/RoutingPolicy",
+            "description": "Routing mode and the organization-owned destination selections to save."
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Current revision used to reject stale saves and deletes.",
+            "example": 1
+          }
+        },
+        "additionalProperties": false
       },
       "SavedReport": {
         "type": "object",
@@ -65674,6 +66400,26 @@
           }
         }
       },
+      "TestTraceResponse": {
+        "type": "object",
+        "description": "Result of sending synthetic data to the receiver; contains no customer turn content.",
+        "required": [
+          "accepted",
+          "message"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "description": "Whether the receiver accepted the synthetic export; partial OTLP rejection is false.",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "description": "Safe explanation of the synthetic test result.",
+            "example": "Receiver accepted the test trace"
+          }
+        }
+      },
       "TextAnnotation": {
         "type": "object",
         "description": "A claim-level citation attached to a span of generated text.\n\nThe single shared type across every citation capability: a text span linked\nto a source. Producers agree only on this render contract — each capability\nkeeps its own richer representation (e.g. `KnowledgeIndexCitation`) and maps\ninto this envelope at emit time.",
@@ -67178,6 +67924,14 @@
           }
         }
       },
+      "TraceProvider": {
+        "type": "string",
+        "description": "Receiver protocol used for customer trace delivery.",
+        "enum": [
+          "braintrust",
+          "otlp"
+        ]
+      },
       "TraceRequestMessage": {
         "type": "object",
         "description": "One message of a model request.",
@@ -67584,6 +68338,23 @@
           "errored",
           "skipped"
         ]
+      },
+      "TraceSecrets": {
+        "type": "object",
+        "description": "Write-only receiver authentication, encrypted at rest and never returned.",
+        "properties": {
+          "headers": {
+            "type": "object",
+            "description": "Authentication headers: Authorization, X-API-Key, or Api-Key. Values are write-only.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
       },
       "TraceStep": {
         "type": "object",
@@ -68022,6 +68793,77 @@
               "$ref": "#/components/schemas/TraceTurn"
             },
             "description": "Turns in turn order."
+          }
+        }
+      },
+      "TracingDestinationMetadata": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DestinationConfig",
+            "description": "Non-secret destination settings, including capture consent and pause state."
+          },
+          {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "Destination identifier owned by the current organization.",
+                "example": "00000000-0000-0000-0000-000000000001"
+              }
+            }
+          }
+        ],
+        "description": "Safe destination settings used by native reads and change history."
+      },
+      "TracingPolicyMetadata": {
+        "type": "object",
+        "description": "Safe organization or agent routing metadata returned by native commands.",
+        "required": [
+          "id",
+          "mode",
+          "destination_ids"
+        ],
+        "properties": {
+          "destination_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Distinct destination identifiers from this organization; at most eight selections."
+          },
+          "id": {
+            "type": "string",
+            "description": "Organization public ID or agent public ID whose routing policy is selected.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/RoutingMode",
+            "description": "Use organization defaults, add selections, replace defaults, or disable customer exports."
+          }
+        }
+      },
+      "TracingPolicyView": {
+        "type": "object",
+        "description": "Current routing policy and the revision required for a guarded save.",
+        "required": [
+          "policy",
+          "revision"
+        ],
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/RoutingPolicy",
+            "description": "Routing mode and the organization-owned destination selections to save."
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Current revision used to reject stale saves and deletes.",
+            "example": 1
           }
         }
       },
@@ -75311,6 +76153,10 @@
       "x-displayName": "Monitoring"
     },
     {
+      "name": "tracing",
+      "x-displayName": "Tracing"
+    },
+    {
       "name": "system",
       "description": "Whole-install health checks for platform operators",
       "x-displayName": "System"
@@ -75451,6 +76297,7 @@
       "tags": [
         "durable",
         "monitoring",
+        "tracing",
         "system",
         "durable-schedules",
         "sandbox-templates",

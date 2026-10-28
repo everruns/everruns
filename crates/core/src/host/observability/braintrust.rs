@@ -5,29 +5,6 @@
 //
 // See knowledge/operations/observability.md for full specification.
 //
-// API Documentation:
-// - Braintrust Docs: https://www.braintrust.dev/docs
-// - API Reference: https://www.braintrust.dev/docs/api-reference/introduction
-// - Insert Logs: https://www.braintrust.dev/docs/api-reference/logs/insert-project-logs-events
-// - List Projects: https://www.braintrust.dev/docs/reference/api/Projects
-//
-// Configuration via environment variables:
-// - BRAINTRUST_API_KEY: API key for authentication (required to enable)
-// - BRAINTRUST_PROJECT_NAME: Project name (default: "My Project", resolved to ID via API)
-// - BRAINTRUST_PROJECT_ID: Project UUID (alternative, skips name resolution)
-// - BRAINTRUST_API_URL: API base URL (default: https://api.braintrust.dev)
-//
-// Event types traced:
-// - turn.started/turn.completed/turn.failed/turn.cancelled - Root span for agentic turn (type: "task")
-// - reason.started/reason.completed - LLM reasoning phase within turn (type: "task")
-// - act.started/act.completed - Tool execution phase within turn (type: "task")
-// - llm.generation - LLM API calls (type: "llm")
-// - tool.started/tool.completed - Tool executions (type: "tool")
-//
-// Parent-child relationships use OTel-style trace_id/span_id/parent_span_id fields.
-// trace_id groups all spans in a turn, span_id identifies each span, parent_span_id links to parent.
-// Atom-level events (reason, act) provide finer-grained tracing of the agentic loop.
-
 use super::braintrust_delivery::{
     DeliveryAttempt, PermanentFailureReporting, report_permanent_failure,
 };
@@ -157,6 +134,7 @@ struct BraintrustTurnState {
 struct BraintrustState {
     config: BraintrustConfig,
     client: Client,
+    egress: Option<std::sync::Arc<dyn crate::EgressService>>,
     sender: mpsc::Sender<DeliveryMessage>,
     receiver: Mutex<Option<mpsc::Receiver<DeliveryMessage>>>,
     sessions: Mutex<HashMap<String, BraintrustSessionState>>,
@@ -463,6 +441,7 @@ impl BraintrustListener {
         let state = Arc::new(BraintrustState {
             config,
             client,
+            egress: None,
             sender,
             receiver: Mutex::new(Some(receiver)),
             sessions: Mutex::new(HashMap::new()),
@@ -474,6 +453,17 @@ impl BraintrustListener {
         });
 
         Ok(Self { state })
+    }
+
+    /// Use the host network boundary instead of a direct transport.
+    pub fn with_egress(
+        mut self,
+        egress: std::sync::Arc<dyn crate::EgressService>,
+    ) -> Result<Self, &'static str> {
+        let state = std::sync::Arc::get_mut(&mut self.state)
+            .ok_or("Configure egress before sharing the listener")?;
+        state.egress = Some(egress);
+        Ok(self)
     }
 
     /// Create a new listener from environment configuration.
@@ -619,12 +609,16 @@ impl BraintrustListener {
         url: &str,
         request: &BraintrustInsertRequest,
     ) -> DeliveryAttempt {
+        if let Some(egress) = &state.egress {
+            return super::braintrust_egress::send(egress, url, &state.config.api_key, request)
+                .await;
+        }
         let result = state
             .client
             .post(url)
             .header("Authorization", format!("Bearer {}", state.config.api_key))
             .header("Content-Type", "application/json")
-            .json(&request)
+            .json(request)
             .send()
             .await;
 
@@ -720,6 +714,9 @@ impl BraintrustListener {
         F: FnOnce(&mut BraintrustSessionState),
     {
         if let Ok(mut sessions) = self.state.sessions.lock() {
+            if self.state.egress.is_some() && sessions.len() >= 1024 {
+                sessions.clear();
+            }
             let state = sessions.entry(session_id.to_string()).or_default();
             update(state);
         }

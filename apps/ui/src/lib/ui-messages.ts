@@ -1,3 +1,4 @@
+import { messages as tracing } from "./messages/uk/tracing";
 // Product-owned source messages are gettext-style IDs. Never pass user content.
 import { messages as catalog0 } from "./messages/uk/agents-01";
 import { messages as catalog1 } from "./messages/uk/agents-02";
@@ -42,4 +43,5 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   catalog17,
   catalog18,
   catalog19,
+  tracing,
 );

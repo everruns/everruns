@@ -10,6 +10,7 @@
 // - Live sections (MCP servers, Credentials, Service account) manage their own
 //   resources and save as they go, as they did when they were tabs.
 
+import { TracingRoutingForm } from "@/components/tracing/routing-form";
 import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
 import { useUiTranslations } from "@/providers/locale-provider";
 import { EntityLocalizationsEditor } from "@/components/entity-localizations-editor";
@@ -46,6 +47,7 @@ import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 import { ChatChangeMark } from "@/components/chat-mode/chat-change-mark";
 
 export type AgentSettingsSection =
+  | "tracing"
   | "localization"
   | "branding"
   | "mcp"
@@ -62,6 +64,11 @@ const SECTIONS: Record<
   AgentSettingsSection,
   { title: string; description: string; kind: "draft" | "live" | "info"; wide?: boolean }
 > = {
+  tracing: {
+    title: "Tracing",
+    description: "External destinations for this agent’s traces.",
+    kind: "live",
+  },
   localization: {
     title: "Localization",
     description: "Localized display names and descriptions.",
@@ -200,6 +207,7 @@ export function AgentSettingsSheet({
                     )[active] ?? active)
               }
             >
+              {active === "tracing" && <TracingRoutingForm key={agent.id} agentId={agent.id} />}
               {active === "localization" && (
                 <EntityLocalizationsEditor
                   value={draft.localizations}
@@ -275,13 +283,15 @@ export function AgentSettingsSheet({
             </ChatChangeMark>
             <DrawerFooter className="items-center border-t p-4 sm:justify-between">
               <p className="text-xs text-muted-foreground">
-                {meta.kind === "draft"
-                  ? readOnly
-                    ? ui("This agent is read-only.")
-                    : ui("Changes are kept with the page edit. Save changes applies them.")
-                  : meta.kind === "live"
-                    ? ui("Changes here save immediately.")
-                    : ""}
+                {active === "tracing"
+                  ? ui("Tracing changes apply to new turns after Save.")
+                  : meta.kind === "draft"
+                    ? readOnly
+                      ? ui("This agent is read-only.")
+                      : ui("Changes are kept with the page edit. Save changes applies them.")
+                    : meta.kind === "live"
+                      ? ui("Changes here save immediately.")
+                      : ""}
               </p>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 {ui("Done")}
