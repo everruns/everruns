@@ -67,6 +67,7 @@
 //   `has_more`. A turn's log is bounded in practice by its iteration cap, so
 //   one page is the common case.
 
+mod capability_admission;
 mod detached;
 mod journal_admission;
 pub(super) mod rows;

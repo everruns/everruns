@@ -165,15 +165,18 @@ impl WorkerServiceImpl {
         &self,
         request: Request<proto::ReadActorJournalRequest>,
     ) -> Result<Response<proto::ReadActorJournalResponse>, Status> {
-        let scope = match super::super::authority::resolve(request.extensions())? {
-            super::super::authority::WorkerAuthority::ActorJournal(scope) => Some(scope.clone()),
-            super::super::authority::WorkerAuthority::LegacyWorker
-            | super::super::authority::WorkerAuthority::Development => None,
-        };
+        let authority = super::super::authority::resolve(request.extensions())?.clone();
         let req = request.into_inner();
         let session_id = SessionId::from_uuid(parse_uuid(req.session_id.as_ref())?);
-        if let Some(scope) = scope {
-            scope.admit_read(&self.db, session_id).await?;
+        match authority {
+            super::super::authority::WorkerAuthority::ActorJournal(scope) => {
+                scope.admit_read(&self.db, session_id).await?
+            }
+            super::super::authority::WorkerAuthority::VerifiedJournal(scope) => {
+                scope.admit_read(&self.db, session_id).await?
+            }
+            super::super::authority::WorkerAuthority::LegacyWorker
+            | super::super::authority::WorkerAuthority::Development => {}
         }
         let journal = self
             .db

@@ -8,6 +8,7 @@
 
 pub mod assignment_scope;
 pub mod authority;
+pub mod journal_capability;
 mod worker;
 // The one wire shape of a command failure, shared with the in-process worker.
 pub(crate) use worker::support::command_error_to_proto;

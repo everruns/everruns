@@ -1,3 +1,4 @@
+mod executor_capabilities;
 mod journal_grants;
 mod transport;
 pub(crate) use transport::{start_grpc_test_server, trusted_request};
