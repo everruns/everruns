@@ -234,7 +234,7 @@ regex = "1.11"
 aho-corasick = "1.1"
 globset = "0.4"
 time = "0.3"
-parking_lot = "0.13"
+parking_lot = "0.12"
 dialoguer = "0.12"
 webbrowser = "1"
 
