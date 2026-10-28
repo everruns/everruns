@@ -197,7 +197,7 @@ personal authority. A delegated child receives only explicitly permitted
 runtime authority, never its creator's management permissions by inheritance.
 
 A short platform retry retains the exact failed input's verified invocation.
-The [retry continuation boundary](../../crates/server/src/storage/runtime_identity/continuations.rs)
+The [retry continuation boundary](../../crates/server/src/storage/runtime_identity/continuations/mod.rs)
 requires durable platform failure proof, a recent first one-shot firing and the
 same organization and session. It revalidates current membership, subject and
 responder availability. The final insert atomically checks whether the latest

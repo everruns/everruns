@@ -144,5 +144,4 @@ impl StorageBackend {
 }
 
 #[cfg(test)]
-#[path = "continuations_tests.rs"]
 mod tests;
