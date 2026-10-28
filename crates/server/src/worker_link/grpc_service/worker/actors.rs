@@ -168,21 +168,25 @@ impl WorkerServiceImpl {
         let authority = super::super::authority::resolve(request.extensions())?.clone();
         let req = request.into_inner();
         let session_id = SessionId::from_uuid(parse_uuid(req.session_id.as_ref())?);
-        match authority {
+        let limit = i64::from(req.limit);
+        let journal = match authority {
             super::super::authority::WorkerAuthority::ActorJournal(scope) => {
-                scope.admit_read(&self.db, session_id).await?
+                scope
+                    .read_journal(&self.db, session_id, req.after_sequence, limit)
+                    .await?
             }
             super::super::authority::WorkerAuthority::VerifiedJournal(scope) => {
-                scope.admit_read(&self.db, session_id).await?
+                scope
+                    .read_journal(&self.db, session_id, req.after_sequence, limit)
+                    .await?
             }
             super::super::authority::WorkerAuthority::LegacyWorker
-            | super::super::authority::WorkerAuthority::Development => {}
-        }
-        let journal = self
-            .db
-            .read_session_actor_journal(session_id, req.after_sequence, i64::from(req.limit))
-            .await
-            .map_err(|e| internal_status("Failed to read actor journal", e))?;
+            | super::super::authority::WorkerAuthority::Development => self
+                .db
+                .read_session_actor_journal(session_id, req.after_sequence, limit)
+                .await
+                .map_err(|e| internal_status("Failed to read actor journal", e))?,
+        };
         let mut events: Vec<proto::Event> = journal
             .events
             .into_iter()
