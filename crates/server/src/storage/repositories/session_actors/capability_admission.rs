@@ -8,19 +8,18 @@ impl Database {
         certificate_sha256: &[u8; 32],
         capability_sha256: &[u8; 32],
     ) -> anyhow::Result<Option<WorkerJournalCapabilityBinding>> {
-        let mut connection = self.pool.acquire().await?;
         Self::resolve_worker_journal_capability_on(
-            &mut connection,
+            &self.pool,
             certificate_sha256,
             capability_sha256,
         )
         .await
     }
 
-    pub(super) async fn resolve_worker_journal_capability_on(
-        connection: &mut sqlx::PgConnection,
-        certificate_sha256: &[u8; 32],
-        capability_sha256: &[u8; 32],
+    pub(super) async fn resolve_worker_journal_capability_on<'e>(
+        connection: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+        certificate_sha256: &'e [u8; 32],
+        capability_sha256: &'e [u8; 32],
     ) -> anyhow::Result<Option<WorkerJournalCapabilityBinding>> {
         Ok(sqlx::query_as(
             "SELECT g.id AS grant_id, g.executor_id, g.org_id, g.session_id, \

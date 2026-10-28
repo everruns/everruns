@@ -61,6 +61,9 @@ Revocation committed before that snapshot is refused. An earlier snapshot may
 finish after revocation, but cannot include journal events committed later.
 Already delivered bytes cannot be retracted. Each subsequent page and reconnect
 establishes a fresh snapshot and rechecks authority.
+A scoped read invoked inside an enclosing command transaction is refused;
+it cannot detach from that transaction or inherit weaker isolation. Ordinary
+repository journal reads continue to honor their enclosing command transaction.
 The journal authorization grant is independently revocable. The unactivated
 [verified journal path](../operations/durable-execution-engine.md#worker-communication)
 now checks exact mTLS executor enrollment, opaque proof and explicit supporting
