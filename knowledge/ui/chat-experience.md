@@ -122,6 +122,9 @@ instead, the row moves straight to Starting.
 
 ### Client state model
 
+Tab-local persistence, recovery and shared subscription rules extend this model;
+see [Chat Recovery and Live Transport](chat-recovery.md).
+
 - **Pending sends are client state, keyed by a client message id.** On Enter the UI mints a
   `client_message_id` (UUID v7), appends a pending entry
   `{clientId, content, attachments, phase, sentAt, ackAt?, messageId?, error?}`, clears the

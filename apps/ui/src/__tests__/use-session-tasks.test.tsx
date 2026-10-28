@@ -13,6 +13,7 @@ const mockSseListeners: Record<string, Array<(e: MessageEvent) => void>> = {};
 const mockStreams: Array<{ close: jest.Mock }> = [];
 
 jest.mock("@/lib/event-stream", () => ({
+  eventStreamScope: jest.requireActual("@/lib/event-stream").eventStreamScope,
   createEventStream: jest.fn(() => {
     const stream = {
       addEventListener: (type: string, listener: (e: MessageEvent) => void) => {
@@ -89,6 +90,8 @@ describe("useSessionTasks shared SSE stream", () => {
     expect(createEventStream).toHaveBeenCalledTimes(1);
     expect(createEventStream).toHaveBeenCalledWith("/sessions/session-1/sse", {
       withCredentials: true,
+      shareScope: expect.any(String),
+      snapshotOnly: true,
     });
 
     first.unmount();

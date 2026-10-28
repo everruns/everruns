@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+test.use({ deviceScaleFactor: 2 });
 const origin = "http://01933b5a000070008000000000000001.localhost:9140";
 const root = { id: "session_main", title: "Launch research", status: "idle" };
 const events = [
@@ -55,7 +56,8 @@ test.beforeEach(async ({ page }) => {
       });
       return;
     }
-    if (path === "/api/sessions")
+    if (path === "/api/chat/recovery") data = { scope: "fixture-login-alice" };
+    else if (path === "/api/sessions")
       data =
         route.request().method() === "POST"
           ? { ...root, id: "session_new", title: "New conversation" }
@@ -211,4 +213,79 @@ test("file editor preserves the revision and explains concurrent changes", async
   await expect(page.getByRole("textbox", { name: "File content" })).toHaveValue(
     "Agent changed this file",
   );
+});
+
+test("draft and uncertain message survive reload; Retry preserves its idempotency key", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  const attempts: Array<{ key?: string; body: string | null; url: string }> = [];
+  await page.route("**/api/sessions/*/messages", async (route) => {
+    attempts.push({
+      key: route.request().headers()["idempotency-key"],
+      body: route.request().postData(),
+      url: route.request().url(),
+    });
+    if (attempts.length === 1) await route.abort("failed");
+    else await route.fulfill({ json: { id: "message_accepted" } });
+  });
+  await page.goto(origin);
+  const composer = page.getByRole("textbox", { name: "Message", exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill("Keep this instruction through a connection loss.");
+  await page.reload();
+  await expect(composer).toHaveValue("Keep this instruction through a connection loss.");
+  await composer.press("Enter");
+  await expect(page.getByRole("button", { name: "Retry message" })).toBeEnabled();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Retry message" })).toBeEnabled();
+  expect(attempts).toHaveLength(1);
+  if (process.env.CHAT_RECOVERY_SCREENSHOT)
+    await page.locator(".composer-area").screenshot({ path: process.env.CHAT_RECOVERY_SCREENSHOT });
+  await composer.fill("A newer instruction waiting in the composer.");
+  await page.getByRole("button", { name: "Retry message" }).click();
+  await expect(page.getByRole("button", { name: "Retry message" })).toHaveCount(0);
+  expect(attempts).toHaveLength(2);
+  expect(attempts[1]).toEqual(attempts[0]);
+  await expect(composer).toHaveValue("A newer instruction waiting in the composer.");
+});
+
+test("switching conversations isolates drafts and rejects duplicate Enter while sending", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  let requests = 0;
+  await page.route("**/api/sessions/*/messages", async (route) => {
+    requests++;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.fulfill({ json: { id: "accepted" } });
+  });
+  await page.goto(origin);
+  const composer = page.getByRole("textbox", { name: "Message", exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill("First conversation draft");
+  await page.getByRole("button", { name: "Audience interviews" }).click();
+  await expect(composer).toHaveValue("");
+  await composer.fill("Second conversation message");
+  await composer.press("Enter");
+  await composer.press("Enter");
+  await expect(composer).toHaveValue("");
+  expect(requests).toBe(1);
+  await page.getByRole("button", { name: "Launch research" }).click();
+  await expect(composer).toHaveValue("First conversation draft");
+});
+
+test("an authorization rejection stops stream reconnection", async ({ page, request }) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  let streams = 0;
+  await page.route("**/api/sessions/*/sse**", async (route) => {
+    streams++;
+    await route.fulfill({ status: 401, body: "Sign in to continue" });
+  });
+  await page.goto(origin);
+  await expect(page.getByRole("link", { name: "Continue to sign in →" })).toBeVisible({ timeout: 15000 });
+  await page.waitForTimeout(2200);
+  expect(streams).toBe(1);
 });

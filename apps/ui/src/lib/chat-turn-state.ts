@@ -32,6 +32,8 @@ export const NOT_DELIVERED_MS = 10_000;
 export type MessageDelivery = "started" | "steered" | "resumed" | "duplicate";
 
 export interface PendingSend {
+  /** Only a live, connectivity-failed send may resume on network return. */
+  retryWhenOnline?: boolean;
   metadata?: Record<string, unknown>;
   clientId: string;
   text: string;

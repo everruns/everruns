@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatSendInput, CreatedMessage } from "@/lib/api/messages";
 import type { Event } from "@/lib/api/types";
+import { chatRecoveryEpoch, readPendingSends, writeChatRecovery } from "@/lib/chat-recovery";
 import { getEventData } from "@/lib/api/types";
 import {
   getClientMessageId,
@@ -27,9 +28,14 @@ import {
   type PendingSend,
 } from "@/lib/chat-turn-state";
 
+const EMPTY_PENDING: PendingSend[] = [];
+
 export type ChatSendDraft = Omit<ChatSendInput, "clientMessageId">;
 
 export interface ChatSends {
+  storageKey?: string;
+  /** Storage could not be read or updated; keep the tab open. */
+  recoveryError?: boolean;
   /** Sends the event stream does not carry yet, oldest first. */
   pending: PendingSend[];
   /** Whether a send is in flight or waiting for its turn to start. */
@@ -49,6 +55,7 @@ export interface ChatSends {
 
 interface UseChatSendsOptions {
   sessionId: string;
+  storageKey?: string;
   events: Event[] | undefined;
   send: (input: ChatSendInput, signal: AbortSignal) => Promise<CreatedMessage>;
   cancel: () => Promise<unknown>;
@@ -65,26 +72,60 @@ function draftOf(send: PendingSend): ChatSendDraft {
   };
 }
 
-export function useChatSends({ sessionId, events, send, cancel }: UseChatSendsOptions): ChatSends {
-  const [pending, setPending] = useState<PendingSend[]>([]);
-  const pendingRef = useRef(pending);
-  useEffect(() => {
-    pendingRef.current = pending;
-  }, [pending]);
+export function useChatSends({
+  sessionId,
+  storageKey,
+  events,
+  send,
+  cancel,
+}: UseChatSendsOptions): ChatSends {
+  const [state, setState] = useState<{ key?: string; session: string; items: PendingSend[] }>({
+    key: storageKey,
+    session: sessionId,
+    items: [],
+  });
+  const [recoveryError, setRecoveryError] = useState(false);
+  const pendingRef = useRef<PendingSend[]>([]);
+  const generation = useRef(0);
+  const recoveryEpoch = useRef(chatRecoveryEpoch());
+  const recovering = useRef(false);
+  const pending =
+    state.key === storageKey && state.session === sessionId ? state.items : EMPTY_PENDING;
+  // Persist synchronously, before starting the request. Never perform storage
+  // writes inside React state updaters (which StrictMode may invoke twice).
+  const commit = useCallback(
+    (next: PendingSend[] | ((items: PendingSend[]) => PendingSend[])) => {
+      const items = typeof next === "function" ? next(pendingRef.current) : next;
+      if (items === pendingRef.current) return;
+      pendingRef.current = items;
+      try {
+        writeChatRecovery(storageKey, { pending: items }, recoveryEpoch.current);
+        setRecoveryError(false);
+      } catch {
+        setRecoveryError(true);
+      }
+      setState({ key: storageKey, session: sessionId, items });
+    },
+    [storageKey, sessionId],
+  );
   const controllers = useRef(new Map<string, AbortController>());
   // Client ids the user stopped before an ack, and message ids stopped before
   // their turn started: cancel the turn that answers either.
   const stoppedClientIds = useRef(new Set<string>());
   const stoppedMessageIds = useRef(new Set<string>());
 
-  const update = useCallback((clientId: string, patch: Partial<PendingSend>) => {
-    setPending((current) =>
-      current.map((item) => (item.clientId === clientId ? { ...item, ...patch } : item)),
-    );
-  }, []);
+  const update = useCallback(
+    (clientId: string, patch: Partial<PendingSend>) => {
+      commit((current) =>
+        current.map((item) => (item.clientId === clientId ? { ...item, ...patch } : item)),
+      );
+    },
+    [commit],
+  );
 
   const attempt = useCallback(
     async (item: PendingSend): Promise<CreatedMessage> => {
+      const epoch = generation.current;
       const controller = new AbortController();
       controllers.current.set(item.clientId, controller);
       let timedOut = false;
@@ -93,10 +134,12 @@ export function useChatSends({ sessionId, events, send, cancel }: UseChatSendsOp
         controller.abort();
       }, NOT_DELIVERED_MS);
       try {
+        if (!navigator.onLine) throw new TypeError("offline");
         const message = await send(
           { clientMessageId: item.clientId, ...draftOf(item) },
           controller.signal,
         );
+        if (epoch !== generation.current) return message;
         update(item.clientId, {
           phase: "acked",
           ackAtMs: Date.now(),
@@ -105,22 +148,25 @@ export function useChatSends({ sessionId, events, send, cancel }: UseChatSendsOp
         });
         return message;
       } catch (error) {
+        if (epoch !== generation.current) throw error;
         if (controller.signal.aborted && !timedOut) {
           // Stopped by the user: the composer already has the text back.
-          setPending((current) => current.filter((p) => p.clientId !== item.clientId));
+          commit((current) => current.filter((p) => p.clientId !== item.clientId));
         } else {
           update(item.clientId, {
             phase: "failed",
+            retryWhenOnline: error instanceof TypeError,
             error: error instanceof Error ? error.message : String(error),
           });
         }
         throw error;
       } finally {
         window.clearTimeout(timer);
-        controllers.current.delete(item.clientId);
+        if (controllers.current.get(item.clientId) === controller)
+          controllers.current.delete(item.clientId);
       }
     },
-    [send, update],
+    [send, update, commit],
   );
 
   const submit = useCallback(
@@ -137,21 +183,22 @@ export function useChatSends({ sessionId, events, send, cancel }: UseChatSendsOp
         phase: "sending",
         sentAtMs: now,
       };
-      setPending((current) => [...current, item]);
+      commit((current) => [...current, item]);
       return attempt(item);
     },
-    [attempt],
+    [attempt, commit],
   );
 
   const retry = useCallback(
     (clientId: string) => {
       const item = pendingRef.current.find((p) => p.clientId === clientId);
-      if (!item || item.phase !== "failed") return;
+      if (!item || item.phase !== "failed" || controllers.current.has(clientId)) return;
       const next: PendingSend = {
         ...item,
         phase: "sending",
         sentAtMs: Date.now(),
         error: undefined,
+        retryWhenOnline: false,
       };
       update(clientId, next);
       attempt(next).catch(() => undefined);
@@ -159,9 +206,12 @@ export function useChatSends({ sessionId, events, send, cancel }: UseChatSendsOp
     [attempt, update],
   );
 
-  const discard = useCallback((clientId: string) => {
-    setPending((current) => current.filter((p) => p.clientId !== clientId));
-  }, []);
+  const discard = useCallback(
+    (clientId: string) => {
+      commit((current) => current.filter((p) => p.clientId !== clientId));
+    },
+    [commit],
+  );
 
   const stop = useCallback((): ChatSendDraft | boolean => {
     for (let i = pendingRef.current.length - 1; i >= 0; i -= 1) {
@@ -179,10 +229,43 @@ export function useChatSends({ sessionId, events, send, cancel }: UseChatSendsOp
     return false;
   }, []);
 
+  useEffect(() => {
+    generation.current += 1;
+    recoveryEpoch.current = chatRecoveryEpoch();
+    let restored: PendingSend[] = [];
+    try {
+      restored = readPendingSends(storageKey);
+      setRecoveryError(false);
+    } catch {
+      setRecoveryError(true);
+    }
+    pendingRef.current = restored;
+    setState((current) =>
+      current.key === storageKey &&
+      current.session === sessionId &&
+      current.items.length === 0 &&
+      restored.length === 0
+        ? current
+        : { key: storageKey, session: sessionId, items: restored },
+    );
+    const live = controllers.current;
+    const stoppedSends = stoppedClientIds.current;
+    const stoppedTurns = stoppedMessageIds.current;
+    return () => {
+      // Unmount abort is not a user discard. Keep the already-saved request
+      // identity, and prevent late acknowledgments from touching another scope.
+      generation.current += 1;
+      for (const controller of live.values()) controller.abort();
+      live.clear();
+      stoppedSends.clear();
+      stoppedTurns.clear();
+    };
+  }, [sessionId, storageKey]);
+
   // Drop sends the stream now carries, and cancel turns the user already stopped.
   useEffect(() => {
     if (!events?.length) return;
-    setPending((current) => reconcilePendingSends(current, events));
+    commit((current) => reconcilePendingSends(current, events));
 
     if (stoppedClientIds.current.size === 0 && stoppedMessageIds.current.size === 0) return;
     for (const event of events) {
@@ -203,24 +286,50 @@ export function useChatSends({ sessionId, events, send, cancel }: UseChatSendsOp
       );
       if (!turnEnded) cancel().catch(() => undefined);
     }
-  }, [cancel, events]);
+  }, [cancel, events, commit]);
 
-  // A session's sends never follow it to another session.
   useEffect(() => {
-    const live = controllers.current;
-    const stoppedSends = stoppedClientIds.current;
-    const stoppedTurns = stoppedMessageIds.current;
-    return () => {
-      for (const controller of live.values()) controller.abort();
-      live.clear();
-      stoppedSends.clear();
-      stoppedTurns.clear();
-      setPending([]);
+    const recover = async () => {
+      if (!navigator.onLine || recovering.current || controllers.current.size) return;
+      recovering.current = true;
+      const epoch = generation.current;
+      try {
+        // Serial replay preserves authored order and never overlaps a manual retry.
+        for (const queued of [...pendingRef.current]) {
+          if (epoch !== generation.current) break;
+          const item = pendingRef.current.find((entry) => entry.clientId === queued.clientId);
+          if (
+            !item ||
+            !item.retryWhenOnline ||
+            item.phase !== "failed" ||
+            controllers.current.has(item.clientId)
+          )
+            continue;
+          const next = {
+            ...item,
+            phase: "sending" as const,
+            retryWhenOnline: false,
+            sentAtMs: Date.now(),
+            error: undefined,
+          };
+          update(item.clientId, next);
+          try {
+            await attempt(next);
+          } catch {
+            break;
+          }
+        }
+      } finally {
+        recovering.current = false;
+      }
     };
-  }, [sessionId]);
+    const wake = () => {
+      void recover();
+    };
+    window.addEventListener("online", wake);
+    return () => window.removeEventListener("online", wake);
+  }, [attempt, update]);
 
-  // The stream can echo a send before its POST returns. Reconcile the visible
-  // projection now: effect cleanup alone leaves a render with two identical keys.
   const visiblePending = useMemo(
     () => reconcilePendingSends(pending, events ?? []),
     [pending, events],
@@ -228,7 +337,16 @@ export function useChatSends({ sessionId, events, send, cancel }: UseChatSendsOp
   const busy = visiblePending.some((p) => p.phase === "sending" || p.phase === "acked");
 
   return useMemo(
-    () => ({ pending: visiblePending, busy, submit, retry, discard, stop }),
-    [visiblePending, busy, submit, retry, discard, stop],
+    () => ({
+      pending: visiblePending,
+      storageKey,
+      recoveryError,
+      busy,
+      submit,
+      retry,
+      discard,
+      stop,
+    }),
+    [visiblePending, storageKey, recoveryError, busy, submit, retry, discard, stop],
   );
 }

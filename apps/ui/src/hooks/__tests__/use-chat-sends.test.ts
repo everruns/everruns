@@ -3,6 +3,7 @@ import type { Event } from "@/lib/api/types";
 import type { ChatSendInput, CreatedMessage } from "@/lib/api/messages";
 import { useChatSends } from "../use-chat-sends";
 import { CLIENT_MESSAGE_ID_METADATA_KEY, NOT_DELIVERED_MS } from "@/lib/chat-turn-state";
+import { chatRecoveryKey, readPendingSends, clearChatRecovery } from "@/lib/chat-recovery";
 
 let seq = 0;
 
@@ -63,6 +64,100 @@ function setup(send: (input: ChatSendInput, signal: AbortSignal) => Promise<Crea
 
 beforeEach(() => {
   seq = 0;
+  sessionStorage.clear();
+});
+
+it("recovers an interrupted send after unmount with its original identity and attachments", async () => {
+  const storageKey = chatRecoveryKey("alice", "org", "ses_1");
+  const send = jest.fn<Promise<CreatedMessage>, [ChatSendInput, AbortSignal]>(async () => {
+    throw new TypeError("network");
+  });
+  const options = { sessionId: "ses_1", storageKey, events: [], send, cancel: jest.fn() };
+  const first = renderHook(() => useChatSends(options));
+  await act(async () => {
+    await first.result.current
+      .submit({ text: "keep me", files: [{ fileId: "file_1" }] })
+      .catch(() => {});
+  });
+  const clientId = first.result.current.pending[0].clientId;
+  first.unmount();
+  const second = renderHook(() => useChatSends(options));
+  expect(second.result.current.pending[0]).toMatchObject({
+    clientId,
+    text: "keep me",
+    phase: "failed",
+    files: [{ fileId: "file_1" }],
+  });
+  act(() => window.dispatchEvent(new Event("online")));
+  expect(send).toHaveBeenCalledTimes(1); // Restored intent needs review.
+  act(() => second.result.current.retry(clientId));
+  await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+  expect(send.mock.calls[1][0]).toMatchObject({ clientMessageId: clientId });
+});
+
+it("never exposes the previous account's pending sends when the recovery scope changes", async () => {
+  const send = jest.fn(async () => {
+    throw new Error("rejected");
+  });
+  const { result, rerender } = renderHook(
+    ({ storageKey }) =>
+      useChatSends({ sessionId: "ses_1", storageKey, events: [], send, cancel: jest.fn() }),
+    { initialProps: { storageKey: chatRecoveryKey("alice", "org", "ses_1") } },
+  );
+  await act(async () => {
+    await result.current.submit({ text: "private" }).catch(() => {});
+  });
+  rerender({ storageKey: chatRecoveryKey("bob", "org", "ses_1") });
+  expect(result.current.pending).toEqual([]);
+});
+
+it("retries connectivity failures on network return under the original id, once", async () => {
+  const send = jest
+    .fn<Promise<CreatedMessage>, [ChatSendInput, AbortSignal]>()
+    .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+    .mockResolvedValueOnce(message("msg_1"));
+  const { result } = setup(send);
+  await act(async () => {
+    await result.current.submit({ text: "hi" }).catch(() => {});
+  });
+  const clientId = result.current.pending[0].clientId;
+  await act(async () => {
+    window.dispatchEvent(new Event("online"));
+    window.dispatchEvent(new Event("online"));
+  });
+  expect(send).toHaveBeenCalledTimes(2);
+  expect(send.mock.calls[1][0].clientMessageId).toBe(clientId);
+});
+
+it("does not replay a server rejection when the network returns", async () => {
+  const send = jest.fn(async () => {
+    throw new Error("permission denied");
+  });
+  const { result } = setup(send);
+  await act(async () => {
+    await result.current.submit({ text: "hi" }).catch(() => {});
+  });
+  await act(async () => {
+    window.dispatchEvent(new Event("online"));
+  });
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+it("removes acknowledged sends from recovery before the stream echoes them", async () => {
+  const storageKey = chatRecoveryKey("alice", "org", "ses_1");
+  const { result } = renderHook(() =>
+    useChatSends({
+      sessionId: "ses_1",
+      storageKey,
+      events: [],
+      send: async () => message("msg_1"),
+      cancel: jest.fn(),
+    }),
+  );
+  await act(async () => {
+    await result.current.submit({ text: "hi" });
+  });
+  expect(readPendingSends(storageKey)).toEqual([]);
 });
 
 it("tracks a send from Enter to its stored event", async () => {
@@ -239,3 +334,25 @@ it.each(["client echo before ack", "stored id after ack"])(
     expect(result.current.busy).toBe(false);
   },
 );
+
+it("a late network failure cannot repopulate recovery after logout", async () => {
+  const storageKey = chatRecoveryKey("alice", "org", "ses_1");
+  let reject!: (reason: Error) => void;
+  const send = () =>
+    new Promise<CreatedMessage>((_resolve, failure) => {
+      reject = failure;
+    });
+  const { result } = renderHook(() =>
+    useChatSends({ sessionId: "ses_1", storageKey, events: [], send, cancel: jest.fn() }),
+  );
+  let request!: Promise<CreatedMessage>;
+  act(() => {
+    request = result.current.submit({ text: "private" });
+  });
+  clearChatRecovery();
+  await act(async () => {
+    reject(new TypeError("network"));
+    await request.catch(() => {});
+  });
+  expect(sessionStorage.getItem(storageKey)).toBeNull();
+});

@@ -1,5 +1,15 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { consumeSse } from "../client/sse";
+import {
+  recoveryKey,
+  readRecovery,
+  saveRecovery,
+  saveDraft,
+  clearRecovery,
+  retryable,
+  type PendingMessage,
+} from "../client/recovery";
 import { Streamdown } from "streamdown";
 
 type Config = {
@@ -39,13 +49,21 @@ type Work = {
   summary?: string;
   links?: { child_session_id?: string };
 };
-async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+async function api<T>(
+  path: string,
+  method = "GET",
+  body?: unknown,
+  idempotencyKey?: string,
+): Promise<T> {
   const response = await fetch(`/api/${path}`, {
     method,
     headers:
       body === undefined
         ? {}
-        : { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+        : {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey ?? crypto.randomUUID(),
+          },
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
   });
@@ -114,6 +132,64 @@ export function Chat({ config }: { config: Config }) {
   const [session, setSession] = useState<Session | null>(null),
     [events, setEvents] = useState<Event[]>([]),
     [draft, setDraft] = useState("");
+  const [recoveryScope, setRecoveryScope] = useState<string | null | undefined>(undefined);
+  const [pending, setPending] = useState<PendingMessage | undefined>();
+  const [storageError, setStorageError] = useState(false);
+  const recoveryRecords = useRef(new Map<string, { draft: string; pending?: PendingMessage }>());
+  const busyRef = useRef(false);
+  const accessDenied = useRef(false);
+  const retired = useRef(false);
+  const newConversationKey = useRef<string | undefined>(undefined);
+  const currentRef = useRef({ selected, scope: recoveryScope, draft });
+  currentRef.current = { selected, scope: recoveryScope, draft };
+  const localKey = recoveryScope ? recoveryKey(recoveryScope, selected ?? "new") : undefined;
+  const selectionKey = localKey ?? `memory:${selected ?? "new"}`;
+  const store = (key: string, value: { draft: string; pending?: PendingMessage }) => {
+    if (retired.current) return;
+    const previous = recoveryRecords.current.get(key);
+    recoveryRecords.current.set(key, value);
+    if (!key.startsWith("memory:")) {
+      try {
+        if (!storageError && previous?.pending === value.pending) saveDraft(key, value.draft);
+        else saveRecovery(key, value);
+        setStorageError(false);
+      } catch {
+        setStorageError(true);
+      }
+    }
+  };
+  useEffect(() => {
+    api<{ scope?: string | null }>("chat/recovery")
+      .then((value) => {
+        setRecoveryScope(value.scope ?? null);
+        setStorageError(!value.scope);
+      })
+      .catch(failRecovery);
+    function failRecovery(error: unknown) {
+      setRecoveryScope(null);
+      setStorageError(true);
+      fail(error);
+    }
+  }, []);
+  useEffect(() => {
+    let value = recoveryRecords.current.get(selectionKey) ?? { draft: "", pending: undefined };
+    if (localKey) {
+      try {
+        value = readRecovery(localKey);
+        setStorageError(false);
+      } catch {
+        setStorageError(true);
+      }
+    }
+    recoveryRecords.current.set(selectionKey, value);
+    setDraft(value.draft);
+    setPending(value.pending);
+    setUpload(null);
+  }, [selectionKey, localKey]);
+  const changeDraft = (text: string) => {
+    setDraft(text);
+    store(selectionKey, { ...recoveryRecords.current.get(selectionKey), draft: text });
+  };
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null),
     [signedIn, setSignedIn] = useState(true);
@@ -131,7 +207,10 @@ export function Chat({ config }: { config: Config }) {
   const fail = useCallback((error: unknown) => {
     const text = error instanceof Error ? error.message : "Chat temporarily unavailable";
     setError(text);
-    if (text === "Sign in to continue") setSignedIn(false);
+    if (text === "Sign in to continue") {
+      accessDenied.current = true;
+      setSignedIn(false);
+    }
   }, []);
   useEffect(() => {
     const timer = setInterval(async () => {
@@ -175,7 +254,7 @@ export function Chat({ config }: { config: Config }) {
     const list = await api<{ data: Session[] }>("sessions?limit=100");
     const roots = list.data.filter((session) => !session.parent_session_id);
     setSessions(roots);
-    setSignedIn(true);
+    if (!accessDenied.current) setSignedIn(true);
     if (config.interface_mode === "single_with_threads") {
       const root = await api<Session>("chat/main", "POST", {});
       setMain(root.id);
@@ -190,6 +269,9 @@ export function Chat({ config }: { config: Config }) {
     const epoch = ++generation.current;
     let stopped = false;
     let controller: AbortController | undefined;
+    let retryDelay = 1500;
+    let wakeRetry: (() => void) | undefined;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     setEvents([]);
     setSession(null);
     setFile(null);
@@ -198,20 +280,25 @@ export function Chat({ config }: { config: Config }) {
     lastSequence.current = 0;
     const append = (incoming: Event[]) => {
       if (stopped || generation.current !== epoch) return;
+      for (const event of incoming)
+        lastSequence.current = Math.max(lastSequence.current, event.sequence ?? 0);
       setEvents((old) => {
         const byId = new Map(
           old.map((event) => [event.id ?? `${event.type}:${event.sequence}`, event]),
         );
         for (const event of incoming) {
           byId.set(event.id ?? `${event.type}:${event.sequence}`, event);
-          lastSequence.current = Math.max(lastSequence.current, event.sequence ?? 0);
         }
-        return [...byId.values()];
+        return [...byId.values()].slice(-5000);
       });
     };
+    const report = (error: unknown) => {
+      if (!stopped && generation.current === epoch) fail(error);
+    };
     const status = async () => {
+      if (accessDenied.current) return;
       const value = await api<Session>(`sessions/${selected}`);
-      if (!stopped) {
+      if (!stopped && !accessDenied.current) {
         setSession(value);
         setSessions((old) =>
           old.map((item) => (item.id === value.id ? { ...item, ...value } : item)),
@@ -221,7 +308,7 @@ export function Chat({ config }: { config: Config }) {
       const result = await api<{ data: Work[] }>(
         `sessions/${config.interface_mode === "single_with_threads" && main ? main : selected}/work`,
       );
-      if (!stopped) setWork(result.data);
+      if (!stopped && !accessDenied.current) setWork(result.data);
     };
     const stream = async () => {
       while (!stopped) {
@@ -231,48 +318,67 @@ export function Chat({ config }: { config: Config }) {
             `/api/sessions/${selected}/sse?after_sequence=${lastSequence.current}`,
             { signal: controller.signal },
           );
+          if (stopped || generation.current !== epoch) {
+            await response.body?.cancel();
+            return;
+          }
           if (!response.ok) {
-            if (response.status === 401) throw new Error("Sign in to continue");
+            if ([401, 403, 404].includes(response.status)) {
+              report(
+                new Error(
+                  response.status === 401
+                    ? "Sign in to continue"
+                    : "This conversation is no longer available",
+                ),
+              );
+              return;
+            }
             throw new Error("Reconnecting to your conversation…");
           }
-          const reader = response.body!.getReader(),
-            decoder = new TextDecoder();
-          let buffer = "";
-          while (!stopped) {
-            const chunk = await reader.read();
-            if (chunk.done) break;
-            buffer += decoder.decode(chunk.value, { stream: true }).replace(/\r\n/g, "\n");
-            let boundary;
-            while ((boundary = buffer.indexOf("\n\n")) >= 0) {
-              const frame = buffer.slice(0, boundary);
-              buffer = buffer.slice(boundary + 2);
-              const data = frame
-                .split("\n")
-                .filter((line) => line.startsWith("data:"))
-                .map((line) => line.slice(5).trimStart())
-                .join("\n");
-              if (data) {
-                try {
-                  const event = JSON.parse(data);
-                  if (event.type && event.data) append([event]);
-                } catch {
-                  /* heartbeat/control frame */
-                }
-              }
+          retryDelay = 1500;
+          setError(null);
+          await consumeSse(response.body!, (_type, data) => {
+            try {
+              const event = JSON.parse(data);
+              if (event.type && event.data) append([event]);
+            } catch {
+              /* heartbeat/control frame */
             }
-          }
+          });
         } catch (error) {
-          if (!stopped) fail(error);
+          report(error);
         }
-        if (!stopped) await new Promise((resolve) => setTimeout(resolve, 1500));
+        if (!stopped)
+          await new Promise<void>((resolve) => {
+            const done = () => {
+              clearTimeout(retryTimer);
+              wakeRetry = undefined;
+              resolve();
+            };
+            wakeRetry = done;
+            retryTimer = setTimeout(done, retryDelay * (0.8 + Math.random() * 0.4));
+            retryDelay = Math.min(retryDelay * 2, 30000);
+          });
       }
     };
-    status().catch(fail);
-    stream();
-    const interval = setInterval(() => status().catch(fail), 4000);
+    const wake = () => {
+      if (navigator.onLine) {
+        wakeRetry?.();
+        void status().catch(report);
+      }
+    };
+    window.addEventListener("online", wake);
+    window.addEventListener("focus", wake);
+    status().catch(report);
+    void stream();
+    const interval = setInterval(() => status().catch(report), 4000);
     return () => {
       stopped = true;
       controller?.abort();
+      wakeRetry?.();
+      clearTimeout(retryTimer);
+      window.removeEventListener("online", wake);
+      window.removeEventListener("focus", wake);
       clearInterval(interval);
     };
   }, [selected, main, config.interface_mode, config.features.threads, fail]);
@@ -290,43 +396,106 @@ export function Chat({ config }: { config: Config }) {
       fail(error);
     }
   };
-  const send = async () => {
-    if (!draft.trim() && !upload) return;
+  const send = async (retry = false) => {
+    if (
+      retired.current ||
+      busyRef.current ||
+      recoveryScope === undefined ||
+      (pending && !retry) ||
+      (!pending && !draft.trim() && !upload)
+    )
+      return;
+    const submittedDraft = draft,
+      submittedUpload = upload,
+      scope = recoveryScope;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
+    let id = selected;
     try {
-      let id = selected;
       if (!id) {
-        const chat = await api<Session>("sessions", "POST", {});
+        const chat = await api<Session>(
+          "sessions",
+          "POST",
+          {},
+          (newConversationKey.current ??= crypto.randomUUID()),
+        );
+        newConversationKey.current = undefined;
         id = chat.id;
         setSelected(id);
         setSessions((old) => [chat, ...old]);
       }
-      const attachments = upload
-        ? [
-            {
-              name: upload.name,
-              media_type: upload.type || "application/octet-stream",
-              data: await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(String(reader.result).split(",")[1]);
-                reader.onerror = reject;
-                reader.readAsDataURL(upload);
-              }),
+      const key = scope ? recoveryKey(scope, id) : `memory:${id}`;
+      let submission = pending;
+      if (!submission) {
+        const attachments = submittedUpload
+          ? [
+              {
+                name: submittedUpload.name,
+                media_type: submittedUpload.type || "application/octet-stream",
+                data: await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(String(reader.result).split(",")[1]);
+                  reader.onerror = reject;
+                  reader.readAsDataURL(submittedUpload);
+                }),
+              },
+            ]
+          : [];
+        submission = {
+          key: crypto.randomUUID(),
+          createdAt: Date.now(),
+          body: {
+            message: {
+              role: "user",
+              content: submittedDraft.trim() ? [{ type: "text", text: submittedDraft }] : [],
             },
-          ]
-        : [];
-      await api(`sessions/${id}/messages`, "POST", {
-        message: { role: "user", content: draft.trim() ? [{ type: "text", text: draft }] : [] },
-        files: attachments,
-      });
-      setDraft("");
-      setUpload(null);
+            files: attachments,
+          },
+        };
+        store(key, { draft: submittedDraft, pending: submission });
+        if (!selected && scope) store(recoveryKey(scope, "new"), { draft: "" });
+        if (
+          currentRef.current.scope === scope &&
+          (currentRef.current.selected === id || currentRef.current.selected === null)
+        )
+          setPending(submission);
+      }
+      if (!retryable(submission))
+        throw new Error(
+          "This pending send is older than the retry window. Review the conversation before sending again.",
+        );
+      await api(`sessions/${id}/messages`, "POST", submission.body, submission.key);
+      const live = currentRef.current.scope === scope && currentRef.current.selected === id;
+      const originalText = (
+        (submission.body as { message?: { content?: Array<{ type: string; text?: string }> } })
+          .message?.content ?? []
+      )
+        .filter((part) => part.type === "text")
+        .map((part) => part.text ?? "")
+        .join("\n");
+      const savedDraft = recoveryRecords.current.get(key)?.draft ?? submittedDraft;
+      const nextDraft = savedDraft === originalText ? "" : savedDraft;
+      store(key, { draft: nextDraft });
+      if (live) {
+        setDraft(nextDraft);
+        setPending(undefined);
+        setUpload(null);
+      }
     } catch (error) {
-      fail(error);
+      if (
+        currentRef.current.scope === scope &&
+        (currentRef.current.selected === id || currentRef.current.selected === null)
+      )
+        fail(error);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
+  };
+  const discard = () => {
+    store(selectionKey, { draft });
+    setPending(undefined);
   };
   const browse = async (next: string) => {
     if (!selected) return;
@@ -421,6 +590,14 @@ export function Chat({ config }: { config: Config }) {
           {signedIn ? (
             <button
               onClick={async () => {
+                retired.current = true;
+                accessDenied.current = true;
+                setRecoveryScope(null);
+                setSignedIn(false);
+                clearRecovery();
+                recoveryRecords.current.clear();
+                setDraft("");
+                setPending(undefined);
                 await fetch("/auth/logout", { method: "POST" });
                 location.reload();
               }}
@@ -556,6 +733,24 @@ export function Chat({ config }: { config: Config }) {
           <div ref={end} />
         </section>
         <div className="composer-area">
+          {storageError && (
+            <p role="alert">
+              Recovery storage is unavailable. Keep this tab open and copy unsent text before
+              leaving.
+            </p>
+          )}
+          {pending && (
+            <div className="request" role="status">
+              Message delivery is unconfirmed. Retry checks the original send. Discard only removes
+              the local copy.
+              <button type="button" disabled={busy} onClick={() => void send(true)}>
+                Retry message
+              </button>
+              <button type="button" disabled={busy} onClick={discard}>
+                Discard local copy
+              </button>
+            </div>
+          )}
           {error && (
             <div role="alert" className="error">
               {error}
@@ -612,7 +807,8 @@ export function Chat({ config }: { config: Config }) {
                 aria-label="Message"
                 placeholder="Ask anything, or describe the work…"
                 value={draft}
-                onChange={(event) => setDraft(event.target.value)}
+                disabled={recoveryScope === undefined}
+                onChange={(event) => changeDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault();
@@ -646,7 +842,12 @@ export function Chat({ config }: { config: Config }) {
                     Stop
                   </button>
                 )}
-                <button className="primary" disabled={busy || (!draft.trim() && !upload)}>
+                <button
+                  className="primary"
+                  disabled={
+                    busy || !!pending || recoveryScope === undefined || (!draft.trim() && !upload)
+                  }
+                >
                   {busy ? "Sending…" : "Send ↑"}
                 </button>
               </div>
