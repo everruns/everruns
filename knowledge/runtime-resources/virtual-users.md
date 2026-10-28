@@ -204,7 +204,8 @@ responder availability. The final insert atomically checks whether the latest
 invocation identity still matches; a changed identity vetoes retention and
 never supplies a replacement. Missing, malformed or expired proof leaves the
 schedule without personal authority. Ordinary user-created schedules have no
-such proof, including ones with matching retry text.
+such proof, including ones with matching retry text. Indexed session lookups
+keep validation independent of unrelated invocation and tool-stream volume.
 
 Session ownership remains durable resource ownership. A private consumer chat
 uses its virtual-user principal. A shared endpoint conversation can retain
