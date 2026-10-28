@@ -184,3 +184,7 @@ required-features = ["chatgpt", "codex"]
 
 [lints]
 workspace = true
+
+[[test]]
+name = "mistral_responses_wire"
+required-features = ["mistral"]
