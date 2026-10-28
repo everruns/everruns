@@ -276,23 +276,42 @@ test("renders inline interactive widgets and sends their message actions", async
     }),
   );
   let sent = "";
+  let sentFiles = -1;
   await page.route("**/api/sessions/*/messages", async (route) => {
-    sent = route.request().postDataJSON().message.content[0].text;
+    const body = route.request().postDataJSON();
+    sent = body.message.content[0].text;
+    sentFiles = body.files.length;
     await route.fulfill({ json: { id: "sent" } });
   });
   await page.goto(origin);
   await expect(page.getByText("Migrated files")).toBeVisible();
+  await page.getByRole("textbox", { name: "Message", exact: true }).fill("Unsent note");
+  await page.getByLabel("Attach files").setInputFiles({
+    name: "private-draft.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("pending file"),
+  });
   await page.getByLabel("Review notes").fill("Ready to share");
   await page.getByLabel("Approve report").check();
   await page.getByRole("button", { name: "Send review", exact: true }).click();
   await expect.poll(() => sent).toContain('"notes":"Ready to share"');
   expect(sent).toContain('"approved":true');
   expect(sent).toContain('"scope":"Entire migration"');
+  expect(sentFiles).toBe(0);
+  await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue(
+    "Unsent note",
+  );
+  await expect(page.getByRole("button", { name: "Remove private-draft.csv" })).toBeVisible();
   await expect(page.getByText("255 migration PRs")).toBeVisible();
   await page.getByRole("tab", { name: "Details" }).click();
   await expect(page.getByText("Lit imports: zero")).toBeVisible();
   await page.getByRole("button", { name: "Explain the migration" }).click();
   await expect.poll(() => sent).toBe("Explain the migration");
+  expect(sentFiles).toBe(0);
+  await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue(
+    "Unsent note",
+  );
+  await expect(page.getByRole("button", { name: "Remove private-draft.csv" })).toBeVisible();
 });
 
 test("previews and filters CSV data and downloads text files", async ({ page, request }) => {

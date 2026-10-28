@@ -273,8 +273,9 @@ function WorkChat({ config }: { config: Config }) {
       fail(error);
     }
   };
-  const send = async (text = draft) => {
-    if (sending.current || (!text.trim() && !upload.length) || session?.archived) return;
+  const send = async (text = draft, { fromWidget = false } = {}) => {
+    const pendingFiles = fromWidget ? [] : upload;
+    if (sending.current || (!text.trim() && !pendingFiles.length) || session?.archived) return;
     sending.current = true;
     const epoch = generation.current;
     setBusy(true);
@@ -288,7 +289,7 @@ function WorkChat({ config }: { config: Config }) {
         setSessions((old) => [chat, ...old]);
       }
       const attachments = await Promise.all(
-        upload.map(async (file) => ({
+        pendingFiles.map(async (file) => ({
           name: file.name,
           media_type: file.type || "application/octet-stream",
           data: await new Promise<string>((resolve, reject) => {
@@ -307,7 +308,7 @@ function WorkChat({ config }: { config: Config }) {
           ...(effort ? { reasoning: { effort } } : {}),
         },
       });
-      if (epoch === generation.current || !selected) {
+      if (!fromWidget && (epoch === generation.current || !selected)) {
         setDraft("");
         setUpload([]);
       }
@@ -627,7 +628,7 @@ function WorkChat({ config }: { config: Config }) {
               <MessageContent
                 text={message.text}
                 streaming={running && message.id === messages.at(-1)?.id}
-                onMessage={(text) => void send(text)}
+                onMessage={(text) => void send(text, { fromWidget: true })}
                 onFile={
                   config.features.files
                     ? (path) => {
