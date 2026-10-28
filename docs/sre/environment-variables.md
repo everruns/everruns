@@ -835,8 +835,10 @@ WORKER_GRPC_TLS_CA_CERT=/etc/everruns/grpc-ca.pem
 
 **Notes:**
 - Server: when set, requires workers to present valid client certificates signed by this CA (mutual TLS)
-- Worker: when set, verifies the server's certificate against this CA and switches to `https://` transport
+- Worker: when nonempty, both the durable/task client and the turn client (including raw blob fetches) verify the server's certificate against this CA and use `https://`. TLS keeps the original hostname instead of the plaintext replica balancer. Verification failures do not fall back to plaintext.
 - For full mTLS, set on both server and worker alongside their respective cert/key pairs
+- The turn client's connection and TLS handshake are bounded by `WORKER_GRPC_REQUEST_TIMEOUT_SECS`. Unreadable TLS files fail startup; invalid certificates or mismatched identities refuse the connection.
+- On upgrade, check that the configured CA, expected server name and optional client identity work for turn RPCs as well as task RPCs: older workers applied these settings only to the durable/task client. Unset or empty worker CA configuration retains plaintext transport.
 
 ### WORKER_GRPC_TLS_DOMAIN
 

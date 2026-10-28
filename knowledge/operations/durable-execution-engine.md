@@ -364,7 +364,7 @@ production and DEV_MODE alike; the worker side is
   this way; a long model stream or tool call is progress with its own
   timeouts. Every worker control-plane call also has a deadline
   (`WORKER_GRPC_REQUEST_TIMEOUT_SECS`, default 120 s,
-  [`connect.rs`](../../crates/worker/src/grpc_adapters/connect.rs)), so a call
+  [`connect/mod.rs`](../../crates/worker/src/grpc_adapters/connect/mod.rs)), so a call
   nobody answers fails as a retryable store error instead of hanging the turn.
   The task subscription stream has its own channel and no deadline. Not yet
   covered: a sweep for an `active` session whose actor is neither leased nor
@@ -567,5 +567,18 @@ Workers heartbeat every 5s. `WORKER_HEARTBEAT_TIMEOUT_SECS` (60s, in `crates/dur
 **Authentication**: Two layered mechanisms (see `knowledge/security/threat-model.md` TM-DURABLE-002):
 1. Bearer token (`WORKER_GRPC_AUTH_TOKEN`) -- required in production
 2. Mutual TLS (`WORKER_GRPC_TLS_*`) -- optional transport encryption
+
+Both the durable/task client and the normal turn client, including its raw blob
+fetcher, use the shared TLS configuration. TLS retains the endpoint hostname for
+certificate verification and bypasses the plaintext DNS replica balancer. The
+turn client's deadline bounds connection establishment and TLS handshake as
+well as requests; TLS failures never select a plaintext fallback. Unset or empty
+CA configuration preserves plaintext compatibility. See the
+[turn connection implementation](../../crates/worker/src/grpc_adapters/connect/mod.rs)
+and [environment variables](../../docs/sre/environment-variables.md#worker_grpc_tls_ca_cert).
+
+This verifies transport peers, not an assignment or tenant. A shared worker's
+bearer still grants cross-org authority; a per-executor application identity and
+assignment admission must be enforced separately before scoped issuance.
 
 **Design decision**: Workers are intentionally cross-org. Org-scoping is enforced at the HTTP API layer, not the gRPC transport.
