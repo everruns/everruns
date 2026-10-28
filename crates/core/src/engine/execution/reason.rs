@@ -1583,9 +1583,7 @@ impl ReasonAtom {
                                 "ReasonAtom: transient stream error before output, retrying"
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
-                            last_failure = everruns_contracts::retry_failure::retained(
-                                &err.clone().into_agent_error(),
-                            );
+                            last_failure = everruns_contracts::retry_failure::retained_stream(&err);
                             everruns_contracts::rt::sleep(wait_duration).await;
                             stream_state::restart(&self.event_emitter, &started, &text).await;
                             continue 'stream_attempt;

@@ -58,6 +58,14 @@ pub fn retained(error: &AgentLoopError) -> Option<String> {
     Some(summary)
 }
 
+/// [`retained`] for a stream error. Out of line on purpose: the converted
+/// error would otherwise get its own slot in the reason loop's poll frame,
+/// and nested subagent turns overflow the default test-thread stack.
+#[inline(never)]
+pub fn retained_stream(error: &crate::stream_error::LlmStreamError) -> Option<String> {
+    retained(&error.clone().into_agent_error())
+}
+
 /// The kind a retained summary names, for the terminal error. Only transient
 /// failures reach a retry; anything but a rate limit reads back as
 /// `Unavailable`, the kind this error always had before the cause was kept.
