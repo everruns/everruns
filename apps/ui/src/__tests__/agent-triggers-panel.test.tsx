@@ -10,6 +10,7 @@ const run = jest.fn();
 const remove = jest.fn();
 const save = jest.fn();
 let canManage = true;
+let hideSchedule = false;
 jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => ({ can: () => canManage, isLoading: false, error: null }),
 }));
@@ -75,7 +76,7 @@ jest.mock("@/hooks/use-agent-triggers", () => ({
         created_at: "2026-07-17T00:00:00Z",
         updated_at: "2026-07-17T00:00:00Z",
       } as unknown as AgentTrigger,
-    ],
+    ].filter((trigger) => !hideSchedule || trigger.id !== "trg_123"),
     isLoading: false,
   }),
   useAgentTriggerRuns: () => ({
@@ -99,6 +100,7 @@ describe("AgentTriggersPanel", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     canManage = true;
+    hideSchedule = false;
     global.structuredClone = (v) => JSON.parse(JSON.stringify(v));
   });
 
@@ -159,6 +161,43 @@ describe("AgentTriggersPanel", () => {
     expect(run).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("keeps a removed trigger's dialog read-only instead of exposing the underlying page", () => {
+    let active!: PageDraftAdapter;
+    const mode: ChatModeState = {
+      page: { route: "/agents/agent_123", label: "Agent" },
+      pageContainer: { current: null },
+      open: true,
+      setOpen: () => {},
+      actions: [],
+      recordAction: () => {},
+      registerPage: (_, value) => {
+        if (value) active = value;
+        return () => {};
+      },
+    };
+    const tree = (
+      <PageChatProvider value={mode}>
+        <AgentTriggersPanel agentId="agent_123" />
+      </PageChatProvider>
+    );
+    const view = render(tree);
+    fireEvent.click(screen.getByRole("button", { name: "Quick edit trigger" }));
+    const adapter = active;
+    const before = adapter.read(adapter.describe().binding);
+    hideSchedule = true;
+    view.rerender(
+      <PageChatProvider value={mode}>
+        <AgentTriggersPanel agentId="agent_123" />
+      </PageChatProvider>,
+    );
+    const current = active.read(active.describe().binding);
+    expect(current.entity_type).toBe("agent_trigger");
+    expect(current.writable).toBe(false);
+    expect(() => adapter.patch(before.binding, before.revision, { message: "Late" })).toThrow();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    expect(save).not.toHaveBeenCalled();
   });
 
   it("labels MCP event triggers without webhook setup guidance", () => {

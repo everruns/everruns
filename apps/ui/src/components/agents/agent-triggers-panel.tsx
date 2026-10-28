@@ -120,11 +120,13 @@ export function AgentTriggersPanel({
     formId: "schedule",
     label: "Edit trigger",
     priority: 30,
-    enabled: dialogOpen && !!savedTrigger,
+    // A deleted/loading trigger must keep owning this dialog's binding, rather
+    // than exposing the writable Agent form underneath it.
+    enabled: dialogOpen,
     baseline: savedTrigger?.updated_at ?? "new",
     values,
     dirty: JSON.stringify(values) !== JSON.stringify(saved),
-    writable: canManage && !updateTrigger.isPending,
+    writable: !!savedTrigger && canManage && !updateTrigger.isPending,
     apply: setForm,
   });
 
@@ -143,7 +145,8 @@ export function AgentTriggersPanel({
   };
 
   const save = async () => {
-    if (!editing || !canManage || chatDraft.blocked || updateTrigger.isPending) return;
+    if (!editing || !savedTrigger || !canManage || chatDraft.blocked || updateTrigger.isPending)
+      return;
     if (!isTriggerFormValid(form)) {
       setError("Enter a valid schedule and a non-empty message.");
       return;
@@ -343,7 +346,7 @@ export function AgentTriggersPanel({
             )}
             <Button
               onClick={save}
-              disabled={!canManage || updateTrigger.isPending || chatDraft.blocked}
+              disabled={!savedTrigger || !canManage || updateTrigger.isPending || chatDraft.blocked}
             >
               {ui("Save changes")}
             </Button>
