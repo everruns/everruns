@@ -334,19 +334,16 @@ impl ReasonAtom {
                     reason_span_id.clone(), // Same span_id as started
                     Some(parent_span_id.clone()),
                 );
-                let mut failed_reason = EventRequest::new(
-                    context.session_id,
-                    completed_context,
-                    ReasonCompletedData::failure(error_msg.clone(), Some(reason_duration_ms)),
-                );
-                if let Some(schedule_id) = retry_schedule_id {
-                    // This trusted event context binds the retry to this exact input,
-                    // even when generic disclosure removes user-facing error fields.
-                    failed_reason = failed_reason.with_metadata(serde_json::json!({
-                        "platform_auto_retry": { "schedule_id": schedule_id }
-                    }));
-                }
-                if let Err(emit_err) = self.event_emitter.emit(failed_reason).await {
+                if let Err(emit_err) = self
+                    .event_emitter
+                    .emit(failed_reason_event(
+                        context.session_id,
+                        completed_context,
+                        ReasonCompletedData::failure(error_msg.clone(), Some(reason_duration_ms)),
+                        retry_schedule_id,
+                    ))
+                    .await
+                {
                     tracing::warn!(
                         session_id = %context.session_id,
                         error = %emit_err,
@@ -379,5 +376,24 @@ impl ReasonAtom {
         };
 
         Ok(result)
+    }
+}
+
+// Construct the large event outside the async phase. Keeping it as a named local
+// there grows nested child-turn stack frames even on the successful path.
+fn failed_reason_event(
+    session_id: SessionId,
+    context: EventContext,
+    data: ReasonCompletedData,
+    retry_schedule_id: Option<crate::engine::typed_id::ScheduleId>,
+) -> EventRequest {
+    let event = EventRequest::new(session_id, context, data);
+    if let Some(schedule_id) = retry_schedule_id {
+        // Trusted context binds the retry to this input independently of disclosure.
+        event.with_metadata(serde_json::json!({
+            "platform_auto_retry": { "schedule_id": schedule_id }
+        }))
+    } else {
+        event
     }
 }
