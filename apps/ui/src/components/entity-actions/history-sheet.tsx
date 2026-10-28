@@ -14,8 +14,8 @@
 //   are shown after the restore.
 // See knowledge/execution/change-reasons-and-manager-context.md (UI).
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useMemo, useState } from "react";
 import { HistoryResourceKind } from "@/hooks/history-resource-kind";
 import Link from "next/link";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useId, useState, type FormEvent } from "react";
 import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -171,6 +171,8 @@ function AccessDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { currentOrg, hasRole } = useOrg();
   const canGrantOrganization = hasRole("admin");
@@ -241,7 +243,7 @@ function AccessDialog({
                   <p className="text-xs text-muted-foreground">
                     {grant.expires_at
                       ? ui("Until {value0}", {
-                          value0: new Date(grant.expires_at).toLocaleString(),
+                          value0: new Date(grant.expires_at).toLocaleString(displayLocale),
                         })
                       : ui("Until revoked")}
                   </p>
@@ -574,6 +576,8 @@ function ScopedCredentialsPanelContent({
   owner: CredentialOwner;
   title?: string;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { currentOrg } = useOrg();
   const queryClient = useQueryClient();
@@ -692,12 +696,14 @@ function ScopedCredentialsPanelContent({
                     </p>
                     {credential.expires_at && (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {ui("Expires")} {new Date(credential.expires_at).toLocaleString()}
+                        {ui("Expires")}{" "}
+                        {new Date(credential.expires_at).toLocaleString(displayLocale)}
                       </p>
                     )}
                     {credential.last_used_at && (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {ui("Last used")} {new Date(credential.last_used_at).toLocaleString()}
+                        {ui("Last used")}{" "}
+                        {new Date(credential.last_used_at).toLocaleString(displayLocale)}
                         {credential.last_used_agent_id
                           ? ui(" · {value0}", {
                               value0: credential.last_used_agent_name ?? "Service agent",

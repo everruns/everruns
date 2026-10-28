@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { use, useState, useCallback } from "react";
@@ -192,6 +192,8 @@ function RunRow({
   selected?: boolean;
   onToggleSelect?: (runId: string) => void;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   return (
     <div className="flex items-center gap-3">
@@ -210,7 +212,7 @@ function RunRow({
             <div className="flex items-center gap-4">
               <Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>
               <span className="text-sm text-muted-foreground">
-                {new Date(run.created_at).toLocaleString()}
+                {new Date(run.created_at).toLocaleString(displayLocale)}
               </span>
               <span className="text-xs text-muted-foreground">
                 {ui("by")} {run.triggered_by}

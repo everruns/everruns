@@ -6,8 +6,8 @@
 // changes the layout. One header row, no second row of tabs: "Source" is a
 // ghost sm toggle for the raw text, sized with Edit prompt.
 
-import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useEffect, useRef, useState } from "react";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";

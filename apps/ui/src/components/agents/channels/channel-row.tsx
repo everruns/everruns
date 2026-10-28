@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, MoreHorizontal, Play } from "lucide-react";
@@ -157,6 +157,8 @@ export function ChannelRow({
   usePanel?: React.ReactNode;
   configureHref?: string;
 }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const lifecycle = getChannelLifecyclePresentation(channel);
   const { isLive } = lifecycle;
@@ -277,7 +279,7 @@ export function ChannelRow({
               </div>
               <div>
                 <p className="text-xs font-medium text-muted-foreground">{ui("Created")}</p>
-                <p className="mt-1">{new Date(channel.created_at).toLocaleString()}</p>
+                <p className="mt-1">{new Date(channel.created_at).toLocaleString(displayLocale)}</p>
               </div>
               <div className="flex items-center justify-between gap-3 md:justify-end">
                 <Button type="button" variant="outline" size="sm" onClick={toggle}>

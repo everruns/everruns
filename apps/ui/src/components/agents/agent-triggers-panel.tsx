@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState, type ReactNode } from "react";
 import {
   Clock3,
@@ -48,6 +48,8 @@ import { Switch } from "@/components/ui/switch";
 import { formatDistanceToNow } from "@/lib/formatting";
 
 function TriggerRuns({ agentId, triggerId }: { agentId: string; triggerId: string }) {
+  const { displayLocale } = useLocale();
+
   const ui = useUiTranslations();
   const { data: runs = [], isLoading } = useAgentTriggerRuns(agentId, triggerId);
   if (isLoading)
@@ -59,7 +61,7 @@ function TriggerRuns({ agentId, triggerId }: { agentId: string; triggerId: strin
       {runs.slice(0, 5).map((run) => (
         <span key={run.id} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
           <Badge variant={run.status === "completed" ? "default" : "outline"}>{run.status}</Badge>
-          {formatDistanceToNow(new Date(run.scheduled_at), { addSuffix: true })}
+          {formatDistanceToNow(new Date(run.scheduled_at), { addSuffix: true }, displayLocale)}
         </span>
       ))}
     </div>

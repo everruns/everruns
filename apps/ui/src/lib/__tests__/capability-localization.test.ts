@@ -161,8 +161,22 @@ describe("capability category localization", () => {
     expect(localizedCapabilityCategory("Execution", "uk")).toBe("Виконання");
     expect(localizedCapabilityCategory("Uncategorized", "uk")).toBe("Без категорії");
     expect(localizedCapabilityCategory("Network", "en")).toBe("Network");
-    expect(localizedCapabilityCategory("Network", "de")).toBe("Network");
+    expect(localizedCapabilityCategory("Network", "ja")).toBe("Network");
     expect(localizedCapabilityCategory("Customer tools", "uk")).toBe("Customer tools");
     expect(localizedCapabilityCategory("constructor", "uk")).toBe("constructor");
   });
+});
+
+it("keeps prototype-shaped enum values as data when a locale has a partial overlay", () => {
+  const capability = {
+    config_schema: { type: "string", enum: ["read", "constructor", "__proto__"] },
+    localizations: { fr: { config_overlay: { enum_labels: { read: "Lire" } } } },
+  };
+  const result = localizedConfigSchema(capability, "fr-CA");
+  expect(result?.oneOf).toEqual([
+    { const: "read", title: "Lire" },
+    { const: "constructor", title: "constructor" },
+    { const: "__proto__", title: "__proto__" },
+  ]);
+  expect(capability.config_schema.enum).toEqual(["read", "constructor", "__proto__"]);
 });

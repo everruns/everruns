@@ -1,11 +1,11 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState, useEffect } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight, Terminal } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
-import { useLocale } from "@/providers/locale-provider";
+
 import { cn } from "@/lib/utils";
 import { failureTextClass, toolFailureSeverity } from "./failure-severity";
 import { ExecutedArgumentsNotice } from "./executed-arguments";

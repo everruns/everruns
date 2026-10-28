@@ -1,5 +1,11 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-28
+
+- Extended interface, built-in resource display and deterministic backend localization
+  with French, German, Spanish, Simplified Chinese and British English. Browser
+  preference negotiation and regional formatting remain separate from execution locale.
+
 ## 2026-10-27
 
 - Shell filesystem checks now use metadata to recognize empty workspace directories across the command-backed worker transport. Recursive copy preserves destination directory layout before any child is written. See [Bashkit requirements](execution/bashkit-requirements.md).
