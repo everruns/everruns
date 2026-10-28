@@ -113,16 +113,24 @@ async fn single_message_lookup_bypasses_history_window_in_both_worker_transports
             direct.as_ref().map(|m| m.id),
             (id == session).then_some(input.id)
         );
-        let response = grpc
-            .get_message(tonic::Request::new(GetMessageRequest {
-                session_id: Some(everruns_internal_protocol::uuid_to_proto_uuid(id.uuid())),
-                message_id: Some(everruns_internal_protocol::uuid_to_proto_uuid(
-                    input.id.uuid(),
-                )),
-            }))
-            .await
-            .unwrap()
-            .into_inner();
+        let message = GetMessageRequest {
+            session_id: Some(everruns_internal_protocol::uuid_to_proto_uuid(id.uuid())),
+            message_id: Some(everruns_internal_protocol::uuid_to_proto_uuid(
+                input.id.uuid(),
+            )),
+        };
+        assert_eq!(
+            grpc.get_message(tonic::Request::new(message.clone()))
+                .await
+                .unwrap_err()
+                .code(),
+            tonic::Code::Unauthenticated
+        );
+        let mut request = tonic::Request::new(message);
+        request
+            .extensions_mut()
+            .insert(crate::worker_link::grpc_service::authority::WorkerAuthority::Development);
+        let response = grpc.get_message(request).await.unwrap().into_inner();
         assert_eq!(response.message.is_some(), id == session);
         if let Some(message) = response.message {
             assert_eq!(
