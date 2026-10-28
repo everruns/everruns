@@ -78,6 +78,7 @@
 mod capability_admission;
 mod detached;
 mod journal_admission;
+mod journal_snapshot;
 pub(super) mod rows;
 use rows::*;
 
@@ -446,6 +447,17 @@ impl Database {
         after_sequence: Option<i32>,
         limit: i64,
     ) -> Result<ActorJournalRows> {
+        let mut connection = self.pool.acquire().await?;
+        Self::read_session_actor_journal_on(&mut connection, session_id, after_sequence, limit)
+            .await
+    }
+
+    pub(super) async fn read_session_actor_journal_on(
+        connection: &mut sqlx::PgConnection,
+        session_id: SessionId,
+        after_sequence: Option<i32>,
+        limit: i64,
+    ) -> Result<ActorJournalRows> {
         let limit = if limit <= 0 {
             DEFAULT_ACTOR_JOURNAL_LIMIT
         } else {
@@ -473,7 +485,7 @@ impl Database {
         .bind(session_id)
         .bind(after_sequence)
         .bind(limit + 1)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *connection)
         .await?;
         let has_more = events.len() as i64 > limit;
         events.truncate(limit as usize);
@@ -481,7 +493,7 @@ impl Database {
             "SELECT MAX(sequence) FROM events WHERE session_id = $1",
         )
         .bind(session_id)
-        .fetch_one(&self.pool)
+        .fetch_one(connection)
         .await?;
         Ok(ActorJournalRows {
             events,

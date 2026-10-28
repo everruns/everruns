@@ -5,10 +5,17 @@ impl Database {
     /// No public or worker API writes this record. Missing schema/database is
     /// an error, never evidence that the legacy plane is allowed.
     pub(crate) async fn worker_ingress_minimum_version(&self) -> anyhow::Result<Option<i32>> {
+        let mut connection = self.pool.acquire().await?;
+        Self::worker_ingress_minimum_version_on(&mut connection).await
+    }
+
+    pub(crate) async fn worker_ingress_minimum_version_on(
+        connection: &mut sqlx::PgConnection,
+    ) -> anyhow::Result<Option<i32>> {
         Ok(sqlx::query_scalar(
             "SELECT minimum_version FROM worker_ingress_protection_floor WHERE singleton",
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(connection)
         .await?)
     }
 

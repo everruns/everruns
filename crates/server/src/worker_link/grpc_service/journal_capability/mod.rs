@@ -110,29 +110,30 @@ impl std::fmt::Debug for VerifiedJournalScope {
 }
 
 impl VerifiedJournalScope {
-    pub(super) async fn admit_read(
+    pub(super) async fn read_journal(
         &self,
         db: &StorageBackend,
         session_id: SessionId,
-    ) -> Result<(), Status> {
+        after_sequence: Option<i32>,
+        limit: i64,
+    ) -> Result<crate::storage::ActorJournalRows, Status> {
         if session_id != self.binding.session_id {
             return Err(denied());
         }
-        // THREAT[TM-AUTHZ-002]: Retained contexts never cache identity, proof,
-        // grant or lease liveness. One admission statement checks them all.
-        let current = db
-            .resolve_worker_journal_capability(&self.certificate_sha256, &self.capability_sha256)
-            .await
-            .map_err(|error| {
-                super::worker::support::internal_status(
-                    "Failed to authorize worker assignment",
-                    error,
-                )
-            })?;
-        if current.as_ref() != Some(&self.binding) {
-            return Err(denied());
-        }
-        Ok(())
+        db.read_worker_assignment_journal(
+            &self.binding,
+            crate::storage::WorkerJournalReadIdentity::Verified {
+                certificate_sha256: &self.certificate_sha256,
+                capability_sha256: &self.capability_sha256,
+            },
+            after_sequence,
+            limit,
+        )
+        .await
+        .map_err(|error| {
+            super::worker::support::internal_status("Failed to authorize worker assignment", error)
+        })?
+        .ok_or_else(denied)
     }
 }
 

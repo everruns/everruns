@@ -55,9 +55,12 @@ and expiry. Org consistency includes both the session and actor index. No
 positive admission is cached across calls or reconnects; database failure does
 not grant access. Foreign and absent selectors receive the same refusal.
 
-Admission linearizes at the database statement's snapshot. A read admitted
-before lease release/reassignment may finish afterward; already delivered bytes
-cannot be retracted. A revocation committed before a new admission is refused.
+Scoped reads bind the protection floor, online authority, journal page and head
+metadata to one [read-only snapshot](../../crates/server/src/storage/repositories/session_actors/journal_snapshot.rs).
+Revocation committed before that snapshot is refused. An earlier snapshot may
+finish after revocation, but cannot include journal events committed later.
+Already delivered bytes cannot be retracted. Each subsequent page and reconnect
+establishes a fresh snapshot and rechecks authority.
 The journal authorization grant is independently revocable. The unactivated
 [verified journal path](../operations/durable-execution-engine.md#worker-communication)
 now checks exact mTLS executor enrollment, opaque proof and explicit supporting

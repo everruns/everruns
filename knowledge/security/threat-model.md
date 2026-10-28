@@ -950,8 +950,11 @@ provenance, and qualification must cover protected-assignment legacy refusal,
 underlying resource-grant revocation, version floors, transport/hosting adapters,
 issuer/retention/rate budgets, and separate executor authority. Identity and digest
 tombstones remain retained; lifecycle qualification is required before issuance.
-Already admitted reads may finish after revocation commits; delivered bytes
-cannot be retracted. Live read capabilities are reusable within their assignment;
+Scoped authority and journal page/head reads share one
+[read-only snapshot](../../crates/server/src/storage/repositories/session_actors/journal_snapshot.rs).
+Revocation committed before that snapshot is refused. An earlier snapshot may
+finish afterward, but cannot expose later-committed events or head metadata;
+delivered bytes cannot be retracted. Live read capabilities are reusable within their assignment;
 stale or revoked proofs cannot be rebound to a fresh grant.
 
 **Design decision:** Workers are intentionally cross-org. They are stateless task executors that process work from any organization's queue. Org-scoping is enforced at the application layer (HTTP API), not the internal gRPC transport.
