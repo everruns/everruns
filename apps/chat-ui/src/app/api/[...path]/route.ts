@@ -17,7 +17,16 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
       if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
       const response = await fetch(
         `${settings().upstream}/v1/channels/${channel}/${path}${new URL(request.url).search}`,
-        { cache: "no-store", redirect: "error", signal: AbortSignal.timeout(10000) },
+        {
+          cache: "no-store",
+          redirect: "error",
+          signal: AbortSignal.timeout(10000),
+          // The private host sits behind an ingress that sets this chain.
+          // Preserve it so the API can apply its trusted-proxy hop policy per viewer.
+          headers: request.headers.has("x-forwarded-for")
+            ? { "X-Forwarded-For": request.headers.get("x-forwarded-for")! }
+            : undefined,
+        },
       );
       return new Response(response.body, {
         status: response.status,

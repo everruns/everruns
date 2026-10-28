@@ -125,6 +125,19 @@ async function main() {
         interface_mode: "multi_chat",
         features: { threads: false, files: false },
       });
+    if (path.includes("/chat/shared/")) {
+      assert.equal(
+        request.headers["x-forwarded-for"],
+        "127.0.0.1",
+        "public read uses the ingress peer chain",
+      );
+      assert.equal(
+        request.headers.authorization,
+        undefined,
+        "public read forwards no consumer credential",
+      );
+      return json(response, { title: "Public report", data: [], before: null });
+    }
     if (path.endsWith("/runtime-auth")) {
       admissions++;
       return json(response, { access_token: "execution-fixture-token" });
@@ -223,6 +236,18 @@ async function main() {
         new URL(request.url()).pathname,
         request.failure()?.errorText,
       ),
+    );
+    assert.equal(
+      (
+        await context.request.get(
+          `${origin}/api/chat/shared/01933b5a-0000-7000-8000-000000000001`,
+          {
+            headers: { "x-forwarded-for": "203.0.113.9" },
+          },
+        )
+      ).status(),
+      200,
+      "signed-out shared transcript uses the public proxy path",
     );
     let handoff = "";
     page.on("response", (res) => {
