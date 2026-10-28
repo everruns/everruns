@@ -28,6 +28,8 @@ pub enum EntityKind {
     OrganizationDecision,
     UserProfile,
     OrganizationAccount,
+    TracingPolicy,
+    TracingDestination,
     SandboxTemplate,
     Agent,
     Harness,
@@ -70,6 +72,8 @@ impl EntityKind {
         Self::OrganizationDecision,
         Self::UserProfile,
         Self::OrganizationAccount,
+        Self::TracingPolicy,
+        Self::TracingDestination,
         Self::SandboxTemplate,
         Self::Agent,
         Self::Harness,
@@ -110,6 +114,8 @@ impl EntityKind {
             Self::OrganizationDecision => "organization_decision",
             Self::UserProfile => "user_profile",
             Self::OrganizationAccount => "organization_account",
+            Self::TracingPolicy => "tracing_policy",
+            Self::TracingDestination => "tracing_destination",
             Self::SandboxTemplate => "sandbox_template",
             Self::Agent => "agent",
             Self::Harness => "harness",
@@ -158,7 +164,10 @@ impl EntityKind {
         Some(match self {
             Self::Organization => "org",
             Self::OrganizationNetwork | Self::OrganizationDecision => return None,
-            Self::UserProfile | Self::OrganizationAccount => return None,
+            Self::UserProfile
+            | Self::OrganizationAccount
+            | Self::TracingPolicy
+            | Self::TracingDestination => return None,
             Self::SandboxTemplate => "sbxtpl",
             Self::Agent => "agent",
             Self::Harness => "harness",
@@ -213,6 +222,9 @@ impl EntityKind {
             Self::OrganizationAccount => {
                 &organizations::provider_accounts::ORG_PROVIDER_ACCOUNTS_VIEW
             }
+            Self::TracingPolicy | Self::TracingDestination => {
+                &trace_exports::commands::TRACING_MANAGE
+            }
             Self::SandboxTemplate => &harnesses::HARNESS_VIEW,
             Self::UserProfile => &users::profile::OWN_PROFILE,
             Self::Agent
@@ -252,6 +264,9 @@ impl EntityKind {
         use crate::domains::*;
         match self {
             Self::Organization => &organizations::settings::ORGANIZATION_MANAGE,
+            Self::TracingPolicy | Self::TracingDestination => {
+                &trace_exports::commands::TRACING_MANAGE
+            }
             Self::OrganizationNetwork => {
                 &organizations::egress_allowlist::ORG_EGRESS_ALLOWLIST_MANAGE
             }
@@ -314,6 +329,8 @@ impl EntityKind {
             Self::OrganizationDecision => ("get_org_decision_settings", "org"),
             Self::UserProfile => ("get_account_profile", "id"),
             Self::OrganizationAccount => ("get_organization_account", "id"),
+            Self::TracingPolicy => ("get_tracing_policy", "id"),
+            Self::TracingDestination => ("get_tracing_destination_metadata", "id"),
             Self::SandboxTemplate => ("get_sandbox_template_metadata", "id"),
             Self::Agent => ("get_agent", "id"),
             Self::Harness => ("get_harness", "id"),
@@ -630,6 +647,8 @@ pub fn declared(name: &str) -> Change {
         // Organization.
         "update_org" => on(K::Organization, Updated, Param("org")),
         "update_sandbox_template_metadata" => on(K::SandboxTemplate, Updated, Param("id")),
+        "update_tracing_destination_metadata" => on(K::TracingDestination, Updated, Param("id")),
+        "update_tracing_policy" => on(K::TracingPolicy, Updated, Param("id")),
         "update_organization_account_name" => on(K::OrganizationAccount, Updated, Param("id")),
         "update_account_profile" => on(K::UserProfile, Updated, Param("id")),
         "update_workspace" => on(K::Workspace, Updated, ID),

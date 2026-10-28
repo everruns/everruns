@@ -4,6 +4,8 @@ pub mod commands;
 pub mod content;
 pub mod extraction;
 pub mod files;
+#[cfg(test)]
+mod folder_tests;
 pub mod indexing;
 pub mod okf;
 pub mod repository;

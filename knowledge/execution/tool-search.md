@@ -50,6 +50,10 @@ Hosted modes keep their provider wire behavior. The bounded catalog settings
 below apply to generic `tool_search`; they do not change hosted search. A
 first-party model ID through a gateway does not establish that the gateway
 implements the hosted format. Driver profile masking remains authoritative.
+Explicit bounded generic search supersedes inherited automatic and hosted search
+capabilities. This keeps an Agent's disclosure ceiling authoritative even when
+its parent harness selects hosted search for the model; configuration order must
+not restore the complete catalog or add a second discovery mechanism.
 See [OpenAI's guide](https://developers.openai.com/api/docs/guides/tools-tool-search/)
 and [Anthropic's tool-use guide](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool).
 
@@ -64,24 +68,42 @@ matcher and its catalog presentation are unchanged by the bounded index.
 
 With bounded mode enabled, a registry-revision `ToolSearchIndex` uses BM25-style
 lexical ranking over operation names and descriptions, schema property names
-and descriptions, and MCP server names and configured descriptions. The index
-stores metadata, not duplicate schemas. Server context is scored once per
-server, so one large source does not get a vote for every tool it owns. CLI
-`tools search` uses the same server-aware index; generic native search uses it
-when bounded mode is enabled.
+and descriptions, MCP server names and configured descriptions, and declared
+capability IDs, names and descriptions. It does not index full system prompts.
+The index stores metadata, not duplicate schemas. MCP server context and its
+owner capability text are each scored once per MCP source; built-in operations
+share one capability-context score per capability. Adding operations does not
+multiply a source or capability's contribution by its tool count. CLI
+`tools search` and bounded native search use the same authorization-scoped
+index. Name, description, schema and source context remain distinct retrieval
+fields so verbose schemas and shared envelope terms cannot dilute distinctive
+names. Complete names written with spaces or hyphens resolve like underscore
+spellings; canonical MCP namespace separators remain intact.
+For an owned operation, the index also recognizes an unqualified exact alias
+by stripping only its declared owner ID prefix, after normalizing that ID's
+hyphens to underscores: owner `platform` can match
+`platform_update_agent` as `update_agent` or `update agent`. This alias does
+not change the canonical invocation name. A capability-name-only query remains
+a source browse/refinement and does not match every operation sharing its
+prefix. Reattachment indexes only the declared capability ID, name and
+description; updated descriptions invalidate the index, and unregistering a
+source removes its prior context.
 
 The DB-backed host preserves attached or preset server descriptions in listed
 tools and deferred placeholders, including across the worker transport. A
 worker receives retrieval metadata alongside the definitions; it still resolves
 execution through current server configuration and authorization.
 
-Search applies the current visible-operation allowlist before ranking. A
-server description may help find common operations such as `search`, `get`, or
-`list`, while server-qualified tool identities keep same-named operations
-separate. A match on server metadata alone returns a server refinement, not
-arbitrary operation schemas. The index is invalidated when the runtime registry changes. A
-selected name is resolved against that registry before schema disclosure or
-execution.
+Search applies the current visible-operation allowlist before ranking. A server
+or capability description may help find relevant operation sources. An exact
+capability/server-context-only query returns bounded capability or server
+browse/refinement; it does not choose an arbitrary first group of operation
+schemas. A follow-up query that names an operation loads only the selected
+schema through the existing disclosure path. Server-qualified tool identities
+keep same-named operations separate. The index is rebuilt when metadata or the
+runtime registry changes, including capability replacement or detachment. A
+selected operation is resolved against the current registry before schema
+disclosure or execution.
 
 ## Bounded mode
 
@@ -93,8 +115,9 @@ execution.
 | `max_active_bytes` | 65,536 | 1 KiB–1 MiB | Serialized-byte budget for optional active schemas |
 | `max_result_bytes` | 32,768 | 1 KiB–64 KiB | Serialized-byte budget for one `tool_search` result |
 
-A bounded search returns at most eight matching schemas, regardless of the
-configured byte limit. Eager tools, client-side tools, owner-marked
+A bounded search returns at most eight matching operation summaries, regardless
+of the configured byte limit. Full canonical schemas arrive in the next native
+function projection; they are not duplicated in search-result history. Eager tools, client-side tools, owner-marked
 `DeferrablePolicy::Never` tools, and names in `never_defer` remain in the native
 view in addition to the optional schema budgets. Provider compatibility holds
 may temporarily retain a removed definition on the wire during a removal-only
@@ -105,12 +128,12 @@ releases those removals. A held definition is not an execution grant. There is n
 bound on cumulative schema/help history in the conversation. Inline removal
 does not reclaim earlier prompt tokens.
 
-Schemas that do not fit are omitted and counted, with guidance to refine the
-query. A source-only query returns a server refinement rather than arbitrary
+Schemas that do not fit the active-definition budget are omitted and counted,
+with guidance to refine the query. Summary metadata must also fit the separate
+search-result budget. A source-only query returns a server refinement rather than arbitrary
 operation schemas. If no operation matches, the result offers a bounded list
-of authorized server sources rather than returning the whole tool inventory. Results carry
-the full registered schema and reveal selected operations for the next model
-step. Bounded mode requires `reveal: "redefine"`; `reveal: "in_result"` is
+of authorized server sources rather than returning the whole tool inventory. Results identify the selected operations; their full registered schemas become
+callable native definitions on the next model step. Bounded mode requires `reveal: "redefine"`; `reveal: "in_result"` is
 rejected because typed calls need the registered schema to become active.
 
 Example:

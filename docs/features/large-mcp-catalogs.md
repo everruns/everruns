@@ -11,6 +11,15 @@ current agent, and reveals schemas as they are needed. This lets an agent work
 with catalogs containing thousands of operations without sending every
 parameter schema to the model at the start of a turn.
 
+The runtime catalog, model-visible schemas, and tool-result history are separate
+budgets. A session can index 2,000 operations and use only a few: the initial
+native surface contains the search entry point and required eager tools; a
+search adds the selected operations to a bounded working set. Unselected
+schemas stay in the runtime. A deferred MCP server is enumerated when selected,
+then its operations can be searched without sending its complete catalog to the
+model. Native disclosure defaults to retaining up to 32 optional schemas, not
+reserving 32 slots that every search must fill.
+
 ## Complete catalog discovery
 
 The MCP client follows every `tools/list` cursor and keeps the negotiated
@@ -43,15 +52,38 @@ deployment settings.
 ## Search and schema disclosure
 
 In bounded native mode (`tool_search` with `bounded: true`) and in the `tools`
-CLI, search uses a shared authorized index over server names and descriptions,
-tool names and descriptions, and parameter schema text. A server description
-can help find generic operations such as `search`, `get`, or `list`. Results
-retain the server and operation identity, so same-named tools on different
-servers remain distinct. If only a server description matches, search returns
-a server refinement rather than labeling its tools as operation matches. The
-CLI marks these separately and points to `tools <server> --help`. Legacy native
-`tool_search` keeps its existing matcher and does not use this server-aware
-index.
+CLI, search uses one authorization-scoped index over server names and
+descriptions, operation names and descriptions, parameter schema text, and
+declared capability IDs, names and descriptions. It does not index full system
+prompts. Server context and owning capability text are scored once per MCP
+source; built-in operations share one capability context contribution per
+capability, independent of operation count. Results retain source and operation
+identity, so same-named tools on different servers remain distinct. A query
+matching only a capability or server description returns a bounded source
+browse/refinement, not an arbitrary group of operation schemas. Follow with an
+operation query to load selected schemas through the existing disclosure path.
+The CLI marks source matches separately and points to `tools <server> --help`.
+Legacy native `tool_search` keeps its existing matcher and does not use this
+shared index.
+
+When a query names an exact operation, search returns matching authorized
+identities without padding the result with weaker description matches. An
+unqualified operation shared by several servers can still return several
+identities; include the server name to disambiguate it. Broader task queries
+continue to use ranked retrieval.
+
+Names, descriptions and schema text are scored independently, so a large
+parameter schema does not bury a strong name or description match. Complete
+operation names accept spaces, hyphens or underscores: `update agent` can find
+a registered `update_agent` operation. Current authorization still determines
+which identities can appear.
+
+For owned operations, search also accepts an unqualified exact alias after
+stripping only the declared owner ID prefix, with that ID's hyphens normalized
+to underscores. For example, `platform_update_agent` can match `update_agent`
+or `update agent`, while calls still use the canonical `platform_update_agent`
+name. A capability-name-only query remains a bounded source browse/refinement;
+it does not match every operation under that prefix.
 
 By default, `tool_search` keeps its existing behavior. To opt into bounded
 schema disclosure, set `bounded` and the three limits on the capability:
@@ -75,18 +107,22 @@ transition. Held definitions must still fit the combined native tool budget:
 eager definitions plus the configured optional count and byte limits. If a
 lower live budget no longer admits the held list, the runtime releases those
 removals immediately.
-`max_result_bytes` bounds schemas returned by a search. Discovery remains
-progressive: the model searches, receives schemas for a bounded set of
-operations, then calls those operations using their registered schemas. A
-search result does not create a second execution path. If matching schemas do
-not fit in one result, search asks the model to narrow the query instead of
-presenting omitted schemas as available. Removing an active schema does not
+`max_result_bytes` bounds the operation summaries returned by a search. Full
+canonical schemas arrive as native functions on the next step, without being
+duplicated in search-result text. A schema can therefore exceed the search
+response budget while fitting the active native-definition budget. Discovery
+remains progressive and does not create a second execution path. If schemas
+exceed the active budget, or summaries exceed the result budget, search asks
+the model to narrow the query instead of presenting omitted operations as available. `omitted_tools` names byte-omitted
+candidates within the same result budget; search one name exactly to request
+that schema. These names do not make the operations callable. Removing an active schema does not
 remove its earlier transcript history; this feature does not set a cumulative
 history limit.
 
 Tool search applies the current attachment and authorization rules before
 returning matches, and the shell catalog is built from the current turn's
-visible-tool scope. Search, help, and invocation all stay within that scope;
+visible-tool scope. Replacing or detaching a capability or MCP source rebuilds
+the index. Search, help, and invocation all stay within the current scope;
 deferred child tools retain the scope of their server placeholder. The runtime
 checks authority again when an operation is called. Removing a server or
 revoking its connection therefore makes its operations unavailable even if a
@@ -123,6 +159,13 @@ The CLI is useful when a script should chain operations or filter intermediate
 results; native calls are useful for one typed operation. Both routes use the
 same operation identity, schema validation, authorization, and execution
 policy.
+
+For CLI discovery, start with `tools search <task or server purpose>`, then
+inspect one selected operation with `tools <server> <tool> --help`. Root and
+server help are bounded to 64 entries and 12 KiB, with explicit omission counts
+and search guidance. A selected operation's schema remains available through
+its own help. Filtering intermediate results inside the shell also keeps large
+response bodies out of the conversation.
 
 When a CLI search matches deferred MCP servers, it loads at most eight per
 query. Other matching servers stay marked as not loaded for a later search.

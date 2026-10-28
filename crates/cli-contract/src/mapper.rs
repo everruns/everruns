@@ -394,6 +394,15 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "tasks",
         "Background tasks across every session in the organization.",
     ),
+    ("tracing", "Customer tracing destinations and routing."),
+    (
+        "tracing destinations",
+        "Inspect destinations and update names or pause exports.",
+    ),
+    (
+        "tracing routing",
+        "Organization defaults and per-agent trace routing.",
+    ),
     ("user", "Your own account settings."),
     (
         "user connections",

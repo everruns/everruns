@@ -1,6 +1,9 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 // System → Health (system doctor).
 export const messages: Readonly<Record<string, string>> = {
+  "Message format": "Формат повідомлення",
+  "Plain text": "Звичайний текст",
+  Markdown: "Markdown",
   "Check that every part of the install is set up right and working.":
     "Перевірте, що кожна частина інсталяції налаштована правильно й працює.",
   "Needs attention: {problems} and {warnings}.": "Потребує уваги: {problems} і {warnings}.",

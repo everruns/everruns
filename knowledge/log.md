@@ -2,7 +2,16 @@
 
 ## 2026-10-27
 
+- Shell filesystem checks now use metadata to recognize empty workspace directories across the command-backed worker transport. Recursive copy preserves destination directory layout before any child is written. See [Bashkit requirements](execution/bashkit-requirements.md).
+
+- Session trace messages render Markdown by default with a shareable plain-text view. See [Session Trace](ui/session-trace.md).
+
+- Bounded native search keeps full schemas in the function projection and returns only operation summaries, so current Agent write schemas fit without raising either byte budget. Added regression coverage for complete schema delivery and hosted native grading. See [Tool search](execution/tool-search.md).
+
+- Rebased native Platform discovery onto the current public inventory (350 operations), preserving live authorization and documenting the portable catalog’s feature-independent metadata boundary. See [Platform Chat](harnesses/platform-chat.md) and the [threat model](security/threat-model.md).
+
 - Added [Slate Design System Pages](ui/design-system.md): Slate published at everruns.com/docs/design-system/ from the app's own tokens and Facet icons, replacing the retired design tool export as the starting point for redesigns.
+- Added [Knowledge Pages](ui/knowledge-pages.md): the tabbed Knowledge landing (collections and search accounts) and collections browsed with the shared session file browser over a one-level folder listing.
 
 - Added [Framework provider-native batches](framework/batch-model-requests.md): explicit offline completions, scoped resumable tickets, uncertain submission reconciliation, and native Anthropic lifecycle support.
 
@@ -48,6 +57,17 @@
   database before migrations; `reset` is the only command that deletes data. See
   [Local Setup and Kubernetes](operations/local-setup.md).
 
+* **Native Platform Chat operations.** Documented the managed agent's prefixed
+  native operation surface, bounded schema discovery, shared dispatch authority,
+  and retained shell aggregation path. Search includes declared capability
+  context, with source-only refinement and the same authorization-scoped index
+  for native and CLI lookup. Added a production qualification procedure while
+  preserving the historical offline comparison's catalog and provider
+  limitations. See [Platform Chat](harnesses/platform-chat.md),
+  [tool search](execution/tool-search.md),
+  [tool surfaces](execution/tool-surfaces.md), and
+  [TC006](test-cases/agents/platform_chat/TC006_matched_platform_surfaces.md).
+
 ## 2026-10-24
 
 * **Chat across app pages.** Bind every adopted app page to explicit context, live
@@ -74,6 +94,41 @@
   the session read's `work` field outside `full` visibility; Slack, AG-UI and
   A2A get no projection. See [Work reports](execution/work-reports.md#public-view).
 
+* **Corrected surface qualification.** Recorded the final matched Muse/Luna
+  matrices, separate large-result tasks, and a clean-source Framework MCP smoke
+  after field-aware ranking and bounded omission-name refinement. Retained all
+  diagnostic and failed trials; the bounded platform search-budget miss remains
+  visible. Runtime dynamic-plugin/cache-prefix tests and offline stress complement
+  the model checks rather than claiming hosted or vendor cache qualification.
+  See [Platform Chat](harnesses/platform-chat.md) and the
+  [MCP follow-up](../evals/mcp-scale/README.md#final-source-follow-up-2026-10-24).
+
+* **Schema-independent lexical ranking.** Authentic platform evals exposed large
+  schemas drowning name matches and common wrapper fields diluting pooled IDF.
+  Shared retrieval now scores names, descriptions and schemas independently,
+  retains scoped server ranking, and recognizes complete names written as words.
+  Native eval envelopes also make implied object types explicit after Muse sent
+  stringified update payloads; canonical validation still rejects those strings.
+  See [large MCP catalogs](execution/large-mcp-catalogs.md) and
+  [tool search](execution/tool-search.md).
+
+* **Matched platform invocation and discovery.** Corrected the offline comparison
+  to separate payloads from invocation metadata, reject missing reasons/stale
+  revisions, and grade exact mutation targets, ordered reads and unchanged state.
+  Added bounded native discovery over the same platform catalog, Rust report
+  replay and separate large-result diagnostics. Its HTTP fallback remains
+  distinct from Framework inline disclosure and hosted policy qualification.
+  See [Platform Chat](harnesses/platform-chat.md) and the
+  [manual evidence case](test-cases/agents/platform_chat/TC006_matched_platform_surfaces.md).
+
+* **Platform surface comparison review.** Marked the experimental eager-native
+  comparison provisional after trace review found omitted invocation metadata,
+  simulator metadata stored as entity fields, and incomplete state-preservation
+  assertions. Raw traces and original fixture scores remain historical evidence;
+  production-equivalent mutation behavior needs a corrected matched matrix.
+  See [Platform Chat](harnesses/platform-chat.md) and the
+  [eval findings](../evals/platform-capability/README.md#follow-up-findings-2026-10-24).
+
 ## 2026-10-23
 
 * **Chat mode trust boundaries:** Record browser-owned draft bindings, guarded
@@ -94,6 +149,15 @@
   tally or a non-zero exit code, file search reports matches and files, and
   `tool.progress` can carry a count. See
   [Tool narration](execution/tool-narration.md#saying-what-came-out).
+
+* **Sparse tool sessions and accurate evaluation.** Exact authorized operation
+  search avoids incidental schema padding; CLI browsing has a separate bounded
+  output budget. Shared Rust event accounting excludes repeated rollups and
+  retains cache/cost coverage. Platform evals compare the CLI with all captured
+  operations exposed as eager native functions over matched fixture tasks.
+  See [large MCP catalogs](execution/large-mcp-catalogs.md),
+  [Platform Chat](harnesses/platform-chat.md), and
+  [sparse-session acceptance](test-cases/agents/large_mcp_catalogs/TC007_sparse_session_context.md).
 
 ## 2026-10-21
 

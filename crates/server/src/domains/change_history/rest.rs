@@ -45,6 +45,18 @@ impl RestChange {
             None,
             Arc::new(everruns_core::DefaultPermissionResolver),
         );
+        Self::begin_with_context(ctx, operation, kind, action, entity_ref, fields).await
+    }
+
+    /// Preserve host permissions and secret fingerprints for protected REST changes.
+    pub async fn begin_with_context(
+        ctx: Ctx,
+        operation: &'static str,
+        kind: EntityKind,
+        action: ChangeAction,
+        entity_ref: Option<&str>,
+        fields: &[&str],
+    ) -> Result<Self, CommandError> {
         let mut params = serde_json::Map::new();
         for field in fields {
             params.insert((*field).to_string(), Value::Bool(true));
