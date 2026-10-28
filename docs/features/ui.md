@@ -93,6 +93,23 @@ a narrow column on the right holds the settings:
 Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats**, and
 **Sessions**. Preview's Files card follows the same filesystem rule.
 
+#### Estimate agent cost
+
+Open **Agents**, select an agent, then click **Estimate cost** in the page header.
+The button is available from every tab, including while editing.
+
+Choose the kind of work: a quick answer, a multi-step task, or deep research. Enter how many
+**Tasks per day** you expect. You’ll see an estimated **cost per task** and **monthly cost**,
+plus a range for simpler or more involved tasks. A month means 30 days of use.
+
+The calculator uses the agent’s current settings without running or saving it. Prices cover AI
+usage only; paid tools, hosting and other service fees are extra. These are planning estimates,
+not fixed prices or spending limits. Try representative tasks in Playground before budgeting.
+
+**Advanced assumptions** lets you adjust model calls and token counts and inspect the cost
+breakdown. These details are optional; the task choices fill them in for you. Missing prices
+and tasks too large for the chosen model are shown explicitly.
+
 #### Avatar
 
 **Branding** starts with the agent's avatar. Drop a PNG, JPEG, GIF, or WebP image (at most 10 MB)

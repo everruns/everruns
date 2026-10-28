@@ -23,6 +23,8 @@
   retaining unrelated replacement settings. See [Chat mode](ui/chat-mode.md) and
   [Knowledge pages](ui/knowledge-pages.md).
 
+- Added plain-language [Agent Cost Estimation](ui/agent-cost-estimation.md) in the agent page header, with task and monthly costs and optional advanced assumptions.
+
 ## 2026-10-27
 
 - Shell filesystem checks now use metadata to recognize empty workspace directories across the command-backed worker transport. Recursive copy preserves destination directory layout before any child is written. See [Bashkit requirements](execution/bashkit-requirements.md).

@@ -1,3 +1,4 @@
+import { messages as agentCost } from "./es/agent-cost";
 import { messages as sharedControls } from "./es/shared-controls";
 import { messages as tracing } from "./es/tracing";
 import { messages as catalog0 } from "./es/agents-01";
@@ -46,4 +47,5 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   catalog20,
   tracing,
   sharedControls,
+  agentCost,
 );
