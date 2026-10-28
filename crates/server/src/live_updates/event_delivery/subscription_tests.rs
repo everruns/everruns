@@ -294,7 +294,6 @@ async fn nats_sse_reconnect_filters_spoofed_payloads_and_delivers_completion() {
     }));
     let response = session_event_sse(SessionEventStream {
         event_service: service.clone(),
-        event_broadcaster: None,
         session_id: session.uuid(),
         since_id: None,
         after_sequence: None,
