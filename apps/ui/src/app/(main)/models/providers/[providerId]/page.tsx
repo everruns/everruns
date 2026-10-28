@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PageBody, PageHeader, PageShell } from "@/components/layout";
+import { PageMain, PageMasthead, PageContainer } from "@/components/layout";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { ResourceNotFound } from "@/components/resource-not-found";
@@ -112,11 +112,11 @@ export default function ProviderDetailPage({
 
   if (isLoading) {
     return (
-      <PageShell>
+      <PageContainer>
         <Skeleton className="h-5 w-40 mb-6" />
         <Skeleton className="h-8 w-1/3 mb-4" />
         <Skeleton className="h-52 w-full" />
-      </PageShell>
+      </PageContainer>
     );
   }
 
@@ -135,7 +135,7 @@ export default function ProviderDetailPage({
   }
 
   return (
-    <PageShell>
+    <PageContainer>
       <Link
         href="/models/providers"
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
@@ -144,7 +144,7 @@ export default function ProviderDetailPage({
         {ui("Back to Providers")}
       </Link>
 
-      <PageHeader
+      <PageMasthead
         title={
           <>
             <ProviderIcon providerType={provider.provider_type} size="md" />
@@ -177,7 +177,7 @@ export default function ProviderDetailPage({
         }
       />
 
-      <PageBody>
+      <PageMain>
         <Card>
           <CardHeader>
             <CardTitle>{ui("Provider Settings")}</CardTitle>
@@ -267,8 +267,8 @@ export default function ProviderDetailPage({
             )}
           </CardContent>
         </Card>
-      </PageBody>
-    </PageShell>
+      </PageMain>
+    </PageContainer>
   );
 }
 

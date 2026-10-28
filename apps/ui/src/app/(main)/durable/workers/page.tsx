@@ -1,4 +1,6 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
+import { PageContainer, PageMasthead } from "@/components/layout";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
@@ -188,6 +190,7 @@ function WorkerRow({
 }
 
 export default function WorkersPage() {
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   usePageTitle(ui("Workers"), ui("Durable"));
   const { data, isLoading, error, refetch } = useWorkers();
@@ -208,9 +211,9 @@ export default function WorkersPage() {
   );
   if (isLoading) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Workers")}</h1>
+          <PageMasthead title={ui("Workers")} className="min-w-0 flex-1" />
         </div>
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-4">
@@ -220,15 +223,15 @@ export default function WorkersPage() {
           </div>
           <Skeleton className="h-96" />
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (error) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Workers")}</h1>
+          <PageMasthead title={ui("Workers")} className="min-w-0 flex-1" />
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -245,7 +248,7 @@ export default function WorkersPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -285,8 +288,12 @@ export default function WorkersPage() {
     },
   ];
 
-  const handleDrain = (workerId: string) => {
-    if (confirm(`Are you sure you want to drain worker ${workerId.slice(0, 12)}...?`)) {
+  const handleDrain = async (workerId: string) => {
+    if (
+      await requestConfirmation(
+        `Are you sure you want to drain worker ${workerId.slice(0, 12)}...?`,
+      )
+    ) {
       drainMutation.mutate(workerId);
     }
   };
@@ -296,9 +303,9 @@ export default function WorkersPage() {
   };
 
   return (
-    <div className="operational-page container mx-auto p-6">
+    <PageContainer className="operational-page">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">{ui("Workers")}</h1>
+        <PageMasthead title={ui("Workers")} className="min-w-0 flex-1" />
       </div>
       <div className="space-y-6">
         {/* Summary Stats */}
@@ -369,6 +376,6 @@ export default function WorkersPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

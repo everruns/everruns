@@ -1,4 +1,5 @@
 "use client";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 
 import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
 
@@ -193,33 +194,12 @@ function PlaygroundLibrary() {
         <div className="flex-1" />
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span id="playground-group-label">{ui("Group by")}</span>
-          <div
-            role="radiogroup"
-            aria-labelledby="playground-group-label"
-            className="flex border bg-card"
-          >
-            {GROUP_OPTIONS.map((option, index) => {
-              const selected = groupBy === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  onClick={() => setGroupBy(option.value)}
-                  className={cn(
-                    "px-2.5 py-1 text-xs",
-                    index > 0 && "border-l",
-                    selected
-                      ? "bg-muted font-medium text-foreground"
-                      : "text-muted-foreground hover:bg-muted",
-                  )}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
+          <SegmentedControl
+            label={ui("Group by")}
+            value={groupBy}
+            onValueChange={(value) => setGroupBy(value as PlaygroundGroupBy)}
+            options={GROUP_OPTIONS}
+          />
         </div>
         <SectionTabs
           className="ml-2 w-auto shrink-0 gap-3 border-b-0"

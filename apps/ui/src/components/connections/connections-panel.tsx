@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageRows } from "@/components/chat-mode/page-view-state";
@@ -182,6 +183,7 @@ function AvailableProviderRow({
 }
 
 export function ConnectionsPanel({ identityId = "me" }: { identityId?: string }) {
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   const { data: connections = [], isLoading, error } = useIdentityConnections(identityId);
   const { data: providers = [] } = useConnectionProviders();
@@ -212,7 +214,7 @@ export function ConnectionsPanel({ identityId = "me" }: { identityId?: string })
     const meta = providers.find((p) => p.provider_id === provider);
     const name = meta?.display_name ?? provider;
     if (
-      confirm(
+      await requestConfirmation(
         `Disconnect ${name}? New sessions will no longer have access to your ${name} account.`,
       )
     ) {

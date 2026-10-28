@@ -1,4 +1,6 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
+import { PageContainer, PageMasthead } from "@/components/layout";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
@@ -321,6 +323,7 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
 }
 
 export default function WorkflowsPage() {
+  const requestConfirmation = useConfirmation();
   const ui = useUiTranslations();
   usePageTitle(ui("Workflows"), ui("Durable"));
   const [activeTab, setActiveTab] = useState<TabValue>("workflows");
@@ -393,23 +396,23 @@ export default function WorkflowsPage() {
 
   if (isLoading) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Workflows")}</h1>
+          <PageMasthead title={ui("Workflows")} className="min-w-0 flex-1" />
         </div>
         <div className="space-y-6">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-96" />
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (workflowsError) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Workflows")}</h1>
+          <PageMasthead title={ui("Workflows")} className="min-w-0 flex-1" />
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -424,26 +427,26 @@ export default function WorkflowsPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
-  const handleCancel = (workflowId: string) => {
-    if (confirm("Are you sure you want to cancel this workflow?")) {
+  const handleCancel = async (workflowId: string) => {
+    if (await requestConfirmation("Are you sure you want to cancel this workflow?")) {
       cancelMutation.mutate(workflowId);
     }
   };
 
-  const handleRequeue = (dlqId: string) => {
-    if (confirm("Are you sure you want to requeue this task?")) {
+  const handleRequeue = async (dlqId: string) => {
+    if (await requestConfirmation("Are you sure you want to requeue this task?")) {
       requeueMutation.mutate(dlqId);
     }
   };
 
   return (
-    <div className="operational-page container mx-auto p-6">
+    <PageContainer className="operational-page">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">{ui("Workflows")}</h1>
+        <PageMasthead title={ui("Workflows")} className="min-w-0 flex-1" />
       </div>
       <div className="space-y-6">
         {/* Tab Navigation */}
@@ -686,6 +689,6 @@ export default function WorkflowsPage() {
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

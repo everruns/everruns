@@ -1,4 +1,5 @@
 "use client";
+import { PageContainer, PageMasthead } from "@/components/layout";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
@@ -233,9 +234,9 @@ export default function CircuitBreakersPage() {
   );
   if (isLoading) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Circuit Breakers")}</h1>
+          <PageMasthead title={ui("Circuit Breakers")} className="min-w-0 flex-1" />
         </div>
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -244,15 +245,15 @@ export default function CircuitBreakersPage() {
             ))}
           </div>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (error) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">{ui("Circuit Breakers")}</h1>
+          <PageMasthead title={ui("Circuit Breakers")} className="min-w-0 flex-1" />
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -263,7 +264,7 @@ export default function CircuitBreakersPage() {
             </p>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -273,9 +274,9 @@ export default function CircuitBreakersPage() {
   const halfOpenBreakers = circuitBreakers.filter((cb) => cb.state === "half_open");
 
   return (
-    <div className="operational-page container mx-auto p-6">
+    <PageContainer className="operational-page">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">{ui("Circuit Breakers")}</h1>
+        <PageMasthead title={ui("Circuit Breakers")} className="min-w-0 flex-1" />
       </div>
       <div className="space-y-6">
         {/* Summary Cards */}
@@ -408,6 +409,6 @@ export default function CircuitBreakersPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

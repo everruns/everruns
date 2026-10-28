@@ -74,3 +74,19 @@ how the parts fit together or gave a redesign a starting point.
   examples are not affected because they use the app tokens.
 - Layout examples render inside the docs content column (about 720px), narrower than the app's
   content area, so wide layouts wrap earlier than in the product.
+
+## Reusable product patterns
+
+Resource pickers compose the shared Base UI combobox; feature wrappers own filtering,
+permissions, pagination and missing-value repair. Single selection, multiple bindings, tags,
+ranges and local view choices have distinct shared controls. This prevents each feature from
+reimplementing popup, keyboard and feedback behavior. Public component guidance owns the
+selection rules; the development gallery renders the actual implementations.
+
+Standard pages use the five-zone page-layout primitives, including query loading and failure
+branches. The older page-shell API is retired. Settings keeps one navigation model with a
+compact destination selector on narrow screens. Chat and session workspaces remain intentional
+layout variants. Domain drafts and save policies remain owned by their features.
+
+Confirmation requests are scoped to route and organization and live inside the page Chat context.
+This cancels stale requests on navigation and preserves the existing manual-dialog guard.
