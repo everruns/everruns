@@ -80,34 +80,51 @@ for (const role of ["owner", "admin", "member"] as const) {
   });
 }
 
-test("Knowledge browser uses page-pane width with Chat open", async ({
-  context,
-  page,
-  baseURL,
-}) => {
-  await context.addCookies([
-    { name: "access_token", value: "e2e-only", domain: new URL(baseURL!).hostname, path: "/" },
-  ]);
-  await mockKnowledgeApi(page, { chat: true });
-  await page.setViewportSize({ width: 1200, height: 1000 });
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto(`/knowledge/${PLAYBOOKS_ID}?file=%2Fvip-escalation.md`);
-  await expect(page.getByText("Budgets cap what a Session may spend.")).toBeVisible();
-  await page.keyboard.press("Control+j");
-  await expect(page.locator(".chat-mode-shell")).toHaveAttribute("data-chat-mode", "open");
-  const tree = await page.getByRole("tree").boundingBox();
-  const content = await page.getByText("Budgets cap what a Session may spend.").boundingBox();
-  expect(tree).not.toBeNull();
-  expect(content).not.toBeNull();
-  expect(content!.y).toBeGreaterThan(tree!.y + tree!.height);
-  const region = page.getByRole("region", { name: "Current page" });
-  expect(await region.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
-  await page.screenshot({ path: "e2e/test-results/chat-knowledge-pane.png", fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Back to app", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "support-playbooks", exact: true })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
-    true,
-  );
-  await page.screenshot({ path: "e2e/test-results/chat-knowledge-mobile.png", fullPage: true });
-});
+for (const theme of ["light", "dark"] as const) {
+  test(`Knowledge browser uses page-pane width in ${theme} mode`, async ({
+    context,
+    page,
+    baseURL,
+  }, testInfo) => {
+    await context.addCookies([
+      { name: "access_token", value: "e2e-only", domain: new URL(baseURL!).hostname, path: "/" },
+      { name: "everruns_theme", value: theme, domain: new URL(baseURL!).hostname, path: "/" },
+    ]);
+    await mockKnowledgeApi(page, { chat: true });
+    await page.setViewportSize({ width: 1200, height: 1000 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(`/knowledge/${PLAYBOOKS_ID}?file=%2Fvip-escalation.md`);
+    await expect(page.getByText("Budgets cap what a Session may spend.")).toBeVisible();
+    await page.keyboard.press("Control+j");
+    await expect(page.locator(".chat-mode-shell")).toHaveAttribute("data-chat-mode", "open");
+    const tree = await page.getByRole("tree").boundingBox();
+    const content = await page.getByText("Budgets cap what a Session may spend.").boundingBox();
+    expect(tree).not.toBeNull();
+    expect(content).not.toBeNull();
+    expect(content!.y).toBeGreaterThan(tree!.y + tree!.height);
+    const region = page.getByRole("region", { name: "Current page" });
+    expect(await region.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    await testInfo.attach("Knowledge split workspace", {
+      body: await page.screenshot({
+        path: testInfo.outputPath("knowledge-pane.png"),
+        fullPage: true,
+      }),
+      contentType: "image/png",
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole("button", { name: "Back to app", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "support-playbooks", exact: true }),
+    ).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+      true,
+    );
+    await testInfo.attach("Knowledge mobile", {
+      body: await page.screenshot({
+        path: testInfo.outputPath("knowledge-mobile.png"),
+        fullPage: true,
+      }),
+      contentType: "image/png",
+    });
+  });
+}
