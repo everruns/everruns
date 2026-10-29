@@ -648,6 +648,14 @@ pub fn declared(name: &str) -> Change {
         // Organization.
         "update_org" => on(K::Organization, Updated, Param("org")),
         "update_sandbox_template_metadata" => on(K::SandboxTemplate, Updated, Param("id")),
+        "start_sandbox_template_build"
+        | "cancel_sandbox_template_build"
+        | "discard_sandbox_template_build" => {
+            Change::Exempt("build attempts and provider artifact cleanup are operational state")
+        }
+        "apply_sandbox_template_build" => Change::Exempt(
+            "records its resolved parent template through RestChange with the original caller and context",
+        ),
         "update_tracing_destination_metadata" => on(K::TracingDestination, Updated, Param("id")),
         "update_tracing_policy" => on(K::TracingPolicy, Updated, Param("id")),
         "update_organization_account_name" => on(K::OrganizationAccount, Updated, Param("id")),

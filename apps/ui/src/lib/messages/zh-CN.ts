@@ -1,3 +1,4 @@
+import { messages as sandboxBuilds } from "./zh-CN/sandbox-builds";
 import { messages as agentCost } from "./zh-CN/agent-cost";
 import { messages as sharedControls } from "./zh-CN/shared-controls";
 import { messages as tracing } from "./zh-CN/tracing";
@@ -24,6 +25,7 @@ import { messages as catalog19 } from "./zh-CN/settings-02";
 import { messages as catalog20 } from "./zh-CN/semantic";
 export const messages: Readonly<Record<string, string>> = Object.assign(
   Object.create(null),
+  sandboxBuilds,
   catalog0,
   catalog1,
   catalog2,

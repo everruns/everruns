@@ -55,12 +55,9 @@ pub(super) fn validate_target_options(profile: &SandboxTemplateSpec) -> Result<(
                 }
             }
             if validate_desktop_option("daytona", options)?
-                && let Some(key) = ["snapshot", "size"]
-                    .into_iter()
-                    .find(|key| options.contains_key(*key))
+                && let Some(key) = ["size"].into_iter().find(|key| options.contains_key(*key))
             {
-                // The desktop ships in Daytona's default image, so a desktop
-                // Sandbox cannot also pick a snapshot.
+                // Desktop snapshots retain the base image's resource shape.
                 return Err(format!(
                     "daytona target.options.{key} cannot be combined with desktop"
                 ));

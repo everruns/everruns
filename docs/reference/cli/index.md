@@ -64,6 +64,7 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`resources`](/reference/cli/resources/) | Access to credentials and connections. |
 | [`sandbox-targets`](/reference/cli/sandbox-targets/) | Sandbox providers this deployment offers. |
 | [`sandbox-template-metadata`](/reference/cli/sandbox-template-metadata/) | Sandbox Template names and descriptions, without execution settings. |
+| [`sandbox-templates`](/reference/cli/sandbox-templates/) | Reusable sandbox configurations and their provider snapshots. |
 | [`sandboxes`](/reference/cli/sandboxes/) | Sandboxes across providers: state, history, usage. |
 | [`sessions`](/reference/cli/sessions/) | Running and archived sessions, their state and participants |
 | [`skills`](/reference/cli/skills/) | Skill packages and their content. |

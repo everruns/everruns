@@ -41,6 +41,71 @@ Editing a Sandbox Template creates a new immutable revision. Existing Sessions k
 they already reference. Managed templates such as Bashkit Virtual Workspace are
 provisioned by Everruns and cannot be edited or archived.
 
+## Build a reusable snapshot
+
+Open an editable Daytona template, select and save a named **Organization account**,
+then open **Build snapshot**. Enter an **Install script** to install the software you
+need. The script runs with `/bin/sh` once in fresh provider compute; it is separate from bootstrap
+commands that run when Session compute starts. No application catalog or feature
+flag is required. Other providers remain available for ordinary template configuration.
+
+Under **Verification and build access**, you can set:
+
+- A verification command, run after installation and again in a fresh sandbox from
+  the completed snapshot. Only the checks in that command are verified.
+- A metadata-file path: capture up to 16 KiB of non-secret software notes written by
+  the script. The notes also remain in the snapshot filesystem.
+- A total build timeout between 60 and 1,800 seconds; the default is 600 seconds.
+- A build-network policy. Allow installation package sources without widening the
+  template's runtime network. Fresh snapshot verification uses the runtime policy.
+
+For example, a script can install a CLI and describe it:
+
+```sh
+set -eu
+python3 -m pip install --user 'httpie==3.2.4'
+mkdir -p /home/daytona/.everruns
+cat > /home/daytona/.everruns/sandbox.md <<'NOTES'
+# Development sandbox
+HTTPie 3.2.4 is installed in ~/.local/bin.
+Use ~/.local/bin/http --version to check it.
+NOTES
+```
+
+Use `/home/daytona/.local/bin/http --version` as the verification command and
+`/home/daytona/.everruns/sandbox.md` as the metadata path. Adjust package sources,
+paths and permissions for your base image. Scripts can equally install development
+tools or desktop software; the template's existing **Desktop** control enables
+computer use.
+
+Choose **Build snapshot**, inspect the steps, log and captured notes, then select
+**Save new revision**. Everruns first confirms a fresh launch and disposable compute
+cleanup. Saving replaces the base snapshot while retaining runtime containment,
+account, desktop, lifecycle and bootstrap settings. Existing Agent and Session pins
+stay unchanged. If the source template changed during the build, build again from
+its current revision instead of overwriting it.
+
+A build may be cancelled. Failure, timeout and interruption clean up disposable
+compute and unused artifacts; cleanup errors stay visible and are retried. Server
+restart fails interrupted work instead of replaying an install script. One build
+can run per organization. Provider compute and snapshot storage are billed to the
+selected account. Use **Discard snapshot** to delete an unused artifact. Applied
+artifacts cannot be discarded because older revision pins may still need them. Cleaned-up
+failed, cancelled and discarded build history is retained for 30 days.
+Provider-side credential revocation can prevent cleanup until access is restored.
+
+The build receives no Session workspace, private profile or workload credentials.
+Keep secrets out of scripts and software notes. Choose a software-only base snapshot:
+files already baked into the base, including any credentials it contains, are copied. The provider account's management
+credential stays outside compute. A raw secret readable by an installation script
+could be copied into the snapshot, so the builder offers no raw secret input or
+mount. Existing HTTP/MCP Bound Secrets are a separate transport contract.
+
+The Session's Sandbox inspection reports provenance and software notes only when
+its snapshot and Organization account match an applied build in the same tenant.
+Notes are author-supplied reference data; they do not grant capabilities or change
+runtime policy.
+
 ## Configure an Agent
 
 1. Open **Agents**, then open the Agent.
@@ -159,8 +224,9 @@ To pick the display size or cap the number of actions, pass the computer-use set
 
 The desktop is the Agent's only display: a template with a desktop replaces any other
 computer-use capability the Agent has. On E2B the Sandbox starts from E2B's `desktop` template
-unless the template names another one built on it. On Daytona it uses Daytona's default image,
-which ships the desktop, so a desktop template cannot also choose a size or snapshot. Every action
+unless the template names another one built on it. On Daytona it uses Daytona's default desktop image unless you select a compatible
+snapshot, including one created with **Build snapshot**. Desktop resource shape comes
+from that image or snapshot, so a desktop template cannot also choose a size preset. Every action
 returns a screenshot, which costs image tokens.
 
 ### Recordings

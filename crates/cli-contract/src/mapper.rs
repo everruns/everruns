@@ -281,6 +281,14 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Sandbox Template names and descriptions, without execution settings.",
     ),
     (
+        "sandbox-templates",
+        "Reusable sandbox configurations and their provider snapshots.",
+    ),
+    (
+        "sandbox-templates builds",
+        "Install scripts, snapshot verification, and new template revisions.",
+    ),
+    (
         "sandbox-targets",
         "Sandbox providers this deployment offers.",
     ),

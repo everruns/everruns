@@ -105,6 +105,7 @@ pub fn sandbox_from_capabilities(capabilities: &[CapabilityRef]) -> SessionSandb
         // writes files needs none, and saying "isolated" here would invent a
         // boundary around something that never runs.
         return SessionSandboxResponse {
+            build: None,
             sandbox_id: None,
             sandbox_template_revision_id: None,
             role: None,
@@ -178,6 +179,7 @@ pub fn sandbox_from_capabilities(capabilities: &[CapabilityRef]) -> SessionSandb
     };
 
     SessionSandboxResponse {
+        build: None,
         target: Some(SandboxTarget {
             kind: kind.to_string(),
             provider,
@@ -213,6 +215,16 @@ pub fn sandbox_from_record(
 ) -> SessionSandboxResponse {
     let mut response = sandbox_from_capabilities(capabilities);
     let spec = &record.spec;
+    // A pinned native target has a validated provider policy. Legacy capability
+    // defaults must not contradict that spec in the Session inspection panel.
+    if spec.target.kind == super::record::SandboxTargetKind::Managed
+        && matches!(spec.target.provider.as_deref(), Some("daytona" | "e2b"))
+    {
+        response.capabilities = SandboxCapabilities {
+            network_enforced: true,
+            ..managed_capabilities(spec.durability == SandboxDurability::Checkpointed)
+        };
+    }
     let sandbox_id = SandboxId::from_uuid(record.id).to_string();
     response.sandbox_id = Some(sandbox_id);
     response.sandbox_template_revision_id =
@@ -393,6 +405,44 @@ mod tests {
 
     fn capability(id: &str) -> CapabilityRef {
         CapabilityRef::new(id)
+    }
+
+    #[test]
+    fn pinned_native_specs_report_their_network_and_recovery_capabilities() {
+        use crate::domains::sandbox_templates::record::*;
+        for provider in ["daytona", "e2b"] {
+            let authored = SandboxTemplateSpec {
+                template_revision_id: None,
+                target: SandboxTargetSpec::managed(provider),
+                containment: Some(SandboxContainmentSpec::isolated()),
+                durability: Some(if provider == "daytona" {
+                    SandboxDurability::Checkpointed
+                } else {
+                    SandboxDurability::ProviderSnapshot
+                }),
+                lifecycle: Default::default(),
+                bootstrap: Default::default(),
+            };
+            let spec = super::super::resolution::resolve_spec(&authored).unwrap();
+            let record = crate::storage::PrimarySandboxRecord {
+                id: uuid::Uuid::now_v7(),
+                session_id: everruns_contracts::typed_id::SessionId::new(),
+                provider: provider.into(),
+                binding_name: "development".into(),
+                spec,
+                sandbox_template_revision_id: None,
+                desired_state: "ready".into(),
+                observed_state: "not_provisioned".into(),
+                generation: 1,
+                current_checkpoint_id: None,
+                last_activity_at: None,
+            };
+            let view = sandbox_from_record(&record, &[]);
+            assert!(view.capabilities.native_processes);
+            assert!(view.capabilities.network_enforced);
+            assert_eq!(view.containment.network, "deny");
+            assert_eq!(view.capabilities.portable_checkpoint, provider == "daytona");
+        }
     }
 
     #[test]

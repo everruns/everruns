@@ -629,7 +629,8 @@ impl ServerAppBuilder {
             db.clone(),
             sessions_state.session_service.clone(),
             auth_state.clone(),
-        );
+        )
+        .with_encryption(encryption.clone());
         let session_sandbox_state = session_sandbox_service.as_ref().map(|sandbox_service| {
             api::session_sandbox::AppState::new(
                 db.clone(),

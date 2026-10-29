@@ -1182,3 +1182,63 @@ async fn exec_preserves_status_output_and_command_options() {
         );
     }
 }
+
+#[tokio::test]
+async fn test_filesystem_snapshot_lifecycle_uses_native_management_api() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/sandbox/builder/snapshot"))
+        .and(wiremock::matchers::body_json(
+            json!({"name":"baked-tools","includeMemory":false}),
+        ))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"id":"builder","state":"snapshotting"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/snapshots/snapshot-1"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"id":"snapshot-1","name":"baked-tools","state":"active"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/snapshots/snapshot-1"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client =
+        DaytonaClient::with_base_urls("host-only-token".into(), server.uri(), server.uri());
+    client
+        .create_sandbox_snapshot("builder", "baked-tools")
+        .await
+        .unwrap();
+    let info = client.get_snapshot("snapshot-1").await.unwrap();
+    assert_eq!(info.state, "active");
+    client.delete_snapshot("snapshot-1").await.unwrap();
+}
+
+#[tokio::test]
+async fn test_builder_output_limit_is_enforced_before_collecting_response() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/builder/logs"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![b'x'; 256 * 1024]))
+        .mount(&server)
+        .await;
+    let client = DaytonaClient::with_base_urls("test-key".into(), server.uri(), server.uri())
+        .with_download_limit(64 * 1024);
+    assert!(
+        client
+            .toolbox_download("builder", "/logs")
+            .await
+            .unwrap_err()
+            .contains("byte limit")
+    );
+}
