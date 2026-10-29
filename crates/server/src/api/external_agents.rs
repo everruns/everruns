@@ -33,7 +33,7 @@ pub async fn get_external_agent(
     ))
 }
 
-/// Verify endpoint ownership and connect or rotate an Agent's HTTPS worker.
+/// Connect or rotate an external HTTPS worker.
 ///
 /// Requires dangerous-settings permission and installation enablement. Stop
 /// active turns first. The preinstalled secret is encrypted and never returned.
@@ -48,7 +48,7 @@ pub async fn register_external_agent(
     Ok(Json(request.run(&state.ctx(&org)).await?))
 }
 
-/// Disable external execution while keeping queued sessions bound to this worker.
+/// Disable external worker execution.
 ///
 /// Revocation never falls back to the built-in runtime.
 #[utoipa::path(delete, path = "/v1/agents/{agent_id}/external-worker", params(("agent_id" = String, Path)), responses((status = 200)), tag = "agents")]

@@ -831,13 +831,13 @@ export interface paths {
     get: operations["get_external_agent"];
     put?: never;
     /**
-     * Verify endpoint ownership and connect or rotate an Agent's HTTPS worker
+     * Connect or rotate an external HTTPS worker
      * @description Requires dangerous-settings permission and installation enablement. Stop
      *     active turns first. The preinstalled secret is encrypted and never returned.
      */
     post: operations["register_external_agent"];
     /**
-     * Disable external execution while keeping queued sessions bound to this worker
+     * Disable external worker execution
      * @description Revocation never falls back to the built-in runtime.
      */
     delete: operations["disable_external_agent"];
