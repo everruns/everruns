@@ -45,7 +45,7 @@ def clean_environment(source):
         for k, v in source.items()
         if not k.startswith(PROVIDER_PREFIXES)
         and not k.endswith("_API_KEY")
-        and k not in {"DOPPLER_TOKEN", "GITHUB_TOKEN", "LINEAR_API_KEY"}
+        and k not in {"DOPPLER_TOKEN", "GITHUB_TOKEN", "GH_TOKEN", "LINEAR_API_KEY"}
     }
 
 
@@ -263,6 +263,7 @@ class Lab:
             "AUTH_ADMIN_PASSWORD": self.password,
             "AUTH_BASE_URL": self.edge + "/api",
             "PUBLIC_APP_URL": "https://console.capacity.localhost",
+            "FRONTEND_URL": "https://console.capacity.localhost",
             "AUTH_JWT_ACCESS_TOKEN_LIFETIME": "14400",
             "WORKER_GRPC_AUTH_TOKEN": self.worker_token,
             "SECRETS_ENCRYPTION_KEY": "capacity-v1:"
@@ -274,7 +275,7 @@ class Lab:
             "RATE_LIMIT_ORG_SESSION_CREATE_PER_MINUTE": "100000",
             "RATE_LIMIT_ORG_TOOL_CALLS_PER_MINUTE": "100000",
             "RATE_LIMIT_USER_ORG_CREATE_PER_HOUR": "10000",
-            "SSE_PER_ORG_MAX": "5000",
+            "SSE_PER_ORG_MAX": "1000",
             "SSE_GLOBAL_MAX": "10000",
             "NATS_URL": f"nats://127.0.0.1:{self.prefix}22",
             "VALKEY_URL": f"redis://127.0.0.1:{self.prefix}79",

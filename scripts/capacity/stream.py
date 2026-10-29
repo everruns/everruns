@@ -37,6 +37,7 @@ class Stream:
         self.client, self.actor = client, actor
         self.sequence = 0
         self.queue = asyncio.Queue(maxsize=10000)
+        self.changes = asyncio.Queue(maxsize=1)
         self.ready = asyncio.Event()
         self.connected = False
         self.connections = self.errors = self.replays = self.frames = 0
@@ -117,6 +118,21 @@ class Stream:
                                 continue
                             self.sequence = sequence
                         kind = event.get("type", kind)
+                        if (
+                            self.actor.path == "console"
+                            and kind
+                            in {
+                                "session.activated",
+                                "session.idled",
+                                "turn.completed",
+                                "turn.failed",
+                                "turn.cancelled",
+                                "task.created",
+                                "task.updated",
+                            }
+                            and self.changes.empty()
+                        ):
+                            self.changes.put_nowait(None)
                         if kind == "disconnecting":
                             graceful = True
                         if kind == "input.message":

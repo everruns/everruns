@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import resource
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -121,6 +122,10 @@ def bootstrap(lab):
         for index in range(lab.args.tenants):
             org = api("/v1/orgs", "POST", {"name": f"Capacity tenant {index}"})
             org_id = org.get("public_id", org.get("id"))
+            if not isinstance(org_id, str) or not re.fullmatch(
+                r"org_[0-9a-f]{32}", org_id
+            ):
+                raise RuntimeError("invalid synthetic organization identifier")
             internal = int(
                 lab.psql(
                     f"SELECT org_id FROM organizations WHERE public_id='{org_id}';"
@@ -383,7 +388,7 @@ def bootstrap(lab):
             "limits": {
                 "api_requests_per_minute": 0,
                 "org_session_creates_per_minute": 100000,
-                "sse_per_org": 5000,
+                "sse_per_org": 1000,
                 "sse_global": 10000,
             },
             "generator_topology": {

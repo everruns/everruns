@@ -30,7 +30,8 @@ Console, Agent API and Work Chat:
 
 Each actor has a distinct server-verified identity and an independent SSE cursor.
 Five tenant organizations share one server and worker. Work Chat includes the
-host's background reads. Deterministically seeded short answers, long answers,
+host's background reads; Console includes periodic and coalesced lifecycle-driven
+thread-list reads. Deterministically seeded short answers, long answers,
 thinking and local-file tool rounds reproduce realistic delays and event volume.
 The long-answer shape itself takes over 30 seconds, so the default steady interval
 is 60 seconds (about 16.7 arrivals/second at 1,000 users). A shorter closed-session
@@ -66,6 +67,10 @@ credentials and must never be uploaded or committed; process logs also stay loca
 Publish only inspected result files. Metadata records the source revision, host
 limits, topology, simulator and worker configuration. Comparisons require matching
 settings and a quiet host.
+The fixture disables the global per-IP API limiter and raises setup/resource
+creation quotas because all synthetic clients share one loopback address. These
+settings are recorded; a pass establishes capacity for that topology, not an
+out-of-the-box deployment or its production rate-limit policy.
 
 Steady admission must reach 99.9%, acknowledgment p95 must stay below 500 ms, every
 admitted turn must complete, and persisted inputs must appear exactly once and be

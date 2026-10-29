@@ -308,9 +308,14 @@ async def one_turn(
         results.record(row)
 
 
-async def background(client, actor, interval, paths, results, offset):
+async def background(client, actor, interval, paths, results, offset, changes=None):
     await asyncio.sleep(offset)
     while True:
+        if changes is not None:
+            await changes.get()
+            await asyncio.sleep(0.25)  # Console coalesces lifecycle invalidations.
+            while not changes.empty():
+                changes.get_nowait()
         started = time.perf_counter()
         for path in paths:
             results.poll_requests += 1
@@ -328,7 +333,8 @@ async def background(client, actor, interval, paths, results, offset):
                 )
                 results.poll_errors[str(code)] += 1
         results.poll_ms.append((time.perf_counter() - started) * 1000)
-        await asyncio.sleep(max(0, interval - (time.perf_counter() - started)))
+        if changes is None:
+            await asyncio.sleep(max(0, interval - (time.perf_counter() - started)))
 
 
 async def audit(client, target, actor, expected, stream, limit):
@@ -482,6 +488,20 @@ async def run(args):
                     if stream.terminal_error:
                         raise ValueError("SSE authentication failed")
                     if args.background:
+                        if actor.path == "console":
+                            pollers.append(
+                                asyncio.create_task(
+                                    background(
+                                        client,
+                                        actor,
+                                        0,
+                                        actor.polls()[0][1],
+                                        results,
+                                        0,
+                                        changes=stream.changes,
+                                    )
+                                )
+                            )
                         for interval, paths in actor.polls():
                             pollers.append(
                                 asyncio.create_task(
