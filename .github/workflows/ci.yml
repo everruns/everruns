@@ -1432,7 +1432,8 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.mode != 'pr' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
-    timeout-minutes: 40
+    # Cold server compilation must leave time for the full persistence suite.
+    timeout-minutes: ${{ matrix.shard == 'server' && 60 || 40 }}
 
     # Sharded: 8 sequential test steps were ~26 min on one runner with a
     # warm cache. Three legs split by suite; each leg gets its own
