@@ -30,6 +30,5 @@ recovery; this does not provide an offline model or application shell.
 
 ## Update 2026-10-29
 
-Hosted Work Chat keeps healthy live streams open past 30 seconds. Its upstream
-connection timeout now covers setup without interrupting an established stream;
-leaving the conversation still closes the connection.
+Hosted Work Chat streams stay open past 30 seconds. Connection timeouts cover
+setup; leaving the conversation closes the stream.
