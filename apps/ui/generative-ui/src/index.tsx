@@ -175,6 +175,7 @@ type Props = {
   streaming?: boolean;
   onMessage?: SendMessage;
   children: ReactNode;
+  runtimeUrl?: string;
 };
 type Plan = ReturnType<typeof buildSurfaces>;
 const Conversation = createContext<(Plan & { onMessage?: SendMessage; streaming: boolean }) | null>(
@@ -188,11 +189,12 @@ export function GenerativeUIConversation({
   streaming = false,
   onMessage,
   children,
+  runtimeUrl = "/generative-ui",
 }: Props) {
   const plan = useMemo(() => buildSurfaces(messages, streaming), [messages, streaming]);
   return (
     <CopilotKitProvider
-      runtimeUrl="/generative-ui"
+      runtimeUrl={runtimeUrl}
       useSingleEndpoint={false}
       enableInspector={false}
       generativeUI={{ ui: chatUI, theme, transport: "markdown", sendContext: false }}

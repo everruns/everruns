@@ -26,8 +26,10 @@ Busy and read-only views disable message actions. HTML widgets remain sandboxed
 without scripts or external network access. See [Generative UI in chat](/features/generative-ui/)
 for the supported format and interaction limits.
 
-Explore the [component gallery](/features/generative-ui-gallery/) for screenshots
+Explore the [component gallery](/features/generative-ui-gallery/) for interactive examples
 in both themes and the A2UI source for each example. See [AG-UI support](/integrations/ag-ui/)
 for the event protocol and chat integration boundaries.
 
 ![A quote request form rendered by the shared chat component catalog](./review-form@2x.png)
+
+**Update 2026-10-29:** The gallery now includes live controls, local form action results, and a reset button for each example. No account or agent run is required.

@@ -53,6 +53,11 @@ let checked = 0;
 for (const { route, file } of pages(distRoot)) {
   const html = readFileSync(file, "utf8");
   if (html.includes('http-equiv="refresh"')) continue;
+  // An embedded control surface, not an independently indexed documentation page.
+  if (route === "/previews/generative-ui/") {
+    if (!/<meta[^>]*name="robots"[^>]*noindex/.test(html)) fail(route, "preview must be noindex");
+    continue;
+  }
   checked++;
 
   const canonical = [...html.matchAll(/<link[^>]*rel="canonical"[^>]*href="([^"]*)"/g)].map((m) => m[1]);

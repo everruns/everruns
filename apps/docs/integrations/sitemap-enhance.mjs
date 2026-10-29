@@ -30,7 +30,7 @@ export default function sitemapEnhance() {
         const enhanced = content.replace(
           /<url><loc>(.*?)<\/loc><\/url>/g,
           (_match, url) =>
-            changelogRedirect(new URL(url)) ? "" :
+            changelogRedirect(new URL(url)) || new URL(url).pathname === "/docs/previews/generative-ui/" ? "" :
               `<url><loc>${url}</loc><lastmod>${lastmod}</lastmod></url>`
         );
 
