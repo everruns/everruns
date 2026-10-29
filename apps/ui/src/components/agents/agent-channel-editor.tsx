@@ -72,6 +72,7 @@ import {
   type ChannelFormState,
 } from "@/components/agents/channels/channel-form";
 import { AgentKeysCard } from "@/components/agents/channels/agent-keys-card";
+import { WorkChatHeaderLink } from "@/components/agents/channels/work-chat-link";
 import { CronLabel } from "@/components/apps/cron-label";
 import {
   BackLink,
@@ -248,7 +249,13 @@ function AgentChannelForm({
     : "Could not start the Slack install.";
   const schedule =
     channel.channel_type === "schedule" ? (channel.channel_config as ScheduleChannelConfig) : null;
-  const publicLink = channel.channel_type === "public_chat" ? publicChatUrl(channelId) : null;
+  const [hostedUrl, setHostedUrl] = useState<string | null>(null);
+  const chatLink =
+    channel.channel_type === "public_chat"
+      ? publicChatUrl(channelId)
+      : channel.channel_type === "work_chat"
+        ? hostedUrl
+        : null;
 
   // Saved settings, compared as the config the server would receive, so a
   // field returned to its saved value is not a change.
@@ -273,9 +280,9 @@ function AgentChannelForm({
     >
       {publishEndpoint.isPending ? ui("Publishing...") : ui("Publish")}
     </Button>
-  ) : publicLink ? (
+  ) : chatLink ? (
     <a
-      href={publicLink}
+      href={chatLink}
       target="_blank"
       rel="noopener noreferrer"
       className={buttonVariants({ variant: "accent" })}
@@ -297,6 +304,9 @@ function AgentChannelForm({
 
   return (
     <PageContainer>
+      {channel.channel_type === "work_chat" && (
+        <WorkChatHeaderLink channelId={channelId} live={lifecycle.isLive} onUrl={setHostedUrl} />
+      )}
       {chatDraft.notice}
       <PageBreadcrumb
         items={[
@@ -356,6 +366,17 @@ function AgentChannelForm({
         actions={
           editing ? (
             <>
+              {chatLink && (
+                <a
+                  href={chatLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={buttonVariants({ variant: "outline" })}
+                >
+                  <ExternalLink className="size-4" />
+                  {ui("Open chat page")}
+                </a>
+              )}
               <Button
                 type="submit"
                 form="channel-edit-form"
@@ -389,9 +410,9 @@ function AgentChannelForm({
                 </DropdownMenuTrigger>
                 <DropdownMenuPositioner align="end">
                   <DropdownMenuContent>
-                    {publicLink && (
+                    {chatLink && (
                       <DropdownMenuItem
-                        onClick={() => void navigator.clipboard?.writeText(publicLink)}
+                        onClick={() => void navigator.clipboard?.writeText(chatLink)}
                       >
                         <Copy className="size-4" />
                         {ui("Copy link")}

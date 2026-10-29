@@ -193,6 +193,11 @@ own consumer sign-in. Each channel has a stable, unique hostname on the hosted
 content domain configured by your deployment. Several Work Chat channels can
 point to the same Agent.
 
+The channel page shows that address after you publish. Copy it from
+**Settings** or **Connect**, or use **Open chat page** in the header. The
+address stays the same when you change settings. Publishing alone does not
+create the hostname until the deployment has a hosted chat domain.
+
 Choose **Multiple conversations** for a conversation list, or **Single chat
 with threads** for one permanent main conversation per consumer and related
 work threads. Single mode requires coordinator thread tools on the effective
