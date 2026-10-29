@@ -15,6 +15,11 @@
 // We use the current backoff value as the retry hint, so clients reconnect faster
 // when the stream is active (low backoff) and slower when idle (high backoff).
 //
+// Server shutdown:
+// A draining server (crate::shutdown) ends every stream wrapped in
+// `end_on_shutdown` with a "disconnecting" event, reason "shutdown", so clients
+// resume with since_id on another replica instead of seeing the pod die.
+//
 // Connection Limits (EVE-8 / TM-DOS-003):
 // SseConnectionTracker enforces global, per-session, and per-org limits to prevent
 // resource exhaustion from unbounded SSE connections. Each SSE stream holds a Tokio task
@@ -175,6 +180,59 @@ impl DisconnectReason {
             DisconnectReason::Error => "error",
         }
     }
+}
+
+/// End `stream` once the server starts draining, after a final
+/// `disconnecting` event (reason `shutdown`). A stream that ends on its own
+/// (connection cycling, client gone) gets no extra event.
+pub fn end_on_shutdown<S, E>(
+    stream: S,
+    config: &SseStreamConfig,
+) -> impl futures::Stream<Item = Result<axum::response::sse::Event, E>> + Send + 'static + use<S, E>
+where
+    S: futures::Stream<Item = Result<axum::response::sse::Event, E>> + Send + 'static,
+    E: Send + 'static,
+{
+    end_when(
+        stream,
+        crate::shutdown::server_shutdown().draining().clone(),
+        config,
+    )
+}
+
+/// End `stream` once the server starts draining, without an extra event. For
+/// protocol streams (AG-UI, A2A) whose clients only know their own frames.
+pub fn until_shutdown<S: futures::Stream + Send + 'static>(
+    stream: S,
+) -> impl futures::Stream<Item = S::Item> + Send + 'static {
+    use futures::StreamExt;
+    let draining = crate::shutdown::server_shutdown().draining().clone();
+    stream.take_until(draining.cancelled_owned())
+}
+
+fn end_when<S, E>(
+    stream: S,
+    draining: tokio_util::sync::CancellationToken,
+    config: &SseStreamConfig,
+) -> impl futures::Stream<Item = Result<axum::response::sse::Event, E>> + Send + 'static + use<S, E>
+where
+    S: futures::Stream<Item = Result<axum::response::sse::Event, E>> + Send + 'static,
+    E: Send + 'static,
+{
+    use futures::StreamExt;
+    let event = axum::response::sse::Event::default()
+        .event("disconnecting")
+        .data(format!(
+            r#"{{"reason":"{}","retry_ms":{}}}"#,
+            DisconnectReason::Shutdown.as_str(),
+            config.disconnect_retry_ms
+        ))
+        .retry(config.disconnect_retry());
+    let tail = draining.clone();
+    stream.take_until(draining.cancelled_owned()).chain(
+        futures::stream::once(async move { tail.is_cancelled().then_some(Ok(event)) })
+            .filter_map(futures::future::ready),
+    )
 }
 
 // ============================================================
@@ -719,5 +777,53 @@ mod tests {
 
         assert_eq!(rejection, SseConnectionRejection::SessionLimitReached);
         assert!(!rejection.is_capacity_signal());
+    }
+
+    /// A draining server ends a live stream with a `disconnecting` event; a
+    /// stream that ends on its own gets nothing extra.
+    #[tokio::test]
+    async fn draining_ends_streams_with_a_shutdown_event() {
+        use axum::response::IntoResponse;
+        use axum::response::sse::{Event, Sse};
+        use futures::StreamExt;
+
+        async fn body_of<S>(stream: S) -> String
+        where
+            S: futures::Stream<Item = Result<Event, std::convert::Infallible>> + Send + 'static,
+        {
+            let response = Sse::new(stream).into_response();
+            let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            String::from_utf8(bytes.to_vec()).unwrap()
+        }
+
+        let config = SseStreamConfig::realtime();
+        let draining = tokio_util::sync::CancellationToken::new();
+        let live = futures::stream::once(async { Ok(Event::default().data("first")) })
+            .chain(futures::stream::pending());
+        let trigger = draining.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            trigger.cancel();
+        });
+        let body = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            body_of(end_when(live, draining, &config)),
+        )
+        .await
+        .expect("a draining server ends the stream");
+        assert!(body.contains("data: first"), "{body}");
+        assert!(body.contains("event: disconnecting"), "{body}");
+        assert!(body.contains(r#""reason":"shutdown""#), "{body}");
+
+        let finite = futures::stream::once(async { Ok(Event::default().data("only")) });
+        let body = body_of(end_when(
+            finite,
+            tokio_util::sync::CancellationToken::new(),
+            &config,
+        ))
+        .await;
+        assert!(!body.contains("disconnecting"), "{body}");
     }
 }

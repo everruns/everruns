@@ -2038,7 +2038,7 @@ pub async fn stream_durable_sse(
     let keep_alive = KeepAlive::new()
         .interval(config.heartbeat_interval())
         .text("heartbeat");
-    Ok(Sse::new(stream).keep_alive(keep_alive))
+    Ok(Sse::new(super::sse::end_on_shutdown(stream, &config)).keep_alive(keep_alive))
 }
 
 /// GET /v1/durable/workflows/:workflow_id/sse - Stream workflow state (SSE)
@@ -2297,7 +2297,7 @@ pub async fn stream_workflow_sse(
     let keep_alive = KeepAlive::new()
         .interval(config.heartbeat_interval())
         .text("heartbeat");
-    Ok(Sse::new(stream).keep_alive(keep_alive))
+    Ok(Sse::new(super::sse::end_on_shutdown(stream, &config)).keep_alive(keep_alive))
 }
 
 fn disconnecting_event(reason: DisconnectReason, config: &SseStreamConfig) -> SseEvent {

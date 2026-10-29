@@ -762,7 +762,7 @@ pub(crate) async fn session_event_sse(
     let keep_alive = KeepAlive::new()
         .interval(config.heartbeat_interval())
         .text("heartbeat");
-    Sse::new(guarded_stream).keep_alive(keep_alive)
+    Sse::new(super::sse::end_on_shutdown(guarded_stream, &config)).keep_alive(keep_alive)
 }
 
 /// Stream wrapper that holds an SSE connection guard until the stream is dropped.

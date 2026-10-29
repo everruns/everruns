@@ -106,6 +106,9 @@ pub mod health_probe;
 
 // Server configuration and router helpers
 pub mod server;
+
+// Graceful drain on SIGTERM: linger, close SSE, finish requests, stop gRPC
+pub mod shutdown;
 pub use server::ServerConfig;
 
 // Valkey (Redis-compatible) client for distributed rate limiting

@@ -161,6 +161,24 @@ impl WorkerServiceImpl {
         }))
     }
 
+    pub(crate) async fn handle_hand_off_actor(
+        &self,
+        request: Request<proto::ReleaseActorRequest>,
+    ) -> Result<Response<proto::ReleaseActorResponse>, Status> {
+        let req = request.into_inner();
+        require_holder(&req.holder)?;
+        let session_id = SessionId::from_uuid(parse_uuid(req.session_id.as_ref())?);
+        let released = self
+            .db
+            .hand_off_session_actor(session_id, &req.holder, req.fence, req.consumed_inbox_seq)
+            .await
+            .map_err(|e| internal_status("Failed to hand off actor", e))?;
+        Ok(Response::new(proto::ReleaseActorResponse {
+            released: released.is_some(),
+            still_runnable: released.is_some(),
+        }))
+    }
+
     pub(crate) async fn handle_read_actor_journal(
         &self,
         request: Request<proto::ReadActorJournalRequest>,

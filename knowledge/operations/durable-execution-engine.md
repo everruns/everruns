@@ -217,7 +217,7 @@ Guidance:
 A worker is drained two ways, and both end in the same registry state (`status = 'draining'`), so the queue hands it no new claims:
 
 - **Operator drain.** `POST /v1/durable/workers/{id}/drain` (and `/resume`) flips the registry row. The worker learns it from its next heartbeat, whose reply carries `draining`, and stops claiming; a heartbeat that reports the drain lifted wakes the poll loop at once. Running tasks are left alone.
-- **Shutdown.** SIGTERM or Ctrl+C stops the poll loop and the actor lease loop, and the worker drains itself (`DrainDurableWorker`). It keeps heartbeating while in-flight tasks and running turns finish, waits up to `WORKER_SHUTDOWN_GRACE_SECS`, aborts what is left, then deregisters, which returns the aborted tasks to the queue. An aborted turn keeps its actor lease until it expires (10 s); another worker then leases the session and resumes the turn from the log. A second signal exits at once.
+- **Shutdown.** SIGTERM or Ctrl+C stops the poll loop and the actor lease loop, and the worker drains itself (`DrainDurableWorker`). It keeps heartbeating while in-flight tasks and running turns finish, waits up to `WORKER_SHUTDOWN_GRACE_SECS`, aborts what is left, then deregisters, which returns the aborted tasks to the queue. A running turn is handed off instead of held: at the next step boundary (after its act, before its next reason) it stores what it wrote and hands the lease back with `HandOffActor`, which leaves the actor runnable, so another worker resumes the turn from the log within about a second. A turn mid-step finishes that step first. A turn still running when the grace runs out is aborted and keeps its actor lease until it expires (10 s); another worker then resumes it the same way. A server without `HandOffActor` answers `UNIMPLEMENTED` and the worker falls back to letting the lease expire, so mixed-version rollouts are safe. A second signal exits at once.
 
 A drained worker leases no actors either; turns it already runs go on.
 
@@ -299,8 +299,8 @@ log. The control plane keeps the `session_actors` runnable index
 ([migrations 215](../../crates/server/migrations/legacy/215_session_actors.sql) and
 [20261012014120](../../crates/server/migrations/20261012014120_session_actor_inbox_cursor.sql),
 [repository](../../crates/server/src/storage/repositories/session_actors/mod.rs))
-and serves four worker-link calls, `LeaseActors`, `RenewActorLease`,
-`ReleaseActor` and `ReadActorJournal`, over gRPC and, in DEV_MODE, through
+and serves five worker-link calls, `LeaseActors`, `RenewActorLease`,
+`ReleaseActor`, `HandOffActor` and `ReadActorJournal`, over gRPC and, in DEV_MODE, through
 `DirectWorkerAdapters` on the same repository. Workers still never touch the
 database. The server's turn backend is
 [`ActorTurnBackend`](../../crates/server/src/turns/actor_backend.rs) in

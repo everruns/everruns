@@ -187,6 +187,28 @@ impl SessionActorStore for DirectActorLeaseStore {
         )
     }
 
+    async fn hand_off_actor(
+        &self,
+        session_id: SessionId,
+        holder: &str,
+        fence: u64,
+        consumed_inbox_seq: i64,
+    ) -> Result<Option<ActorRelease>> {
+        Ok(Some(
+            match self
+                .db
+                .hand_off_session_actor(session_id, holder, fence_to_db(fence)?, consumed_inbox_seq)
+                .await
+                .map_err(|e| store_error(format!("Failed to hand off actor: {e}")))?
+            {
+                Some(_) => ActorRelease::Released {
+                    still_runnable: true,
+                },
+                None => ActorRelease::LeaseLost,
+            },
+        ))
+    }
+
     async fn read_actor_journal(
         &self,
         session_id: SessionId,

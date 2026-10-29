@@ -195,6 +195,11 @@ service WorkerService {
     rpc LeaseActors(LeaseActorsRequest) returns (LeaseActorsResponse);
     rpc RenewActorLease(RenewActorLeaseRequest) returns (RenewActorLeaseResponse);
     rpc ReleaseActor(ReleaseActorRequest) returns (ReleaseActorResponse);
+    // A draining worker gives the lease back between steps of a running turn:
+    // like ReleaseActor, but the actor stays runnable so another worker resumes
+    // the turn from the log at once instead of after the lease TTL. A server
+    // without it answers UNIMPLEMENTED and the worker lets the lease expire.
+    rpc HandOffActor(ReleaseActorRequest) returns (ReleaseActorResponse);
     rpc ReadActorJournal(ReadActorJournalRequest) returns (ReadActorJournalResponse);
     // Detached tool calls: a call a holder took off its turn so the turn
     // parks while the call runs (knowledge/execution/detached-tool-calls.md).
