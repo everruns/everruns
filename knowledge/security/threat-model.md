@@ -506,7 +506,7 @@ Code references:
 | TM-FS-002 | Cross-session file access | Critical | Files scoped by `session_id` FK; session scoped by org via agent join | MITIGATED |
 | TM-FS-003 | Null byte injection | High | Regex constraint rejects `\0` bytes | MITIGATED |
 | TM-FS-004 | Double-slash bypass | Medium | Regex constraint rejects `//` | MITIGATED |
-| TM-FS-005 | Readonly file modification or deletion | Medium | `is_readonly` flag enforced; readonly files cannot be modified or deleted; recursive directory deletion blocked if subtree contains readonly files | MITIGATED |
+| TM-FS-005 | Readonly file modification or deletion | Medium | `is_readonly` flag enforced; readonly files cannot be modified or deleted; recursive directory deletion and moves reject readonly descendants. Atomic directory moves reject protected parents, existing destinations and mount relocation; unsupported security decorators fail closed. | MITIGATED |
 | TM-FS-006 | File content unencrypted at rest | Low | Stored as BYTEA in PostgreSQL; relies on infrastructure-level encryption (disk, TDE) | **ACCEPTED** |
 | TM-FS-007 | No file access audit log | Low | File reads/writes not logged; privacy tradeoff | **ACCEPTED** |
 | TM-FS-008 | Large file storage abuse | Medium | Per-session and per-file byte quotas enforced in `WorkspaceFileService` and `DirectWorkerAdapters`; configurable via `SESSION_FILE_MAX_BYTES` / `SESSION_FILE_SINGLE_MAX_BYTES` env vars (defaults: 500 MB/session, 100 MB/file) | MITIGATED |
