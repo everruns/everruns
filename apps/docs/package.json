@@ -23,7 +23,7 @@
     "postinstall": "node ../ui/scripts/patch-zod-v3.mjs"
   },
   "dependencies": {
-    "@astrojs/check": "^0.9.11",
+    "@astrojs/check": "^0.9.12",
     "@astrojs/markdown-satteri": "^0.4.5",
     "@astrojs/starlight": "^0.42.6",
     "@fontsource-variable/geist": "^5.3.0",
