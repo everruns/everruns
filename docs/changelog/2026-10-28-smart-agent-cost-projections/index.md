@@ -18,7 +18,7 @@ The utility model proposes workloads; catalog prices determine model costs.
 
 **Other operating costs** adds sandbox runtime, paid tools, media, subagent work and monthly
 fees using your quantities and provider prices. Missing prices are flagged. **Advanced
-assumptions** includes cache usage and a model retry allowance. Monthly fees count once,
+assumptions** includes cache usage and a model retry allowance. Monthly fees and stored capacity count once,
 even at zero task volume.
 
 ![Example sandbox runtime and provider-price inputs](./operating-costs@2x.png)
