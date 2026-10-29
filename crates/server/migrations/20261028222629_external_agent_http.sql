@@ -10,6 +10,9 @@ ALTER TABLE custom_workers ADD CONSTRAINT custom_worker_http_complete CHECK (
     OR (endpoint_url IS NOT NULL AND endpoint_secret_encrypted IS NOT NULL AND adapter_token_encrypted IS NOT NULL)
 );
 
+CREATE INDEX custom_workers_http_schedule ON custom_workers(last_invoked_at NULLS FIRST, id)
+    WHERE enabled AND endpoint_url IS NOT NULL;
+
 -- Admission reservations hold no database connection during customer execution.
 -- Expiry recovers capacity after a CP crash; actor leases still fence all writes.
 CREATE TABLE external_worker_slots (
