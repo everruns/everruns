@@ -125,4 +125,53 @@ export const messages: Readonly<Record<string, string>> = {
   "{count} tasks / day": "{count} tareas / día",
   "At current usage": "Con el uso actual",
   "/ month": "/ mes",
+  "Sandbox runtime": "Tiempo de sandbox",
+  "Paid tools": "Herramientas de pago",
+  "Media generation": "Generación de medios",
+  "Subagent work": "Trabajo de subagentes",
+  "Hosting and platform fees": "Alojamiento y tarifas de plataforma",
+  "Other operating costs": "Otros costes operativos",
+  "Cost category": "Categoría de coste",
+  "Add cost": "Añadir coste",
+  "Paid from credits": "Pagado con créditos",
+  "Billed externally": "Facturado externamente",
+  "Quantity per month": "Cantidad por mes",
+  "Quantity per task": "Cantidad por tarea",
+  "USD per {unit}": "USD por {unit}",
+  "Enter provider price": "Introduce el precio del proveedor",
+  "Estimated operating cost · USD": "Coste operativo estimado · USD",
+  "External bills": "Facturas externas",
+  "Loading service prices…": "Cargando precios de servicios…",
+  "Service prices are unavailable. Reopen the estimator to retry.":
+    "Los precios no están disponibles. Vuelve a abrir el estimador.",
+  "Prices needed for: {items}": "Se necesitan precios para: {items}",
+  "Check resource quantities and prices. Use nonnegative numbers.":
+    "Comprueba cantidades y precios. Usa números no negativos.",
+  "Largest model cost driver: {task}": "Mayor coste del modelo: {task}",
+  "Extra model spend for retries (%)": "Gasto adicional del modelo por reintentos (%)",
+  "Cached input reads (%)": "Lecturas de entrada en caché (%)",
+  "Cache writes (%)": "Escrituras en caché (%)",
+  "Monthly estimate: {amount}": "Estimación mensual: {amount}",
+  "Model usage": "Uso del modelo",
+  minute: "minuto",
+  call: "llamada",
+  item: "elemento",
+  task: "tarea",
+  month: "mes",
+  cpu_second: "segundo CPU",
+  search: "búsqueda",
+  request: "solicitud",
+  MB: "MB",
+  "Include resources used by an average task. External providers bill separately from prepaid credits.":
+    "Incluye los recursos de una tarea media. Los proveedores externos facturan aparte de los créditos prepagados.",
+  "Use the full sandbox instance price, including memory. For subagents, enter the cost of one child task. Include idle time and repeated tool work in quantities; monthly fees are added once.":
+    "Usa el precio completo del sandbox, incluida la memoria. Para subagentes, introduce el coste de una tarea hija. Incluye tiempo inactivo y trabajo repetido; las cuotas mensuales se suman una sola vez.",
+  "Per-task cost excludes fixed monthly fees. Daily cost includes one thirtieth of monthly fees. Only included resources are estimated.":
+    "El coste por tarea excluye cuotas mensuales fijas. El coste diario incluye una trigésima parte de estas cuotas. Solo se estiman los recursos incluidos.",
+  "Cache shares apply to input tokens across all tasks and must total at most 100%. Retry allowance increases model spend only; repeated tools and sandbox time belong in resource quantities.":
+    "Las proporciones de caché se aplican a tokens de entrada de todas las tareas y deben sumar como máximo el 100 %. El margen de reintentos aumenta solo el gasto del modelo; incluye herramientas repetidas y tiempo de sandbox en las cantidades.",
+  "Instructions and tools are counted on every call; earlier outputs and tool results accumulate. Catalog prices and model limits apply. Cache savings require explicit assumptions.":
+    "Las instrucciones y herramientas cuentan en cada llamada; las salidas y resultados anteriores se acumulan. Se aplican precios del catálogo y límites del modelo. El ahorro por caché requiere supuestos explícitos.",
+  "Planning scenarios, not quotes or spending limits. The shaded range varies model workload; resource assumptions stay fixed. Add paid tools, sandbox time, media, subagents and fees to include them. No tasks are executed and your agent is not changed.":
+    "Escenarios de planificación, no presupuestos vinculantes ni límites. El área sombreada varía el trabajo del modelo; los recursos permanecen fijos. Añade herramientas de pago, sandbox, medios, subagentes y cuotas para incluirlos. No se ejecutan tareas ni se modifica el agente.",
 };

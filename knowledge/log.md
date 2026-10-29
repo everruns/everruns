@@ -2,6 +2,8 @@
 
 ## 2026-10-29
 
+- Extend [Agent Cost Estimation](ui/agent-cost-estimation.md) with explicit resource costs, fixed fees, cache/retry assumptions and a host pricing seam that separates prepaid credits from external bills.
+
 - Excluded permanently redirected announcements from the canonical docs sitemap while preserving their inbound links. See [Documentation Site](ui/documentation.md#sitemap-requirements).
 
 ## 2026-10-28

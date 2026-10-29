@@ -126,4 +126,53 @@ export const messages: Readonly<Record<string, string>> = {
   "{count} tasks / day": "{count} Aufgaben / Tag",
   "At current usage": "Bei aktueller Nutzung",
   "/ month": "/ Monat",
+  "Sandbox runtime": "Sandbox-Laufzeit",
+  "Paid tools": "Kostenpflichtige Tools",
+  "Media generation": "Mediengenerierung",
+  "Subagent work": "Arbeit von Unteragenten",
+  "Hosting and platform fees": "Hosting- und Plattformgebühren",
+  "Other operating costs": "Weitere Betriebskosten",
+  "Cost category": "Kostenkategorie",
+  "Add cost": "Kosten hinzufügen",
+  "Paid from credits": "Vom Guthaben bezahlt",
+  "Billed externally": "Extern abgerechnet",
+  "Quantity per month": "Menge pro Monat",
+  "Quantity per task": "Menge pro Aufgabe",
+  "USD per {unit}": "USD pro {unit}",
+  "Enter provider price": "Anbieterpreis eingeben",
+  "Estimated operating cost · USD": "Geschätzte Betriebskosten · USD",
+  "External bills": "Externe Rechnungen",
+  "Loading service prices…": "Dienstpreise werden geladen…",
+  "Service prices are unavailable. Reopen the estimator to retry.":
+    "Dienstpreise sind nicht verfügbar. Öffnen Sie den Rechner erneut.",
+  "Prices needed for: {items}": "Preise benötigt für: {items}",
+  "Check resource quantities and prices. Use nonnegative numbers.":
+    "Prüfen Sie Mengen und Preise. Verwenden Sie nichtnegative Zahlen.",
+  "Largest model cost driver: {task}": "Größter Modellkostentreiber: {task}",
+  "Extra model spend for retries (%)": "Zusätzliche Modellkosten für Wiederholungen (%)",
+  "Cached input reads (%)": "Eingabe aus dem Cache (%)",
+  "Cache writes (%)": "Cache-Schreibvorgänge (%)",
+  "Monthly estimate: {amount}": "Monatliche Schätzung: {amount}",
+  "Model usage": "Modellnutzung",
+  minute: "Minute",
+  call: "Aufruf",
+  item: "Element",
+  task: "Aufgabe",
+  month: "Monat",
+  cpu_second: "CPU-Sekunde",
+  search: "Suche",
+  request: "Anfrage",
+  MB: "MB",
+  "Include resources used by an average task. External providers bill separately from prepaid credits.":
+    "Erfassen Sie Ressourcen pro durchschnittlicher Aufgabe. Externe Anbieter rechnen unabhängig vom Guthaben ab.",
+  "Use the full sandbox instance price, including memory. For subagents, enter the cost of one child task. Include idle time and repeated tool work in quantities; monthly fees are added once.":
+    "Nutzen Sie den vollständigen Sandbox-Preis einschließlich Speicher. Geben Sie für Unteragenten den Preis pro Teilaufgabe ein. Leerlauf und wiederholte Tool-Arbeit gehören zur Menge; Monatsgebühren werden einmal addiert.",
+  "Per-task cost excludes fixed monthly fees. Daily cost includes one thirtieth of monthly fees. Only included resources are estimated.":
+    "Kosten pro Aufgabe schließen feste Monatsgebühren aus. Tageskosten enthalten ein Dreißigstel der Monatsgebühren. Nur hinzugefügte Ressourcen werden geschätzt.",
+  "Cache shares apply to input tokens across all tasks and must total at most 100%. Retry allowance increases model spend only; repeated tools and sandbox time belong in resource quantities.":
+    "Cache-Anteile gelten für Eingabetokens aller Aufgaben und dürfen zusammen höchstens 100 % betragen. Wiederholungsaufschläge erhöhen nur Modellkosten; wiederholte Tools und Sandbox-Zeit gehören zu den Ressourcenmengen.",
+  "Instructions and tools are counted on every call; earlier outputs and tool results accumulate. Catalog prices and model limits apply. Cache savings require explicit assumptions.":
+    "Anweisungen und Tools zählen bei jedem Aufruf; frühere Ausgaben und Tool-Ergebnisse summieren sich. Katalogpreise und Modellgrenzen gelten. Cache-Einsparungen erfordern ausdrückliche Annahmen.",
+  "Planning scenarios, not quotes or spending limits. The shaded range varies model workload; resource assumptions stay fixed. Add paid tools, sandbox time, media, subagents and fees to include them. No tasks are executed and your agent is not changed.":
+    "Planungsszenarien, keine Angebote oder Ausgabenlimits. Der schattierte Bereich variiert die Modellarbeit; Ressourcenannahmen bleiben gleich. Fügen Sie kostenpflichtige Tools, Sandbox-Zeit, Medien, Unteragenten und Gebühren hinzu. Es werden keine Aufgaben ausgeführt und der Agent wird nicht geändert.",
 };

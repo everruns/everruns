@@ -122,4 +122,53 @@ export const messages: Readonly<Record<string, string>> = {
   "{count} tasks / day": "{count} завдань / день",
   "At current usage": "За поточного використання",
   "/ month": "/ місяць",
+  "Sandbox runtime": "Час роботи пісочниці",
+  "Paid tools": "Платні інструменти",
+  "Media generation": "Генерація медіа",
+  "Subagent work": "Робота субагентів",
+  "Hosting and platform fees": "Хостинг і збори платформи",
+  "Other operating costs": "Інші витрати на роботу",
+  "Cost category": "Категорія витрат",
+  "Add cost": "Додати витрати",
+  "Paid from credits": "Оплата з кредитного балансу",
+  "Billed externally": "Оплата зовнішньому постачальнику",
+  "Quantity per month": "Кількість на місяць",
+  "Quantity per task": "Кількість на завдання",
+  "USD per {unit}": "USD за {unit}",
+  "Enter provider price": "Введіть ціну постачальника",
+  "Estimated operating cost · USD": "Орієнтовні витрати на роботу · USD",
+  "External bills": "Зовнішні рахунки",
+  "Loading service prices…": "Завантаження цін послуг…",
+  "Service prices are unavailable. Reopen the estimator to retry.":
+    "Ціни послуг недоступні. Відкрийте оцінювач знову, щоб повторити.",
+  "Prices needed for: {items}": "Потрібні ціни для: {items}",
+  "Check resource quantities and prices. Use nonnegative numbers.":
+    "Перевірте кількості ресурсів і ціни. Числа мають бути невід’ємними.",
+  "Largest model cost driver: {task}": "Найбільша складова витрат моделі: {task}",
+  "Extra model spend for retries (%)": "Додаткові витрати моделі на повтори (%)",
+  "Cached input reads (%)": "Читання вхідних токенів з кешу (%)",
+  "Cache writes (%)": "Запис у кеш (%)",
+  "Monthly estimate: {amount}": "Оцінка на місяць: {amount}",
+  "Model usage": "Використання моделі",
+  minute: "хвилина",
+  call: "виклик",
+  item: "елемент",
+  task: "завдання",
+  month: "місяць",
+  cpu_second: "CPU-секунда",
+  search: "пошук",
+  request: "запит",
+  MB: "МБ",
+  "Include resources used by an average task. External providers bill separately from prepaid credits.":
+    "Додайте ресурси для середнього завдання. Зовнішні постачальники виставляють рахунки окремо від кредитного балансу.",
+  "Use the full sandbox instance price, including memory. For subagents, enter the cost of one child task. Include idle time and repeated tool work in quantities; monthly fees are added once.":
+    "Вкажіть повну ціну пісочниці, включно з пам’яттю. Для субагентів — ціну одного дочірнього завдання. Врахуйте простій і повторні виклики; місячні збори додаються один раз.",
+  "Per-task cost excludes fixed monthly fees. Daily cost includes one thirtieth of monthly fees. Only included resources are estimated.":
+    "Вартість завдання не включає фіксовані місячні збори. Денна вартість включає 1/30 місячних зборів. Оцінюються лише додані ресурси.",
+  "Cache shares apply to input tokens across all tasks and must total at most 100%. Retry allowance increases model spend only; repeated tools and sandbox time belong in resource quantities.":
+    "Частки кешу застосовуються до вхідних токенів усіх завдань і разом не можуть перевищувати 100%. Запас на повтори збільшує лише витрати моделі; повторні інструменти й час пісочниці врахуйте в ресурсах.",
+  "Instructions and tools are counted on every call; earlier outputs and tool results accumulate. Catalog prices and model limits apply. Cache savings require explicit assumptions.":
+    "Інструкції та інструменти враховуються в кожному виклику; попередні відповіді й результати накопичуються. Діють ціни каталогу й ліміти моделі. Економія кешу потребує явних припущень.",
+  "Planning scenarios, not quotes or spending limits. The shaded range varies model workload; resource assumptions stay fixed. Add paid tools, sandbox time, media, subagents and fees to include them. No tasks are executed and your agent is not changed.":
+    "Це сценарії планування, а не цінові пропозиції чи ліміти витрат. Затінений діапазон змінює навантаження моделі; припущення ресурсів незмінні. Додайте платні інструменти, пісочниці, медіа, субагентів і збори. Завдання не виконуються, агент не змінюється.",
 };

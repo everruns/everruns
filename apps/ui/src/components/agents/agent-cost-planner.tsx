@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AgentCostCalculator } from "./agent-cost-estimate";
+import { useAgentCostPricing } from "@/hooks/use-agent-cost-pricing";
 
 interface Props {
   modelId: string;
@@ -48,6 +49,7 @@ function Planner(props: Props) {
       ? defaults.data
       : undefined;
   const modelQuery = resolution?.modelId ? models : defaults;
+  const pricing = useAgentCostPricing(model);
   const needsHarness = !props.modelId && !!props.previewRequest.harness_id;
   const preview = useQuery({
     queryKey: ["agent-cost-preview", currentOrg?.public_id, props.previewRequest],
@@ -144,6 +146,7 @@ function Planner(props: Props) {
               definitionTokens={estimateDefinitionTokens(preview.data)}
               outputLimit={props.maxOutputTokens.trim() ? Number(props.maxOutputTokens) : undefined}
               modelName={model?.display_name}
+              pricing={pricing}
             />
           ) : (
             <div role="status">

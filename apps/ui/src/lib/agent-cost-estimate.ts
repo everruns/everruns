@@ -29,6 +29,12 @@ export interface CostWorkload {
   toolResultTokens: number;
 }
 
+export interface ModelCostAdjustments {
+  cacheReadPercent: number;
+  cacheWritePercent: number;
+  retryPercent: number;
+}
+
 // Starting assumptions, not predictions about an agent's behavior. A task is
 // one fresh conversation; all prior outputs/tool results are resent each call.
 export const COST_WORKLOADS = [
@@ -90,11 +96,20 @@ export function estimateTaskCost(
   definitionTokens: number,
   workload: CostWorkload,
   maxOutputTokens?: number,
+  adjustments?: ModelCostAdjustments,
 ): TaskCostEstimate | null {
   const cost = profile?.cost;
+  const { cacheReadPercent = 0, cacheWritePercent = 0, retryPercent = 0 } = adjustments ?? {};
   const valid = (value: number) => Number.isFinite(value) && value >= 0;
   if (
     !cost ||
+    ![cacheReadPercent, cacheWritePercent, retryPercent].every((v) => valid(v) && v <= 100) ||
+    cacheReadPercent + cacheWritePercent > 100 ||
+    [
+      cost.cache_read,
+      cost.cache_write,
+      ...(cost.cost_tiers ?? []).flatMap((t) => [t.cache_read, t.cache_write]),
+    ].some((v) => v != null && !valid(v)) ||
     ![
       cost.input,
       cost.output,
@@ -143,7 +158,18 @@ export function estimateTaskCost(
       );
     result.inputTokens += input;
     result.outputTokens += outputPerCall;
-    result.inputCost += (input * (tier?.input ?? cost.input)) / 1_000_000;
+    const inputRate = tier?.input ?? cost.input;
+    // Match runtime cache accounting: reads inherit the base cache rate;
+    // writes in an active tier fall back to that tier's ordinary input rate.
+    const rates = tier ?? cost;
+    const readRate = rates.cache_read ?? cost.cache_read ?? inputRate;
+    const writeRate = rates.cache_write ?? inputRate;
+    result.inputCost +=
+      (input *
+        ((1 - (cacheReadPercent + cacheWritePercent) / 100) * inputRate +
+          (cacheReadPercent / 100) * readRate +
+          (cacheWritePercent / 100) * writeRate)) /
+      1_000_000;
     result.outputCost += (outputPerCall * (tier?.output ?? cost.output)) / 1_000_000;
     result.peakContext = Math.max(result.peakContext, input + outputPerCall);
     result.exceedsContext ||=
@@ -151,6 +177,9 @@ export function estimateTaskCost(
       input + outputPerCall > (profile?.limits?.context ?? Infinity);
     result.tiered ||= !!tier;
   }
+  // An explicit allowance for repeated model work, not an inferred failure rate.
+  result.inputCost *= 1 + retryPercent / 100;
+  result.outputCost *= 1 + retryPercent / 100;
   result.totalCost = result.inputCost + result.outputCost;
   return result;
 }

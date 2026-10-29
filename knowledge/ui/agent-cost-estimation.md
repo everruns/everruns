@@ -73,9 +73,27 @@ Suggestions can still be mistaken or steered by authored text; every assumption 
 
 ## Scope and calibration
 
-These are catalog token costs for one model. Cache discounts are not assumed; cache-write
-premiums, retries, media, paid tools, sandboxes, subagents, additional models and platform fees
-can change the bill. Files, retrieved knowledge and user attachments must be accounted for in
+The default remains catalog token costs for one model. Smart planning also accepts explicit
+cache-read/write shares and a model-only retry allowance (zero initially). Shares apply to input
+tokens and total at most 100%; tier selection still uses the full prompt. Cache buckets follow
+runtime pricing fallbacks. Retries are a spend allowance, not an inferred failure probability.
+
+Additional resource lines describe average usage per task or fixed monthly fees. Users supply
+sandbox instance prices, paid-tool rates, media costs, per-child-task budgets, and hosting fees;
+the current utility planner does not infer these quantities. Unknown prices make the affected
+total unavailable. Zero-priced rates remain valid. Monthly fees survive zero task volume and
+are allocated across 30 days only for the daily headline. Scenario shading varies model work,
+not resource quantities. The total covers included resources, never every possible bill.
+
+The [pricing hook](../../apps/ui/src/hooks/use-agent-cost-pricing.ts) is a host override seam.
+It classifies model spend as prepaid credits or external, and supplies current service rates.
+Self-hosted defaults to provider billing with no managed rate card. A host supplies its credit
+label and effective rates without putting host billing logic in OSS. Rates are re-resolved by
+stable identity when refreshed; a missing or failed rate cannot retain a stale zero/price.
+Client resource inputs never book money or change provider billing. Credits are USD-denominated
+planning amounts, distinct from external bills; no arbitrary credit conversion is invented.
+
+Files, retrieved knowledge and user attachments must be accounted for in
 starting input or tool-result assumptions when they enter context. Session/turn model overrides
 are outside an agent-level forecast. Subscription providers may have a different billing basis.
 

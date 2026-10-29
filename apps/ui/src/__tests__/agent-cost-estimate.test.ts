@@ -13,6 +13,41 @@ const profile = { cost: { input: 2, output: 10 } } as ModelProfile;
 const workload = { calls: 3, messageTokens: 500, outputTokens: 200, toolResultTokens: 800 };
 
 describe("agent cost estimation", () => {
+  it("applies cache buckets per tier and an explicit model retry allowance", () => {
+    const cached = {
+      ...profile,
+      cost: {
+        input: 2,
+        output: 10,
+        cache_read: 0.2,
+        cache_write: 2.5,
+        cost_tiers: [{ above_tokens: 2000, input: 4, output: 20, cache_read: 0.4, cache_write: 5 }],
+      },
+    };
+    const result = estimateTaskCost(cached, 1000, workload, undefined, {
+      cacheReadPercent: 50,
+      cacheWritePercent: 25,
+      retryPercent: 10,
+    })!;
+    expect(result.inputCost).toBeCloseTo(
+      ((1500 * (0.5 + 0.1 + 0.625) + 6000 * (1 + 0.2 + 1.25)) / 1e6) * 1.1,
+    );
+    expect(result.outputCost).toBeCloseTo(((200 * (10 + 20 + 20)) / 1e6) * 1.1);
+    expect(
+      estimateTaskCost(cached, 1000, workload, undefined, {
+        cacheReadPercent: 80,
+        cacheWritePercent: 25,
+        retryPercent: 0,
+      }),
+    ).toBeNull();
+    expect(
+      estimateTaskCost(profile, 1000, workload, undefined, {
+        cacheReadPercent: 50,
+        cacheWritePercent: 25,
+        retryPercent: 0,
+      })!.totalCost,
+    ).toBeCloseTo(0.021);
+  });
   it("bills repeated definitions and growing conversation context on every call", () => {
     const result = estimateTaskCost(profile, 1000, workload)!;
     // Inputs: 1500, 2500, 3500. Outputs: 3 * 200.

@@ -115,4 +115,53 @@ export const messages: Readonly<Record<string, string>> = {
   "{count} tasks / day": "每天 {count} 项任务",
   "At current usage": "按当前用量",
   "/ month": "/ 月",
+  "Sandbox runtime": "沙盒运行时间",
+  "Paid tools": "付费工具",
+  "Media generation": "媒体生成",
+  "Subagent work": "子代理工作",
+  "Hosting and platform fees": "托管和平台费用",
+  "Other operating costs": "其他运行费用",
+  "Cost category": "费用类别",
+  "Add cost": "添加费用",
+  "Paid from credits": "从额度扣除",
+  "Billed externally": "由外部服务收费",
+  "Quantity per month": "每月用量",
+  "Quantity per task": "每项任务用量",
+  "USD per {unit}": "每 {unit} 的美元价格",
+  "Enter provider price": "输入服务商价格",
+  "Estimated operating cost · USD": "预计运行费用 · 美元",
+  "External bills": "外部账单",
+  "Loading service prices…": "正在加载服务价格…",
+  "Service prices are unavailable. Reopen the estimator to retry.":
+    "服务价格暂不可用。请重新打开估算器重试。",
+  "Prices needed for: {items}": "需要以下项目的价格：{items}",
+  "Check resource quantities and prices. Use nonnegative numbers.":
+    "请检查资源用量和价格，使用非负数。",
+  "Largest model cost driver: {task}": "最大的模型费用来源：{task}",
+  "Extra model spend for retries (%)": "模型重试额外费用（%）",
+  "Cached input reads (%)": "缓存输入读取（%）",
+  "Cache writes (%)": "缓存写入（%）",
+  "Monthly estimate: {amount}": "每月估算：{amount}",
+  "Model usage": "模型用量",
+  minute: "分钟",
+  call: "次调用",
+  item: "项",
+  task: "任务",
+  month: "月",
+  cpu_second: "CPU 秒",
+  search: "次搜索",
+  request: "次请求",
+  MB: "MB",
+  "Include resources used by an average task. External providers bill separately from prepaid credits.":
+    "添加每项平均任务使用的资源。外部服务商的账单与预付额度分开计算。",
+  "Use the full sandbox instance price, including memory. For subagents, enter the cost of one child task. Include idle time and repeated tool work in quantities; monthly fees are added once.":
+    "请输入包含内存的完整沙盒实例价格。子代理请输入每项子任务的费用。用量应包含空闲时间和重复工具工作；月费只计入一次。",
+  "Per-task cost excludes fixed monthly fees. Daily cost includes one thirtieth of monthly fees. Only included resources are estimated.":
+    "每项任务费用不含固定月费。每日费用包含月费的三十分之一。仅估算已添加的资源。",
+  "Cache shares apply to input tokens across all tasks and must total at most 100%. Retry allowance increases model spend only; repeated tools and sandbox time belong in resource quantities.":
+    "缓存比例适用于所有任务的输入令牌，总和不得超过 100%。重试预留仅增加模型费用；重复工具调用和沙盒时间应计入资源用量。",
+  "Instructions and tools are counted on every call; earlier outputs and tool results accumulate. Catalog prices and model limits apply. Cache savings require explicit assumptions.":
+    "每次调用均计入指令和工具定义，先前输出与工具结果逐步累积。使用目录价格和模型限制。缓存节省需要明确设置假设。",
+  "Planning scenarios, not quotes or spending limits. The shaded range varies model workload; resource assumptions stay fixed. Add paid tools, sandbox time, media, subagents and fees to include them. No tasks are executed and your agent is not changed.":
+    "这是规划场景，并非报价或支出限额。阴影范围表示模型工作量变化，资源假设保持不变。请添加付费工具、沙盒时间、媒体、子代理及费用。不会执行任务或更改代理。",
 };

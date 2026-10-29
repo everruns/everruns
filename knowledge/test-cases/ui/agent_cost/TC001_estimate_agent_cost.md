@@ -45,14 +45,22 @@ tags:
 9. Interrupt the preview request. Verify loading, then failure and Retry; restore access and retry.
 10. Switch to Stats and confirm the header still offers **Estimate cost**. Inspect at both viewports in light and dark themes. Tab through controls and close the
     sheet using the keyboard. Confirm readable values and no horizontal overflow.
-11. Inspect network requests and the agent's saved state. No estimator interaction creates
-    a session, calls an LLM or updates the agent.
+11. Add **Sandbox runtime** in smart planning. Leave its price blank: the total must be unavailable,
+    with a price-needed message. Enter 5 minutes at $0.01/minute; at 100 tasks/day it adds $150/month.
+12. Add a $10 monthly hosting fee, then set volume to zero. The $10 remains; per-task costs do not
+    accrue. Confirm the chart includes that fixed fee rather than starting at zero cost.
+13. Set a 10% retry allowance: only model spend increases. Cache reads/writes totaling over 100%
+    withhold the projection. Restore valid assumptions.
+14. With host pricing, verify managed service/model costs appear under credits and BYOK/external
+    lines separately. Fail rate loading or remove a selected rate: no stale price may remain.
+15. Inspect network requests and saved state. Smart suggestion generation calls the utility LLM;
+    sliders, resource inputs and model adjustments do not. No session is created or agent saved.
 
 ## Expected Result
 
 - Estimates use the current model, assembled definition and visible workload assumptions.
 - Unknown prices, failed requests, invalid input and context overflow never look like free work.
-- Assumptions explain model-only pricing, sensitivity ranges and excluded costs.
+- Assumptions explain included resource costs, external billing, cache/retry allowances and scenario limits.
 - Estimation is usable on mobile and desktop and leaves saved configuration unchanged.
 
 ## Smart projections

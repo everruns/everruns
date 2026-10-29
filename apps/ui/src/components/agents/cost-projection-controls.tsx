@@ -66,17 +66,20 @@ export function ProjectionChart({
   low,
   high,
   daily,
+  fixedMonthly = 0,
 }: {
   typical: number;
   low: number | null;
   high: number | null;
   daily: number;
+  fixedMonthly?: number;
 }) {
   const ui = useUiTranslations();
   const { displayLocale } = useLocale();
   const maxDaily = Math.max(1, daily * 2);
-  const ceiling = Math.max(0.0001, (high ?? typical) * maxDaily * 30);
-  const y = (cost: number, volume: number) => 120 - ((cost * volume * 30) / ceiling) * 100;
+  const ceiling = Math.max(0.0001, (high ?? typical) * maxDaily * 30 + fixedMonthly);
+  const y = (cost: number, volume: number) =>
+    120 - ((cost * volume * 30 + fixedMonthly) / ceiling) * 100;
   return (
     <div>
       <svg
@@ -88,13 +91,13 @@ export function ProjectionChart({
         <line x1="15" y1="120" x2="585" y2="120" stroke="currentColor" opacity="0.2" />
         {low != null && high != null && (
           <path
-            d={`M15,120 L585,${y(high, maxDaily)} L585,${y(low, maxDaily)} Z`}
+            d={`M15,${y(0, 0)} L585,${y(high, maxDaily)} L585,${y(low, maxDaily)} Z`}
             fill="currentColor"
             opacity="0.12"
           />
         )}
         <path
-          d={`M15,120 L585,${y(typical, maxDaily)}`}
+          d={`M15,${y(0, 0)} L585,${y(typical, maxDaily)}`}
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
@@ -118,7 +121,7 @@ export function ProjectionChart({
       <div className="flex justify-between gap-4 text-xs text-muted-foreground">
         <span>{ui("At current usage")}</span>
         <span>
-          {formatPlanningUsd(typical * daily * 30, displayLocale)} {ui("/ month")}
+          {formatPlanningUsd(typical * daily * 30 + fixedMonthly, displayLocale)} {ui("/ month")}
         </span>
       </div>
     </div>
