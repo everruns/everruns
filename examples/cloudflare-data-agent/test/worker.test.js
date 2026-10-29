@@ -50,3 +50,20 @@ test("stream errors become a failed turn and preserve input identity", async () 
   assert.equal(lines[0].data.input_content,"North sales?");
   assert.doesNotMatch(JSON.stringify(lines),/secret diagnostic/);
 });
+
+
+test("model rejection and transport failure are traced without secret diagnostics", async () => {
+  for (const rejected of [true, false]) {
+    const model = async () => {
+      if (!rejected) throw new Error("secret diagnostic");
+      return Response.json({ error: { code: "credit_balance_exhausted", message: "secret diagnostic" } }, { status: 429 });
+    };
+    const {response,task}=eventStream(body(), (emit,turn,signal)=>execute(body(),{OPENAI_API_KEY:"app-owned-model-key"},emit,turn,model,signal));
+    const events=(await response.text()).trim().split("\n").map(JSON.parse); await task;
+    assert.deepEqual(events.map(e=>e.type),["turn.started","llm.generation","turn.failed"]);
+    const metadata=events[1].data.metadata;
+    assert.equal(metadata.success,false);
+    assert.match(metadata.error,rejected?/429.*credit_balance_exhausted/:/transport failed/);
+    assert.doesNotMatch(JSON.stringify(events),/secret diagnostic|app-owned-model-key/);
+  }
+});

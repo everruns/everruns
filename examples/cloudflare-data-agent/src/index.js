@@ -31,15 +31,26 @@ export async function execute(body, env, emit, turn_id, modelFetch = fetch, sign
     const span_id = crypto.randomUUID();
     const exec_id = "exec_" + crypto.randomUUID().replaceAll("-", "");
     const before = Date.now();
-    const response = await modelFetch("https://api.openai.com/v1/responses", {
+    const recordGeneration = (metadata, output = { text: null, tool_calls: [] }) => emit("llm.generation", {
+      messages: messages.filter(m => m.role).map(m => runtimeMessage(m.role === "assistant" ? "agent" : m.role, typeof m.content === "string" ? m.content : (m.content ?? []).filter(p => p.type === "output_text" || p.type === "input_text").map(p => p.text).join(""))),
+      output, metadata: { model: MODEL, provider: "openai", duration_ms: Date.now() - before, ...metadata }
+    }, { span_id, exec_id });
+    let response;
+    try { response = await modelFetch("https://api.openai.com/v1/responses", {
       method: "POST", redirect: "manual",
       headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: MODEL, reasoning: { effort: "low" }, input: messages, tools: [tool], max_output_tokens: 4096, store: false, include: ["reasoning.encrypted_content"] }),
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000)
-    });
+    }); } catch {
+      await recordGeneration({ success: false, error: "Model transport failed", finish_reasons: ["error"] });
+      throw new Error("Model request failed");
+    }
     if (!response.ok) {
       const diagnostic = await response.json().catch(() => ({}));
-      console.error("Model request failed", { status: response.status, code: diagnostic.error?.code, param: diagnostic.error?.param });
+      const suppliedCode = diagnostic.error?.code;
+      const code = typeof suppliedCode === "string" && /^[a-z0-9_]{1,64}$/.test(suppliedCode) ? suppliedCode : null;
+      await recordGeneration({ success: false, error: `Model HTTP ${response.status}${code ? ` (${code})` : ""}`, finish_reasons: ["error"] });
+      console.error("Model request failed", { status: response.status, code });
       throw new Error("Model request failed");
     }
     const result = await response.json();
@@ -50,11 +61,7 @@ export async function execute(body, env, emit, turn_id, modelFetch = fetch, sign
     usage.input_tokens += callUsage.input_tokens; usage.output_tokens += callUsage.output_tokens;
     usage.cache_read_tokens = (usage.cache_read_tokens ?? 0) + cached;
     const calls = result.output.filter(item => item.type === "function_call").map(c => ({ id: c.call_id, name: c.name, arguments: JSON.parse(c.arguments) }));
-    await emit("llm.generation", {
-      messages: messages.filter(m => m.role).map(m => runtimeMessage(m.role === "assistant" ? "agent" : m.role, typeof m.content === "string" ? m.content : (m.content ?? []).filter(p => p.type === "output_text" || p.type === "input_text").map(p => p.text).join(""))),
-      output: { text: answerText || null, tool_calls: calls },
-      metadata: { model: MODEL, response_model: result.model, provider: "openai", usage: callUsage, duration_ms: Date.now() - before, success: true, finish_reasons: [calls.length ? "tool_calls" : "stop"] }
-    }, { span_id, exec_id });
+    await recordGeneration({ response_model: result.model, usage: callUsage, success: true, finish_reasons: [calls.length ? "tool_calls" : "stop"] }, { text: answerText || null, tool_calls: calls });
     messages.push(...result.output);
     if (calls.length) {
       for (const call of calls) {
