@@ -57,6 +57,18 @@
 // is persisted before the provider call so an interrupted worker can resume,
 // and its caller fails the phase when that store fails.
 //
+// Decision: a queued store waits `COALESCE_WINDOW` before taking the queue,
+// so the events a step emits a few tens of milliseconds apart share one
+// insert and one commit instead of one each. A 2026-10-29 statement log of a
+// four-tool turn showed ~34 event commits, every one holding a single event:
+// `reason.started` and `output.message.started` land ~25 ms apart, `act.started`
+// and `tool.started` ~20 ms apart, and `llm.generation` ~100 ms before the
+// blocking `output.message.completed` that could carry it. At hundreds of
+// concurrent turns those commits queue on the database's WAL flush. The cost
+// is that a live viewer sees a queued event up to the window later. Waiting
+// never delays the turn: a blocking emit takes what waits (see above), and
+// `flush` cuts every waiting window short.
+//
 // Decision: the `tool.started` of an `AtMostOnce` call is not queued. It is
 // stored before the tool runs, so a log without it proves the call never ran
 // and resume may run it instead of settling it as interrupted; the act does
@@ -83,6 +95,8 @@ pub type Store = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 const STORE_RETRY_WINDOW: Duration = Duration::from_secs(5);
 const STORE_RETRY_FIRST_BACKOFF: Duration = Duration::from_millis(100);
 const STORE_RETRY_MAX_BACKOFF: Duration = Duration::from_secs(1);
+/// How long a queued store waits for more events before taking the queue.
+const COALESCE_WINDOW: Duration = Duration::from_millis(150);
 
 /// Why the queue stopped storing; see the module notes.
 #[derive(Debug, Clone)]
@@ -142,7 +156,10 @@ pub struct WriteBehind {
     pending: Arc<Mutex<Vec<EventRequest>>>,
     /// Set once a store gave up; nothing is stored after it.
     failed: Arc<Mutex<Option<Failure>>>,
+    /// Signalled by [`WriteBehind::flush`]: waiting stores stop waiting.
+    hurry: Arc<watch::Sender<()>>,
     retry_window: Duration,
+    coalesce_window: Duration,
 }
 
 impl Default for WriteBehind {
@@ -157,8 +174,16 @@ impl WriteBehind {
             tail: Arc::new(Mutex::new(watch::channel(true).1)),
             pending: Arc::new(Mutex::new(Vec::new())),
             failed: Arc::new(Mutex::new(None)),
+            hurry: Arc::new(watch::channel(()).0),
             retry_window: STORE_RETRY_WINDOW,
+            coalesce_window: COALESCE_WINDOW,
         }
+    }
+
+    #[cfg(test)]
+    fn with_coalesce_window(mut self, window: Duration) -> Self {
+        self.coalesce_window = window;
+        self
     }
 
     #[cfg(test)]
@@ -218,9 +243,22 @@ impl WriteBehind {
         }
         lock(&self.pending).push(request);
         let queue = self.clone();
+        // Subscribed now, so a flush after this point ends the wait below.
+        let mut hurry = self.hurry.subscribe();
         self.enqueue(Box::pin(async move {
-            // Let a phase's burst of start events land before taking them.
-            tokio::task::yield_now().await;
+            // Let the step's next events join this store (see the module
+            // notes), unless an earlier store already took them all.
+            if lock(&queue.pending).is_empty() {
+                return;
+            }
+            if queue.coalesce_window.is_zero() {
+                tokio::task::yield_now().await;
+            } else {
+                tokio::select! {
+                    () = tokio::time::sleep(queue.coalesce_window) => {}
+                    _ = hurry.changed() => {}
+                }
+            }
             // An earlier store gave up: these would land past its gap.
             if queue.failure().is_some() {
                 drop(queue.take_pending());
@@ -258,6 +296,7 @@ impl WriteBehind {
 
     /// Wait until every queued store has finished.
     pub async fn flush(&self) {
+        self.hurry.send_replace(());
         let tail = self.lock().clone();
         finished(tail).await;
     }
@@ -484,7 +523,7 @@ mod tests {
 
     #[tokio::test]
     async fn events_queued_behind_a_store_in_flight_go_out_as_one_batch() {
-        let queue = WriteBehind::new();
+        let queue = WriteBehind::new().with_coalesce_window(Duration::ZERO);
         let batches = Batches::default();
         let (open, opened) = tokio::sync::oneshot::channel::<()>();
         let mut opened = Some(opened);
@@ -508,9 +547,55 @@ mod tests {
         );
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn events_a_step_emits_within_the_window_share_one_store() {
+        let queue = WriteBehind::new();
+        let batches = Batches::default();
+        queue
+            .enqueue_event(request("act.started"), recording(&batches, None))
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        queue
+            .enqueue_event(request("tool.started"), recording(&batches, None))
+            .unwrap();
+        tokio::time::sleep(COALESCE_WINDOW).await;
+        queue
+            .enqueue_event(request("tool.started"), recording(&batches, None))
+            .unwrap();
+        queue.flush().await;
+        assert_eq!(
+            *batches.lock().unwrap(),
+            vec![
+                vec!["act.started".to_string(), "tool.started".to_string()],
+                vec!["tool.started".to_string()]
+            ],
+            "events inside the window share a store; a later one starts the next"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn flush_cuts_the_window_short() {
+        let queue = WriteBehind::new();
+        let batches = Batches::default();
+        queue
+            .enqueue_event(request("reason.started"), recording(&batches, None))
+            .unwrap();
+        let started = tokio::time::Instant::now();
+        queue.flush().await;
+        assert!(
+            started.elapsed() < COALESCE_WINDOW,
+            "the end of a phase does not wait out the window: {:?}",
+            started.elapsed()
+        );
+        assert_eq!(
+            *batches.lock().unwrap(),
+            vec![vec!["reason.started".to_string()]]
+        );
+    }
+
     #[tokio::test]
     async fn a_blocking_emit_takes_waiting_events_and_leaves_started_stores_alone() {
-        let queue = WriteBehind::new();
+        let queue = WriteBehind::new().with_coalesce_window(Duration::ZERO);
         let batches = Arc::new(Mutex::new(Vec::<Vec<String>>::new()));
         let (open, opened) = tokio::sync::oneshot::channel::<()>();
         // "a" is taken by a store that is still running.
