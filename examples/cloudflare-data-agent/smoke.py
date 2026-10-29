@@ -148,6 +148,8 @@ def main():
         time.sleep(3)
         events = api("GET", "/sessions/" + session_id + "/events?limit=1000")
         events = events.get("data", events.get("events", [])) if isinstance(events, dict) else events
+        assert sum(e["type"] == "turn.started" for e in events) == 2, "Disabled external work started on another runtime"
+        assert not any(e["type"] == "turn.failed" for e in events), "Disabled external work failed instead of remaining queued"
         assert sum(e["type"] == "turn.completed" for e in events) == 2, "Disabled external work fell back to another runtime"
         connect()
         deadline = time.monotonic() + 150
