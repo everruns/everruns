@@ -105,6 +105,9 @@ The local coordinator strips provider credentials, uses fresh databases and
 full authentication. A synthetic RS256 issuer primes only the trusted embedding
 host's public key cache; JWT signature, expiry, audience and authorization checks
 still execute. The production loopback-JWKS SSRF restriction remains enabled.
+The issuer uses a reserved `.invalid` hostname. Only the fixture's Work Chat
+process maps it to loopback; global DNS and production startup are unchanged,
+and certificate hostname verification remains enabled.
 
 A failed 1,000-user run is a valid benchmark result. Investigate acknowledgment,
 pickup, simulator duration, poll traffic, database pressure and generator CPU
