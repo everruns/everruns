@@ -11,6 +11,33 @@ const browser = await chromium.launch({
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--use-angle=swiftshader"],
 });
 try {
+  // Hold enhancement to reproduce a slow module load deterministically.
+  const readiness = await browser.newPage();
+  await readiness.addInitScript(() => {
+    const define = customElements.define.bind(customElements);
+    customElements.define = (name, ...args) => {
+      if (name === "generative-ui-gallery") window.releaseGallery = () => define(name, ...args);
+      else define(name, ...args);
+    };
+  });
+  await readiness.goto(`${origin}/docs/reference/generative-ui/inputs/`);
+  await readiness.waitForFunction(() => typeof window.releaseGallery === "function");
+  const pendingSearch = readiness.getByPlaceholder("Search this category");
+  assert.equal(await pendingSearch.isDisabled(), true, "search waits for its filtering handler");
+  await pendingSearch.evaluate((input) => {
+    input.value = "Form with TextField";
+  });
+  await readiness.evaluate(() => window.releaseGallery());
+  assert.equal(
+    await readiness.locator("article.gallery-card:visible").count(),
+    1,
+    "restored search is applied on initialization",
+  );
+  await pendingSearch.fill("");
+  assert.equal(await readiness.locator("article.gallery-card:visible").count(), 6);
+  await pendingSearch.fill("Form with TextField");
+  assert.equal(await readiness.locator("article.gallery-card:visible").count(), 1);
+  await readiness.close();
   const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
   const errors = [];
   const writes = [];
@@ -80,6 +107,7 @@ try {
     .locator(".gallery-category-nav")
     .getByRole("link", { name: "Feedback", exact: true })
     .click();
+  await page.waitForURL(`${origin}/docs/reference/generative-ui/feedback/`);
   await search.fill("Modal");
   const modalFrame = card.locator("iframe").contentFrame();
   await modalFrame.getByRole("button", { name: "Open modal" }).click();
@@ -99,6 +127,7 @@ try {
     .locator(".gallery-category-nav")
     .getByRole("link", { name: "Data", exact: true })
     .click();
+  await page.waitForURL(`${origin}/docs/reference/generative-ui/data/`);
   await search.fill("Map with markers");
   assert.equal(await card.locator("iframe").count(), 0);
   await card.getByRole("button", { name: /Load interactive example/ }).click();

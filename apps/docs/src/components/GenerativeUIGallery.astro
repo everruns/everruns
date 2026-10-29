@@ -14,7 +14,8 @@ const components = [...new Set(entries.flatMap(({ sample }) => sample.covers))].
 <generative-ui-gallery>
   <div class="gallery-controls" data-llms-ignore>
     <label for="gallery-search">Find a component</label>
-    <input id="gallery-search" type="search" placeholder="Search this category" />
+    <!-- Enable search only once its filtering handler is installed. -->
+    <input id="gallery-search" type="search" placeholder="Search this category" disabled />
     <p class="gallery-count" role="status" aria-live="polite">{entries.length} examples · {components.length} components</p>
   </div>
   <p class="gallery-empty" hidden>No examples match. Try another component name or category.</p>
@@ -82,6 +83,8 @@ const components = [...new Set(entries.flatMap(({ sample }) => sample.covers))].
         empty.hidden = visible > 0;
       };
       search.addEventListener("input", filter);
+      if (search.value) filter();
+      search.disabled = false;
     }
   }
   if (!customElements.get("generative-ui-gallery")) customElements.define("generative-ui-gallery", GenerativeUIGallery);
