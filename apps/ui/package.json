@@ -29,10 +29,16 @@
     "e2e:ui": "playwright test --ui",
     "e2e:headed": "playwright test --headed",
     "postinstall": "node scripts/patch-zod-v3.mjs",
-    "pretest": "node --test scripts/test-zod-size-guards.mjs scripts/test-zod-v3-backport.mjs"
+    "pretest": "node --test scripts/test-zod-size-guards.mjs scripts/test-zod-v3-backport.mjs && npm run test:generative-ui",
+    "test:generative-ui": "node --experimental-strip-types generative-ui/tests/protocol.test.ts && node generative-ui/scripts/export-catalog.mjs --check"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
+    "@copilotkit/core": "1.83.0",
+    "@copilotkit/react-core": "1.83.0",
+    "@copilotkit/shared": "1.83.0",
+    "@everruns/generative-ui": "file:generative-ui",
+    "@openuidev/react-headless": "^0.18.1",
     "@openuidev/react-lang": "^1.0.1",
     "@openuidev/react-ui": "^0.18.1",
     "@rjsf/core": "^6.11.0",
@@ -56,8 +62,7 @@
     "remark-github-blockquote-alert": "^2.1.0",
     "streamdown": "^2.7.1",
     "tailwind-merge": "^3.7.0",
-    "zod": "^4.6.7",
-    "@openuidev/react-headless": "^0.18.1"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@ag-ui/core": "1.0.3",

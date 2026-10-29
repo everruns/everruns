@@ -12,10 +12,9 @@
  * @see knowledge/ui/a2ui.md
  */
 
-import { hasA2UIBlocks, splitA2UIBlocks } from "@/lib/a2ui-utils";
+import { hasA2UIBlocks } from "@/lib/a2ui-utils";
 import { StreamdownMessage } from "@/components/chat/streamdown-message";
-import { OpenUIBlock } from "@/components/chat/openui-renderer";
-import { A2UIBlock } from "@/components/chat/a2ui-renderer";
+import { WidgetContent } from "./widget-content";
 import type { TextAnnotation } from "@/lib/api/schema-types";
 import {
   type CitationSource,
@@ -65,28 +64,5 @@ export function MessageContent({ text, isStreaming = false, annotations }: Messa
     );
   }
 
-  const segments = splitA2UIBlocks(text);
-
-  return (
-    <div className="space-y-2">
-      {segments.map((segment, i) => {
-        if (segment.type === "openui") {
-          return <OpenUIBlock key={i} code={segment.content} isStreaming={isStreaming} />;
-        }
-        if (segment.type === "a2ui") {
-          return <A2UIBlock key={i} code={segment.content} isStreaming={isStreaming} />;
-        }
-        return (
-          <StreamdownMessage
-            key={i}
-            variant="inline"
-            className="text-foreground"
-            isAnimating={isStreaming}
-          >
-            {segment.content}
-          </StreamdownMessage>
-        );
-      })}
-    </div>
-  );
+  return <WidgetContent text={text} isStreaming={isStreaming} />;
 }

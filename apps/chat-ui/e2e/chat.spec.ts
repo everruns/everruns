@@ -426,7 +426,7 @@ test("HTML artifacts cannot execute scripts or fetch remote resources", async ({
 test("renders an OpenUI report with a chart instead of source code", async ({ page, request }) => {
   await request.get("http://127.0.0.1:9141/mode/multi_chat");
   const text =
-    '```openui\nroot = Card([header, chart])\nheader = CardHeader("Migration activity", "Pull requests per day")\nchart = BarChart(labels, [series])\nlabels = ["Oct 10", "Oct 16"]\nseries = Series("PRs", [11, 92])\n```';
+    '```openui\nroot = Card([header, chart, action])\naction = Button("Explain this chart")\nheader = CardHeader("Migration activity", "Pull requests per day")\nchart = BarChart(labels, [series])\nlabels = ["Oct 10", "Oct 16"]\nseries = Series("PRs", [11, 92])\n```';
   await page.route("**/api/sessions/*/sse**", (route) =>
     route.fulfill({
       contentType: "text/event-stream",
@@ -448,11 +448,18 @@ test("renders an OpenUI report with a chart instead of source code", async ({ pa
       return route.fulfill({ json: { ...root, title: "UI migration timeline" } });
     return route.fallback();
   });
+  let chartAction = "";
+  await page.route("**/api/sessions/*/messages", (route) => {
+    chartAction = route.request().postDataJSON().message.content[0].text;
+    return route.fulfill({ json: { id: "chart-action" } });
+  });
   await page.goto(origin);
   await expect(page.getByText("Migration activity", { exact: true })).toBeVisible({
     timeout: 30000,
   });
   await expect(page.locator(".widget svg").first()).toBeVisible();
+  await page.getByRole("button", { name: "Explain this chart", exact: true }).click();
+  await expect.poll(() => chartAction).toBe("Explain this chart");
   await expect(page.getByText("root = Card", { exact: false })).toHaveCount(0);
   await page.screenshot({ path: "../../work/work-chat-report.png", fullPage: true });
 });
@@ -662,4 +669,224 @@ test("sign-out retires an attachment read before it can start a message", async 
   finishLogout();
   expect(observedMessages).toBe(0);
   expect(saved).toEqual([]);
+});
+
+test("A2UI 1.0 renders bound forms, charts, tabs and updates in both themes", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  const operations = [
+    {
+      version: "v1.0",
+      createSurface: {
+        surfaceId: "review",
+        catalogId: "copilotkit/standard@1",
+        dataModel: { name: "", total: 12 },
+        components: [
+          {
+            id: "root",
+            component: "Column",
+            children: ["heading", "tabs", "form", "chart", "html"],
+          },
+          { id: "heading", component: "Title", text: "Release review" },
+          {
+            id: "tabs",
+            component: "Tabs",
+            tabs: [
+              { title: "Overview", child: "overview" },
+              { title: "Details", child: "details" },
+            ],
+          },
+          {
+            id: "overview",
+            component: "Text",
+            text: { "@call": "formatString", args: { value: "Reviewed ${/total} items" } },
+          },
+          { id: "details", component: "Text", text: "All checks complete" },
+          {
+            id: "form",
+            component: "Form",
+            label: "Release review",
+            children: ["name", "submit"],
+            onSubmit: {
+              event: {
+                name: "review",
+                userMessage: "Submit review",
+                context: { name: { "@path": "/name" } },
+              },
+            },
+          },
+          { id: "name", component: "TextField", label: "Reviewer", value: { "@path": "/name" } },
+          { id: "submit", component: "Button", label: "Send review", submit: true,
+            checks: [{ condition: { "@call": "required", args: { value: { "@path": "/name" } } }, message: "Reviewer is required" }],
+          },
+          {
+            id: "chart",
+            component: "Chart",
+            data: [
+              { week: "Week 1", items: 5 },
+              { week: "Week 2", items: 12 },
+            ],
+            xKey: "week",
+            series: ["items"],
+            chartType: "bar",
+          },
+          {
+            id: "html",
+            component: "HtmlView",
+            height: 100,
+            title: "Safe preview",
+            html: "<p>Sandboxed preview</p><script>parent.__widgetScript = true</script>",
+          },
+        ],
+      },
+    },
+  ];
+  const text =
+    "A visual release review.\n```a2ui\n" +
+    operations.map((o) => JSON.stringify(o)).join("\n") +
+    "\n```\n```a2ui\n" +
+    JSON.stringify({
+      version: "v1.0",
+      updateDataModel: { surfaceId: "review", path: "/total", value: 25 },
+    }) +
+    "\n```";
+  await page.route("**/api/sessions/*/sse**", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: `data: ${JSON.stringify({ id: "a2ui", sequence: 4, type: "output.message.completed", data: { message: { id: "a2ui", role: "agent", content: [{ type: "text", text }] } } })}\n\n`,
+    }),
+  );
+  let sent = "";
+  await page.route("**/api/sessions/*/messages", (route) => {
+    sent = route.request().postDataJSON().message.content[0].text;
+    return route.fulfill({ json: { id: "sent" } });
+  });
+  await page.goto(origin);
+  await expect(page.getByRole("heading", { name: "Release review" })).toBeVisible({
+    timeout: 30000,
+  });
+  await expect(page.getByText("Reviewed 25 items")).toBeVisible();
+  await expect(page.locator(".everruns-widget .recharts-surface").first()).toBeVisible();
+  await page.getByRole("tab", { name: "Details", exact: true }).click();
+  await expect(page.getByText("All checks complete")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send review", exact: true })).toBeDisabled();
+  await page.getByRole("textbox", { name: "Reviewer", exact: true }).fill("Alex");
+  await expect(page.getByRole("button", { name: "Send review", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Send review", exact: true }).click();
+  await expect.poll(() => sent).toContain("Submit review");
+  expect(sent).toContain('"name":"Alex"');
+  expect(
+    await page.evaluate(() => (window as unknown as { __widgetScript?: boolean }).__widgetScript),
+  ).toBeUndefined();
+  await expect(page.locator('iframe[title="Safe preview"]')).toHaveAttribute("sandbox", "");
+  await page.setViewportSize({ width: 1440, height: 1500 });
+  await page.mouse.move(0, 0);
+  await page.screenshot({ path: "/tmp/everruns-a2ui-light.png", fullPage: true });
+  await page.locator(".message.assistant").first().screenshot({ path: "/tmp/everruns-a2ui-widget@2x.png" });
+  await page.evaluate(() => document.documentElement.classList.add("dark"));
+  await expect(page.getByRole("heading", { name: "Release review" })).toBeVisible();
+  await page.screenshot({ path: "/tmp/everruns-a2ui-dark.png", fullPage: true });
+});
+
+test("all 69 standard components render from the catalog fixtures", async ({ page, request }) => {
+  const { default: samples } = await import("../../ui/generative-ui/tests/standard-samples.json", {
+    with: { type: "json" },
+  });
+  expect(new Set(samples.flatMap((sample) => sample.covers)).size).toBe(69);
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  const text = samples
+    .map(
+      (sample, index) =>
+        "```a2ui\n" +
+        JSON.stringify({
+          version: "v1.0",
+          createSurface: {
+            surfaceId: `sample-${index}`,
+            catalogId: "copilotkit/standard@1",
+            components: sample.components,
+            dataModel: sample.data,
+          },
+        }) +
+        "\n```",
+    )
+    .join("\n");
+  await page.route("**/api/sessions/*/sse**", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: `data: ${JSON.stringify({ id: "catalog", sequence: 4, type: "output.message.completed", data: { message: { id: "catalog", role: "agent", content: [{ type: "text", text }] } } })}\n\n`,
+    }),
+  );
+  const failures: string[] = [];
+  page.on("console", (message) => {
+    if (message.text().includes("[generativeUI]")) failures.push(message.text());
+  });
+  page.on("pageerror", (error) => failures.push(error.message));
+  await page.goto(origin);
+  await expect(page.locator("[data-generative-ui-root]")).toHaveCount(samples.length, {
+    timeout: 30000,
+  });
+  await expect(page.getByText("Part of this UI couldn't be shown.", { exact: true })).toHaveCount(
+    0,
+  );
+  expect(failures).toEqual([]);
+});
+
+test("rejected A2UI surfaces show source and do not break later replies", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  const text =
+    '```a2ui\n{"version":"v1.0","createSurface":{"surfaceId":"bad","catalogId":"copilotkit/standard@1","components":[{"id":"root","component":"UnregisteredWidget"}]}}\n```\nA readable explanation still follows.';
+  await page.route("**/api/sessions/*/sse**", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: `data: ${JSON.stringify({ id: "bad", sequence: 4, type: "output.message.completed", data: { message: { id: "bad", role: "agent", content: [{ type: "text", text }] } } })}\n\n`,
+    }),
+  );
+  await page.goto(origin);
+  await expect(
+    page.getByText("This content could not be displayed.", { exact: true }),
+  ).toBeVisible();
+  await page.getByText("This content could not be displayed.", { exact: true }).click();
+  await expect(page.getByText(/UnregisteredWidget/)).toBeVisible();
+  await expect(
+    page.getByText("A readable explanation still follows.", { exact: true }),
+  ).toBeVisible();
+});
+
+test("public A2UI 1.0 shares render with execution controls disabled", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  const text =
+    '```a2ui\n{"version":"v1.0","createSurface":{"surfaceId":"shared","catalogId":"copilotkit/standard@1","components":[{"id":"root","component":"Button","label":"Send private action","onClick":{"event":{"name":"private","userMessage":"Run private action"}}}]}}\n```';
+  await page.route("**/api/chat/shared/**", (route) =>
+    route.fulfill({
+      json: {
+        title: "Shared review",
+        data: [
+          {
+            id: "shared",
+            sequence: 1,
+            type: "output.message.completed",
+            data: { message: { id: "shared", role: "agent", content: [{ type: "text", text }] } },
+          },
+        ],
+        before: null,
+      },
+    }),
+  );
+  let sent = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/messages")) sent++;
+  });
+  await page.goto(origin + "?share=public-token");
+  await expect(
+    page.getByRole("button", { name: "Send private action", exact: true }),
+  ).toBeDisabled();
+  expect(sent).toBe(0);
 });

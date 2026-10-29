@@ -29,6 +29,16 @@ minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 # The explicitly selected compiler migration is pinned, including native binaries.
 minimumReleaseAgeExclude:
+  # A2UI 1.0 standard catalog selected for shared chat rendering.
+  - "@copilotkit/a2ui-renderer@1.83.0"
+  - "@copilotkit/core@1.83.0"
+  - "@copilotkit/learning@1.83.0"
+  - "@copilotkit/mcp-apps-renderer@1.83.0"
+  - "@copilotkit/react-core@1.83.0"
+  - "@copilotkit/runtime-client-gql@1.83.0"
+  - "@copilotkit/shared@1.83.0"
+  - "@copilotkit/web-components@1.83.0"
+  - "@copilotkit/web-inspector@1.83.0"
   - 'tsrs@0.20.1-ts7.1.0-beta'
   - '@tsrs/win32-x64@0.20.1-ts7.1.0-beta'
   - '@tsrs/darwin-x64@0.20.1-ts7.1.0-beta'

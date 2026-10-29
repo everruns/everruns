@@ -1,6 +1,8 @@
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
   "Changes affect only this estimate.": "Changes affect only this estimate.",
+  "This content could not be displayed.": "This content could not be displayed.",
+  "The message could not be sent.": "The message could not be sent.",
   Discard: "Discard",
   "Recovery storage is unavailable. Keep this tab open and copy unsent text before leaving.":
     "Recovery storage is unavailable. Keep this tab open and copy unsent text before leaving.",
