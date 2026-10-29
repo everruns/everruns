@@ -10,7 +10,7 @@
     "precheck": "node ../ui/scripts/patch-zod-v3.mjs --check && pnpm run prepare-content",
     "prebuild": "node ../ui/scripts/patch-zod-v3.mjs --check && pnpm run prepare-content && node --test integrations/changelog-media.test.mjs integrations/sitemap-enhance.test.mjs && node scripts/check-changelog.mjs && node scripts/generate-og-image.mjs",
     "build": "astro build",
-    "postbuild": "node scripts/verify-notebooks.mjs && node scripts/verify-llms.mjs && node scripts/verify-seo.mjs && node scripts/verify-api-reference.mjs",
+    "postbuild": "node scripts/verify-notebooks.mjs && node scripts/verify-llms.mjs && node scripts/verify-seo.mjs && node scripts/verify-api-reference.mjs && node scripts/verify-fonts.mjs",
     "preview": "astro preview",
     "stage-worker": "node scripts/stage-worker-assets.mjs",
     "worker:test": "node --test worker/index.test.mjs",

@@ -2,6 +2,12 @@
 
 ## 2026-10-29
 
+- Give the cost-planner drawer isolated local Chat drafts, bounded displayed totals and guarded Undo, preserving host price and inference boundaries. See [Agent Cost Estimation](ui/agent-cost-estimation.md).
+
+- Remove the narrated Sandbox Builder video from Git and the docs player; keep the approved cut outside Git until its YouTube publication and verified embed. See [Product Videos](docs/product-videos.md).
+
+- Keep channel drafts unavailable while the type chooser is visible, and expire bindings when changing types. See [Chat mode](ui/chat-mode.md).
+
 - Fixed host-priced monthly capacity estimates so their usage units remain independent of task volume.
 - Patch the libz-sys build-script disclosure and retire affected Rust target caches without weakening advisory checks. See [CI Build Time](project/ci-build-time.md).
 

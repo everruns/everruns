@@ -1,5 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { z } from "zod";
+import {
+  planningNumberInput,
+  useCostPlanningDraft,
+} from "@/components/chat-mode/use-cost-planning-draft";
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import type { AgentCostPlan } from "@/lib/api/agents";
 import type { ModelProfile } from "@/lib/api/types";
@@ -63,6 +69,93 @@ export function CostProjectionDashboard({
     cacheWritePercent: 0,
     retryPercent: 0,
   });
+  const schema = useMemo(
+    () =>
+      z.strictObject({
+        tasks: z
+          .array(
+            z.strictObject({
+              calls: z.number(),
+              messageTokens: z.number(),
+              outputTokens: z.number(),
+              toolResultTokens: z.number(),
+              weight: z.number().int().min(0).max(100),
+            }),
+          )
+          .length(plan.tasks.length)
+          .describe(
+            "In displayed task order: " +
+              plan.tasks
+                .map((task) => task.name)
+                .join(", ")
+                .slice(0, 2000),
+          ),
+        mode: z.enum(["tasks", "users"]),
+        volume: planningNumberInput,
+        users: planningNumberInput,
+        perUser: planningNumberInput,
+        selected: z
+          .number()
+          .int()
+          .min(0)
+          .max(plan.tasks.length - 1),
+        adjustments: z.strictObject({
+          cacheReadPercent: planningNumberInput,
+          cacheWritePercent: planningNumberInput,
+          retryPercent: planningNumberInput,
+        }),
+      }),
+    [plan.tasks],
+  );
+  const draft = useCostPlanningDraft(
+    "projection",
+    schema,
+    {
+      tasks: tasks.map(({ calls, messageTokens, outputTokens, toolResultTokens, weight }) => ({
+        calls,
+        messageTokens,
+        outputTokens,
+        toolResultTokens,
+        weight,
+      })),
+      mode: mode as "tasks" | "users",
+      volume,
+      users,
+      perUser,
+      selected,
+      adjustments: {
+        cacheReadPercent: Number.isNaN(adjustments.cacheReadPercent)
+          ? ""
+          : String(adjustments.cacheReadPercent),
+        cacheWritePercent: Number.isNaN(adjustments.cacheWritePercent)
+          ? ""
+          : String(adjustments.cacheWritePercent),
+        retryPercent: Number.isNaN(adjustments.retryPercent)
+          ? ""
+          : String(adjustments.retryPercent),
+      },
+    },
+    (next) => {
+      setTasks((previous) => previous.map((task, index) => ({ ...task, ...next.tasks[index] })));
+      setMode(next.mode);
+      setVolume(next.volume);
+      setUsers(next.users);
+      setPerUser(next.perUser);
+      setSelected(next.selected);
+      setAdjustments({
+        cacheReadPercent:
+          next.adjustments.cacheReadPercent === ""
+            ? NaN
+            : Number(next.adjustments.cacheReadPercent),
+        cacheWritePercent:
+          next.adjustments.cacheWritePercent === ""
+            ? NaN
+            : Number(next.adjustments.cacheWritePercent),
+        retryPercent:
+          next.adjustments.retryPercent === "" ? NaN : Number(next.adjustments.retryPercent),
+      });
+    },
+  );
   // Re-resolve host rates rather than retaining a stale copied price after refresh.
   const pricedLines = lines.map((line) => {
     if (!line.rateId) return line;
@@ -80,6 +173,33 @@ export function CostProjectionDashboard({
     validVolume && result
       ? projectOperatingCosts(result.typical, pricing.modelBilling, pricedLines, daily)
       : null;
+  useChatPageRows(
+    "Cost projection",
+    [
+      {
+        per_task_usd: operating?.total.perTask,
+        daily_usd: operating?.total.daily,
+        monthly_usd: operating?.total.monthly,
+        fixed_monthly_usd: operating?.total.fixedMonthly,
+        model_billing: pricing.modelBilling,
+      },
+    ],
+    { loading: pricing.status === "loading", error: pricing.status === "error" },
+  );
+  useChatPageRows(
+    "Cost plan assumptions",
+    tasks.map((task, index) => ({
+      index,
+      name: task.name,
+      description: task.description,
+      assumption: task.assumption,
+      calls: task.calls,
+      message_tokens: task.messageTokens,
+      output_tokens: task.outputTokens,
+      tool_result_tokens: task.toolResultTokens,
+      weight: task.weight,
+    })),
+  );
   const usable =
     validVolume &&
     result?.typical != null &&
@@ -105,6 +225,7 @@ export function CostProjectionDashboard({
   );
   return (
     <div className="space-y-6">
+      {draft.notice}
       <section className="border bg-card p-5" aria-label={ui("Cost projection")}>
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {ui("Estimated operating cost · USD")}

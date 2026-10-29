@@ -163,9 +163,19 @@ The returned patch schema describes the fields actually supported on that form;
 unknown fields, invalid values, read-only fields and stale revisions fail before
 any setter. Closing and reopening a form rotates its binding even when values
 are identical; captured adapters from the preceding lifecycle remain unavailable.
+The channel type chooser exposes no draft until a type is selected. Returning to
+the chooser expires that editor, including when the same type is selected again.
 Patches preserve omitted values. A notice names changed fields and
 offers guarded draft Undo, preserving later manual edits. Saved-baseline conflicts
 keep dirty work and block the integration's Save action until it is discarded.
+
+Cost-planner drawers register their own local forms above the Agent editor.
+Guidance, workload assumptions, volume, cache/retry allowances and existing
+resource inputs participate in draft review and guarded Undo. Only the visible
+calculator registers; closing it or changing provenance expires its bindings.
+Estimate edits need no Save and create no resource history or billing write.
+Host prices remain read-only; inference and resource-row actions keep their
+ordinary buttons.
 
 Beyond Agents, integrations cover Harness creation/editing, Virtual Users,
 Observer definitions, Eval creation, Model ID/display-name dialogs, declarative Capability metadata/skills/files,

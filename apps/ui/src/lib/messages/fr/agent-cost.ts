@@ -1,4 +1,5 @@
 export const messages: Readonly<Record<string, string>> = {
+  "Changes affect only this estimate.": "Les modifications ne concernent que cette estimation.",
   "/ task": "/ tâche",
   "Advanced assumptions": "Hypothèses avancées",
   "Agent model": "Modèle de l’agent",

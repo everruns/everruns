@@ -20,6 +20,7 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
     enabled?: boolean;
     formId?: string;
     priority?: number;
+    reviewHint?: string;
   },
 ) {
   const mode = usePageChatMode();
@@ -186,7 +187,7 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
           <span className="text-muted-foreground">
             {blocked
               ? "Your draft is kept. Discard it to review the saved version before saving."
-              : "Review these changes, then save to apply them."}
+              : (options.reviewHint ?? "Review these changes, then save to apply them.")}
           </span>
           {!!marks.length && (
             <Button type="button" size="sm" variant="ghost" onClick={() => undo()}>

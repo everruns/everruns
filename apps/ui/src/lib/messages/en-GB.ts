@@ -1,5 +1,6 @@
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  "Changes affect only this estimate.": "Changes affect only this estimate.",
   "External worker setup failed": "External worker setup failed",
   Execution: "Execution",
   "External worker": "External worker",
