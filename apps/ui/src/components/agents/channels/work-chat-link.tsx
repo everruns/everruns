@@ -1,6 +1,7 @@
 "use client";
 
 import { useUiTranslations } from "@/providers/locale-provider";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -31,6 +32,24 @@ export function useWorkChatPublicUrl(channelId: string | null, live: boolean) {
       (await api.get<{ public_url?: string | null }>(`/v1/channels/${channelId}/chat/config`)).data,
   });
   return { url: workChatUrl(hosted.data?.public_url), loading: hosted.isLoading };
+}
+
+/// Reports the header link for a Work Chat channel. Mount this only for that
+/// channel type: the query needs a client, and other channels must not require one.
+export function WorkChatHeaderLink({
+  channelId,
+  live,
+  onUrl,
+}: {
+  channelId: string;
+  live: boolean;
+  onUrl: (url: string | null) => void;
+}) {
+  const { url } = useWorkChatPublicUrl(channelId, live);
+  useEffect(() => {
+    onUrl(url);
+  }, [url, onUrl]);
+  return null;
 }
 
 /// The address to send people, and a way to open it. Shared by the channel

@@ -72,7 +72,7 @@ import {
   type ChannelFormState,
 } from "@/components/agents/channels/channel-form";
 import { AgentKeysCard } from "@/components/agents/channels/agent-keys-card";
-import { useWorkChatPublicUrl } from "@/components/agents/channels/work-chat-link";
+import { WorkChatHeaderLink } from "@/components/agents/channels/work-chat-link";
 import { CronLabel } from "@/components/apps/cron-label";
 import {
   BackLink,
@@ -249,12 +249,13 @@ function AgentChannelForm({
     : "Could not start the Slack install.";
   const schedule =
     channel.channel_type === "schedule" ? (channel.channel_config as ScheduleChannelConfig) : null;
-  const hostedChat = useWorkChatPublicUrl(
-    channel.channel_type === "work_chat" ? channelId : null,
-    lifecycle.isLive,
-  );
+  const [hostedUrl, setHostedUrl] = useState<string | null>(null);
   const chatLink =
-    channel.channel_type === "public_chat" ? publicChatUrl(channelId) : hostedChat.url;
+    channel.channel_type === "public_chat"
+      ? publicChatUrl(channelId)
+      : channel.channel_type === "work_chat"
+        ? hostedUrl
+        : null;
 
   // Saved settings, compared as the config the server would receive, so a
   // field returned to its saved value is not a change.
@@ -303,6 +304,9 @@ function AgentChannelForm({
 
   return (
     <PageContainer>
+      {channel.channel_type === "work_chat" && (
+        <WorkChatHeaderLink channelId={channelId} live={lifecycle.isLive} onUrl={setHostedUrl} />
+      )}
       {chatDraft.notice}
       <PageBreadcrumb
         items={[
