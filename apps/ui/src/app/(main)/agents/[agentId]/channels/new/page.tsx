@@ -17,12 +17,14 @@ import {
   buildChannelConfig,
   ChannelForm,
   CHANNEL_FORM_KINDS,
-  ChannelNextSteps,
-  ChannelTypeChosen,
-  ChannelTypePicker,
   getDefaultChannelFormState,
   isChannelFormValid,
 } from "@/components/agents/channels/channel-form";
+import {
+  ChannelNextSteps,
+  ChannelTypeChosen,
+  ChannelTypePicker,
+} from "@/components/agents/channels/channel-type-picker";
 import {
   BackLink,
   PageBreadcrumb,

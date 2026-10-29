@@ -1,10 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   buildChannelConfig,
-  ChannelTypePicker,
   getDefaultChannelFormState,
   isChannelFormValid,
 } from "@/components/agents/channels/channel-form";
+import { ChannelTypePicker } from "@/components/agents/channels/channel-type-picker";
 import { VoiceTalkButton } from "@/components/agents/channels/voice-talk-button";
 import type { AgentChannel } from "@/lib/api/types";
 

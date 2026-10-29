@@ -2,7 +2,7 @@
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useCallback, useId, useState } from "react";
-import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronDown, RefreshCw } from "lucide-react";
 import { SlackIcon as Slack } from "@/components/icons/slack-icon";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,7 +65,6 @@ import {
 } from "./api-fields";
 import {
   getAgUiToolVisibilityDisplayName,
-  getChannelTypeDisplayName,
   getInvocationSessionModeDisplayName,
 } from "@/lib/channel-display";
 import { generateChannelToken } from "@/lib/channel-tokens";
@@ -74,12 +73,10 @@ import { SlackWorkspaceChoice, useSlackInstall } from "./slack-install";
 import type { SlackInstallCapability } from "@/lib/api/agent-channels";
 import { SlackInstallError } from "@/components/slack/slack-install-error";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { cn } from "@/lib/utils";
 
 import { WorkChatFields } from "./work-chat-fields";
-import { ChannelIcon } from "./channel-icon";
-import { CHANNEL_TYPE_INFO, channelTypeInfo, type ChannelAudience } from "./channel-types";
+import { FoldedSettings, FormSection } from "./form-section";
 
 export const CHANNEL_FORM_KINDS: ChannelType[] = [
   "schedule",
@@ -553,155 +550,6 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
   if (state.kind === "api" || state.kind === "work_chat") return isApiFormValid(state.api);
   if (state.kind === "slack") return true;
   return false;
-}
-
-/// The channel types a person can add from the New channel page, in two
-/// groups by who uses them. Feature flags still hide Public Chat and Voice.
-function useChoosableChannelTypes() {
-  const publicChatEnabled = useFeatureFlag("public_chat");
-  const voiceEnabled = useFeatureFlag("voice");
-  return CHANNEL_TYPE_INFO.filter(
-    ({ kind }) =>
-      CHANNEL_FORM_KINDS.includes(kind) &&
-      (kind !== "public_chat" || publicChatEnabled) &&
-      (kind !== "voice" || voiceEnabled),
-  );
-}
-
-const AUDIENCES: { audience: ChannelAudience; title: string; hint: string }[] = [
-  { audience: "people", title: "For people", hint: "Someone types or talks to the agent" },
-  {
-    audience: "software",
-    title: "For software",
-    hint: "Your code or another system calls the agent",
-  },
-];
-
-/// Rows, not cards: the choice is one of eight, each needs one sentence, and a
-/// row keeps the sentence readable at any width.
-export function ChannelTypePicker({ onChange }: { onChange: (value: ChannelType) => void }) {
-  const ui = useUiTranslations();
-  const kinds = useChoosableChannelTypes();
-  return (
-    <div className="grid items-start gap-6 lg:grid-cols-2">
-      {AUDIENCES.map(({ audience, title, hint }) => {
-        const group = kinds.filter((info) => info.audience === audience);
-        if (group.length === 0) return null;
-        const headingId = `channel-group-${audience}`;
-        return (
-          <section key={audience} aria-labelledby={headingId}>
-            <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h2 id={headingId} className="text-[15px] font-semibold">
-                {ui(title)}
-              </h2>
-              <p className="text-sm text-muted-foreground">{ui(hint)}</p>
-            </div>
-            <ul className="border bg-card">
-              {group.map(({ kind, summary, needs }) => (
-                <li key={kind} className="border-border/60 [&+&]:border-t">
-                  <button
-                    type="button"
-                    onClick={() => onChange(kind)}
-                    className="grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-start gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-                  >
-                    <span className="flex size-8 items-center justify-center border bg-background">
-                      <ChannelIcon kind={kind} className="icon-sharp size-4" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block font-semibold">{getChannelTypeDisplayName(kind)}</span>
-                      <span className="mt-0.5 block max-w-[60ch] text-sm text-foreground/75">
-                        {ui(summary)}
-                      </span>
-                    </span>
-                    <span className="flex items-center gap-1.5 self-center text-xs text-muted-foreground">
-                      {needs && <span className="hidden sm:inline">{ui(needs)}</span>}
-                      <ChevronRight aria-hidden="true" className="size-3.5" />
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        );
-      })}
-    </div>
-  );
-}
-
-/// The picked type, collapsed to one row above its form.
-export function ChannelTypeChosen({
-  kind,
-  onChange,
-}: {
-  kind: ChannelType;
-  onChange?: () => void;
-}) {
-  const ui = useUiTranslations();
-  const info = channelTypeInfo(kind);
-  return (
-    <div className="flex items-center gap-3.5 border-b bg-muted/30 px-5 py-3.5">
-      <span className="flex size-8 shrink-0 items-center justify-center border bg-background">
-        <ChannelIcon kind={kind} className="icon-sharp size-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold">{getChannelTypeDisplayName(kind)}</p>
-        {info && <p className="mt-0.5 text-sm text-foreground/75">{ui(info.summary)}</p>}
-      </div>
-      {onChange && (
-        <Button type="button" variant="outline" size="sm" onClick={onChange}>
-          {ui("Change type")}
-        </Button>
-      )}
-    </div>
-  );
-}
-
-/// One titled part of a channel form: a heading and hint on the left, fields on
-/// the right. The form is one card of these, never cards inside a card.
-function FormSection({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  const ui = useUiTranslations();
-  return (
-    <section className="grid gap-4 p-5 md:grid-cols-[13rem_minmax(0,1fr)] md:gap-6 [&+&]:border-t">
-      <div>
-        <h3 className="text-sm font-semibold">{ui(title)}</h3>
-        {hint && <p className="mt-1 text-sm text-muted-foreground">{ui(hint)}</p>}
-      </div>
-      <div className="min-w-0 space-y-4">{children}</div>
-    </section>
-  );
-}
-
-/// Settings most channels leave at their defaults, folded behind a line that
-/// shows the current values so nothing is hidden.
-function FoldedSettings({ summary, children }: { summary: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <ChevronDown
-            className={cn(
-              "size-4 shrink-0 text-muted-foreground transition-transform",
-              !open && "-rotate-90",
-            )}
-          />
-          {summary}
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-4 pt-4">{children}</CollapsibleContent>
-    </Collapsible>
-  );
 }
 
 function FieldGrid({ children }: { children: React.ReactNode }) {
@@ -1588,51 +1436,6 @@ export function ChannelForm({
         </>
       )}
     </div>
-  );
-}
-
-/// What creating a channel leads to, so nobody is surprised that a new channel
-/// starts closed. The steps are a real sequence, which is why they are numbered.
-export function ChannelNextSteps({ kind }: { kind: ChannelType }) {
-  const ui = useUiTranslations();
-  const share: Partial<Record<ChannelType, [string, string]>> = {
-    public_chat: [
-      "Share the link",
-      "Copy it from the channel page and send it to the people who should chat.",
-    ],
-    work_chat: ["Share the link", "Copy the chat site's address from the channel page."],
-    slack: ["Add it to Slack", "Approve the agent's Slack app, then mention it in a channel."],
-    voice: ["Call it", "Use the call button on the channel page or the microphone in chat."],
-    api: ["Make an agent key", "Create a key on the channel page and call the URL shown there."],
-  };
-  const [lastTitle, lastText] = share[kind] ?? [
-    "Connect your system",
-    "The channel page shows the address to call and a sample request.",
-  ];
-  const steps: [string, string][] = [
-    ["Create the channel", "It is saved as a draft. Nobody can reach the agent through it yet."],
-    ["Publish it", "Publishing on the channel page opens it to callers."],
-    [lastTitle, lastText],
-  ];
-  return (
-    <section aria-labelledby="channel-next-steps">
-      <h2 id="channel-next-steps" className="mb-3 text-xs font-medium text-muted-foreground">
-        {ui("What happens next")}
-      </h2>
-      <ol className="space-y-3">
-        {steps.map(([title, text], index) => (
-          <li key={title} className="grid grid-cols-[1.375rem_minmax(0,1fr)] gap-2.5 text-sm">
-            <span className="flex size-[1.375rem] items-center justify-center border bg-card font-mono text-xs font-medium">
-              {index + 1}
-            </span>
-            <span>
-              <span className="block font-semibold">{ui(title)}</span>
-              <span className="block text-muted-foreground">{ui(text)}</span>
-            </span>
-          </li>
-        ))}
-      </ol>
-    </section>
   );
 }
 
