@@ -109,8 +109,11 @@ The issuer uses a reserved `.invalid` hostname. Only the fixture's Work Chat
 process maps it to loopback; global DNS and production startup are unchanged,
 and certificate hostname verification remains enabled.
 
-A failed 1,000-user run is a valid benchmark result. Investigate acknowledgment,
-pickup, simulator duration, poll traffic, database pressure and generator CPU
+A failed 1,000-user run is a valid benchmark result.
+If failed actors exhaust the offered workload, the case ends without padding
+the remaining soak with idle connections. A shortened steady phase fails an
+explicit duration gate; successful soaks still last the full requested duration.
+Investigate acknowledgment, pickup, simulator duration, poll traffic, database pressure and generator CPU
 before attributing failure to SSE. This benchmark does not compare SSE with
 WebSockets; changing transport requires a controlled comparison on equivalent
 durable delivery semantics.
