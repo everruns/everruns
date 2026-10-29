@@ -21,6 +21,7 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// Read external execution status without returning credentials.
 #[utoipa::path(get, path = "/v1/agents/{agent_id}/external-worker", params(("agent_id" = String, Path)), responses((status = 200, body = Option<ExternalAgent>)), tag = "agents")]
 pub async fn get_external_agent(
     org: ResolvedOrg,
@@ -32,6 +33,10 @@ pub async fn get_external_agent(
     ))
 }
 
+/// Verify endpoint ownership and connect or rotate an Agent's HTTPS worker.
+///
+/// Requires dangerous-settings permission and installation enablement. Stop
+/// active turns first. The preinstalled secret is encrypted and never returned.
 #[utoipa::path(post, path = "/v1/agents/{agent_id}/external-worker", params(("agent_id" = String, Path)), request_body = RegisterExternalAgent, responses((status = 200, body = ExternalAgent)), tag = "agents")]
 pub async fn register_external_agent(
     org: ResolvedOrg,
@@ -43,6 +48,9 @@ pub async fn register_external_agent(
     Ok(Json(request.run(&state.ctx(&org)).await?))
 }
 
+/// Disable external execution while keeping queued sessions bound to this worker.
+///
+/// Revocation never falls back to the built-in runtime.
 #[utoipa::path(delete, path = "/v1/agents/{agent_id}/external-worker", params(("agent_id" = String, Path)), responses((status = 200)), tag = "agents")]
 pub async fn disable_external_agent(
     org: ResolvedOrg,

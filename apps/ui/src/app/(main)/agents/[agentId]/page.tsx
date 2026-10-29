@@ -730,7 +730,11 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
             />
 
             {!editing && !builtIn && (
-              <ExternalWorker agentId={agentId} disabled={!can("agent.dangerous")} />
+              <ExternalWorker
+                key={agent.id}
+                agentId={agent.id}
+                disabled={!can("agent.dangerous")}
+              />
             )}
 
             {!editing && !builtIn && (

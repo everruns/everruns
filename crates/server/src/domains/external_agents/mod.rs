@@ -8,16 +8,24 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 
+/// Public status of a customer-hosted HTTPS runtime; credentials are never exposed.
 #[derive(Debug, Serialize, Deserialize, ToSchema, sqlx::FromRow)]
 pub struct ExternalAgent {
+    /// Verified public HTTPS URL that receives signed invocation requests.
+    #[schema(example = "https://sales.example.workers.dev/")]
     pub endpoint_url: String,
+    /// Whether this binding can lease new work. Disabled bindings retain routing.
     pub enabled: bool,
+    /// Sanitized dispatch error, cleared after a successful invocation or registration.
     pub last_error: Option<String>,
+    /// Time of the latest invocation attempt, if any.
     pub last_invoked_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// Identify the Agent whose external execution status should be read.
 #[derive(Deserialize, Serialize, ToSchema)]
 pub struct GetExternalAgent {
+    /// Agent public ID or name; the HTTP route supplies this value.
     pub agent_id: String,
 }
 
@@ -33,12 +41,17 @@ impl Command for GetExternalAgent {
     }
 }
 
+/// Register a predeployed HTTPS endpoint after a signed ownership challenge.
 #[derive(Deserialize, Serialize, ToSchema)]
 pub struct RegisterExternalAgent {
     #[serde(default)]
+    /// Agent public ID or name; the HTTP route supplies this value.
     pub agent_id: String,
+    /// Verified public HTTPS URL that receives signed invocation requests.
+    #[schema(example = "https://sales.example.workers.dev/")]
     pub endpoint_url: String,
     /// Preinstall this random, 32+ character secret in the endpoint. Never a user PAT.
+    #[schema(write_only)]
     pub endpoint_secret: String,
 }
 
@@ -124,7 +137,12 @@ impl RegisterExternalAgent {
         );
         let encrypted_secret = encryption.encrypt_string(&self.endpoint_secret)?;
         let encrypted_token = encryption.encrypt_string(&token)?;
-        let mut tx = ctx.db.pool().begin().await.map_err(anyhow::Error::from)?;
+        let mut tx = ctx
+            .db
+            .tx_pool()
+            .begin()
+            .await
+            .map_err(anyhow::Error::from)?;
         // Registration is a routing change. Briefly exclude actor writes while
         // checking for held leases, including actors created during the check.
         // Network verification has already finished, outside this transaction.
@@ -158,8 +176,10 @@ impl RegisterExternalAgent {
     }
 }
 
+/// Revoke external execution without removing the persistent routing binding.
 #[derive(Deserialize, Serialize, ToSchema)]
 pub struct DisableExternalAgent {
+    /// Agent public ID or name; the HTTP route supplies this value.
     pub agent_id: String,
 }
 

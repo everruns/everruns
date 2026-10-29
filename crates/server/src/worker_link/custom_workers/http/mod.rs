@@ -174,7 +174,7 @@ async fn dispatch(
 }
 
 async fn admit(db: &StorageBackend, org: i64) -> Result<Option<uuid::Uuid>> {
-    let mut tx = db.pool().begin().await?;
+    let mut tx = db.tx_pool().begin().await?;
     let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(hashtextextended('external-agent-org:' || $1::bigint::text, 0))").bind(org).fetch_one(&mut *tx).await?;
     if !locked {
         return Ok(None);
