@@ -65,7 +65,7 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
     state: formState,
     setState: setFormState,
     baseline: "new",
-    available: !!agent,
+    available: !!agent && chosen && canManage && !isLoading && !slackInstallCapability.isLoading,
     writable: !!agent && canManage && !createChannel.isPending,
   });
   useEffect(() => {

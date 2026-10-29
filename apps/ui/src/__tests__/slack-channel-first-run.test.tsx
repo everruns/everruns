@@ -5,6 +5,9 @@ jest.mock("@/hooks/use-health-issues", () => ({
 }));
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Suspense } from "react";
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
+import type { ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
 import EditAgentChannelPage from "@/app/(main)/agents/[agentId]/channels/[channelId]/page";
 import NewAgentChannelPage from "@/app/(main)/agents/[agentId]/channels/new/page";
 import { ChannelForm, getDefaultChannelFormState } from "@/components/agents/channels/channel-form";
@@ -36,6 +39,10 @@ function workspace(teamId: string, name: string, status: SlackWorkspace["status"
 
 let mockWorkspaces: SlackWorkspace[] = [workspace("T1", "Acme")];
 let mockSource: { managed_channels: string[] } | null = null;
+let mockRequestedKind = "";
+let mockCanManage = true;
+let mockPoliciesLoading = false;
+let mockSlackLoading = false;
 let mockChannelConfig: AgentChannel["channel_config"] = {};
 
 jest.mock("@/hooks/use-agent-source", () => ({
@@ -45,7 +52,7 @@ jest.mock("@/hooks/use-agent-source", () => ({
 jest.mock("next/navigation", () => ({
   usePathname: () => "/agents/agent_123/channels/new",
   useRouter: () => ({ push, replace }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(mockRequestedKind),
 }));
 
 jest.mock("next/link", () => ({
@@ -76,8 +83,8 @@ jest.mock("@/hooks/use-agents", () => ({
 
 jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => ({
-    can: () => true,
-    isLoading: false,
+    can: () => mockCanManage,
+    isLoading: mockPoliciesLoading,
   }),
 }));
 
@@ -92,7 +99,7 @@ jest.mock("@/hooks/use-agent-channels", () => ({
   }),
   useSlackInstallCapability: () => ({
     data: mockSlackCapability,
-    isLoading: false,
+    isLoading: mockSlackLoading,
     refetch: jest.fn(),
   }),
   useSlackWorkspaces: () => ({ data: mockWorkspaces, isLoading: false }),
@@ -120,12 +127,14 @@ function slackChannel(): AgentChannel {
   };
 }
 
-async function renderNewChannelPage() {
+async function renderNewChannelPage(mode: ChatModeState | null = null) {
   const params = Promise.resolve({ agentId: "agent_123" });
   await act(async () => {
     render(
       <Suspense fallback={<div>Loading...</div>}>
-        <NewAgentChannelPage params={params} />
+        <PageChatProvider value={mode}>
+          <NewAgentChannelPage params={params} />
+        </PageChatProvider>
       </Suspense>,
     );
     await params;
@@ -150,6 +159,10 @@ describe("Slack channel first run", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     window.history.replaceState(null, "", "/agents/agent_123/channels/new");
+    mockRequestedKind = "";
+    mockCanManage = true;
+    mockPoliciesLoading = false;
+    mockSlackLoading = false;
     mockSource = null;
     mockChannelConfig = {};
     mockSlackCapability = {
@@ -165,6 +178,76 @@ describe("Slack channel first run", () => {
         options.onSuccess(slackChannel()),
     );
   });
+
+  it("exposes only the visible channel draft and expires bindings when returning to the chooser", async () => {
+    global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
+    const registered = new Set<PageDraftAdapter>();
+    const mode: ChatModeState = {
+      page: { route: "/agents/agent_123/channels/new", label: "New channel" },
+      pageContainer: { current: null },
+      open: true,
+      setOpen: () => {},
+      actions: [],
+      recordAction: () => {},
+      registerPage: (_, adapter) => {
+        if (!adapter) return () => {};
+        registered.add(adapter);
+        return () => {
+          registered.delete(adapter);
+        };
+      },
+    };
+    await renderNewChannelPage(mode);
+    expect(registered.size).toBe(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /Webhook/ }));
+    await waitFor(() => expect(registered.size).toBe(1));
+    const original = [...registered][0];
+    const snapshot = original.read(original.describe().binding);
+    expect(snapshot.writable).toBe(true);
+    act(() => {
+      original.patch(snapshot.binding, snapshot.revision, {
+        channelMessage: "Review this request",
+      });
+    });
+    expect(screen.getByDisplayValue("Review this request")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Change type" }));
+    await waitFor(() => expect(registered.size).toBe(0));
+    expect(() => original.read(snapshot.binding)).toThrow();
+    expect(() => original.patch(snapshot.binding, snapshot.revision, { enabled: false })).toThrow();
+
+    fireEvent.click(screen.getByRole("button", { name: /Webhook/ }));
+    await waitFor(() => expect(registered.size).toBe(1));
+    const reopened = [...registered][0];
+    const fresh = reopened.read(reopened.describe().binding);
+    expect(fresh.binding).not.toBe(snapshot.binding);
+    expect(fresh.values.channelMessage).not.toBe("Review this request");
+    expect(() => reopened.patch(snapshot.binding, snapshot.revision, { enabled: false })).toThrow();
+    expect(createChannel).not.toHaveBeenCalled();
+  });
+
+  it.each(["policy loading", "Slack loading", "permission denied"])(
+    "does not expose the preselected editor during %s",
+    async (state) => {
+      mockRequestedKind = "kind=webhook";
+      mockPoliciesLoading = state === "policy loading";
+      mockSlackLoading = state === "Slack loading";
+      mockCanManage = state !== "permission denied";
+      const registerPage = jest.fn(() => () => {});
+      await renderNewChannelPage({
+        page: { route: "/agents/agent_123/channels/new", label: "New channel" },
+        pageContainer: { current: null },
+        open: true,
+        setOpen: () => {},
+        actions: [],
+        recordAction: () => {},
+        registerPage,
+      });
+      expect(registerPage).not.toHaveBeenCalled();
+      expect(createChannel).not.toHaveBeenCalled();
+    },
+  );
 
   it("keeps source-owned channel configuration read-only", async () => {
     mockSource = { managed_channels: ["chat"] };

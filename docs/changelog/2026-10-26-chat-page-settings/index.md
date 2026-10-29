@@ -32,6 +32,11 @@ See [Platform Chat](/built-ins/harnesses/platform-chat/).
 
 Long dialogs scroll within the page pane, keeping Save reachable after draft changes.
 
+## Update 2026-10-29
+
+New channel drafts become editable in Chat after you select a channel type.
+Returning to the type chooser clears the previous draft binding.
+
 ![A fresh subchat opens one conversation](./subchat@2x.png)
 
 ![Review the live draft before Save](./settings-draft@2x.png)

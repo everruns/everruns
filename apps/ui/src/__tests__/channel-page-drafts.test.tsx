@@ -99,3 +99,102 @@ it("accepts every existing Slack response and session choice and Voice interrupt
   });
   expect(adapter.read(voice.binding).values).toMatchObject({ voice: { interruption: "cancel" } });
 });
+
+// Independent fixtures enumerate each supported leaf, so schema additions cannot
+// silently escape coverage and a nested patch must preserve its sibling values.
+const fieldChanges: Record<string, Record<string, unknown>> = {
+  public_chat: {
+    enabled: false,
+    publicChatDisplayName: "Northstar",
+    publicChatWelcomeMessage: "Welcome",
+    publicChatGenericToolText: "Checking",
+    publicChatPrimaryColor: "#556677",
+    publicChatRateLimitPerMinute: "17",
+  },
+  schedule: {
+    enabled: false,
+    scheduleCronExpression: "0 0 9 1 1 * *",
+    scheduleTimezone: "America/Chicago",
+    channelMessage: "Reminder",
+    invocationSessionMode: "session_per_invocation",
+  },
+  webhook: {
+    enabled: false,
+    channelMessage: "Request",
+    invocationSessionMode: "session_per_invocation",
+  },
+  ag_ui: { enabled: false, agUiGenericToolText: "Checking", agUiRateLimitPerMinute: "17" },
+  fcp: {
+    enabled: false,
+    fcpHandshake: "Hello",
+    fcpRateLimitPerMinute: "17",
+    fcpResponseTimeoutSeconds: "19",
+  },
+  slack: { enabled: false, slackSessionStrategy: "per_user", slackResponsePolicy: "mentions_only" },
+  voice: {
+    enabled: false,
+    voice: {
+      model: "test-model",
+      voice: "test-voice",
+      language: "fr",
+      greeting: "Bonjour",
+      filler: "Checking",
+      fillerAfterMs: "17",
+      speakingStyle: "calm",
+      turnDetection: "semantic_vad",
+      interruption: "cancel",
+    },
+  },
+  api: {
+    enabled: false,
+    api: {
+      toolActivityText: "Checking",
+      rateLimitPerMinute: "17",
+      sessionBinding: "session_per_invocation",
+    },
+  },
+  work_chat: {
+    enabled: false,
+    api: {
+      toolActivityText: "Checking",
+      rateLimitPerMinute: "17",
+      sessionBinding: "session_per_invocation",
+    },
+    chatInterface: "single_with_threads",
+  },
+};
+it.each(Object.keys(fieldChanges) as ChannelType[])(
+  "patches every %s field independently and preserves siblings",
+  (kind) => {
+    render(
+      <PageChatProvider value={mode}>
+        <Form kind={kind} />
+      </PageChatProvider>,
+    );
+    const initial = adapter.read(adapter.describe().binding);
+    const properties = initial.patch_schema!.properties as Record<string, { properties?: object }>;
+    expect(Object.keys(fieldChanges[kind]).sort()).toEqual(Object.keys(properties).sort());
+    for (const [field, value] of Object.entries(fieldChanges[kind])) {
+      const leaves =
+        typeof value === "object" && value !== null ? Object.entries(value) : [[null, value]];
+      if (typeof value === "object" && value !== null) {
+        expect(Object.keys(value).sort()).toEqual(
+          Object.keys(properties[field].properties!).sort(),
+        );
+      }
+      for (const [leaf, next] of leaves) {
+        const before = adapter.read(adapter.describe().binding);
+        const replacement =
+          leaf === null ? next : { ...(before.values[field] as object), [leaf as string]: next };
+        expect(replacement).not.toEqual(before.values[field]);
+        act(() => {
+          adapter.patch(before.binding, before.revision, { [field]: replacement });
+        });
+        expect(adapter.read(before.binding).values).toEqual({
+          ...before.values,
+          [field]: replacement,
+        });
+      }
+    }
+  },
+);
