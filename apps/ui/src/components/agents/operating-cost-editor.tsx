@@ -1,5 +1,11 @@
 "use client";
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
+import { z } from "zod";
+import {
+  planningNumberInput,
+  useCostPlanningDraft,
+} from "@/components/chat-mode/use-cost-planning-draft";
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { formatPlanningUsd } from "@/lib/agent-cost-projection";
 import type { CostRate, OperatingCostLine } from "@/lib/agent-operating-cost";
@@ -31,10 +37,89 @@ export function OperatingCostEditor({
   const id = useId();
   const [selection, setSelection] = useState("external:sandbox");
   const [sequence, setSequence] = useState(0);
+  const shapeKey = JSON.stringify({
+    lines: lines.map(({ id, rateId, label, unit, period }) => ({
+      id,
+      rateId,
+      label,
+      unit,
+      period,
+    })),
+    rateIds: rates.map(({ id }) => id),
+  });
+  // Schema identity changes with row structure, not with edited quantities.
+  const schema = useMemo(() => {
+    const shape: {
+      lines: Pick<OperatingCostLine, "id" | "rateId" | "label" | "unit" | "period">[];
+      rateIds: string[];
+    } = JSON.parse(shapeKey);
+    return z.strictObject({
+      selection: z.enum([
+        ...EXTERNAL.map((item) => "external:" + item.id),
+        ...shape.rateIds.map((id) => "rate:" + id),
+      ] as [string, ...string[]]),
+      costs: z.strictObject(
+        Object.fromEntries(
+          shape.lines.map((line) => [
+            line.id,
+            z
+              .strictObject({
+                quantity: planningNumberInput,
+                ...(!line.rateId ? { usdPerUnit: planningNumberInput } : {}),
+              })
+              .describe(line.label.slice(0, 200) + " (" + line.unit + " per " + line.period + ")"),
+          ]),
+        ),
+      ),
+    });
+  }, [shapeKey]);
+  const values = {
+    selection,
+    costs: Object.fromEntries(
+      lines.map((line) => [
+        line.id,
+        {
+          quantity: Number.isNaN(line.quantity) ? "" : String(line.quantity),
+          ...(!line.rateId
+            ? { usdPerUnit: line.usdPerUnit === undefined ? "" : String(line.usdPerUnit) }
+            : {}),
+        },
+      ]),
+    ),
+  };
+  const draft = useCostPlanningDraft("operating_costs", schema, values, (next) => {
+    setSelection(next.selection);
+    onChange(
+      lines.map((line) => ({
+        ...line,
+        quantity: next.costs[line.id].quantity === "" ? NaN : Number(next.costs[line.id].quantity),
+        ...(!line.rateId
+          ? {
+              usdPerUnit:
+                next.costs[line.id].usdPerUnit === ""
+                  ? undefined
+                  : Number(next.costs[line.id].usdPerUnit),
+            }
+          : {}),
+      })),
+    );
+  });
+  useChatPageRows(
+    "Operating cost assumptions",
+    lines.map((line) => ({
+      id: line.id,
+      label: line.label,
+      unit: line.unit,
+      period: line.period,
+      billing: line.billing,
+      usd_per_unit: line.usdPerUnit,
+    })),
+  );
   const update = (index: number, patch: Partial<OperatingCostLine>) =>
     onChange(lines.map((line, i) => (i === index ? { ...line, ...patch } : line)));
   return (
     <section aria-label={ui("Other operating costs")} className="space-y-4 border p-5">
+      {draft.notice}
       <div>
         <h3 className="text-sm font-semibold">{ui("Other operating costs")}</h3>
         <p className="mt-1 text-xs text-muted-foreground">

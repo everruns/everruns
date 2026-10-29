@@ -56,6 +56,24 @@ tags:
 15. Inspect network requests and saved state. Smart suggestion generation calls the utility LLM;
     sliders, resource inputs and model adjustments do not. No session is created or agent saved.
 
+16. Enable Chat workspace in Adoption. Open the planner above an Agent with an
+    unsaved draft. Ask Chat to read and change guidance, volume, task assumptions
+    and cache/retry allowances. Before/After and Undo apply only to the estimate;
+    the underlying Agent, saved revision and billing remain unchanged. No extra
+    cost-plan request occurs until clicking Update estimate. Clear a cache/retry
+    input, edit a different field through Chat, and verify the empty input stays
+    empty and remains repairable. Invalid frequency slider positions must fail.
+17. Add an external resource row manually. Stage its quantity and external unit
+    price in Chat. Add a host-priced row: its quantity is editable, its price and
+    billing classification are read-only. Unknown rows and fields must fail.
+    Adding/removing a row expires the preceding resource-input binding.
+18. Switch to Manual calculator. The smart guidance/projection bindings must fail;
+    read and edit every manual assumption and daily volume. Review and Undo are
+    local and must not suggest Save. Later manual edits block conflicting Undo.
+19. Close and reopen the drawer, change the Agent draft or switch organization.
+    Captured bindings must fail. Closing restores the Agent's page context and
+    its preceding unsaved fields. Repeat with Adoption off and at both viewports.
+
 ## Expected Result
 
 - Estimates use the current model, assembled definition and visible workload assumptions.

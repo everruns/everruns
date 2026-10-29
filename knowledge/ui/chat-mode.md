@@ -169,6 +169,14 @@ Patches preserve omitted values. A notice names changed fields and
 offers guarded draft Undo, preserving later manual edits. Saved-baseline conflicts
 keep dirty work and block the integration's Save action until it is discarded.
 
+Cost-planner drawers register their own local forms above the Agent editor.
+Guidance, workload assumptions, volume, cache/retry allowances and existing
+resource inputs participate in draft review and guarded Undo. Only the visible
+calculator registers; closing it or changing provenance expires its bindings.
+Estimate edits need no Save and create no resource history or billing write.
+Host prices remain read-only; inference and resource-row actions keep their
+ordinary buttons.
+
 Beyond Agents, integrations cover Harness creation/editing, Virtual Users,
 Observer definitions, Eval creation, Model ID/display-name dialogs, declarative Capability metadata/skills/files,
 Knowledge collection/source/account forms, Memory and legacy Knowledge-index

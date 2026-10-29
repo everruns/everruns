@@ -17,9 +17,8 @@ share **Before/After**, guarded **Undo** and **History** across navigation. Mode
 selections apply atomically; private profile history stays owner-only.
 
 Knowledge tabs provide collection, source, search and file context.
-Translations, interface language, trigger edits and manager notes support drafts.
-Tracing joins review; collection Undo preserves other settings.
-Conflicting drafts stay intact. Protected controls stay manual.
+Translations, tracing, interface language, trigger edits and notes support drafts.
+Collection Undo preserves other settings. Protected controls stay manual.
 
 **New subchat** starts an independent conversation. Full Chat shows one conversation;
 Command/Ctrl-J opens it beside an app page. Core Chat and subchats need no flag.
@@ -34,6 +33,7 @@ Long dialogs scroll, keeping Save reachable.
 ## Update 2026-10-29
 
 Channel drafts become editable after selecting a type; returning to the chooser expires them.
+Cost-planner drafts update estimates locally and support Undo.
 
 ![A fresh subchat opens one conversation](./subchat@2x.png)
 
