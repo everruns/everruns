@@ -51,7 +51,7 @@ export function ExternalWorker({ agentId, disabled }: { agentId: string; disable
 
   return (
     <section className="border border-border p-4 space-y-3" aria-label={ui("Execution")}>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <h2 className="font-medium">{ui("Execution")}</h2>
         {worker.data && <Badge variant="secondary">{ui("External worker")}</Badge>}
         {worker.data && !worker.data.enabled && <Badge variant="outline">{ui("Disabled")}</Badge>}
@@ -125,7 +125,7 @@ export function ExternalWorker({ agentId, disabled }: { agentId: string; disable
               onChange={(e) => setSecret(e.target.value)}
             />
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button type="submit" disabled={pending}>
               {ui("Verify and connect")}
             </Button>
