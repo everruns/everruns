@@ -1,4 +1,5 @@
 //! Local authenticated capacity fixture for `just bench-chat-capacity`.
+//! A utility binary keeps its dependencies identical to production builds.
 //!
 //! Uses production HTTP/gRPC composition and a standalone worker. Only the local
 //! IdP's public discovery/key cache is preloaded: the normal SSRF guard correctly

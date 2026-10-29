@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import os
 import resource
@@ -40,15 +41,21 @@ def build(args):
     Path(args.build_log).parent.mkdir(parents=True, exist_ok=True)
     with open(args.build_log, "w") as log:
 
-        def artifact(package, name, extra):
+        def artifacts():
             process = subprocess.Popen(
                 [
                     "cargo",
                     "build",
                     "--release",
+                    "--locked",
                     "-p",
-                    package,
-                    *extra,
+                    "everruns-server",
+                    "-p",
+                    "everruns-worker",
+                    "--bin",
+                    "chat-capacity-fixture",
+                    "--bin",
+                    "everruns-worker",
                     "--message-format=json",
                 ],
                 cwd=ROOT,
@@ -57,30 +64,28 @@ def build(args):
                 stderr=log,
                 text=True,
             )
-            executable = None
+            executables = {}
             for line in process.stdout:
                 try:
                     row = json.loads(line)
                     if row.get("reason") == "compiler-message":
                         log.write(row["message"].get("rendered", ""))
-                    if (
-                        row.get("reason") == "compiler-artifact"
-                        and row.get("target", {}).get("name") == name
-                    ):
-                        executable = row.get("executable")
+                    if row.get("reason") == "compiler-artifact" and row.get(
+                        "target", {}
+                    ).get("name") in {"chat-capacity-fixture", "everruns-worker"}:
+                        executables[row["target"]["name"]] = Path(row["executable"])
                 except json.JSONDecodeError:
                     log.write(line)
-            if process.wait() != 0 or not executable:
-                raise RuntimeError("capacity " + name + " build failed; see build log")
-            return Path(executable)
+            if process.wait() != 0 or len(executables) != 2:
+                raise RuntimeError(
+                    "capacity fixture/worker build failed; see build log"
+                )
+            return executables
 
-        args.fixture_bin = artifact(
-            "everruns-server",
-            "chat_capacity_fixture",
-            ["--bench", "chat_capacity_fixture"],
-        )
-        args.worker_bin = artifact(
-            "everruns-worker", "everruns-worker", ["--bin", "everruns-worker"]
+        built = artifacts()
+        args.fixture_bin, args.worker_bin = (
+            built["chat-capacity-fixture"],
+            built["everruns-worker"],
         )
     subprocess.run(
         ["pnpm", "install", "--frozen-lockfile"],
@@ -394,6 +399,11 @@ def bootstrap(lab):
             "generator_topology": {
                 "processes": lab.args.generators,
                 "separate_machine": False,
+                "python": sys.version.split()[0],
+                "packages": {
+                    name: importlib.metadata.version(name)
+                    for name in ["httpx", "httpcore", "h2", "anyio"]
+                },
             },
         },
     }

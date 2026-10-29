@@ -591,6 +591,16 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(len(cached), 2)
             self.assertEqual(result["http_status"]["200"], 4)
+            args.output = str(root / "steady-results")
+            args.phase, args.duration, args.interval = "steady", 0.05, 0.08
+            with (
+                patch("capacity.run.httpx.AsyncClient", client),
+                patch("builtins.print"),
+            ):
+                self.assertTrue(await run(args))
+            steady = json.loads((root / "steady-results/report.json").read_text())
+            self.assertGreaterEqual(steady["duration_seconds"], args.duration)
+            self.assertEqual(steady["planned_attempts"], 2)
 
     def test_local_fixture_strips_provider_credentials_but_preserves_proxy_guards(self):
         from .local_setup import clean_environment

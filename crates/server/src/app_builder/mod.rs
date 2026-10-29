@@ -217,7 +217,8 @@ impl ServerAppBuilder {
         self
     }
 
-    /// Supply a host-owned channel verifier, for example with preloaded OIDC
+    /// Supply a host-owned verifier for Agent API/Work Chat execution and
+    /// runtime-auth routes, for example with preloaded OIDC
     /// discovery/keys in an offline embedding. JWT signature, audience, expiry
     /// and channel policy checks still apply. No HTTP or environment switch
     /// enables this override; the default uses the normal SSRF-safe fetcher.
