@@ -101,6 +101,11 @@ OpenAPI-generated routes such as `/api/operations/*` and `/api/operations/tags/*
 
 ### Embedded previews
 
+The component gallery lives under Reference, with a short overview and category
+subpages rather than a single long catalog. The chat guide and AG-UI support
+link to it, and each category links back to those guides and sibling categories.
+The original gallery URL redirects to the overview.
+
 The component gallery embeds a dedicated, non-indexed control surface. This is
 an interactive asset, not a standalone documentation page: its parent gallery
 owns search indexing and agent-readable source examples. Preview styles and

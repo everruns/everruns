@@ -3,24 +3,23 @@ import samples from "../../../ui/generative-ui/tests/standard-samples.json";
 import { networkExamples } from "../../../ui/generative-ui/tests/gallery-examples.json";
 import { withBase } from "../../site.config.mjs";
 
-const groups = [...new Set(samples.map((sample) => sample.group))];
-const components = [...new Set(samples.flatMap((sample) => sample.covers))].sort();
+interface Props { group: string; }
+const { group } = Astro.props;
+// Keep original fixture indices: preview URLs and surface IDs are stable across pages.
+const entries = samples.map((sample, index) => ({ sample, index })).filter(({ sample }) => sample.group === group);
+if (!entries.length) throw new Error(`Unknown gallery category: ${group}`);
+const components = [...new Set(entries.flatMap(({ sample }) => sample.covers))].sort();
 ---
 
 <generative-ui-gallery>
   <div class="gallery-controls" data-llms-ignore>
     <label for="gallery-search">Find a component</label>
-    <input id="gallery-search" type="search" placeholder="Try Chart, Form, Modal…" />
-    <label for="gallery-group">Category</label>
-    <select id="gallery-group">
-      <option value="">All categories</option>
-      {groups.map((group) => <option>{group}</option>)}
-    </select>
-    <p class="gallery-count" role="status" aria-live="polite">{samples.length} examples · {components.length} components</p>
+    <input id="gallery-search" type="search" placeholder="Search this category" />
+    <p class="gallery-count" role="status" aria-live="polite">{entries.length} examples · {components.length} components</p>
   </div>
   <p class="gallery-empty" hidden>No examples match. Try another component name or category.</p>
   <div class="gallery-cards">
-    {samples.map((sample, index) => {
+    {entries.map(({ sample, index }) => {
       const operation = {
         version: "v1.0",
         createSurface: {
@@ -31,7 +30,7 @@ const components = [...new Set(samples.flatMap((sample) => sample.covers))].sort
         },
       };
       return (
-        <article class="gallery-card" data-group={sample.group} data-search={`${sample.title} ${sample.covers.join(" ")}`.toLowerCase()}>
+        <article class="gallery-card" data-covers={sample.covers.join(",")} data-search={`${sample.title} ${sample.covers.join(" ")}`.toLowerCase()}>
           <header>
             <span class="gallery-category">{sample.group}</span>
             <h2 id={`example-${index}`}>{sample.title}</h2>
@@ -69,7 +68,6 @@ const components = [...new Set(samples.flatMap((sample) => sample.covers))].sort
         }, { once: true });
       }
       const search = this.querySelector<HTMLInputElement>("input")!;
-      const group = this.querySelector<HTMLSelectElement>("select")!;
       const cards = [...this.querySelectorAll<HTMLElement>("article")];
       const count = this.querySelector<HTMLElement>("[role=status]")!;
       const empty = this.querySelector<HTMLElement>(".gallery-empty")!;
@@ -77,14 +75,13 @@ const components = [...new Set(samples.flatMap((sample) => sample.covers))].sort
         const query = search.value.trim().toLowerCase();
         let visible = 0;
         for (const card of cards) {
-          card.hidden = !((card.dataset.search ?? "").includes(query) && (!group.value || card.dataset.group === group.value));
+          card.hidden = !((card.dataset.search ?? "").includes(query));
           if (!card.hidden) visible++;
         }
         count.textContent = `${visible} of ${cards.length} examples`;
         empty.hidden = visible > 0;
       };
       search.addEventListener("input", filter);
-      group.addEventListener("change", filter);
     }
   }
   if (!customElements.get("generative-ui-gallery")) customElements.define("generative-ui-gallery", GenerativeUIGallery);
@@ -92,12 +89,11 @@ const components = [...new Set(samples.flatMap((sample) => sample.covers))].sort
 
 <style>
   generative-ui-gallery { display: block; }
-  .gallery-controls { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem 1rem; padding: 1rem; background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-gray-5); }
+  .gallery-controls { display: grid; grid-template-columns: 1fr; gap: .5rem 1rem; padding: 1rem; background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-gray-5); }
   .gallery-controls > * { margin: 0; }
   .gallery-controls label { font-weight: 600; font-size: .875rem; }
-  .gallery-controls label[for="gallery-group"] { grid-column: 2; grid-row: 1; }
-  .gallery-controls input, .gallery-controls select { width: 100%; min-width: 0; border: 1px solid var(--sl-color-gray-4); padding: .65rem; color: var(--sl-color-text); background: var(--sl-color-bg); border-radius: 4px; font: inherit; }
-  .gallery-controls :focus-visible, summary:focus-visible, .gallery-preview:focus-visible { outline: 2px solid var(--sl-color-text-accent); outline-offset: 3px; }
+  .gallery-controls input { width: 100%; min-width: 0; border: 1px solid var(--sl-color-gray-4); padding: .65rem; color: var(--sl-color-text); background: var(--sl-color-bg); border-radius: 4px; font: inherit; }
+  .gallery-controls :focus-visible, summary:focus-visible, .gallery-load:focus-visible { outline: 2px solid var(--sl-color-text-accent); outline-offset: 3px; }
   .gallery-count { grid-column: 1 / -1; margin: .25rem 0 0; font-size: .85rem; color: var(--sl-color-gray-2); }
   .gallery-cards { display: grid; gap: 1.5rem; margin-top: 1.5rem; }
   .gallery-card { min-width: 0; border: 1px solid var(--sl-color-gray-5); border-radius: 8px; overflow: hidden; }
@@ -115,8 +111,4 @@ const components = [...new Set(samples.flatMap((sample) => sample.covers))].sort
   details p { font-size: .875rem; }
   pre { max-height: 24rem; overflow: auto; padding: 1rem; background: var(--sl-color-gray-6); font-size: .75rem; line-height: 1.6; }
   pre code { background: none; padding: 0; }
-  @media (max-width: 480px) {
-    .gallery-controls { grid-template-columns: 1fr; }
-    .gallery-controls label[for="gallery-group"] { grid-column: 1; grid-row: auto; }
-  }
 </style>

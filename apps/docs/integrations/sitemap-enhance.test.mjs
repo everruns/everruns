@@ -10,15 +10,17 @@ test("sitemap lists canonical pages, excluding the redirected announcement", asy
   const directory = mkdtempSync(join(tmpdir(), "docs-sitemap-"));
   const old = "https://everruns.com/docs/changelog/2026-10-28-agent-cost-estimation/";
   const successor = "https://everruns.com/docs/changelog/2026-10-28-smart-agent-cost-projections/";
+  const gallery = "https://everruns.com/docs/features/generative-ui-gallery/";
   const preview = "https://everruns.com/docs/previews/generative-ui/";
   const other = "https://everruns.com/docs/features/ui/";
   try {
     writeFileSync(join(directory, "sitemap-0.xml"),
-      `<urlset>${[old, successor, other, preview].map((url) => `<url><loc>${url}</loc></url>`).join("")}</urlset>`);
+      `<urlset>${[old, successor, other, preview, gallery].map((url) => `<url><loc>${url}</loc></url>`).join("")}</urlset>`);
     await sitemapEnhance().hooks["astro:build:done"]({ dir: pathToFileURL(`${directory}/`) });
     const sitemap = readFileSync(join(directory, "sitemap.xml"), "utf8");
     assert.equal(sitemap.includes(old), false);
     assert.equal(sitemap.includes(preview), false);
+    assert.equal(sitemap.includes(gallery), false);
     assert.ok(sitemap.includes(successor));
     assert.ok(sitemap.includes(other));
     assert.equal((sitemap.match(/<lastmod>/g) ?? []).length, 2);
