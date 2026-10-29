@@ -76,6 +76,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { cn } from "@/lib/utils";
 
 import { WorkChatFields } from "./work-chat-fields";
+import { WorkChatAddress } from "./work-chat-link";
 import { FoldedSettings, FormSection } from "./form-section";
 
 export const CHANNEL_FORM_KINDS: ChannelType[] = [
@@ -1194,6 +1195,11 @@ export function ChannelForm({
             </FoldedSettings>
           </FormSection>
         </>
+      )}
+      {state.kind === "work_chat" && channel && (
+        <FormSection title="Chat link">
+          <WorkChatAddress channel={channel} heading={false} />
+        </FormSection>
       )}
       {state.kind === "work_chat" && (
         <FormSection title="Chat site" hint="How the chat looks and which models people can pick.">

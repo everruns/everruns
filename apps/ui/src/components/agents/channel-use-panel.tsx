@@ -1,13 +1,12 @@
 "use client";
 
 import { useUiTranslations } from "@/providers/locale-provider";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api/client";
 import { useMemo } from "react";
 import { CodeBlock, type CodeBlockSample } from "@/components/ui/code-block";
 import type { AgentChannel, ChannelType, PublicChatChannelConfig } from "@/lib/api/types";
 import { CopyButton } from "@/components/ui/copy-button";
 import { publicChatUrl } from "@/components/agents/channels/channel-summary";
+import { WorkChatAddress } from "@/components/agents/channels/work-chat-link";
 
 /// The channel-scoped ingress path for each transport (EVE-1000). These are
 /// addressed by the channel's own public id, which is why the snippet here can
@@ -110,7 +109,7 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
     ];
   }, [channel.channel_type, path, ui]);
 
-  if (channel.channel_type === "work_chat") return <WorkChatUsePanel channel={channel} />;
+  if (channel.channel_type === "work_chat") return <WorkChatAddress channel={channel} />;
   if (channel.channel_type === "public_chat") return <PublicChatUsePanel channel={channel} />;
   if (!path) {
     return (
@@ -130,36 +129,6 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
         <p className="mt-1 text-sm text-muted-foreground">{describe(channel.channel_type)}</p>
       </div>
       <CodeBlock samples={samples} />
-    </div>
-  );
-}
-
-function WorkChatUsePanel({ channel }: { channel: AgentChannel }) {
-  const ui = useUiTranslations();
-  const hosted = useQuery({
-    queryKey: ["hosted-chat-url", channel.id],
-    enabled: channel.channel_type === "work_chat" && channel.status === "live",
-    queryFn: async () =>
-      (await api.get<{ public_url?: string }>(`/v1/channels/${channel.id}/chat/config`)).data,
-  });
-  const url = hosted.data?.public_url;
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-xs font-medium text-muted-foreground">{ui("Use it")}</p>
-      {url ? (
-        <>
-          <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm underline">
-            {ui("Open Work Chat")}
-          </a>
-          <CodeBlock samples={[{ label: ui("URL"), language: "text", code: url }]} />
-        </>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          {ui(
-            "Publish this channel and configure your deployment’s hosted chat domain to open Work Chat.",
-          )}
-        </p>
-      )}
     </div>
   );
 }
