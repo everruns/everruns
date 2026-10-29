@@ -10,6 +10,8 @@
 // an AI client asking for `text/markdown` on the page URL gets that twin, the
 // same contract the landing site's middleware follows, so agents see one
 // behavior across everruns.com.
+import { changelogRedirect } from "../redirects.mjs";
+
 const BASE = "/docs";
 
 // The former docs host. This Worker also takes the route `docs.everruns.com/*`
@@ -92,12 +94,8 @@ export default {
       return Response.redirect(new URL(`${BASE}/`, url), 301);
     }
 
-    // The original announcement was shared publicly; keep that link current.
-    const oldEstimate = `${BASE}/changelog/2026-10-28-agent-cost-estimation`;
-    if ([oldEstimate, `${oldEstimate}/`, `${oldEstimate}.md`, `${oldEstimate}/index.md`].includes(url.pathname)) {
-      const suffix = url.pathname.endsWith(".md") ? "/index.md" : "/";
-      return Response.redirect(new URL(`${BASE}/changelog/2026-10-28-smart-agent-cost-projections${suffix}${url.search}`, url), 301);
-    }
+    const successor = changelogRedirect(url);
+    if (successor) return Response.redirect(successor, 301);
 
     const markdown = markdownPath(url.pathname);
     const vary = markdown ? [["Vary", "Accept, User-Agent"]] : [];

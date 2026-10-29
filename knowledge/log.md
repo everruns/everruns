@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-29
+
+- Excluded permanently redirected announcements from the canonical docs sitemap while preserving their inbound links. See [Documentation Site](ui/documentation.md#sitemap-requirements).
+
 ## 2026-10-28
 
 - Made single-message retrieval independent of the history window and indexed embedded message IDs for turn-start and input-provenance lookups. See [Architecture](foundations/architecture.md) and [ID Schema](foundations/id-schema.md).
