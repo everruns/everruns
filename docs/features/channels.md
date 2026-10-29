@@ -237,7 +237,10 @@ Publishing a channel alone does not provision hosting or DNS.
 
 ### Work Chat interface
 
-The hosted chat renders Markdown, OpenUI charts and A2UI component trees inline.
+The hosted chat renders Markdown, OpenUI charts and all 69 standard A2UI 1.0
+components inline, using the same renderer as console chat. See
+[Generative UI](/features/generative-ui/) for forms, bindings and saved-message
+compatibility.
 Enable the corresponding capabilities on the Agent when it should produce those
 formats. Replies include expandable work logs, and background task cards open
 their delegated conversation.

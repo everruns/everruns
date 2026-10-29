@@ -1,7 +1,9 @@
 FROM node:22.23.4-slim AS build
 WORKDIR /app/apps/chat-ui
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
-COPY apps/chat-ui/package.json apps/chat-ui/pnpm-lock.yaml ./
+COPY apps/chat-ui/package.json apps/chat-ui/pnpm-lock.yaml apps/chat-ui/pnpm-workspace.yaml ./
+COPY apps/ui/generative-ui/ /app/apps/ui/generative-ui/
+COPY apps/ui/scripts/patch-zod-v3.mjs apps/ui/scripts/zod-v3-compatibility.json /app/apps/ui/scripts/
 RUN pnpm install --frozen-lockfile
 COPY apps/chat-ui/ ./
 RUN pnpm build

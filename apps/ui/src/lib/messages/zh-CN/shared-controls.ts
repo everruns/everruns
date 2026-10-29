@@ -1,4 +1,7 @@
 export const messages: Readonly<Record<string, string>> = {
+  "This content could not be displayed.": "无法显示此内容。",
+  "The message could not be sent.": "无法发送消息。",
+
   "Search agents": "搜索智能体",
   "Search harnesses": "搜索运行框架",
   "Could not load agents. Try again.": "无法加载智能体。请重试。",

@@ -637,6 +637,10 @@ export default defineConfig({
                     { label: "Overview", slug: "integrations" },
                     { label: "Messaging", items: [{ label: "Slack", slug: "integrations/slack" }] },
                     {
+                      label: "Agent protocols",
+                      items: [{ label: "AG-UI", slug: "integrations/ag-ui" }],
+                    },
+                    {
                       label: "Sandboxes & execution",
                       items: [
                         { label: "Cursor", slug: "integrations/cursor" },
