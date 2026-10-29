@@ -19,7 +19,45 @@ try {
     if (request.method() !== "GET") writes.push(request.url());
   });
   await page.goto(`${origin}/docs/features/generative-ui-gallery/`);
-  const search = page.getByPlaceholder("Try Chart, Form, Modal…");
+  await page.waitForURL(`${origin}/docs/reference/generative-ui/`);
+  assert.equal(await page.locator(".gallery-live iframe").count(), 0, "overview must stay compact");
+  const categories = await page
+    .locator(".gallery-index a")
+    .evaluateAll((links) => links.map((link) => link.href));
+  assert.equal(categories.length, 8);
+  const covered = new Set();
+  const examples = new Set();
+  for (const url of categories) {
+    await page.goto(url);
+    const cards = page.locator("article.gallery-card");
+    assert.ok(
+      (await cards.count()) > 0 && (await cards.count()) <= 7,
+      "category pages stay focused",
+    );
+    for (const covers of await cards.evaluateAll((nodes) =>
+      nodes.map((node) => node.dataset.covers),
+    )) {
+      for (const component of covers.split(",")) covered.add(component);
+    }
+    for (const source of await page
+      .locator("[data-preview]")
+      .evaluateAll((nodes) => nodes.map((node) => node.dataset.preview)))
+      examples.add(source);
+    assert.ok(
+      await page
+        .locator(".gallery-related")
+        .getByRole("link", { name: "Generative UI in chat" })
+        .count(),
+    );
+    assert.ok(
+      await page.locator(".gallery-related").getByRole("link", { name: "AG-UI support" }).count(),
+    );
+  }
+  assert.equal(covered.size, 69);
+  assert.equal(examples.size, 39);
+  await page.goto(`${origin}/docs/reference/generative-ui/#example-14`);
+  await page.waitForURL(`${origin}/docs/reference/generative-ui/inputs/#example-14`);
+  const search = page.getByPlaceholder("Search this category");
   await search.fill("Form with TextField");
   const card = page.locator("article.gallery-card:visible");
   assert.equal(await card.count(), 1);
@@ -38,6 +76,10 @@ try {
   await page.screenshot({ path: "/tmp/generative-ui-gallery-live.png", fullPage: false });
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page
+    .locator(".gallery-category-nav")
+    .getByRole("link", { name: "Feedback", exact: true })
+    .click();
   await search.fill("Modal");
   const modalFrame = card.locator("iframe").contentFrame();
   await modalFrame.getByRole("button", { name: "Open modal" }).click();
@@ -53,6 +95,10 @@ try {
     "embedded modal fits its preview",
   );
   await modalFrame.locator("body").press("Escape");
+  await page
+    .locator(".gallery-category-nav")
+    .getByRole("link", { name: "Data", exact: true })
+    .click();
   await search.fill("Map with markers");
   assert.equal(await card.locator("iframe").count(), 0);
   await card.getByRole("button", { name: /Load interactive example/ }).click();

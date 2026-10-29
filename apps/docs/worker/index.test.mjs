@@ -97,3 +97,12 @@ test("shared cost-estimator announcement redirects to smart projections for ever
     }
   }
 });
+
+
+test("legacy gallery links redirect to Reference for HTML and Markdown", async () => {
+  for (const suffix of ["", "/", ".md", "/index.md"]) {
+    const response = await worker.fetch(request(`/docs/features/generative-ui-gallery${suffix}?from=guide`), { ASSETS });
+    assert.equal(response.status, 301);
+    assert.equal(response.headers.get("location"), `https://everruns.com/docs/reference/generative-ui${suffix.endsWith(".md") ? "/index.md" : "/"}?from=guide`);
+  }
+});

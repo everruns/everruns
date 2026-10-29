@@ -90,7 +90,7 @@ preview containment. Generated SVG and URLs retain the catalog's validation.
 See [OpenUI](openui.md), [Work Chat](../integrations/work-chat.md), and the
 [public guide](../../docs/features/generative-ui.md).
 
-The [public component gallery](../../docs/features/generative-ui-gallery.mdx)
+The [public component gallery](../../docs/reference/generative-ui/index.mdx)
 uses the same shared renderer in isolated, lazy-loaded preview frames. Controls
 work locally, and message actions display their payload without an agent or API
 write. External media examples require activation before contacting their hosts.
