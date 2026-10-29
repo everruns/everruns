@@ -70,7 +70,7 @@ export async function execute(body, env, emit, turn_id, modelFetch = fetch, sign
       if (!answerText) throw new Error("Empty answer");
       const message = runtimeMessage("agent", answerText);
       await emit("output.message.completed", { message, usage });
-      await emit("turn.completed", { turn_id, iterations: iteration + 1, duration_ms: Date.now() - started, usage, final_message_id: message.id, final_answer_preview: answerText.slice(0, 200) });
+      await emit("turn.completed", { turn_id, iterations: iteration + 1, duration_ms: Date.now() - started, usage, final_message_id: message.id, final_answer_preview: Array.from(answerText).slice(0, 200).join("") });
       return;
     }
   }
