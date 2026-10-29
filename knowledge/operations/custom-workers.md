@@ -37,6 +37,9 @@ A binding selects an existing Agent; connecting a replica does not create one.
 The ordinary Agents, Playground, session and trace surfaces remain in use. Pull workers have no registration/status UI. HTTPS endpoints have an Execution
 panel on the Agent page for verified registration, status, rotation and disable. Platform
 Agent configuration is not automatically executed by the customer binary.
+Endpoint registration and secret rotation use the dedicated UI/API, outside the
+agent-facing command, shell and native-platform catalogs, so setup credentials
+do not enter agent transcripts. Status and disable commands contain no secrets.
 
 Slack's channel host admits messages into the bound Agent's sessions and consumes
 canonical output through the shared delivery path. The sample's contract is Direct

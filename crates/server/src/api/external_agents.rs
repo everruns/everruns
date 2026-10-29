@@ -21,7 +21,7 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// Read external execution status without returning credentials.
+/// Read an Agent's external execution status.
 #[utoipa::path(get, path = "/v1/agents/{agent_id}/external-worker", params(("agent_id" = String, Path)), responses((status = 200, body = Option<ExternalAgent>)), tag = "agents")]
 pub async fn get_external_agent(
     org: ResolvedOrg,

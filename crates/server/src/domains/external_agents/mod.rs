@@ -29,7 +29,8 @@ pub struct GetExternalAgent {
     pub agent_id: String,
 }
 
-#[command(name = "get_external_agent", category = "agents", description = "Get an Agent's external execution endpoint.", method = "GET", path = "/v1/agents/{agent_id}/external-worker", policy = AGENT_VIEW)]
+#[command(name = "get_external_agent", category = "agents", description = "Get an Agent's external execution endpoint.", method = "GET", path = "/v1/agents/{agent_id}/external-worker", policy = AGENT_VIEW,
+    cli = CliRoute::new(&["agents", "external-worker"], "get").with_examples(&[CliExample::new("Inspect an Agent's external runtime without credentials", "everruns agents external-worker get --agent-id agent_01h9")]))]
 impl Command for GetExternalAgent {
     type Output = Option<ExternalAgent>;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -183,7 +184,8 @@ pub struct DisableExternalAgent {
     pub agent_id: String,
 }
 
-#[command(name = "disable_external_agent", category = "agents", description = "Revoke external execution; queued sessions stay bound without native fallback.", method = "DELETE", path = "/v1/agents/{agent_id}/external-worker", policy = AGENT_DANGEROUS)]
+#[command(name = "disable_external_agent", category = "agents", description = "Revoke external execution; queued sessions stay bound without native fallback.", method = "DELETE", path = "/v1/agents/{agent_id}/external-worker", policy = AGENT_DANGEROUS,
+    cli = CliRoute::new(&["agents", "external-worker"], "disable").with_examples(&[CliExample::new("Revoke external execution while retaining queued work", "everruns agents external-worker disable --agent-id agent_01h9 --reason 'Pause external execution'")]))]
 impl Command for DisableExternalAgent {
     type Output = ();
     async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {

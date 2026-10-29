@@ -10154,6 +10154,30 @@
     "read_only": true
   },
   {
+    "category": "agents",
+    "cli": "agents external-worker disable",
+    "description": "Revoke external execution; queued sessions stay bound without native fallback.",
+    "input_schema": {
+      "description": "Revoke external execution without removing the persistent routing binding.",
+      "properties": {
+        "agent_id": {
+          "description": "Agent public ID or name; the HTTP route supplies this value.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "disable_external_agent",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/external-worker",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "payments",
     "cli": "payments accounts disable",
     "description": "Disable a machine-payment wallet account.",
@@ -11673,6 +11697,30 @@
     "output_shape": "unknown",
     "path": "/v1/durable/executions/{execution_id}",
     "positional_arg": "execution_id",
+    "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": "agents external-worker get",
+    "description": "Get an Agent's external execution endpoint.",
+    "input_schema": {
+      "description": "Identify the Agent whose external execution status should be read.",
+      "properties": {
+        "agent_id": {
+          "description": "Agent public ID or name; the HTTP route supplies this value.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_external_agent",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/external-worker",
+    "positional_arg": null,
     "read_only": true
   },
   {

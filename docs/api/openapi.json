@@ -3196,7 +3196,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "Read external execution status without returning credentials",
+        "summary": "Read an Agent's external execution status",
         "operationId": "get_external_agent",
         "parameters": [
           {

@@ -827,7 +827,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Read external execution status without returning credentials */
+    /** Read an Agent's external execution status */
     get: operations["get_external_agent"];
     put?: never;
     /**
