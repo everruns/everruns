@@ -28,7 +28,7 @@ a working default; each row links to the section that documents it.
 | [`EVERRUNS_EGRESS_*`](#outbound-egress) | API and workers | No | Tenant traffic may reach any public host, directly from the deployment's address. |
 | [`EGRESS_PROXY_*`](#tenant-egress-proxy) | `everruns-egress-proxy` | Only when running the proxy | No proxy. |
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
-| [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits. |
+| [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration), [`SERVER_SHUTDOWN_*`](#server-shutdown) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits, a 5 s linger and 20 s drain on shutdown. |
 | [`OTEL_*`](#opentelemetry-configuration), [`EVERRUNS_TRACE_CONVENTIONS`](#everruns_trace_conventions), [`BRAINTRUST_*`](#braintrust-integration) | API and workers | No | Tracing and Braintrust export are off. |
 
 
@@ -262,6 +262,29 @@ HTTP_ADDR=0.0.0.0:9000
 **Notes:**
 - `ADDR` is supported as a legacy alias
 - Container images already default to `0.0.0.0:9000`; most deployments do not need to set this
+
+## Server shutdown
+
+How a stopping server drains, so a rolling restart does not cut running work.
+On SIGTERM it keeps serving for `SERVER_SHUTDOWN_DELAY_SECS` while load
+balancers stop routing to it, then stops accepting, ends event streams with a
+`disconnecting` event (reason `shutdown`) so clients reconnect to another
+replica, and lets in-flight requests finish for up to
+`SERVER_SHUTDOWN_GRACE_SECS`. The worker connection closes last, after at most
+5 more seconds.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SERVER_SHUTDOWN_DELAY_SECS` | `5` | Seconds to keep serving after SIGTERM before draining starts |
+| `SERVER_SHUTDOWN_GRACE_SECS` | `20` | Seconds in-flight requests get to finish once draining |
+
+**Notes:**
+- Keep delay + grace + 5 seconds under the orchestrator's kill timeout
+  (Kubernetes `terminationGracePeriodSeconds`, default 30; Compose
+  `stop_grace_period`)
+- Workers drain separately: `WORKER_SHUTDOWN_GRACE_SECS` bounds how long a
+  stopping worker waits, and running turns are handed to another worker at
+  their next step
 
 ## VALKEY_URL
 

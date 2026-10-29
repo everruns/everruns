@@ -6,13 +6,20 @@ kind: improvement
 significance: notable
 products: [platform, cloud]
 surfaces: [operations, api]
+links:
+  docs: [/sre/environment-variables/]
 ---
 
 Restarting a server now drains it. It keeps serving for a few seconds while the
 load balancer moves traffic away, then ends event streams with a `disconnecting`
 event (reason `shutdown`) so clients reconnect to another replica, and lets
-in-flight requests finish. Tune it with `SERVER_SHUTDOWN_DELAY_SECS` (default 5)
-and `SERVER_SHUTDOWN_GRACE_SECS` (default 20).
+in-flight requests finish. Tune it with
+[`SERVER_SHUTDOWN_DELAY_SECS` and `SERVER_SHUTDOWN_GRACE_SECS`](/sre/environment-variables/#server-shutdown).
+
+```text
+event: disconnecting
+data: {"reason":"shutdown","retry_ms":1000}
+```
 
 Stopping a worker now hands each running turn to another worker at its next
 step, instead of holding it until the worker is killed and its lease expires.
@@ -22,4 +29,9 @@ again.
 Requests that hit a database timeout while authenticating now get
 `503 Service Unavailable` with `Retry-After`, not `401 Unauthorized`.
 
-Keep the orchestrator's kill timeout above these grace periods.
+Keep the orchestrator's kill timeout above these grace periods:
+
+```yaml
+# Server: 5 s linger + 20 s drain + 5 s worker link
+terminationGracePeriodSeconds: 45
+```
