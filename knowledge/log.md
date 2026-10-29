@@ -3,6 +3,7 @@
 ## 2026-10-29
 
 - Give the cost-planner drawer isolated local Chat drafts, bounded displayed totals and guarded Undo, preserving host price and inference boundaries. See [Agent Cost Estimation](ui/agent-cost-estimation.md).
+- Preserve protected worker ingress for customer HTTPS execution: reject unsupported registration, retain revocation, and prove dispatch discloses no input. See [Custom workers](operations/custom-workers.md).
 
 - Remove the narrated Sandbox Builder video from Git and the docs player; keep the approved cut outside Git until its YouTube publication and verified embed. See [Product Videos](docs/product-videos.md).
 

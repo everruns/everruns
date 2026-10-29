@@ -150,6 +150,12 @@ async fn exercise(mode: &'static str) -> (Vec<everruns_core::Event>, bool) {
             .await
             .unwrap();
     }
+    if mode == "protected" {
+        sqlx::query("INSERT INTO worker_ingress_protection_floor (minimum_version) VALUES (1)")
+            .execute(svc.db.pool())
+            .await
+            .unwrap();
+    }
     let encryption = EncryptionService::new(
         &crate::storage::encryption::generate_encryption_key("http-tests"),
         &[],
@@ -190,8 +196,37 @@ async fn exercise(mode: &'static str) -> (Vec<everruns_core::Event>, bool) {
             .await
             .unwrap();
     assert!(row.0.is_none());
-    assert_eq!(row.1, i64::from(input.sequence.unwrap()));
+    if mode == "protected" {
+        assert!(
+            result
+                .as_ref()
+                .unwrap_err()
+                .to_string()
+                .contains("Protected worker ingress")
+        );
+        assert_eq!(remote.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(row.1, 0, "Protected work must remain queued");
+    } else {
+        assert_eq!(row.1, i64::from(input.sequence.unwrap()));
+    }
     (events, result.is_ok())
+}
+
+#[tokio::test]
+async fn protected_ingress_refuses_http_dispatch_before_disclosing_input() {
+    let (events, success) = exercise("protected").await;
+    assert!(!success);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.event_type == "input.message")
+            .count(),
+        1
+    );
+    assert!(!events.iter().any(|event| matches!(
+        event.event_type.as_str(),
+        "turn.started" | "turn.completed" | "turn.failed"
+    )));
 }
 
 #[tokio::test]

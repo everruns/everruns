@@ -68,6 +68,9 @@ prerequisite guard, not a scoped implementation of this protocol. Calls admitted
 before a committed floor may finish; previously disclosed data cannot be recalled.
 No floor activation or production credential/configuration change is performed
 by the source guard.
+The HTTPS adapter inherits this refusal through the same service. Self-service
+registration also rejects an active floor before endpoint verification; revocation
+remains available for cleanup. It does not downgrade or bypass protected ingress.
 
 The binding is persistent, including when its credential is disabled. Built-in
 workers exclude bound sessions before their bounded candidate scan; a custom

@@ -48,6 +48,34 @@ fn register(agent_id: &str) -> RegisterExternalAgent {
 }
 
 #[tokio::test]
+async fn protected_ingress_refuses_registration_but_allows_revocation() {
+    let (mut ctx, agent_id, _) = setup().await;
+    register(&agent_id).register(&ctx).await.unwrap();
+    ctx.egress_service = None;
+    for version in [1, 99] {
+        sqlx::query("INSERT INTO worker_ingress_protection_floor (minimum_version) VALUES ($1) ON CONFLICT (singleton) DO UPDATE SET minimum_version=EXCLUDED.minimum_version")
+            .bind(version).execute(ctx.db.pool()).await.unwrap();
+        let error = register(&agent_id).register(&ctx).await.unwrap_err();
+        assert_eq!(error.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+        assert!(error.to_string().contains("protected worker ingress"));
+    }
+    DisableExternalAgent {
+        agent_id: agent_id.clone(),
+    }
+    .run(&ctx)
+    .await
+    .unwrap();
+    assert!(
+        !GetExternalAgent { agent_id }
+            .run(&ctx)
+            .await
+            .unwrap()
+            .unwrap()
+            .enabled
+    );
+}
+
+#[tokio::test]
 async fn self_service_registration_encrypts_secrets_rotates_and_disables_without_fallback() {
     let (ctx, agent_id, id) = setup().await;
     let binding = register(&agent_id).register(&ctx).await.unwrap();
@@ -80,7 +108,18 @@ async fn self_service_registration_encrypts_secrets_rotates_and_disables_without
         .decrypt_to_string(&token)
         .unwrap();
     assert_eq!(hash, Sha256::digest(token.as_bytes()).to_vec());
-    register(&agent_id).register(&ctx).await.unwrap();
+    let invoked_at: chrono::DateTime<chrono::Utc> = sqlx::query_scalar("UPDATE custom_workers SET last_invoked_at=NOW() WHERE agent_id=$1 RETURNING last_invoked_at")
+        .bind(id).fetch_one(ctx.db.pool()).await.unwrap();
+    let rotated = register(&agent_id).register(&ctx).await.unwrap();
+    let stored = GetExternalAgent {
+        agent_id: agent_id.clone(),
+    }
+    .run(&ctx)
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(rotated.last_invoked_at, Some(invoked_at));
+    assert_eq!(rotated.last_invoked_at, stored.last_invoked_at);
     let current: Vec<u8> =
         sqlx::query_scalar("SELECT token_hash FROM custom_workers WHERE agent_id=$1")
             .bind(id)

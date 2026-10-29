@@ -78,6 +78,13 @@ impl Command for RegisterExternalAgent {
 
 impl RegisterExternalAgent {
     async fn register(mut self, ctx: &Ctx) -> Result<ExternalAgent, CommandError> {
+        // The response-only adapter inherits the customer-worker protocol's
+        // protection floor; an endpoint token is not assignment authority.
+        if ctx.db.worker_ingress_minimum_version().await?.is_some() {
+            return Err(CommandError::unavailable(
+                "External agents do not support protected worker ingress",
+            ));
+        }
         if !(32..=256).contains(&self.endpoint_secret.len()) {
             return Err(CommandError::bad_request(
                 "Endpoint secret must contain 32-256 characters",
@@ -171,16 +178,11 @@ impl RegisterExternalAgent {
                 "Agent already has an operator-managed worker",
             ));
         }
-        sqlx::query("INSERT INTO custom_workers(org_id, agent_id, name, token_hash, endpoint_url, endpoint_secret_encrypted, adapter_token_encrypted) VALUES ($1,$2,'external-http',$3,$4,$5,$6) ON CONFLICT(agent_id) DO UPDATE SET token_hash = EXCLUDED.token_hash, endpoint_url = EXCLUDED.endpoint_url, endpoint_secret_encrypted = EXCLUDED.endpoint_secret_encrypted, adapter_token_encrypted = EXCLUDED.adapter_token_encrypted, enabled = TRUE, last_error = NULL")
-            .bind(ctx.org_id()).bind(agent.internal_id).bind(Sha256::digest(token.as_bytes()).as_slice()).bind(&self.endpoint_url).bind(encrypted_secret).bind(encrypted_token).execute(&mut *tx).await.map_err(anyhow::Error::from)?;
+        let binding: ExternalAgent = sqlx::query_as("INSERT INTO custom_workers(org_id, agent_id, name, token_hash, endpoint_url, endpoint_secret_encrypted, adapter_token_encrypted) VALUES ($1,$2,'external-http',$3,$4,$5,$6) ON CONFLICT(agent_id) DO UPDATE SET token_hash = EXCLUDED.token_hash, endpoint_url = EXCLUDED.endpoint_url, endpoint_secret_encrypted = EXCLUDED.endpoint_secret_encrypted, adapter_token_encrypted = EXCLUDED.adapter_token_encrypted, enabled = TRUE, last_error = NULL RETURNING endpoint_url, enabled, last_error, last_invoked_at")
+            .bind(ctx.org_id()).bind(agent.internal_id).bind(Sha256::digest(token.as_bytes()).as_slice()).bind(&self.endpoint_url).bind(encrypted_secret).bind(encrypted_token).fetch_one(&mut *tx).await.map_err(anyhow::Error::from)?;
         tx.commit().await.map_err(anyhow::Error::from)?;
         audit(ctx, &self.agent_id, "external_worker_registered");
-        Ok(ExternalAgent {
-            endpoint_url: self.endpoint_url,
-            enabled: true,
-            last_error: None,
-            last_invoked_at: None,
-        })
+        Ok(binding)
     }
 }
 

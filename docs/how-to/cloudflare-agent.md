@@ -12,6 +12,9 @@ This is an **experimental, opt-in HTTP transport** for the restricted worker
 contract. It requires an installation with external agents enabled; check Cloud
 availability before deploying. Its outbound network policy must permit your
 endpoint; registration and execution retain those installation controls. It does not upload or run your image in Everruns.
+Installations using protected worker ingress do not support this experimental
+transport: registration and dispatch refuse it. Do not lower that protection to
+connect an endpoint.
 
 ## Deploy
 
@@ -91,6 +94,8 @@ not configure this external implementation.
 Set `EVERRUNS_URL` to the CP origin (for example,
 `https://app.everruns.com`), without `/api`. `EVERRUNS_TOKEN` is your ordinary
 user PAT, used only by your terminal; never install it in the Worker.
+If you belong to multiple organizations, include `X-Org-Id: org_YOUR_ID` on
+API requests to select the organization that owns the Agent.
 
 The ordinary session API also works:
 
