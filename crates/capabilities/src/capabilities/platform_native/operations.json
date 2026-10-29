@@ -821,6 +821,30 @@
     "read_only": false
   },
   {
+    "description": "Atomically apply a ready snapshot to its unchanged source template. Existing Agent and Session pins do not move.",
+    "input_schema": {
+      "$defs": {
+        "sbxbuildId": {
+          "description": "Prefixed identifier with 'sbxbuild' prefix",
+          "example": "sbxbuild_01933b5a000070008000000000000001",
+          "pattern": "^sbxbuild_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/sbxbuildId"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "apply_sandbox_template_build",
+    "read_only": false
+  },
+  {
     "description": "Archive a knowledge collection.",
     "input_schema": {
       "properties": {
@@ -1131,6 +1155,30 @@
       "type": "object"
     },
     "name": "cancel_eval_run",
+    "read_only": false
+  },
+  {
+    "description": "Cancel queued or running build work and clean up its disposable resources.",
+    "input_schema": {
+      "$defs": {
+        "sbxbuildId": {
+          "description": "Prefixed identifier with 'sbxbuild' prefix",
+          "example": "sbxbuild_01933b5a000070008000000000000001",
+          "pattern": "^sbxbuild_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/sbxbuildId"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "cancel_sandbox_template_build",
     "read_only": false
   },
   {
@@ -9432,6 +9480,30 @@
     "read_only": false
   },
   {
+    "description": "Remove an unused build artifact. Applied artifacts remain pinned and cannot be discarded.",
+    "input_schema": {
+      "$defs": {
+        "sbxbuildId": {
+          "description": "Prefixed identifier with 'sbxbuild' prefix",
+          "example": "sbxbuild_01933b5a000070008000000000000001",
+          "pattern": "^sbxbuild_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/sbxbuildId"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "discard_sandbox_template_build",
+    "read_only": false
+  },
+  {
     "description": "Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).",
     "input_schema": {
       "description": "Disconnect an agent from GitHub, or start over with a new App.",
@@ -11115,6 +11187,30 @@
       "type": "object"
     },
     "name": "get_sandbox_fleet_stats",
+    "read_only": true
+  },
+  {
+    "description": "Inspect a build attempt in the authenticated organization.",
+    "input_schema": {
+      "$defs": {
+        "sbxbuildId": {
+          "description": "Prefixed identifier with 'sbxbuild' prefix",
+          "example": "sbxbuild_01933b5a000070008000000000000001",
+          "pattern": "^sbxbuild_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/sbxbuildId"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "get_sandbox_template_build",
     "read_only": true
   },
   {
@@ -13772,6 +13868,35 @@
       "default": null
     },
     "name": "list_sandbox_targets",
+    "read_only": true
+  },
+  {
+    "description": "List twenty build attempts at an optional offset, bounded logs, and captured software notes.",
+    "input_schema": {
+      "$defs": {
+        "sbxtplId": {
+          "description": "Prefixed identifier with 'sbxtpl' prefix",
+          "example": "sbxtpl_01933b5a000070008000000000000001",
+          "pattern": "^sbxtpl_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/sbxtplId"
+        },
+        "offset": {
+          "format": "int32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "list_sandbox_template_builds",
     "read_only": true
   },
   {
@@ -17089,6 +17214,137 @@
       "type": "object"
     },
     "name": "snooze_health_issue",
+    "read_only": false
+  },
+  {
+    "description": "Run an install script in fresh isolated compute and bake a reusable provider snapshot. Does not revise the template.",
+    "input_schema": {
+      "$defs": {
+        "SandboxBuildRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "build_network": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxNetworkPolicy",
+                  "description": "Package sources for the build only. Defaults to the template policy."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "install_script": {
+              "type": "string"
+            },
+            "metadata_path": {
+              "description": "Optional bounded, author-supplied Markdown captured from the builder.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source_revision_id": {
+              "description": "Source revision to guard against concurrent template edits.",
+              "type": "string"
+            },
+            "timeout_seconds": {
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "verification_command": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "source_revision_id",
+            "install_script"
+          ],
+          "type": "object"
+        },
+        "SandboxNetworkPolicy": {
+          "description": "Outbound network policy the target must actually enforce.",
+          "oneOf": [
+            {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "deny"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "allowed_hosts": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "mode": {
+                  "enum": [
+                    "allowlist"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "allowed_hosts",
+                "mode"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "allow"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "sbxtplId": {
+          "description": "Prefixed identifier with 'sbxtpl' prefix",
+          "example": "sbxtpl_01933b5a000070008000000000000001",
+          "pattern": "^sbxtpl_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SandboxBuildRequest"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/sbxtplId"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "start_sandbox_template_build",
     "read_only": false
   },
   {
