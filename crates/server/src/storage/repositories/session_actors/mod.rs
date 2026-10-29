@@ -328,6 +328,11 @@ impl Database {
                 cancel_reported = (cancel_requested_at IS NOT NULL),
                 consumed_seq = GREATEST(consumed_seq, $5)
             WHERE session_id = $1 AND lease_holder = $2 AND lease_fence = $3
+              -- Commit without waiting for the WAL flush (this statement's
+              -- transaction only): a renewal a crash loses only makes the lease
+              -- look older, and the fence guards every write its holder makes.
+              -- About one in seven of a turn's commits (2026-10-29 load test).
+              AND (SELECT set_config('synchronous_commit', 'off', true)) IS NOT NULL
             RETURNING inbox_seq,
                       CASE WHEN cancel_requested_at IS NOT NULL
                            THEN COALESCE(cancel_inbox_seq, inbox_seq)
@@ -339,7 +344,9 @@ impl Database {
         .bind(fence)
         .bind(ttl_millis(ttl))
         .bind(consumed_seq)
-        .fetch_optional(&self.pool)
+        // The raw pool: the relaxed commit above must never reach a caller's
+        // command transaction.
+        .fetch_optional(self.pool.raw())
         .await?)
     }
 

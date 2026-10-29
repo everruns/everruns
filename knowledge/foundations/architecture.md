@@ -302,6 +302,12 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
    - Background loops take `StorageBackend::for_background()`, which routes their whole call graph onto the reserved
      pool without changing a query. Request handlers keep the request pool.
    - `DATABASE_BACKGROUND_POOL_MAX=0` puts background work back on the request pool, as a config-only rollback.
+   - A third small pool (`DATABASE_RELAXED_POOL_MAX`, default 4) commits with `synchronous_commit = off`: it does not
+     wait for the WAL flush. Only writes whose loss in a database crash is harmless use it: the reporting projector's
+     fact upserts and outbox completions (WAL order means a lost fact also loses its completion, so the row is
+     projected again), and lease renewals, which set the same option per statement. Chat events, messages and the
+     outbox inserts keep waiting for the flush. Reason: at 500 agents RDS spent most of its time on WAL flush waits
+     (load test 2026-10-29). `0` puts this work on the background pool.
    - Sizes and defaults live in `crates/server/src/storage/repositories/mod.rs`.
 
 ### Database Conventions
@@ -835,7 +841,7 @@ Multiple control-plane instances can run behind a load balancer for HA.
 Set `EXPECTED_INSTANCES=N` to inform each instance about the total count:
 
 - **SSE connection limits**: Global and per-org limits divided by N. Per-session limits unchanged.
-- **Database pool sizing**: Set `DATABASE_POOL_MAX = pg_max_connections / N - margin`. An instance opens `DATABASE_POOL_MAX + DATABASE_BACKGROUND_POOL_MAX` connections, and the startup warning fires when that sum × instances exceeds 80% of `PG_MAX_CONNECTIONS` (default 100).
+- **Database pool sizing**: Set `DATABASE_POOL_MAX = pg_max_connections / N - margin`. An instance opens `DATABASE_POOL_MAX + DATABASE_BACKGROUND_POOL_MAX + DATABASE_RELAXED_POOL_MAX` connections, and the startup warning fires when that sum × instances exceeds 80% of `PG_MAX_CONNECTIONS` (default 100).
 - **Metrics**: Each instance maintains its own ring buffer. The `/v1/durable/metrics/timeseries` response includes `instance_count` when >1.
 
 ### Load Balancer Requirements
