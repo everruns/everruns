@@ -3684,12 +3684,15 @@ dependencies = [
  "async-trait",
  "everruns-contracts",
  "everruns-core",
+ "hex",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "uuid",
  "wiremock",
 ]
 

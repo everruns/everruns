@@ -8,6 +8,9 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::Row;
 
+#[cfg(test)]
+mod embedding_usage_tests;
+
 pub fn namespace(c: &Collection) -> String {
     format!(
         "knowledge_org_{}_{}__r{}",
@@ -62,7 +65,12 @@ impl KnowledgeService {
                     std::env::var("TURBOPUFFER_BASE_URL")
                         .unwrap_or_else(|_| "https://gcp-us-central1.turbopuffer.com".into()),
                     key,
-                ),
+                )
+                .with_usage_recorder(Arc::new(super::usage::IndexUsageRecorder {
+                    db: self.db.clone(),
+                    org_id: c.org_id,
+                    collection_id: c.id,
+                })),
             )));
         }
         Ok(None)
@@ -108,7 +116,7 @@ impl KnowledgeService {
                     0,
                 )
             });
-            let data = LlmGenerationData::success(
+            let mut data = LlmGenerationData::success(
                 vec![],
                 vec![],
                 None,
@@ -126,7 +134,9 @@ impl KnowledgeService {
                 }),
                 None,
                 None,
-            );
+            )
+            .with_provider_id(embedder.served_by.provider_config_id.clone());
+            data.metadata.response_id = result.response_id.clone();
             events
                 .emit(EventRequest {
                     event_type: "llm.generation".into(),
@@ -156,8 +166,8 @@ impl KnowledgeService {
                     None,
                     None,
                     None,
-                    None,
-                    crate::storage::repositories::GenerationProvider::default(),
+                    result.response_id.clone(),
+                    embedder.served_by,
                     chrono::Utc::now(),
                 )
                 .await?;

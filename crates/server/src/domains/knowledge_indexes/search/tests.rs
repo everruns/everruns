@@ -52,6 +52,7 @@ impl EmbeddingsDriver for DeterministicEmbeddingsDriver {
         // usage assertions distinguish "reported" from "defaulted to zero".
         let billed: u32 = request.texts.iter().map(|t| t.chars().count() as u32).sum();
         Ok(EmbedResponse {
+            response_id: None,
             embeddings,
             usage_tokens: Some(billed),
             actual_cost_usd: Some(0.0001),
