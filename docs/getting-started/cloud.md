@@ -25,6 +25,27 @@ organization, and needs a verified email. Creating more organizations does not
 grant more. Starter credit is spent before any credit you buy and expires after
 90 days.
 
+## Manage your Everruns ID
+
+Open **Settings** > **Profile** > **Manage your Everruns ID**, or visit
+[id.everruns.com/account](https://id.everruns.com/account), to manage sign-in
+methods, security, sign-in sessions, and personal connections across your
+organizations.
+
+Passkeys are an optional second factor after your password or Google sign-in.
+In **Security**, choose **Add a passkey** and follow your browser's native
+prompt. Compatible browsers can use Apple Passwords, a mobile credential
+manager, a password manager, or a security key. Save the recovery codes shown
+after enrollment; each code works once after primary sign-in. Keep a backup
+passkey or recovery codes so losing a device does not lock you out.
+
+**Sessions** shows signed-in devices, activity, and, for new sign-ins, masked IP
+addresses and approximate sign-in locations. Ending an ID session leaves an
+app's separate session valid until its own expiry. **Connections** lists your
+ID-linked apps, approved AI clients, personal MCP servers, service connections,
+credentials, and API tokens, with revoke controls and recorded usage. Unknown
+usage is shown as unavailable.
+
 ## 2. Use the built-in provider
 
 New organizations come with the built-in model provider already set up. There
