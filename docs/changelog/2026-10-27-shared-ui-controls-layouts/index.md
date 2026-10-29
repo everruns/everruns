@@ -4,8 +4,9 @@ description: Search models, agents and harnesses with the same picker, use share
 date: 2026-10-27
 kind: improvement
 significance: minor
-products: [platform]
+products: [platform, cloud]
 surfaces: [ui]
+cloud: 2026-10-28
 links:
   docs: [/design-system/components/]
 ---
