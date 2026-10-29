@@ -18,7 +18,7 @@ jest.mock("next/navigation", () => ({ useParams: () => ({}) }));
 jest.mock("@/providers/locale-provider", () => ({ useUiTranslations: () => (key: string) => key }));
 jest.mock("@/components/chat/streamdown-message", () => ({ StreamdownMessage: () => null }));
 jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
-  SessionContext: require("react").createContext(null),
+  SessionContext: jest.requireActual<typeof import("react")>("react").createContext(null),
 }));
 const mutateAsync = jest.fn().mockResolvedValue({});
 function renderWidget(overrides: Partial<SessionContextValue> = {}) {
