@@ -372,21 +372,28 @@ async fn seeded_api_fixtures_remain_private_and_preserve_fixture_modes() {
 /// keeps the server default, so chat content and billing rows stay durable.
 #[tokio::test(flavor = "multi_thread")]
 async fn relaxed_pool_alone_skips_the_commit_flush() {
-    let config = DatabasePoolConfig {
-        relaxed_max_connections: 1,
-        ..scaled_config(1)
-    };
-    let db = Database::connect_with_config(&database_url(), config)
-        .await
-        .expect("connect");
-
     async fn setting(pool: &sqlx::PgPool) -> String {
         sqlx::query_scalar("SHOW synchronous_commit")
             .fetch_one(pool)
             .await
             .expect("show synchronous_commit")
     }
-    assert_eq!(setting(db.relaxed_pool()).await, "off");
-    assert_ne!(setting(db.pool()).await, "off");
-    assert_ne!(setting(db.background_pool()).await, "off");
+    // Embedded PostgreSQL disables durability. Set a connection-local default
+    // so this contract also proves the relaxed pool overrides a durable host.
+    for default in ["on", "off"] {
+        let mut url = url::Url::parse(&database_url()).expect("test database URL");
+        url.query_pairs_mut()
+            .append_pair("options[synchronous_commit]", default);
+        let config = DatabasePoolConfig {
+            relaxed_max_connections: 1,
+            ..scaled_config(1)
+        };
+        let db = Database::connect_with_config(url.as_str(), config)
+            .await
+            .expect("connect");
+
+        assert_eq!(setting(db.relaxed_pool()).await, "off");
+        assert_eq!(setting(db.pool()).await, default);
+        assert_eq!(setting(db.background_pool()).await, default);
+    }
 }
