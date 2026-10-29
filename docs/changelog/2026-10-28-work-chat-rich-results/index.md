@@ -23,7 +23,7 @@ messages and widgets; workspace files and execution controls stay private.
 
 ![Work Chat with an interactive migration report](./work-chat@2x.png)
 
-## Update 2026-10-28
+## Update 2026-10-29
 
 Console chat and Work Chat now share the full 69-component A2UI 1.0 catalog,
 including bindings and surface updates. See [shared generative UI](/changelog/2026-10-29-shared-generative-ui/).
