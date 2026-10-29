@@ -122,7 +122,8 @@ class Lab:
         )
         self.api = f"http://127.0.0.1:{self.http}/api"
         self.edge = f"https://127.0.0.1:{self.proxy}"
-        self.issuer = f"https://localhost:{self.idp}"
+        self.idp_url = f"https://localhost:{self.idp}"
+        self.issuer = f"https://capacity-bench.invalid:{self.idp}"
         self.password = secrets.token_urlsafe(32)
         self.worker_token = secrets.token_urlsafe(32)
         self.chat_key = secrets.token_hex(32)
@@ -228,7 +229,7 @@ class Lab:
             "-subj",
             "/CN=localhost",
             "-addext",
-            "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:*.capacity.localhost",
+            "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:*.capacity.localhost,DNS:capacity-bench.invalid",
         ]
         subprocess.run(
             command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
@@ -251,7 +252,7 @@ class Lab:
             ["node", "scripts/capacity/local_identity.mjs", str(config_path)],
         )
         self.wait(
-            self.issuer + "/.well-known/openid-configuration",
+            self.idp_url + "/.well-known/openid-configuration",
             verify=str(self.cert_path),
         )
 
@@ -323,6 +324,8 @@ class Lab:
             "work-chat",
             [
                 "node",
+                "--require",
+                str(ROOT / "scripts/capacity/local_dns.cjs"),
                 "node_modules/next/dist/bin/next",
                 "start",
                 "--port",
@@ -379,7 +382,7 @@ https://:{self.proxy} {{
         ) as client:
             return (
                 client.post(
-                    self.issuer + "/fixture-metrics",
+                    self.idp_url + "/fixture-metrics",
                     headers={"X-Capacity-Secret": self.fixture_secret},
                     json={},
                 )

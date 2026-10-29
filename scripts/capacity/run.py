@@ -354,7 +354,7 @@ async def background(client, actor, interval, paths, results, offset, changes=No
 async def event_pages(client, target, actor, types, limit):
     before = None
     for _ in range(limit):
-        params = {"limit": 1000, "types": types}
+        params = {"limit": 1000}
         if before is not None:
             params["before_sequence"] = before
         response = (

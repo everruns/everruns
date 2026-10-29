@@ -46,11 +46,15 @@ def process_sample(pid):
     stat = path.read_text().rsplit(")", 1)[1].split()
     page = os.sysconf("SC_PAGE_SIZE")
     hz = os.sysconf("SC_CLK_TCK")
+    try:
+        descriptors = len(list(Path(f"/proc/{pid}/fd").iterdir()))
+    except PermissionError:
+        descriptors = None
     return {
         "pid": pid,
         "cpu_seconds": (int(stat[11]) + int(stat[12])) / hz,
         "rss_bytes": int(stat[21]) * page,
-        "open_fds": len(list(Path(f"/proc/{pid}/fd").iterdir())),
+        "open_fds": descriptors,
     }
 
 
@@ -128,7 +132,11 @@ def main():
                         value = process_sample(int(pid))
                         smaps = Path(f"/proc/{pid}/smaps_rollup")
                         if smaps.exists():
-                            for line in smaps.read_text().splitlines():
+                            try:
+                                details = smaps.read_text()
+                            except PermissionError:
+                                details = ""  # RSS fallback for other-user PostgreSQL.
+                            for line in details.splitlines():
                                 if line.startswith("Pss:"):
                                     value["pss_bytes"] = int(line.split()[1]) * 1024
                         row["processes"][name] = value

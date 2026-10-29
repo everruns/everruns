@@ -204,6 +204,7 @@ def bootstrap(lab):
             )["secret"]
             execution = {
                 "visibility": "full",
+                "errors": "public",
                 "auth_methods": [
                     {
                         "mode": "oidc",
@@ -236,7 +237,7 @@ def bootstrap(lab):
                 for variant in ["valid", "audience", "expired", "signature"]:
                     token = (
                         idp.post(
-                            lab.issuer + "/verification-fixture",
+                            lab.idp_url + "/verification-fixture",
                             headers={"X-Capacity-Secret": lab.fixture_secret},
                             json={"variant": variant},
                         )
@@ -313,7 +314,7 @@ def bootstrap(lab):
                 verify=str(lab.cert_path), trust_env=False, timeout=30
             ) as identity_client:
                 opaque = identity_client.post(
-                    lab.issuer + "/provision",
+                    lab.idp_url + "/provision",
                     headers={"X-Capacity-Secret": lab.fixture_secret},
                     json={"subject": f"capacity-{i}", "channel": group["chat_channel"]},
                 )

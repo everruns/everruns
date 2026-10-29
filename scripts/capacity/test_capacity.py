@@ -500,7 +500,7 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
 
         def respond(req):
             requests.append(req)
-            self.assertEqual(req.url.params["types"], "input.message")
+            self.assertNotIn("types", req.url.params)
             self.assertNotIn("after_sequence", req.url.params)
             rows = (
                 [event(i) for i in range(2, 1002)]
@@ -561,7 +561,7 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
                         "data": [
                             e
                             for e in histories[path.split("/")[-2]]
-                            if e["type"] in types
+                            if not types[0] or e["type"] in types
                         ]
                     },
                 )
