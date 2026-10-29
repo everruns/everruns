@@ -133,8 +133,12 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for local development setup and
 [AGENTS.md](./AGENTS.md) for the conventions used by both human and AI
 contributors.
 
-The [crate layout](./knowledge/project/crate-layout.md) describes ownership and
-the guards that keep database connections in the server and durable crates.
+The [crate layout](./knowledge/project/crate-layout.md) explains which crate owns
+what. One rule to know before adding a dependency: only three crates may talk to a
+database directly: the server (control-plane data), `everruns-durable` (its task
+queue and journal), and the `everruns` facade (local SQLite). Everything else,
+including the worker, goes through the server's API, and CI fails if another
+crate adds a database driver.
 
 ## License
 
