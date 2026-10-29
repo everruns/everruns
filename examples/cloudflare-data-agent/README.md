@@ -94,6 +94,10 @@ You can create the draft Slack channel through the ordinary API too, then finish
 installation/publishing on the Agent's Integrations page:
 
 ```bash
+curl -X PATCH "$EVERRUNS_URL/api/v1/agents/agent_YOUR_ID" \
+  -H "Authorization: Bearer $EVERRUNS_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"communication":"direct"}'
 curl "$EVERRUNS_URL/api/v1/agents/agent_YOUR_ID/channels" \
   -H "Authorization: Bearer $EVERRUNS_TOKEN" \
   -H 'Content-Type: application/json' \
