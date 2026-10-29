@@ -91,8 +91,8 @@ class Lab:
         self.args = args
         self.directory = Path(args.run_dir).resolve()
         self.directory.mkdir(parents=True, exist_ok=False, mode=0o700)
-        self.secret = self.directory / "private"
-        self.secret.mkdir(mode=0o700)
+        self.private_dir = self.directory / "private"
+        self.private_dir.mkdir(mode=0o700)
         self.results = self.directory / "results"
         self.results.mkdir()
         self.processes = {}
@@ -127,10 +127,10 @@ class Lab:
         self.worker_token = secrets.token_urlsafe(32)
         self.chat_key = secrets.token_hex(32)
         self.fixture_secret = secrets.token_urlsafe(32)
-        self.cert = self.secret / "tls.pem"
-        self.cert_key = self.secret / "tls-key.pem"
-        self.identity_public = self.secret / "idp-public.json"
-        self.users_file = self.secret / "console-users.json"
+        self.cert_path = self.private_dir / "tls.pem"
+        self.cert_key_path = self.private_dir / "tls-key.pem"
+        self.identity_public = self.private_dir / "idp-public.json"
+        self.users_file = self.private_dir / "console-users.json"
 
     def psql(self, sql, database=None):
         env = {
@@ -220,9 +220,9 @@ class Lab:
             "rsa:2048",
             "-nodes",
             "-keyout",
-            str(self.cert_key),
+            str(self.cert_key_path),
             "-out",
-            str(self.cert),
+            str(self.cert_path),
             "-days",
             "2",
             "-subj",
@@ -239,19 +239,20 @@ class Lab:
             "issuer": self.issuer,
             "client_id": "capacity-bench",
             "client_secret": self.fixture_secret,
-            "cert": str(self.cert),
-            "cert_key": str(self.cert_key),
+            "cert": str(self.cert_path),
+            "cert_key": str(self.cert_key_path),
             "idp_port": self.idp,
             "public_file": str(self.identity_public),
         }
-        config_path = self.secret / "identity-config.json"
+        config_path = self.private_dir / "identity-config.json"
         private_json(config_path, config)
         self.start(
             "identity",
             ["node", "scripts/capacity/local_identity.mjs", str(config_path)],
         )
         self.wait(
-            self.issuer + "/.well-known/openid-configuration", verify=str(self.cert)
+            self.issuer + "/.well-known/openid-configuration",
+            verify=str(self.cert_path),
         )
 
     def start_platform(self):
@@ -316,7 +317,7 @@ class Lab:
             "CHAT_SESSION_KEY": self.chat_key,
             "CHAT_DATABASE_URL": self.chat_dburl,
             "CHAT_API_URL": self.api,
-            "NODE_EXTRA_CA_CERTS": str(self.cert),
+            "NODE_EXTRA_CA_CERTS": str(self.cert_path),
         }
         self.start(
             "work-chat",
@@ -333,13 +334,14 @@ class Lab:
             ROOT / "apps/chat-ui",
         )
         self.wait(f"http://127.0.0.1:{self.bff}/health")
+        # The proxy receives file paths, never the certificate/key contents.
         config = f"""{{
  admin off
  auto_https off
 }}
 https://:{self.proxy} {{
  bind 127.0.0.1
- tls {self.cert} {self.cert_key}
+ tls {self.cert_path} {self.cert_key_path}
  @chat {{
   host *.capacity.localhost
   not host console.capacity.localhost
@@ -353,11 +355,14 @@ https://:{self.proxy} {{
 }}
 """
         path = self.directory / "Caddyfile"
-        path.write_text(config)
+        with open(
+            os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w"
+        ) as file:
+            file.write(config)
         self.start(
             "proxy", ["caddy", "run", "--config", str(path), "--adapter", "caddyfile"]
         )
-        self.wait(self.edge + "/health", verify=str(self.cert))
+        self.wait(self.edge + "/health", verify=str(self.cert_path))
 
     def restart_server(self):
         process = self.processes["server"]
@@ -369,7 +374,9 @@ https://:{self.proxy} {{
         self.wait(f"http://127.0.0.1:{self.http}/health")
 
     def identity_metrics(self):
-        with httpx.Client(verify=str(self.cert), trust_env=False, timeout=10) as client:
+        with httpx.Client(
+            verify=str(self.cert_path), trust_env=False, timeout=10
+        ) as client:
             return (
                 client.post(
                     self.issuer + "/fixture-metrics",

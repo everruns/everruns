@@ -232,7 +232,7 @@ def bootstrap(lab):
                 org_id,
             )
             # Prove that priming local public keys preserves cryptographic checks.
-            with httpx.Client(verify=str(lab.cert), trust_env=False) as idp:
+            with httpx.Client(verify=str(lab.cert_path), trust_env=False) as idp:
                 for variant in ["valid", "audience", "expired", "signature"]:
                     token = (
                         idp.post(
@@ -310,7 +310,7 @@ def bootstrap(lab):
                 group["chat_channel"].removeprefix("appchan_") + ".capacity.localhost"
             )
             with httpx.Client(
-                verify=str(lab.cert), trust_env=False, timeout=30
+                verify=str(lab.cert_path), trust_env=False, timeout=30
             ) as identity_client:
                 opaque = identity_client.post(
                     lab.issuer + "/provision",
@@ -414,7 +414,7 @@ def bootstrap(lab):
             },
         },
     }
-    manifest = lab.secret / "actors.json"
+    manifest = lab.private_dir / "actors.json"
     private_json(manifest, data)
     return manifest
 
@@ -477,7 +477,7 @@ def run_case(
         for shard in range(generators):
             output = directory / f"shard-{shard}"
             ready = lab.directory / (name + f"-ready-{shard}.json")
-            state = lab.secret / (name + f"-auth-{shard}.json")
+            state = lab.private_dir / (name + f"-auth-{shard}.json")
             auth_files.append(state)
             command = [
                 sys.executable,
@@ -508,7 +508,7 @@ def run_case(
                 "--ready-file",
                 str(ready),
                 "--ca-bundle",
-                str(lab.cert),
+                str(lab.cert_path),
                 "--output",
                 str(output),
                 "--auth-state",
