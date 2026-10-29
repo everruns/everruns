@@ -108,7 +108,9 @@ curl "$EVERRUNS_URL/api/v1/sessions/session_YOUR_ID/messages" \
 
 `GET` the external-worker resource for status; `DELETE` disables it. Disabled
 bindings stay bound, so pending input cannot fall back to the built-in runtime.
-Re-register the endpoint to rotate its secret or re-enable it.
+Re-register the endpoint to rotate its secret or re-enable it. If revocation
+interrupts release of the previous actor lease, wait up to 30 seconds before
+retrying registration; the CP refuses to replace a still-held lease.
 
 ## Slack
 

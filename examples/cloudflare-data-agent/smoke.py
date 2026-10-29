@@ -13,6 +13,12 @@ import urllib.parse
 import uuid
 
 
+class ApiError(RuntimeError):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cp", required=True)
@@ -47,7 +53,7 @@ def main():
                 detail = str(problem.get("detail", problem.get("title", "API request failed")))[:512]
             except (ValueError, AttributeError):
                 detail = "API request failed"
-            raise RuntimeError(f"{method} {path}: HTTP {error.code}: {detail}") from None
+            raise ApiError(error.code, f"{method} {path}: HTTP {error.code}: {detail}") from None
 
     # Agent requires an installation-provided harness, just as in the UI.
     harnesses = api("GET", "/harnesses")
@@ -57,11 +63,23 @@ def main():
     agent = api("POST", "/agents", {"name": "cloudflare-smoke-" + uuid.uuid4().hex[:12], "display_name": "Cloudflare sales agent", "system_prompt": "External worker owns execution", "harness_id": harness["id"], "communication": "direct"})
     agent_id = agent["id"]
     path = "/agents/" + agent_id + "/external-worker"
+    def connect():
+        # Revocation can win the terminal-event/release race. Wait for the old
+        # lease to expire rather than bypassing the CP's active-lease guard.
+        deadline = time.monotonic() + 45
+        while True:
+            try:
+                return api("POST", path, {"endpoint_url": args.endpoint, "endpoint_secret": secret})
+            except ApiError as error:
+                if error.status != 409 or time.monotonic() >= deadline:
+                    raise
+                time.sleep(2)
+
     sessions = []
     sse = None
     live = []
     try:
-        binding = api("POST", path, {"endpoint_url": args.endpoint, "endpoint_secret": secret})
+        binding = connect()
         assert binding["enabled"] and "endpoint_secret" not in binding
         session = api("POST", "/sessions", {"agent_id": agent_id, "source": "playground"})
         session_id = session["id"]
@@ -127,7 +145,7 @@ def main():
         events = api("GET", "/sessions/" + session_id + "/events?limit=1000")
         events = events.get("data", events.get("events", [])) if isinstance(events, dict) else events
         assert sum(e["type"] == "turn.completed" for e in events) == 2, "Disabled external work fell back to another runtime"
-        api("POST", path, {"endpoint_url": args.endpoint, "endpoint_secret": secret})
+        connect()
         deadline = time.monotonic() + 150
         while time.monotonic() < deadline:
             resumed = api("GET", "/sessions/" + session_id + "/events?limit=1000")["data"]

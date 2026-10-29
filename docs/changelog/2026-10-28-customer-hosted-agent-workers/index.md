@@ -12,6 +12,8 @@ links:
 
 ![Everruns plus Cloudflare Workers](./integration@2x.png)
 
+![External worker execution settings on an ordinary Agent](./execution@2x.png)
+
 Connect an agent running in your own infrastructure through **Configure execution**
 on its ordinary Agent page. Verify an HTTPS endpoint with a shared secret, then
 use the same Playground, sessions and Trace views. Disabling the endpoint keeps
