@@ -92,6 +92,13 @@ export default {
       return Response.redirect(new URL(`${BASE}/`, url), 301);
     }
 
+    // The original announcement was shared publicly; keep that link current.
+    const oldEstimate = `${BASE}/changelog/2026-10-28-agent-cost-estimation`;
+    if ([oldEstimate, `${oldEstimate}/`, `${oldEstimate}.md`, `${oldEstimate}/index.md`].includes(url.pathname)) {
+      const suffix = url.pathname.endsWith(".md") ? "/index.md" : "/";
+      return Response.redirect(new URL(`${BASE}/changelog/2026-10-28-smart-agent-cost-projections${suffix}${url.search}`, url), 301);
+    }
+
     const markdown = markdownPath(url.pathname);
     const vary = markdown ? [["Vary", "Accept, User-Agent"]] : [];
     const links = DISCOVERY_LINKS.map((link) => ["Link", link]);

@@ -79,4 +79,51 @@ export const messages: Readonly<Record<string, string>> = {
     "Verwendet Katalogpreise und eine ungefähre Textgröße ohne Cache-Rabatt. Tatsächliche Kosten hängen von Aufgabe, Wiederholungen, Denkschritten, Cache-Lese-/Schreibvorgängen und Anbieterpreisen ab. Sandbox-Zeit, kostenpflichtige Werkzeuge, Medien, weitere Modelle oder Unteragenten und Plattformgebühren sind ausgeschlossen.",
   "Uses the current agent draft. Estimator inputs do not change the agent. Run representative tasks in Playground and compare their recorded usage before setting a budget.":
     "Verwendet den aktuellen Agentenentwurf. Eingaben ändern den Agenten nicht. Führen Sie vor der Budgetplanung typische Aufgaben im Playground aus und vergleichen Sie die aufgezeichnete Nutzung.",
+  "Smart estimate": "Intelligente Schätzung",
+  "Manual calculator": "Manueller Rechner",
+  "What should we plan for? (optional)": "Was planen wir? (optional)",
+  "Infer typical tasks from this agent": "Typische Aufgaben dieses Agenten ableiten",
+  "Update estimate": "Schätzung aktualisieren",
+  "AI suggests tasks from your agent. Usage sliders update instantly without another AI call.":
+    "Die KI schlägt Aufgaben anhand Ihres Agenten vor. Regler aktualisieren die Prognose sofort ohne weiteren KI-Aufruf.",
+  "Understanding your agent and estimating typical tasks…":
+    "Agent wird analysiert und typische Aufgaben werden geschätzt…",
+  "Smart estimates are unavailable right now. Retry or use the manual calculator.":
+    "Intelligente Schätzungen sind derzeit nicht verfügbar. Erneut versuchen oder den manuellen Rechner nutzen.",
+  "Cost projection": "Kostenprognose",
+  "Average per task": "Durchschnitt pro Aufgabe",
+  "Daily cost": "Tägliche Kosten",
+  "30-day month · Each task starts a new conversation":
+    "30-Tage-Monat · Jede Aufgabe beginnt ein neues Gespräch",
+  "Check task assumptions and select at least one task. Oversized tasks cannot be priced.":
+    "Annahmen prüfen und mindestens eine Aufgabe auswählen. Zu große Aufgaben können nicht berechnet werden.",
+  "Usage projection": "Nutzungsprognose",
+  "By tasks": "Nach Aufgaben",
+  "By users": "Nach Nutzern",
+  "Active users": "Aktive Nutzer",
+  "Tasks per user per day": "Aufgaben pro Nutzer und Tag",
+  "Enter a whole number within the displayed limits.":
+    "Eine ganze Zahl innerhalb der angegebenen Grenzen eingeben.",
+  "Task mix": "Aufgabenmix",
+  "Typical tasks for your agent": "Typische Aufgaben Ihres Agenten",
+  "Suggested by AI, not measured usage. Equal mix to start; adjust relative frequency or set a task to zero.":
+    "KI-Vorschläge, keine gemessene Nutzung. Anfangs gleich verteilt; relative Häufigkeit anpassen oder eine Aufgabe auf null setzen.",
+  Frequency: "Häufigkeit",
+  "Monthly spend as usage grows": "Monatskosten bei steigender Nutzung",
+  "Monthly planning range: {low} – {high}": "Monatliche Planungsspanne: {low} – {high}",
+  "Largest cost driver: {task}": "Größter Kostenfaktor: {task}",
+  "Edit task": "Aufgabe bearbeiten",
+  "Task example": "Aufgabenbeispiel",
+  "Changing the example does not recalculate assumptions. Use the planning input above to generate a new estimate.":
+    "Eine Änderung des Beispiels berechnet die Annahmen nicht neu. Für eine neue Schätzung das Planungsfeld oben nutzen.",
+  "Instructions and tools are counted on every call; earlier outputs and tool results accumulate. Current catalog prices and model limits apply. Cache discounts are not assumed.":
+    "Anweisungen und Tools zählen bei jedem Aufruf; frühere Ausgaben und Tool-Ergebnisse summieren sich. Aktuelle Katalogpreise und Modellgrenzen gelten. Cache-Rabatte werden nicht angenommen.",
+  "Planning scenarios, not quotes or spending limits. The shaded range varies task complexity, not statistical confidence. AI token costs only: paid tools, hosting, media, other agents and service fees are extra. No tasks are executed and your agent is not changed.":
+    "Planungsszenarien, keine Angebote oder Ausgabenlimits. Die Schattierung variiert die Aufgabenkomplexität, nicht die statistische Sicherheit. Nur KI-Tokenkosten: kostenpflichtige Tools, Hosting, Medien, weitere Agenten und Gebühren kommen hinzu. Keine Aufgaben werden ausgeführt, der Agent bleibt unverändert.",
+  "{label} slider": "Regler {label}",
+  "Monthly cost projection with lighter and heavier task scenarios":
+    "Monatskostenprognose für einfachere und aufwendigere Aufgaben",
+  "{count} tasks / day": "{count} Aufgaben / Tag",
+  "At current usage": "Bei aktueller Nutzung",
+  "/ month": "/ Monat",
 };

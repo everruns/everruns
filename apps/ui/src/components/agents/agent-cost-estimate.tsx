@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentCostPlanner } from "./agent-cost-planner";
 import { useState } from "react";
 import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { useQuery } from "@tanstack/react-query";
@@ -47,14 +48,14 @@ export function AgentCostEstimate(props: AgentCostEstimateProps) {
         {ui("Estimate cost")}
       </Button>
       <Drawer open={open} onOpenChange={setOpen}>
-        <DrawerContent className="w-full overflow-y-auto sm:max-w-2xl">
+        <DrawerContent className="w-full overflow-y-auto sm:max-w-4xl">
           <DrawerHeader className="pr-6">
             <DrawerTitle>{ui("What will this agent cost?")}</DrawerTitle>
             <DrawerDescription>
               {ui("Choose the kind of work and how often you’ll use this agent.")}
             </DrawerDescription>
           </DrawerHeader>
-          {open && <AgentCostCalculator {...props} />}
+          {open && <AgentCostPlanner {...props} />}
         </DrawerContent>
       </Drawer>
     </>

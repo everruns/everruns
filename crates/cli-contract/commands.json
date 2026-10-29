@@ -773,6 +773,44 @@
     ]
   },
   {
+    "wire_name": "plan_agent_costs",
+    "path": [
+      "agents"
+    ],
+    "verb": "cost-plan",
+    "description": "Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.",
+    "method": "POST",
+    "http_path": "/v1/agents/cost-plan",
+    "args": [
+      {
+        "field": "agent",
+        "long": "agent",
+        "kind": "json",
+        "required": true,
+        "help": "Request to preview the final agent shape with capabilities applied"
+      },
+      {
+        "field": "guidance",
+        "long": "guidance",
+        "kind": "string",
+        "required": false,
+        "help": "Optional description of the workload to plan."
+      },
+      {
+        "field": "locale",
+        "long": "locale",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Suggest task workloads for a draft without running or saving it",
+        "command": "everruns agents cost-plan --agent '{\"system_prompt\":\"Draft short customer replies\"}'"
+      }
+    ]
+  },
+  {
     "wire_name": "create_agent",
     "path": [
       "agents"

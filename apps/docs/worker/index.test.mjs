@@ -86,3 +86,14 @@ test("a page asked without its trailing slash redirects permanently, query kept"
   assert.equal(response.status, 301);
   assert.equal(response.headers.get("location"), "https://everruns.com/docs/framework/?ref=x");
 });
+
+
+test("shared cost-estimator announcement redirects to smart projections for every reader", async () => {
+  for (const suffix of ["", "/", ".md", "/index.md"]) {
+    for (const headers of [{}, {accept:"text/markdown"}, {"user-agent":"Googlebot"}]) {
+      const response = await worker.fetch(request(`/docs/changelog/2026-10-28-agent-cost-estimation${suffix}?ref=social`, headers), {ASSETS});
+      assert.equal(response.status, 301);
+      assert.equal(response.headers.get("location"), `https://everruns.com/docs/changelog/2026-10-28-smart-agent-cost-projections${suffix.endsWith(".md") ? "/index.md" : "/"}?ref=social`);
+    }
+  }
+});

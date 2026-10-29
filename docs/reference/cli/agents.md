@@ -26,6 +26,7 @@ Agent definitions and their configuration.
 | [`agents draft`](#agents-draft) | Revise an agent draft from a conversation with the agent builder. |
 | [`agents get`](#agents-get) | Get a single agent by ID or name. |
 | [`agents list`](#agents-list) | List all active agents. |
+| [`agents cost-plan`](#agents-cost-plan) | Suggest editable typical task workloads for agent cost planning. |
 | [`agents preview`](#agents-preview) | Preview the final agent shape with capabilities applied. |
 | [`agents upsert`](#agents-upsert) | Upsert agent — create (201) or update (200) by ID. |
 | [`agents avatar presets`](#agents-avatar-presets) | List the curated agent avatars: stable id, name, family, suggested role, description and search keywords. |
@@ -342,6 +343,27 @@ Example:
 ```bash
 # Find agents by name when you do not know the id
 everruns agents list --search triage --limit 20
+```
+
+## agents cost-plan
+
+Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.
+
+```bash
+everruns agents cost-plan [OPTIONS] --agent <agent>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT>` | Required. Request to preview the final agent shape with capabilities applied. |
+| `--guidance <GUIDANCE>` | Optional description of the workload to plan. |
+| `--locale <LOCALE>` |  |
+
+Example:
+
+```bash
+# Suggest task workloads for a draft without running or saving it
+everruns agents cost-plan --agent '{"system_prompt":"Draft short customer replies"}'
 ```
 
 ## agents preview

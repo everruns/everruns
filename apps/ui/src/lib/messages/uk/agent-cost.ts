@@ -76,4 +76,50 @@ export const messages: Readonly<Record<string, string>> = {
     "Використано каталожні ціни токенів і приблизний розмір тексту без знижки за кеш. Фактична вартість залежить від завдання, повторів, міркувань, читання/запису кешу та цін провайдера. Не враховано час пісочниці, платні інструменти, медіа, додаткові моделі чи субагенти та збори платформи.",
   "Uses the current agent draft. Estimator inputs do not change the agent. Run representative tasks in Playground and compare their recorded usage before setting a budget.":
     "Використано поточну чернетку агента. Дані калькулятора не змінюють агента. Перед визначенням бюджету виконайте типові завдання в Playground і порівняйте записане використання.",
+  "Smart estimate": "Розумна оцінка",
+  "Manual calculator": "Ручний калькулятор",
+  "What should we plan for? (optional)": "Що плануємо? (необов’язково)",
+  "Infer typical tasks from this agent": "Визначити типові завдання агента",
+  "Update estimate": "Оновити оцінку",
+  "AI suggests tasks from your agent. Usage sliders update instantly without another AI call.":
+    "ШІ пропонує завдання за налаштуваннями агента. Повзунки миттєво оновлюють прогноз без нового виклику ШІ.",
+  "Understanding your agent and estimating typical tasks…":
+    "Аналізуємо агента й оцінюємо типові завдання…",
+  "Smart estimates are unavailable right now. Retry or use the manual calculator.":
+    "Розумна оцінка зараз недоступна. Повторіть спробу або скористайтеся ручним калькулятором.",
+  "Cost projection": "Прогноз витрат",
+  "Average per task": "У середньому за завдання",
+  "Daily cost": "Вартість на день",
+  "30-day month · Each task starts a new conversation":
+    "30 днів на місяць · Кожне завдання починає нову розмову",
+  "Check task assumptions and select at least one task. Oversized tasks cannot be priced.":
+    "Перевірте припущення й виберіть хоча б одне завдання. Завеликі завдання не можна оцінити.",
+  "Usage projection": "Прогноз використання",
+  "By tasks": "За завданнями",
+  "By users": "За користувачами",
+  "Active users": "Активні користувачі",
+  "Tasks per user per day": "Завдань на користувача на день",
+  "Enter a whole number within the displayed limits.": "Введіть ціле число в зазначених межах.",
+  "Task mix": "Розподіл завдань",
+  "Typical tasks for your agent": "Типові завдання вашого агента",
+  "Suggested by AI, not measured usage. Equal mix to start; adjust relative frequency or set a task to zero.":
+    "Пропозиції ШІ, а не виміряне використання. Спочатку рівні частки; змінюйте відносну частоту або встановіть нуль.",
+  Frequency: "Частота",
+  "Monthly spend as usage grows": "Місячні витрати зі зростанням використання",
+  "Monthly planning range: {low} – {high}": "Місячний діапазон: {low} – {high}",
+  "Largest cost driver: {task}": "Найбільша стаття витрат: {task}",
+  "Edit task": "Редагувати завдання",
+  "Task example": "Приклад завдання",
+  "Changing the example does not recalculate assumptions. Use the planning input above to generate a new estimate.":
+    "Зміна прикладу не перераховує припущення. Введіть побажання вище для нової оцінки.",
+  "Instructions and tools are counted on every call; earlier outputs and tool results accumulate. Current catalog prices and model limits apply. Cache discounts are not assumed.":
+    "Інструкції й інструменти враховуються в кожному виклику; попередні відповіді й результати накопичуються. Застосовуються поточні ціни каталогу й ліміти моделі. Знижки за кеш не враховані.",
+  "Planning scenarios, not quotes or spending limits. The shaded range varies task complexity, not statistical confidence. AI token costs only: paid tools, hosting, media, other agents and service fees are extra. No tasks are executed and your agent is not changed.":
+    "Сценарії планування, не цінові пропозиції чи ліміти витрат. Затінений діапазон змінює складність завдань, а не статистичну впевненість. Лише вартість токенів ШІ: платні інструменти, хостинг, медіа, інші агенти та збори оплачуються окремо. Завдання не виконуються, агент не змінюється.",
+  "{label} slider": "Повзунок: {label}",
+  "Monthly cost projection with lighter and heavier task scenarios":
+    "Прогноз місячних витрат для легших і складніших завдань",
+  "{count} tasks / day": "{count} завдань / день",
+  "At current usage": "За поточного використання",
+  "/ month": "/ місяць",
 };

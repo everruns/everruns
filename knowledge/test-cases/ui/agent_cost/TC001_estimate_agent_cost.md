@@ -54,3 +54,17 @@ tags:
 - Unknown prices, failed requests, invalid input and context overflow never look like free work.
 - Assumptions explain model-only pricing, sensitivity ranges and excluded costs.
 - Estimation is usable on mobile and desktop and leaves saved configuration unchanged.
+
+## Smart projections
+
+With the utility service configured, open Estimate cost and wait for three agent-specific
+suggestions. Confirm the agent is not saved and no session is created. Adjust Tasks per day
+with both slider and number input: daily/monthly projections change with no cost-plan request.
+Switch to By users and verify active users times tasks per user per day determines volume.
+Change the relative task mix, disable all tasks, and restore one: unavailable totals recover.
+Empty, fractional and out-of-range inputs never retain valid monthly projections.
+Edit per-task assumptions and verify oversized tasks withhold their totals. Change agent draft
+or organization and confirm old suggestions/edits do not appear. Regenerate with workload
+guidance, test retry on failure and Manual calculator when utility inference is disabled.
+Check mobile, dark mode and a non-English locale. Check the old changelog URL redirects to the
+new entry for HTML and Markdown readers, preserving query parameters.

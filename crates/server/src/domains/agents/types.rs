@@ -265,7 +265,7 @@ pub struct UpdateAgentRequest {
 }
 
 /// Request to preview the final agent shape with capabilities applied
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct PreviewAgentRequest {
     /// Harness to layer beneath this draft. Omit to preview the agent layer alone.
     #[serde(default)]

@@ -257,6 +257,7 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/agents/{agent_id}/stats", get(get_agent_stats))
         .command::<crate::domains::agents::DestroyAgent>()
         .command::<crate::domains::agents::DraftAgent>()
+        .command::<crate::domains::agents::cost_plan::PlanAgentCosts>()
         .route("/v1/agents/{agent_id}/export", get(export_agent))
         .route("/v1/agents/{agent_id}/copy", post(copy_agent))
         .route(
