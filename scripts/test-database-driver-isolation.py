@@ -22,6 +22,23 @@ def package(name, dependency="sqlx", kind=None, optional=False, rename=None):
 
 
 class DatabaseOwnership(unittest.TestCase):
+    def test_private_data_example_root_alias_keeps_the_exact_boundary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            example = root / "example"
+            example.mkdir()
+            alias = root / "alias"
+            alias.symlink_to(example, target_is_directory=True)
+            entry = package("everruns-custom-data-agent", "rusqlite")
+            entry["manifest_path"] = str(example / "Cargo.toml")
+            with patch.object(guard, "CUSTOM_DATA_EXAMPLE_ROOT", alias):
+                self.assertFalse(guard.dependency_violations([entry]))
+                entry["manifest_path"] = str(root / "elsewhere/Cargo.toml")
+                self.assertTrue(guard.dependency_violations([entry]))
+                entry["manifest_path"] = str(alias / "Cargo.toml")
+                entry["name"] = "everruns-worker"
+                self.assertTrue(guard.dependency_violations([entry]))
+
     def test_private_data_example_exception_requires_its_identity_path_and_driver(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

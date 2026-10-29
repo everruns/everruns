@@ -590,4 +590,102 @@ This verifies transport peers, not an assignment or tenant. A shared worker's
 bearer still grants cross-org authority; a per-executor application identity and
 assignment admission must be enforced separately before scoped issuance.
 
+The unactivated [journal capability verifier](../../crates/server/src/worker_link/grpc_service/journal_capability/mod.rs)
+is the next component: it binds an exact TLS-verified client leaf certificate to
+a registered executor and requires an opaque proof whose stored digest selects
+that executor's journal grant. It creates a distinct verified context, strips the
+proof header, and rechecks identity, capability, grant and lease in one database
+statement at each read admission. Caller identity headers and legacy bearers
+cannot substitute for either proof. Middleware accepts only the exact journal
+RPC wire route; the RPC and raw blob gates also refuse other operations under
+the verified context.
+
+No production listener calls the verifier and no production registration or
+capability issuer exists. The migration creates empty records. Identity and
+capability bindings cannot be retargeted, extended, un-revoked or recycled;
+parent purge leaves unusable digest tombstones. Trusted issuance still needs
+certificate enrollment/validity policy, secure proof delivery, retention and
+resource budgets, and complete underlying user/custom-policy provenance before
+activation. A qualified listener must supply actual verified mTLS connection
+evidence; a TLS-terminating proxy's headers are insufficient. Transport peers
+sharing one process's identities or proofs still share its authority.
+
+The source-only [lifecycle admission](../../crates/server/src/storage/repositories/session_actors/capability_admission.rs)
+also requires explicit supporting grants. These are revocation prerequisites,
+not permission to read a journal or use a resource. This first supported class
+is session-scoped service grants to organization-owned service resources; personal, agent-consumer and wider
+scopes cannot be enrolled without verified invocation provenance. No issuer
+selects or registers dependencies in production. A future trusted issuer must
+prove journal authority independently and register the complete dependency set;
+one arbitrary live resource grant is insufficient evidence of that authority.
+
+[Database lifecycle triggers](../../crates/server/migrations/20261028115847_worker_grant_lifecycle_revocation.sql)
+pin database-owned versions at assignment creation and dependency registration.
+Resource/grant edits or deletion, session identity or archive changes, configured
+agent identity or status changes, cancellation, lease release/reassignment, and
+renewing an expired lease revoke old grants atomically. Forward renewal of a live
+lease and session title changes preserve it. Versions remain monotonic when old
+values are restored; deleted source references become immutable tombstones, so
+recreating identifiers cannot revive a proof. An elapsed supporting-grant expiry
+is refused online; extending it requires a fresh assignment. Existing grants
+without captured origins or dependencies fail closed rather than being backfilled.
+
+Registration locks source records before the assignment. Creation serializes
+against lifecycle changes. Online admission checks current versions as well as
+revocation, so a racing uncommitted registration cannot escape by missing an
+update notification. Scoped reads use one
+[read-only snapshot](../../crates/server/src/storage/repositories/session_actors/journal_snapshot.rs)
+for the protection floor, authority, journal page and head metadata. A revocation
+committed before that snapshot is denied. An earlier snapshot may finish afterward,
+but cannot fetch later-committed journal events or head metadata. Retained contexts,
+subsequent pages and new connections all recheck. This does not retract delivered
+data or synchronously stop in-flight reads. Snapshot lifetime and transaction round
+trips still need production-scale budget qualification before activation.
+
+The source-only [worker ingress floor](../../crates/server/migrations/20261028140332_worker_ingress_protection_floor.sql)
+closes canonical legacy wire access before protected capability enrollment.
+It is empty on upgrade and has no production writer or activation API. A
+capability cannot be enrolled without the supported floor, and verified reads
+without it are refused. This is a database-wide protocol requirement: legacy
+global work claims, org-wide credential lookups and signed object URLs cannot
+be safely filtered by an assignment selector. Mixed legacy/scoped execution in
+one database is unsupported. Unprotected deployments retain legacy behavior;
+a missing schema or unavailable database never implies an absent floor.
+
+Every generated RPC and raw byte route checks the floor without caching a
+positive legacy decision. Legacy, authentication-disabled development and
+selector-only journal assertions are all refused once protection is required.
+A qualified verified journal reader retains only its existing journal operation;
+an unknown future floor version refuses it too. The floor cannot be removed or
+downgraded, including after grants expire or their parent data is deleted.
+[Wire admission](../../crates/server/src/worker_link/grpc_service/authority/mod.rs)
+does not derive scope from caller org/session identifiers or identity headers.
+
+Event streams admitted earlier recheck before publishing/storing their collected
+batch; notification streams recheck before yielding each item; uploads recheck
+after body receipt before decoding/storage. New uploads are refused before body extraction. Read links authenticate their
+signature before any database access, then check the floor before object lookup;
+journal-only contexts remain refused before parsing either byte operation. This is admission enforcement,
+not a transaction coupling every operation to floor activation. Previously
+admitted finite operations or byte downloads may finish; prior disclosures
+cannot be retracted. The legacy event-stream collector still needs bounded
+memory qualification before any scoped emit operation is supported.
+
+This floor protects the canonical RPC/HTTP wire boundary, not arbitrary server
+code with database access. Default development storage initialization refuses
+protected in-process hosting. Already captured direct stores, custom embedders,
+alternate listeners and old replicas are not made safe by that startup check.
+No production listener installs the scoped verifier and no issuer exists;
+protected execution is not a runnable production mode at this stage.
+
+Before activation: migrate empty metadata first, upgrade and independently verify
+every serving replica, drain and stop all legacy workers/streams/transfers, remove
+direct/in-process and unqualified alternate worker hosting, implement and qualify
+the required scoped operations and complete authority provenance, and compose the
+verified listener. A floor record cannot enforce itself on an old binary that
+ignores it; deployment version enforcement is still required. Do not roll back
+to pre-floor binaries or reopen legacy access after protection is required.
+Production enrollment, trust, network, credential or security-setting actions
+remain separate approved rollout work. No such action is performed here.
+
 **Design decision**: Workers are intentionally cross-org. Org-scoping is enforced at the HTTP API layer, not the gRPC transport.

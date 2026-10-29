@@ -55,11 +55,21 @@ and expiry. Org consistency includes both the session and actor index. No
 positive admission is cached across calls or reconnects; database failure does
 not grant access. Foreign and absent selectors receive the same refusal.
 
-Admission linearizes at the database statement's snapshot. A read admitted
-before lease release/reassignment may finish afterward; already delivered bytes
-cannot be retracted. A revocation committed before a new admission is refused.
-The journal authorization grant is independently revocable. Credential and
-underlying user/agent resource-grant integration remain unimplemented.
+Scoped reads bind the protection floor, online authority, journal page and head
+metadata to one [read-only snapshot](../../crates/server/src/storage/repositories/session_actors/journal_snapshot.rs).
+Revocation committed before that snapshot is refused. An earlier snapshot may
+finish after revocation, but cannot include journal events committed later.
+Already delivered bytes cannot be retracted. Each subsequent page and reconnect
+establishes a fresh snapshot and rechecks authority.
+A scoped read invoked inside an enclosing command transaction is refused;
+it cannot detach from that transaction or inherit weaker isolation. Ordinary
+repository journal reads continue to honor their enclosing command transaction.
+The journal authorization grant is independently revocable. The unactivated
+[verified journal path](../operations/durable-execution-engine.md#worker-communication)
+now checks exact mTLS executor enrollment, opaque proof and explicit supporting
+session-service grants to organization-owned service resources. Lifecycle triggers revoke linked assignments;
+complete user/custom-policy provenance, issuance and production activation
+remain unimplemented.
 
 ## Independent journal authorization
 
@@ -72,9 +82,9 @@ a retained old reference. Missing, foreign and mismatched grants all refuse
 without revealing a foreign journal.
 
 These records and executor references are not credentials. Matching an executor
-identifier does not authenticate a workload. A future identity adapter must
-resolve that identifier from verified identity and bind an actual capability
-to the grant; caller headers and grant IDs are insufficient. No production
+identifier does not authenticate a workload. The unactivated verified adapter
+resolves it from exact mTLS peer enrollment and a stored opaque capability;
+caller headers and grant IDs are insufficient. No production
 producer creates grants or scopes, and no worker/public API exposes grant
 creation or the trusted control plane's org-scoped revocation operation.
 
@@ -110,12 +120,43 @@ claim work or enter generic command dispatch. Tests also cover release, expiry,
 stale generations and reconnect. This verifies the server component's conditional
 boundary, not an end-to-end worker-isolation guarantee.
 
+## Protected wire ingress floor
+
+The [protocol floor](../../crates/server/migrations/20261028140332_worker_ingress_protection_floor.sql)
+is a prerequisite for opaque capability enrollment and verified journal use.
+It refuses legacy/development and selector-only authority across canonical worker
+RPCs and byte routes, regardless of caller-selected org/session identifiers or
+valid legacy signatures. Invalid read signatures are still rejected without
+any database lookup; new uploads are refused before buffering. Empty metadata preserves the existing unprotected
+plane; storage/schema errors fail closed. Floor removal and downgrade are
+refused, so revoking or deleting assignments cannot reopen broad worker access.
+
+The floor also refuses the separate customer-worker protocol before deployment
+lookup or operation dispatch. Its agent-bound deployment token and live lease
+are not verified assignment authority; every unary call rechecks the floor,
+including calls on an existing channel and after reconnect. Unknown floors and
+storage/schema errors do not restore access. The customer protocol has no
+protected-mode compatibility, even for an unrelated custom deployment.
+
+The floor is database-wide because global claims, provider credentials and
+object links do not carry trustworthy assignment scope. Per-assignment mixed
+legacy compatibility is deliberately unsupported. Verified journal reads remain
+the only scoped operation; other operations are refused rather than promoted to
+legacy authority. Unknown future floor versions also fail closed.
+
+[Qualification and rollout limits](../operations/durable-execution-engine.md#worker-communication)
+include in-flight operation semantics, complete legacy draining, missing scoped
+operations, direct/custom hosting and independent enforcement of the serving
+binary version floor. No activation/issuer is wired. This is a canonical wire
+ingress component, not a full worker/process/host isolation guarantee.
+
 ## Dependencies before activation
 
 The broader [assignment-bound design proposal](https://github.com/everruns/everruns/pull/4987)
-requires a separate executor identity and capability issuer, online credential
-and underlying user/agent grant revocation, protected-assignment routing/storage and a security version
-floor. Every legacy and alternate route must refuse protected assignments.
+requires production executor enrollment and capability issuance, complete
+underlying user/custom-policy revocation provenance, protected-assignment
+routing/storage and a security version floor. The source verifier and declared
+session-service dependency revocation cover only part of that boundary. Every legacy and alternate route must refuse protected assignments.
 Standard bearer-authenticated wire clients keep their existing protocol. Custom
 server adapters and direct calls to the public RPC implementation must establish
 explicit server-owned authority; bypassing the authenticator now fails closed.

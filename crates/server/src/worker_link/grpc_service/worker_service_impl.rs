@@ -24,6 +24,9 @@ macro_rules! delegate {
                     request: Request<$req>,
                 ) -> Result<Response<$resp>, Status> {
                     super::authority::check_rpc(&request, stringify!($rpc))?;
+                    super::authority::admit_ingress(
+                        &self.db, super::authority::resolve(request.extensions())?,
+                    ).await?;
                     self.$handler(request).await
                 }
             )*
