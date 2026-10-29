@@ -67,8 +67,10 @@ Only one queued or running build is accepted per organization, enforced by a
 partial unique index. Processing across organizations is bounded, and overlapping sweeps are suppressed
 per replica so long installs cannot occupy the shared maintenance pool. The total
 execution deadline is independent of the bounded cleanup window. Cancellation,
-timeout, failure and restart all enter cleanup. Provider deletion is confirmed;
-uncertain snapshot submissions remain under reconciliation. Failed cleanup stays
+timeout, failure and restart all enter cleanup. Provider deletion is confirmed.
+An accepted cancellation during cleanup atomically wins a worker's final Ready
+save and retains its artifact and authority for deletion.
+Uncertain snapshot submissions remain under reconciliation. Failed cleanup stays
 visible and is retried. Provider TTLs bound abandoned compute when access is lost;
 storage still depends on retaining provider access. Referenced Organization
 accounts cannot be deleted while build resources, active template/Agent bindings

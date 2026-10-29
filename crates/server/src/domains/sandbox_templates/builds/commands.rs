@@ -277,9 +277,7 @@ fn build_error(error: anyhow::Error) -> CommandError {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn apply_honors_parent_context_and_records_only_template_metadata() {
-        use crate::domains::change_history::intent::{ChangeIntent, ChangeSurface};
+    async fn fixture() -> (Ctx, SandboxTemplate, SandboxTemplateBuild) {
         use crate::domains::sandbox_templates::record::{SandboxTargetSpec, SandboxTemplateSpec};
         use crate::storage::{CreateOrganizationConnectionRow, EncryptionService, StorageBackend};
         use everruns_core::{Caller, DEFAULT_ORG_ID, organization::OrgRole};
@@ -333,7 +331,7 @@ mod tests {
             )
             .await
             .unwrap();
-        let mut build = StartSandboxTemplateBuild {
+        let build = StartSandboxTemplateBuild {
             id: template.public_id,
             req: serde_json::from_value(json!({
                 "source_revision_id": template.current_revision.public_id,
@@ -344,6 +342,81 @@ mod tests {
         .run(&ctx)
         .await
         .unwrap();
+        (ctx, template, build)
+    }
+
+    #[tokio::test]
+    async fn cancellation_during_cleanup_wins_the_final_ready_save() {
+        let (ctx, _, mut build) = fixture().await;
+        build.status = SandboxBuildStatus::Running;
+        ctx.db
+            .save_sandbox_build(ctx.org_id(), &build)
+            .await
+            .unwrap();
+        assert!(
+            ctx.db
+                .cancel_sandbox_build(ctx.org_id(), build.id)
+                .await
+                .unwrap()
+        );
+        // The worker has not re-read cancellation while waiting for cleanup.
+        build.status = SandboxBuildStatus::Ready;
+        build.snapshot_id = Some("unused-snapshot-requires-deletion".into());
+        build.cleanup_pending = false;
+        ctx.db
+            .save_sandbox_build(ctx.org_id(), &build)
+            .await
+            .unwrap();
+        let mut saved = ctx
+            .db
+            .get_sandbox_build(ctx.org_id(), build.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(saved.status, SandboxBuildStatus::Cancelled);
+        assert!(saved.cancel_requested && saved.cleanup_pending);
+        assert!(
+            ctx.db
+                .sandbox_build_credential(ctx.org_id(), build.id)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            ctx.db
+                .pending_sandbox_builds()
+                .await
+                .unwrap()
+                .contains(&(ctx.org_id(), build.id.uuid()))
+        );
+        assert!(
+            ctx.db
+                .apply_sandbox_build(ctx.org_id(), build.id)
+                .await
+                .is_err()
+        );
+        // The reconciler releases the retained authority only after deletion.
+        saved.cleanup_pending = false;
+        ctx.db
+            .save_sandbox_build(ctx.org_id(), &saved)
+            .await
+            .unwrap();
+        assert!(
+            ctx.db
+                .sandbox_build_credential(ctx.org_id(), build.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_honors_parent_context_and_records_only_template_metadata() {
+        use crate::domains::change_history::intent::{ChangeIntent, ChangeSurface};
+        use serde_json::json;
+
+        let (ctx, template, mut build) = fixture().await;
+        let db = ctx.db.clone();
         build.status = SandboxBuildStatus::Ready;
         build.snapshot_id = Some("DO_NOT_JOURNAL_SNAPSHOT_ID".into());
         build.software_notes = Some("DO_NOT_JOURNAL_SOFTWARE_NOTES".into());

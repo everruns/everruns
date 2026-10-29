@@ -120,8 +120,16 @@ impl StorageBackend {
     }
 
     pub async fn save_sandbox_build(&self, org: i64, build: &SandboxTemplateBuild) -> Result<()> {
-        // Cancellation is a separate atomic field: runner saves cannot erase a request.
-        sqlx::query("UPDATE sandbox_template_builds SET status=$3,cleanup_pending=$4,credential_snapshot_encrypted=CASE WHEN $4 OR $3 IN ('queued','running','ready') THEN credential_snapshot_encrypted ELSE NULL END,record=$5 || jsonb_build_object('cancel_requested',COALESCE((record->>'cancel_requested')::boolean,false)),updated_at=now() WHERE org_id=$1 AND id=$2 AND (status IN ('queued','running') OR status=$3)")
+        // A cancellation accepted while cleanup awaited the provider must win
+        // the final Ready save. Keep its artifact and authority queued for cleanup.
+        sqlx::query(r#"UPDATE sandbox_template_builds SET
+            status=CASE WHEN $3='ready' AND COALESCE((record->>'cancel_requested')::boolean,false) THEN 'cancelled' ELSE $3 END,
+            cleanup_pending=$4 OR ($3='ready' AND COALESCE((record->>'cancel_requested')::boolean,false)),
+            credential_snapshot_encrypted=CASE WHEN $4 OR $3 IN ('queued','running','ready') THEN credential_snapshot_encrypted ELSE NULL END,
+            record=$5 || jsonb_build_object('cancel_requested',COALESCE((record->>'cancel_requested')::boolean,false))
+                || CASE WHEN $3='ready' AND COALESCE((record->>'cancel_requested')::boolean,false)
+                    THEN '{"status":"cancelled","step":"cancelled","cleanup_pending":true}'::jsonb ELSE '{}'::jsonb END,
+            updated_at=now() WHERE org_id=$1 AND id=$2 AND (status IN ('queued','running') OR status=$3)"#)
             .bind(org).bind(build.id.uuid()).bind(build.status.as_str()).bind(build.cleanup_pending)
             .bind(serde_json::to_value(build)?).execute(self.database().tx_pool()).await?;
         Ok(())
