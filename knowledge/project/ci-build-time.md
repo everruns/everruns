@@ -185,9 +185,14 @@ durable 9.1m to 2-3m.
   85 selected domain tests passed before the forty-minute job timed out
   ([run](https://github.com/everruns/everruns/actions/runs/40613751449/attempts/1)).
   Its unchanged retry spent 35m16s compiling and was interrupted during units.
-  The server matrix leg therefore retains bounded cold-build headroom; other
-  groups keep their existing budget. Test selection, compile memory limits,
-  profiles and execution concurrency are unchanged. This margin is not evidence
+  The focused server matrix leg therefore retains bounded cold-build headroom.
+  The main PostgreSQL server shard needs the same protection: a 33m35s compile
+  plus 3,812 passing unit tests and 66 passing contracts exhausted its forty-minute
+  budget before persistence validation completed
+  ([run](https://github.com/everruns/everruns/actions/runs/40816428430)).
+  That shard now has a bounded sixty-minute budget; other shards keep forty minutes.
+  Test selection, cache keys, compile memory limits, profiles and execution
+  concurrency are unchanged. This margin is not evidence
   of a warm-cache latency improvement or a guarantee that a cache remains resident.
 - **Benchmark optimization and concurrency separately.** The manual
   [pilot](../../.github/workflows/ci-test-archive.yml) compares CI binary optimization
