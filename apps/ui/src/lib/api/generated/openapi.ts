@@ -8877,7 +8877,9 @@ export interface components {
       id: string;
       status: components["schemas"]["ChannelStatus"];
     };
+    /** @description Three representative workload hypotheses; prices and usage frequency are set separately. */
     AgentCostPlan: {
+      /** @description Exactly three suggested tasks that users can edit before projecting costs. */
       tasks: components["schemas"]["CostPlanTask"][];
     };
     /**
@@ -11740,17 +11742,33 @@ export interface components {
        */
       src_path: string;
     };
+    /** @description One illustrative task and its editable token and model-call assumptions. */
     CostPlanTask: {
+      /** @description Expected steps and the main uncertainty behind the workload estimate. */
       assumption: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Model calls per task, including follow-ups after tools; between 1 and 100.
+       */
       calls: number;
+      /** @description Example user request that this task represents. */
       description: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Initial user-input tokens, excluding system instructions and tool schemas.
+       */
       message_tokens: number;
+      /** @description Short name of the representative task. */
       name: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Output tokens per model call, including reasoning and tool arguments.
+       */
       output_tokens: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description New tool-result tokens added at each step of the task.
+       */
       tool_result_tokens: number;
     };
     /**

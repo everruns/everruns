@@ -33741,6 +33741,7 @@
       },
       "AgentCostPlan": {
         "type": "object",
+        "description": "Three representative workload hypotheses; prices and usage frequency are set separately.",
         "required": [
           "tasks"
         ],
@@ -33749,7 +33750,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CostPlanTask"
-            }
+            },
+            "description": "Exactly three suggested tasks that users can edit before projecting costs."
           }
         },
         "additionalProperties": false
@@ -39140,6 +39142,7 @@
       },
       "CostPlanTask": {
         "type": "object",
+        "description": "One illustrative task and its editable token and model-call assumptions.",
         "required": [
           "name",
           "description",
@@ -39151,32 +39154,39 @@
         ],
         "properties": {
           "assumption": {
-            "type": "string"
+            "type": "string",
+            "description": "Expected steps and the main uncertainty behind the workload estimate."
           },
           "calls": {
             "type": "integer",
             "format": "int32",
+            "description": "Model calls per task, including follow-ups after tools; between 1 and 100.",
             "minimum": 0
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "Example user request that this task represents."
           },
           "message_tokens": {
             "type": "integer",
             "format": "int32",
+            "description": "Initial user-input tokens, excluding system instructions and tool schemas.",
             "minimum": 0
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Short name of the representative task."
           },
           "output_tokens": {
             "type": "integer",
             "format": "int32",
+            "description": "Output tokens per model call, including reasoning and tool arguments.",
             "minimum": 0
           },
           "tool_result_tokens": {
             "type": "integer",
             "format": "int32",
+            "description": "New tool-result tokens added at each step of the task.",
             "minimum": 0
           }
         },

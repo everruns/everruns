@@ -22,20 +22,30 @@ fn default_locale() -> String {
     "en".into()
 }
 
+/// One illustrative task and its editable token and model-call assumptions.
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CostPlanTask {
+    /// Short name of the representative task.
     pub name: String,
+    /// Example user request that this task represents.
     pub description: String,
+    /// Expected steps and the main uncertainty behind the workload estimate.
     pub assumption: String,
+    /// Model calls per task, including follow-ups after tools; between 1 and 100.
     pub calls: u32,
+    /// Initial user-input tokens, excluding system instructions and tool schemas.
     pub message_tokens: u32,
+    /// Output tokens per model call, including reasoning and tool arguments.
     pub output_tokens: u32,
+    /// New tool-result tokens added at each step of the task.
     pub tool_result_tokens: u32,
 }
+/// Three representative workload hypotheses; prices and usage frequency are set separately.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AgentCostPlan {
+    /// Exactly three suggested tasks that users can edit before projecting costs.
     pub tasks: Vec<CostPlanTask>,
 }
 
