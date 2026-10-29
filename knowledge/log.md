@@ -64,7 +64,6 @@
 - Added agent-aware cost planning with bounded utility inference, editable task mix, user/task projections and a permanent redirect from the original shared announcement.
 - Added opt-in self-service HTTPS worker registration, response-stream execution through the restricted worker validator, and a Cloudflare/private-D1 example. See [Custom workers](operations/custom-workers.md).
 
-
 ## 2026-10-27
 
 - Shell filesystem checks now use metadata to recognize empty workspace directories across the command-backed worker transport. Recursive copy preserves destination directory layout before any child is written. See [Bashkit requirements](execution/bashkit-requirements.md).
