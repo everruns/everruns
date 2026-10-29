@@ -237,6 +237,7 @@ async def one_turn(
         "simulator_scenario": simulator_shape,
         "session_id": actor.session,
         "request_id": key,
+        "timeout_seconds": args.turn_timeout,
         "admitted": False,
         "completed": False,
         "phase": args.phase,
@@ -320,6 +321,11 @@ async def one_turn(
                     return True
     except Exception as error:
         results.error("turn", error)
+        row["failure_kind"] = (
+            f"http_{error.response.status_code}"
+            if isinstance(error, httpx.HTTPStatusError)
+            else type(error).__name__
+        )
         return False
     finally:
         results.record(row)
@@ -454,8 +460,33 @@ def workload_valid(shape, terminal, output):
     return valid, observed
 
 
+def failed_observation(row, input_ts, completion_ts):
+    """Use one server clock; within-budget completion does not prove SSE loss.
+
+    Admission and network time consume the client's deadline too. Late durable
+    completion remains a failure, never a recovered successful observation.
+    """
+    if not row.get("admitted"):
+        return "acknowledgment_failed", None
+    if not input_ts or not completion_ts:
+        return "no_durable_completion", None
+    elapsed = (
+        datetime.fromisoformat(completion_ts.replace("Z", "+00:00"))
+        - datetime.fromisoformat(input_ts.replace("Z", "+00:00"))
+    ).total_seconds() * 1000
+    if elapsed < 0:
+        return "inconsistent_server_clock", elapsed
+    return (
+        "backend_deadline_exceeded"
+        if elapsed >= row["timeout_seconds"] * 1000
+        else "completed_within_backend_budget",
+        elapsed,
+    )
+
+
 async def audit_workload(client, target, actor, rows, limit):
     starts, terminals, outputs = {}, {}, {}
+    input_times, completion_times = {}, {}
     async for events in event_pages(
         client,
         target,
@@ -465,21 +496,38 @@ async def audit_workload(client, target, actor, rows, limit):
     ):
         for event in events:
             data = event.get("data", {})
-            if event["type"] == "turn.started":
+            if event["type"] == "input.message":
+                input_times[data.get("message", {}).get("id")] = event.get("ts")
+            elif event["type"] == "turn.started":
                 starts.setdefault(data.get("input_message_id"), []).append(
                     data.get("turn_id")
                 )
             elif event["type"] == "turn.completed":
                 terminals.setdefault(data.get("turn_id"), []).append(data)
+                completion_times[data.get("turn_id")] = event.get("ts")
             elif event["type"] == "output.message.completed":
                 message = data.get("message", {})
                 outputs.setdefault(message.get("id"), []).append(message)
     proof = []
     for row in rows:
-        if not row["completed"]:
-            continue
-        turns = starts.get(row["message_id"], [])
+        turns = starts.get(row.get("message_id"), [])
         terminal = terminals.get(turns[0], []) if len(turns) == 1 else []
+        if not row["completed"]:
+            classification, elapsed = failed_observation(
+                row,
+                input_times.get(row.get("message_id")),
+                completion_times.get(turns[0]) if len(turns) == 1 else None,
+            )
+            proof.append(
+                {
+                    "marker": row["marker"],
+                    "scenario": row["scenario"],
+                    "passed": False,
+                    "failure_classification": classification,
+                    "backend_elapsed_ms": elapsed,
+                }
+            )
+            continue
         messages = (
             outputs.get(terminal[0].get("final_message_id"), [])
             if len(terminal) == 1

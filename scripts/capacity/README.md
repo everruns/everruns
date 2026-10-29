@@ -75,6 +75,10 @@ credentials and must never be uploaded or committed; process logs also stay loca
 Publish only inspected result files. Metadata records the source revision, host
 limits, topology, simulator and worker configuration. Comparisons require matching
 settings and a quiet host.
+Failed turns retain a safe exception category and durable completion diagnostics.
+Backend deadline overruns remain failures. Completion within the backend budget
+alone does not prove SSE loss: the client budget includes admission and network
+time too.
 The fixture disables the global per-IP API limiter and raises setup/resource
 creation quotas because all synthetic clients share one loopback address. These
 settings are recorded; a pass establishes capacity for that topology, not an

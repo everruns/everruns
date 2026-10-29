@@ -49,6 +49,27 @@ def report():
 
 
 class CapacityTests(unittest.IsolatedAsyncioTestCase):
+    def test_failed_turn_diagnostics_do_not_confuse_late_completion_with_loss(self):
+        from .run import failed_observation
+
+        row = {"admitted": True, "timeout_seconds": 120}
+        start = "2026-10-29T00:00:00Z"
+        self.assertEqual(
+            failed_observation(row, start, "2026-10-29T00:02:30Z")[0],
+            "backend_deadline_exceeded",
+        )
+        self.assertEqual(
+            failed_observation(row, start, "2026-10-29T00:01:59Z")[0],
+            "completed_within_backend_budget",
+        )
+        self.assertEqual(
+            failed_observation(row, start, None)[0], "no_durable_completion"
+        )
+        self.assertEqual(
+            failed_observation({"admitted": False}, None, None)[0],
+            "acknowledgment_failed",
+        )
+
     def test_a_shortened_failed_soak_cannot_qualify(self):
         r = report()
         r.update(phase="steady", duration_seconds=300, requested_duration_seconds=1800)

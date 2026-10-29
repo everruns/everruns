@@ -21,16 +21,12 @@
 
 - Bounded Work Chat upstream setup without aborting an established SSE response at 30 seconds. See [Work Chat](integrations/work-chat.md).
 
-<<<<<<< HEAD
+- Added first-class authenticated Console, Agent API and Work Chat capacity qualification with simulated models, durable delivery oracles and independent resource sampling. See [load testing](operations/load-testing.md).
+
 ## 2026-10-28
 
 - Preserve provider attribution for Knowledge embeddings and retain deployment-owned index operation receipts separately from host pricing. See [Knowledge Indexing and Storage](runtime-resources/knowledge-indexing.md).
 - Unified console and Work Chat generative UI on a shared 69-component A2UI 1.0 catalog, with generated prompts, message actions, legacy compatibility and browser qualification. See [A2UI](ui/a2ui.md).
-=======
->>>>>>> d93022510 (test(bench): tighten workload fidelity and failure reporting)
-- Added first-class authenticated Console, Agent API and Work Chat capacity qualification with simulated models, durable delivery oracles and independent resource sampling. See [load testing](operations/load-testing.md).
-
-## 2026-10-28
 
 - Made single-message retrieval independent of the history window and indexed embedded message IDs for turn-start and input-provenance lookups. See [Architecture](foundations/architecture.md) and [ID Schema](foundations/id-schema.md).
 
