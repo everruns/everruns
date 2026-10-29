@@ -186,6 +186,14 @@ pub struct DatabasePoolConfig {
     /// Acquire timeout for the background pool. Deliberately far longer than
     /// the request timeout: a sweep can afford to wait.
     pub background_acquire_timeout: std::time::Duration,
+    /// Connections whose commits do not wait for the WAL flush
+    /// (`synchronous_commit = off`), for writes that are rebuilt when lost:
+    /// the reporting projector's claims, facts and completions. A database
+    /// crash can lose their last fraction of a second, never break order or
+    /// consistency: WAL is replayed in order, so a lost fact always comes with
+    /// its lost completion and the row is projected again. `0` sends that work
+    /// to the background pool with ordinary durable commits.
+    pub relaxed_max_connections: u32,
 }
 
 impl Default for DatabasePoolConfig {
@@ -197,6 +205,7 @@ impl Default for DatabasePoolConfig {
             idle_timeout: std::time::Duration::from_secs(300),
             background_max_connections: 8,
             background_acquire_timeout: std::time::Duration::from_secs(30),
+            relaxed_max_connections: 4,
         }
     }
 }
@@ -221,17 +230,18 @@ impl DatabasePoolConfig {
                 "DATABASE_BACKGROUND_ACQUIRE_TIMEOUT_SECS",
                 defaults.background_acquire_timeout,
             ),
+            relaxed_max_connections: env_or(
+                "DATABASE_RELAXED_POOL_MAX",
+                defaults.relaxed_max_connections,
+            ),
         }
     }
 
-    /// Connections this process opens to PostgreSQL across both pools.
+    /// Connections this process opens to PostgreSQL across all pools.
     pub fn total_max_connections(&self) -> u32 {
-        if self.background_max_connections == 0 {
-            self.max_connections
-        } else {
-            self.max_connections
-                .saturating_add(self.background_max_connections)
-        }
+        self.max_connections
+            .saturating_add(self.background_max_connections)
+            .saturating_add(self.relaxed_max_connections)
     }
 }
 
@@ -309,6 +319,10 @@ pub struct Database {
     /// `pool` so a request burst cannot starve them; equal to `pool` when the
     /// database was built without a background pool (tests, embedded uses).
     background_pool: PgPool,
+    /// Connections that commit without waiting for the WAL flush
+    /// (`DatabasePoolConfig::relaxed_max_connections`); equal to
+    /// `background_pool` when not configured.
+    relaxed_pool: PgPool,
     /// Optional S3-compatible blob backend. When set, file/image content bytes
     /// are offloaded to the object store and these tables hold only metadata +
     /// a pointer. `None` keeps bytes inline in
@@ -346,6 +360,7 @@ impl Database {
     pub fn new(pool: PgPool) -> Self {
         Self {
             background_pool: pool.clone(),
+            relaxed_pool: pool.clone(),
             pool: crate::storage::transaction::TxPool::new(pool),
             blob_store: None,
             test_database: None,
@@ -427,6 +442,25 @@ impl Database {
                 .connect_lazy(database_url)?
         };
 
+        let relaxed_pool = if config.relaxed_max_connections == 0 {
+            background_pool.clone()
+        } else {
+            pool_options()
+                .max_connections(config.relaxed_max_connections)
+                .min_connections(0)
+                .acquire_timeout(config.background_acquire_timeout)
+                .idle_timeout(config.idle_timeout)
+                .after_connect(|conn, _| {
+                    Box::pin(async move {
+                        sqlx::query("SET synchronous_commit = off")
+                            .execute(conn)
+                            .await?;
+                        Ok(())
+                    })
+                })
+                .connect_lazy(database_url)?
+        };
+
         tracing::info!(
             max_connections = config.max_connections,
             min_connections = config.min_connections,
@@ -434,6 +468,7 @@ impl Database {
             idle_timeout_secs = config.idle_timeout.as_secs(),
             background_max_connections = config.background_max_connections,
             background_acquire_timeout_secs = config.background_acquire_timeout.as_secs(),
+            relaxed_max_connections = config.relaxed_max_connections,
             "Database connection pool initialized"
         );
 
@@ -479,6 +514,7 @@ impl Database {
         Ok(Self {
             pool: crate::storage::transaction::TxPool::new(pool),
             background_pool,
+            relaxed_pool,
             blob_store: None,
             test_database: None,
         })
@@ -504,6 +540,13 @@ impl Database {
         &self.background_pool
     }
 
+    /// The pool whose commits do not wait for the WAL flush. Only for writes
+    /// that are rebuilt when a crash loses them (see
+    /// `DatabasePoolConfig::relaxed_max_connections`).
+    pub fn relaxed_pool(&self) -> &PgPool {
+        &self.relaxed_pool
+    }
+
     /// A view of this database whose queries run on the background pool.
     ///
     /// Every repository method takes `&self.pool`, so handing a background loop
@@ -513,6 +556,7 @@ impl Database {
         Self {
             pool: crate::storage::transaction::TxPool::new(self.background_pool.clone()),
             background_pool: self.background_pool.clone(),
+            relaxed_pool: self.relaxed_pool.clone(),
             blob_store: self.blob_store.clone(),
             test_database: self.test_database.clone(),
         }

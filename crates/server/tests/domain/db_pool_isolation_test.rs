@@ -39,6 +39,7 @@ fn scaled_config(background_max: u32) -> DatabasePoolConfig {
         idle_timeout: Duration::from_secs(300),
         background_max_connections: background_max,
         background_acquire_timeout: Duration::from_secs(10),
+        relaxed_max_connections: 0,
     }
 }
 
@@ -365,4 +366,27 @@ async fn seeded_api_fixtures_remain_private_and_preserve_fixture_modes() {
                 .unwrap();
         assert_eq!(fixtures.0, expected);
     }
+}
+
+/// Writes routed to the relaxed pool skip the WAL flush wait; every other pool
+/// keeps the server default, so chat content and billing rows stay durable.
+#[tokio::test(flavor = "multi_thread")]
+async fn relaxed_pool_alone_skips_the_commit_flush() {
+    let config = DatabasePoolConfig {
+        relaxed_max_connections: 1,
+        ..scaled_config(1)
+    };
+    let db = Database::connect_with_config(&database_url(), config)
+        .await
+        .expect("connect");
+
+    async fn setting(pool: &sqlx::PgPool) -> String {
+        sqlx::query_scalar("SHOW synchronous_commit")
+            .fetch_one(pool)
+            .await
+            .expect("show synchronous_commit")
+    }
+    assert_eq!(setting(db.relaxed_pool()).await, "off");
+    assert_ne!(setting(db.pool()).await, "off");
+    assert_ne!(setting(db.background_pool()).await, "off");
 }
