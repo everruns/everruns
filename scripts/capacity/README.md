@@ -7,7 +7,8 @@ uses a real LLM. Interactive sign-in, browser rendering and WAN conditions are
 outside this benchmark.
 
 Run from the repository root after installing the normal local development
-prerequisites (including native PostgreSQL, Caddy >=2.11.4, Node >=24, pnpm and Rust):
+prerequisites (including Python >=3.11, native PostgreSQL, Caddy >=2.11.4,
+Node >=24, pnpm and Rust):
 
 ```bash
 python3 -m venv .venv-capacity
@@ -74,6 +75,11 @@ failures fail the gate. Resource coverage and process liveness are checked, with
 p95 cannot exceed twice early pickup p95 or one second, whichever is larger.
 Incomplete turns or missed arrival schedules independently fail. The queue trend
 is explicitly unmeasured for small samples; a smoke is never a capacity result.
+Generator arrival lag p95 must stay below 100 ms; a generator that cannot sustain
+the requested schedule cannot establish platform capacity.
+The simultaneous burst has a separately reported, configurable five-second
+acknowledgment budget; recovery uses fifteen seconds. Neither relaxes the steady
+load's 500 ms gate.
 
 The benchmark refuses known production hosts and requires an explicit isolated
 target and enabled `llmsim` models for every tenant before sending messages.

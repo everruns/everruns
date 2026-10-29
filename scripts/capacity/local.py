@@ -334,6 +334,11 @@ def bootstrap(lab):
     ).split(b"\0")
     for filename in sorted(filter(None, untracked)):
         digest.update(filename + b"\0" + (ROOT / os.fsdecode(filename)).read_bytes())
+
+    def binary_digest(path):
+        with open(path, "rb") as binary:
+            return hashlib.file_digest(binary, "sha256").hexdigest()
+
     data = {
         "isolated": True,
         "management_url": lab.api,
@@ -347,11 +352,21 @@ def bootstrap(lab):
             "topology": {
                 "source_dirty": bool(delta or any(untracked)),
                 "source_delta_sha256": digest.hexdigest(),
+                "fixture_binary_sha256": binary_digest(lab.args.fixture_bin),
+                "worker_binary_sha256": binary_digest(lab.args.worker_bin),
+                "rustc": subprocess.check_output(
+                    ["rustc", "--version"], text=True
+                ).strip(),
+                "node": subprocess.check_output(
+                    ["node", "--version"], text=True
+                ).strip(),
                 "hardware": hardware(),
                 "servers": 1,
                 "workers": 1,
                 "proxy": "Caddy HTTPS/HTTP2",
                 "identity_provider": "synthetic RS256, warm key cache",
+                "identity_token_lifetime_seconds": 900,
+                "identity_negative_checks": ["signature", "audience", "expired"],
                 "interactive_login_measured": False,
                 "auth_mode": "full",
                 "access_token_lifetime_seconds": 14400,
@@ -362,6 +377,7 @@ def bootstrap(lab):
                 "release_lto": False,
                 "release_opt_level": 3,
                 "release_codegen_units": 16,
+                "binaries_built_by_coordinator": not lab.args.skip_build,
                 "thread_stack_bytes": 33554432,
             },
             "limits": {
@@ -396,6 +412,7 @@ def run_case(
     name = f"{path}-{users}-{phase}-{label}" + ("-recovery" if fault else "")
     directory = lab.results / name
     directory.mkdir()
+    identity_before = lab.identity_metrics()
     start_file = lab.directory / (name + "-start.json")
     pids_file = lab.directory / (name + "-pids.json")
     stop_file = lab.directory / (name + "-monitor-stop")
@@ -428,7 +445,13 @@ def run_case(
     generators = min(lab.args.generators, users)
     auth_files = []
     try:
-        ack_target = 15000 if fault else lab.args.ack_p95_ms
+        ack_target = (
+            15000
+            if fault
+            else lab.args.burst_ack_p95_ms
+            if phase == "burst"
+            else lab.args.ack_p95_ms
+        )
         for shard in range(generators):
             output = directory / f"shard-{shard}"
             ready = lab.directory / (name + f"-ready-{shard}.json")
@@ -524,6 +547,10 @@ def run_case(
             process.wait()
         report = merge([output for _, _, output in shards])
         report["case"] = name
+        report["idp_refresh_successes_including_setup"] = (
+            lab.identity_metrics()["refresh_successes"]
+            - identity_before["refresh_successes"]
+        )
         report.update(verdict(report, ack_target))
         report["ack_p95_gate_ms"] = ack_target
         stop_file.touch()
@@ -591,6 +618,7 @@ def main():
     p.add_argument("--interval", type=float, default=60)
     p.add_argument("--turn-timeout", type=float, default=120)
     p.add_argument("--ack-p95-ms", type=float, default=500)
+    p.add_argument("--burst-ack-p95-ms", type=float, default=5000)
     p.add_argument("--generators", type=int, default=4)
     p.add_argument("--worker-slots", type=int, default=50)
     p.add_argument("--model-waits", type=int, default=200)

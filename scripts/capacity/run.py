@@ -95,6 +95,7 @@ def verdict(report, ack_p95):
         "no_sustained_queue_growth": report.get("fault_mode", False)
         or report.get("phase") != "steady"
         or report.get("queue", {}).get("stable") is not False,
+        "generator_on_schedule": report.get("arrival_lag_ms", {}).get("p95", 0) < 100,
     }
     return {"passed": all(checks.values()), "checks": checks}
 
@@ -107,6 +108,7 @@ class Results:
         self.poll_errors = Counter()
         self.poll_ms = []
         self.start_lag_ms = []
+        self.poll_requests = 0
         self.output = output
         self.handle = open(output / "turns.jsonl", "a", buffering=1)
 
@@ -191,7 +193,9 @@ async def post_message(
     return original
 
 
-async def one_turn(client, actor, stream, index, sequence, args, results):
+async def one_turn(
+    client, actor, stream, index, sequence, args, results, scheduled=None
+):
     # Drain old terminal/control frames only after the previous turn settled.
     while not stream.queue.empty():
         stream.queue.get_nowait()
@@ -220,6 +224,9 @@ async def one_turn(client, actor, stream, index, sequence, args, results):
         "completed": False,
         "phase": args.phase,
         "start_seconds": time.perf_counter() - args.started,
+        "arrival_lag_ms": max(0, (time.perf_counter() - scheduled) * 1000)
+        if scheduled is not None
+        else 0,
     }
     start = time.perf_counter()
     try:
@@ -306,6 +313,7 @@ async def background(client, actor, interval, paths, results, offset):
     while True:
         started = time.perf_counter()
         for path in paths:
+            results.poll_requests += 1
             try:
                 response = await authenticated_request(
                     client, actor, "GET", actor.url(path)
@@ -509,7 +517,7 @@ async def run(args):
                 await asyncio.sleep(max(0, due - time.perf_counter()))
                 results.start_lag_ms.append(max(0, (time.perf_counter() - due) * 1000))
                 completed = await one_turn(
-                    client, actor, stream, index, sequence, args, results
+                    client, actor, stream, index, sequence, args, results, scheduled=due
                 )
                 # Work Chat deliberately hides input-to-turn provenance. One
                 # outstanding turn, its input echo and terminal turn ID suffice;
@@ -628,6 +636,14 @@ async def run(args):
         "start_epoch": start_wall,
         "fault_mode": args.fault_mode,
         "requested_duration_seconds": args.duration,
+        "workload": {
+            "seed": args.seed,
+            "mix": args.mix,
+            "turn_timeout_seconds": args.turn_timeout,
+            "lost_ack_every": args.lost_ack_every,
+            "reconnect_at_seconds": args.reconnect_at,
+            "disconnect_seconds": args.disconnect_seconds,
+        },
         "duration_seconds": elapsed,
         "interval_seconds": args.interval,
         "background_polls": args.background,
@@ -671,6 +687,7 @@ async def run(args):
         "arrival_lag_ms": percentiles(results.start_lag_ms),
         "poll_ms": percentiles(results.poll_ms),
         "poll_errors": dict(results.poll_errors),
+        "poll_requests": results.poll_requests,
         "errors": dict(results.errors),
         "http_status": dict(results.http_status),
         "http_versions": dict(transport_versions),

@@ -52,7 +52,15 @@ class Actor:
                 (10, ["chat/config"]),
             ]
         if self.path == "console":
-            return [(15, ["sessions?source=chat&limit=100&mine=true"])]
+            return [
+                (
+                    15,
+                    [
+                        "sessions?source=chat&limit=100&mine=true&side_chats_only=true&order=last_activity&agent_id="
+                        + self.agent
+                    ],
+                )
+            ]
         return []
 
 

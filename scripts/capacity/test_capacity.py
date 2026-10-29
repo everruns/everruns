@@ -46,6 +46,58 @@ def report():
 
 
 class CapacityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_work_chat_projection_correlates_input_and_terminal_turn(self):
+        import time
+        from .run import one_turn
+
+        stream = SimpleNamespace(queue=asyncio.Queue())
+
+        def respond(_request):
+            for kind, data in [
+                ("input.message", {"message": {"id": "old"}}),
+                ("turn.started", {"input_message_id": "old", "turn_id": "old"}),
+                ("input.message", {"message": {"id": "accepted"}}),
+                ("turn.started", {"turn_id": "current"}),
+                ("output.message.delta", {"message_id": "answer", "delta": "hi"}),
+                ("turn.completed", {"turn_id": "old"}),
+                ("turn.completed", {"turn_id": "current"}),
+            ]:
+                stream.queue.put_nowait(
+                    (
+                        kind,
+                        {"data": data, "ts": "2026-01-01T00:00:00Z"},
+                        time.perf_counter(),
+                    )
+                )
+            return httpx.Response(201, json={"id": "accepted"})
+
+        args = SimpleNamespace(
+            seed="test",
+            run_id="test",
+            mix="chat-short",
+            phase="burst",
+            started=time.perf_counter(),
+            turn_timeout=1,
+            lost_ack_every=0,
+            fault_mode=False,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            results = Results(Path(directory))
+            try:
+                async with httpx.AsyncClient(
+                    transport=httpx.MockTransport(respond)
+                ) as client:
+                    self.assertTrue(
+                        await one_turn(
+                            client, actor("work-chat"), stream, 0, 0, args, results
+                        )
+                    )
+                self.assertTrue(results.rows[0]["completed"])
+                self.assertIsNotNone(results.rows[0]["first_delta_ms"])
+                self.assertFalse(results.errors)
+            finally:
+                results.handle.close()
+
     async def test_expired_console_cookie_refresh_is_serialized_and_preserves_intent(
         self,
     ):
@@ -117,6 +169,7 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
             "environment": {},
             "fault_mode": False,
             "requested_duration_seconds": 30,
+            "workload": {},
             "start_epoch": 100,
             "duration_seconds": 5,
             "identity_fingerprints": [],
@@ -133,6 +186,7 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
             "forced_disconnects": 0,
             "http_status": {},
             "http_versions": {},
+            "poll_requests": 0,
         }
         with tempfile.TemporaryDirectory() as temporary:
             directories = [Path(temporary) / str(i) for i in range(2)]
@@ -207,6 +261,7 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
             ("poll_errors", {"429": 1}),
             ("errors", {"setup": 1}),
             ("ack_ms", {"p95": 501}),
+            ("arrival_lag_ms", {"p95": 101}),
         ]:
             r = report()
             r[key] = value

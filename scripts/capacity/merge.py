@@ -21,6 +21,7 @@ def merge(directories):
         "environment",
         "fault_mode",
         "requested_duration_seconds",
+        "workload",
     ]
     if any(any(r[k] != first[k] for k in keys) for r in reports):
         raise ValueError("shard configurations differ")
@@ -68,6 +69,7 @@ def merge(directories):
         "stream_errors",
         "replayed_frames",
         "forced_disconnects",
+        "poll_requests",
     ]:
         result[key] = sum(r[key] for r in reports)
     for key in ["errors", "poll_errors", "http_status", "http_versions"]:
@@ -80,6 +82,7 @@ def merge(directories):
         ("turn_ms", "turn_ms"),
         ("first_delta_ms", "first_delta_ms"),
         ("pickup_ms", "pickup_ms"),
+        ("arrival_lag_ms", "arrival_lag_ms"),
     ]:
         result[metric] = percentiles(
             [r[source] for r in rows if r.get(source) is not None]

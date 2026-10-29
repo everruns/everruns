@@ -318,6 +318,8 @@ class Lab:
                 "start",
                 "--port",
                 str(self.bff),
+                "--hostname",
+                "127.0.0.1",
             ],
             env,
             ROOT / "apps/chat-ui",
@@ -351,6 +353,18 @@ https://127.0.0.1:{self.proxy} {{
         process.wait(timeout=30)
         self.start("server", [str(self.args.fixture_bin)], self.platform_env)
         self.wait(f"http://127.0.0.1:{self.http}/health")
+
+    def identity_metrics(self):
+        with httpx.Client(verify=str(self.cert), trust_env=False, timeout=10) as client:
+            return (
+                client.post(
+                    self.issuer + "/fixture-metrics",
+                    headers={"X-Capacity-Secret": self.fixture_secret},
+                    json={},
+                )
+                .raise_for_status()
+                .json()
+            )
 
     def stop(self):
         for process in reversed(list(self.processes.values())):

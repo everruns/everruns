@@ -23,6 +23,7 @@ const jwk = {
 const jwks = { keys: [jwk] };
 writeFileSync(cfg.public_file, JSON.stringify({ issuer: cfg.issuer, jwks }), { mode: 0o600 });
 const refresh = new Map();
+let refreshSuccesses = 0;
 function mint(subject, variant = "valid") {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const unsigned =
@@ -78,10 +79,12 @@ const server = createServer(
         refresh.delete(fields.get("refresh_token"));
         const next = randomBytes(32).toString("base64url");
         refresh.set(next, subject);
+        refreshSuccesses++;
         return json(res, { id_token: mint(subject), refresh_token: next });
       }
       if (!authorized(req.headers["x-capacity-secret"]))
         return json(res, { error: "unauthorized" }, 401);
+      if (req.url === "/fixture-metrics") return json(res, { refresh_successes: refreshSuccesses });
       if (req.url === "/verification-fixture") {
         const { variant } = JSON.parse(body);
         if (!["valid", "audience", "expired", "signature"].includes(variant))
