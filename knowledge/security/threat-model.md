@@ -344,6 +344,38 @@ Stronger worker isolation requires an executor identity and authority boundary p
 
 Session-scoped worker surfaces that route through `ExecuteCommand` rather than a bespoke RPC gain one layer inside this boundary: the command verifies that the session belongs to the `org_id` the caller claims (`q::verify_session_ownership`), where the bespoke RPCs took `session_id` from the request and addressed the store directly. This does not constrain a token holder, who can claim the victim's `org_id` and satisfy the check; it catches the confused-deputy case where a worker addresses a session from one org while acting for another. The session-database, session-schedule, session-resource-registry, tool-side leased-resource, session key/value storage, and session task RPCs moved onto the command surface for this reason among others; the remaining bespoke session RPCs still address their stores by `session_id` alone. The resource-registry RPCs carried no `org_id` at all, so before the move a worker could register, update, list, or remove any session's resources by naming it; the leased-resource upsert, release, and list RPCs, the five key/value storage RPCs, and the seven session-task RPCs likewise took the session alone. The session-storage secret RPCs still do, until they move with connections and credentials. The leased-resource cleanup sweeper's claim and mark RPCs, and the session-task reaper's orphan scan and prune RPCs, remain cross-org by design: they work across every org. Session schedules, the session resource registry, the tool-side leased resource store, session key/value storage, and the session task registry use internal commands (`/internal/` path), which `Command::run` refuses to any caller but `Caller::internal`, so a worker request that names a `user_id` or platform session cannot reach them. The image and file RPCs (`GetImageArtifact`, `ResolveImage(s)`, `ResolveFiles`) stay dedicated RPCs that answer with signed byte paths, and generated images are uploaded by a POST on the worker endpoint (`api/internal_blobs.rs`); both take the `org_id` from the request and read or write within it, under the same bearer token as every worker RPC. The unused metadata-only `GetImageArtifactInfo` RPC was removed.
 
+The unactivated verified journal path additionally checks immutable assignment
+origins and explicit supporting-grant versions at each admission. Database
+lifecycle triggers revoke grants on authority-relevant session, configured-agent,
+actor lease and linked resource/grant changes, including delete/recreate and
+restore of old values. Expiry is checked online, including after reconnect.
+[Lifecycle enforcement and its limitations](../operations/durable-execution-engine.md#worker-communication)
+cover the first supported dependency class: session-scoped service grants to
+organization-owned service resources. Other resource ownership and consumer
+scopes remain rejected without verified invocation provenance.
+These dependencies only narrow independently established journal authority;
+they never establish it. A future issuer must capture the complete authorized
+provenance, including user/custom-policy revocation, before activation. No issuer
+or production scoped listener is wired, and the broad legacy worker route still
+precludes a compromised-shared-worker isolation guarantee.
+
+An unactivated [protocol floor](../operations/durable-execution-engine.md#worker-communication)
+now refuses broad legacy/development and selector-only authority at every
+canonical worker RPC and byte route, and the separate customer-worker listener.
+The customer protocol refuses every operation with any floor present; a
+deployment token and actor fence are insufficient verified assignment authority.
+Existing channels and reconnects recheck rather than cache an absent floor.
+Opaque capability enrollment requires the
+supported floor; it is monotonic and cannot disappear with assignment expiry or
+deletion. The requirement is database-wide: mixed legacy/scoped workers cannot
+safely share global claims, credential lookups and signed URLs. Storage failure
+and unknown future versions fail closed. Default direct development hosting is
+refused, but captured direct stores, custom/alternate hosting and old binaries
+still require separate exclusion/qualification. The metadata is empty by
+default, no production activation or issuer is wired, and the trusted-shared-worker
+assumption remains for the existing unprotected mode. Prior admissions and
+already disclosed values are not retroactively revoked.
+
 **TM-AUTHZ-004, Command Runner as Single Enforcement Point:**
 `Command::run` (`crates/server/src/domains/common/mod.rs`) evaluates `Command::policy()` against the active `PermissionResolver` before dispatching to `execute`. HTTP adapters call `run`; MCP and gRPC `ExecuteCommand` route through `dispatch()` which calls `run`. Coverage is enforced by iterating `inventory::iter::<CommandDescriptor>` in a test, so new mutating commands that forget `policy()` fail the build. The legacy `#[policy]` attribute macro was removed, service-layer checks were redundant with `Command::run` and hardcoded `DefaultPermissionResolver`, re-introducing `TM-AUTHZ-008`.
 
@@ -871,7 +903,7 @@ an unparseable verdict.
 |----|--------|----------|------------|--------|
 | TM-DURABLE-001 | Task hijacking | High | Ownership verified on completion; late finisher gets `TaskNotOwned`. Local background attempts use executor instance ownership and attempt fencing; recovery checks the observed ownership/activity snapshot atomically with persistence, preserves live and unknown owners, and never replays interrupted commands. | MITIGATED |
 | TM-DURABLE-002 | gRPC unauthenticated access | High | Bearer token auth via `WORKER_GRPC_AUTH_TOKEN` (required in production); optional mTLS via `WORKER_GRPC_TLS_*` env vars; workers are cross-org by design | MITIGATED |
-| TM-DURABLE-013 | Customer agent code uses the internal fleet authority or claims another tenant's sessions | Critical | Opt-in [custom worker service](../operations/custom-workers.md) runs on a separate listener; its digest-stored token resolves one org and agent, never `Caller::internal`. Leasing filters before scanning and built-in workers exclude persistent bindings even when revoked. Journal and event requests require the deployment's namespaced live holder and fence; durable writes reuse transactional fencing. Only execution events and same-session recorded invocations are accepted. No provider secrets, management commands or global queues are exposed. Customer code remains trusted for its own tool policy and truthful tracing; arbitrary image hosting in Cloud is not enabled. | MITIGATED (CP authority boundary; customer process isolation operator-owned) |
+| TM-DURABLE-013 | Customer agent code uses the internal fleet authority or claims another tenant's sessions | Critical | Opt-in [custom worker service](../operations/custom-workers.md) runs on a separate listener; its digest-stored token resolves one org and agent, never `Caller::internal`. Leasing filters before scanning and built-in workers exclude persistent bindings even when revoked. Journal and event requests require the deployment's namespaced live holder and fence; durable writes reuse transactional fencing. Only execution events and same-session recorded invocations are accepted. No provider secrets, management commands or global queues are exposed. Every customer RPC refuses when the database-wide worker ingress protection floor is present or unavailable; this token/lease protocol does not support protected assignment authority. Customer code remains trusted for its own tool policy and truthful tracing; arbitrary image hosting in Cloud is not enabled. | MITIGATED (CP authority boundary; customer process isolation operator-owned) |
 | TM-DURABLE-003 | Event injection | Medium | Events created via gRPC only; validated for session membership | MITIGATED |
 | TM-DURABLE-004 | Queue flooding | Medium | Per-workflow pending task limit (default 100, configurable via `MAX_PENDING_TASKS_PER_WORKFLOW`) | MITIGATED |
 | TM-DURABLE-005 | Heartbeat timeout manipulation | Low | 30s timeout is reasonable for LLM operations; reclaimed tasks re-queued | MITIGATED |
@@ -917,6 +949,31 @@ See [turn transport tests](../../crates/worker/src/grpc_adapters/connect/tests/t
 Transport identity alone does not establish executor-bound assignment authority.
 The legacy shared bearer still grants cross-org access (TM-AUTHZ-002); mTLS on a
 shared worker/process/host does not guarantee containment between its tenants.
+
+An unactivated [journal-only verifier](../../crates/server/src/worker_link/grpc_service/journal_capability/mod.rs)
+now checks actual Tonic mTLS peer evidence against immutable executor enrollment
+and a versioned opaque capability's digest against its grant. A separate verified
+context cannot degrade into a lease-only scope. Each read rechecks identity,
+capability, grant, session ownership and the current lease; certificate or proof
+revocation also denies retained contexts and reconnects. Neither forwarded peer
+headers nor a shared bearer can authenticate through this component. Capability
+proofs are stripped before downstream handlers and excluded from context Debug.
+The middleware's exact journal-route allowlist also blocks future routes that
+forget a downstream scope check, including HTTP requests posing as gRPC.
+
+This does **not** change the legacy listener or TM-AUTHZ-002's cross-org authority:
+no production listener uses this verifier and no issuer populates its records.
+Before activation, enrollment must enforce certificate validity and executor
+provenance, and qualification must cover protected-assignment legacy refusal,
+underlying resource-grant revocation, version floors, transport/hosting adapters,
+issuer/retention/rate budgets, and separate executor authority. Identity and digest
+tombstones remain retained; lifecycle qualification is required before issuance.
+Scoped authority and journal page/head reads share one
+[read-only snapshot](../../crates/server/src/storage/repositories/session_actors/journal_snapshot.rs).
+Revocation committed before that snapshot is refused. An earlier snapshot may
+finish afterward, but cannot expose later-committed events or head metadata;
+delivered bytes cannot be retracted. Live read capabilities are reusable within their assignment;
+stale or revoked proofs cannot be rebound to a fresh grant.
 
 **Design decision:** Workers are intentionally cross-org. They are stateless task executors that process work from any organization's queue. Org-scoping is enforced at the application layer (HTTP API), not the internal gRPC transport.
 

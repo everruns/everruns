@@ -61,35 +61,34 @@ impl ActorJournalScope {
         })
     }
 
-    pub(super) async fn admit_read(
+    pub(super) async fn read_journal(
         &self,
         db: &crate::storage::StorageBackend,
         session_id: SessionId,
-    ) -> Result<(), Status> {
-        // Selectors never replace the scope supplied by the trusted adapter.
-        // Refuse foreign and absent IDs identically, before touching their rows.
+        after_sequence: Option<i32>,
+        limit: i64,
+    ) -> Result<crate::storage::ActorJournalRows, Status> {
         if session_id != self.session_id {
             return Err(denied());
         }
-        let allowed = db
-            .actor_journal_read_allowed(
-                self.org_id,
-                self.session_id,
-                &self.holder,
-                self.fence,
-                self.grant_id,
-                self.executor_id,
-            )
-            .await
-            .map_err(|error| {
-                super::worker::support::internal_status(
-                    "Failed to authorize worker assignment",
-                    error,
-                )
-            })?;
-        if !allowed {
-            return Err(denied());
-        }
-        Ok(())
+        let binding = crate::storage::WorkerJournalCapabilityBinding {
+            grant_id: self.grant_id,
+            executor_id: self.executor_id,
+            org_id: self.org_id,
+            session_id: self.session_id,
+            holder: self.holder.clone(),
+            fence: self.fence,
+        };
+        db.read_worker_assignment_journal(
+            &binding,
+            crate::storage::WorkerJournalReadIdentity::Assignment,
+            after_sequence,
+            limit,
+        )
+        .await
+        .map_err(|error| {
+            super::worker::support::internal_status("Failed to authorize worker assignment", error)
+        })?
+        .ok_or_else(denied)
     }
 }

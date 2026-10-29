@@ -14,6 +14,9 @@ use crate::{services::EventService, storage::StorageBackend};
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod ingress_floor_tests;
+
 #[derive(Clone)]
 pub struct CustomWorkerServiceImpl {
     db: Arc<StorageBackend>,
@@ -83,6 +86,20 @@ impl CustomWorkerServiceImpl {
             .and_then(|v| v.strip_prefix("Bearer "))
             .filter(|v| (32..=256).contains(&v.len()))
             .ok_or_else(|| Status::unauthenticated("Custom worker credential required"))?;
+        // THREAT[TM-AUTHZ-002]: deployment tokens and live leases are not
+        // verified assignment authority. This separate listener must not
+        // reopen the protected plane. Recheck each call, including reconnects.
+        if self
+            .db
+            .worker_ingress_minimum_version()
+            .await
+            .map_err(unavailable)?
+            .is_some()
+        {
+            return Err(Status::permission_denied(
+                "Protected worker ingress does not support custom worker authority",
+            ));
+        }
         // Only a digest is stored in the CP. No reusable infrastructure
         // credential is ever given to a customer worker.
         let digest = Sha256::digest(token.as_bytes());

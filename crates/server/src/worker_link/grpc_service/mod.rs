@@ -8,6 +8,7 @@
 
 pub mod assignment_scope;
 pub mod authority;
+pub mod journal_capability;
 mod worker;
 // The one wire shape of a command failure, shared with the in-process worker.
 pub(crate) use worker::support::command_error_to_proto;
@@ -166,7 +167,6 @@ use everruns_internal_protocol::{
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 
 /// Read the gRPC auth token from the environment. When set, all gRPC
