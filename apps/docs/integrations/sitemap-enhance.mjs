@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { docsUrl } from "../site.config.mjs";
+import { changelogRedirect } from "../redirects.mjs";
 
 export default function sitemapEnhance() {
   return {
@@ -25,11 +26,12 @@ export default function sitemapEnhance() {
 
         const lastmod = new Date().toISOString().split("T")[0];
 
-        // Add <lastmod> to each <url> entry
+        // Redirect sources are durable inbound links, not canonical sitemap pages.
         const enhanced = content.replace(
           /<url><loc>(.*?)<\/loc><\/url>/g,
           (_match, url) =>
-            `<url><loc>${url}</loc><lastmod>${lastmod}</lastmod></url>`
+            changelogRedirect(new URL(url)) ? "" :
+              `<url><loc>${url}</loc><lastmod>${lastmod}</lastmod></url>`
         );
 
         const sitemapDest = join(outDir, "sitemap.xml");
