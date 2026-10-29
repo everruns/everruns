@@ -217,6 +217,38 @@ place.
 
 One Save sends the whole draft. Leaving with unsaved edits asks first.
 
+## Create page
+
+A page that creates a record of one of several kinds asks the question a person can answer
+first: who will use it. The New channel page is the reference.
+
+<DsExample caption="The kind chooser: two groups named by audience, one row per kind with a plain sentence and any prerequisite.">
+  <div class="ds-grid-2">
+    <div class="ds-stack">
+      <span class="ds-label">For people</span>
+      <div class="ds-list">
+        <div class="ds-list-row"><DsIcon name="globe" /><span class="ds-grow"><b style="font-weight: 600">Public Chat</b><br /><span class="ds-muted">A hosted chat page with your branding.</span></span><DsIcon name="chevron-right" size={14} class="ds-muted" /></div>
+        <div class="ds-list-row"><DsIcon name="message-square" /><span class="ds-grow"><b style="font-weight: 600">Slack</b><br /><span class="ds-muted">People message the agent in Slack.</span></span><span class="ds-muted" style="font-size: 12px">Needs a Slack workspace</span><DsIcon name="chevron-right" size={14} class="ds-muted" /></div>
+      </div>
+    </div>
+    <div class="ds-stack">
+      <span class="ds-label">For software</span>
+      <div class="ds-list">
+        <div class="ds-list-row"><DsIcon name="code" /><span class="ds-grow"><b style="font-weight: 600">Agent API</b><br /><span class="ds-muted">Call the agent from your own code.</span></span><DsIcon name="chevron-right" size={14} class="ds-muted" /></div>
+        <div class="ds-list-row"><DsIcon name="code" /><span class="ds-grow"><b style="font-weight: 600">Webhook</b><br /><span class="ds-muted">Another system sends an HTTP request.</span></span><DsIcon name="chevron-right" size={14} class="ds-muted" /></div>
+      </div>
+    </div>
+  </div>
+</DsExample>
+
+1. Nothing is preselected. Each kind is one row: icon, name, one sentence a newcomer
+   understands, and what must exist first. Protocol names stay in the row, not the headings.
+2. Choosing a kind keeps the same page: the masthead becomes "New Public Chat", the chosen
+   kind sits on top of the form with a Change type button, and the Create action appears.
+3. The form is split into named sections, each with a short hint in a left column. Advanced
+   settings with good defaults fold behind a one-line summary of their current values.
+4. The rail says what happens next, so the reader knows the record starts as a draft.
+
 ## Chat
 
 The chat is one centered column, 820px at most, shared by the transcript and the composer.

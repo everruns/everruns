@@ -17,7 +17,7 @@ This guide deploys an Agent as a Slack bot through an Agent-owned channel. For S
 1. Open the Agent and select **Integrations**.
 2. Select **Add channel**, then select **Slack**.
 3. Choose a session strategy.
-4. Leave the Slack credentials empty and select **Save channel**.
+4. Leave the Slack credentials empty and select **Create channel**.
 
 ## Choose a session strategy
 

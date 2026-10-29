@@ -1,7 +1,6 @@
 "use client";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
-import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, MoreHorizontal, Play } from "lucide-react";
 import { slackConnectionLabel } from "@/components/agents/integrations/slack-setup-guidance";
@@ -165,19 +164,13 @@ export function ChannelRow({
   const publishControl = channelPublishControl(channel);
   const canRunNow = !!onRunNow && channel.channel_type === "schedule" && isLive;
   const panelId = `channel-panel-${channel.id}`;
-  const inlineConfiguration = channel.channel_type === "slack" && !!configureHref;
-  const [hasExpanded, setHasExpanded] = useState(expanded);
-  const toggle = () => {
-    setHasExpanded(true);
-    onToggle();
-  };
 
   return (
     <div className="@container/channel-row border bg-card">
       <div className="grid gap-4 p-4 @min-[44rem]/channel-row:grid-cols-[minmax(0,1fr)_auto] @min-[44rem]/channel-row:items-center">
         <button
           type="button"
-          onClick={toggle}
+          onClick={onToggle}
           className="min-w-0 text-left hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring"
           aria-expanded={expanded}
           aria-controls={panelId}
@@ -203,10 +196,7 @@ export function ChannelRow({
               <p className="mt-1 break-words text-sm text-muted-foreground">
                 {channelSubline(channel)}
               </p>
-              <p className="mt-1 text-xs">
-                {expanded ? ui("Hide") : ui("Show")}{" "}
-                {inlineConfiguration ? ui("configuration") : ui("details")}
-              </p>
+              <p className="mt-1 text-xs">{expanded ? ui("Hide details") : ui("Show details")}</p>
             </div>
           </div>
         </button>
@@ -220,10 +210,6 @@ export function ChannelRow({
                 ? relativeTime(channel.next_run_at ?? null)
                 : relativeTime(channel.last_invoked_at ?? null)}
             </p>
-          </div>
-          <div className="hidden @min-[52rem]/channel-row:block">
-            <p className="text-xs font-medium text-muted-foreground">{ui("Runs · 24h")}</p>
-            <p className="mt-1 text-sm">0</p>
           </div>
           <div className="flex items-center justify-end gap-1">
             {onPublishChange && (
@@ -253,7 +239,7 @@ export function ChannelRow({
                   <DropdownMenuContent>
                     {configureHref && (
                       <DropdownMenuItem render={<Link href={configureHref} />}>
-                        {inlineConfiguration ? ui("Channel options") : ui("Configure")}
+                        {ui("Configure")}
                       </DropdownMenuItem>
                     )}
                     {onRunNow && (
@@ -269,34 +255,30 @@ export function ChannelRow({
           </div>
         </div>
       </div>
-      {(expanded || (inlineConfiguration && hasExpanded)) && (
-        <div id={panelId} hidden={!expanded} className="border-t bg-muted/20 px-4 py-3">
-          {!inlineConfiguration && (
-            <div className="grid gap-3 text-sm md:grid-cols-3">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">{ui("Configuration")}</p>
-                <p className="mt-1">{detailText(channel)}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">{ui("Created")}</p>
-                <p className="mt-1">{new Date(channel.created_at).toLocaleString(displayLocale)}</p>
-              </div>
-              <div className="flex items-center justify-between gap-3 md:justify-end">
-                <Button type="button" variant="outline" size="sm" onClick={toggle}>
-                  <ChevronDown className="size-4 rotate-180 transition-transform" />
-                  {ui("Collapse")}
-                </Button>
-                {configureHref && (
-                  <Link href={configureHref} className={buttonVariants({ size: "sm" })}>
-                    {ui("Configure")}
-                  </Link>
-                )}
-              </div>
+      {expanded && (
+        <div id={panelId} className="border-t bg-muted/20 px-4 py-3">
+          <div className="grid gap-3 text-sm md:grid-cols-3">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">{ui("Configuration")}</p>
+              <p className="mt-1">{detailText(channel)}</p>
             </div>
-          )}
-          {usePanel && (
-            <div className={inlineConfiguration ? "" : "mt-4 border-t pt-4"}>{usePanel}</div>
-          )}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">{ui("Created")}</p>
+              <p className="mt-1">{new Date(channel.created_at).toLocaleString(displayLocale)}</p>
+            </div>
+            <div className="flex items-center justify-between gap-3 md:justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={onToggle}>
+                <ChevronDown className="size-4 rotate-180 transition-transform" />
+                {ui("Collapse")}
+              </Button>
+              {configureHref && (
+                <Link href={configureHref} className={buttonVariants({ size: "sm" })}>
+                  {ui("Configure")}
+                </Link>
+              )}
+            </div>
+          </div>
+          {usePanel && <div className="mt-4 border-t pt-4">{usePanel}</div>}
         </div>
       )}
     </div>

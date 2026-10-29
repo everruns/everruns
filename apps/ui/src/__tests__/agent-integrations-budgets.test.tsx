@@ -5,6 +5,11 @@ import type { Agent, AgentChannel } from "@/lib/api/types";
 const mockUseFeatureFlag = jest.fn();
 const mockCanAgent = jest.fn();
 const mockCanBudget = jest.fn();
+const mockReplace = jest.fn();
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: mockReplace, push: jest.fn() }),
+}));
 
 jest.mock("@/hooks/use-agent-source", () => ({
   useAgentSource: () => ({ data: null, isLoading: false, isError: false }),
@@ -69,12 +74,6 @@ jest.mock("@/components/agents/channels/channel-row", () => ({
   ),
 }));
 
-jest.mock("@/components/agents/integrations/channel-details-panel", () => ({
-  ChannelDetailsPanel: ({ channel }: { channel: AgentChannel }) => (
-    <div data-testid={`channel-details-${channel.id}`} />
-  ),
-}));
-
 jest.mock("@/components/agents/agent-github-card", () => ({
   AgentGitHubSection: ({ githubTriggerCount }: { githubTriggerCount?: number }) => (
     <section data-testid="github-section" data-github-triggers={String(githubTriggerCount)}>
@@ -125,22 +124,33 @@ describe("AgentIntegrationsPanel budgets", () => {
     { role: "Member", canManage: false },
     { role: "Admin", canManage: true },
     { role: "Owner", canManage: true },
-  ])("gives $role the budget controls allowed by policy", ({ canManage }) => {
+  ])("gives $role the agent budget controls allowed by policy", ({ canManage }) => {
     mockCanBudget.mockImplementation((policy: string) =>
       policy === "budget.view" ? true : canManage,
     );
 
     render(<AgentIntegrationsPanel agent={agent} />);
 
-    expect(screen.getByTestId("channel-details-endpoint_1")).toBeInTheDocument();
     expect(screen.getByTestId("budget-agent-agent_1")).toHaveAttribute(
       "data-can-manage",
       String(canManage),
     );
-    expect(screen.getByTestId("budget-agent_channel-endpoint_1")).toHaveAttribute(
-      "data-can-manage",
-      String(canManage),
+    // A channel's own budget lives on its channel page, not in the list.
+    expect(screen.queryByTestId("budget-agent_channel-endpoint_1")).not.toBeInTheDocument();
+  });
+
+  it("lists each channel as a row that opens its page", () => {
+    mockCanBudget.mockReturnValue(false);
+
+    render(<AgentIntegrationsPanel agent={agent} />);
+
+    expect(screen.getByText(/1 channel, 1 published/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Webhook" })).toHaveAttribute(
+      "href",
+      "/agents/agent_1/channels/endpoint_1",
     );
+    expect(screen.getAllByText("Published").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Never").length).toBeGreaterThan(0);
   });
 
   it("does not fetch or mount budgets without budget.view", () => {
@@ -156,25 +166,26 @@ describe("AgentIntegrationsPanel budgets", () => {
 
     const { rerender } = render(<AgentIntegrationsPanel agent={agent} />);
 
-    expect(screen.getByRole("switch", { name: "Enabled" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Accept traffic" })).toBeChecked();
     expect(
       screen.getByText(
-        "Off pauses every channel on this agent. Publish on each channel stays as it is.",
+        "Off pauses every channel at once. Each channel keeps its own Published or Draft setting.",
       ),
     ).toBeInTheDocument();
+    expect(screen.queryByText("All channels are paused")).not.toBeInTheDocument();
 
     rerender(<AgentIntegrationsPanel agent={{ ...agent, exposures_suspended: true }} />);
 
-    expect(screen.getByRole("switch", { name: "Enabled" })).not.toBeChecked();
-    expect(screen.getByText("Disabled")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Accept traffic" })).not.toBeChecked();
+    expect(screen.getByText("All channels are paused")).toBeInTheDocument();
   });
 
-  it("opens the channel named in the address", () => {
+  it("sends a link to a channel on to that channel's page", () => {
     mockCanBudget.mockReturnValue(false);
 
     render(<AgentIntegrationsPanel agent={agent} initialChannelId="endpoint_1" />);
 
-    expect(screen.getByTestId("row-endpoint_1")).toHaveAttribute("data-expanded", "true");
+    expect(mockReplace).toHaveBeenCalledWith("/agents/agent_1/channels/endpoint_1");
   });
 
   it("gives GitHub its own section between Channels and Triggers", () => {

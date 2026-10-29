@@ -2,21 +2,9 @@
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useCallback, useId, useState } from "react";
-import {
-  CalendarClock,
-  ChevronDown,
-  Globe,
-  Code,
-  Hash,
-  MessageSquareText,
-  Mic,
-  Monitor,
-  RefreshCw,
-  Webhook,
-} from "lucide-react";
+import { ChevronDown, RefreshCw } from "lucide-react";
 import { SlackIcon as Slack } from "@/components/icons/slack-icon";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -38,7 +26,7 @@ import {
   SlackConversationSettings,
   SlackAgentPaneSettings,
 } from "@/components/apps/slack-conversation-settings";
-import { CronInput, CronLabel, isSupportedCronExpression } from "@/components/apps/cron-label";
+import { CronInput, isSupportedCronExpression } from "@/components/apps/cron-label";
 import {
   DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
   DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS,
@@ -77,7 +65,6 @@ import {
 } from "./api-fields";
 import {
   getAgUiToolVisibilityDisplayName,
-  getChannelTypeDisplayName,
   getInvocationSessionModeDisplayName,
 } from "@/lib/channel-display";
 import { generateChannelToken } from "@/lib/channel-tokens";
@@ -86,10 +73,10 @@ import { SlackWorkspaceChoice, useSlackInstall } from "./slack-install";
 import type { SlackInstallCapability } from "@/lib/api/agent-channels";
 import { SlackInstallError } from "@/components/slack/slack-install-error";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { cn } from "@/lib/utils";
 
 import { WorkChatFields } from "./work-chat-fields";
+import { FoldedSettings, FormSection } from "./form-section";
 
 export const CHANNEL_FORM_KINDS: ChannelType[] = [
   "schedule",
@@ -107,8 +94,6 @@ const DEFAULT_PUBLIC_CHAT_EXPIRATION_HOURS = 6;
 
 const DEFAULT_FCP_EXPIRATION_HOURS = 6;
 const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS = 120;
-
-export type ChannelFormSection = "all" | "schedule" | "invocation" | "session" | "runs";
 
 export type ChannelFormState = {
   kind: ChannelType;
@@ -567,106 +552,6 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
   return false;
 }
 
-function channelIcon(kind: ChannelType) {
-  switch (kind) {
-    case "schedule":
-      return CalendarClock;
-    case "webhook":
-      return Webhook;
-    case "ag_ui":
-      return Monitor;
-    case "public_chat":
-      return Globe;
-    case "voice":
-      return Mic;
-    case "work_chat":
-      return Monitor;
-    case "api":
-      return Code;
-    case "fcp":
-      return MessageSquareText;
-    case "slack":
-      return Slack;
-    default:
-      return Hash;
-  }
-}
-
-function channelDescription(kind: ChannelType): string {
-  switch (kind) {
-    case "schedule":
-      return "Run this agent on a cron-driven cadence in any timezone.";
-    case "webhook":
-      return "Authenticated HTTP channel. Bearer token or Everruns webhook token header.";
-    case "ag_ui":
-      return "Public client surface. Tool names, args, and results are never sent to AG-UI clients.";
-    case "public_chat":
-      return "Hosted, branded chat website for this one agent. Anonymous or sign-in; optional Turnstile.";
-    case "voice":
-      return "Talk to this agent by voice. A speech model listens and speaks; the agent answers.";
-    case "work_chat":
-      return "A separate work app with conversations, threads, files and approvals.";
-    case "api":
-      return "Call this agent from your code with an agent key: sessions, messages, and live events.";
-    case "fcp":
-      return "Free Communication Protocol. Text-in / text-out HTTP channel with a Markdown handshake.";
-    case "slack":
-      return "React to messages in Slack. Per-thread, channel, or user session strategies.";
-    default:
-      return "Channel";
-  }
-}
-
-export function ChannelTypePicker({
-  value,
-  onChange,
-}: {
-  value: ChannelType;
-  onChange: (value: ChannelType) => void;
-}) {
-  const ui = useUiTranslations();
-  const publicChatEnabled = useFeatureFlag("public_chat");
-  const voiceEnabled = useFeatureFlag("voice");
-  const kinds = CHANNEL_FORM_KINDS.filter(
-    (kind) =>
-      kind !== "schedule" &&
-      (kind !== "public_chat" || publicChatEnabled) &&
-      (kind !== "voice" || voiceEnabled),
-  );
-  return (
-    <div className="grid gap-3 md:grid-cols-2">
-      {kinds.map((kind) => {
-        const Icon = channelIcon(kind);
-        const selected = value === kind;
-        return (
-          <button
-            key={kind}
-            type="button"
-            onClick={() => onChange(kind)}
-            className={cn(
-              "border p-4 text-left transition-colors hover:bg-muted/40",
-              selected ? "border-primary bg-muted" : "border-border",
-            )}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex gap-3">
-                <span className="flex size-8 items-center justify-center border bg-background">
-                  <Icon className="size-4" />
-                </span>
-                <div>
-                  <p className="font-medium">{getChannelTypeDisplayName(kind)}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{channelDescription(kind)}</p>
-                </div>
-              </div>
-              {selected && <span className="text-sm font-medium">{ui("Selected")}</span>}
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function FieldGrid({ children }: { children: React.ReactNode }) {
   return <div className="grid gap-4 md:grid-cols-2">{children}</div>;
 }
@@ -675,7 +560,6 @@ export function ChannelForm({
   state,
   onChange,
   mode,
-  section = "all",
   channelId,
   channel,
   slackInstallDisabled = false,
@@ -685,7 +569,6 @@ export function ChannelForm({
   state: ChannelFormState;
   onChange: (state: ChannelFormState) => void;
   mode: "new" | "edit";
-  section?: ChannelFormSection;
   /**
    * The channel's public id (`appchan_…`), present once it exists. One-click
    * Slack install needs it because Slack redirects back to this channel's own
@@ -713,123 +596,160 @@ export function ChannelForm({
     [onChange, state],
   );
 
-  if (section === "runs") {
-    return (
-      <div className="border border-dashed p-4 text-sm text-muted-foreground">
-        {ui("Run history will appear here when channel run aggregation is available.")}
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      {state.kind === "schedule" && (section === "all" || section === "schedule") && (
-        <CronInput
-          value={state.scheduleCronExpression}
-          timezone={state.scheduleTimezone}
-          onChange={(value) => update("scheduleCronExpression", value)}
-          onTimezoneChange={(value) => update("scheduleTimezone", value)}
-        />
-      )}
-
-      {(state.kind === "schedule" || state.kind === "webhook") &&
-        (section === "all" || section === "invocation") && (
-          <div className="space-y-2">
-            <Label htmlFor="channel_message">{ui("Invocation message")}</Label>
-            <Textarea
-              id="channel_message"
-              value={state.channelMessage}
-              onChange={(event) => update("channelMessage", event.target.value)}
-              placeholder={
-                state.kind === "schedule"
-                  ? ui("Run {{app.name}} now.")
-                  : ui("Process webhook payload for {{payload.repo.name}}.")
-              }
+    <div>
+      {state.kind === "schedule" && (
+        <>
+          <FormSection title="When it runs">
+            <CronInput
+              value={state.scheduleCronExpression}
+              timezone={state.scheduleTimezone}
+              onChange={(value) => update("scheduleCronExpression", value)}
+              onTimezoneChange={(value) => update("scheduleTimezone", value)}
             />
-          </div>
-        )}
-
-      {(state.kind === "schedule" || state.kind === "webhook") &&
-        (section === "all" || section === "session") && (
-          <div className="space-y-2">
-            <Label htmlFor="session_mode">{ui("Session mode")}</Label>
-            <Select
-              value={state.invocationSessionMode}
-              onValueChange={(value) =>
-                update("invocationSessionMode", value as InvocationSessionMode)
-              }
-            >
-              <SelectTrigger id="session_mode">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="shared_session">
-                  {getInvocationSessionModeDisplayName("shared_session")}
-                </SelectItem>
-                <SelectItem value="session_per_invocation">
-                  {getInvocationSessionModeDisplayName("session_per_invocation")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-      {state.kind === "webhook" && (section === "all" || section === "invocation") && (
-        <div className="space-y-2">
-          <Label htmlFor="webhook_token">{ui("Webhook token")}</Label>
-          <Input
-            id="webhook_token"
-            type="password"
-            value={state.webhookToken}
-            onChange={(event) => update("webhookToken", event.target.value)}
-            placeholder={
-              mode === "edit" ? ui("Leave blank to keep existing token") : ui("shared-secret")
-            }
-          />
-          <p className="text-xs text-muted-foreground">
-            {ui("Send as Authorization: Bearer <token> or X-Everruns-Webhook-Token.")}
-          </p>
-        </div>
-      )}
-
-      {state.kind === "ag_ui" && (section === "all" || section === "invocation") && (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="ag_ui_token">{ui("Bearer token")}</Label>
-            <div className="flex gap-2">
-              <Input
-                id="ag_ui_token"
-                value={state.agUiToken}
-                onChange={(event) => update("agUiToken", event.target.value)}
-                className="font-mono"
+          </FormSection>
+          <FormSection
+            title="What it sends"
+            hint="The message the agent receives each time this runs."
+          >
+            <div className="space-y-2">
+              <Label htmlFor="channel_message">{ui("Invocation message")}</Label>
+              <Textarea
+                id="channel_message"
+                value={state.channelMessage}
+                onChange={(event) => update("channelMessage", event.target.value)}
                 placeholder={
-                  mode === "edit"
-                    ? ui("Leave blank to keep existing token")
-                    : ui("Generated bearer token")
+                  state.kind === "schedule"
+                    ? ui("Run {{app.name}} now.")
+                    : ui("Process webhook payload for {{payload.repo.name}}.")
                 }
               />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => update("agUiToken", generateChannelToken())}
-                aria-label={ui("Regenerate AG-UI token")}
-              >
-                <RefreshCw className="size-4" />
-              </Button>
             </div>
-          </div>
-          <AgentIdSignInFields
-            idPrefix="ag_ui"
-            description={ui(
-              "Accept AgentID tokens from AI agents. When on, every request must present a valid AgentID token for your client and the bearer token above is not used.",
-            )}
-            enabled={state.agUiAgentIdEnabled}
-            clientId={state.agUiAgentIdClientId}
-            onEnabledChange={(checked) => update("agUiAgentIdEnabled", checked)}
-            onClientIdChange={(value) => update("agUiAgentIdClientId", value)}
-          />
-          <FieldGrid>
+
+            <div className="space-y-2">
+              <Label htmlFor="session_mode">{ui("Session mode")}</Label>
+              <Select
+                value={state.invocationSessionMode}
+                onValueChange={(value) =>
+                  update("invocationSessionMode", value as InvocationSessionMode)
+                }
+              >
+                <SelectTrigger id="session_mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="shared_session">
+                    {getInvocationSessionModeDisplayName("shared_session")}
+                  </SelectItem>
+                  <SelectItem value="session_per_invocation">
+                    {getInvocationSessionModeDisplayName("session_per_invocation")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </FormSection>
+        </>
+      )}
+      {state.kind === "webhook" && (
+        <>
+          <FormSection
+            title="What it sends"
+            hint="The message the agent receives for each request. It can use fields from the request body."
+          >
+            <div className="space-y-2">
+              <Label htmlFor="channel_message">{ui("Invocation message")}</Label>
+              <Textarea
+                id="channel_message"
+                value={state.channelMessage}
+                onChange={(event) => update("channelMessage", event.target.value)}
+                placeholder={ui("Process webhook payload for {{payload.repo.name}}.")}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="session_mode">{ui("Session mode")}</Label>
+              <Select
+                value={state.invocationSessionMode}
+                onValueChange={(value) =>
+                  update("invocationSessionMode", value as InvocationSessionMode)
+                }
+              >
+                <SelectTrigger id="session_mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="shared_session">
+                    {getInvocationSessionModeDisplayName("shared_session")}
+                  </SelectItem>
+                  <SelectItem value="session_per_invocation">
+                    {getInvocationSessionModeDisplayName("session_per_invocation")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </FormSection>
+          <FormSection title="Access" hint="Requests without this token are refused.">
+            <div className="space-y-2">
+              <Label htmlFor="webhook_token">{ui("Webhook token")}</Label>
+              <Input
+                id="webhook_token"
+                type="password"
+                value={state.webhookToken}
+                onChange={(event) => update("webhookToken", event.target.value)}
+                placeholder={
+                  mode === "edit" ? ui("Leave blank to keep existing token") : ui("shared-secret")
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                {ui("Send as Authorization: Bearer <token> or X-Everruns-Webhook-Token.")}
+              </p>
+            </div>
+          </FormSection>
+        </>
+      )}
+      {state.kind === "ag_ui" && (
+        <>
+          <FormSection title="Access" hint="Your web app sends this token with every request.">
+            <div className="space-y-2">
+              <Label htmlFor="ag_ui_token">{ui("Bearer token")}</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="ag_ui_token"
+                  value={state.agUiToken}
+                  onChange={(event) => update("agUiToken", event.target.value)}
+                  className="font-mono"
+                  placeholder={
+                    mode === "edit"
+                      ? ui("Leave blank to keep existing token")
+                      : ui("Generated bearer token")
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => update("agUiToken", generateChannelToken())}
+                  aria-label={ui("Regenerate AG-UI token")}
+                >
+                  <RefreshCw className="size-4" />
+                </Button>
+              </div>
+            </div>
+            <AgentIdSignInFields
+              idPrefix="ag_ui"
+              description={ui(
+                "Accept AgentID tokens from AI agents. When on, every request must present a valid AgentID token for your client and the bearer token above is not used.",
+              )}
+              enabled={state.agUiAgentIdEnabled}
+              clientId={state.agUiAgentIdClientId}
+              onEnabledChange={(checked) => update("agUiAgentIdEnabled", checked)}
+              onClientIdChange={(value) => update("agUiAgentIdClientId", value)}
+            />
+          </FormSection>
+          <FormSection
+            title="What visitors see"
+            hint="Tool names, arguments and results never reach visitors."
+          >
             <div className="space-y-2">
               <Label htmlFor="ag_ui_tool_visibility">{ui("Tool visibility")}</Label>
               <Select
@@ -850,6 +770,22 @@ export function ChannelForm({
                 </SelectContent>
               </Select>
             </div>
+            {state.agUiToolVisibility === "generic" && (
+              <div className="space-y-2">
+                <Label htmlFor="ag_ui_generic_tool_text">{ui("Generic activity text")}</Label>
+                <Input
+                  id="ag_ui_generic_tool_text"
+                  value={state.agUiGenericToolText}
+                  onChange={(event) => update("agUiGenericToolText", event.target.value)}
+                  maxLength={120}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {ui("Tool names, arguments, and results are never sent to public clients.")}
+                </p>
+              </div>
+            )}
+          </FormSection>
+          <FormSection title="Limits">
             <div className="space-y-2">
               <Label htmlFor="ag_ui_rate_limit">{ui("Rate limit / minute")}</Label>
               <Input
@@ -860,618 +796,663 @@ export function ChannelForm({
                 placeholder={ui("No per-channel cap")}
               />
             </div>
-          </FieldGrid>
-          {state.agUiToolVisibility === "generic" && (
-            <div className="space-y-2">
-              <Label htmlFor="ag_ui_generic_tool_text">{ui("Generic activity text")}</Label>
-              <Input
-                id="ag_ui_generic_tool_text"
-                value={state.agUiGenericToolText}
-                onChange={(event) => update("agUiGenericToolText", event.target.value)}
-                maxLength={120}
-              />
-              <p className="text-xs text-muted-foreground">
-                {ui("Tool names, arguments, and results are never sent to public clients.")}
-              </p>
-            </div>
-          )}
-        </div>
+          </FormSection>
+        </>
       )}
-
-      {state.kind === "fcp" && (section === "all" || section === "invocation") && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between border p-3">
-            <div>
-              <p className="text-sm font-medium">{ui("Anonymous access")}</p>
-              <p className="text-xs text-muted-foreground">
-                {ui(
-                  "When off, every request must present the bearer token below. The FCP handshake (GET on the channel URL) stays public so clients can discover how to authenticate.",
-                )}
-              </p>
-            </div>
-            <Switch
-              checked={state.fcpAnonymous}
-              onCheckedChange={(checked) => update("fcpAnonymous", checked)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="fcp_token">{ui("Bearer token")}</Label>
-            <div className="flex gap-2">
-              <Input
-                id="fcp_token"
-                value={state.fcpToken}
-                onChange={(event) => update("fcpToken", event.target.value)}
-                className="font-mono"
-                placeholder={
-                  mode === "edit"
-                    ? ui("Leave blank to keep existing token")
-                    : ui("Generated bearer token")
-                }
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => update("fcpToken", generateChannelToken())}
-                aria-label={ui("Regenerate FCP token")}
-              >
-                <RefreshCw className="size-4" />
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {ui(
-                "Verified with constant-time comparison; sent as Authorization: Bearer <token> or X-Everruns-FCP-Token. Never echoed in responses.",
-              )}
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="fcp_handshake">{ui("Custom handshake (Markdown)")}</Label>
-            <Textarea
-              id="fcp_handshake"
-              value={state.fcpHandshake}
-              onChange={(event) => update("fcpHandshake", event.target.value)}
-              placeholder={ui("Leave blank to auto-generate from the agent name and description.")}
-              rows={4}
-            />
-            <p className="text-xs text-muted-foreground">
-              {ui("Returned verbatim for GET on the channel URL. Use plain Markdown.")}
-            </p>
-          </div>
-          <FieldGrid>
-            <div className="space-y-2">
-              <Label htmlFor="fcp_expiration">{ui("Session expiration (hours)")}</Label>
-              <Input
-                id="fcp_expiration"
-                value={String(state.fcpExpirationHours)}
-                onChange={(event) => {
-                  const parsed = Number.parseFloat(event.target.value);
-                  update("fcpExpirationHours", Number.isFinite(parsed) ? parsed : 0);
-                }}
-                inputMode="numeric"
-                placeholder="6"
-              />
-              <p className="text-xs text-muted-foreground">
-                {ui("0 = never expire the fcp_session cookie.")}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="fcp_rate_limit">{ui("Rate limit / minute")}</Label>
-              <Input
-                id="fcp_rate_limit"
-                value={state.fcpRateLimitPerMinute}
-                onChange={(event) => update("fcpRateLimitPerMinute", event.target.value)}
-                inputMode="numeric"
-                placeholder={ui("No per-channel cap")}
-              />
-              <p className="text-xs text-muted-foreground">
-                {ui("FCP-only limiter namespace; cannot share buckets with other channels.")}
-              </p>
-            </div>
-          </FieldGrid>
-          <div className="space-y-2">
-            <Label htmlFor="fcp_response_timeout">{ui("Response timeout (seconds)")}</Label>
-            <Input
-              id="fcp_response_timeout"
-              value={state.fcpResponseTimeoutSeconds}
-              onChange={(event) => update("fcpResponseTimeoutSeconds", event.target.value)}
-              inputMode="numeric"
-              placeholder="120"
-            />
-            <p className="text-xs text-muted-foreground">
-              {ui("How long the channel waits for the agent before returning 504. Must be 1-600s.")}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {state.kind === "public_chat" && (section === "all" || section === "invocation") && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between border p-3">
-            <div>
-              <p className="text-sm font-medium">{ui("Anonymous access")}</p>
-              <p className="text-xs text-muted-foreground">
-                {ui(
-                  "When on, anyone with the link can chat (optionally gated by the shared token below). Turn off to require sign-in. You must enable Google sign-in below, otherwise the chat rejects every request.",
-                )}
-              </p>
-            </div>
-            <Switch
-              checked={state.publicChatAnonymous}
-              onCheckedChange={(checked) => update("publicChatAnonymous", checked)}
-            />
-          </div>
-
-          <div className="space-y-3">
-            <p className="text-sm font-medium">{ui("Branding")}</p>
-            <FieldGrid>
-              <div className="space-y-2">
-                <Label htmlFor="public_chat_display_name">{ui("Display name")}</Label>
-                <Input
-                  id="public_chat_display_name"
-                  value={state.publicChatDisplayName}
-                  onChange={(event) => update("publicChatDisplayName", event.target.value)}
-                  maxLength={120}
-                  placeholder={ui("Falls back to the agent name")}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="public_chat_primary_color">{ui("Primary color")}</Label>
-                <Input
-                  id="public_chat_primary_color"
-                  value={state.publicChatPrimaryColor}
-                  onChange={(event) => update("publicChatPrimaryColor", event.target.value)}
-                  placeholder="#0A1636"
-                />
-              </div>
-            </FieldGrid>
-            <div className="space-y-2">
-              <Label htmlFor="public_chat_logo_url">{ui("Logo URL")}</Label>
-              <Input
-                id="public_chat_logo_url"
-                value={state.publicChatLogoUrl}
-                onChange={(event) => update("publicChatLogoUrl", event.target.value)}
-                placeholder="https://example.com/logo.png"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="public_chat_welcome">{ui("Welcome message")}</Label>
-              <Textarea
-                id="public_chat_welcome"
-                value={state.publicChatWelcomeMessage}
-                onChange={(event) => update("publicChatWelcomeMessage", event.target.value)}
-                placeholder={ui("Shown before the visitor's first message.")}
-                rows={2}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="public_chat_token">{ui("Shared token (optional)")}</Label>
-            <div className="flex gap-2">
-              <Input
-                id="public_chat_token"
-                value={state.publicChatToken}
-                onChange={(event) => update("publicChatToken", event.target.value)}
-                className="font-mono"
-                placeholder={
-                  mode === "edit"
-                    ? ui("Leave blank to keep existing token")
-                    : ui("Optional bearer token")
-                }
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => update("publicChatToken", generateChannelToken())}
-                aria-label={ui("Regenerate Public Chat token")}
-              >
-                <RefreshCw className="size-4" />
-              </Button>
-            </div>
-          </div>
-
-          <div className="space-y-3">
+      {state.kind === "fcp" && (
+        <>
+          <FormSection title="Access">
             <div className="flex items-center justify-between border p-3">
               <div>
-                <p className="text-sm font-medium">{ui("Bot mitigation (Cloudflare Turnstile)")}</p>
+                <p className="text-sm font-medium">{ui("Anonymous access")}</p>
                 <p className="text-xs text-muted-foreground">
                   {ui(
-                    "Challenge anonymous visitors before they can chat. Signed-in visitors are exempt.",
+                    "When off, every request must present the bearer token below. The FCP handshake (GET on the channel URL) stays public so clients can discover how to authenticate.",
                   )}
                 </p>
               </div>
               <Switch
-                checked={state.publicChatCaptchaEnabled}
-                onCheckedChange={(checked) => update("publicChatCaptchaEnabled", checked)}
+                checked={state.fcpAnonymous}
+                onCheckedChange={(checked) => update("fcpAnonymous", checked)}
               />
             </div>
-            <FieldGrid>
-              <div className="space-y-2">
-                <Label htmlFor="public_chat_turnstile_site_key">{ui("Turnstile site key")}</Label>
+            <div className="space-y-2">
+              <Label htmlFor="fcp_token">{ui("Bearer token")}</Label>
+              <div className="flex gap-2">
                 <Input
-                  id="public_chat_turnstile_site_key"
-                  value={state.publicChatTurnstileSiteKey}
-                  onChange={(event) => update("publicChatTurnstileSiteKey", event.target.value)}
-                  className="font-mono"
-                  placeholder={ui("0x4AAAAAAA...")}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="public_chat_turnstile_secret_key">
-                  {ui("Turnstile secret key")}
-                </Label>
-                <Input
-                  id="public_chat_turnstile_secret_key"
-                  type="password"
-                  value={state.publicChatTurnstileSecretKey}
-                  onChange={(event) => update("publicChatTurnstileSecretKey", event.target.value)}
+                  id="fcp_token"
+                  value={state.fcpToken}
+                  onChange={(event) => update("fcpToken", event.target.value)}
                   className="font-mono"
                   placeholder={
                     mode === "edit"
-                      ? ui("Leave blank to keep existing secret")
-                      : ui("0x4AAAAAAA...")
+                      ? ui("Leave blank to keep existing token")
+                      : ui("Generated bearer token")
                   }
                 />
-              </div>
-            </FieldGrid>
-            <p className="text-xs text-muted-foreground">
-              {ui("The secret key is write-only and never shown after saving.")}
-            </p>
-          </div>
-
-          <PublicChatSignInFields
-            googleEnabled={state.publicChatGoogleEnabled}
-            googleClientId={state.publicChatGoogleClientId}
-            googleAllowedDomains={state.publicChatGoogleAllowedDomains}
-            agentIdEnabled={state.publicChatAgentIdEnabled}
-            agentIdClientId={state.publicChatAgentIdClientId}
-            update={update}
-          />
-
-          <FieldGrid>
-            <div className="space-y-2">
-              <Label htmlFor="public_chat_tool_visibility">{ui("Tool visibility")}</Label>
-              <Select
-                value={state.publicChatToolVisibility}
-                onValueChange={(value) =>
-                  update("publicChatToolVisibility", value as AgUiToolVisibility)
-                }
-              >
-                <SelectTrigger id="public_chat_tool_visibility">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{getAgUiToolVisibilityDisplayName("none")}</SelectItem>
-                  <SelectItem value="generic">
-                    {getAgUiToolVisibilityDisplayName("generic")}
-                  </SelectItem>
-                  <SelectItem value="narrated">
-                    {getAgUiToolVisibilityDisplayName("narrated")}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="public_chat_rate_limit">{ui("Rate limit / minute")}</Label>
-              <Input
-                id="public_chat_rate_limit"
-                value={state.publicChatRateLimitPerMinute}
-                onChange={(event) => update("publicChatRateLimitPerMinute", event.target.value)}
-                inputMode="numeric"
-                placeholder={ui("No per-channel cap")}
-              />
-            </div>
-          </FieldGrid>
-          {state.publicChatToolVisibility === "generic" && (
-            <div className="space-y-2">
-              <Label htmlFor="public_chat_generic_tool_text">{ui("Generic activity text")}</Label>
-              <Input
-                id="public_chat_generic_tool_text"
-                value={state.publicChatGenericToolText}
-                onChange={(event) => update("publicChatGenericToolText", event.target.value)}
-                maxLength={120}
-              />
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="public_chat_expiration">{ui("Session expiration (hours)")}</Label>
-            <Input
-              id="public_chat_expiration"
-              value={String(state.publicChatExpirationHours)}
-              onChange={(event) => {
-                const parsed = Number.parseFloat(event.target.value);
-                update("publicChatExpirationHours", Number.isFinite(parsed) ? parsed : 0);
-              }}
-              inputMode="numeric"
-              placeholder="6"
-            />
-            <p className="text-xs text-muted-foreground">
-              {ui("0 = never expire a visitor session.")}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {state.kind === "work_chat" && (section === "all" || section === "invocation") && (
-        <WorkChatFields
-          modelIds={state.chatModels}
-          onModelsChange={(ids) => update("chatModels", ids)}
-          mode={state.chatInterface}
-          onModeChange={(mode) => update("chatInterface", mode)}
-          value={state.api}
-          onChange={(api) => update("api", api)}
-        />
-      )}
-      {state.kind === "api" && (section === "all" || section === "invocation") && (
-        <ApiFields value={state.api} onChange={(api) => update("api", api)} />
-      )}
-
-      {state.kind === "voice" && (section === "all" || section === "invocation") && (
-        <VoiceFields value={state.voice} onChange={(voice) => update("voice", voice)} />
-      )}
-
-      {state.kind === "slack" && (section === "all" || section === "invocation") && (
-        <div className="space-y-4">
-          {channel && <SlackConnectionStatus channel={channel} />}
-          {slackLive && (
-            <div className="space-y-3 border p-4">
-              <div className="space-y-1">
-                {!channel && <p className="text-sm font-medium">{ui("Installed in Slack")}</p>}
-                <p className="text-xs text-muted-foreground">
-                  {ui("This agent has its own Slack app in workspace")} {state.slackTeamId}
-                  {ui(". Mention it in a channel")}
-                  {state.slackAgentSurfaceEnabled
-                    ? ui(", or open it from Slack’s Agents menu.")
-                    : "."}
-                </p>
-              </div>
-              <a
-                className={buttonVariants({ variant: "outline", size: "sm" })}
-                href={slackAppUrl(state.slackAppId, state.slackTeamId)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <Slack className="size-4" />
-                {ui("Open in Slack")}
-              </a>
-            </div>
-          )}
-          {!slackLive && !state.slackCredentialsConfigured && slackInstallCapability?.supported && (
-            <SlackWorkspaceChoice
-              capability={slackInstallCapability}
-              selected={state.slackInstallTeamId}
-              onSelect={selectSlackInstallTeam}
-              onChanged={onSlackCapabilityChanged}
-            />
-          )}
-          {!slackLive &&
-            mode === "edit" &&
-            channelId &&
-            slackInstallAvailable &&
-            !state.slackCredentialsConfigured &&
-            !slackInstall.unavailable && (
-              <div className="space-y-3 border p-4">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">{ui("Add to Slack")}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {ui(
-                      "Creates this agent's own Slack app in the workspace above and opens Slack to approve it. The signing secret, bot token and workspace ID are filled in for you.",
-                    )}
-                  </p>
-                </div>
                 <Button
                   type="button"
-                  onClick={slackInstall.begin}
-                  disabled={
-                    slackInstall.pending || !state.slackInstallTeamId || slackInstallDisabled
-                  }
+                  variant="outline"
+                  size="icon"
+                  onClick={() => update("fcpToken", generateChannelToken())}
+                  aria-label={ui("Regenerate FCP token")}
                 >
-                  <Slack className="size-4" />
-                  {slackInstall.pending ? ui("Opening Slack…") : ui("Add to Slack")}
+                  <RefreshCw className="size-4" />
                 </Button>
-                {slackInstallDisabled && (
-                  <p className="text-xs text-muted-foreground">
-                    {ui("Save changes before opening Slack.")}
-                  </p>
-                )}
-                {slackInstall.error && (
-                  <SlackInstallError error={slackInstall.error} onRetry={slackInstall.begin} />
-                )}
               </div>
-            )}
-          {!slackLive && mode === "new" && slackInstallAvailable && (
-            <p className="text-xs text-muted-foreground">
-              {ui(
-                "Save the channel to add it to Slack in one click. If you already have a Slack app, open Configure manually below.",
-              )}
-            </p>
-          )}
-        </div>
-      )}
-
-      {state.kind === "slack" && (section === "all" || section === "session") && (
-        <SlackConversationSettings
-          idPrefix={slackFormId}
-          sessionStrategy={state.slackSessionStrategy}
-          responsePolicy={state.slackResponsePolicy}
-          onResponsePolicyChange={(value) => update("slackResponsePolicy", value)}
-          onSessionStrategyChange={(value) => update("slackSessionStrategy", value)}
-        />
-      )}
-
-      {state.kind === "slack" && (section === "all" || section === "session") && (
-        <SlackAgentPaneSettings
-          idPrefix={slackFormId}
-          enabled={state.slackAgentSurfaceEnabled}
-          configured={state.slackCredentialsConfigured}
-          onChange={(checked) => update("slackAgentSurfaceEnabled", checked)}
-        />
-      )}
-
-      {state.kind === "slack" && (section === "all" || section === "invocation") && (
-        <div>
-          <Collapsible
-            open={manualSlackOpen}
-            onOpenChange={setManualSlackOpen}
-            className="border-t pt-4"
-          >
-            <CollapsibleTrigger asChild>
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-describedby={`${slackFormId}_manual_description`}
-              >
-                <ChevronDown
-                  className={cn(
-                    "size-4 shrink-0 text-muted-foreground transition-transform",
-                    !manualSlackOpen && "-rotate-90",
-                  )}
-                />
-                <span>{ui("Configure manually")}</span>
-              </button>
-            </CollapsibleTrigger>
-            <p
-              id={`${slackFormId}_manual_description`}
-              className="mt-1 pl-6 text-xs leading-relaxed text-muted-foreground"
-            >
-              {slackLive || state.slackCredentialsConfigured
-                ? ui("View or update the credentials for this agent’s Slack app.")
-                : slackInstallAvailable
-                  ? ui(
-                      "Use credentials from an existing Slack app. Add to Slack fills these in for you.",
-                    )
-                  : ui(
-                      "Use credentials from your Slack app to connect this channel. You can save now and finish setup later.",
-                    )}
-            </p>
-            <CollapsibleContent className="space-y-4 pt-4">
-              {manualSlackOpen && channel && <SlackManualSetup channel={channel} />}
               <p className="text-xs text-muted-foreground">
                 {ui(
-                  "These fields are optional when saving. Slack requests are rejected until a signing secret is set; a bot token is needed to send replies.",
+                  "Verified with constant-time comparison; sent as Authorization: Bearer <token> or X-Everruns-FCP-Token. Never echoed in responses.",
                 )}
-                {mode === "edit" && " Leave secret fields blank to keep the saved credentials."}
               </p>
+            </div>
+          </FormSection>
+          <FormSection
+            title="Greeting"
+            hint="What a client reads first, to learn how to talk to the agent."
+          >
+            <div className="space-y-2">
+              <Label htmlFor="fcp_handshake">{ui("Custom handshake (Markdown)")}</Label>
+              <Textarea
+                id="fcp_handshake"
+                value={state.fcpHandshake}
+                onChange={(event) => update("fcpHandshake", event.target.value)}
+                placeholder={ui(
+                  "Leave blank to auto-generate from the agent name and description.",
+                )}
+                rows={4}
+              />
+              <p className="text-xs text-muted-foreground">
+                {ui("Returned verbatim for GET on the channel URL. Use plain Markdown.")}
+              </p>
+            </div>
+          </FormSection>
+          <FormSection title="Limits">
+            <FoldedSettings
+              summary={limitsSummary(state.fcpRateLimitPerMinute, state.fcpExpirationHours, ui)}
+            >
               <FieldGrid>
                 <div className="space-y-2">
-                  <Label htmlFor={`${slackFormId}_signing_secret`}>{ui("Signing secret")}</Label>
+                  <Label htmlFor="fcp_expiration">{ui("Session expiration (hours)")}</Label>
                   <Input
-                    id={`${slackFormId}_signing_secret`}
-                    type="password"
-                    value={state.slackSigningSecret}
-                    onChange={(event) => update("slackSigningSecret", event.target.value)}
-                    placeholder={
-                      mode === "edit"
-                        ? ui("Leave blank to keep existing secret")
-                        : ui("Slack signing secret")
-                    }
+                    id="fcp_expiration"
+                    value={String(state.fcpExpirationHours)}
+                    onChange={(event) => {
+                      const parsed = Number.parseFloat(event.target.value);
+                      update("fcpExpirationHours", Number.isFinite(parsed) ? parsed : 0);
+                    }}
+                    inputMode="numeric"
+                    placeholder="6"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    {ui("0 = never expire the fcp_session cookie.")}
+                  </p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor={`${slackFormId}_bot_token`}>{ui("Bot token")}</Label>
+                  <Label htmlFor="fcp_rate_limit">{ui("Rate limit / minute")}</Label>
                   <Input
-                    id={`${slackFormId}_bot_token`}
-                    type="password"
-                    value={state.slackBotToken}
-                    onChange={(event) => update("slackBotToken", event.target.value)}
-                    placeholder={
-                      mode === "edit" ? ui("Leave blank to keep existing token") : ui("xoxb-...")
-                    }
+                    id="fcp_rate_limit"
+                    value={state.fcpRateLimitPerMinute}
+                    onChange={(event) => update("fcpRateLimitPerMinute", event.target.value)}
+                    inputMode="numeric"
+                    placeholder={ui("No per-channel cap")}
                   />
-                </div>
-              </FieldGrid>
-              <FieldGrid>
-                <div className="space-y-2">
-                  <Label htmlFor={`${slackFormId}_team_id`}>{ui("Workspace ID")}</Label>
-                  <Input
-                    id={`${slackFormId}_team_id`}
-                    value={state.slackTeamId}
-                    onChange={(event) => update("slackTeamId", event.target.value)}
-                    placeholder={ui("T0123456789")}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`${slackFormId}_channel_id`}>{ui("Channel ID")}</Label>
-                  <Input
-                    id={`${slackFormId}_channel_id`}
-                    aria-describedby={`${slackFormId}_channel_id_description`}
-                    value={state.slackChannelId}
-                    onChange={(event) => update("slackChannelId", event.target.value)}
-                    placeholder={ui("C0123456789")}
-                  />
-                  <p
-                    id={`${slackFormId}_channel_id_description`}
-                    className="text-xs leading-relaxed text-muted-foreground"
-                  >
-                    {ui(
-                      "Limit this integration to one Slack channel. Leave blank to accept any Slack channel in the workspace.",
-                    )}
+                  <p className="text-xs text-muted-foreground">
+                    {ui("FCP-only limiter namespace; cannot share buckets with other channels.")}
                   </p>
                 </div>
               </FieldGrid>
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
+              <div className="space-y-2">
+                <Label htmlFor="fcp_response_timeout">{ui("Response timeout (seconds)")}</Label>
+                <Input
+                  id="fcp_response_timeout"
+                  value={state.fcpResponseTimeoutSeconds}
+                  onChange={(event) => update("fcpResponseTimeoutSeconds", event.target.value)}
+                  inputMode="numeric"
+                  placeholder="120"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {ui(
+                    "How long the channel waits for the agent before returning 504. Must be 1-600s.",
+                  )}
+                </p>
+              </div>
+            </FoldedSettings>
+          </FormSection>
+        </>
+      )}
+      {state.kind === "public_chat" && (
+        <>
+          <FormSection title="Who can chat" hint="Changing this does not change the link.">
+            <div role="radiogroup" aria-label={ui("Who can chat")} className="border">
+              <label
+                className={cn(
+                  "grid cursor-pointer grid-cols-[1rem_minmax(0,1fr)] gap-3 p-3.5",
+                  state.publicChatAnonymous && "bg-accent/10",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="public_chat_access"
+                  className="mt-1 size-4 accent-primary"
+                  checked={state.publicChatAnonymous}
+                  onChange={() => update("publicChatAnonymous", true)}
+                />
+                <span>
+                  <span className="block text-sm font-medium">{ui("Anyone with the link")}</span>
+                  <span className="block text-sm text-muted-foreground">
+                    {ui("No sign-in. Good for a demo or a public help page.")}
+                  </span>
+                </span>
+              </label>
+              {state.publicChatAnonymous && (
+                <div className="px-3.5 pb-3.5 pl-10">
+                  <div className="space-y-2">
+                    <Label htmlFor="public_chat_token">{ui("Shared token (optional)")}</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="public_chat_token"
+                        value={state.publicChatToken}
+                        onChange={(event) => update("publicChatToken", event.target.value)}
+                        className="font-mono"
+                        placeholder={
+                          mode === "edit"
+                            ? ui("Leave blank to keep existing token")
+                            : ui("Optional bearer token")
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => update("publicChatToken", generateChannelToken())}
+                        aria-label={ui("Regenerate Public Chat token")}
+                      >
+                        <RefreshCw className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <label
+                className={cn(
+                  "grid cursor-pointer grid-cols-[1rem_minmax(0,1fr)] gap-3 border-t border-border/60 p-3.5",
+                  !state.publicChatAnonymous && "bg-accent/10",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="public_chat_access"
+                  className="mt-1 size-4 accent-primary"
+                  checked={!state.publicChatAnonymous}
+                  onChange={() => update("publicChatAnonymous", false)}
+                />
+                <span>
+                  <span className="block text-sm font-medium">{ui("Only people who sign in")}</span>
+                  <span className="block text-sm text-muted-foreground">
+                    {ui(
+                      "Visitors sign in first, with Google or AgentID. Turn on at least one below.",
+                    )}
+                  </span>
+                </span>
+              </label>
+              {!state.publicChatAnonymous && (
+                <div className="space-y-4 px-3.5 pb-3.5 pl-10">
+                  <PublicChatSignInFields
+                    googleEnabled={state.publicChatGoogleEnabled}
+                    googleClientId={state.publicChatGoogleClientId}
+                    googleAllowedDomains={state.publicChatGoogleAllowedDomains}
+                    agentIdEnabled={state.publicChatAgentIdEnabled}
+                    agentIdClientId={state.publicChatAgentIdClientId}
+                    update={update}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <Label htmlFor="public_chat_captcha">
+                    {ui("Check for bots before the first message")}
+                  </Label>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {ui(
+                      "Visitors who are not signed in pass a Cloudflare Turnstile check first. Signed-in visitors skip it.",
+                    )}
+                  </p>
+                </div>
+                <Switch
+                  id="public_chat_captcha"
+                  checked={state.publicChatCaptchaEnabled}
+                  onCheckedChange={(checked) => update("publicChatCaptchaEnabled", checked)}
+                />
+              </div>
+              {(state.publicChatCaptchaEnabled || state.publicChatTurnstileSiteKey) && (
+                <>
+                  <FieldGrid>
+                    <div className="space-y-2">
+                      <Label htmlFor="public_chat_turnstile_site_key">
+                        {ui("Turnstile site key")}
+                      </Label>
+                      <Input
+                        id="public_chat_turnstile_site_key"
+                        value={state.publicChatTurnstileSiteKey}
+                        onChange={(event) =>
+                          update("publicChatTurnstileSiteKey", event.target.value)
+                        }
+                        className="font-mono"
+                        placeholder={ui("0x4AAAAAAA...")}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="public_chat_turnstile_secret_key">
+                        {ui("Turnstile secret key")}
+                      </Label>
+                      <Input
+                        id="public_chat_turnstile_secret_key"
+                        type="password"
+                        value={state.publicChatTurnstileSecretKey}
+                        onChange={(event) =>
+                          update("publicChatTurnstileSecretKey", event.target.value)
+                        }
+                        className="font-mono"
+                        placeholder={
+                          mode === "edit"
+                            ? ui("Leave blank to keep existing secret")
+                            : ui("0x4AAAAAAA...")
+                        }
+                      />
+                    </div>
+                  </FieldGrid>
+                  <p className="text-xs text-muted-foreground">
+                    {ui("The secret key is write-only and never shown after saving.")}
+                  </p>
+                </>
+              )}
+            </div>
+          </FormSection>
+          <FormSection
+            title="Look and feel"
+            hint="All optional. Empty fields use the agent's name."
+          >
+            <>
+              <FieldGrid>
+                <div className="space-y-2">
+                  <Label htmlFor="public_chat_display_name">{ui("Display name")}</Label>
+                  <Input
+                    id="public_chat_display_name"
+                    value={state.publicChatDisplayName}
+                    onChange={(event) => update("publicChatDisplayName", event.target.value)}
+                    maxLength={120}
+                    placeholder={ui("Falls back to the agent name")}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="public_chat_primary_color">{ui("Main color")}</Label>
+                  <Input
+                    id="public_chat_primary_color"
+                    value={state.publicChatPrimaryColor}
+                    onChange={(event) => update("publicChatPrimaryColor", event.target.value)}
+                    placeholder="#0A1636"
+                  />
+                </div>
+              </FieldGrid>
+              <div className="space-y-2">
+                <Label htmlFor="public_chat_logo_url">{ui("Logo URL")}</Label>
+                <Input
+                  id="public_chat_logo_url"
+                  value={state.publicChatLogoUrl}
+                  onChange={(event) => update("publicChatLogoUrl", event.target.value)}
+                  placeholder="https://example.com/logo.png"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="public_chat_welcome">{ui("Welcome message")}</Label>
+                <Textarea
+                  id="public_chat_welcome"
+                  value={state.publicChatWelcomeMessage}
+                  onChange={(event) => update("publicChatWelcomeMessage", event.target.value)}
+                  placeholder={ui("Shown before the visitor's first message.")}
+                  rows={2}
+                />
+              </div>
+            </>
+          </FormSection>
+          <FormSection title="Limits" hint="Defaults suit most pages.">
+            <FoldedSettings
+              summary={limitsSummary(
+                state.publicChatRateLimitPerMinute,
+                state.publicChatExpirationHours,
+                ui,
+              )}
+            >
+              <FieldGrid>
+                <div className="space-y-2">
+                  <Label htmlFor="public_chat_tool_visibility">{ui("Tool visibility")}</Label>
+                  <Select
+                    value={state.publicChatToolVisibility}
+                    onValueChange={(value) =>
+                      update("publicChatToolVisibility", value as AgUiToolVisibility)
+                    }
+                  >
+                    <SelectTrigger id="public_chat_tool_visibility">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        {getAgUiToolVisibilityDisplayName("none")}
+                      </SelectItem>
+                      <SelectItem value="generic">
+                        {getAgUiToolVisibilityDisplayName("generic")}
+                      </SelectItem>
+                      <SelectItem value="narrated">
+                        {getAgUiToolVisibilityDisplayName("narrated")}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="public_chat_rate_limit">{ui("Rate limit / minute")}</Label>
+                  <Input
+                    id="public_chat_rate_limit"
+                    value={state.publicChatRateLimitPerMinute}
+                    onChange={(event) => update("publicChatRateLimitPerMinute", event.target.value)}
+                    inputMode="numeric"
+                    placeholder={ui("No per-channel cap")}
+                  />
+                </div>
+              </FieldGrid>
+              {state.publicChatToolVisibility === "generic" && (
+                <div className="space-y-2">
+                  <Label htmlFor="public_chat_generic_tool_text">
+                    {ui("Generic activity text")}
+                  </Label>
+                  <Input
+                    id="public_chat_generic_tool_text"
+                    value={state.publicChatGenericToolText}
+                    onChange={(event) => update("publicChatGenericToolText", event.target.value)}
+                    maxLength={120}
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="public_chat_expiration">{ui("Session expiration (hours)")}</Label>
+                <Input
+                  id="public_chat_expiration"
+                  value={String(state.publicChatExpirationHours)}
+                  onChange={(event) => {
+                    const parsed = Number.parseFloat(event.target.value);
+                    update("publicChatExpirationHours", Number.isFinite(parsed) ? parsed : 0);
+                  }}
+                  inputMode="numeric"
+                  placeholder="6"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {ui("0 = never expire a visitor session.")}
+                </p>
+              </div>
+            </FoldedSettings>
+          </FormSection>
+        </>
+      )}
+      {state.kind === "work_chat" && (
+        <FormSection title="Chat site" hint="How the chat looks and which models people can pick.">
+          <WorkChatFields
+            modelIds={state.chatModels}
+            onModelsChange={(ids) => update("chatModels", ids)}
+            mode={state.chatInterface}
+            onModeChange={(mode) => update("chatInterface", mode)}
+            value={state.api}
+            onChange={(api) => update("api", api)}
+          />
+        </FormSection>
+      )}
+      {state.kind === "api" && (
+        <FormSection
+          title="Calls"
+          hint="What callers can see and change. Agent keys are made on the channel page after you create it."
+        >
+          <ApiFields value={state.api} onChange={(api) => update("api", api)} />
+        </FormSection>
+      )}
+      {state.kind === "voice" && (
+        <FormSection title="Voice" hint="The voice and how it handles being interrupted.">
+          <VoiceFields value={state.voice} onChange={(voice) => update("voice", voice)} />
+        </FormSection>
+      )}
+      {state.kind === "slack" && (
+        <>
+          <FormSection
+            title="Install"
+            hint="The agent gets its own Slack app in the workspace you choose."
+          >
+            <div className="space-y-4">
+              {channel && <SlackConnectionStatus channel={channel} />}
+              {slackLive && (
+                <div className="space-y-3 border p-4">
+                  <div className="space-y-1">
+                    {!channel && <p className="text-sm font-medium">{ui("Installed in Slack")}</p>}
+                    <p className="text-xs text-muted-foreground">
+                      {ui("This agent has its own Slack app in workspace")} {state.slackTeamId}
+                      {ui(". Mention it in a channel")}
+                      {state.slackAgentSurfaceEnabled
+                        ? ui(", or open it from Slack’s Agents menu.")
+                        : "."}
+                    </p>
+                  </div>
+                  <a
+                    className={buttonVariants({ variant: "outline", size: "sm" })}
+                    href={slackAppUrl(state.slackAppId, state.slackTeamId)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Slack className="size-4" />
+                    {ui("Open in Slack")}
+                  </a>
+                </div>
+              )}
+              {!slackLive &&
+                !state.slackCredentialsConfigured &&
+                slackInstallCapability?.supported && (
+                  <SlackWorkspaceChoice
+                    capability={slackInstallCapability}
+                    selected={state.slackInstallTeamId}
+                    onSelect={selectSlackInstallTeam}
+                    onChanged={onSlackCapabilityChanged}
+                  />
+                )}
+              {!slackLive &&
+                mode === "edit" &&
+                channelId &&
+                slackInstallAvailable &&
+                !state.slackCredentialsConfigured &&
+                !slackInstall.unavailable && (
+                  <div className="space-y-3 border p-4">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">{ui("Add to Slack")}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {ui(
+                          "Creates this agent's own Slack app in the workspace above and opens Slack to approve it. The signing secret, bot token and workspace ID are filled in for you.",
+                        )}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={slackInstall.begin}
+                      disabled={
+                        slackInstall.pending || !state.slackInstallTeamId || slackInstallDisabled
+                      }
+                    >
+                      <Slack className="size-4" />
+                      {slackInstall.pending ? ui("Opening Slack…") : ui("Add to Slack")}
+                    </Button>
+                    {slackInstallDisabled && (
+                      <p className="text-xs text-muted-foreground">
+                        {ui("Save changes before opening Slack.")}
+                      </p>
+                    )}
+                    {slackInstall.error && (
+                      <SlackInstallError error={slackInstall.error} onRetry={slackInstall.begin} />
+                    )}
+                  </div>
+                )}
+              {!slackLive && mode === "new" && slackInstallAvailable && (
+                <p className="text-xs text-muted-foreground">
+                  {ui(
+                    "Save the channel to add it to Slack in one click. If you already have a Slack app, open Configure manually below.",
+                  )}
+                </p>
+              )}
+            </div>
+          </FormSection>
+          <FormSection
+            title="Conversations"
+            hint="When the agent answers and how conversations map to sessions."
+          >
+            <SlackConversationSettings
+              idPrefix={slackFormId}
+              sessionStrategy={state.slackSessionStrategy}
+              responsePolicy={state.slackResponsePolicy}
+              onResponsePolicyChange={(value) => update("slackResponsePolicy", value)}
+              onSessionStrategyChange={(value) => update("slackSessionStrategy", value)}
+            />
+
+            <SlackAgentPaneSettings
+              idPrefix={slackFormId}
+              enabled={state.slackAgentSurfaceEnabled}
+              configured={state.slackCredentialsConfigured}
+              onChange={(checked) => update("slackAgentSurfaceEnabled", checked)}
+            />
+          </FormSection>
+          <FormSection title="Manual setup" hint="Only needed for a Slack app you made yourself.">
+            <div>
+              <Collapsible
+                open={manualSlackOpen}
+                onOpenChange={setManualSlackOpen}
+                className="border-t pt-4"
+              >
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-describedby={`${slackFormId}_manual_description`}
+                  >
+                    <ChevronDown
+                      className={cn(
+                        "size-4 shrink-0 text-muted-foreground transition-transform",
+                        !manualSlackOpen && "-rotate-90",
+                      )}
+                    />
+                    <span>{ui("Configure manually")}</span>
+                  </button>
+                </CollapsibleTrigger>
+                <p
+                  id={`${slackFormId}_manual_description`}
+                  className="mt-1 pl-6 text-xs leading-relaxed text-muted-foreground"
+                >
+                  {slackLive || state.slackCredentialsConfigured
+                    ? ui("View or update the credentials for this agent’s Slack app.")
+                    : slackInstallAvailable
+                      ? ui(
+                          "Use credentials from an existing Slack app. Add to Slack fills these in for you.",
+                        )
+                      : ui(
+                          "Use credentials from your Slack app to connect this channel. You can save now and finish setup later.",
+                        )}
+                </p>
+                <CollapsibleContent className="space-y-4 pt-4">
+                  {manualSlackOpen && channel && <SlackManualSetup channel={channel} />}
+                  <p className="text-xs text-muted-foreground">
+                    {ui(
+                      "These fields are optional when saving. Slack requests are rejected until a signing secret is set; a bot token is needed to send replies.",
+                    )}
+                    {mode === "edit" && " Leave secret fields blank to keep the saved credentials."}
+                  </p>
+                  <FieldGrid>
+                    <div className="space-y-2">
+                      <Label htmlFor={`${slackFormId}_signing_secret`}>
+                        {ui("Signing secret")}
+                      </Label>
+                      <Input
+                        id={`${slackFormId}_signing_secret`}
+                        type="password"
+                        value={state.slackSigningSecret}
+                        onChange={(event) => update("slackSigningSecret", event.target.value)}
+                        placeholder={
+                          mode === "edit"
+                            ? ui("Leave blank to keep existing secret")
+                            : ui("Slack signing secret")
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor={`${slackFormId}_bot_token`}>{ui("Bot token")}</Label>
+                      <Input
+                        id={`${slackFormId}_bot_token`}
+                        type="password"
+                        value={state.slackBotToken}
+                        onChange={(event) => update("slackBotToken", event.target.value)}
+                        placeholder={
+                          mode === "edit"
+                            ? ui("Leave blank to keep existing token")
+                            : ui("xoxb-...")
+                        }
+                      />
+                    </div>
+                  </FieldGrid>
+                  <FieldGrid>
+                    <div className="space-y-2">
+                      <Label htmlFor={`${slackFormId}_team_id`}>{ui("Workspace ID")}</Label>
+                      <Input
+                        id={`${slackFormId}_team_id`}
+                        value={state.slackTeamId}
+                        onChange={(event) => update("slackTeamId", event.target.value)}
+                        placeholder={ui("T0123456789")}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor={`${slackFormId}_channel_id`}>{ui("Channel ID")}</Label>
+                      <Input
+                        id={`${slackFormId}_channel_id`}
+                        aria-describedby={`${slackFormId}_channel_id_description`}
+                        value={state.slackChannelId}
+                        onChange={(event) => update("slackChannelId", event.target.value)}
+                        placeholder={ui("C0123456789")}
+                      />
+                      <p
+                        id={`${slackFormId}_channel_id_description`}
+                        className="text-xs leading-relaxed text-muted-foreground"
+                      >
+                        {ui(
+                          "Limit this integration to one Slack channel. Leave blank to accept any Slack channel in the workspace.",
+                        )}
+                      </p>
+                    </div>
+                  </FieldGrid>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+          </FormSection>
+        </>
       )}
     </div>
   );
 }
 
-export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
-  const ui = useUiTranslations();
-  return (
-    <Card className="h-fit">
-      <CardContent className="space-y-4 py-4">
-        <div>
-          <p className="text-xs font-medium text-muted-foreground">{ui("Channel")}</p>
-          <p className="mt-1 font-medium">{getChannelTypeDisplayName(state.kind)}</p>
-        </div>
-        {state.kind === "schedule" && (
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">{ui("Schedule preview")}</p>
-            <p className="mt-1 text-sm">
-              <CronLabel expr={state.scheduleCronExpression} tz={state.scheduleTimezone} />
-            </p>
-          </div>
-        )}
-        {(state.kind === "webhook" || state.kind === "ag_ui" || state.kind === "fcp") && (
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">{ui("Activation")}</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {ui("Publish this channel before external clients can invoke it.")}
-            </p>
-          </div>
-        )}
-        {state.kind === "api" && (
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">{ui("Agent keys")}</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {ui("After you create the channel, publish it and create an agent key on its page.")}
-            </p>
-          </div>
-        )}
-        {state.kind === "voice" && (
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">{ui("Voice")}</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {ui(
-                "Needs an OpenAI provider. Call it from the channel, the chat microphone, or the API.",
-              )}
-            </p>
-          </div>
-        )}
-        {state.kind === "slack" && (
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">{ui("Slack")}</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {ui(
-                "Gets its own Slack app, with its own name in Slack's Agents menu, in the workspace you choose.",
-              )}
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+/// "20 messages a minute · ends after 6 hours idle", the folded Limits line.
+function limitsSummary(
+  ratePerMinute: string,
+  expirationHours: number,
+  ui: (message: string, values?: Record<string, unknown>) => string,
+): string {
+  const rate = Number.parseInt(ratePerMinute, 10);
+  const rateText =
+    Number.isFinite(rate) && rate > 0
+      ? ui("{value0} messages a minute", { value0: rate })
+      : ui("No message limit");
+  const idleText =
+    expirationHours > 0
+      ? ui("conversations end after {value0} hours idle", { value0: expirationHours })
+      : ui("conversations never expire");
+  return `${rateText} · ${idleText}`;
 }

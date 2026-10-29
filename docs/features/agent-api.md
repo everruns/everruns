@@ -25,7 +25,7 @@ Every route on this page is relative to the agent base URL. The channel's page i
 **In the console:**
 
 1. Open the Agent and select the **Integrations** tab.
-2. Select **Add channel**, choose **Agent API**, adjust its settings and select **Save channel**.
+2. Select **Add channel**, choose **Agent API**, adjust its settings and select **Create channel**.
 3. Select **Publish**. A channel serves traffic only while it is live, its Agent is active and the Agent's exposures are not suspended. See [Channel lifecycle](/features/channels/#channel-lifecycle).
 4. On the channel page, select **Create key** in the **Agent keys** card and copy the secret. It is shown once.
 
