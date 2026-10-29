@@ -11054,7 +11054,8 @@
         "field": "install_script",
         "long": "install-script",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "POSIX shell install script, 1–32768 UTF-8 bytes."
       },
       {
         "field": "metadata_path",
@@ -11074,13 +11075,15 @@
         "field": "timeout_seconds",
         "long": "timeout-seconds",
         "kind": "integer",
-        "required": false
+        "required": false,
+        "help": "Total build deadline, including installation and fresh verification, in seconds."
       },
       {
         "field": "verification_command",
         "long": "verification-command",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Optional check run after installation and again in fresh snapshot compute."
       }
     ],
     "examples": [

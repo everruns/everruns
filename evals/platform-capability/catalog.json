@@ -19388,6 +19388,7 @@
       "$defs": {
         "SandboxBuildRequest": {
           "additionalProperties": false,
+          "description": "Inputs for a single isolated installation and reusable filesystem snapshot.\nBuild compute receives no workload credentials or private Session state.",
           "properties": {
             "build_network": {
               "oneOf": [
@@ -19401,10 +19402,13 @@
               ]
             },
             "install_script": {
+              "description": "POSIX shell install script, 1–32768 UTF-8 bytes. Keep secrets out of it.",
+              "example": "python -m venv /home/daytona/.venvs/devtools\n/home/daytona/.venvs/devtools/bin/pip install httpie==3.2.4",
               "type": "string"
             },
             "metadata_path": {
               "description": "Optional bounded, author-supplied Markdown captured from the builder.",
+              "example": "/home/daytona/.everruns/sandbox.md",
               "type": [
                 "string",
                 "null"
@@ -19412,14 +19416,20 @@
             },
             "source_revision_id": {
               "description": "Source revision to guard against concurrent template edits.",
+              "example": "sbxtplrev_01933b5a000070008000000000000001",
               "type": "string"
             },
             "timeout_seconds": {
+              "description": "Total build deadline, including installation and fresh verification, in seconds.",
+              "example": 600,
               "format": "int64",
-              "minimum": 0,
+              "maximum": 1800,
+              "minimum": 60,
               "type": "integer"
             },
             "verification_command": {
+              "description": "Optional check run after installation and again in fresh snapshot compute.",
+              "example": "/home/daytona/.venvs/devtools/bin/http --version",
               "type": [
                 "string",
                 "null"

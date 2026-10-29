@@ -127,11 +127,11 @@ everruns sandbox-templates builds start [OPTIONS] --id <id> --install-script <in
 |---|---|
 | `--build-network <BUILD_NETWORK>` |  |
 | `--id <ID>` | Required. Prefixed identifier with 'sbxtpl' prefix. |
-| `--install-script <INSTALL_SCRIPT>` | Required. |
+| `--install-script <INSTALL_SCRIPT>` | Required. POSIX shell install script, 1–32768 UTF-8 bytes. |
 | `--metadata-path <METADATA_PATH>` | Optional bounded, author-supplied Markdown captured from the builder. |
 | `--source-revision-id <SOURCE_REVISION_ID>` | Required. Source revision to guard against concurrent template edits. |
-| `--timeout-seconds <TIMEOUT_SECONDS>` |  |
-| `--verification-command <VERIFICATION_COMMAND>` |  |
+| `--timeout-seconds <TIMEOUT_SECONDS>` | Total build deadline, including installation and fresh verification, in seconds. |
+| `--verification-command <VERIFICATION_COMMAND>` | Optional check run after installation and again in fresh snapshot compute. |
 
 Example:
 

@@ -24413,25 +24413,72 @@ export interface components {
      *     Software notes remain untrusted author content, never runtime policy.
      */
     SandboxBuildProvenance: {
+      /**
+       * @description Applied build resolved from the exact tenant, provider account, and snapshot.
+       * @example sbxbuild_01933b5a000070008000000000000001
+       */
       build_id: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Time the originating build attempt was accepted.
+       * @example 2026-10-29T00:01:00Z
+       */
       built_at: string;
+      /**
+       * @description Exact immutable provider snapshot selected by the Session.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
       snapshot_id: string;
+      /**
+       * @description Author-supplied reference notes, never trusted instructions or policy.
+       * @example # Installed tools
+       *     - HTTPie 3.2.4
+       */
       software_notes?: string | null;
+      /**
+       * @description Optional check that passed after installation and in fresh snapshot compute.
+       * @example /home/daytona/.venvs/devtools/bin/http --version
+       */
       verification_command?: string | null;
     };
+    /**
+     * @description Inputs for a single isolated installation and reusable filesystem snapshot.
+     *     Build compute receives no workload credentials or private Session state.
+     */
     SandboxBuildRequest: {
       build_network?: components["schemas"]["SandboxNetworkPolicy"] | null;
+      /**
+       * @description POSIX shell install script, 1–32768 UTF-8 bytes. Keep secrets out of it.
+       * @example python -m venv /home/daytona/.venvs/devtools
+       *     /home/daytona/.venvs/devtools/bin/pip install httpie==3.2.4
+       */
       install_script: string;
-      /** @description Optional bounded, author-supplied Markdown captured from the builder. */
+      /**
+       * @description Optional bounded, author-supplied Markdown captured from the builder.
+       * @example /home/daytona/.everruns/sandbox.md
+       */
       metadata_path?: string | null;
-      /** @description Source revision to guard against concurrent template edits. */
+      /**
+       * @description Source revision to guard against concurrent template edits.
+       * @example sbxtplrev_01933b5a000070008000000000000001
+       */
       source_revision_id: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Total build deadline, including installation and fresh verification, in seconds.
+       * @example 600
+       */
       timeout_seconds?: number;
+      /**
+       * @description Optional check run after installation and again in fresh snapshot compute.
+       * @example /home/daytona/.venvs/devtools/bin/http --version
+       */
       verification_command?: string | null;
     };
-    /** @enum {string} */
+    /**
+     * @description Durable build lifecycle. Ready artifacts can be applied only after cleanup completes.
+     * @enum {string}
+     */
     SandboxBuildStatus:
       | "queued"
       | "running"
@@ -24898,29 +24945,101 @@ export interface components {
        */
       updated_at: string;
     };
+    /**
+     * @description Tenant-scoped build attempt, retained inputs, bounded output, and provider artifact.
+     *     Management credentials are stored separately and never appear in this record.
+     */
     SandboxTemplateBuild: {
+      /**
+       * @description Immutable template revision created by applying this artifact, if applied.
+       * @example sbxtplrev_01933b5a000070008000000000000002
+       */
       applied_revision_id?: string | null;
+      /**
+       * @description Disposable installation compute identifier or its persisted submission name.
+       * @example 550e8400-e29b-41d4-a716-446655440001
+       */
       builder_id?: string | null;
+      /**
+       * @description Whether cancellation was accepted; stale worker saves cannot erase this request.
+       * @example false
+       */
       cancel_requested: boolean;
+      /**
+       * @description Whether provider resources still require confirmed cleanup or reconciliation.
+       * @example false
+       */
       cleanup_pending: boolean;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Time this build attempt was accepted.
+       * @example 2026-10-29T00:00:00Z
+       */
       created_at: string;
+      /**
+       * @description Bounded failure explanation, absent when no failure has been recorded.
+       * @example Command failed with exit code 23
+       */
       error?: string | null;
+      /**
+       * @description Unique build attempt identifier.
+       * @example sbxbuild_01933b5a000070008000000000000001
+       */
       id: string;
+      /**
+       * @description UTF-8 execution-output tail, bounded to 32 KiB.
+       * @example HTTPie 3.2.4
+       *     Verification passed
+       */
       logs: string;
+      /** @description Original immutable installation and verification inputs. */
       request: components["schemas"]["SandboxBuildRequest"];
+      /**
+       * @description Parent template whose immutable source revision supplied the build configuration.
+       * @example sbxtpl_01933b5a000070008000000000000001
+       */
       sandbox_template_id: string;
+      /**
+       * @description Provider snapshot identifier, present once the artifact has been resolved.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
       snapshot_id?: string | null;
+      /**
+       * @description Deterministic provider artifact name used to reconcile uncertain submissions.
+       * @example everruns-build-01933b5a000070008000000000000001
+       */
       snapshot_name: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Submission time used when reconciling a snapshot response lost in transport.
+       * @example 2026-10-29T00:00:00Z
+       */
       snapshot_requested_at?: string | null;
+      /**
+       * @description Up to 16 KiB of author-supplied Markdown, presented as untrusted reference data.
+       * @example # Installed tools
+       *     - HTTPie 3.2.4
+       */
       software_notes?: string | null;
       /** @description Exact source spec; no runtime credentials or workspace are attached. */
       source_spec: components["schemas"]["SandboxTemplateSpec"];
+      /** @description Persisted lifecycle state; inspect cleanup_pending before applying a Ready build. */
       status: components["schemas"]["SandboxBuildStatus"];
+      /**
+       * @description Current execution or cleanup step.
+       * @example installing
+       */
       step: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Time of the last persisted build update.
+       * @example 2026-10-29T00:01:00Z
+       */
       updated_at: string;
+      /**
+       * @description Disposable fresh-snapshot verification compute identifier or submission name.
+       * @example 550e8400-e29b-41d4-a716-446655440002
+       */
       verification_sandbox_id?: string | null;
     };
     /** @description Editable template metadata; omitted fields retain their current values. */

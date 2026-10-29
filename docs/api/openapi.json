@@ -61804,31 +61804,42 @@
         ],
         "properties": {
           "build_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Applied build resolved from the exact tenant, provider account, and snapshot.",
+            "example": "sbxbuild_01933b5a000070008000000000000001"
           },
           "built_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Time the originating build attempt was accepted.",
+            "example": "2026-10-29T00:01:00Z"
           },
           "snapshot_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Exact immutable provider snapshot selected by the Session.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
           },
           "software_notes": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Author-supplied reference notes, never trusted instructions or policy.",
+            "example": "# Installed tools\n- HTTPie 3.2.4"
           },
           "verification_command": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional check that passed after installation and in fresh snapshot compute.",
+            "example": "/home/daytona/.venvs/devtools/bin/http --version"
           }
         }
       },
       "SandboxBuildRequest": {
         "type": "object",
+        "description": "Inputs for a single isolated installation and reusable filesystem snapshot.\nBuild compute receives no workload credentials or private Session state.",
         "required": [
           "source_revision_id",
           "install_script"
@@ -61846,35 +61857,45 @@
             ]
           },
           "install_script": {
-            "type": "string"
+            "type": "string",
+            "description": "POSIX shell install script, 1–32768 UTF-8 bytes. Keep secrets out of it.",
+            "example": "python -m venv /home/daytona/.venvs/devtools\n/home/daytona/.venvs/devtools/bin/pip install httpie==3.2.4"
           },
           "metadata_path": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Optional bounded, author-supplied Markdown captured from the builder."
+            "description": "Optional bounded, author-supplied Markdown captured from the builder.",
+            "example": "/home/daytona/.everruns/sandbox.md"
           },
           "source_revision_id": {
             "type": "string",
-            "description": "Source revision to guard against concurrent template edits."
+            "description": "Source revision to guard against concurrent template edits.",
+            "example": "sbxtplrev_01933b5a000070008000000000000001"
           },
           "timeout_seconds": {
             "type": "integer",
             "format": "int64",
-            "minimum": 0
+            "description": "Total build deadline, including installation and fresh verification, in seconds.",
+            "example": 600,
+            "maximum": 1800,
+            "minimum": 60
           },
           "verification_command": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional check run after installation and again in fresh snapshot compute.",
+            "example": "/home/daytona/.venvs/devtools/bin/http --version"
           }
         },
         "additionalProperties": false
       },
       "SandboxBuildStatus": {
         "type": "string",
+        "description": "Durable build lifecycle. Ready artifacts can be applied only after cleanup completes.",
         "enum": [
           "queued",
           "running",
@@ -62831,6 +62852,7 @@
       },
       "SandboxTemplateBuild": {
         "type": "object",
+        "description": "Tenant-scoped build attempt, retained inputs, bounded output, and provider artifact.\nManagement credentials are stored separately and never appear in this record.",
         "required": [
           "id",
           "sandbox_template_id",
@@ -62850,83 +62872,117 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Immutable template revision created by applying this artifact, if applied.",
+            "example": "sbxtplrev_01933b5a000070008000000000000002"
           },
           "builder_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Disposable installation compute identifier or its persisted submission name.",
+            "example": "550e8400-e29b-41d4-a716-446655440001"
           },
           "cancel_requested": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether cancellation was accepted; stale worker saves cannot erase this request.",
+            "example": false
           },
           "cleanup_pending": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether provider resources still require confirmed cleanup or reconciliation.",
+            "example": false
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Time this build attempt was accepted.",
+            "example": "2026-10-29T00:00:00Z"
           },
           "error": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Bounded failure explanation, absent when no failure has been recorded.",
+            "example": "Command failed with exit code 23"
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique build attempt identifier.",
+            "example": "sbxbuild_01933b5a000070008000000000000001"
           },
           "logs": {
-            "type": "string"
+            "type": "string",
+            "description": "UTF-8 execution-output tail, bounded to 32 KiB.",
+            "example": "HTTPie 3.2.4\nVerification passed\n"
           },
           "request": {
-            "$ref": "#/components/schemas/SandboxBuildRequest"
+            "$ref": "#/components/schemas/SandboxBuildRequest",
+            "description": "Original immutable installation and verification inputs."
           },
           "sandbox_template_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Parent template whose immutable source revision supplied the build configuration.",
+            "example": "sbxtpl_01933b5a000070008000000000000001"
           },
           "snapshot_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Provider snapshot identifier, present once the artifact has been resolved.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
           },
           "snapshot_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Deterministic provider artifact name used to reconcile uncertain submissions.",
+            "example": "everruns-build-01933b5a000070008000000000000001"
           },
           "snapshot_requested_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Submission time used when reconciling a snapshot response lost in transport.",
+            "example": "2026-10-29T00:00:00Z"
           },
           "software_notes": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Up to 16 KiB of author-supplied Markdown, presented as untrusted reference data.",
+            "example": "# Installed tools\n- HTTPie 3.2.4"
           },
           "source_spec": {
             "$ref": "#/components/schemas/SandboxTemplateSpec",
             "description": "Exact source spec; no runtime credentials or workspace are attached."
           },
           "status": {
-            "$ref": "#/components/schemas/SandboxBuildStatus"
+            "$ref": "#/components/schemas/SandboxBuildStatus",
+            "description": "Persisted lifecycle state; inspect cleanup_pending before applying a Ready build."
           },
           "step": {
-            "type": "string"
+            "type": "string",
+            "description": "Current execution or cleanup step.",
+            "example": "installing"
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Time of the last persisted build update.",
+            "example": "2026-10-29T00:01:00Z"
           },
           "verification_sandbox_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Disposable fresh-snapshot verification compute identifier or submission name.",
+            "example": "550e8400-e29b-41d4-a716-446655440002"
           }
         }
       },
