@@ -341,7 +341,7 @@ class Lab:
 }}
 https://:{self.proxy} {{
  bind 127.0.0.1
- tls {self.cert_path} {self.cert_key_path}
+ tls {json.dumps(str(self.cert_path))} {json.dumps(str(self.cert_key_path))}
  @chat {{
   host *.capacity.localhost
   not host console.capacity.localhost

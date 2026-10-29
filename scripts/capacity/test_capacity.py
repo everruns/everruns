@@ -49,6 +49,28 @@ def report():
 
 
 class CapacityTests(unittest.IsolatedAsyncioTestCase):
+    def test_proxy_config_contains_quoted_paths_and_never_key_contents(self):
+        from unittest.mock import patch
+        from .local_setup import Lab
+
+        with tempfile.TemporaryDirectory() as temporary:
+            lab = Lab(
+                SimpleNamespace(
+                    run_dir=str(Path(temporary) / "lab with spaces"), port_prefix=284
+                )
+            )
+            lab.cert_key_path.write_text("private key contents must stay in this file")
+            with patch.object(lab, "start"), patch.object(lab, "wait"):
+                lab.start_host_and_proxy()
+            path = lab.directory / "Caddyfile"
+            config = path.read_text()
+            self.assertIn(json.dumps(str(lab.cert_path)), config)
+            self.assertIn(json.dumps(str(lab.cert_key_path)), config)
+            self.assertNotIn(lab.cert_key_path.read_text(), config)
+            self.assertNotIn(lab.chat_key, config)
+            self.assertNotIn(lab.fixture_secret, config)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
     def test_fast_fallback_and_missing_tools_cannot_pass_workload_gate(self):
         from .run import workload_valid
 

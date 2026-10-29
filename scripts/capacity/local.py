@@ -671,6 +671,8 @@ def main():
         a.fixture_bin = ROOT / a.fixture_bin
     if not Path(a.run_dir).is_absolute():
         a.run_dir = str(ROOT / a.run_dir)
+    if not Path(a.build_log).is_absolute():
+        a.build_log = str(ROOT / a.build_log)
     if (
         not 1 <= a.port_prefix <= 654
         or min(a.users, a.tenants, a.generators, a.duration, a.interval) <= 0
