@@ -14,7 +14,9 @@ apply. Consumers are virtual users, separate from console members.
 
 Run the server migrations first. Build this directory with `pnpm install
 --frozen-lockfile && pnpm build`, or build its Dockerfile from the repository
-root. Configure these runtime variables without exposing them to the browser:
+root. Keep the sibling `apps/ui/generative-ui` package and the UI security
+backport scripts in the checkout: both chat hosts use that shared renderer.
+Configure these runtime variables without exposing them to the browser:
 
 | Variable                  | Purpose                                                             |
 | ------------------------- | ------------------------------------------------------------------- |

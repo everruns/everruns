@@ -14,7 +14,7 @@ const customJestConfig = {
     "^@streamdown/code$": "<rootDir>/node_modules/@streamdown/code/dist/index.js",
     "^@streamdown/mermaid$": "<rootDir>/node_modules/@streamdown/mermaid/dist/index.js",
   },
-  testPathIgnorePatterns: ["<rootDir>/node_modules/", "<rootDir>/.next/", "<rootDir>/e2e/"],
+  testPathIgnorePatterns: ["<rootDir>/generative-ui/tests/", "<rootDir>/node_modules/", "<rootDir>/.next/", "<rootDir>/e2e/"],
   modulePathIgnorePatterns: ["<rootDir>/.next/"],
   // Transform ES modules from react-markdown, streamdown, RJSF, and their dependencies.
   // First pattern handles pnpm's isolated layout (.pnpm/<spec>/node_modules/<pkg>);

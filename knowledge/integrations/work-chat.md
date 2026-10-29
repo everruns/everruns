@@ -97,7 +97,9 @@ See [Chat recovery](../ui/chat-recovery.md) for the transport decision and
 ## Rich worker experience
 
 The browser host renders Markdown together with structured OpenUI and A2UI blocks,
-using component renderers rather than executing generated JavaScript. Widget
+using the [shared generative-UI renderer](../ui/a2ui.md) rather than executing
+generated JavaScript. Both chat hosts use the same 69-component A2UI 1.0 catalog,
+OpenUI actions and legacy tree adapter. Component colors follow the host theme. Widget
 message actions use the consumer's existing conversation and execution policy.
 Read-only shares disable those actions. Malformed widgets fall back to source.
 

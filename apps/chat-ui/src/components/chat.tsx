@@ -833,7 +833,11 @@ function WorkChat({ config }: { config: Config }) {
               <MessageContent
                 text={message.text}
                 streaming={running && message.id === messages.at(-1)?.id}
-                onMessage={(text) => void send(text, { fromWidget: true })}
+                onMessage={
+                  !session?.archived && !running && !busy
+                    ? (text) => send(text, { fromWidget: true })
+                    : undefined
+                }
                 onFile={
                   config.features.files
                     ? (path) => {

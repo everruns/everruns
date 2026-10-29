@@ -7,10 +7,23 @@
   --muted: #707570;
   --border: #dedfd9;
   --accent: #244d40;
+  --on-accent: #fff;
   --hover: #e6ebe5;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   font-size: 14px;
 }
+:root.dark {
+  color-scheme: dark;
+  --bg: #171c19;
+  --surface: #202823;
+  --text: #edf2ee;
+  --muted: #a6b3aa;
+  --border: #3c4940;
+  --accent: #8fc7ab;
+  --on-accent: #14261d;
+  --hover: #2c3930;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -49,7 +62,7 @@ a {
 }
 .primary {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   border: 0;
   border-radius: 8px;
   padding: 10px 15px;

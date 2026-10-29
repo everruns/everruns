@@ -22,6 +22,7 @@ const nextConfig: NextConfig = {
   // Keep TypeScript installed for tools that consume its JavaScript API.
   typescript: { ignoreBuildErrors: true },
   transpilePackages: [
+    "@everruns/generative-ui",
     "@rjsf/core",
     "@rjsf/utils",
     "@rjsf/validator-ajv8",
