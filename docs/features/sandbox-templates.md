@@ -43,6 +43,16 @@ provisioned by Everruns and cannot be edited or archived.
 
 ## Build a reusable snapshot
 
+Watch a real install-script build, fresh-snapshot verification, software notes and
+saving a new revision in this 52-second walkthrough. Package installation and
+provider waiting time are shortened. Narration is synthesized with Sarah.
+
+<video controls playsinline preload="none" width="1920" height="1080" style="width:100%;height:auto;aspect-ratio:16/9" poster="/changelog/2026-10-29-sandbox-snapshot-builder/walkthrough-poster@2x.png" src="/changelog/2026-10-29-sandbox-snapshot-builder/walkthrough.mp4" aria-label="Build reusable sandbox snapshots in Everruns">
+  <track kind="captions" src="/videos/sandbox-builder.en.vtt" srclang="en" label="English" default>
+</video>
+
+[Read the English captions](/videos/sandbox-builder.en.vtt).
+
 Open an editable Daytona template, select and save a named **Organization account**,
 then open **Build snapshot**. Enter an **Install script** to install the software you
 need. The script runs with `/bin/sh` once in fresh provider compute; it is separate from bootstrap

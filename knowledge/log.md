@@ -2,6 +2,8 @@
 
 ## 2026-10-29
 
+- Publish the approved [Sandbox Builder walkthrough](docs/product-videos.md) in its feature guide and existing changelog, with English captions.
+
 - Give the main PostgreSQL server shard bounded cold-build headroom after compilation exhausted its test budget; retain all selected tests and other shard budgets. See [CI Build Time](project/ci-build-time.md).
 
 - Extend [Agent Cost Estimation](ui/agent-cost-estimation.md) with explicit resource costs, fixed fees, cache/retry assumptions and a host pricing seam that separates prepaid credits from external bills.
