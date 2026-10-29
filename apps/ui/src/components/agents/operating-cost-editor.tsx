@@ -77,7 +77,7 @@ export function OperatingCostEditor({
                 label: template.label,
                 unit: template.unit,
                 quantity: 1,
-                period: template.unit === "month" ? "month" : "task",
+                period: rate?.period ?? (template.unit === "month" ? "month" : "task"),
                 billing: rate?.billing ?? "external",
                 rateId: rate?.id,
                 usdPerUnit: rate?.usdPerUnit,

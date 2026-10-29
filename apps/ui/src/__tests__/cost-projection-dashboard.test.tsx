@@ -19,6 +19,35 @@ const props = {
   definitionTokens: 100,
 };
 beforeEach(() => localStorage.clear());
+it("keeps host-priced monthly capacity independent of task volume", () => {
+  render(
+    <CostProjectionDashboard
+      {...props}
+      pricing={{
+        status: "ready",
+        modelBilling: "credits",
+        rates: [
+          {
+            id: "storage",
+            label: "Stored content",
+            unit: "GiB",
+            usdPerUnit: 0.05,
+            billing: "credits",
+            period: "month",
+          },
+        ],
+      }}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Cost category"), { target: { value: "rate:storage" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add cost" }));
+  fireEvent.change(screen.getByLabelText("Quantity per month (GiB)"), { target: { value: "100" } });
+  expect(screen.getAllByText("$180.20").length).toBeGreaterThan(0);
+  fireEvent.change(screen.getByLabelText("Tasks per day"), { target: { value: "0" } });
+  expect(screen.getAllByText("$5.00").length).toBeGreaterThan(0);
+  expect(screen.getByRole("img")).toBeInTheDocument();
+});
+
 it("includes sandbox costs only after a provider price is supplied", () => {
   render(<CostProjectionDashboard {...props} />);
   fireEvent.click(screen.getByRole("button", { name: "Add cost" }));

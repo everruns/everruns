@@ -87,6 +87,8 @@ not resource quantities. The total covers included resources, never every possib
 
 The [pricing hook](../../apps/ui/src/hooks/use-agent-cost-pricing.ts) is a host override seam.
 It classifies model spend as prepaid credits or external, and supplies current service rates.
+Host rates can declare a monthly billing period independently of their usage unit, so stored
+capacity remains a fixed monthly estimate rather than scaling with task volume.
 Self-hosted defaults to provider billing with no managed rate card. A host supplies its credit
 label and effective rates without putting host billing logic in OSS. Rates are re-resolved by
 stable identity when refreshed; a missing or failed rate cannot retain a stale zero/price.
