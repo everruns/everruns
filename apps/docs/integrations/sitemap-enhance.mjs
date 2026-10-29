@@ -3,7 +3,7 @@
 import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { docsUrl } from "../site.config.mjs";
+import { docsUrl, redirectedPagePath } from "../site.config.mjs";
 
 export default function sitemapEnhance() {
   return {
@@ -25,11 +25,14 @@ export default function sitemapEnhance() {
 
         const lastmod = new Date().toISOString().split("T")[0];
 
-        // Add <lastmod> to each <url> entry
+        // Advertise only canonical pages; the Worker still redirects old links.
+        // Ordinary historical entries without a redirect remain discoverable.
         const enhanced = content.replace(
           /<url><loc>(.*?)<\/loc><\/url>/g,
           (_match, url) =>
-            `<url><loc>${url}</loc><lastmod>${lastmod}</lastmod></url>`
+            redirectedPagePath(new URL(url).pathname)
+              ? ""
+              : `<url><loc>${url}</loc><lastmod>${lastmod}</lastmod></url>`
         );
 
         const sitemapDest = join(outDir, "sitemap.xml");

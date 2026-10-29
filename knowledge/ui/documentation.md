@@ -486,6 +486,7 @@ The docs site must ship a single `sitemap.xml` file at the docs root.
 3. Every `<url>` entry must include a `<lastmod>` value
 4. `apps/docs/integrations/sitemap-enhance.mjs` is responsible for post-processing Astro's generated sitemap into the final `sitemap.xml`
 5. `lastmod` currently uses the docs build date rather than git history so builds remain deterministic on shallow CI clones
+6. Advertise only canonical pages that return 200. The Worker and sitemap share redirect rules in [`site.config.mjs`](../../apps/docs/site.config.mjs), so permanent aliases stay reachable without being advertised as pages. Historical changelog entries without redirects remain discoverable.
 
 ### Agent-Readable Output Requirements
 

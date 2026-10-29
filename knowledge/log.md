@@ -2,6 +2,8 @@
 
 ## 2026-10-28
 
+- Kept permanent documentation aliases out of the sitemap using the Worker's shared redirect rules, while preserving ordinary historical entries. See [Documentation](ui/documentation.md).
+
 - Made single-message retrieval independent of the history window and indexed embedded message IDs for turn-start and input-provenance lookups. See [Architecture](foundations/architecture.md) and [ID Schema](foundations/id-schema.md).
 
 - Clarified custom-worker Agent identity, operator provisioning, inline tool code, ordinary API invocation and the Slack Direct-reply boundary, including unqualified live Slack behavior. See [Custom workers](operations/custom-workers.md).

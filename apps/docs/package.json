@@ -8,7 +8,7 @@
     "dev": "astro dev",
     "predev": "pnpm run prepare-content",
     "precheck": "node ../ui/scripts/patch-zod-v3.mjs --check && pnpm run prepare-content",
-    "prebuild": "node ../ui/scripts/patch-zod-v3.mjs --check && pnpm run prepare-content && node --test integrations/changelog-media.test.mjs && node scripts/check-changelog.mjs && node scripts/generate-og-image.mjs",
+    "prebuild": "node ../ui/scripts/patch-zod-v3.mjs --check && pnpm run prepare-content && node --test integrations/*.test.mjs && node scripts/check-changelog.mjs && node scripts/generate-og-image.mjs",
     "build": "astro build",
     "postbuild": "node scripts/verify-notebooks.mjs && node scripts/verify-llms.mjs && node scripts/verify-seo.mjs && node scripts/verify-api-reference.mjs",
     "preview": "astro preview",

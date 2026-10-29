@@ -10,14 +10,13 @@
 // an AI client asking for `text/markdown` on the page URL gets that twin, the
 // same contract the landing site's middleware follows, so agents see one
 // behavior across everruns.com.
-const BASE = "/docs";
+import { BASE, SITE, redirectedPagePath } from "../site.config.mjs";
 
 // The former docs host. This Worker also takes the route `docs.everruns.com/*`
 // and sends every URL to the same path under everruns.com/docs, query kept. A
 // zone redirect rule would do the same, but the deploy token can manage Worker
 // routes, not rulesets, and this way the redirect is tested and versioned.
 const OLD_HOST = "docs.everruns.com";
-const SITE = "https://everruns.com";
 
 // Same lists as the landing site's src/middleware.ts: crawlers always get HTML,
 // AI clients get Markdown when they ask for it or identify themselves.
@@ -93,10 +92,9 @@ export default {
     }
 
     // The original announcement was shared publicly; keep that link current.
-    const oldEstimate = `${BASE}/changelog/2026-10-28-agent-cost-estimation`;
-    if ([oldEstimate, `${oldEstimate}/`, `${oldEstimate}.md`, `${oldEstimate}/index.md`].includes(url.pathname)) {
-      const suffix = url.pathname.endsWith(".md") ? "/index.md" : "/";
-      return Response.redirect(new URL(`${BASE}/changelog/2026-10-28-smart-agent-cost-projections${suffix}${url.search}`, url), 301);
+    const replacement = redirectedPagePath(url.pathname);
+    if (replacement) {
+      return Response.redirect(new URL(`${replacement}${url.search}`, url), 301);
     }
 
     const markdown = markdownPath(url.pathname);

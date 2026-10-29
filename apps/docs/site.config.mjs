@@ -17,3 +17,13 @@ export function withBase(url, base = BASE) {
 
 /** The absolute URL of a docs path: `/changelog/` → `https://everruns.com/docs/changelog/`. */
 export const docsUrl = (path) => `${SITE}${withBase(path)}`;
+
+// Worker-owned aliases must also be excluded from the canonical sitemap.
+export function redirectedPagePath(pathname) {
+  const oldEstimate = `${BASE}/changelog/2026-10-28-agent-cost-estimation`;
+  if ([oldEstimate, `${oldEstimate}/`, `${oldEstimate}.md`, `${oldEstimate}/index.md`].includes(pathname)) {
+    const suffix = pathname.endsWith(".md") ? "/index.md" : "/";
+    return `${BASE}/changelog/2026-10-28-smart-agent-cost-projections${suffix}`;
+  }
+  return null;
+}
