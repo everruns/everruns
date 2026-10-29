@@ -3,6 +3,7 @@
 ## 2026-10-29
 
 - Fixed host-priced monthly capacity estimates so their usage units remain independent of task volume.
+- Patch the libz-sys build-script disclosure and retire affected Rust target caches without weakening advisory checks. See [CI Build Time](project/ci-build-time.md).
 
 - Publish the approved [Sandbox Builder walkthrough](docs/product-videos.md) in its feature guide and existing changelog, with English captions.
 
