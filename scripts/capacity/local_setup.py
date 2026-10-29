@@ -54,6 +54,13 @@ def private_json(path, value):
         json.dump(value, file)
 
 
+def atomic_json(path, value):
+    path = Path(path)
+    temporary = path.with_name(path.name + ".tmp")
+    private_json(temporary, value)
+    temporary.replace(path)
+
+
 def hardware():
     memory = (
         os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
@@ -330,9 +337,13 @@ class Lab:
  admin off
  auto_https off
 }}
-https://127.0.0.1:{self.proxy} {{
+https://:{self.proxy} {{
+ bind 127.0.0.1
  tls {self.cert} {self.cert_key}
- @chat header_regexp Host ^[0-9a-f]{{32}}\\.capacity\\.localhost$
+ @chat {{
+  host *.capacity.localhost
+  not host console.capacity.localhost
+ }}
  handle @chat {{
   reverse_proxy 127.0.0.1:{self.bff}
  }}

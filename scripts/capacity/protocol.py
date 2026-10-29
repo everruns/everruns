@@ -181,13 +181,13 @@ async def preflight(client, target, actors):
                 .raise_for_status()
                 .json()
             )
-            if agent.get("default_model_id") != actor.model:
+            if actor.path != "console" and agent.get("default_model_id") != actor.model:
                 raise ValueError("agent must use the verified llmsim model")
             checked.add(identity)
         if actor.path == "console":
             if (
                 actor.create.get("agent_id") != actor.agent
-                or actor.create.get("model_id", actor.model) != actor.model
+                or actor.create.get("model_id") != actor.model
             ):
                 raise ValueError("console session must use the verified agent/model")
         else:

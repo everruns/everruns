@@ -82,6 +82,13 @@ def verdict(report, ack_p95):
         "no_lost_or_duplicated_inputs": report["audit_errors"] == 0
         and report["audited_inputs"] == admission,
         "no_missing_streamed_inputs": report["stream_missing_inputs"] == 0,
+        "workload_verified": report["workload_audit_errors"] == 0
+        and report["workload_verified_turns"] == report["completed"],
+        "requested_reconnect_executed": report.get("workload", {}).get(
+            "reconnect_at_seconds", -1
+        )
+        < 0
+        or report.get("reconnected_users", 0) == report["users"],
         "no_background_request_errors": report.get("fault_mode", False)
         or not report["poll_errors"],
         "no_unexpected_stream_errors": report.get("fault_mode", False)
@@ -213,12 +220,19 @@ async def one_turn(
         if args.mix == "realistic"
         else args.mix
     )
-    text = f"{marker} [[llmsim:{shape} seed={index}]]"
+    simulator_shape = (
+        "console-file-research"
+        if actor.path == "console" and shape == "file-research"
+        else shape
+    )
+    text = f"{marker} [[llmsim:{simulator_shape} seed={index}]]"
     row = {
         "actor": index,
         "path": actor.path,
         "marker": marker,
         "scenario": shape,
+        "simulator_scenario": simulator_shape,
+        "session_id": actor.session,
         "request_id": key,
         "admitted": False,
         "completed": False,
@@ -337,8 +351,45 @@ async def background(client, actor, interval, paths, results, offset, changes=No
             await asyncio.sleep(max(0, interval - (time.perf_counter() - started)))
 
 
+async def event_pages(client, target, actor, types, limit):
+    before = None
+    for _ in range(limit):
+        params = {"limit": 1000, "types": types}
+        if before is not None:
+            params["before_sequence"] = before
+        response = (
+            await authenticated_request(
+                client,
+                actor,
+                "GET",
+                actor.url(f"sessions/{actor.session}/events"),
+                params=params,
+            )
+            if actor.path == "console"
+            else await client.get(
+                f"{target.control}/v1/sessions/{actor.session}/events",
+                params=params,
+                headers=target.headers_for(actor),
+            )
+        )
+        response.raise_for_status()
+        data = response.json()
+        events = data.get("data", []) if isinstance(data, dict) else data
+        if not events:
+            break
+        yield events
+        if len(events) < 1000:
+            break
+        next_before = min(e["sequence"] for e in events)
+        if before is not None and next_before >= before:
+            raise ValueError("audit cursor did not advance")
+        before = next_before
+    else:
+        raise ValueError("audit pagination limit reached")
+
+
 async def audit(client, target, actor, expected, stream, limit):
-    before, found, streamed = None, Counter(), Counter()
+    found, streamed = Counter(), Counter()
     mismatched = 0
     for message_id, text in stream.inputs.items():
         marker = text.split(" ", 1)[0]
@@ -346,20 +397,7 @@ async def audit(client, target, actor, expected, stream, limit):
             streamed[marker] += 1
             if isinstance(expected[marker], str) and message_id != expected[marker]:
                 mismatched += 1
-    for _ in range(limit):
-        params = {"limit": 1000, "types": "input.message"}
-        if before is not None:
-            params["before_sequence"] = before
-        response = await client.get(
-            f"{target.control}/v1/sessions/{actor.session}/events",
-            params=params,
-            headers=target.headers_for(actor),
-        )
-        response.raise_for_status()
-        data = response.json()
-        events = data.get("data", []) if isinstance(data, dict) else data
-        if not events:
-            break
+    async for events in event_pages(client, target, actor, "input.message", limit):
         for event in events:
             if event.get("type") != "input.message":
                 continue
@@ -377,14 +415,6 @@ async def audit(client, target, actor, expected, stream, limit):
                     != expected[marker]
                 ):
                     mismatched += 1
-        if len(events) < 1000:
-            break
-        next_before = min(e["sequence"] for e in events)
-        if before is not None and next_before >= before:
-            raise ValueError("audit cursor did not advance")
-        before = next_before
-    else:
-        raise ValueError("audit pagination limit reached")
     errors = (
         mismatched
         + sum(count != 1 for count in found.values())
@@ -392,6 +422,80 @@ async def audit(client, target, actor, expected, stream, limit):
     )
     missing = sum(streamed[marker] != 1 for marker in found)
     return errors, missing, sum(found.values())
+
+
+def workload_valid(shape, terminal, output):
+    # Generous pacing floors plus durable tool/output proof reject llmsim's
+    # tiny fallback answer even when queueing makes it appear slow.
+    words, tools, calls, milliseconds = {
+        "chat-short": (40, 0, 1, 1000),
+        "file-research": (600, 4, 4, 10000),
+        "long-answer": (1500, 0, 1, 25000),
+        "thinking": (300, 0, 1, 10000),
+    }[shape]
+    text = "\n".join(
+        p.get("text", "") for p in output.get("content", []) if p.get("type") == "text"
+    )
+    observed = {
+        "output_words": len(text.split()),
+        "tool_calls": terminal.get("tool_call_count") or 0,
+        "llm_calls": terminal.get("llm_call_count") or 0,
+        "duration_ms": terminal.get("duration_ms") or 0,
+    }
+    valid = (
+        observed["output_words"] >= words
+        and observed["tool_calls"] >= tools
+        and observed["llm_calls"] >= calls
+        and observed["duration_ms"] >= milliseconds
+    )
+    return valid, observed
+
+
+async def audit_workload(client, target, actor, rows, limit):
+    starts, terminals, outputs = {}, {}, {}
+    async for events in event_pages(
+        client,
+        target,
+        actor,
+        "turn.started,turn.completed,output.message.completed",
+        limit,
+    ):
+        for event in events:
+            data = event.get("data", {})
+            if event["type"] == "turn.started":
+                starts.setdefault(data.get("input_message_id"), []).append(
+                    data.get("turn_id")
+                )
+            elif event["type"] == "turn.completed":
+                terminals.setdefault(data.get("turn_id"), []).append(data)
+            elif event["type"] == "output.message.completed":
+                message = data.get("message", {})
+                outputs.setdefault(message.get("id"), []).append(message)
+    proof = []
+    for row in rows:
+        if not row["completed"]:
+            continue
+        turns = starts.get(row["message_id"], [])
+        terminal = terminals.get(turns[0], []) if len(turns) == 1 else []
+        messages = (
+            outputs.get(terminal[0].get("final_message_id"), [])
+            if len(terminal) == 1
+            else []
+        )
+        valid, observed = workload_valid(
+            row["scenario"],
+            terminal[0] if len(terminal) == 1 else {},
+            messages[0] if len(messages) == 1 else {},
+        )
+        proof.append(
+            {
+                "marker": row["marker"],
+                "scenario": row["scenario"],
+                "passed": valid,
+                **observed,
+            }
+        )
+    return proof
 
 
 async def run(args):
@@ -409,9 +513,7 @@ async def run(args):
     args.output = Path(args.output)
     args.output.mkdir(parents=True, exist_ok=False)
     results = Results(args.output)
-    verify = (
-        ssl.create_default_context(cafile=args.ca_bundle) if args.ca_bundle else True
-    )
+    verify = ssl.create_default_context(cafile=args.ca_bundle)
     streams, sessions, pollers = {}, {}, []
     identities = set()
     transport_versions = Counter()
@@ -420,13 +522,18 @@ async def run(args):
     started = 0.0
     async with AsyncExitStack() as stack:
         stack.enter_context(results.handle)
+        workload_output = stack.enter_context(
+            open(args.output / "workload.jsonl", "a", buffering=1)
+        )
         control = await stack.enter_async_context(
             httpx.AsyncClient(
                 verify=verify, timeout=30, trust_env=trust_environment(target.control)
             )
         )
         await preflight(control, target, all_actors)
-        # At most 50 SSE streams per pool: avoid a generator pool becoming the bottleneck.
+        # One transport per actor models independent browsers/SDK clients, while
+        # that actor reuses HTTP/2 for its SSE, commands and background reads.
+        # Share only CA configuration, not user connections or cookie jars.
         clients = [
             await stack.enter_async_context(
                 httpx.AsyncClient(
@@ -434,18 +541,16 @@ async def run(args):
                     http2=True,
                     timeout=httpx.Timeout(30, pool=30),
                     trust_env=any(trust_environment(a.base) for _, a in selected),
-                    limits=httpx.Limits(
-                        max_connections=120, max_keepalive_connections=120
-                    ),
+                    limits=httpx.Limits(max_connections=4, max_keepalive_connections=4),
                 )
             )
-            for _ in range((len(selected) + 49) // 50)
+            for _ in selected
         ]
         setup_limit = asyncio.Semaphore(args.setup_concurrency)
 
         async def actor_job(position, index, actor):
             nonlocal ready_count
-            client = clients[position // 50]
+            client = clients[position]
             stream = None
             try:
                 async with setup_limit:
@@ -471,14 +576,27 @@ async def run(args):
                     actor.session = response.json()["id"]
                     sessions[index] = actor
                     # Use a dedicated document; never arbitrary external tools.
-                    seed = await control.post(
-                        f"{target.control}/v1/sessions/{actor.session}/fs/load-test/research.md",
-                        headers=target.headers_for(actor),
-                        json={
-                            "content": "# Capacity fixture\n"
-                            + ("Durable events and simulated tools.\n" * 40),
-                            "encoding": "text",
-                        },
+                    document = {
+                        "content": "# Capacity fixture\n"
+                        + ("Durable events and simulated tools.\n" * 40),
+                        "encoding": "text",
+                    }
+                    seed = (
+                        await authenticated_request(
+                            client,
+                            actor,
+                            "POST",
+                            actor.url(
+                                f"sessions/{actor.session}/fs/load-test/research.md"
+                            ),
+                            json=document,
+                        )
+                        if actor.path == "console"
+                        else await control.post(
+                            f"{target.control}/v1/sessions/{actor.session}/fs/load-test/research.md",
+                            headers=target.headers_for(actor),
+                            json=document,
+                        )
                     )
                     seed.raise_for_status()
                     stream = Stream(client, actor)
@@ -603,11 +721,11 @@ async def run(args):
         await asyncio.gather(fault_task, *pollers, return_exceptions=True)
         # Give queued input echoes a chance to arrive, bounded independently of turn duration.
         await asyncio.sleep(args.audit_grace)
-        audit_errors = missing = audited = 0
+        audit_errors = missing = audited = workload_errors = workload_verified = 0
         audit_slots = asyncio.Semaphore(10)
 
         async def inspect(index, actor):
-            nonlocal audit_errors, missing, audited
+            nonlocal audit_errors, missing, audited, workload_errors, workload_verified
             expected = {
                 r["marker"]: r.get("message_id", False)
                 for r in results.rows
@@ -616,7 +734,7 @@ async def run(args):
             async with audit_slots:
                 try:
                     a, b, c = await audit(
-                        control,
+                        streams[index].client if actor.path == "console" else control,
                         target,
                         actor,
                         expected,
@@ -626,6 +744,17 @@ async def run(args):
                     audit_errors += a
                     missing += b
                     audited += c
+                    proof = await audit_workload(
+                        streams[index].client if actor.path == "console" else control,
+                        target,
+                        actor,
+                        [r for r in results.rows if r["actor"] == index],
+                        args.audit_pages,
+                    )
+                    for item in proof:
+                        workload_output.write(json.dumps(item) + "\n")
+                        workload_errors += not item["passed"]
+                        workload_verified += item["passed"]
                 except Exception as error:
                     audit_errors += 1
                     results.error("audit", error)
@@ -633,15 +762,25 @@ async def run(args):
         await asyncio.gather(
             *(inspect(i, a) for i, a in sessions.items() if i in streams)
         )
+        reconnected = sum(
+            s.forced > 0 and s.connections > 1 and s.connected for s in streams.values()
+        )
         await asyncio.gather(*(s.stop() for s in streams.values()))
+        pending_sessions = {r["session_id"] for r in results.rows if not r["completed"]}
         for actor in sessions.values():
             # Cancellation is cleanup, never a replayed user approval or tool action.
+            if actor.session not in pending_sessions:
+                continue
             try:
-                await control.post(
-                    f"{target.control}/v1/sessions/{actor.session}/cancel",
-                    headers=target.headers_for(actor),
+                client = next(s.client for s in streams.values() if s.actor is actor)
+                response = await authenticated_request(
+                    client,
+                    actor,
+                    "POST",
+                    actor.url(f"sessions/{actor.session}/cancel"),
                     json={},
                 )
+                response.raise_for_status()
             except httpx.HTTPError:
                 results.errors["cleanup_failed"] += 1
     results.handle.close()
@@ -691,6 +830,9 @@ async def run(args):
         "completed": sum(r["completed"] for r in results.rows),
         "audit_errors": audit_errors,
         "audited_inputs": audited,
+        "workload_audit_errors": workload_errors,
+        "workload_verified_turns": workload_verified,
+        "reconnected_users": reconnected,
         "stream_missing_inputs": missing,
         "ack_ms": percentiles([r["ack_ms"] for r in results.rows if r["admitted"]]),
         "pickup_ms": percentiles(

@@ -22,7 +22,7 @@ import uuid
 
 import httpx
 
-from .local_setup import Lab, ROOT, hardware, private_json
+from .local_setup import Lab, ROOT, hardware, private_json, atomic_json
 from .merge import merge
 from .run import verdict
 from .resources import summarize
@@ -179,6 +179,7 @@ def bootstrap(lab):
                 },
                 org_id,
             )
+            console_agent = api("/v1/agents/platform-chat", org=org_id)
             api_channel = api(
                 f"/v1/agents/{agent['id']}/channels",
                 "POST",
@@ -258,6 +259,7 @@ def bootstrap(lab):
                     "model_id": model["id"],
                     "agent_id": agent["id"],
                     "harness_id": harness["id"],
+                    "console_agent_id": console_agent["id"],
                     "api_channel": api_channel["id"],
                     "chat_channel": chat["id"],
                     "agent_key": key,
@@ -273,6 +275,7 @@ def bootstrap(lab):
             actors.append(
                 {
                     **common,
+                    "agent_id": group["console_agent_id"],
                     "name": f"console-{i}",
                     "path": "console",
                     "base": lab.edge + "/api",
@@ -283,10 +286,10 @@ def bootstrap(lab):
                         "X-Org-Id": group["org"],
                     },
                     "create": {
-                        "harness_id": group["harness_id"],
-                        "agent_id": group["agent_id"],
+                        "agent_id": group["console_agent_id"],
                         "model_id": group["model_id"],
                         "source": "chat",
+                        "tags": ["chat"],
                     },
                 }
             )
@@ -383,7 +386,10 @@ def bootstrap(lab):
                 "provider_credentials_present": False,
                 "worker_slots": lab.args.worker_slots,
                 "model_wait_slots": lab.args.model_waits,
-                "agent_profile": "base harness + session_file_system, direct communication",
+                "agent_profiles": {
+                    "console": "managed Platform Chat / Bashkit Worker, explicit llmsim session model",
+                    "agent-api/work-chat": "base harness + session_file_system, direct communication",
+                },
                 "release_lto": False,
                 "release_opt_level": 3,
                 "release_codegen_units": 16,
@@ -399,6 +405,7 @@ def bootstrap(lab):
             "generator_topology": {
                 "processes": lab.args.generators,
                 "separate_machine": False,
+                "http_clients_per_actor": 1,
                 "python": sys.version.split()[0],
                 "packages": {
                     name: importlib.metadata.version(name)
@@ -436,7 +443,7 @@ def run_case(
         **lab.native_pids,
         **{role: p.pid for role, p in lab.processes.items() if p.poll() is None},
     }
-    pids_file.write_text(json.dumps(pids))
+    atomic_json(pids_file, pids)
     monitor_env = {**lab.env, "CAPACITY_DATABASE_URL": lab.dburl}
     monitor = subprocess.Popen(
         [
@@ -524,7 +531,7 @@ def run_case(
             log.close()
             shards.append((process, ready, output))
             pids[f"generator-{shard}"] = process.pid
-        pids_file.write_text(json.dumps(pids))
+        atomic_json(pids_file, pids)
         deadline = time.monotonic() + 600
         while not all(ready.exists() for _, ready, _ in shards):
             if time.monotonic() > deadline or any(
@@ -533,19 +540,21 @@ def run_case(
                 raise RuntimeError("a generator failed before the synchronized start")
             time.sleep(0.25)
         epoch = time.time() + 2
-        start_file.write_text(json.dumps({"epoch": epoch}))
+        atomic_json(start_file, {"epoch": epoch})
         print(
             f"{name}: synchronized start, {users} users / {generators} generators",
             flush=True,
         )
         restarted = False
+        restart_at = None
         safety_abort = None
         while any(p.poll() is None for p, _, _ in shards):
             if restart and not restarted and time.time() > epoch + 15:
+                restart_at = time.time()
                 lab.restart_server()
                 restarted = True
                 pids["server"] = lab.processes["server"].pid
-                pids_file.write_text(json.dumps(pids))
+                atomic_json(pids_file, pids)
             if __import__("shutil").disk_usage(directory).free < 2 * 1024**3:
                 safety_abort = "disk free below 2 GiB"
                 break
@@ -567,6 +576,13 @@ def run_case(
             - identity_before["refresh_successes"]
         )
         report.update(verdict(report, ack_target))
+        report["server_restart_offset_seconds"] = (
+            restart_at - epoch if restart_at is not None else None
+        )
+        report["checks"]["planned_server_restart_executed_in_phase"] = not restart or (
+            restarted and report["start_epoch"] <= restart_at <= report["end_epoch"]
+        )
+        report["passed"] = all(report["checks"].values())
         report["ack_p95_gate_ms"] = ack_target
         stop_file.touch()
         monitor.wait(timeout=15)

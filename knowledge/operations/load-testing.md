@@ -85,6 +85,11 @@ are separate success bars. A small smoke or transport-only fixture cannot establ
 capacity claim; co-located generators limit conclusions to the measured machine.
 Commands, workload defaults and gates live with the benchmark, not in this concept.
 
+Qualification also verifies persisted output size, file-tool rounds and pacing.
+A successful tiny simulator fallback must not silently reduce the offered load.
+Requested fault injections must execute during measurement and recover their
+streams; an unexecuted reconnect or restart cannot pass as recovery evidence.
+
 Keep SSE for the three current chat surfaces. Offline drafts, durable command
 identities and replay cursors provide recovery independently of transport choice.
 A WebSocket proposal must demonstrate a bidirectional requirement or a controlled

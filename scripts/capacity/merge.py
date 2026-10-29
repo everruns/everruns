@@ -37,6 +37,7 @@ def merge(directories):
     rows = []
     start = min(r["start_epoch"] for r in reports)
     end = max(r["start_epoch"] + r["duration_seconds"] for r in reports)
+    horizon = end - start
     for directory, report in zip(directories, reports):
         for line in (Path(directory) / "turns.jsonl").read_text().splitlines():
             row = json.loads(line)
@@ -70,6 +71,9 @@ def merge(directories):
         "replayed_frames",
         "forced_disconnects",
         "poll_requests",
+        "workload_audit_errors",
+        "workload_verified_turns",
+        "reconnected_users",
     ]:
         result[key] = sum(r[key] for r in reports)
     for key in ["errors", "poll_errors", "http_status", "http_versions"]:
@@ -99,17 +103,21 @@ def merge(directories):
     occupancy = []
     queued = []
     for row in rows:
-        if row.get("completed") and row.get("input_received_ms") is not None:
-            start = row["start_seconds"] + row["input_received_ms"] / 1000
-            end = row["start_seconds"] + row["turn_ms"] / 1000
+        if row.get("admitted"):
+            received = row.get("input_received_ms", row["ack_ms"])
+            start = row["start_seconds"] + received / 1000
+            end = (
+                row["start_seconds"] + row["turn_ms"] / 1000
+                if row.get("completed")
+                else horizon
+            )
             occupancy.extend([(start, 1), (end, -1)])
-            if row.get("turn_started_ms") is not None:
-                queued.extend(
-                    [
-                        (start, 1),
-                        (row["start_seconds"] + row["turn_started_ms"] / 1000, -1),
-                    ]
-                )
+            claimed = (
+                row["start_seconds"] + row["turn_started_ms"] / 1000
+                if row.get("turn_started_ms") is not None
+                else end
+            )
+            queued.extend([(start, 1), (claimed, -1)])
 
     def peak(timeline):
         current = maximum = 0

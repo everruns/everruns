@@ -20,7 +20,7 @@ def actor(path="console"):
         path,
         "https://localhost/api",
         {"Authorization": "Bearer never-log"},
-        {"agent_id": "agent"},
+        {"agent_id": "agent", "model_id": "model"},
         "org",
         "agent",
         "model",
@@ -39,6 +39,9 @@ def report():
         "audit_errors": 0,
         "audited_inputs": 2000,
         "stream_missing_inputs": 0,
+        "workload_audit_errors": 0,
+        "workload_verified_turns": 2000,
+        "reconnected_users": 0,
         "ack_ms": {"p95": 100},
         "poll_errors": {},
         "errors": {},
@@ -46,6 +49,36 @@ def report():
 
 
 class CapacityTests(unittest.IsolatedAsyncioTestCase):
+    def test_fast_fallback_and_missing_tools_cannot_pass_workload_gate(self):
+        from .run import workload_valid
+
+        terminal = {"tool_call_count": 4, "llm_call_count": 4, "duration_ms": 15000}
+        output = {"content": [{"type": "text", "text": "word " * 600}]}
+        self.assertTrue(workload_valid("file-research", terminal, output)[0])
+        for changed in [
+            {"tool_call_count": 0},
+            {"duration_ms": 100},
+            {"llm_call_count": 1},
+        ]:
+            self.assertFalse(
+                workload_valid("file-research", {**terminal, **changed}, output)[0]
+            )
+        for shape in ["chat-short", "file-research", "long-answer", "thinking"]:
+            self.assertFalse(
+                workload_valid(
+                    shape,
+                    terminal,
+                    {"content": [{"type": "text", "text": "Hello simulated response"}]},
+                )[0]
+            )
+
+    def test_a_requested_reconnect_must_actually_recover_every_user(self):
+        r = report()
+        r["workload"] = {"reconnect_at_seconds": 10}
+        self.assertFalse(verdict(r, 500)["passed"])
+        r["reconnected_users"] = r["users"]
+        self.assertTrue(verdict(r, 500)["passed"])
+
     async def test_work_chat_projection_correlates_input_and_terminal_turn(self):
         import time
         from .run import one_turn
@@ -209,6 +242,7 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
                             "start_seconds": 0,
                             "ack_ms": i * 100,
                             "completed": True,
+                            "admitted": True,
                             "input_received_ms": 0,
                             "turn_ms": 20,
                         }
@@ -219,6 +253,12 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["ack_ms"]["mean"], 50)
             self.assertEqual(result["client_observed_peak_unfinished_turns"], 1)
             self.assertAlmostEqual(result["duration_seconds"], 5.1)
+            row = json.loads((directories[0] / "turns.jsonl").read_text())
+            row["completed"] = False
+            (directories[0] / "turns.jsonl").write_text(json.dumps(row) + "\n")
+            self.assertEqual(
+                merge(directories)["client_observed_peak_unfinished_turns"], 2
+            )
             with self.assertRaisesRegex(ValueError, "missing or duplicated"):
                 merge(directories[:1])
             row = json.loads((directories[1] / "report.json").read_text())
@@ -256,6 +296,8 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
             ("admissions", 1990),
             ("completed", 1999),
             ("audit_errors", 1),
+            ("workload_audit_errors", 1),
+            ("workload_verified_turns", 1999),
             ("audited_inputs", 1999),
             ("stream_missing_inputs", 1),
             ("poll_errors", {"429": 1}),
@@ -336,6 +378,28 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
                 await preflight(client, target, [a, b])
         self.assertTrue(all(req.method == "GET" for req in calls))
         self.assertEqual({r.headers["X-Org-Id"] for r in calls}, {"org", "bad"})
+
+    async def test_console_requires_explicit_simulator_override_while_api_uses_agent_default(
+        self,
+    ):
+        def respond(req):
+            if "/models/" in req.url.path:
+                return httpx.Response(
+                    200, json={"enabled": True, "provider_id": "provider"}
+                )
+            if "/providers/" in req.url.path:
+                return httpx.Response(200, json={"provider_type": "llmsim"})
+            return httpx.Response(200, json={"default_model_id": None})
+
+        a = actor()
+        target = Target([a], "https://localhost/api", {}, "model", "agent")
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            await preflight(client, target, [a])
+            a.create.pop("model_id")
+            with self.assertRaisesRegex(ValueError, "verified agent/model"):
+                await preflight(client, target, [a])
+            with self.assertRaisesRegex(ValueError, "verified llmsim model"):
+                await preflight(client, target, [actor("agent-api")])
 
     async def test_lost_ack_reuses_both_body_and_key_for_all_paths(self):
         for path in ["console", "agent-api", "work-chat"]:
@@ -468,8 +532,16 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
             if path.endswith("/sse"):
                 return httpx.Response(200, stream=Body(queues[path.split("/")[-2]]))
             if path.endswith("/events"):
+                types = req.url.params.get("types", "").split(",")
                 return httpx.Response(
-                    200, json={"data": histories[path.split("/")[-2]]}
+                    200,
+                    json={
+                        "data": [
+                            e
+                            for e in histories[path.split("/")[-2]]
+                            if e["type"] in types
+                        ]
+                    },
                 )
             if path.endswith("/commands/create_message"):
                 key = req.headers["Idempotency-Key"]
@@ -497,12 +569,32 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
                                     {"input_message_id": message["id"], "turn_id": key},
                                 ),
                                 ("output.message.delta", {"turn_id": key}),
-                                ("turn.completed", {"turn_id": key}),
+                                (
+                                    "output.message.completed",
+                                    {
+                                        "message": {
+                                            "id": "final_" + key,
+                                            "content": [
+                                                {"type": "text", "text": "word " * 40}
+                                            ],
+                                        }
+                                    },
+                                ),
+                                (
+                                    "turn.completed",
+                                    {
+                                        "turn_id": key,
+                                        "final_message_id": "final_" + key,
+                                        "duration_ms": 1500,
+                                        "tool_call_count": 0,
+                                        "llm_call_count": 1,
+                                    },
+                                ),
                             ],
                             1,
                         )
                     ]
-                    histories[session].append(events[0])
+                    histories[session].extend(events)
                     for event in events:
                         queues[session].put_nowait(
                             (

@@ -29,10 +29,18 @@ Console, Agent API and Work Chat:
    admission has its own 15-second budget.
 
 Each actor has a distinct server-verified identity and an independent SSE cursor.
+Each has its own HTTP client/connection pool, reusing its HTTP/2 connection for
+SSE, sends and polls. Users do not share transport connections or cookie jars.
+Console runs the managed Platform Chat Agent on Bashkit Worker, with an explicit
+verified `llmsim` session model. Agent API and Work Chat use a dedicated Agent on
+the Base harness with the session filesystem capability and direct communication.
 Five tenant organizations share one server and worker. Work Chat includes the
 host's background reads; Console includes periodic and coalesced lifecycle-driven
 thread-list reads. Deterministically seeded short answers, long answers,
 thinking and local-file tool rounds reproduce realistic delays and event volume.
+Console's file-research variant uses directly available `read_file` calls;
+the other paths use directory/read/stat operations. Both perform three rounds
+and four local tool calls. Runtime facts remain context for scenario selection.
 The long-answer shape itself takes over 30 seconds, so the default steady interval
 is 60 seconds (about 16.7 arrivals/second at 1,000 users). A shorter closed-session
 interval would miss its schedule even without platform contention.
@@ -74,7 +82,9 @@ out-of-the-box deployment or its production rate-limit policy.
 
 Steady admission must reach 99.9%, acknowledgment p95 must stay below 500 ms, every
 admitted turn must complete, and persisted inputs must appear exactly once and be
-observed on SSE. Setup, tool, schedule, background-read and unexpected stream
+observed on SSE. A separate durable audit verifies final answer size, tool/LLM
+rounds and simulator pacing, rejecting the simulator's tiny fallback response.
+Setup, tool, schedule, background-read and unexpected stream
 failures fail the gate. Resource coverage and process liveness are checked, with a
 75% effective-memory budget. For sufficiently sampled steady runs, late pickup
 p95 cannot exceed twice early pickup p95 or one second, whichever is larger.
@@ -85,6 +95,9 @@ the requested schedule cannot establish platform capacity.
 The simultaneous burst has a separately reported, configurable five-second
 acknowledgment budget; recovery uses fifteen seconds. Neither relaxes the steady
 load's 500 ms gate.
+Requested reconnects must restore every stream, and a requested server restart
+must actually occur inside the measured phase; an early-ending case cannot
+silently skip its faults and pass.
 
 The benchmark refuses known production hosts and requires an explicit isolated
 target and enabled `llmsim` models for every tenant before sending messages.

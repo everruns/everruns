@@ -1407,6 +1407,12 @@ env reader, with unit tests in `crates/core/src/credential_provider.rs`.
 
 1. **Unit Tests**: Each driver MUST have tests for error detection functions
 2. **LlmSim**: Use `ProviderType::LlmSim` for integration tests and scripted demos without real API keys. It replays canned responses and runs no inference, so a demo on it shows the surrounding product working, never the model's behavior; public documentation must not present it as an offline mode of the product (see knowledge/framework/provider-extension.md). The production-safe driver lives in `everruns-llmsim` (`crates/drivers/llmsim/src/lib.rs`); core carries no simulation code, and product consumers depend on the simulator rather than test-support. `LlmSimConfig::scripted(...)` supports deterministic multi-turn scenarios with assistant text, tool calls, mixed turns, injected errors, and configurable exhaustion behavior. `everruns-test-support` uses the driver for its in-memory loop and keeps 0.17 simulator paths only as a 0.18 migration bridge.
+
+Named simulation scenarios anchor to human input rather than injected runtime
+facts. Current-time context must neither hide a scenario marker nor reset its
+tool-round progress; a subsequent human turn still establishes a new boundary.
+This normalization is local to the simulator's resolver, not a change to provider
+requests. See [scenario adapter and regression tests](../../crates/drivers/llmsim/src/scenarios.rs).
 3. **Error Detection Tests**: Cover all documented error patterns for each provider
 4. **Parametrized Integration Tests**: Use `rstest` matrix in `crates/core/tests/`:
    - `llm_test_matrix/mod.rs`, shared `ProviderModelConfig` structs and `all_providers_registry()`
