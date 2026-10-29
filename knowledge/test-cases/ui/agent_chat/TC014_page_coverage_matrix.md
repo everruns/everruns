@@ -115,6 +115,10 @@ An inventory entry is a coverage decision, not a passing manual execution record
     the same type again and verify a fresh binding and default values. Repeat
     with a preselected type and a different type; ordinary Create stays manual.
 
+19. Include the cost-planner drawer's local forms, both calculators, resource
+    inputs and read-only host prices; run [the cost estimate case](../agent_cost/TC001_estimate_agent_cost.md).
+    The hidden Agent form must never receive a planning edit.
+
 ## Expected Result
 
 Every inventory route has a recorded result or a specific unmet prerequisite;
