@@ -1,5 +1,5 @@
 import type { ModelProfile } from "@/lib/api/types";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { CostProjectionDashboard } from "@/components/agents/cost-projection-dashboard";
 import { LocaleProvider } from "@/providers/locale-provider";
 const task = {
@@ -19,6 +19,70 @@ const props = {
   definitionTokens: 100,
 };
 beforeEach(() => localStorage.clear());
+it("includes sandbox costs only after a provider price is supplied", () => {
+  render(<CostProjectionDashboard {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "Add cost" }));
+  expect(screen.getByRole("status")).toHaveTextContent("Prices needed for: Sandbox runtime");
+  expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Tasks per day"), { target: { value: "0" } });
+  expect(screen.getAllByText("$0.00").length).toBeGreaterThan(0);
+  expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Tasks per day"), { target: { value: "100" } });
+  const row = within(screen.getByRole("group", { name: "Sandbox runtime" }));
+  fireEvent.change(row.getByLabelText("Quantity per task (minute)"), { target: { value: "5" } });
+  fireEvent.change(row.getByLabelText("USD per minute"), { target: { value: "0.01" } });
+  expect(screen.getAllByText("$325.20").length).toBeGreaterThan(0);
+  fireEvent.click(row.getByRole("button", { name: "Remove" }));
+  expect(screen.getAllByText("$175.20").length).toBeGreaterThan(0);
+});
+
+it("keeps credit deductions separate from external fixed fees", () => {
+  render(
+    <CostProjectionDashboard
+      {...props}
+      pricing={{
+        status: "ready",
+        creditLabel: "Example credits",
+        modelBilling: "credits",
+        rates: [
+          {
+            id: "search",
+            label: "Managed search",
+            unit: "search",
+            usdPerUnit: 0.006,
+            billing: "credits",
+          },
+        ],
+      }}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Cost category"), { target: { value: "rate:search" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add cost" }));
+  expect(
+    within(screen.getByRole("group", { name: "Managed search" })).getByLabelText("USD per search"),
+  ).toHaveAttribute("readonly");
+  fireEvent.change(screen.getByLabelText("Cost category"), {
+    target: { value: "external:hosting" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Add cost" }));
+  fireEvent.change(screen.getByLabelText("USD per month"), { target: { value: "10" } });
+  expect(screen.getAllByText("$203.20").length).toBeGreaterThan(0);
+  expect(screen.getByText("$193.20")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Tasks per day"), { target: { value: "0" } });
+  expect(screen.getAllByText("$10.00").length).toBeGreaterThan(0);
+  expect(screen.getByRole("img")).toBeInTheDocument();
+});
+
+it("applies retry allowances and rejects overlapping cache assumptions", () => {
+  render(<CostProjectionDashboard {...props} />);
+  fireEvent.change(screen.getByLabelText("Extra model spend for retries (%)"), {
+    target: { value: "10" },
+  });
+  expect(screen.getAllByText("$192.72").length).toBeGreaterThan(0);
+  fireEvent.change(screen.getByLabelText("Cached input reads (%)"), { target: { value: "80" } });
+  fireEvent.change(screen.getByLabelText("Cache writes (%)"), { target: { value: "30" } });
+  expect(screen.queryByRole("img")).not.toBeInTheDocument();
+});
 it("projects tasks or active users without making network requests", () => {
   render(<CostProjectionDashboard {...props} />);
   expect(screen.getAllByText("$175.20").length).toBeGreaterThan(0);

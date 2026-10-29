@@ -124,4 +124,53 @@ export const messages: Readonly<Record<string, string>> = {
   "{count} tasks / day": "{count} tâches / jour",
   "At current usage": "À l’utilisation actuelle",
   "/ month": "/ mois",
+  "Sandbox runtime": "Durée du bac à sable",
+  "Paid tools": "Outils payants",
+  "Media generation": "Génération de médias",
+  "Subagent work": "Travail des sous-agents",
+  "Hosting and platform fees": "Hébergement et frais de plateforme",
+  "Other operating costs": "Autres coûts de fonctionnement",
+  "Cost category": "Catégorie de coût",
+  "Add cost": "Ajouter un coût",
+  "Paid from credits": "Prélevé sur les crédits",
+  "Billed externally": "Facturé séparément",
+  "Quantity per month": "Quantité par mois",
+  "Quantity per task": "Quantité par tâche",
+  "USD per {unit}": "USD par {unit}",
+  "Enter provider price": "Saisir le tarif du fournisseur",
+  "Estimated operating cost · USD": "Coût de fonctionnement estimé · USD",
+  "External bills": "Factures externes",
+  "Loading service prices…": "Chargement des tarifs…",
+  "Service prices are unavailable. Reopen the estimator to retry.":
+    "Les tarifs sont indisponibles. Rouvrez l’estimateur pour réessayer.",
+  "Prices needed for: {items}": "Tarifs nécessaires pour : {items}",
+  "Check resource quantities and prices. Use nonnegative numbers.":
+    "Vérifiez les quantités et les tarifs. Utilisez des nombres positifs ou nuls.",
+  "Largest model cost driver: {task}": "Principal coût du modèle : {task}",
+  "Extra model spend for retries (%)": "Surcoût du modèle pour les nouvelles tentatives (%)",
+  "Cached input reads (%)": "Lecture d’entrée en cache (%)",
+  "Cache writes (%)": "Écriture en cache (%)",
+  "Monthly estimate: {amount}": "Estimation mensuelle : {amount}",
+  "Model usage": "Utilisation du modèle",
+  minute: "minute",
+  call: "appel",
+  item: "élément",
+  task: "tâche",
+  month: "mois",
+  cpu_second: "seconde CPU",
+  search: "recherche",
+  request: "requête",
+  MB: "Mo",
+  "Include resources used by an average task. External providers bill separately from prepaid credits.":
+    "Ajoutez les ressources utilisées par une tâche moyenne. Les fournisseurs externes facturent séparément des crédits prépayés.",
+  "Use the full sandbox instance price, including memory. For subagents, enter the cost of one child task. Include idle time and repeated tool work in quantities; monthly fees are added once.":
+    "Utilisez le prix complet du bac à sable, mémoire comprise. Pour les sous-agents, indiquez le coût d’une tâche enfant. Incluez le temps d’inactivité et les répétitions ; les frais mensuels sont ajoutés une seule fois.",
+  "Per-task cost excludes fixed monthly fees. Daily cost includes one thirtieth of monthly fees. Only included resources are estimated.":
+    "Le coût par tâche exclut les frais mensuels fixes. Le coût journalier comprend un trentième des frais mensuels. Seules les ressources ajoutées sont estimées.",
+  "Cache shares apply to input tokens across all tasks and must total at most 100%. Retry allowance increases model spend only; repeated tools and sandbox time belong in resource quantities.":
+    "Les parts de cache concernent les tokens d’entrée de toutes les tâches et leur total ne doit pas dépasser 100 %. La marge de nouvelle tentative augmente uniquement le coût du modèle ; ajoutez les outils répétés et le temps de bac à sable aux quantités.",
+  "Instructions and tools are counted on every call; earlier outputs and tool results accumulate. Catalog prices and model limits apply. Cache savings require explicit assumptions.":
+    "Les instructions et les outils sont comptés à chaque appel ; les réponses et résultats précédents s’accumulent. Les tarifs du catalogue et limites du modèle s’appliquent. Les économies de cache nécessitent des hypothèses explicites.",
+  "Planning scenarios, not quotes or spending limits. The shaded range varies model workload; resource assumptions stay fixed. Add paid tools, sandbox time, media, subagents and fees to include them. No tasks are executed and your agent is not changed.":
+    "Scénarios de planification, pas des devis ni des plafonds. La zone ombrée fait varier le travail du modèle ; les ressources restent fixes. Ajoutez les outils payants, bacs à sable, médias, sous-agents et frais pour les inclure. Aucune tâche n’est exécutée et l’agent n’est pas modifié.",
 };

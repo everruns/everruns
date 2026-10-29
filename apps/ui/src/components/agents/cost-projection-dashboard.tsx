@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { VolumeControl, ProjectionChart } from "./cost-projection-controls";
+import { OperatingCostEditor } from "./operating-cost-editor";
+import {
+  projectOperatingCosts,
+  type AgentCostPricing,
+  type OperatingCostLine,
+} from "@/lib/agent-operating-cost";
+import type { ModelCostAdjustments } from "@/lib/agent-cost-estimate";
 const ASSUMPTIONS = [
   ["calls", "Model calls per task", 1, 100],
   ["messageTokens", "Starting input tokens", 0, 1_000_000],
@@ -21,12 +28,14 @@ export function CostProjectionDashboard({
   definitionTokens,
   outputLimit,
   modelName,
+  pricing = { status: "ready", modelBilling: "external", rates: [] },
 }: {
   plan: AgentCostPlan;
   profile?: ModelProfile;
   definitionTokens: number;
   outputLimit?: number;
   modelName?: string;
+  pricing?: AgentCostPricing;
 }) {
   const ui = useUiTranslations();
   const { displayLocale } = useLocale();
@@ -48,13 +57,42 @@ export function CostProjectionDashboard({
   const [users, setUsers] = useState("50");
   const [perUser, setPerUser] = useState("2");
   const [selected, setSelected] = useState(0);
+  const [lines, setLines] = useState<OperatingCostLine[]>([]);
+  const [adjustments, setAdjustments] = useState<ModelCostAdjustments>({
+    cacheReadPercent: 0,
+    cacheWritePercent: 0,
+    retryPercent: 0,
+  });
+  // Re-resolve host rates rather than retaining a stale copied price after refresh.
+  const pricedLines = lines.map((line) => {
+    if (!line.rateId) return line;
+    const rate =
+      pricing.status === "ready" ? pricing.rates.find((r) => r.id === line.rateId) : undefined;
+    return { ...line, usdPerUnit: rate?.usdPerUnit };
+  });
   const valid = (v: string, max: number) =>
     v.trim() !== "" && Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= max;
   const validVolume =
     mode === "tasks" ? valid(volume, 1_000_000) : valid(users, 1_000_000) && valid(perUser, 1000);
   const daily = mode === "tasks" ? Number(volume) : Number(users) * Number(perUser);
-  const result = projectTaskMix(tasks, profile, definitionTokens, outputLimit);
-  const usable = validVolume && result?.typical != null;
+  const result = projectTaskMix(tasks, profile, definitionTokens, outputLimit, adjustments);
+  const operating =
+    validVolume && result
+      ? projectOperatingCosts(result.typical, pricing.modelBilling, pricedLines, daily)
+      : null;
+  const usable =
+    validVolume &&
+    result?.typical != null &&
+    operating?.total.monthly != null &&
+    pricing.status === "ready";
+  const extra = projectOperatingCosts(
+    0,
+    pricing.modelBilling,
+    pricedLines,
+    validVolume ? daily : 0,
+  );
+  const fixedMonthly = extra?.total.fixedMonthly ?? 0;
+  const extraPerTask = extra?.total.perTask ?? 0;
   const change = (index: number, patch: Partial<PlanningTask>) =>
     setTasks(tasks.map((task, i) => (i === index ? { ...task, ...patch } : task)));
   const greatest = result?.rows.reduce(
@@ -69,13 +107,13 @@ export function CostProjectionDashboard({
     <div className="space-y-6">
       <section className="border bg-card p-5" aria-label={ui("Cost projection")}>
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {ui("Estimated AI cost · USD")}
+          {ui("Estimated operating cost · USD")}
         </p>
         <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-3" aria-live="polite">
           {[
-            ["Average per task", result?.typical],
-            ["Daily cost", usable ? result.typical! * daily : null],
-            ["Monthly cost", usable ? result.typical! * daily * 30 : null],
+            ["Average per task", usable ? operating.total.perTask : null],
+            ["Daily cost", usable ? operating.total.daily : null],
+            ["Monthly cost", usable ? operating.total.monthly : null],
           ].map(([label, value]) => (
             <div key={String(label)}>
               <p className="text-xs text-muted-foreground">{ui(String(label))}</p>
@@ -88,6 +126,50 @@ export function CostProjectionDashboard({
         <p className="mt-4 text-xs text-muted-foreground">
           {ui("30-day month · Each task starts a new conversation")}
           {modelName && ` · ${ui("Using {model}", { model: modelName })}`}
+        </p>
+        {!!pricing.creditLabel && operating && (
+          <div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-2">
+            <p className="text-sm">
+              {pricing.creditLabel} {ui("/ month")}:{" "}
+              <strong>
+                {pricing.status === "ready" && operating.credits.monthly != null
+                  ? money(operating.credits.monthly)
+                  : "—"}
+              </strong>
+            </p>
+            <p className="text-sm">
+              {ui("External bills")} {ui("/ month")}:{" "}
+              <strong>
+                {operating.external.monthly != null ? money(operating.external.monthly) : "—"}
+              </strong>
+            </p>
+          </div>
+        )}
+        {pricing.status !== "ready" && (
+          <p role="status" className="mt-3 text-sm">
+            {ui(
+              pricing.status === "loading"
+                ? "Loading service prices…"
+                : "Service prices are unavailable. Reopen the estimator to retry.",
+            )}
+          </p>
+        )}
+        {!!operating?.unknown.length && (
+          <p role="status" className="mt-3 text-sm">
+            {ui("Prices needed for: {items}", {
+              items: operating.unknown.map((item) => ui(item)).join(", "),
+            })}
+          </p>
+        )}
+        {!extra && (
+          <p role="alert" className="mt-3 text-sm">
+            {ui("Check resource quantities and prices. Use nonnegative numbers.")}
+          </p>
+        )}
+        <p className="mt-3 text-xs text-muted-foreground">
+          {ui(
+            "Per-task cost excludes fixed monthly fees. Daily cost includes one thirtieth of monthly fees. Only included resources are estimated.",
+          )}
         </p>
         {!profile?.cost ? (
           <p role="status" className="mt-3 text-sm">
@@ -155,33 +237,40 @@ export function CostProjectionDashboard({
           </p>
         )}
       </section>
-      {usable && (
+      {usable && operating.total.perTask != null && (
         <section
           className="space-y-3 border bg-muted/20 p-5"
           aria-label={ui("Monthly spend as usage grows")}
         >
           <h3 className="text-sm font-semibold">{ui("Monthly spend as usage grows")}</h3>
           <ProjectionChart
-            typical={result.typical!}
-            low={result.low}
-            high={result.high}
+            typical={result.typical! + extraPerTask}
+            low={result.low == null ? null : result.low + extraPerTask}
+            high={result.high == null ? null : result.high + extraPerTask}
             daily={daily}
+            fixedMonthly={fixedMonthly}
           />
           <p className="text-xs text-muted-foreground">
             {result.low != null && result.high != null
               ? ui("Monthly planning range: {low} – {high}", {
-                  low: money(result.low * daily * 30),
-                  high: money(result.high * daily * 30),
+                  low: money((result.low + extraPerTask) * daily * 30 + fixedMonthly),
+                  high: money((result.high + extraPerTask) * daily * 30 + fixedMonthly),
                 })
               : ui("Larger tasks may need a different model.")}
           </p>
           {daily > 0 && greatest && (
             <p className="text-xs">
-              {ui("Largest cost driver: {task}", { task: greatest.task.name })}
+              {ui("Largest model cost driver: {task}", { task: greatest.task.name })}
             </p>
           )}
         </section>
       )}
+      <OperatingCostEditor
+        lines={pricedLines}
+        rates={pricing.rates}
+        onChange={setLines}
+        dailyTasks={validVolume ? daily : null}
+      />
       <section className="space-y-3" aria-label={ui("Task mix")}>
         <div>
           <h3 className="text-sm font-semibold">{ui("Typical tasks for your agent")}</h3>
@@ -285,9 +374,40 @@ export function CostProjectionDashboard({
               </div>
             ))}
           </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {(
+              [
+                ["retryPercent", "Extra model spend for retries (%)"],
+                ["cacheReadPercent", "Cached input reads (%)"],
+                ["cacheWritePercent", "Cache writes (%)"],
+              ] as const
+            ).map(([key, label]) => (
+              <div key={key} className="space-y-2">
+                <Label htmlFor={`adjust-${key}`}>{ui(label)}</Label>
+                <Input
+                  id={`adjust-${key}`}
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={Number.isNaN(adjustments[key]) ? "" : adjustments[key]}
+                  onChange={(e) =>
+                    setAdjustments({
+                      ...adjustments,
+                      [key]: e.target.value === "" ? NaN : Number(e.target.value),
+                    })
+                  }
+                />
+              </div>
+            ))}
+          </div>
           <p className="text-xs text-muted-foreground">
             {ui(
-              "Instructions and tools are counted on every call; earlier outputs and tool results accumulate. Current catalog prices and model limits apply. Cache discounts are not assumed.",
+              "Cache shares apply to input tokens across all tasks and must total at most 100%. Retry allowance increases model spend only; repeated tools and sandbox time belong in resource quantities.",
+            )}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {ui(
+              "Instructions and tools are counted on every call; earlier outputs and tool results accumulate. Catalog prices and model limits apply. Cache savings require explicit assumptions.",
             )}
           </p>
           {result?.rows.some((r) => r.scenarios.some((s) => s?.outputCapped)) && (
@@ -299,7 +419,7 @@ export function CostProjectionDashboard({
       </details>
       <p className="text-xs leading-relaxed text-muted-foreground">
         {ui(
-          "Planning scenarios, not quotes or spending limits. The shaded range varies task complexity, not statistical confidence. AI token costs only: paid tools, hosting, media, other agents and service fees are extra. No tasks are executed and your agent is not changed.",
+          "Planning scenarios, not quotes or spending limits. The shaded range varies model workload; resource assumptions stay fixed. Add paid tools, sandbox time, media, subagents and fees to include them. No tasks are executed and your agent is not changed.",
         )}
       </p>
     </div>

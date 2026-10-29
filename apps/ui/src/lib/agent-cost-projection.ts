@@ -1,5 +1,10 @@
 import type { ModelProfile } from "@/lib/api/types";
-import { estimateTaskCost, scaleWorkload, type CostWorkload } from "./agent-cost-estimate";
+import {
+  estimateTaskCost,
+  scaleWorkload,
+  type CostWorkload,
+  type ModelCostAdjustments,
+} from "./agent-cost-estimate";
 
 export interface PlanningTask extends CostWorkload {
   name: string;
@@ -14,6 +19,7 @@ export function projectTaskMix(
   profile: ModelProfile | undefined,
   definitionTokens: number,
   outputLimit?: number,
+  adjustments?: ModelCostAdjustments,
 ) {
   if (
     tasks.some(
@@ -36,7 +42,13 @@ export function projectTaskMix(
     task,
     share: task.weight / total,
     scenarios: [0.5, 1, 2].map((scale) =>
-      estimateTaskCost(profile, definitionTokens, scaleWorkload(task, scale), outputLimit),
+      estimateTaskCost(
+        profile,
+        definitionTokens,
+        scaleWorkload(task, scale),
+        outputLimit,
+        adjustments,
+      ),
     ),
   }));
   const costs = [0, 1, 2].map((index) => {
