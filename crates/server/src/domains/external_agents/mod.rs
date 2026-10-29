@@ -60,6 +60,13 @@ pub struct RegisterExternalAgent {
 impl Command for RegisterExternalAgent {
     type Output = ExternalAgent;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        super::agents::queries::ensure_not_built_in(
+            &ctx.db,
+            ctx.org_id(),
+            &self.agent_id,
+            "configure external execution for",
+        )
+        .await?;
         if !enabled() {
             return Err(CommandError::unavailable(
                 "External agents are not enabled on this installation",
