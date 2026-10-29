@@ -79,7 +79,7 @@ export function CostProjectionDashboard({
               messageTokens: z.number(),
               outputTokens: z.number(),
               toolResultTokens: z.number(),
-              weight: z.number(),
+              weight: z.number().int().min(0).max(100),
             }),
           )
           .length(plan.tasks.length)
@@ -100,9 +100,9 @@ export function CostProjectionDashboard({
           .min(0)
           .max(plan.tasks.length - 1),
         adjustments: z.strictObject({
-          cacheReadPercent: z.number(),
-          cacheWritePercent: z.number(),
-          retryPercent: z.number(),
+          cacheReadPercent: planningNumberInput,
+          cacheWritePercent: planningNumberInput,
+          retryPercent: planningNumberInput,
         }),
       }),
     [plan.tasks],
@@ -123,7 +123,17 @@ export function CostProjectionDashboard({
       users,
       perUser,
       selected,
-      adjustments,
+      adjustments: {
+        cacheReadPercent: Number.isNaN(adjustments.cacheReadPercent)
+          ? ""
+          : String(adjustments.cacheReadPercent),
+        cacheWritePercent: Number.isNaN(adjustments.cacheWritePercent)
+          ? ""
+          : String(adjustments.cacheWritePercent),
+        retryPercent: Number.isNaN(adjustments.retryPercent)
+          ? ""
+          : String(adjustments.retryPercent),
+      },
     },
     (next) => {
       setTasks((previous) => previous.map((task, index) => ({ ...task, ...next.tasks[index] })));
@@ -132,7 +142,18 @@ export function CostProjectionDashboard({
       setUsers(next.users);
       setPerUser(next.perUser);
       setSelected(next.selected);
-      setAdjustments(next.adjustments);
+      setAdjustments({
+        cacheReadPercent:
+          next.adjustments.cacheReadPercent === ""
+            ? NaN
+            : Number(next.adjustments.cacheReadPercent),
+        cacheWritePercent:
+          next.adjustments.cacheWritePercent === ""
+            ? NaN
+            : Number(next.adjustments.cacheWritePercent),
+        retryPercent:
+          next.adjustments.retryPercent === "" ? NaN : Number(next.adjustments.retryPercent),
+      });
     },
   );
   // Re-resolve host rates rather than retaining a stale copied price after refresh.

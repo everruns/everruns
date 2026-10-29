@@ -60,7 +60,9 @@ tags:
     unsaved draft. Ask Chat to read and change guidance, volume, task assumptions
     and cache/retry allowances. Before/After and Undo apply only to the estimate;
     the underlying Agent, saved revision and billing remain unchanged. No extra
-    cost-plan request occurs until clicking Update estimate.
+    cost-plan request occurs until clicking Update estimate. Clear a cache/retry
+    input, edit a different field through Chat, and verify the empty input stays
+    empty and remains repairable. Invalid frequency slider positions must fail.
 17. Add an external resource row manually. Stage its quantity and external unit
     price in Chat. Add a host-priced row: its quantity is editable, its price and
     billing classification are read-only. Unknown rows and fields must fail.

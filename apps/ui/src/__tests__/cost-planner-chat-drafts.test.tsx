@@ -240,7 +240,7 @@ it("patches each projection assumption independently while preserving other inpu
   }
   for (const field of ["cacheReadPercent", "cacheWritePercent", "retryPercent"]) {
     const before = adapter.read(adapter.describe().binding);
-    const adjustments = { ...(before.values.adjustments as object), [field]: 10 };
+    const adjustments = { ...(before.values.adjustments as object), [field]: "10" };
     patch("projection", { adjustments });
     expect(adapter.read(before.binding).values).toEqual({ ...before.values, adjustments });
   }
@@ -285,4 +285,36 @@ it("projects the displayed assumptions and totals and clears them with the drawe
   );
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
   await waitFor(() => expect(view.pageView().sections).toEqual([]));
+});
+
+it("preserves empty numeric inputs while editing siblings and can repair them", async () => {
+  setup();
+  await screen.findByText("Typical tasks for your agent");
+  fireEvent.change(screen.getByLabelText("Cached input reads (%)"), { target: { value: "" } });
+  const adapter = draft("projection");
+  let before = adapter.read(adapter.describe().binding);
+  expect(before.values.adjustments).toMatchObject({ cacheReadPercent: "" });
+  patch("projection", { volume: "300" });
+  expect(screen.getByLabelText("Cached input reads (%)")).toHaveValue(null);
+  before = adapter.read(adapter.describe().binding);
+  patch("projection", {
+    adjustments: { ...(before.values.adjustments as object), cacheReadPercent: "10" },
+  });
+  expect(screen.getByLabelText("Cached input reads (%)")).toHaveValue(10);
+  before = adapter.read(adapter.describe().binding);
+  expect(() => adapter.patch(before.binding, before.revision, { volume: "Infinity" })).toThrow();
+  expect(planMock).toHaveBeenCalledTimes(1);
+});
+
+it("rejects frequencies outside the slider's integer positions", async () => {
+  setup();
+  await screen.findByText("Typical tasks for your agent");
+  const adapter = draft("projection");
+  const before = adapter.read(adapter.describe().binding);
+  for (const weight of [-1, 101, 0.5]) {
+    const tasks = (before.values.tasks as Record<string, number>[]).map((task, index) =>
+      index === 0 ? { ...task, weight } : task,
+    );
+    expect(() => adapter.patch(before.binding, before.revision, { tasks })).toThrow();
+  }
 });
