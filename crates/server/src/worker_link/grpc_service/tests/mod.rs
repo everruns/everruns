@@ -1430,4 +1430,5 @@ mod assignment_scope;
 mod checkpoint_encryption;
 mod history_cache;
 mod runtime_command_view;
+mod scoped_blobs;
 mod worker_blobs;
