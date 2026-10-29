@@ -1,7 +1,7 @@
 ---
 title: Connect customer-hosted agents over HTTPS
 description: Register your own agent runtime with an HTTPS endpoint and keep Everruns sessions, tool traces, conversation history and Slack Direct replies.
-date: 2026-10-28
+date: 2026-10-29
 kind: feature
 significance: notable
 products: [platform, cloud]
