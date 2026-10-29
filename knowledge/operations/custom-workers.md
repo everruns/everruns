@@ -135,7 +135,7 @@ for qualification; run records are kept outside the knowledge bundle.
 
 ## Request-driven HTTPS endpoints
 
-The [HTTP adapter](../../crates/server/src/worker_link/custom_workers/http.rs)
+The [HTTP adapter](../../crates/server/src/worker_link/custom_workers/http/mod.rs)
 reuses CustomWorkerService for leases, journal reads and event ingestion. It
 holds the adapter credential only inside the CP, streams response events under
 one input's authority, and derives all canonical correlations using the existing

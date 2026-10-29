@@ -486,5 +486,4 @@ async fn emit(
 }
 
 #[cfg(test)]
-#[path = "http_tests.rs"]
 mod tests;
