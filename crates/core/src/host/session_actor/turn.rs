@@ -52,6 +52,13 @@
 //!   with its own counter). That report fails in the very outage it reports,
 //!   so a blip would still count; the retry waits the blip out instead, and
 //!   needs no schema or protocol change.
+//! - Hand-off: a draining holder (`SessionActorDriver::with_hand_off`) stops
+//!   the turn at its next step boundary through the inbox
+//!   (`TurnInbox::should_hand_off`), after at least one step, with that
+//!   step's events stored, and gives the lease back with the actor still
+//!   runnable. The next holder folds the log like after a crash, but without
+//!   waiting out a TTL and without a cut-off call to rerun. A store that
+//!   cannot hand off lets the lease expire instead.
 //! - Cancel: the holder records it (single writer; the server does not when
 //!   a live holder runs the actor). The drive is dropped first, and the
 //!   cancel is recorded only while the turn is still open in the log, so a
@@ -96,6 +103,9 @@ enum Finish {
     /// Release ownership while preserving the retry checkpoint and alarm.
     /// An intentional wait bypasses the control-plane failure retry loop.
     Park,
+    /// The holder is draining: the turn stopped between steps with its events
+    /// stored; give the lease back with the actor still runnable.
+    HandOff,
     /// Keep the lease until it expires: lost, or a stall.
     Expire,
     /// A retryable failure the drive stopped on, its queued events stored or
@@ -229,6 +239,20 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                 }
                 Err(error) => {
                     tracing::warn!(session_id = %actor.session_id, error = %error, "Actor release failed; the lease will expire");
+                }
+            },
+            Ok(Finish::HandOff) if !lease.is_lost() => match lease.hand_off().await {
+                Ok(Some(ActorRelease::Released { .. })) => {
+                    tracing::info!(session_id = %actor.session_id, "Actor handed off between steps");
+                }
+                Ok(Some(ActorRelease::LeaseLost)) => {
+                    tracing::warn!(session_id = %actor.session_id, "Actor lease lost before hand-off");
+                }
+                Ok(None) => {
+                    tracing::info!(session_id = %actor.session_id, "Store cannot hand off; the lease will expire and the turn resumes from the log");
+                }
+                Err(error) => {
+                    tracing::warn!(session_id = %actor.session_id, error = %error, "Actor hand-off failed; the lease will expire");
                 }
             },
             Ok(Finish::Retry(error)) => {
@@ -572,6 +596,7 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             host,
             drive: &drive,
             parked: Default::default(),
+            hand_off: &self.hand_off,
         };
         let (mut lost, mut cancel) = (lease.lost(), lease.cancel());
         enum Stopped {
@@ -649,6 +674,10 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             {
                 lease.turn_stored();
                 Finish::Park
+            }
+            (Stopped::Done(Err(error)), Ok(())) if crate::host::is_handed_off(&error) => {
+                lease.turn_stored();
+                Finish::HandOff
             }
             (Stopped::Done(Err(error)), Ok(())) if error.is_non_retryable() => {
                 lease.turn_stored();

@@ -31,6 +31,8 @@ pub(crate) struct ActorInbox<'a, H: ActorHosts> {
     pub(crate) host: &'a H::Host,
     pub(crate) drive: &'a TurnDrive,
     pub(crate) parked: AtomicBool,
+    /// The driver's drain flag (`SessionActorDriver::hand_off_running_turns`).
+    pub(crate) hand_off: &'a AtomicBool,
 }
 
 impl<H: ActorHosts> ActorInbox<'_, H> {
@@ -112,5 +114,9 @@ impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
     ) -> Result<()> {
         self.parked.store(true, Ordering::SeqCst);
         Ok(())
+    }
+
+    fn should_hand_off(&self) -> bool {
+        self.hand_off.load(Ordering::SeqCst)
     }
 }

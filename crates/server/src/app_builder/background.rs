@@ -111,16 +111,20 @@ pub(super) fn spawn_grpc_server(
                 // Workers GET image and file bytes from signed paths on this
                 // same endpoint, so bytes never ride inside gRPC messages.
                 let routes = grpc_svc.into_routes(grpc_token.clone());
+                // Stops last on SIGTERM, after HTTP drained (crate::shutdown).
+                let shutdown = crate::shutdown::server_shutdown();
+                shutdown.grpc_started();
                 if let Err(e) = builder
                     .layer(tonic::service::interceptor::InterceptorLayer::new(
                         auth_interceptor,
                     ))
                     .add_routes(routes)
-                    .serve(grpc_addr)
+                    .serve_with_shutdown(grpc_addr, shutdown.stop_grpc().clone().cancelled_owned())
                     .await
                 {
                     tracing::error!(error = %e, "gRPC server error");
                 }
+                shutdown.grpc_stopped();
             }
         },
     );

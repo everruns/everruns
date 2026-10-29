@@ -130,6 +130,7 @@ delegate! {
     renew_actor_lease => handle_renew_actor_lease(proto::RenewActorLeaseRequest)
         -> proto::RenewActorLeaseResponse;
     release_actor => handle_release_actor(proto::ReleaseActorRequest) -> proto::ReleaseActorResponse;
+    hand_off_actor => handle_hand_off_actor(proto::ReleaseActorRequest) -> proto::ReleaseActorResponse;
     read_actor_journal => handle_read_actor_journal(proto::ReadActorJournalRequest)
         -> proto::ReadActorJournalResponse;
     detach_tool_call => handle_detach_tool_call(proto::DetachToolCallRequest)

@@ -380,6 +380,19 @@ impl Lease {
             .await
     }
 
+    /// Hand the lease back mid-turn, leaving the actor runnable (see
+    /// `SessionActorStore::hand_off_actor`).
+    pub(crate) async fn hand_off(&self) -> Result<Option<ActorRelease>> {
+        self.store
+            .hand_off_actor(
+                self.session_id,
+                &self.holder,
+                self.fence,
+                self.committed_cursor(),
+            )
+            .await
+    }
+
     /// The first event of the tail (the latest `turn.started`, when a turn is
     /// open): enough to name the turn without reading the rest of it.
     pub(crate) fn read_tail_head(

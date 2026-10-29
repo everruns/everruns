@@ -172,6 +172,9 @@ pub struct SessionActorDriver<H: ActorHosts> {
     store: Arc<dyn SessionActorStore>,
     config: SessionActorConfig,
     renew_poke: Arc<Notify>,
+    /// Set when the holder drains: running turns stop at their next step
+    /// boundary and hand the lease back (see `turn.rs`).
+    hand_off: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl<H: ActorHosts> SessionActorDriver<H> {
@@ -185,7 +188,17 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             store,
             config,
             renew_poke: Arc::new(Notify::new()),
+            hand_off: Default::default(),
         }
+    }
+
+    /// Share the holder's drain flag. Once it is set, every running turn
+    /// finishes the step it is in, stores it, and hands its lease back so
+    /// another holder resumes the turn from the log at once; a turn leased
+    /// after that hands off after its first step.
+    pub fn with_hand_off(mut self, hand_off: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.hand_off = hand_off;
+        self
     }
 
     /// Wake the renewer on a cancellation notification.

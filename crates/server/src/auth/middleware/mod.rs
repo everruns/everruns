@@ -119,6 +119,19 @@ impl AuthError {
             code: Some("internal_error"),
         }
     }
+
+    /// 503 for a transient storage failure while checking credentials (a pool
+    /// timeout, a database restart). Reporting it as 401 told clients their
+    /// valid credential was wrong; during a rolling deploy under load a pool
+    /// timeout turned into a burst of 401s. A 503 with `Retry-After` is
+    /// retried instead.
+    pub fn unavailable(message: &str) -> Self {
+        Self {
+            error: message.to_string(),
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: Some("service_unavailable"),
+        }
+    }
 }
 
 impl IntoResponse for AuthError {
@@ -131,6 +144,11 @@ impl IntoResponse for AuthError {
         }
         let mut response = body.into_response(self.status).into_response();
         crate::auth::pat_scope::add_challenge(self.code, &mut response);
+        if self.status == StatusCode::SERVICE_UNAVAILABLE {
+            response
+                .headers_mut()
+                .insert(header::RETRY_AFTER, header::HeaderValue::from_static("1"));
+        }
         response
     }
 }

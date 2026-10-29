@@ -18,21 +18,39 @@
 //   reset, and Caddy turns our 404/401/405 into a 502. GitHub webhooks posted
 //   to a stale URL did exactly that on 2026-10-13 and tripped the prod 5xx
 //   alert. Draining lets hyper finish the request and keep the connection.
+//
+// Decision: SIGTERM drains instead of killing (crate::shutdown has the
+//   phases). Each connection is watched by hyper's GracefulShutdown, so once
+//   draining starts HTTP/2 gets a GOAWAY and HTTP/1 closes after its current
+//   response; SSE streams end themselves on the same signal.
 
 use anyhow::{Context, Result};
 use axum::Router;
 
-/// Accept connections on `bind_addr` and serve `app` until the process exits.
+/// Accept connections on `bind_addr` and serve `app` until SIGTERM or Ctrl+C,
+/// then drain (see `crate::shutdown`).
 pub(super) async fn serve(bind_addr: &str, app: Router) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(bind_addr)
         .await
         .context("Failed to bind to address")?;
     tracing::info!("HTTP server listening on {}", bind_addr);
-    serve_on(listener, app).await
+    let timing = crate::shutdown::ShutdownTiming::from_env();
+    tokio::spawn(crate::shutdown::drain_on_signal(timing.delay));
+    let shutdown = crate::shutdown::server_shutdown();
+    serve_on(listener, app, shutdown.draining().clone(), timing.grace).await?;
+    shutdown.stop_grpc_and_wait().await;
+    tracing::info!("Server stopped");
+    Ok(())
 }
 
-/// Serve `app` on an already-bound listener.
-async fn serve_on(listener: tokio::net::TcpListener, app: Router) -> Result<()> {
+/// Serve `app` on an already-bound listener until `draining` fires, then give
+/// open connections `grace` to finish.
+async fn serve_on(
+    listener: tokio::net::TcpListener,
+    app: Router,
+    draining: tokio_util::sync::CancellationToken,
+    grace: std::time::Duration,
+) -> Result<()> {
     let h2_config = Http2FlowConfig::from_env();
     h2_config.log();
 
@@ -49,15 +67,18 @@ async fn serve_on(listener: tokio::net::TcpListener, app: Router) -> Result<()> 
         .keep_alive_interval(Some(std::time::Duration::from_secs(20)))
         .keep_alive_timeout(std::time::Duration::from_secs(20));
 
+    let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+
     loop {
-        let (tcp, addr) = listener
-            .accept()
-            .await
-            .context("Failed to accept connection")?;
+        let (tcp, addr) = tokio::select! {
+            accepted = listener.accept() => accepted.context("Failed to accept connection")?,
+            _ = draining.cancelled() => break,
+        };
         let _ = tcp.set_nodelay(true);
 
         let app = app.clone();
         let builder = builder.clone();
+        let watcher = graceful.watcher();
 
         tokio::spawn(async move {
             let socket = TokioIo::new(tcp);
@@ -74,10 +95,8 @@ async fn serve_on(listener: tokio::net::TcpListener, app: Router) -> Result<()> 
                     }
                 });
 
-            if let Err(err) = builder
-                .serve_connection_with_upgrades(socket, service)
-                .await
-            {
+            let connection = builder.serve_connection_with_upgrades(socket, service);
+            if let Err(err) = watcher.watch(connection).await {
                 // Don't log normal connection closures (client disconnect, reset)
                 let msg = err.to_string();
                 if !msg.contains("connection closed")
@@ -89,6 +108,21 @@ async fn serve_on(listener: tokio::net::TcpListener, app: Router) -> Result<()> 
             }
         });
     }
+
+    drop(listener);
+    let open = graceful.count();
+    tracing::info!(
+        open_connections = open,
+        grace_secs = grace.as_secs_f64(),
+        "Draining HTTP connections"
+    );
+    if tokio::time::timeout(grace, graceful.shutdown())
+        .await
+        .is_err()
+    {
+        tracing::warn!("HTTP drain grace elapsed; closing remaining connections");
+    }
+    Ok(())
 }
 
 // =========================================================================
@@ -251,7 +285,12 @@ mod tests {
         let app = Router::new().route("/known", post(|| async { "ok" }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        tokio::spawn(serve_on(listener, app));
+        tokio::spawn(serve_on(
+            listener,
+            app,
+            tokio_util::sync::CancellationToken::new(),
+            std::time::Duration::from_secs(1),
+        ));
 
         let body_len = 256 * 1024;
         let mut tcp = tokio::net::TcpStream::connect(addr).await.unwrap();
@@ -285,5 +324,52 @@ mod tests {
     async fn handler_ignoring_body_answers_without_reset() {
         let response = post_unread_body("/known").await;
         assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    }
+
+    /// Draining lets a request already in flight finish, then stops accepting
+    /// and returns.
+    #[tokio::test]
+    async fn draining_finishes_in_flight_requests_then_stops() {
+        use axum::routing::get;
+        let app = Router::new().route(
+            "/slow",
+            get(|| async {
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                "done"
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let draining = tokio_util::sync::CancellationToken::new();
+        let server = tokio::spawn(serve_on(
+            listener,
+            app,
+            draining.clone(),
+            std::time::Duration::from_secs(5),
+        ));
+
+        let mut tcp = tokio::net::TcpStream::connect(addr).await.unwrap();
+        tcp.write_all(b"GET /slow HTTP/1.1\r\nhost: x\r\n\r\n")
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        draining.cancel();
+
+        let mut response = String::new();
+        tcp.read_to_string(&mut response)
+            .await
+            .expect("in-flight request must finish");
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        assert!(response.ends_with("done"), "{response}");
+
+        tokio::time::timeout(std::time::Duration::from_secs(2), server)
+            .await
+            .expect("serve returns once drained")
+            .unwrap()
+            .unwrap();
+        assert!(
+            tokio::net::TcpStream::connect(addr).await.is_err(),
+            "no new connections after draining"
+        );
     }
 }

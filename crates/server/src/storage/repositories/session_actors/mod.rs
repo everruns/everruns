@@ -388,6 +388,38 @@ impl Database {
         .await?)
     }
 
+    /// Hand `holder`'s lease on `session_id` back mid-turn (a draining worker,
+    /// between steps): like [`Self::release_session_actor`], but the actor
+    /// stays runnable, keeping its place in the queue, so the next lease call
+    /// resumes the open turn from the log at once. A pending cancel is left
+    /// for the next holder. `None` when the lease was already lost.
+    pub async fn hand_off_session_actor(
+        &self,
+        session_id: SessionId,
+        holder: &str,
+        fence: i64,
+        consumed_inbox_seq: i64,
+    ) -> Result<Option<bool>> {
+        Ok(sqlx::query_scalar::<_, bool>(
+            r#"
+            UPDATE session_actors SET
+                lease_holder = NULL,
+                lease_expires_at = NULL,
+                consumed_seq = GREATEST(consumed_seq, $4),
+                attempts = 0,
+                runnable_since = COALESCE(runnable_since, NOW())
+            WHERE session_id = $1 AND lease_holder = $2 AND lease_fence = $3
+            RETURNING TRUE
+            "#,
+        )
+        .bind(session_id)
+        .bind(holder)
+        .bind(fence)
+        .bind(consumed_inbox_seq)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
     /// Cancel the turn `session_id` is running or about to run; see the
     /// header for who records it. One statement under the row lock decides.
     /// The cancel also deletes the turn's detached calls, after the actor row
