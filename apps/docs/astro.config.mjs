@@ -260,6 +260,7 @@ export default defineConfig({
         ],
       },
       components: {
+        Head: "./src/components/Head.astro",
         Header: "./src/components/Header.astro",
         Search: "./src/components/Search.astro",
         Footer: "./src/components/Footer.astro",
