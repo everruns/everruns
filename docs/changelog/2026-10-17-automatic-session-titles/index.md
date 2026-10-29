@@ -37,3 +37,8 @@ with a cooldown and increasing message intervals. Explicit titles always win,
 including renames made while generation is running. The [organization small-model
 default](/providers/#organization-small-model-default) is independent of the main
 chat and Decisions models.
+
+## Update 2026-10-28
+
+Automatic title writes now tolerate concurrent session-reference work, including
+background trace projection. Explicit rename transactions keep priority.
