@@ -51,6 +51,8 @@ Agent definitions and their configuration.
 | [`agents examples list`](#agents-examples-list) | List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). |
 | [`agents exposures resume`](#agents-exposures-resume) | Let an agent's live channels accept traffic again. |
 | [`agents exposures suspend`](#agents-exposures-suspend) | Stop every channel on an agent from accepting traffic. |
+| [`agents external-worker disable`](#agents-external-worker-disable) | Revoke external execution; queued sessions stay bound without native fallback. |
+| [`agents external-worker get`](#agents-external-worker-get) | Get an Agent's external execution endpoint. |
 | [`agents failures list`](#agents-failures-list) | List sessions with failed turns. |
 | [`agents github connect`](#agents-github-connect) | Start connecting an agent to GitHub through its own GitHub App. |
 | [`agents github disconnect`](#agents-github-disconnect) | Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. |
@@ -883,6 +885,44 @@ Example:
 ```bash
 # Stop an agent answering on its exposed surfaces without deleting it
 everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'
+```
+
+## agents external-worker disable
+
+Revoke external execution; queued sessions stay bound without native fallback.
+
+```bash
+everruns agents external-worker disable [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent public ID or name; the HTTP route supplies this value. |
+
+Example:
+
+```bash
+# Revoke external execution while retaining queued work
+everruns agents external-worker disable --agent-id agent_01h9 --reason 'Pause external execution'
+```
+
+## agents external-worker get
+
+Get an Agent's external execution endpoint.
+
+```bash
+everruns agents external-worker get [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent public ID or name; the HTTP route supplies this value. |
+
+Example:
+
+```bash
+# Inspect an Agent's external runtime without credentials
+everruns agents external-worker get --agent-id agent_01h9
 ```
 
 ## agents failures list
