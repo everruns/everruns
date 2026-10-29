@@ -10,15 +10,15 @@
 //! `GrpcDurableStore`'s own channel. Generous by default, far past any call's
 //! normal latency.
 
-use std::time::Duration;
+use std::{collections::BTreeSet, net::SocketAddr, time::Duration};
 
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_internal_protocol::{MAX_GRPC_MESSAGE_SIZE, WorkerServiceClient};
-use tonic::transport::Channel;
+use tonic::transport::{Channel, ClientTlsConfig};
 
 use super::checkpoint_availability::CheckpointAvailability;
 use super::{GrpcClient, SharedClient};
-use crate::grpc_durable_store::GrpcClientAuth;
+use crate::grpc_durable_store::{GrpcClientAuth, grpc_client_tls_from_env};
 
 /// Default deadline of one control-plane call (`WORKER_GRPC_REQUEST_TIMEOUT_SECS`).
 pub const DEFAULT_GRPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
@@ -36,21 +36,58 @@ impl GrpcClient {
 
     /// Connect with an explicit deadline for each call.
     pub async fn connect_with_request_timeout(addr: &str, timeout: Duration) -> Result<Self> {
-        let addrs = crate::grpc_balance::resolve(addr).await;
-        if addrs.len() > 1 {
+        let tls = grpc_client_tls_from_env();
+        let addrs = if tls.is_none() {
+            crate::grpc_balance::resolve(addr).await
+        } else {
+            BTreeSet::new()
+        };
+        Self::connect_with_resolved(addr, timeout, tls, addrs).await
+    }
+
+    async fn connect_with_resolved(
+        addr: &str,
+        timeout: Duration,
+        tls: Option<ClientTlsConfig>,
+        addrs: BTreeSet<SocketAddr>,
+    ) -> Result<Self> {
+        // THREAT[TM-DURABLE-002]: Apply configured TLS before attaching the bearer.
+        // Match the durable client: the plaintext DNS balancer constructs HTTP
+        // endpoints. TLS must retain the original hostname for SNI and certificate
+        // verification, and must never fall back to that balancer on failure.
+        if tls.is_none() && addrs.len() > 1 {
             let channel =
                 crate::grpc_balance::balanced_channel(addr.to_string(), addrs, move |e| {
                     e.timeout(timeout)
                 });
             return Ok(Self::from_channel(channel));
         }
-        let endpoint = format!("http://{}", addr);
-        let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        let uses_tls = tls.is_some();
+        let scheme = if uses_tls { "https" } else { "http" };
+        let mut endpoint = tonic::transport::Endpoint::from_shared(format!("{scheme}://{addr}"))
             .map_err(|e| AgentLoopError::store(format!("Invalid gRPC endpoint: {}", e)))?
-            .timeout(timeout)
-            .connect()
-            .await
-            .map_err(|e| AgentLoopError::store(format!("gRPC connection failed: {e}")))?;
+            .timeout(timeout);
+        if let Some(tls) = tls {
+            // The request deadline does not cover a TLS handshake. Bound both
+            // connection establishment and the handshake before returning a client.
+            endpoint = endpoint
+                .connect_timeout(timeout)
+                .tls_config(tls.timeout(timeout))
+                .map_err(|e| {
+                    AgentLoopError::store(format!("Invalid gRPC client TLS configuration: {e}"))
+                })?;
+        }
+        // Hyper's TCP timeout excludes DNS. Bound the complete initial TLS
+        // connection too; retain connector/handshake limits for reconnects.
+        let connecting = endpoint.connect();
+        let channel = if uses_tls {
+            tokio::time::timeout(timeout, connecting)
+                .await
+                .map_err(|_| AgentLoopError::store("gRPC TLS connection deadline exceeded"))?
+        } else {
+            connecting.await
+        }
+        .map_err(|e| AgentLoopError::store(format!("gRPC connection failed: {e}")))?;
         Ok(Self::from_channel(channel))
     }
 
@@ -74,43 +111,4 @@ impl GrpcClient {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use everruns_contracts::typed_id::SessionId;
-    use std::time::Instant;
-
-    /// The incident shape: a control plane that takes the connection and
-    /// never answers. The call errors at the deadline instead of hanging.
-    #[tokio::test]
-    async fn a_call_the_control_plane_never_answers_errors_at_the_deadline() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind");
-        let addr = listener.local_addr().expect("addr");
-        // Accept and hold every connection without reading or writing.
-        let server = tokio::spawn(async move {
-            let mut held = Vec::new();
-            while let Ok((socket, _)) = listener.accept().await {
-                held.push(socket);
-            }
-        });
-        let client =
-            GrpcClient::connect_with_request_timeout(&addr.to_string(), Duration::from_millis(300))
-                .await
-                .expect("the TCP connection is accepted");
-        let started = Instant::now();
-        let result = tokio::time::timeout(
-            Duration::from_secs(10),
-            client.set_session_status(1, SessionId::new(), "active"),
-        )
-        .await
-        .expect("the call ends at its deadline, not never");
-        assert!(result.is_err(), "a call nobody answered cannot succeed");
-        assert!(
-            started.elapsed() < Duration::from_secs(5),
-            "ended long after the deadline: {:?}",
-            started.elapsed()
-        );
-        server.abort();
-    }
-}
+mod tests;
