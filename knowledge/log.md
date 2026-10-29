@@ -4,6 +4,8 @@
 
 - Remove the narrated Sandbox Builder video from Git and the docs player; keep the approved cut outside Git until its YouTube publication and verified embed. See [Product Videos](docs/product-videos.md).
 
+- Keep channel drafts unavailable while the type chooser is visible, and expire bindings when changing types. See [Chat mode](ui/chat-mode.md).
+
 - Fixed host-priced monthly capacity estimates so their usage units remain independent of task volume.
 
 - Publish the approved [Sandbox Builder walkthrough](docs/product-videos.md) in its feature guide and existing changelog, with English captions.

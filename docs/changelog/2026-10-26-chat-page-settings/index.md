@@ -16,11 +16,10 @@ forms and stages edits; **Save** or **Create** stays yours. Existing-resource ed
 share **Before/After**, guarded **Undo** and **History** across navigation. Model
 selections apply atomically; private profile history stays owner-only.
 
-Knowledge tabs provide current collection, source, search and visible-file context.
-Agent/Harness translations join saved review; interface language, trigger quick
-edits and manager notes support staged changes. Conflicting drafts stay intact.
-Tracing routing joins review; collection field Undo preserves other settings.
-Protected sheets, credentials and approvals retain their manual controls.
+Knowledge tabs provide collection, source, search and file context.
+Translations, interface language, trigger edits and manager notes support drafts.
+Tracing joins review; collection Undo preserves other settings.
+Conflicting drafts stay intact. Protected controls stay manual.
 
 **New subchat** starts an independent conversation. Full Chat shows one conversation;
 Command/Ctrl-J opens it beside an app page. Core Chat and subchats need no flag.
@@ -30,7 +29,11 @@ See [Platform Chat](/built-ins/harnesses/platform-chat/).
 
 ## Update 2026-10-28
 
-Long dialogs scroll within the page pane, keeping Save reachable after draft changes.
+Long dialogs scroll, keeping Save reachable.
+
+## Update 2026-10-29
+
+Channel drafts become editable after selecting a type; returning to the chooser expires them.
 
 ![A fresh subchat opens one conversation](./subchat@2x.png)
 
