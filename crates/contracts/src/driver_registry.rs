@@ -665,6 +665,9 @@ pub struct EmbedResponse {
     /// that do not return a cost — direct OpenAI does not, same as the chat
     /// path (EVE-894).
     pub actual_cost_usd: Option<f64>,
+    /// Serving endpoint's response identity, when provided. Hosts use this to
+    /// distinguish gateway-billed work from directly billed model calls.
+    pub response_id: Option<String>,
 }
 
 /// Error returned by [`EmbeddingsDriver::embed`].
