@@ -6,7 +6,14 @@ overrides:
   katex: 0.18.2
   '@astrojs/mdx': 6.0.2
   esbuild: 0.28.1
-  fast-uri: 3.1.8
+  fast-uri: 3.1.9
+  body-parser: 2.4.0
+  maplibre-gl: 6.4.1
+  zod: 4.6.7
+  undici: 8.12.2
+  ws: ^8.21.0
+  uuid: 11.1.1
+  '@openuidev/react-headless>@ag-ui/core': 0.0.59
   form-data: 4.0.6
   lodash: 4.17.23
   nanoid: 3.3.18
@@ -23,14 +30,31 @@ patchedDependencies:
   starlight-openapi@0.27.0: patches/starlight-openapi@0.27.0.patch
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
+minimumReleaseAgeExclude:
+  # Astro font discovery: fixes Undici TLS, redirect, and parser advisories.
+  - "undici@8.12.2"
+  # Exact security fixes for the shared renderer dependency graph.
+  - "maplibre-gl@6.4.1"
+  - "body-parser@2.4.0"
+  - "fast-uri@3.1.9"
+  # A2UI 1.0 standard catalog selected for shared chat rendering.
+  - "@copilotkit/a2ui-renderer@1.83.0"
+  - "@copilotkit/core@1.83.0"
+  - "@copilotkit/learning@1.83.0"
+  - "@copilotkit/mcp-apps-renderer@1.83.0"
+  - "@copilotkit/react-core@1.83.0"
+  - "@copilotkit/runtime-client-gql@1.83.0"
+  - "@copilotkit/shared@1.83.0"
+  - "@copilotkit/web-components@1.83.0"
+  - "@copilotkit/web-inspector@1.83.0"
 # Security patches remain pinned to exact versions via the overrides above:
 # form-data 4.0.6 (GHSA-hmw2-7cc7-3qxx), esbuild 0.28.1 (GHSA-g7r4-m6w7-qqqr),
-# fast-uri 3.1.8 (supersedes the 3.1.6 pin for GHSA-v2hh-gcrm-f6hx; GHSA-5jgf-p345-68v8,
+# fast-uri 3.1.9 (supersedes the 3.1.6 pin for GHSA-v2hh-gcrm-f6hx; GHSA-5jgf-p345-68v8,
 # GHSA-jqff-g426-hqxp, GHSA-f65p-4m7j-42xc and GHSA-fph4-wmhf-6fwf cover every 3.x
 # through 3.1.5, and GHSA-58mr-gqgx-xq4g, GHSA-qw65-cvwx-89v3 and GHSA-hrr3-gc8f-f4qj
 # cover 3.1.6 — host confusion, authority injection, and case normalization —
 # reached via @astrojs/check > @astrojs/language-server > volar-service-json.
-# 3.1.8 is the only patched 3.x release),
+# 3.1.9 also fixes the subsequent scheme/host normalization advisories),
 # nanoid 3.3.18 (custom generators loop indefinitely at size 0; reached via
 # postcss). GHSA-2v37-7h3g-55p8
 # was widened to `<3.3.18` on 2026-08-13 after 3.3.17 proved an incomplete fix, so

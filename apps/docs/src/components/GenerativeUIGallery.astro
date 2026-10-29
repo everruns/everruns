@@ -1,18 +1,8 @@
 ---
-import { Image } from "astro:assets";
-import type { ImageMetadata } from "astro";
 import samples from "../../../ui/generative-ui/tests/standard-samples.json";
 import { networkExamples } from "../../../ui/generative-ui/tests/gallery-examples.json";
+import { withBase } from "../../site.config.mjs";
 
-const captures = import.meta.glob<ImageMetadata>(
-  "../../../../docs/features/generative-ui-gallery/*.webp",
-  { eager: true, import: "default" },
-);
-const image = (index: number, theme: string) => {
-  const key = `../../../../docs/features/generative-ui-gallery/${index}-${theme}.webp`;
-  if (!captures[key]) throw new Error(`Missing gallery capture: ${key}`);
-  return captures[key];
-};
 const groups = [...new Set(samples.map((sample) => sample.group))];
 const components = [...new Set(samples.flatMap((sample) => sample.covers))].sort();
 ---
@@ -47,19 +37,16 @@ const components = [...new Set(samples.flatMap((sample) => sample.covers))].sort
             <h2 id={`example-${index}`}>{sample.title}</h2>
             <p class="gallery-components">{sample.covers.map((name) => <code>{name}</code>)}</p>
           </header>
-          {networkExamples.includes(index) ? (
-            <p class="gallery-network">This example loads external maps or media. Expand its A2UI source to try it in chat.</p>
-          ) : (<>
-            <a class="gallery-preview gallery-light" href={image(index, "light").src} aria-label={`Enlarge screenshot: ${sample.title} (light)`}>
-              <Image src={image(index, "light")} alt={`${sample.title}, rendered in Everruns chat in light mode`} loading="lazy" widths={[720, 1440]} sizes="(max-width: 800px) 100vw, 720px" />
-            </a>
-            <a class="gallery-preview gallery-dark" href={image(index, "dark").src} aria-label={`Enlarge screenshot: ${sample.title} (dark)`}>
-              <Image src={image(index, "dark")} alt={`${sample.title}, rendered in Everruns chat in dark mode`} loading="lazy" widths={[720, 1440]} sizes="(max-width: 800px) 100vw, 720px" />
-            </a>
-          </>)}
+          <div class="gallery-live" data-llms-ignore data-preview={withBase(`/previews/generative-ui/?example=${index}`)}>
+            {networkExamples.includes(index) ? (
+              <button class="gallery-load" type="button">Load interactive example (external maps or media)</button>
+            ) : (
+              <iframe src={withBase(`/previews/generative-ui/?example=${index}`)} title={`${sample.title} interactive example`} loading="lazy" referrerpolicy="no-referrer" />
+            )}
+          </div>
           <details>
             <summary>A2UI example</summary>
-            <p>Put this operation inside an <code>a2ui</code> Markdown fence. Form and button events become messages when rendered in an editable chat.</p>
+            <p>Put this operation inside an <code>a2ui</code> Markdown fence. Try the controls above. Actions appear locally in the preview; in an editable chat they become messages.</p>
             <pre tabindex="0"><code>{JSON.stringify(operation, null, 2)}</code></pre>
           </details>
         </article>
@@ -71,6 +58,16 @@ const components = [...new Set(samples.flatMap((sample) => sample.covers))].sort
 <script>
   class GenerativeUIGallery extends HTMLElement {
     connectedCallback() {
+      for (const button of this.querySelectorAll<HTMLButtonElement>(".gallery-load")) {
+        button.addEventListener("click", () => {
+          const preview = button.parentElement!;
+          const frame = document.createElement("iframe");
+          frame.src = preview.dataset.preview!;
+          frame.title = `${preview.closest("article")!.querySelector("h2")!.textContent} interactive example`;
+          frame.referrerPolicy = "no-referrer";
+          preview.replaceChildren(frame);
+        }, { once: true });
+      }
       const search = this.querySelector<HTMLInputElement>("input")!;
       const group = this.querySelector<HTMLSelectElement>("select")!;
       const cards = [...this.querySelectorAll<HTMLElement>("article")];
@@ -110,12 +107,9 @@ const components = [...new Set(samples.flatMap((sample) => sample.covers))].sort
   .gallery-card header h2 { margin: .35rem 0 .75rem; font-size: 1.15rem; line-height: 1.4; scroll-margin-top: 100px; }
   .gallery-components { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0; }
   .gallery-components code { font-size: .75rem; }
-  .gallery-preview { display: block; border-block: 1px solid var(--sl-color-gray-5); }
-  .gallery-network { margin: 0; padding: 1.25rem; background: var(--sl-color-gray-6); border-block: 1px solid var(--sl-color-gray-5); color: var(--sl-color-gray-2); font-size: .875rem; }
-  .gallery-preview img { display: block; width: 100%; height: auto; margin: 0; }
-  .gallery-dark { display: none !important; }
-  :global([data-theme="dark"]) .gallery-light { display: none; }
-  :global([data-theme="dark"]) .gallery-dark { display: block !important; }
+  .gallery-live { border-block: 1px solid var(--sl-color-gray-5); background: var(--sl-color-bg); }
+  .gallery-live iframe { display: block; width: 100%; height: 260px; border: 0; margin: 0; }
+  .gallery-load { display: block; margin: 1.25rem; padding: .6rem 1rem; border: 1px solid var(--sl-color-gray-4); background: var(--sl-color-gray-6); color: var(--sl-color-text); border-radius: 4px; cursor: pointer; font: inherit; font-size: .875rem; }
   details { padding: .85rem 1.25rem; margin: 0; border: 0; }
   summary { cursor: pointer; font-size: .875rem; font-weight: 600; }
   details p { font-size: .875rem; }
