@@ -254,6 +254,12 @@ bench-turn-latency *args:
     DATABASE_URL="${DATABASE_URL:-postgres://everruns:everruns@localhost:${DB_PORT:-9332}/everruns_test}" \
         cargo bench --package everruns-server --bench turn_latency -- {{args}}
 
+# Authenticated Chat / Agent API / Work Chat capacity bench; simulated models only.
+# Default is a small smoke. Full run: just bench-chat-capacity --qualification
+[no-cd]
+bench-chat-capacity *args:
+    cd scripts && "${CAPACITY_PYTHON:-python3}" -m capacity.local {{args}}
+
 # Needs running infra (PORT_PREFIX=433 bash scripts/lib/infra.sh start) and release
 # binaries in ${CARGO_TARGET_DIR:-target}/release. Example: just chaos --sessions 200 --no-chaos
 # Multi-process chaos + load harness: 2 servers, 3 workers, SIGKILLs, turn assertions

@@ -1,5 +1,6 @@
 import { channelOf, settings, safeMutation, bootstrap } from "../../../server/config";
 import { tokenFor, recoveryScope } from "../../../server/auth";
+import { fetchUpstream } from "../../../server/upstream";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const allowed =
@@ -79,14 +80,18 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
       }
       body = bytes.buffer;
     }
-    const upstream = await fetch(`${settings().upstream}${route}${search}`, {
-      method: request.method,
-      headers,
-      body,
-      signal: AbortSignal.any([request.signal, AbortSignal.timeout(30000)]),
-      redirect: "error",
-      cache: "no-store",
-    });
+    const upstream = await fetchUpstream(
+      `${settings().upstream}${route}${search}`,
+      {
+        method: request.method,
+        headers,
+        body,
+        signal: request.signal,
+        redirect: "error",
+        cache: "no-store",
+      },
+      request.method === "GET" && path.endsWith("/sse"),
+    );
     return new Response(upstream.body, {
       status: upstream.status,
       headers: {

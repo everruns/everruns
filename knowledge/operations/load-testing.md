@@ -66,6 +66,32 @@ to `ReasonAtom: starting LLM call`) p50 under 200ms. Tracking issue: EVE-415.
 
 ## Architecture
 
+### Authenticated chat capacity qualification
+
+The first-class [chat capacity benchmark](../../scripts/capacity/README.md) owns
+reproducible Console Chat, Agent API and Work Chat qualification. These are
+separate profiles because command admission, runtime identity exchange and BFF
+background traffic have different costs. It uses simulated models exclusively;
+real authentication, persistence, workers, local file tools and SSE remain in the
+path. The local fixture provisions disposable data and synthetic identities rather
+than depending on cloud infrastructure or paid providers.
+
+The qualification target is 1,000 connected identities under stepped load and a
+30-minute soak, plus separately reported simultaneous-turn and recovery cases.
+Admission latency, correlated `turn.completed`, durable exactly-once input audit,
+stream delivery, arrival scheduling and independently sampled resource pressure
+are separate success bars. A small smoke or transport-only fixture cannot establish
+1,000-user capacity. Raw samples, source revision and topology must accompany a
+capacity claim; co-located generators limit conclusions to the measured machine.
+Commands, workload defaults and gates live with the benchmark, not in this concept.
+
+Keep SSE for the three current chat surfaces. Offline drafts, durable command
+identities and replay cursors provide recovery independently of transport choice.
+A WebSocket proposal must demonstrate a bidirectional requirement or a controlled
+transport bottleneck; a platform capacity failure alone is insufficient evidence.
+
+### Existing API session benchmarks
+
 Single benchmark binary at `crates/server/benches/load_test.rs`. Uses `everruns-sdk` for agent operations and raw `reqwest` for session creation (SDK lacks `harness_id`) and SSE streaming.
 
 ### Turn Completion via SSE

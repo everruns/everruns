@@ -27,3 +27,9 @@ Logout clears it. Closing the tab or clearing site data can remove local
 recovery; this does not provide an offline model or application shell.
 
 ![Hosted Work Chat offers Retry and Discard for a recovered send](./recovery@2x.png)
+
+## Update 2026-10-29
+
+Hosted Work Chat keeps healthy live streams open past 30 seconds. Its upstream
+connection timeout now covers setup without interrupting an established stream;
+leaving the conversation still closes the connection.

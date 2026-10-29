@@ -184,3 +184,8 @@ harness = false
 [[bench]]
 name = "message_lookup"
 harness = false
+
+# Authenticated, llmsim-only chat capacity fixture; coordinated by the Python bench.
+[[bench]]
+name = "chat_capacity_fixture"
+harness = false
