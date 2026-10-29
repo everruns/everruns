@@ -10,8 +10,9 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use everruns_core::channel_auth::ChannelAuthVerifier;
-use everruns_server::{app_builder::ServerAppBuilder, server::ServerConfig};
+use everruns_server::{
+    api::channel_auth::ChannelAuthVerifier, app_builder::ServerAppBuilder, server::ServerConfig,
+};
 
 // Match the production server binary's allocator under concurrent allocations.
 #[global_allocator]
