@@ -278,6 +278,12 @@ resources grants revoke	--context-revision --grant-id! --id! --reason
 sandbox-targets list	--context-revision --reason
 sandbox-template-metadata get	--context-revision --id! --reason
 sandbox-template-metadata update	--context-revision --description --display-name --id! --reason
+sandbox-templates builds apply	--context-revision --id! --reason
+sandbox-templates builds cancel	--context-revision --id! --reason
+sandbox-templates builds discard	--context-revision --id! --reason
+sandbox-templates builds get	--context-revision --id! --reason
+sandbox-templates builds list	--context-revision --id! --offset --reason
+sandbox-templates builds start	--build-network --context-revision --id! --install-script! --metadata-path --reason --source-revision-id! --timeout-seconds --verification-command
 sandboxes get	--context-revision --id --reason <id>
 sandboxes list	--agent-id --context-revision --include-in-process --limit --needs-attention --offset --provider --reason --sandbox-template-id --search --state
 sandboxes stats get	--agent-id --context-revision --include-in-process --needs-attention --provider --reason --sandbox-template-id --search --state

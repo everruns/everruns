@@ -250,7 +250,7 @@ describe("SandboxPolicyEditor with a Modal template", () => {
     });
   });
 
-  it("gives a Daytona desktop the default image instead of a size or snapshot", () => {
+  it("uses the default Daytona desktop image and accepts a baked desktop snapshot", () => {
     const onChange = jest.fn();
     const base = daytonaPolicy();
     const daytona = base.templates!.daytona;
@@ -268,7 +268,15 @@ describe("SandboxPolicyEditor with a Modal template", () => {
     expect(onChange.mock.lastCall[0].templates.daytona.target.options).toEqual({ desktop: true });
 
     rerender(<SandboxPolicyEditor value={onChange.mock.lastCall[0]} onChange={onChange} />);
-    expect(screen.getByLabelText("Snapshot")).toBeDisabled();
+    expect(screen.getByLabelText("Snapshot")).toBeEnabled();
+    expect(screen.getByLabelText("Compute size")).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Snapshot"), {
+      target: { value: "baked-desktop-snapshot" },
+    });
+    expect(onChange.mock.lastCall[0].templates.daytona.target.options).toEqual({
+      desktop: true,
+      snapshot: "baked-desktop-snapshot",
+    });
   });
 });
 
