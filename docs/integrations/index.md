@@ -54,6 +54,7 @@ reach without a separate integration via the
 | Integration | What it provides |
 |---|---|
 | [A2A](/features/a2a/) | Let other agents call an Agent over A2A 1.0, and delegate work to external A2A agents |
+| [AG-UI](/integrations/ag-ui/) | Stream agent events to frontends, with tools, interrupts and optional shared state |
 | [AgentID Sign-In](/integrations/agentid/) | Let an Agent sign in to apps that support AgentID with its own AgentMail inbox. Experimental |
 
 ## Credentials

@@ -718,8 +718,17 @@ test("A2UI 1.0 renders bound forms, charts, tabs and updates in both themes", as
             },
           },
           { id: "name", component: "TextField", label: "Reviewer", value: { "@path": "/name" } },
-          { id: "submit", component: "Button", label: "Send review", submit: true,
-            checks: [{ condition: { "@call": "required", args: { value: { "@path": "/name" } } }, message: "Reviewer is required" }],
+          {
+            id: "submit",
+            component: "Button",
+            label: "Send review",
+            submit: true,
+            checks: [
+              {
+                condition: { "@call": "required", args: { value: { "@path": "/name" } } },
+                message: "Reviewer is required",
+              },
+            ],
           },
           {
             id: "chart",
@@ -737,7 +746,7 @@ test("A2UI 1.0 renders bound forms, charts, tabs and updates in both themes", as
             component: "HtmlView",
             height: 100,
             title: "Safe preview",
-            html: "<p>Sandboxed preview</p><script>parent.__widgetScript = true</script>",
+            html: '<meta http-equiv="refresh" content="60;url=/widget-navigation-leak"><p>Sandboxed preview</p><a href="/widget-navigation-leak">External destination</a><script>parent.__widgetScript = true</script>',
           },
         ],
       },
@@ -781,16 +790,27 @@ test("A2UI 1.0 renders bound forms, charts, tabs and updates in both themes", as
     await page.evaluate(() => (window as unknown as { __widgetScript?: boolean }).__widgetScript),
   ).toBeUndefined();
   await expect(page.locator('iframe[title="Safe preview"]')).toHaveAttribute("sandbox", "");
+  expect(await page.locator('iframe[title="Safe preview"]').getAttribute("srcdoc")).not.toContain(
+    "widget-navigation-leak",
+  );
   await page.setViewportSize({ width: 1440, height: 1500 });
   await page.mouse.move(0, 0);
   await page.screenshot({ path: "/tmp/everruns-a2ui-light.png", fullPage: true });
-  await page.locator(".message.assistant").first().screenshot({ path: "/tmp/everruns-a2ui-widget@2x.png" });
+  await page
+    .locator(".message.assistant")
+    .first()
+    .screenshot({ path: "/tmp/everruns-a2ui-widget@2x.png" });
   await page.evaluate(() => document.documentElement.classList.add("dark"));
   await expect(page.getByRole("heading", { name: "Release review" })).toBeVisible();
   await page.screenshot({ path: "/tmp/everruns-a2ui-dark.png", fullPage: true });
 });
 
 test("all 69 standard components render from the catalog fixtures", async ({ page, request }) => {
+  let mapStyleRequested = false;
+  await page.route("https://tiles.openfreemap.org/**", (route) => {
+    mapStyleRequested = true;
+    return route.fulfill({ json: { version: 8, sources: {}, layers: [] } });
+  });
   const { default: samples } = await import("../../ui/generative-ui/tests/standard-samples.json", {
     with: { type: "json" },
   });
@@ -830,6 +850,7 @@ test("all 69 standard components render from the catalog fixtures", async ({ pag
   await expect(page.getByText("Part of this UI couldn't be shown.", { exact: true })).toHaveCount(
     0,
   );
+  await expect.poll(() => mapStyleRequested).toBe(true);
   expect(failures).toEqual([]);
 });
 

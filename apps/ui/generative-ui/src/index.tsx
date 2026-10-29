@@ -46,6 +46,18 @@ function SafeHtmlView({
   width?: number | string;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
+  const staticHtml = useMemo(() => {
+    if (typeof DOMParser === "undefined") return "";
+    const document = new DOMParser().parseFromString(html, "text/html");
+    // THREAT[TM-WEB-024]: sandboxing blocks script and top navigation, but an
+    // iframe can still navigate itself. Keep generated HTML a static preview.
+    for (const node of document.querySelectorAll("meta, base")) node.remove();
+    for (const node of document.querySelectorAll("a, area")) {
+      node.removeAttribute("href");
+      node.removeAttribute("xlink:href");
+    }
+    return document.documentElement.innerHTML;
+  }, [html]);
   const [colors, setColors] = useState({ text: "CanvasText", background: "Canvas" });
   useEffect(() => {
     const sync = () => {
@@ -76,7 +88,7 @@ function SafeHtmlView({
       ref={frame}
       sandbox=""
       title={title ?? "HTML"}
-      srcDoc={`<!doctype html><meta http-equiv="Content-Security-Policy" content="${policy}"><meta name="color-scheme" content="light dark"><style>body{font:14px system-ui;color:${colors.text};background:${colors.background}}</style>${html}`}
+      srcDoc={`<!doctype html><meta http-equiv="Content-Security-Policy" content="${policy}"><meta name="color-scheme" content="light dark"><style>body{font:14px system-ui;color:${colors.text};background:${colors.background}}</style>${staticHtml}`}
       style={{
         display: "block",
         width,

@@ -130,10 +130,22 @@ mod catalog_tests {
     #[test]
     fn default_prompt_contains_standard_catalog_and_surface_contract() {
         let prompt = default_prompt();
-        for name in ["Column(", "Chart(", "Map(", "Modal(", "DateTimeInput(", "Form("] {
+        for name in [
+            "Column(",
+            "Chart(",
+            "Map(",
+            "Modal(",
+            "DateTimeInput(",
+            "Form(",
+        ] {
             assert!(prompt.contains(name), "missing standard component: {name}");
         }
-        for operation in ["createSurface", "updateComponents", "updateDataModel", "deleteSurface"] {
+        for operation in [
+            "createSurface",
+            "updateComponents",
+            "updateDataModel",
+            "deleteSurface",
+        ] {
             assert!(prompt.contains(operation));
         }
         assert!(prompt.contains("copilotkit/standard@1"));

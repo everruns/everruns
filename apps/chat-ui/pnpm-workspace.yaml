@@ -3,3 +3,6 @@ overrides:
   zod: 4.6.7
   katex: 0.18.2
   '@openuidev/react-headless>@ag-ui/core': 0.0.59
+  maplibre-gl: 6.4.1
+  body-parser: 2.4.0
+  fast-uri: 3.1.9

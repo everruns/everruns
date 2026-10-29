@@ -67,7 +67,9 @@ as they arrive. Both hosts preserve fenced code examples instead of interpreting
 widget markers inside them. Malformed output falls back to source or a visible
 error; block, surface, operation and tree limits bound rendering work.
 
-Host semantic colors drive light and dark component styling. Maps use the
+Host semantic colors drive light and dark component styling. Static HTML previews
+remove navigation metadata and link destinations before applying the iframe
+sandbox and CSP. Maps use the
 installed MapLibre package and retain the upstream place-list fallback. Work
 Chat's CSP permits HTTPS image/media sources, the standard map tile host, and
 YouTube's privacy-enhanced player. HTML views are overridden with an opaque,
