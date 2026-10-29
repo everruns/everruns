@@ -742,6 +742,28 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(summarize(path, 10, 12, 150, {"server"})["passed"])
             self.assertFalse(summarize(path, 10, 100, 1000, {"server"})["passed"])
 
+    def test_macos_sampler_distinguishes_disappeared_process_from_ps_failure(self):
+        from subprocess import CalledProcessError, CompletedProcess
+        from unittest.mock import patch
+        from .monitor import process_sample
+
+        with (
+            patch("platform.system", return_value="Darwin"),
+            patch("capacity.monitor.Path.exists", return_value=False),
+            patch("capacity.monitor.subprocess.run") as run,
+        ):
+            run.side_effect = CalledProcessError(1, "ps", output="", stderr="")
+            with self.assertRaises(ProcessLookupError):
+                process_sample(12345678)
+            run.side_effect = CalledProcessError(2, "ps", output="", stderr="error")
+            with self.assertRaises(CalledProcessError):
+                process_sample(12345678)
+            run.side_effect = None
+            run.return_value = CompletedProcess("ps", 0, "1:02.5 512\n", "")
+            sample = process_sample(12345678)
+            self.assertEqual(sample["cpu_seconds"], 62.5)
+            self.assertEqual(sample["rss_bytes"], 512 * 1024)
+
 
 class StreamTests(unittest.IsolatedAsyncioTestCase):
     async def test_multiline_frames_and_noncontiguous_sequences(self):

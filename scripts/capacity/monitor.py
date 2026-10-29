@@ -17,12 +17,23 @@ from urllib.parse import urlsplit, unquote
 def process_sample(pid):
     path = Path(f"/proc/{pid}/stat")
     if not path.exists() and __import__("platform").system() == "Darwin":
-        result = subprocess.run(
-            ["ps", "-p", str(pid), "-o", "time=,rss="],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        try:
+            result = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "time=,rss="],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as error:
+            # A PostgreSQL child can exit between enumeration and this sample,
+            # just as /proc/<pid>/stat can disappear on Linux.
+            if (
+                error.returncode == 1
+                and not error.stdout.strip()
+                and not error.stderr.strip()
+            ):
+                raise ProcessLookupError(pid) from error
+            raise
         cpu, rss = result.stdout.split()
         parts = [float(value) for value in cpu.split(":")]
         seconds = sum(value * (60**i) for i, value in enumerate(reversed(parts)))
