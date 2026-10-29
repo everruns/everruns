@@ -28,7 +28,10 @@ impl ScopedServer {
         let (shutdown, stopped) = tokio::sync::oneshot::channel();
         let service = WorkerServiceServer::with_interceptor(service, move |mut req: Request<()>| {
             // Remote metadata cannot change this server-owned assignment.
-            req.extensions_mut().insert(scope.clone());
+            req.extensions_mut()
+                .insert(super::super::authority::WorkerAuthority::ActorJournal(
+                    scope.clone(),
+                ));
             Ok(req)
         });
         let task = tokio::spawn(async move {

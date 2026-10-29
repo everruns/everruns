@@ -7,6 +7,7 @@
 // Decision: Split into submodules for maintainability (EVE-101).
 
 pub mod assignment_scope;
+pub mod authority;
 mod worker;
 // The one wire shape of a command failure, shared with the in-process worker.
 pub(crate) use worker::support::command_error_to_proto;
@@ -251,13 +252,16 @@ pub fn grpc_server_tls_from_env_result() -> anyhow::Result<Option<tonic::transpo
 }
 
 /// Tonic interceptor that validates bearer token on every gRPC request.
-/// If `expected_token` is `None`, all requests are allowed (dev mode).
+/// Establishes explicit legacy authority after successful authentication, or
+/// development authority when `expected_token` is `None`. Refuses existing
+/// authority rather than promoting a scoped assertion through reauthentication.
 ///
 /// THREAT[TM-AUTHZ-002]: This bearer token is the ONLY thing guarding the
 /// worker control-plane boundary. It is a single shared secret with no
 /// per-org scoping, so any client that presents it is fully trusted: every
-/// worker RPC builds `Caller::internal(req.org_id)` from the client-supplied
-/// `org_id`, which bypasses all policy checks. A single valid token can
+/// command RPC can build `Caller::internal(req.org_id)` from client-supplied
+/// `org_id`, bypassing policy checks; dedicated RPCs also use caller selectors.
+/// A single valid token can
 /// therefore act on any org. The worker boundary MUST never be reachable from
 /// untrusted networks. The token is compared in constant time below to avoid
 /// leaking it via a timing side-channel.
@@ -273,9 +277,13 @@ impl GrpcAuthInterceptor {
 }
 
 impl tonic::service::Interceptor for GrpcAuthInterceptor {
-    fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
+    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
+        authority::ensure_unset(request.extensions())?;
         let Some(ref expected) = self.expected_token else {
-            return Ok(request); // No auth configured
+            request
+                .extensions_mut()
+                .insert(authority::WorkerAuthority::Development);
+            return Ok(request);
         };
 
         let token = request
@@ -288,6 +296,9 @@ impl tonic::service::Interceptor for GrpcAuthInterceptor {
             // Constant-time compare: the worker token is a shared secret, so a
             // short-circuiting `==` would leak it byte-by-byte via timing.
             Some(t) if crate::security::constant_time_eq(t.as_bytes(), expected.as_bytes()) => {
+                request
+                    .extensions_mut()
+                    .insert(authority::WorkerAuthority::LegacyWorker);
                 Ok(request)
             }
             Some(_) => {

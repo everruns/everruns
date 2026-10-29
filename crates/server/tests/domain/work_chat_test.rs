@@ -268,7 +268,7 @@ async fn work_chat_worker_link_delegates_only_inside_the_consumer_tree() {
         everruns_server::oss_host_composition_for_grade(everruns_core::DeploymentGrade::Dev),
     );
     let request = |name: &str, params: Value| {
-        tonic::Request::new(proto::ExecuteCommandRequest {
+        let mut request = tonic::Request::new(proto::ExecuteCommandRequest {
             name: name.into(),
             api_version: "v1".into(),
             org_id: everruns_core::DEFAULT_ORG_ID,
@@ -277,7 +277,11 @@ async fn work_chat_worker_link_delegates_only_inside_the_consumer_tree() {
             input_message_id: Some(uuid_to_proto_uuid(input)),
             params_json: serde_json::to_vec(&params).unwrap(),
             ..Default::default()
-        })
+        });
+        request.extensions_mut().insert(
+            everruns_server::worker_link::grpc_service::authority::WorkerAuthority::Development,
+        );
+        request
     };
     let created = service
         .execute_command(request(

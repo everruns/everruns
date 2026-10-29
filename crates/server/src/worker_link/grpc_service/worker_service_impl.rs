@@ -23,7 +23,7 @@ macro_rules! delegate {
                     &self,
                     request: Request<$req>,
                 ) -> Result<Response<$resp>, Status> {
-                    super::assignment_scope::check_rpc(&request, stringify!($rpc))?;
+                    super::authority::check_rpc(&request, stringify!($rpc))?;
                     self.$handler(request).await
                 }
             )*
