@@ -5,6 +5,9 @@
 
 use super::super::assignment_scope::ActorJournalScope;
 use super::*;
+
+mod grant_records;
+mod grants;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::{EventContext, EventRequest, OutputMessageCompletedData, RuntimeMessage};
 use everruns_internal_protocol::{WorkerServiceClient, uuid_to_proto_uuid};
@@ -19,6 +22,10 @@ struct ScopedServer {
 
 impl ScopedServer {
     async fn start(service: WorkerServiceImpl, scope: ActorJournalScope) -> Self {
+        Self::start_shared(Arc::new(service), scope).await
+    }
+
+    async fn start_shared(service: Arc<WorkerServiceImpl>, scope: ActorJournalScope) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let incoming = futures::stream::unfold(listener, |listener| async move {
@@ -26,16 +33,18 @@ impl ScopedServer {
             Some((socket, listener))
         });
         let (shutdown, stopped) = tokio::sync::oneshot::channel();
-        let service = WorkerServiceServer::with_interceptor(service, move |mut req: Request<()>| {
+        let auth = move |mut req: Request<()>| {
             // Remote metadata cannot change this server-owned assignment.
             req.extensions_mut()
                 .insert(super::super::authority::WorkerAuthority::ActorJournal(
                     scope.clone(),
                 ));
             Ok(req)
-        });
+        };
+        let service = WorkerServiceServer::from_arc(service);
         let task = tokio::spawn(async move {
             tonic::transport::Server::builder()
+                .layer(tonic::service::InterceptorLayer::new(auth))
                 .add_service(service)
                 .serve_with_incoming_shutdown(Box::pin(incoming), async {
                     let _ = stopped.await;
@@ -102,7 +111,7 @@ async fn leased_scope(
         .iter()
         .find(|lease| lease.session_id == session)
         .unwrap();
-    ActorJournalScope::new(org_id, session, "executor-a".into(), lease.fence).unwrap()
+    super::journal_grants::seed_scope(&service.db, org_id, session, "executor-a", lease.fence).await
 }
 
 fn read(session: SessionId) -> Request<proto::ReadActorJournalRequest> {
@@ -241,7 +250,8 @@ async fn scoped_journal_refuses_a_scope_whose_org_disagrees_with_the_session() {
     let own = journal(&service, 2, "own-journal").await;
     let actual = leased_scope(&service, own, 2).await;
     let db = service.db.clone();
-    let inconsistent = ActorJournalScope::new(3, own, actual.holder.clone(), actual.fence).unwrap();
+    let inconsistent =
+        super::journal_grants::seed_scope(&db, 3, own, &actual.holder, actual.fence).await;
     let mut server = ScopedServer::start(service, inconsistent).await;
     assert_eq!(
         server
@@ -275,7 +285,8 @@ async fn scoped_journal_refuses_another_holder_with_the_current_fence() {
     let own = journal(&service, 2, "own-journal").await;
     let actual = leased_scope(&service, own, 2).await;
     let wrong_holder =
-        ActorJournalScope::new(2, own, "another-executor".into(), actual.fence).unwrap();
+        super::journal_grants::seed_scope(&service.db, 2, own, "another-executor", actual.fence)
+            .await;
     let mut server = ScopedServer::start(service, wrong_holder).await;
     assert_eq!(
         server
