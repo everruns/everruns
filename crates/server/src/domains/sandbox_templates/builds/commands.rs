@@ -178,6 +178,19 @@ impl Command for ApplySandboxTemplateBuild {
             .get_sandbox_build(ctx.org_id(), self.id)
             .await?
             .ok_or_else(|| CommandError::not_found("Sandbox Template build"))?;
+        // The request names a build, but manager notes, locks and history belong
+        // to its immutable parent template. Reuse the template revision path's
+        // metadata-only journal with the original caller and invocation intent.
+        let template_ref = build.sandbox_template_id.to_string();
+        let review = crate::domains::change_history::rest::RestChange::begin_with_context(
+            ctx.clone(),
+            "apply_sandbox_template_build",
+            crate::domains::change_history::EntityKind::SandboxTemplate,
+            crate::domains::change_history::ChangeAction::Updated,
+            Some(&template_ref),
+            &[],
+        )
+        .await?;
         let connection = build
             .source_spec
             .target
@@ -212,11 +225,14 @@ impl Command for ApplySandboxTemplateBuild {
                 return Err(CommandError::conflict("Provider snapshot is not active"));
             }
         }
-        ctx.db
+        let updated = ctx
+            .db
             .apply_sandbox_build(ctx.org_id(), self.id)
             .await
             .map_err(build_error)?
-            .ok_or_else(|| CommandError::not_found("Sandbox Template build"))
+            .ok_or_else(|| CommandError::not_found("Sandbox Template build"))?;
+        review.finish(&template_ref).await;
+        Ok(updated)
     }
 }
 
@@ -260,6 +276,151 @@ fn build_error(error: anyhow::Error) -> CommandError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn apply_honors_parent_context_and_records_only_template_metadata() {
+        use crate::domains::change_history::intent::{ChangeIntent, ChangeSurface};
+        use crate::domains::sandbox_templates::record::{SandboxTargetSpec, SandboxTemplateSpec};
+        use crate::storage::{CreateOrganizationConnectionRow, EncryptionService, StorageBackend};
+        use everruns_core::{Caller, DEFAULT_ORG_ID, organization::OrgRole};
+        use serde_json::json;
+        use std::sync::Arc;
+
+        let encryption = Arc::new(
+            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
+                .unwrap(),
+        );
+        let db = Arc::new(StorageBackend::test_database());
+        let ctx = Ctx::minimal_for_test(
+            Caller {
+                org_id: DEFAULT_ORG_ID,
+                org_public_id: "org_00000000000000000000000000000001".into(),
+                user_id: None,
+                role: OrgRole::Owner,
+                is_platform_user: false,
+                is_internal: false,
+                read_only: false,
+            },
+            db.clone(),
+            Some(encryption.clone()),
+        );
+        let account = db
+            .create_organization_connection(CreateOrganizationConnectionRow {
+                org_id: ctx.org_id(),
+                name: "Build account".into(),
+                provider: "daytona".into(),
+                access_token_encrypted: Some(
+                    encryption
+                        .encrypt_string("DO_NOT_JOURNAL_PROVIDER_KEY")
+                        .unwrap(),
+                ),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let mut target = SandboxTargetSpec::managed("daytona");
+        target.credential.source = SessionSandboxCredentialSource::Organization;
+        target.credential.connection_id = Some(account.id);
+        let spec: SandboxTemplateSpec = serde_json::from_value(json!({"target": target})).unwrap();
+        let template = db
+            .create_sandbox_template(
+                ctx.org_id(),
+                "history-build",
+                "Build history",
+                None,
+                &spec,
+                false,
+            )
+            .await
+            .unwrap();
+        let mut build = StartSandboxTemplateBuild {
+            id: template.public_id,
+            req: serde_json::from_value(json!({
+                "source_revision_id": template.current_revision.public_id,
+                "install_script": "echo DO_NOT_JOURNAL_INSTALL_SCRIPT"
+            }))
+            .unwrap(),
+        }
+        .run(&ctx)
+        .await
+        .unwrap();
+        build.status = SandboxBuildStatus::Ready;
+        build.snapshot_id = Some("DO_NOT_JOURNAL_SNAPSHOT_ID".into());
+        build.software_notes = Some("DO_NOT_JOURNAL_SOFTWARE_NOTES".into());
+        db.save_sandbox_build(ctx.org_id(), &build).await.unwrap();
+        // An already-applied retry exercises the complete command without a
+        // provider request. Fresh application uses the same journal path.
+        db.apply_sandbox_build(ctx.org_id(), build.id)
+            .await
+            .unwrap()
+            .unwrap();
+        dispatch(
+            "append_manager_context",
+            json!({
+                "entity_ref": template.public_id,
+                "text": "Keep the runtime network blocked."
+            }),
+            &ctx,
+        )
+        .await
+        .unwrap();
+        let stale = ctx.clone().with_change_intent(ChangeIntent {
+            context_revision: Some(0),
+            ..ChangeIntent::on(ChangeSurface::Commands)
+        });
+        let error = ApplySandboxTemplateBuild { id: build.id }
+            .run(&stale)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code.as_deref(), Some("manager_context_changed"));
+
+        let acknowledged = ctx.with_change_intent(ChangeIntent {
+            context_revision: Some(1),
+            ..ChangeIntent::on(ChangeSurface::Commands)
+                .with_reason(Some("Apply the reviewed development environment".into()))
+        });
+        ApplySandboxTemplateBuild { id: build.id }
+            .run(&acknowledged)
+            .await
+            .unwrap();
+        let history: serde_json::Value = serde_json::from_str(
+            &dispatch(
+                "list_entity_history",
+                json!({
+                    "entity_ref": template.public_id
+                }),
+                &acknowledged,
+            )
+            .await
+            .unwrap(),
+        )
+        .unwrap();
+        let entry = history
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["command"] == "apply_sandbox_template_build")
+            .unwrap();
+        assert_eq!(entry["entity_ref"], template.public_id.to_string());
+        assert_eq!(entry["surface"], "commands");
+        assert_eq!(
+            entry["reason"],
+            "Apply the reviewed development environment"
+        );
+        let revision = db
+            .get_entity_revision(&crate::storage::entity_changes::EntityRevisionKey {
+                org_id: acknowledged.org_id(),
+                entity_kind: "sandbox_template".into(),
+                entity_ref: template.public_id.to_string(),
+                revision: None,
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        let snapshot = revision.snapshot.unwrap();
+        assert!(snapshot.get("spec").is_none());
+        assert!(!snapshot.to_string().contains("DO_NOT_JOURNAL"));
+    }
 
     #[test]
     fn flattened_command_rejects_unknown_secret_inputs() {

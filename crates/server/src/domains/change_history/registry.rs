@@ -654,7 +654,7 @@ pub fn declared(name: &str) -> Change {
             Change::Exempt("build attempts and provider artifact cleanup are operational state")
         }
         "apply_sandbox_template_build" => Change::Exempt(
-            "execution configuration is recorded by immutable Sandbox Template revisions, not metadata history",
+            "records its resolved parent template through RestChange with the original caller and context",
         ),
         "update_tracing_destination_metadata" => on(K::TracingDestination, Updated, Param("id")),
         "update_tracing_policy" => on(K::TracingPolicy, Updated, Param("id")),

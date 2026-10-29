@@ -84,6 +84,8 @@ edit, managed template, archived template, missing artifact, or incomplete clean
 prevents application. Concurrent apply is idempotent. Applied artifacts cannot be
 discarded because older Agents and Sessions may still pin them. Everruns never
 moves those pins when a template's current revision changes.
+Application follows the existing template
+[manager-context and metadata-history contract](../execution/change-reasons-and-manager-context.md).
 
 ## Installation, verification and runtime policy
 
