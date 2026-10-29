@@ -11,5 +11,6 @@
 * [Embedding Specification](embedding.md) - Embedding contract and `HostComposition`.
 * [Providers Specification](providers.md) - Providers domain model: drivers, services, providers, models, model profiles.
 * [LLM Drivers Specification](llm-drivers.md) - LLM driver trait, provider implementations.
+* [Bounded Managed Host Dispatch](managed-dispatch.md) - Unmounted host admission, exact supplier controls, stable generation journals and qualification gates.
 * [OpenAI Responses WebSocket Transport](openai-responses-websocket.md) - Opt-in WebSocket transport for the OpenAI Responses driver: wire contract, opt-in, SSE fallback, connection reuse.
 * [CLI Specification](cli.md) - CLI specification.

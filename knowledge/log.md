@@ -2,6 +2,8 @@
 
 ## 2026-10-29
 
+- Add an unmounted [bounded managed host-dispatch component](foundations/managed-dispatch.md): host admission and preallocated identity, immutable supplier requests, canonical receipt review and explicit transactional journaling. Preserve worker/isolation boundaries and require supplier/host qualification before activation.
+
 - Give the main PostgreSQL server shard bounded cold-build headroom after compilation exhausted its test budget; retain all selected tests and other shard budgets. See [CI Build Time](project/ci-build-time.md).
 
 - Extend [Agent Cost Estimation](ui/agent-cost-estimation.md) with explicit resource costs, fixed fees, cache/retry assumptions and a host pricing seam that separates prepaid credits from external bills.
