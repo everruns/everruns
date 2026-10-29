@@ -36,7 +36,7 @@ def main():
     def api(method, path, body=None):
         request = urllib.request.Request(args.cp.rstrip("/") + "/api/v1" + path,
             data=None if body is None else json.dumps(body).encode(), method=method,
-            headers={"Content-Type": "application/json", **({"Authorization": "Bearer " + token} if token else {}), **({"X-Org-Id": args.org} if args.org else {})})
+            headers={"Content-Type": "application/json", "User-Agent": "everruns-cloudflare-smoke/1.0", **({"Authorization": "Bearer " + token} if token else {}), **({"X-Org-Id": args.org} if args.org else {})})
         try:
             with opener.open(request, timeout=150) as response:
                 result = response.read()
