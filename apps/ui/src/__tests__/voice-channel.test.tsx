@@ -26,11 +26,11 @@ describe("voice channel kind", () => {
 
   it("is offered only when the voice feature flag is on", () => {
     mockUseFeatureFlag.mockImplementation((flag: string) => flag !== "voice");
-    const { rerender } = render(<ChannelTypePicker value="webhook" onChange={jest.fn()} />);
+    const { rerender } = render(<ChannelTypePicker onChange={jest.fn()} />);
     expect(screen.queryByText("Voice")).not.toBeInTheDocument();
 
     mockUseFeatureFlag.mockImplementation(() => true);
-    rerender(<ChannelTypePicker value="webhook" onChange={jest.fn()} />);
+    rerender(<ChannelTypePicker onChange={jest.fn()} />);
     expect(screen.getByText("Voice")).toBeInTheDocument();
   });
 

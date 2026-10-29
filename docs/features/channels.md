@@ -42,7 +42,7 @@ authentication and membership in the file's organization.
 
 1. Open the Agent and select the **Integrations** tab.
 2. Select **Add channel** and choose the channel type.
-3. Configure the type-specific fields and select **Save channel**.
+3. Configure the type-specific fields and select **Create channel**.
 4. Select **Publish** to make the channel live.
 
 The same operations are available over the API under `/v1/agents/{agent_id}/channels`, with `publish` and `unpublish` actions per channel. Every channel runs the Agent's current configuration.

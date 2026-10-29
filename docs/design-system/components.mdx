@@ -205,6 +205,12 @@ Dense registries (Models, MCP tools) use a full-width row per record instead of 
   </div>
 </DsExample>
 
+A row that stands for a record with its own page is a link as a whole: the name carries the
+link and the row is its click target. Columns hold what the reader scans for (status, last
+used), the ⋯ menu holds quick commands, and a chevron ends the row. Configuration and budgets
+live on the record's page, never in a row that expands. Below about 40rem the columns fold
+under the name. Agent channels use this list.
+
 ## Navigation
 
 `components/layout/sidebar-navigation.tsx`, with the items in `lib/navigation.ts`. A 240px

@@ -1,3 +1,5 @@
+jest.mock("@/components/budgets/budget-panel", () => ({ BudgetPanel: () => null }));
+
 jest.mock("@/hooks/use-health-issues", () => ({
   useHealthIssues: () => ({ data: { data: [], total: 0 }, isError: false }),
 }));
@@ -168,9 +170,12 @@ describe("Slack channel first run", () => {
     mockSource = { managed_channels: ["chat"] };
     mockChannelConfig = { package_name: "chat" };
     await renderEditChannelPage("unknown_error");
-    expect(screen.getByText(/configuration is managed by GitHub/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/settings come from the agent's source repository/),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Back to Agent" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Back to\s+Support Agent/ })).toHaveAttribute(
       "href",
       "/agents/agent_123?tab=integrations",
     );
@@ -409,7 +414,7 @@ describe("Slack channel first run", () => {
     fireEvent.click(screen.getByRole("button", { name: /Slack/ }));
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Save channel" }));
+      fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
     });
     await waitFor(() => expect(window.location.href).toBe(authorizeUrl));
     expect(beginSlackInstall).toHaveBeenCalledWith("appchan_123", "T1");
@@ -424,7 +429,7 @@ describe("Slack channel first run", () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Save channel" }));
+      fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
     });
 
     expect(beginSlackInstall).not.toHaveBeenCalled();
@@ -436,7 +441,7 @@ describe("Slack channel first run", () => {
     await renderNewChannelPage();
     fireEvent.click(screen.getByRole("button", { name: /Slack/ }));
 
-    expect(screen.getByRole("button", { name: "Save channel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Create channel" })).toBeDisabled();
     expect(beginSlackInstall).not.toHaveBeenCalled();
   });
 
@@ -452,7 +457,7 @@ describe("Slack channel first run", () => {
     expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Save channel" }));
+      fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
     });
 
     expect(beginSlackInstall).not.toHaveBeenCalled();
@@ -463,7 +468,7 @@ describe("Slack channel first run", () => {
     await renderEditChannelPage("unused");
 
     expect(
-      screen.getByText("Publish opens this channel to callers. Unpublish closes it."),
+      screen.getByText(/Publish opens this channel to callers and Unpublish closes it/),
     ).toBeVisible();
     expect(screen.queryByRole("switch", { name: "Enabled" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Publish" })).toHaveAttribute(
@@ -480,7 +485,7 @@ describe("Slack channel first run", () => {
     fireEvent.click(screen.getByRole("button", { name: /Slack/ }));
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Save channel" }));
+      fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
     });
 
     expect(push).toHaveBeenCalledWith(
