@@ -2,8 +2,6 @@
 
 ## 2026-10-29
 
-- Route shell and embedded-interpreter directory renames through atomic workspace metadata moves, preserving file identities and rejecting protected trees, mount crossings and destination collisions. See [File Store](runtime-resources/file-store.md).
-
 - Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.
 
 - Made the public generative UI gallery interactive using the shared chat renderer, with local action previews, reset, theme sync, and opt-in external media.
@@ -28,6 +26,8 @@
 - Added a public searchable component gallery with production-renderer captures in both themes and A2UI source examples. See [A2UI](ui/a2ui.md).
 
 - Excluded permanently redirected announcements from the canonical docs sitemap while preserving their inbound links. See [Documentation Site](ui/documentation.md#sitemap-requirements).
+
+- Route shell and embedded-interpreter directory renames through atomic workspace metadata moves, preserving file identities and rejecting protected trees, mount crossings and destination collisions. See [File Store](runtime-resources/file-store.md).
 
 ## 2026-10-28
 
