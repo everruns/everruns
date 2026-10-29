@@ -90,6 +90,8 @@ def risk_filters(paths):
         filters.update(['auth_integration_test::', 'org_isolation_test::',
                         'db_pool_isolation_test::', 'service_mcp_oauth_lifecycle_test::',
                         'migration_baseline_test::', 'migration_history_test::'])
+    if 'crates/server/tests/domain/db_pool_isolation_test.rs' in paths:
+        filters.add('db_pool_isolation_test::')
     return sorted(filters)
 
 

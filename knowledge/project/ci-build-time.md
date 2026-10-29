@@ -39,6 +39,9 @@ capabilities, matching server/worker composition; either catalog alone can omit
 dependencies supplied by the other.
 Database-backend changes also exercise production-router fixtures that configure
 their own environment outside the shared API harness.
+Changes to the pool-isolation fixture execute that domain contract in focused PR
+checks; the [offline selector regression](../../.github/scripts/ci/test_policy.py)
+proves selection through actual Rust compilation and filtered execution.
 Ordinary Rust changes do not build the server/worker/CLI binaries, full PostgreSQL
 shards, SDK cohorts, or Docker images. Public API and packaging inputs retain their
 specific consumers. Chaos functional coverage uses the existing shared CI binaries
