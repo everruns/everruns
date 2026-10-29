@@ -3191,6 +3191,121 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/external-worker": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Read external execution status without returning credentials",
+        "operationId": "get_external_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ExternalAgent"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Verify endpoint ownership and connect or rotate an Agent's HTTPS worker",
+        "description": "Requires dangerous-settings permission and installation enablement. Stop\nactive turns first. The preinstalled secret is encrypted and never returned.",
+        "operationId": "register_external_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterExternalAgent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalAgent"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Disable external execution while keeping queued sessions bound to this worker",
+        "description": "Revocation never falls back to the built-in runtime.",
+        "operationId": "disable_external_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/failures": {
       "get": {
         "tags": [
@@ -45255,6 +45370,40 @@
           }
         }
       },
+      "ExternalAgent": {
+        "type": "object",
+        "description": "Public status of a customer-hosted HTTPS runtime; credentials are never exposed.",
+        "required": [
+          "endpoint_url",
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether this binding can lease new work. Disabled bindings retain routing."
+          },
+          "endpoint_url": {
+            "type": "string",
+            "description": "Verified public HTTPS URL that receives signed invocation requests.",
+            "example": "https://sales.example.workers.dev/"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Sanitized dispatch error, cleared after a successful invocation or registration."
+          },
+          "last_invoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Time of the latest invocation attempt, if any."
+          }
+        }
+      },
       "ExternalScoreStatus": {
         "type": "string",
         "description": "Result status reported alongside externally computed scores.",
@@ -60728,6 +60877,30 @@
             "type": "boolean",
             "description": "When true, replace message text/tool content with a placeholder, keeping\nonly structure (roles, tool names, ids). Secret scrubbing still runs.",
             "example": true
+          }
+        }
+      },
+      "RegisterExternalAgent": {
+        "type": "object",
+        "description": "Register a predeployed HTTPS endpoint after a signed ownership challenge.",
+        "required": [
+          "endpoint_url",
+          "endpoint_secret"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Agent public ID or name; the HTTP route supplies this value."
+          },
+          "endpoint_secret": {
+            "type": "string",
+            "description": "Preinstall this random, 32+ character secret in the endpoint. Never a user PAT.",
+            "writeOnly": true
+          },
+          "endpoint_url": {
+            "type": "string",
+            "description": "Verified public HTTPS URL that receives signed invocation requests.",
+            "example": "https://sales.example.workers.dev/"
           }
         }
       },
