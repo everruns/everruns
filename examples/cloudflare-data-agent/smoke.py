@@ -129,6 +129,10 @@ def main():
                 assert context.get("turn_id") != context["input_message_id"].replace("message_", "turn_"), "Missing CP turn namespacing"
                 if event["type"] == "turn.completed":
                     assert event["data"]["turn_id"] == context["turn_id"]
+        trace = api("GET", "/sessions/" + session_id + "/trace/turns")
+        assert trace["turns"] and "north" in (trace["turns"][0]["prompt"] or "").lower(), "Trace is missing the real user prompt"
+        assert trace["turns"][0]["model_calls"] >= 2 and trace["turns"][0]["tool_calls"] >= 1
+        assert "sales_summary" in json.dumps(trace), "Tool missing from Trace projection"
         work = api("GET", "/sessions/" + session_id + "/work")
         assert "sales_summary" in json.dumps(work), "Tool missing from ordinary work projection"
         deadline = time.monotonic() + 5
@@ -155,7 +159,7 @@ def main():
             time.sleep(0.5)
         else:
             raise AssertionError("Re-registering did not resume the queued input")
-        print(json.dumps({"result": "passed", "agent_id": agent_id, "sessions": sessions, "turns": 3, "checks": ["ownership", "private_d1", "real_model", "canonical_trace", "live_sse", "work_projection", "history", "revocation_no_fallback", "re_registration_resumes_queued_work"]}, indent=2))
+        print(json.dumps({"result": "passed", "agent_id": agent_id, "sessions": sessions, "turns": 3, "checks": ["ownership", "private_d1", "real_model", "canonical_trace", "trace_projection", "live_sse", "work_projection", "history", "revocation_no_fallback", "re_registration_resumes_queued_work"]}, indent=2))
     finally:
         if sse is not None:
             sse.terminate()

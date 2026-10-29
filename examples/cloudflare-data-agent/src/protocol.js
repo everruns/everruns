@@ -44,7 +44,7 @@ export function eventStream(body, execute) {
   };
   const task = (async () => {
     try {
-      await emit("turn.started", { turn_id, input_message_id: body.invocation_id });
+      await emit("turn.started", { turn_id, input_message_id: body.invocation_id, input_content: (body.input?.content ?? []).filter(p => p.type === "text").map(p => p.text).join("\n") });
       await execute(emit, turn_id, abort.signal);
     } catch (error) {
       console.error("External execution failed", { name: error instanceof Error ? error.name : "Error" });

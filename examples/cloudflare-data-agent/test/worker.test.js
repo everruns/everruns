@@ -47,5 +47,6 @@ test("stream errors become a failed turn and preserve input identity", async () 
   const lines=(await response.text()).trim().split("\n").map(JSON.parse); await task;
   assert.deepEqual(lines.map(e=>e.type),["turn.started","turn.failed"]);
   assert.equal(lines[1].context.input_message_id,id);
+  assert.equal(lines[0].data.input_content,"North sales?");
   assert.doesNotMatch(JSON.stringify(lines),/secret diagnostic/);
 });

@@ -145,6 +145,17 @@ using sensitive production data. Endpoint authentication only proves the CP sent
 the invocation; it does not implement your application's data authorization.
 
 
+## Supported behavior
+
+| Feature | Support |
+| --- | --- |
+| Agents, Playground and sessions | Use the ordinary Agent and session APIs. |
+| History, SSE and Trace | CP persists events; instrument model and tool calls in your runtime. The sample reports completed generations, not token deltas. |
+| Slack replies | Direct communication uses CP channel delivery. |
+| Model, prompt and tool configuration | Owned by your endpoint. Native editor and Playground model controls do not configure this implementation. |
+| Native approvals, delegation and managed Slack actions | Not exposed through this response-only HTTP protocol. |
+| Attachments | This sample accepts text only. |
+
 ## Agent code
 
 This is the actual example implementation. `sales_summary` binds the region to a
@@ -280,7 +291,8 @@ Verification returns an HMAC of a fresh challenge, not a public nonce echo.
 
 Invocations contain a stable `invocation_id`, session ID, current input,
 `input_sequence`, and bounded journal. Return one canonical execution event JSON
-object per newline. `eventStream` supplies turn/input correlation. The adapter
+object per newline. `eventStream` supplies turn/input correlation and the
+`turn.started.input_content` used by the Trace prompt preview. The adapter
 pins the session and input, validates each event using the existing custom-worker
 service, then publishes through ordinary EventService. Reported provider IDs are
 stripped. The response stream grants no callback or management authority.
@@ -309,5 +321,5 @@ Pass `--org org_...` if your account belongs to multiple organizations.
 It creates a disposable Agent, verifies endpoint registration, invokes the real
 model and private database, checks durable events/trace provenance/tool results,
 checks follow-up history, disables the endpoint and confirms queued work cannot
-run, then revokes its binding. It prints IDs and assertions, never credentials.
+run, reconnects and resumes that input, then revokes its binding. It prints IDs and assertions, never credentials.
 It does not post messages to Slack; test that separately in a designated channel.
