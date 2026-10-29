@@ -33,5 +33,4 @@ The 52-second cut shortens installation and provider waits; Sarah narration is s
   <track kind="captions" src="/videos/sandbox-builder.en.vtt" srclang="en" label="English" default>
 </video>
 
-[Download the walkthrough](./walkthrough.mp4) or read the
-[English captions](/videos/sandbox-builder.en.vtt).
+[Read the English captions](/videos/sandbox-builder.en.vtt).

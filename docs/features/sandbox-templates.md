@@ -51,8 +51,7 @@ provider waiting time are shortened. Narration is synthesized with Sarah.
   <track kind="captions" src="/videos/sandbox-builder.en.vtt" srclang="en" label="English" default>
 </video>
 
-[Download the walkthrough](/changelog/2026-10-29-sandbox-snapshot-builder/walkthrough.mp4)
-or read the [English captions](/videos/sandbox-builder.en.vtt).
+[Read the English captions](/videos/sandbox-builder.en.vtt).
 
 Open an editable Daytona template, select and save a named **Organization account**,
 then open **Build snapshot**. Enter an **Install script** to install the software you
