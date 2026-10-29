@@ -88,6 +88,10 @@ Expect **27278 cents, 2 orders**. Open the session's Trace to inspect model call
 conversation history from the CP journal. Editor model/prompt/tool settings do
 not configure this external implementation.
 
+Set `EVERRUNS_URL` to the CP origin (for example,
+`https://app.everruns.com`), without `/api`. `EVERRUNS_TOKEN` is your ordinary
+user PAT, used only by your terminal; never install it in the Worker.
+
 The ordinary session API also works:
 
 ```bash
@@ -278,8 +282,8 @@ stripped. The response stream grants no callback or management authority.
 
 The adapter renews actor leases and closes the request on cancellation/revocation.
 The current implementation bounds each invocation to 120 seconds, context/history
-to 2000 events / 16 MiB, and each event to 1 MiB. Admission allows at most four active HTTP invocations
-per organization across the fleet, and 32 per CP process; each turn accepts at
+to 2000 events / 8 MiB, the invocation body and response to 16 MiB, and each event to 1 MiB. Admission allows at most four active HTTP invocations
+per organization across the fleet, and eight per CP process; each turn accepts at
 most 2048 events. Model responses are currently
 reported as completed generations, not token deltas. An interrupted or invalid
 stream fails the turn and requires an explicit new message; it is not replayed
@@ -296,6 +300,7 @@ python3 smoke.py --cp "$EVERRUNS_URL" --endpoint "$WORKER_URL"
 ```
 
 The smoke reads `EVERRUNS_TOKEN` and `EVERRUNS_ENDPOINT_SECRET` from its environment.
+Pass `--org org_...` if your account belongs to multiple organizations.
 It creates a disposable Agent, verifies endpoint registration, invokes the real
 model and private database, checks durable events/trace provenance/tool results,
 checks follow-up history, disables the endpoint and confirms queued work cannot

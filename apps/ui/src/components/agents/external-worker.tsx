@@ -53,11 +53,7 @@ export function ExternalWorker({ agentId, disabled }: { agentId: string; disable
     <section className="border border-border p-4 space-y-3" aria-label={ui("Execution")}>
       <div className="flex items-center gap-3">
         <h2 className="font-medium">{ui("Execution")}</h2>
-        {!worker.isLoading && !worker.isError && (
-          <Badge variant="secondary">
-            {worker.data ? ui("External worker") : ui("Built-in runtime")}
-          </Badge>
-        )}
+        {worker.data && <Badge variant="secondary">{ui("External worker")}</Badge>}
         {worker.data && !worker.data.enabled && <Badge variant="outline">{ui("Disabled")}</Badge>}
         <Button
           variant="outline"
@@ -103,7 +99,7 @@ export function ExternalWorker({ agentId, disabled }: { agentId: string; disable
         >
           <p className="text-sm text-muted-foreground">
             {ui(
-              "Deploy your worker first. Install a random endpoint secret in its environment, then enter it here to verify ownership.",
+              "Deploy your worker first. Install a random endpoint secret in its environment, then enter it here to verify ownership. Messages and session history for this Agent are sent to the endpoint.",
             )}
           </p>
           <div className="space-y-1">

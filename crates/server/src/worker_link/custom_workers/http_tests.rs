@@ -122,6 +122,20 @@ async fn exercise(mode: &'static str) -> (Vec<everruns_core::Event>, bool) {
         ))
         .await
         .unwrap();
+    if mode == "history-overflow" {
+        for _ in 0..20 {
+            svc.events
+                .emit(EventRequest::new(
+                    session,
+                    EventContext::default(),
+                    everruns_core::OutputMessageCompletedData::new(RuntimeMessage::assistant(
+                        "x".repeat(500_000),
+                    )),
+                ))
+                .await
+                .unwrap();
+        }
+    }
     svc.db
         .mark_session_actor_runnable(session, 1, i64::from(input.sequence.unwrap()))
         .await
@@ -154,7 +168,11 @@ async fn exercise(mode: &'static str) -> (Vec<everruns_core::Event>, bool) {
         mode,
         calls: AtomicUsize::new(0),
     };
-    let result = dispatch(&svc, &encryption, &remote, endpoint).await;
+    let result = if mode == "cancel-during" {
+        dispatch(&svc, &encryption, &CancelDuring(svc.db.clone()), endpoint).await
+    } else {
+        dispatch(&svc, &encryption, &remote, endpoint).await
+    };
     let rows = svc
         .db
         .read_session_actor_journal(session, Some(0), 100)
@@ -209,6 +227,7 @@ async fn disconnected_forged_or_trailing_stream_fails_once_without_replay() {
         "scalar",
         "bad-context",
         "interrupted",
+        "history-overflow",
     ] {
         let (events, success) = exercise(mode).await;
         assert!(!success, "{mode}");
@@ -255,4 +274,141 @@ async fn organization_admission_is_bounded_and_expiry_recovers_capacity() {
             .await
             .unwrap();
     assert_eq!(count, 1);
+}
+
+#[tokio::test]
+async fn slack_direct_reply_uses_the_same_external_worker_and_channel_delivery() {
+    use crate::channels::slack::{
+        events::SlackState,
+        host_tests::{Slack, message, session_of, slack_config},
+    };
+    use everruns_core::channel::{
+        ChannelDeliveryAdapter, DeliveryContext, DeliveryResult, OutboundChannelMessage,
+        SessionBinding,
+    };
+    use std::sync::{Arc, Mutex};
+    #[derive(Default)]
+    struct Delivery(Mutex<Vec<(SessionId, String)>>);
+    #[async_trait]
+    impl ChannelDeliveryAdapter for Delivery {
+        fn platform(&self) -> &str {
+            "slack"
+        }
+        async fn deliver(
+            &self,
+            message: &OutboundChannelMessage,
+            _: &DeliveryContext,
+        ) -> DeliveryResult {
+            self.0
+                .lock()
+                .unwrap()
+                .push((message.session_id, message.text.clone()));
+            DeliveryResult::Ok
+        }
+        async fn send_ack(&self, _: &str, _: &str, _: &DeliveryContext) -> DeliveryResult {
+            DeliveryResult::Ok
+        }
+    }
+    let mut slack = Slack::new(slack_config(SessionBinding::Thread)).await;
+    let delivery = Arc::new(Delivery::default());
+    let runner = Arc::new(crate::turns::ActorTurnBackend::new(slack.db.clone(), None));
+    let mut state = SlackState::new(
+        slack.db.clone(),
+        None,
+        runner,
+        crate::EventDelivery::in_memory(),
+        "https://example.com/api".into(),
+    );
+    state
+        .user_name_cache
+        .insert("U1".into(), Some("Test person".into()));
+    state.delivery_adapter = delivery.clone();
+    slack.state = state.with_channel_host();
+    let deployment: uuid::Uuid = sqlx::query_scalar("INSERT INTO custom_workers(org_id, agent_id, name, token_hash) VALUES(1,$1,'slack-http',$2) RETURNING id")
+        .bind(slack.context.agent_internal_id).bind(Sha256::digest(super::super::tests::TOKEN.as_bytes()).as_slice()).fetch_one(slack.db.pool()).await.unwrap();
+    let encryption = EncryptionService::new(
+        &crate::storage::encryption::generate_encryption_key("slack-http"),
+        &[],
+    )
+    .unwrap();
+    let svc = CustomWorkerServiceImpl::new(slack.db.clone(), slack.state.event_service.clone());
+    let remote = Remote {
+        mode: "good",
+        calls: AtomicUsize::new(0),
+    };
+    let mut session = None;
+    for ts in ["1.0", "2.0"] {
+        let mut body = message("C1", ts, if ts == "1.0" { None } else { Some("1.0") });
+        body["event"]["text"] = json!("What are north sales?");
+        let response = slack.send(body).await.unwrap();
+        let current: SessionId = session_of(&response).parse().unwrap();
+        if let Some(previous) = session {
+            assert_eq!(previous, current);
+        }
+        session = Some(current);
+        let endpoint = Endpoint {
+            id: deployment,
+            org_id: 1,
+            endpoint_url: "https://agent.example/".into(),
+            endpoint_secret_encrypted: encryption.encrypt_string("endpoint-secret").unwrap(),
+            adapter_token_encrypted: encryption
+                .encrypt_string(super::super::tests::TOKEN)
+                .unwrap(),
+        };
+        dispatch(&svc, &encryption, &remote, endpoint)
+            .await
+            .unwrap();
+    }
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if delivery.0.lock().unwrap().len() == 2 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("CP did not deliver external replies to the Slack channel adapter");
+    for (actual, text) in delivery.0.lock().unwrap().iter() {
+        assert_eq!(Some(*actual), session);
+        assert!(text.contains("27278"));
+    }
+}
+
+struct CancelDuring(std::sync::Arc<StorageBackend>);
+#[async_trait]
+impl EgressService for CancelDuring {
+    async fn send(&self, _: EgressRequest) -> EgressResult<EgressResponse> {
+        unreachable!()
+    }
+    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        let body: Value = serde_json::from_slice(&request.body).unwrap();
+        let session: SessionId = serde_json::from_value(body["session_id"].clone()).unwrap();
+        let turn = body["invocation_id"]
+            .as_str()
+            .unwrap()
+            .replace("message_", "turn_");
+        let start = json!({"type":"turn.started","data":{"turn_id":turn,"input_message_id":body["invocation_id"]}}).to_string()+"\n";
+        let db = self.0.clone();
+        let stream = futures::stream::once(async move { Ok(start.into_bytes()) }).chain(
+            futures::stream::once(async move {
+                db.request_session_actor_cancel(session).await.unwrap();
+                std::future::pending::<EgressResult<Vec<u8>>>().await
+            }),
+        );
+        Ok(EgressStreamResponse {
+            status: 200,
+            headers: Default::default(),
+            body: Box::pin(stream),
+        })
+    }
+}
+
+#[tokio::test]
+async fn cancellation_during_a_stream_closes_execution_and_releases_the_input() {
+    let (events, success) = exercise("cancel-during").await;
+    assert!(!success);
+    assert!(events.iter().any(|e| e.event_type == "turn.started"));
+    assert!(events.iter().any(|e| e.event_type == "turn.cancelled"));
+    assert!(!events.iter().any(|e| e.event_type == "turn.completed"));
 }

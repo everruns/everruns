@@ -8,8 +8,8 @@ export const messages: Readonly<Record<string, string>> = {
   "Unable to load execution settings": "Unable to load execution settings",
   "This endpoint owns the model, prompt and tools. Agent editor settings are not applied to external execution.":
     "This endpoint owns the model, prompt and tools. Agent editor settings are not applied to external execution.",
-  "Deploy your worker first. Install a random endpoint secret in its environment, then enter it here to verify ownership.":
-    "Deploy your worker first. Install a random endpoint secret in its environment, then enter it here to verify ownership.",
+  "Deploy your worker first. Install a random endpoint secret in its environment, then enter it here to verify ownership. Messages and session history for this Agent are sent to the endpoint.":
+    "Deploy your worker first. Install a random endpoint secret in its environment, then enter it here to verify ownership. Messages and session history for this Agent are sent to the endpoint.",
   "Worker HTTPS endpoint": "Worker HTTPS endpoint",
   "Endpoint secret": "Endpoint secret",
   "Verify and connect": "Verify and connect",

@@ -3,7 +3,6 @@
   "name": "everruns-data-agent",
   "main": "src/index.js",
   "compatibility_date": "2026-10-28",
-  "limits": { "cpu_ms": 30000 },
   "d1_databases": [{
     "binding": "SALES",
     "database_name": "everruns-sales",

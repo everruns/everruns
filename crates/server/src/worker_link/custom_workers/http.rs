@@ -17,6 +17,7 @@ const MAX_LINE: usize = 1024 * 1024;
 const MAX_STREAM: usize = 16 * 1024 * 1024;
 const MAX_EVENTS: usize = 2048;
 const MAX_ORG_INVOCATIONS: i64 = 4;
+const MAX_PROCESS_INVOCATIONS: usize = 8;
 const DEADLINE: Duration = Duration::from_secs(120);
 
 pub fn validate_endpoint(value: &str) -> Result<()> {
@@ -97,7 +98,7 @@ fn request<T>(token: &str, value: T) -> Result<Request<T>> {
     Ok(req)
 }
 
-/// At most 32 invocations per CP process; actor leases arbitrate across CPs.
+/// At most eight invocations per CP process; actor leases arbitrate across CPs.
 /// Endpoint selection only visits runnable bound agents, oldest first.
 pub async fn run(
     db: Arc<StorageBackend>,
@@ -109,7 +110,7 @@ pub async fn run(
     let mut tasks = tokio::task::JoinSet::new();
     loop {
         while tasks.try_join_next().is_some() {}
-        let slots = 32usize.saturating_sub(tasks.len());
+        let slots = MAX_PROCESS_INVOCATIONS.saturating_sub(tasks.len());
         if slots > 0 {
             let endpoints = sqlx::query_as::<_, Endpoint>("SELECT w.id, w.org_id, w.endpoint_url, w.endpoint_secret_encrypted, w.adapter_token_encrypted FROM custom_workers w WHERE w.enabled AND w.endpoint_url IS NOT NULL AND (SELECT COUNT(*) FROM external_worker_slots slots WHERE slots.org_id = w.org_id AND slots.expires_at > NOW()) < 4 AND EXISTS(SELECT 1 FROM sessions s JOIN session_actors a ON a.session_id = s.id WHERE s.agent_id = w.agent_id AND a.runnable_since IS NOT NULL AND (a.lease_expires_at IS NULL OR a.lease_expires_at <= NOW())) ORDER BY w.last_invoked_at NULLS FIRST, w.id LIMIT $1")
                 .bind(slots as i64).fetch_all(db.pool()).await;
@@ -119,12 +120,7 @@ pub async fn run(
                         let svc = service.clone();
                         let encryption = encryption.clone();
                         let egress = egress.clone();
-                        tasks.spawn(async move {
-                        let id = endpoint.id;
-                        let result = dispatch(&svc, &encryption, egress.as_ref(), endpoint).await;
-                        let error = result.err().map(|error| { tracing::warn!(deployment = %id, %error, "External agent invocation failed"); "External execution failed; inspect the endpoint and retry the message".to_string() });
-                        let _ = sqlx::query("UPDATE custom_workers SET last_error = $2, last_invoked_at = NOW() WHERE id = $1").bind(id).bind(error).execute(svc.db.pool()).await;
-                    });
+                        tasks.spawn(invoke_and_record(svc, encryption, egress, endpoint));
                     }
                 }
                 Err(error) => tracing::warn!(%error, "External endpoint scheduling failed"),
@@ -134,14 +130,34 @@ pub async fn run(
     }
 }
 
+async fn invoke_and_record(
+    svc: CustomWorkerServiceImpl,
+    encryption: Arc<EncryptionService>,
+    egress: Arc<dyn EgressService>,
+    endpoint: Endpoint,
+) {
+    let id = endpoint.id;
+    let version = endpoint.adapter_token_encrypted.clone();
+    let result = dispatch(&svc, &encryption, egress.as_ref(), endpoint).await;
+    if matches!(result, Ok(false)) {
+        return;
+    }
+    let error = result.err().map(|error| {
+        tracing::warn!(deployment = %id, %error, "External agent invocation failed");
+        "External execution failed; inspect the endpoint and retry the message".to_string()
+    });
+    let _ = sqlx::query("UPDATE custom_workers SET last_error = $2, last_invoked_at = NOW() WHERE id = $1 AND adapter_token_encrypted = $3")
+        .bind(id).bind(error).bind(version).execute(svc.db.pool()).await;
+}
+
 async fn dispatch(
     svc: &CustomWorkerServiceImpl,
     encryption: &EncryptionService,
     egress: &dyn EgressService,
     endpoint: Endpoint,
-) -> Result<()> {
+) -> Result<bool> {
     let Some(slot) = admit(&svc.db, endpoint.org_id).await? else {
-        return Ok(());
+        return Ok(false);
     };
     let result = tokio::time::timeout(
         Duration::from_secs(145),
@@ -186,7 +202,7 @@ async fn dispatch_admitted(
     encryption: &EncryptionService,
     egress: &dyn EgressService,
     endpoint: Endpoint,
-) -> Result<()> {
+) -> Result<bool> {
     validate_endpoint(&endpoint.endpoint_url)?;
     let org = svc
         .db
@@ -212,9 +228,10 @@ async fn dispatch_admitted(
         .await?
         .into_inner();
     let Some(actor) = lease.actors.into_iter().next() else {
-        return Ok(());
+        return Ok(false);
     };
     let mut journal = Vec::new();
+    let mut journal_bytes = 0;
     let mut after = Some(0);
     let mut history_exceeded = false;
     loop {
@@ -225,7 +242,7 @@ async fn dispatch_admitted(
                     journal: Some(proto::ReadActorJournalRequest {
                         session_id: actor.session_id.clone(),
                         after_sequence: after,
-                        limit: 100,
+                        limit: 20,
                     }),
                     actor_fence: Some(fence(&holder, &actor)),
                 },
@@ -234,9 +251,15 @@ async fn dispatch_admitted(
             .into_inner();
         for event in page.events {
             after = Some(event.sequence);
-            journal.push(everruns_internal_protocol::proto_event_to_schema(event)?);
+            let event = everruns_internal_protocol::proto_event_to_schema(event)?;
+            journal_bytes += serde_json::to_vec(&event)?.len();
+            if journal_bytes > MAX_STREAM / 2 {
+                history_exceeded = true;
+                break;
+            }
+            journal.push(event);
         }
-        if journal.len() > 2000 {
+        if history_exceeded || journal.len() > 2000 {
             history_exceeded = true;
             break;
         }
@@ -420,7 +443,7 @@ async fn dispatch_admitted(
             },
         )?)
         .await?;
-        return result;
+        return result.map(|()| true);
     }
     svc.release_actor(request(
         &token,
@@ -432,7 +455,7 @@ async fn dispatch_admitted(
         },
     )?)
     .await?;
-    Ok(())
+    Ok(true)
 }
 
 fn fence(holder: &str, actor: &proto::LeasedActor) -> proto::ActorFence {

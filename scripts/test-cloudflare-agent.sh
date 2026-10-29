@@ -3,6 +3,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 node --test examples/cloudflare-data-agent/test/*.test.js
+python3 -m unittest discover -s examples/cloudflare-data-agent/test -p "*_test.py"
 python3 - <<'PY'
 from pathlib import Path
 source = Path('examples/cloudflare-data-agent/src/index.js').read_text()
