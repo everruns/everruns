@@ -49,6 +49,12 @@ def report():
 
 
 class CapacityTests(unittest.IsolatedAsyncioTestCase):
+    def test_a_shortened_failed_soak_cannot_qualify(self):
+        r = report()
+        r.update(phase="steady", duration_seconds=300, requested_duration_seconds=1800)
+        self.assertFalse(verdict(r, 500)["passed"])
+        self.assertFalse(verdict(r, 500)["checks"]["full_steady_duration_observed"])
+
     def test_proxy_config_contains_quoted_paths_and_never_key_contents(self):
         from unittest.mock import patch
         from .local_setup import Lab

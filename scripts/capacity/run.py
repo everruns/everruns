@@ -70,6 +70,9 @@ def verdict(report, ack_p95):
     admission = report["admissions"]
     attempted = report["attempted"]
     checks = {
+        "full_steady_duration_observed": report.get("phase") != "steady"
+        or report.get("duration_seconds", 0)
+        >= report.get("requested_duration_seconds", 0),
         "all_users_connected": report["connected_users"] == report["users"],
         "all_scheduled_users_ran": report.get("started_users", report["users"])
         == report.get("scheduled_users", report["users"]),
@@ -710,7 +713,7 @@ async def run(args):
 
         fault_task = asyncio.create_task(faults())
         await asyncio.gather(*tasks)
-        if args.phase == "steady":
+        if args.phase == "steady" and not results.errors:
             # Keep streams and product polls alive for the full requested soak,
             # including when the last scheduled turn completes before its end.
             await asyncio.sleep(max(0, started + args.duration - time.perf_counter()))
