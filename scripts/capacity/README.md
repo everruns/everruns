@@ -25,7 +25,7 @@ Console, Agent API and Work Chat:
 2. 1,000 connected users for 30 minutes, one turn per user every 60 seconds.
 3. A simultaneous 1,000-turn burst, reported separately from steady load.
 4. A recovery case with repeated acknowledgments, a stream reconnect wave and an
-   actual server restart. Transient errors remain in the report; fault-case
+   abrupt server restart. Transient errors remain in the report; fault-case
    admission has its own 15-second budget.
 
 Each actor has a distinct server-verified identity and an independent SSE cursor.

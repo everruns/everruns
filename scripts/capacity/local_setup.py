@@ -350,8 +350,10 @@ https://127.0.0.1:{self.proxy} {{
 
     def restart_server(self):
         process = self.processes["server"]
-        process.terminate()
-        process.wait(timeout=30)
+        # Crash this owned disposable fixture: graceful HTTP shutdown can wait
+        # for established streams, which would test draining instead of recovery.
+        process.kill()
+        process.wait(timeout=15)
         self.start("server", [str(self.args.fixture_bin)], self.platform_env)
         self.wait(f"http://127.0.0.1:{self.http}/health")
 
