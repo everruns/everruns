@@ -7,7 +7,6 @@ significance: notable
 products: [platform, cloud]
 surfaces: [ui]
 release: "0.33.0"
-visual: "Agent page in view mode showing the system prompt and the config column, then the same page in edit mode with Save changes and Discard; route /agents/{agent}; crop to the main workspace."
 links:
   docs: [/features/ui/]
   prs: [everruns/everruns#3917]
@@ -17,6 +16,10 @@ The agent page is now one workspace. The system prompt fills the page and a
 narrow column holds the rest of the configuration. Select **Edit** to change
 the prompt and settings in place, then **Save changes** or **Discard** for the
 whole agent. Changes apply to new sessions.
+
+![Agent page in view mode with the system prompt and the configuration column](./agent-page-view@2x.png)
+
+![Agent page in edit mode with Save changes and Discard](./agent-page-edit@2x.png)
 
 MCP servers, credentials, branding, starter files, network access, token usage
 and health check open as side sheets from **More**. Version history and

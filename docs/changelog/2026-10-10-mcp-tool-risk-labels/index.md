@@ -10,13 +10,14 @@ release: "0.48.0"
 links:
   docs: [/features/mcp/#which-tools-ask-before-they-run, /reference/cli/mcp-servers/]
   prs: [everruns/everruns#4475, everruns/everruns#4498]
-visual: "MCP catalog Tools dialog with Default, Read only and Changes things choices and a suggestion (/settings/mcp-catalog), cropped to the dialog"
 ---
 
 Everruns cannot see inside a remote tool, so most MCP tools ask for approval by
 default. A saved label now decides it: **Read only** never asks, **Changes
 things** always asks. A label wins over the server's own hints and survives
 tool list changes.
+
+![MCP catalog Tools dialog with Default, Read only and Changes things choices per tool](./mcp-tool-labels@2x.png)
 
 **In the UI:** open **Settings > MCP catalog** and click **Tools** on a server.
 **Suggest labels** asks a decision model to judge unlabeled tools; nothing
