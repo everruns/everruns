@@ -30,6 +30,10 @@ jest.mock("@/hooks/use-agent-source", () => ({
     isError: !!mockSourceError,
   }),
 }));
+jest.mock("@/components/agents/external-worker", () => ({
+  ExternalWorker: () => <div>external execution settings</div>,
+}));
+
 jest.mock("@/components/agents/agent-source", () => ({
   AgentSourcePanel: ({ open }: { open: boolean }) => (
     <div>Agent source{open && <div role="dialog">Source setup</div>}</div>

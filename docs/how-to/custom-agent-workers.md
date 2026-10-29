@@ -3,7 +3,12 @@ title: Run a custom agent worker
 description: Build a custom agent with private tools, connect it securely to your self-hosted control plane, and run an end-to-end smoke test.
 ---
 
-Custom workers are an experimental, operator-provisioned self-hosted option.
+For a customer-hosted HTTPS endpoint, including Cloudflare Workers, see
+[Connect a Cloudflare agent](/how-to/cloudflare-agent/). That opt-in transport
+has API/UI registration and reuses the restricted worker event pipeline.
+The pull-worker process/container flow below remains operator-provisioned.
+
+Custom pull workers are an experimental, operator-provisioned self-hosted option.
 Your process or container owns the agent implementation, model client and tools.
 Everruns owns user authentication, session intake, scheduling and canonical event
 storage. People keep using the usual chat UI, session API, work reports and SSE.
@@ -23,8 +28,9 @@ Integrations page. Its conversations appear as ordinary sessions; open
 It does not appear only as an anonymous collection of sessions.
 
 Starting a worker does **not** create an Agent automatically. There is currently
-no self-service worker registration screen, custom-runtime badge, worker health
-panel or UI editor for the binding. Provisioning and credential rotation use the
+no self-service pull-worker registration screen, custom-runtime badge, worker health
+panel or UI editor for the pull binding. HTTPS bindings have the separate setup
+flow linked above. Provisioning and credential rotation use the
 operator steps below. An offline worker leaves messages queued.
 
 The Agent's platform identity and channel settings remain useful. Its model,

@@ -748,6 +748,9 @@ pub fn declared(name: &str) -> Change {
         "worker_create_session_schedule" | "worker_cancel_session_schedule" => {
             Change::Exempt("the agent's own schedules are the session's working state")
         }
+        "register_external_agent" | "disable_external_agent" => Change::Exempt(
+            "external execution credentials are not authored Agent configuration; sanitized management audit records the change",
+        ),
         "worker_register_session_resource"
         | "worker_update_session_resource_status"
         | "worker_deregister_session_resource" => {

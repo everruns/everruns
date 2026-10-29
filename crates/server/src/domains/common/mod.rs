@@ -352,6 +352,12 @@ pub struct CommandMeta {
 }
 
 impl CommandMeta {
+    /// Dedicated credential entry stays outside agent tools and their transcripts.
+    /// The authenticated HTTP handler still runs the command's policy normally.
+    pub fn is_interactive_secret_setup(&self) -> bool {
+        self.name == "register_external_agent"
+    }
+
     /// Whether this is internal worker plumbing; see
     /// [`INTERNAL_COMMAND_PATH_PREFIX`].
     pub fn is_internal(&self) -> bool {

@@ -820,6 +820,32 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/external-worker": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read an Agent's external execution status */
+    get: operations["get_external_agent"];
+    put?: never;
+    /**
+     * Connect or rotate an external HTTPS worker
+     * @description Requires dangerous-settings permission and installation enablement. Stop
+     *     active turns first. The preinstalled secret is encrypted and never returned.
+     */
+    post: operations["register_external_agent"];
+    /**
+     * Disable external worker execution
+     * @description Revocation never falls back to the built-in runtime.
+     */
+    delete: operations["disable_external_agent"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/failures": {
     parameters: {
       query?: never;
@@ -15116,6 +15142,23 @@ export interface components {
       /** @description Source channel identifier (e.g. "slack", "discord") */
       source: string;
     };
+    /** @description Public status of a customer-hosted HTTPS runtime; credentials are never exposed. */
+    ExternalAgent: {
+      /** @description Whether this binding can lease new work. Disabled bindings retain routing. */
+      enabled: boolean;
+      /**
+       * @description Verified public HTTPS URL that receives signed invocation requests.
+       * @example https://sales.example.workers.dev/
+       */
+      endpoint_url: string;
+      /** @description Sanitized dispatch error, cleared after a successful invocation or registration. */
+      last_error?: string | null;
+      /**
+       * Format: date-time
+       * @description Time of the latest invocation attempt, if any.
+       */
+      last_invoked_at?: string | null;
+    };
     /**
      * @description Result status reported alongside externally computed scores.
      * @enum {string}
@@ -23767,6 +23810,18 @@ export interface components {
        * @example true
        */
       redact_content?: boolean;
+    };
+    /** @description Register a predeployed HTTPS endpoint after a signed ownership challenge. */
+    RegisterExternalAgent: {
+      /** @description Agent public ID or name; the HTTP route supplies this value. */
+      agent_id?: string;
+      /** @description Preinstall this random, 32+ character secret in the endpoint. Never a user PAT. */
+      endpoint_secret: string;
+      /**
+       * @description Verified public HTTPS URL that receives signed invocation requests.
+       * @example https://sales.example.workers.dev/
+       */
+      endpoint_url: string;
     };
     /** @description A display-name change that preserves the connected account credential. */
     RenameOrganizationConnectionRequest: {
@@ -34720,6 +34775,71 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  get_external_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExternalAgent"] | null;
+        };
+      };
+    };
+  };
+  register_external_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RegisterExternalAgent"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExternalAgent"];
+        };
+      };
+    };
+  };
+  disable_external_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

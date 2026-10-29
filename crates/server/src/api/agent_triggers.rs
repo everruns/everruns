@@ -39,6 +39,7 @@ use super::common::{ApiResult, ErrorResponse, impl_auth_state};
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
+    pub external_egress: Option<Arc<dyn everruns_core::EgressService>>,
     pub encryption: Option<Arc<EncryptionService>>,
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub capability_service: Arc<CapabilityService>,
@@ -63,6 +64,7 @@ impl AppState {
     ) -> Self {
         Self {
             db,
+            external_egress: None,
             encryption,
             workflow_store,
             capability_service,
@@ -105,6 +107,7 @@ impl AppState {
         }
         ctx.mcp_event_triggers = self.mcp_event_triggers.clone();
         ctx.channels = self.channels.clone();
+        ctx.egress_service = self.external_egress.clone();
         ctx
     }
 }

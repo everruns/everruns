@@ -183,6 +183,13 @@ durable 9.1m to 2-3m.
   state and accepting only exact PR merge refs. It never deletes branch caches or
   executes PR code. Manual cleanup sweeps existing closed PRs; no periodic tick or
   paid cache-capacity increase is required.
+- **Retire secret-bearing build outputs, not just vulnerable versions.** After a
+  dependency build-script disclosure, invalidate affected compiled-target caches
+  and remove contaminated local build output. A new lockfile hash alone is not
+  containment: prefix restores can carry the old files into a new generation.
+  Registry-only and binary-only caches have a different content boundary. The
+  [libz-sys advisory](https://rustsec.org/advisories/RUSTSEC-2026-0418.html) is the
+  concrete case; dependency selection remains owned by `Cargo.lock`.
 - **A cache miss must still fit the job.** A focused server run with no Rust
   cache spent 33m48s compiling; all 3,706 unit, 65 persistence, one router and
   85 selected domain tests passed before the forty-minute job timed out

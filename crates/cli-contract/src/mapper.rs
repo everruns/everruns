@@ -51,6 +51,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Pause or resume all of an agent's live channels at once.",
     ),
     (
+        "agents external-worker",
+        "Inspect or disable a customer-hosted agent runtime.",
+    ),
+    (
         "agents failures",
         "Sessions with failed turns, including recovered sessions.",
     ),
