@@ -1,0 +1,24 @@
+---
+title: "Sessions with tool calls keep the prompt cache again"
+description: "History loaded for a worker kept each tool result's time as of loading, so every model call rewrote earlier time facts and lost the prompt cache after the first tool call."
+date: 2026-10-30
+kind: fix
+significance: notable
+products: [platform, cloud]
+surfaces: [agent]
+links:
+  docs: [/capabilities/prompt-caching/]
+---
+
+**For agents:** a worker that loads session history from the server gave each
+tool result the time it was loaded, not the time it was stored. The
+`current_time` fact placed after each tool result was then rewritten on every
+model call, so the provider's prompt cache stopped at the first tool call of
+the session. Long sessions, and scheduled agents that keep one session, re-sent
+their whole history uncached on each call. Tool results now keep their stored
+time, so each call only appends to the previous one.
+
+On models that receive the current tool list, a tool revealed by tool search
+now goes at the end of the list instead of where it sorts, and OpenAI-style
+`prompt_cache_key` values no longer change when tools or instructions change
+(see [Prompt Caching](/capabilities/prompt-caching/)).

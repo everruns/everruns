@@ -22,8 +22,8 @@ endpoint** through a custom base URL. For Azure deployments, use the dedicated
   integrations and OpenAI-compatible gateways.
 - **Streaming, tool calls, and reasoning** mapped to provider-neutral Everruns
   types, including extended thinking on reasoning models.
-- **Prompt caching** via a deterministic cache key derived from stable request
-  inputs.
+- **Prompt caching** via a deterministic cache key derived from the session
+  (or agent, harness, organization) and model.
 - **Structured output**: a direct model call can require a reply that matches
   a JSON Schema, enforced by OpenAI (`text.format` on the Responses API,
   `response_format` on Chat Completions).
