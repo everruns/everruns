@@ -55,10 +55,13 @@ The Slack walkthrough illustrates both
 [Slack DMs and files](../../docs/changelog/2026-10-13-slack-agents-dms-and-files/index.md)
 and [scheduled Slack briefings](../../docs/changelog/2026-10-12-scheduled-turns-post-to-slack/index.md).
 
-The approved Sandbox Builder walkthrough uses the real local app and a live
-Daytona build to show an install script, fresh-snapshot verification, readable
-software notes, separate build/runtime network policies and an immutable revision.
-Provider waiting time is shortened. The 52-second Sarah cut has English captions.
-Keep the narrated video binary outside Git; its docs and changelog embed must wait
-for the verified public YouTube URL. The Sandbox Templates guide and changelog
-retain their feature instructions and screenshot while publication is handed off.
+The [Sandbox Builder walkthrough](https://www.youtube.com/watch?v=QyjGHq6LTuw)
+is public on Everruns @everrunshq with uploaded English captions and embedding enabled.
+The 52-second Sarah cut uses the real local app and a live Daytona build to show an
+install script, fresh-snapshot verification, readable software notes, separate
+build/runtime network policies and an immutable revision. Package installation and
+provider waits are shortened; synthesized narration is disclosed.
+The [Sandbox Templates guide](../../docs/features/sandbox-templates.md#build-a-reusable-snapshot)
+and [snapshot-builder changelog](../../docs/changelog/2026-10-29-sandbox-snapshot-builder/index.md)
+embed the public YouTube video alongside the feature instructions and screenshot.
+Keep the narrated video binary outside Git.
