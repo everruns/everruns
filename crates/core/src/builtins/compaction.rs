@@ -20,6 +20,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+#[path = "compaction/cost_control.rs"]
+mod cost_control;
+use cost_control::*;
+
 use crate::compaction_policy::{
     CompactionPolicy, CompactionSettings, CompactionStrategy as ExecutionCompactionStrategy,
     ObservationMaskingResult as ExecutionObservationMaskingResult,
@@ -121,6 +125,15 @@ pub struct CostControlConfig {
     #[serde(default = "default_cost_control_min_masked_tool_result_bytes")]
     pub min_masked_tool_result_bytes: usize,
 
+    /// Move the masked region forward this many tool results at a time, so the
+    /// history is rewritten (and the prompt cache lost) once per batch.
+    #[serde(default = "default_cost_control_mask_batch_results")]
+    pub mask_batch_results: usize,
+
+    /// Move it at once when the results waiting past it pass this many bytes.
+    #[serde(default = "default_cost_control_mask_batch_bytes")]
+    pub mask_batch_bytes: usize,
+
     /// If cumulative/session usage is available, mask when uncached input exceeds this.
     #[serde(default = "default_cost_control_max_uncached_input_tokens")]
     pub max_uncached_input_tokens: u32,
@@ -146,53 +159,14 @@ impl Default for CostControlConfig {
             mask_after_tool_results: default_cost_control_mask_after_tool_results(),
             max_live_tool_result_bytes: default_cost_control_max_live_tool_result_bytes(),
             min_masked_tool_result_bytes: default_cost_control_min_masked_tool_result_bytes(),
+            mask_batch_results: default_cost_control_mask_batch_results(),
+            mask_batch_bytes: default_cost_control_mask_batch_bytes(),
             max_uncached_input_tokens: default_cost_control_max_uncached_input_tokens(),
             min_cache_read_ratio: default_cost_control_min_cache_read_ratio(),
             compact_after_tool_result_bytes: default_cost_control_compact_after_tool_result_bytes(),
             compact_min_input_tokens: default_cost_control_compact_min_input_tokens(),
         }
     }
-}
-
-fn default_cost_control_enabled() -> bool {
-    true
-}
-
-fn default_cost_control_keep_recent_tool_results() -> usize {
-    2
-}
-
-fn default_cost_control_mask_after_tool_results() -> usize {
-    4
-}
-
-fn default_cost_control_max_live_tool_result_bytes() -> usize {
-    24 * 1024
-}
-
-// Masking a small result saves a few hundred tokens but takes it out of the
-// model's view while it may still be working with it, and the model fetches it
-// again. With the count trigger (4 results, keep 2) an agent juggling a pull
-// request, its diff and a shell command re-fetched them in an endless cycle.
-// Below this size the re-fetch costs more than keeping the result.
-fn default_cost_control_min_masked_tool_result_bytes() -> usize {
-    4 * 1024
-}
-
-fn default_cost_control_max_uncached_input_tokens() -> u32 {
-    100_000
-}
-
-fn default_cost_control_min_cache_read_ratio() -> f32 {
-    0.35
-}
-
-fn default_cost_control_compact_after_tool_result_bytes() -> usize {
-    256 * 1024
-}
-
-fn default_cost_control_compact_min_input_tokens() -> usize {
-    8 * 1024
 }
 
 /// Summarization settings.
@@ -1124,7 +1098,11 @@ fn apply_cost_control_masking_owned(
     }
 
     let keep_recent = cost_config.keep_recent_tool_results;
-    let to_mask_count = tool_indices.len().saturating_sub(keep_recent);
+    let sizes: Vec<usize> = tool_indices
+        .iter()
+        .map(|index| message_tool_result_len(&messages[*index]))
+        .collect();
+    let to_mask_count = mask_boundary(&sizes, cost_config);
     let related_recent_reads =
         related_recent_paginated_read_results(&messages, &tool_indices, keep_recent);
     let indices_to_mask: HashSet<usize> = tool_indices[..to_mask_count]
