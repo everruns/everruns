@@ -118,17 +118,6 @@ impl RotatingAuth {
         self.originator = name.into();
         self
     }
-    /// Which OAuth route this handle refreshes against. Typed so callers never
-    /// parse `metadata.extra` for `flow`/`auth_source` strings.
-    pub fn route(&self) -> TokenRoute {
-        self.route
-    }
-
-    /// Token endpoint backing [`Self::route`].
-    pub fn token_url(&self) -> &str {
-        &self.token_url
-    }
-
     pub async fn token(&self) -> Result<CodexAuth> {
         let _lease = self.store.lock().await.map_err(storage_error)?;
         let mut auth = self

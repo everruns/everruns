@@ -46,9 +46,6 @@ pub enum RejectedProviderCapability {
 pub enum LlmErrorKind {
     /// Invalid or missing credentials, or access denied (401/403, bad API key).
     Authentication,
-    /// The driver does not accept the auth the caller attached (e.g. an API
-    /// key where OAuth tokens are required). Decided before any network call.
-    UnsupportedAuth,
     /// Provider account is out of credits/quota (billing). Non-transient:
     /// needs operator action, unlike a regular rate limit.
     QuotaExhausted,

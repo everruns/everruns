@@ -418,7 +418,6 @@ impl AgentLoopError {
             AgentLoopError::Llm(err) => match err.kind {
                 LlmErrorKind::RateLimited | LlmErrorKind::Unavailable => true,
                 LlmErrorKind::Authentication
-                | LlmErrorKind::UnsupportedAuth
                 | LlmErrorKind::QuotaExhausted
                 | LlmErrorKind::BillingPressure { .. }
                 | LlmErrorKind::AttestationRequired
@@ -492,9 +491,6 @@ impl AgentLoopError {
                 // errors so legacy paths keep working.
                 let code = match err.kind {
                     LlmErrorKind::Authentication => {
-                        Some(user_facing_error_codes::PROVIDER_MISCONFIGURED)
-                    }
-                    LlmErrorKind::UnsupportedAuth => {
                         Some(user_facing_error_codes::PROVIDER_MISCONFIGURED)
                     }
                     LlmErrorKind::QuotaExhausted => {

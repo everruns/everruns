@@ -133,10 +133,6 @@ impl ChatGptChatDriver {
 }
 #[async_trait]
 impl ChatDriver for ChatGptChatDriver {
-    fn supported_auth(&self) -> everruns_contracts::driver_registry::SupportedAuth {
-        everruns_contracts::driver_registry::SupportedAuth::OAuth
-    }
-
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,

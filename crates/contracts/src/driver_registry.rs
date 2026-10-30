@@ -62,21 +62,6 @@ pub use crate::model_discovery::DiscoveredModel;
 /// Quota/billing exhaustion (`LlmErrorKind::QuotaExhausted`) is non-transient
 /// and must not be retried by driver retry loops even when the provider
 /// reports it under a transient status like 429.
-///
-/// The credential shape a chat driver accepts. A descriptor only: it never
-/// carries secrets, so per-driver constructors stay typed
-/// (`openai::provider(id, key)`, `codex::driver(store)`) and no global
-/// `Auth` enum exists in contracts. `Any` keeps key drivers unchanged.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SupportedAuth {
-    /// Any auth works (key drivers keep this default).
-    Any,
-    /// Static API key auth (`BearerAuth`).
-    ApiKey,
-    /// Rotating OAuth tokens (`RotatingAuth` over a `TokenStore`).
-    OAuth,
-}
-
 #[async_trait]
 pub trait ChatDriver: Send + Sync {
     /// Provider-native offline requests, when implemented. Never falls back to chat.
@@ -167,14 +152,6 @@ pub trait ChatDriver: Send + Sync {
     ) -> Result<Option<Vec<DiscoveredModel>>> {
         // Default: not supported. Providers override if they support listing.
         Ok(None)
-    }
-
-    /// Descriptor for the credential shape this driver accepts. Key drivers
-    /// keep the `Any` default unchanged; OAuth drivers return `OAuth` so
-    /// callers can reject a mismatched `Provider` with `UnsupportedAuth`
-    /// before any network call.
-    fn supported_auth(&self) -> SupportedAuth {
-        SupportedAuth::Any
     }
 
     /// Check if this driver supports the compact endpoint
