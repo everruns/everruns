@@ -905,9 +905,17 @@ pub(crate) fn event_to_message(
     match &event.data {
         EventData::InputMessage(d) => Some(d.message.clone()),
         EventData::OutputMessageCompleted(d) => Some(d.message.clone()),
-        EventData::ToolCompleted(d) => Some(
-            crate::storage::runtime::message::tool_completed_to_message(d.clone()),
-        ),
+        // Same identity and timestamp as the in-process projection
+        // (`direct_worker_adapters::message_projection`). A load-time `now()`
+        // re-renders the `<facts>` block after every tool result on each
+        // request, which breaks the provider prompt cache.
+        EventData::ToolCompleted(d) => {
+            let mut message =
+                crate::storage::runtime::message::tool_completed_to_message(d.clone());
+            message.id = everruns_contracts::typed_id::MessageId::from_uuid(event.id.uuid());
+            message.created_at = event.ts;
+            Some(message)
+        }
         _ => None,
     }
 }

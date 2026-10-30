@@ -864,8 +864,8 @@ impl OpenResponsesProtocolChatDriver {
     fn build_prompt_cache_key(
         config: &LlmCallConfig,
         _input_items: &[ResponsesInputItem],
-        instructions: &Option<String>,
-        tools: &Option<Vec<ResponsesTool>>,
+        _instructions: &Option<String>,
+        _tools: &Option<Vec<ResponsesTool>>,
     ) -> Option<String> {
         let prompt_cache = config.prompt_cache.as_ref().filter(|cfg| cfg.enabled)?;
         let cache_family = config
@@ -874,12 +874,14 @@ impl OpenResponsesProtocolChatDriver {
             .or_else(|| config.metadata.get("agent_id"))
             .or_else(|| config.metadata.get("harness_id"))
             .or_else(|| config.metadata.get("org_id"));
+        // The key only routes requests to a cache; the provider still matches
+        // the prefix. Instructions and tools stay out so a tool reveal or a
+        // prompt note keeps the session on the cache that holds everything
+        // before the change.
         let fingerprint = json!({
             "strategy": prompt_cache.strategy,
             "model": config.model,
             "cache_family": cache_family,
-            "instructions": instructions,
-            "tools": tools,
         });
         let payload = serde_json::to_vec(&fingerprint).ok()?;
         let digest = hex::encode(Sha256::digest(payload));
