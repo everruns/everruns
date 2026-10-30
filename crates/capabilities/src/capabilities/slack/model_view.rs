@@ -25,6 +25,22 @@ impl ModelViewProvider for SlackModelViewProvider {
             let Some(metadata) = &message.metadata else {
                 continue;
             };
+            if metadata.get("slack_code_task") == Some(&Value::Bool(true)) {
+                let revision = metadata
+                    .get("slack_code_revision")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
+                let annotation = format!("[Slack Code task; publication revision={revision}]");
+                if let Some(ContentPart::Text(text)) = message
+                    .content
+                    .iter_mut()
+                    .find(|p| matches!(p, ContentPart::Text(_)))
+                {
+                    text.text = format!("{annotation} {}", text.text);
+                } else {
+                    message.content.insert(0, ContentPart::text(annotation));
+                }
+            }
             let (Some(channel), Some(timestamp)) = (
                 metadata.get("slack_channel").and_then(Value::as_str),
                 metadata.get("slack_ts").and_then(Value::as_str),

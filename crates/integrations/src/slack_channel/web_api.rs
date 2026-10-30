@@ -14,9 +14,17 @@ use std::sync::OnceLock;
 
 use tracing::{Level, debug, error, warn};
 
-fn client() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(reqwest::Client::new)
+fn client() -> Result<&'static reqwest::Client, SlackApiError> {
+    static CLIENT: OnceLock<Result<reqwest::Client, reqwest::Error>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(5))
+                .timeout(std::time::Duration::from_secs(15))
+                .build()
+        })
+        .as_ref()
+        .map_err(|error| SlackApiError::Transient(error.to_string()))
 }
 
 /// Slack API error codes that retrying cannot fix.
@@ -24,6 +32,13 @@ fn client() -> &'static reqwest::Client {
 /// The single source of truth for transient-vs-permanent (EVE-972), matched as
 /// exact codes rather than substrings of a formatted message (EVE-968).
 pub const PERMANENT_SLACK_ERRORS: &[&str] = &[
+    "feature_disabled",
+    "not_agent_channel",
+    "not_authorized",
+    "not_in_channel",
+    "content_too_large",
+    "too_many_views",
+    "already_archived",
     "channel_not_found",
     "token_expired",
     "not_authed",
@@ -245,7 +260,7 @@ pub async fn slack_api_call(
     method: &str,
     payload: serde_json::Value,
 ) -> Result<serde_json::Value, SlackApiError> {
-    let response = client()
+    let response = client()?
         .post(format!("{}/{}", base_url, method))
         .header("Authorization", format!("Bearer {}", bot_token))
         .header("Content-Type", "application/json")

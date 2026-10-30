@@ -55,6 +55,7 @@ pub(crate) fn test_app() -> TestIngress {
 
 pub(crate) fn test_config(strategy: SessionBinding) -> SlackChannelConfig {
     SlackChannelConfig {
+        code_channels_enabled: false,
         agent_surface_enabled: false,
         signing_secret: "secret".to_string(),
         bot_token: "xoxb-token".to_string(),

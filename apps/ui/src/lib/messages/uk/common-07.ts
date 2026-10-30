@@ -1,5 +1,9 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 export const messages: Readonly<Record<string, string>> = {
+  "Slack Code channels": "Канали Slack Code",
+  "Channel mentions create a shared coding task. Teammates and thread replies use one session. Direct messages keep their existing behavior.":
+    "Згадки в каналах створюють спільне завдання з програмування. Учасники команди та відповіді в гілках використовують один сеанс. Особисті повідомлення працюють як раніше.",
+
   "Scroll to": "Перейдіть до",
   Search: "Пошук",
   "Search account": "Пошук облікового запису",

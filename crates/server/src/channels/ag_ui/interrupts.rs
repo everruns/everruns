@@ -336,6 +336,7 @@ pub(crate) async fn resume(
     if let Some(outcomes) = approvals {
         resolve_tool_approvals(
             &ApprovalServices {
+                external_actor: None,
                 db: services.db,
                 event_service: services.event_service,
                 runner: &services.runner,

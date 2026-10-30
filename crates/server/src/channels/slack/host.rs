@@ -112,14 +112,14 @@ impl SlackHostDriver {
         }
     }
 
-    /// A pane event's conversation: the pane reports its thread under
-    /// `assistant_thread`, not at the event root.
+    /// Session events use root coordinates in the unified API and nested
+    /// coordinates in legacy pane payloads. A thread is required until code
+    /// channels have a verified, conversation-wide binding of their own.
     fn pane_route(&self, event: &SlackEvent) -> Option<InboundRoute> {
-        let thread = event.assistant_thread.as_ref()?;
-        let channel = thread.channel_id.clone().or(event.channel.clone())?;
-        let thread_ts = thread.thread_ts.clone().or(event.thread_ts.clone());
+        let (channel, thread_ts) = event.session_coordinates()?;
+        let thread_ts = thread_ts?;
         let mut routing_metadata = HashMap::from([
-            ("channel_id".to_string(), channel.clone()),
+            ("channel_id".to_string(), channel.to_string()),
             (SLACK_SURFACE.to_string(), "pane".to_string()),
         ]);
         if let Some(user) = &event.user {
@@ -132,16 +132,53 @@ impl SlackHostDriver {
                 source: SLACK_PLATFORM.into(),
                 metadata: None,
             },
-            thread_ref: Some(thread_ts.clone().unwrap_or_else(|| "unknown".into())),
+            thread_ref: Some(thread_ts.to_string()),
             routing_metadata,
-            reply_to: DeliveryTarget::new(channel, thread_ts.unwrap_or_default()),
+            reply_to: DeliveryTarget::new(channel, thread_ts),
         })
     }
 
-    fn control(&self, event: &SlackEvent, action: ControlAction) -> Inbound {
-        match self.pane_route(event) {
-            Some(route) => Inbound::Control(Box::new(InboundControl { route, action })),
-            None => Inbound::Ignore,
+    async fn control(&self, event: &SlackEvent, action: ControlAction) -> Inbound {
+        let Some(route) = self.pane_route(event) else {
+            return Inbound::Ignore;
+        };
+        // Historical bindings key threads by timestamp alone. A root-level
+        // control must not reach a different channel whose thread has that ts.
+        // The host-maintained context is trusted ingress, never model input.
+        let key = format!(
+            "slack:thread:{}",
+            route.thread_ref.as_deref().unwrap_or_default()
+        );
+        let verified = async {
+            let Some(session) = self
+                .state
+                .db
+                .channel_binding(self.channel.internal_id, &key)
+                .await?
+            else {
+                return Ok::<_, anyhow::Error>(false);
+            };
+            let context = self
+                .state
+                .db
+                .get_session_key_value(session, everruns_core::channel::THREAD_CONTEXT_KV_KEY)
+                .await?
+                .and_then(|row| everruns_core::channel::decode_thread_context(&row.value));
+            Ok(context.is_some_and(|context| {
+                context.platform == SLACK_PLATFORM
+                    && context.platform_metadata.get("channel_id")
+                        == Some(&route.reply_to.channel_id)
+                    && Some(context.thread_ref.as_str()) == route.thread_ref.as_deref()
+            }))
+        }
+        .await;
+        match verified {
+            Ok(true) => Inbound::Control(Box::new(InboundControl { route, action })),
+            Ok(false) => Inbound::Ignore,
+            Err(error) => {
+                tracing::warn!(%error, "Could not verify Slack session control destination");
+                Inbound::Ignore
+            }
         }
     }
 
@@ -394,11 +431,12 @@ impl ChannelDriver for SlackHostDriver {
                         }),
                     },
                 )
+                .await
             }
             // The stop button (EVE-976): cancels the running turn of this
             // channel's own session and nothing else. A finished turn is not
             // flipped, and the cancelled turn's delivery posts the notice.
-            "agent_session_stopped" => self.control(&event, ControlAction::Cancel),
+            "agent_session_stopped" => self.control(&event, ControlAction::Cancel).await,
             // A rename in the pane is written back, so the agent's next
             // retitle does not silently revert it (EVE-975).
             "agent_session_title_changed" => {
@@ -410,12 +448,15 @@ impl ChannelDriver for SlackHostDriver {
                     .map(str::trim)
                     .filter(|title| !title.is_empty());
                 match title {
-                    Some(title) => self.control(
-                        &event,
-                        ControlAction::Rename {
-                            title: title.to_string(),
-                        },
-                    ),
+                    Some(title) => {
+                        self.control(
+                            &event,
+                            ControlAction::Rename {
+                                title: title.to_string(),
+                            },
+                        )
+                        .await
+                    }
                     None => Inbound::Ignore,
                 }
             }

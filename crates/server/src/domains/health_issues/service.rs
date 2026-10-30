@@ -150,13 +150,11 @@ impl SlackHealthService {
             return Err(());
         }
         let scopes = scopes.ok_or(())?;
-        let missing = crate::domains::agent_channels::record::slack_channel::slack_bot_scopes(
-            config.agent_surface_enabled,
-        )
-        .into_iter()
-        .filter(|required| !scopes.iter().any(|scope| scope == required))
-        .map(str::to_string)
-        .collect::<Vec<_>>();
+        let missing = crate::domains::agent_channels::record::slack_channel::slack_scopes(config)
+            .into_iter()
+            .filter(|required| !scopes.iter().any(|scope| scope == required))
+            .map(str::to_string)
+            .collect::<Vec<_>>();
         let error = (!missing.is_empty()).then(|| "missing_scope".into());
         Ok((missing, error))
     }

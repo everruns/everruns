@@ -41,6 +41,7 @@ use super::approval::approval_prompt;
 use super::progress::TaskProgress;
 use super::{ChannelDeliveryAdapter, DeliveryContext, DeliveryResult, OutboundChannelMessage};
 use crate::conversation::NO_REPLY_TOOL_NAME;
+use everruns_contracts::runtime::channel::ChannelSessionState;
 use everruns_contracts::runtime::events::{
     CONVERSATION_MESSAGE, OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED,
     OUTPUT_MESSAGE_STARTED, SESSION_TITLE_UPDATED, TASK_CREATED, TASK_UPDATED, TOOL_COMPLETED,
@@ -160,6 +161,8 @@ pub struct TurnDelivery {
     finished: bool,
     tools_running: usize,
     last_status: Option<String>,
+    last_session_state: Option<ChannelSessionState>,
+    awaiting_approval: bool,
     streams: BTreeMap<String, Stream>,
     /// Messages already delivered (posted, closed or replaced). Late deltas
     /// and repeated completions for them are dropped.
@@ -192,6 +195,8 @@ impl TurnDelivery {
             finished: false,
             tools_running: 0,
             last_status: None,
+            last_session_state: None,
+            awaiting_approval: false,
             streams: BTreeMap::new(),
             done: HashSet::new(),
             progress: TaskProgress::default(),
@@ -265,6 +270,9 @@ impl TurnDelivery {
             OUTPUT_MESSAGE_REPLACED if self.streaming() => self.on_replaced(&event.data).await,
             OUTPUT_MESSAGE_COMPLETED => self.on_completed(&event.data).await,
             TOOL_STARTED => {
+                self.awaiting_approval = false;
+                self.set_session_state(ChannelSessionState::Processing)
+                    .await;
                 self.tools_running += 1;
                 self.set_status(self.current_status()).await;
             }
@@ -279,7 +287,21 @@ impl TurnDelivery {
                 self.set_status(self.current_status()).await;
             }
             TASK_CREATED | TASK_UPDATED => self.on_task(&event.data),
-            TURN_STARTED => self.set_status(self.options.thinking_status.clone()).await,
+            TURN_STARTED => {
+                self.set_session_state(ChannelSessionState::Processing)
+                    .await;
+                self.set_status(self.options.thinking_status.clone()).await;
+            }
+            everruns_contracts::runtime::events::TOOL_CALL_REQUESTED => {
+                // A parked turn remains open. Do not turn a pause into a
+                // completion notice or leave a stream/loading indicator open.
+                let ids: Vec<String> = self.streams.keys().cloned().collect();
+                for id in ids {
+                    self.close_stream(&id).await;
+                }
+                self.set_status(String::new()).await;
+                self.set_session_state(ChannelSessionState::Suspended).await;
+            }
             SESSION_TITLE_UPDATED => {
                 if let Some(title) = event.data.get("title").and_then(Value::as_str)
                     && !title.trim().is_empty()
@@ -327,6 +349,12 @@ impl TurnDelivery {
             self.close_stream(&id).await;
         }
         self.set_status(String::new()).await;
+        self.set_session_state(if self.awaiting_approval && event_type == TURN_COMPLETED {
+            ChannelSessionState::Suspended
+        } else {
+            ChannelSessionState::Active
+        })
+        .await;
         // A summary frozen mid-flight reads as live forever: the final push
         // says where the fan-out got to.
         self.push_progress(true).await;
@@ -551,6 +579,21 @@ impl TurnDelivery {
             .flatten()
     }
 
+    async fn set_session_state(&mut self, state: ChannelSessionState) {
+        let Some(surface) = self.agent_surface() else {
+            return;
+        };
+        if self.last_session_state == Some(state) {
+            return;
+        }
+        match surface.set_session_state(state, &self.context).await {
+            DeliveryResult::Ok => self.last_session_state = Some(state),
+            DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
+                warn!(session_id = %self.session_id, %error, "channel: could not set session lifecycle");
+            }
+        }
+    }
+
     async fn set_status(&mut self, status: String) {
         let Some(surface) = self.agent_surface() else {
             return;
@@ -580,6 +623,8 @@ impl TurnDelivery {
     }
 
     async fn prompt_approval(&mut self, data: &Value) {
+        // Waiting is a runtime fact even when this adapter cannot draw a card.
+        self.awaiting_approval |= approval_prompt(data).is_some();
         let Some(approvals) = self.adapter.approvals() else {
             return;
         };

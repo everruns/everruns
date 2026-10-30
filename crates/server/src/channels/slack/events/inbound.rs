@@ -250,6 +250,18 @@ pub(crate) async fn handle_slack_event(
         tracing::warn!(app_id = %app_id, error = %e, "Slack signature verification failed");
         ErrorResponse::new("Invalid signature").into_response(StatusCode::UNAUTHORIZED)
     })?;
+    let code_body: serde_json::Value = serde_json::from_slice(&body).map_err(|_| {
+        ErrorResponse::new("Invalid request body").into_response(StatusCode::BAD_REQUEST)
+    })?;
+    if crate::channels::slack::code::enqueue(&state, &slack_channel, &slack_config, &code_body)
+        .await
+        .map_err(|error| {
+            tracing::warn!(%error,"Could not retain Slack Code input");
+            internal_error()
+        })?
+    {
+        return Ok((StatusCode::OK, Json(ack_json())));
+    }
     let envelope_type = serde_json::from_slice::<serde_json::Value>(&body)
         .ok()
         .and_then(|body| body["type"].as_str().map(str::to_string))
@@ -326,10 +338,16 @@ pub(crate) fn event_matches_slack_scope(
         return false;
     }
 
-    if let Some(expected_channel_id) = slack_config.channel_id.as_deref()
-        && event.channel.as_deref() != Some(expected_channel_id)
-    {
-        return false;
+    if let Some(expected_channel_id) = slack_config.channel_id.as_deref() {
+        // Check the coordinates the control router will actually use. Legacy
+        // pane events carry no root channel; conflicting root/nested ids must
+        // never authorize one conversation and mutate another.
+        let Some((channel_id, _)) = event.session_coordinates() else {
+            return false;
+        };
+        if channel_id != expected_channel_id {
+            return false;
+        }
     }
 
     true
