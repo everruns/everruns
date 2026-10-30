@@ -69,10 +69,11 @@ pub(crate) async fn manifest_yaml_for_channel(
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     // A config we cannot parse still produces the channel-bot manifest rather than
     // a 500: the agent surface is additive, so defaulting it off is the safe read.
-    let agent_surface_enabled =
-        serde_json::from_value::<SlackChannelConfig>(slack_channel.channel_config.clone())
-            .map(|config| config.agent_surface_enabled)
-            .unwrap_or(false);
+    let parsed_config =
+        serde_json::from_value::<SlackChannelConfig>(slack_channel.channel_config.clone()).ok();
+    let agent_surface_enabled = parsed_config
+        .as_ref()
+        .is_some_and(|c| c.agent_surface_enabled);
 
     let display_name = truncate_display_name(&app.name);
 
@@ -88,7 +89,7 @@ pub(crate) async fn manifest_yaml_for_channel(
     let request_url = slack_webhook_url(&state.api_base_url, &channel_public_id);
     let interactivity_url = slack_interactivity_url(&state.api_base_url, &channel_public_id);
     let redirect_url = slack_oauth_redirect_url(&state.api_base_url, &channel_public_id);
-    let manifest_yaml = build_manifest_yaml(
+    let mut manifest_yaml = build_manifest_yaml(
         &app.name,
         &display_name,
         app.description.as_deref(),
@@ -99,6 +100,25 @@ pub(crate) async fn manifest_yaml_for_channel(
         &starters,
     );
 
+    if parsed_config
+        .as_ref()
+        .is_some_and(|c| c.code_channels_enabled)
+    {
+        manifest_yaml = manifest_yaml.replacen(
+            "features:\n",
+            "features:\n  code_channels:\n    enabled: true\n",
+            1,
+        );
+        manifest_yaml = manifest_yaml.replacen(
+            "    bot:\n",
+            "    bot:\n      - code_channels:manage\n      - channels:read\n      - groups:read\n",
+            1,
+        );
+        if !agent_surface_enabled {
+            manifest_yaml = manifest_yaml.replacen("    bot_events:\n", "    bot_events:\n      - agent_session_stopped\n      - agent_session_title_changed\n", 1);
+        }
+        manifest_yaml = manifest_yaml.replacen("    bot_events:\n", "    bot_events:\n      - channel_archive\n      - channel_unarchive\n      - group_archive\n      - group_unarchive\n      - app_uninstalled\n      - tokens_revoked\n", 1);
+    }
     Ok(manifest_yaml)
 }
 

@@ -3,6 +3,7 @@ import type { SessionStrategy } from "./legacy-api-types";
 export type SlackResponsePolicy = "all_messages" | "mentions_only" | "relevant_messages";
 
 export interface SlackChannelConfig {
+  code_channels_enabled?: boolean;
   signing_secret?: string;
   signing_secret_configured?: boolean;
   bot_token?: string;

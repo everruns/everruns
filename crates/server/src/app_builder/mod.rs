@@ -870,6 +870,7 @@ impl ServerAppBuilder {
         .with_decisions(&host_composition, &provider_resolver, &budget_service)
         .with_channel_host();
         let channel_recovery = slack_state.channels.clone();
+        let slack_code_recovery = slack_state.clone();
         let channel_states = channels::ChannelStates::build(channels::ChannelDeps {
             session_service: sessions_state.session_service.clone(),
             db: db.clone(),
@@ -1405,6 +1406,10 @@ impl ServerAppBuilder {
 
         // Channel deliveries a restart cut off resume here. Slack's host
         // resolves every channel type, so one loop covers them all.
+        supervisor.track(
+            "slack_code_recovery",
+            crate::channels::slack::code::spawn(slack_code_recovery),
+        );
         if let Some(channels) = channel_recovery {
             supervisor.track(
                 "channel_delivery_recovery",

@@ -53,6 +53,8 @@ fn new_slack_user_cache() -> SlackUserCache {
 /// App-scoped Slack state (no auth required).
 #[derive(Clone)]
 pub struct SlackState {
+    /// API base shared by durable Code work; injectable for contract tests.
+    pub(crate) code_api_base: String,
     pub db: Arc<StorageBackend>,
     pub encryption: Option<Arc<crate::storage::EncryptionService>>,
     pub session_service: Arc<SessionService>,
@@ -136,6 +138,7 @@ impl SlackState {
         api_base_url: String,
     ) -> Self {
         Self {
+            code_api_base: everruns_integrations::slack_channel::web_api::SLACK_API_BASE.into(),
             session_service: Arc::new(SessionService::new(db.clone())),
             message_service: Arc::new(MessageService::new(
                 db.clone(),

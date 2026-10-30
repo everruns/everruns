@@ -1748,6 +1748,7 @@ message InvokeSlackActionRequest {
         SlackLookupUser lookup_user = 5;
         SlackUploadFile upload_file = 6;
         SlackPostMessage post_message = 7;
+        string code_task = 8;
     }
 }
 
@@ -1809,6 +1810,7 @@ message InvokeSlackActionResponse {
         SlackFileUploaded file_uploaded = 4;
         SlackActionError error = 5;
         SlackMessagePosted message_posted = 6;
+        int64 code_task_updated = 7;
     }
 }
 

@@ -1,5 +1,9 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  "Slack Code channels": "Slack-Code-Kanäle",
+  "Channel mentions create a shared coding task. Teammates and thread replies use one session. Direct messages keep their existing behavior.":
+    "Erwähnungen in Kanälen erstellen eine gemeinsame Programmieraufgabe. Teammitglieder und Thread-Antworten verwenden eine Sitzung. Direktnachrichten behalten ihr bisheriges Verhalten.",
+
   "Scroll to": "Scrollen Sie zu",
   Search: "Suchen",
   "Search account": "Konto durchsuchen",

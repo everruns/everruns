@@ -19,6 +19,9 @@ This guide deploys an Agent as a Slack bot through an Agent-owned channel. For S
 3. Choose a session strategy.
 4. Leave the Slack credentials empty and select **Create channel**.
 
+For a dedicated channel with shared coding sessions, review surfaces and requester
+approvals, see [Run shared coding tasks in Slack](/how-to/slack-code/).
+
 ## Choose a session strategy
 
 `session_strategy` controls how incoming Slack messages map to Everruns sessions:
