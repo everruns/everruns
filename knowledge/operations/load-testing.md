@@ -84,6 +84,8 @@ are separate success bars. A small smoke or transport-only fixture cannot establ
 1,000-user capacity. Raw samples, source revision and topology must accompany a
 capacity claim; co-located generators limit conclusions to the measured machine.
 Commands, workload defaults and gates live with the benchmark, not in this concept.
+Local generators synchronize the end of measurement before any journal audit;
+verification traffic must not compete with another generator's measured workload.
 
 Qualification also verifies persisted output size, file-tool rounds and pacing.
 A successful tiny simulator fallback must not silently reduce the offered load.

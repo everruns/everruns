@@ -437,6 +437,7 @@ def run_case(
     directory.mkdir()
     identity_before = lab.identity_metrics()
     start_file = lab.directory / (name + "-start.json")
+    audit_barrier = lab.directory / (name + "-audit-release.json")
     pids_file = lab.directory / (name + "-pids.json")
     stop_file = lab.directory / (name + "-monitor-stop")
     pids = {
@@ -506,6 +507,8 @@ def run_case(
                 str(shard),
                 "--start-file",
                 str(start_file),
+                "--audit-barrier",
+                str(audit_barrier),
                 "--ready-file",
                 str(ready),
                 "--ca-bundle",
@@ -549,7 +552,14 @@ def run_case(
         restarted = False
         restart_at = None
         safety_abort = None
+        audits_released = False
         while any(p.poll() is None for p, _, _ in shards):
+            if not audits_released and all(
+                Path(str(audit_barrier) + f".{shard}.done").exists()
+                for shard in range(generators)
+            ):
+                atomic_json(audit_barrier, {})
+                audits_released = True
             if restart and not restarted and time.time() > epoch + 15:
                 restart_at = time.time()
                 lab.restart_server()

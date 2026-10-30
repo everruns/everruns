@@ -44,7 +44,10 @@ and four local tool calls. Runtime facts remain context for scenario selection.
 The long-answer shape itself takes over 30 seconds, so the default steady interval
 is 60 seconds (about 16.7 arrivals/second at 1,000 users). A shorter closed-session
 interval would miss its schedule even without platform contention.
-Setup and durable-event verification run outside the timed phase. Completion is
+Setup and durable-event verification run outside the timed phase. All local
+generators finish measuring before any database audit begins, so a fast
+generator's audit cannot add traffic to another generator's measurement.
+Turn completion is
 `turn.completed`, correlated through its input message and turn ID. Work Chat's
 public projection hides the input-to-turn reference, so it uses the matching
 input echo and one outstanding turn; a failed turn stops that actor's schedule.

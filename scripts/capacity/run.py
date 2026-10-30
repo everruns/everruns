@@ -766,6 +766,10 @@ async def run(args):
             # including when the last scheduled turn completes before its end.
             await asyncio.sleep(max(0, started + args.duration - time.perf_counter()))
         elapsed = time.perf_counter() - started
+        # Another generator may still be serving its last long turn. Journal
+        # audits add substantial database traffic and must stay outside every
+        # generator's timed phase, not just this one's.
+        await wait_for_audit(args)
         fault_task.cancel()
         for poller in pollers:
             poller.cancel()
@@ -929,6 +933,20 @@ async def run(args):
     return report["passed"]
 
 
+async def wait_for_audit(args):
+    if not getattr(args, "audit_barrier", None):
+        return
+    from .local_setup import atomic_json
+
+    release = Path(args.audit_barrier)
+    atomic_json(Path(str(release) + f".{args.shard_index}.done"), {})
+    deadline = time.monotonic() + args.duration + args.turn_timeout + args.setup_timeout
+    while not release.exists():
+        if time.monotonic() > deadline:
+            raise TimeoutError("other generators did not finish the measured phase")
+        await asyncio.sleep(0.05)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--manifest", required=True)
@@ -956,6 +974,10 @@ def main(argv=None):
         help="shared Unix start time for distributed generators",
     )
     p.add_argument("--ready-file", help="write a local setup readiness record")
+    p.add_argument(
+        "--audit-barrier",
+        help="coordinator releases this shared file after all generators finish timing",
+    )
     p.add_argument(
         "--start-file",
         help="coordinator writes a shared start epoch after all shards are ready",

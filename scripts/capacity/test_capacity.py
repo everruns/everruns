@@ -815,6 +815,32 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
 
 
 class StreamTests(unittest.IsolatedAsyncioTestCase):
+    async def test_audit_waits_for_global_measurement_barrier(self):
+        from .run import wait_for_audit
+
+        with tempfile.TemporaryDirectory() as directory:
+            release = Path(directory) / "audit-release"
+            args = SimpleNamespace(
+                audit_barrier=str(release),
+                shard_index=0,
+                duration=1,
+                turn_timeout=1,
+                setup_timeout=1,
+            )
+            task = asyncio.create_task(wait_for_audit(args))
+            try:
+                done = Path(str(release) + ".0.done")
+                while not done.exists():
+                    await asyncio.sleep(0)
+                self.assertFalse(
+                    task.done(), "audit must not overlap another shard's load"
+                )
+                release.write_text("{}")
+                await asyncio.wait_for(task, 1)
+            finally:
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+
     async def test_multiline_frames_and_noncontiguous_sequences(self):
         async def lines():
             for line in [
