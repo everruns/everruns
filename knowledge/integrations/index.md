@@ -32,6 +32,7 @@
 * [Messaging Integrations](messaging-integrations.md) - Messaging integrations.
 * [Explicit Communication](explicit-communication.md) - Agent setting where assistant text is private notes and the agent talks only through send_message and no_reply; partly built.
 * [Slack Bot Integration](slack-integration.md) - Slack channel: per-agent Slack app, webhook flow, session routing, delivery, security review.
+* [Slack Code](slack-code.md) - Implementation sequence and release gates for durable shared coding sessions in Slack.
 * [Slack Integration Modernization](slack-modernization.md) - Gap analysis of the Slack channel against the current Slack agent platform, with a prioritized set of improvements.
 * [Slack Agent Actions](slack-agent-actions.md) - Why Slack approvals, task progress, and the second-identity problem are one missing capability.
 * [Slack One-Click Install](slack-one-click-install.md) - What a live PoC established about creating per-agent Slack apps programmatically.

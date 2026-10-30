@@ -105,6 +105,72 @@ async fn permission_update_preserves_exported_manifest_and_unions_scopes() {
 }
 
 #[tokio::test]
+async fn code_permission_update_preserves_settings_and_enables_code_lifecycle() {
+    let server = MockServer::start().await;
+    let (provisioner, db) = provisioner(&server);
+    db.upsert_org_slack_connection(stored(1, "T1", chrono::Duration::hours(1)))
+        .await
+        .unwrap();
+    let manifest = serde_json::json!({
+        "display_information":{"name":"Customized bot"},
+        "settings":{"event_subscriptions":{"request_url":"https://example.test/events","bot_events":["app_mention"]}},
+        "oauth_config":{"redirect_urls":["https://example.test/callback"],"scopes":{"bot":["chat:write","custom:read"]}}
+    });
+    Mock::given(method("POST"))
+        .and(path("/apps.manifest.export"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"ok":true,"manifest":manifest})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/apps.manifest.update"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok":true})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    provisioner
+        .update_permissions(1, Some("T1"), "A1", &["chat:write", "code_channels:manage"])
+        .await
+        .unwrap();
+    let requests = server.received_requests().await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&requests[1].body).unwrap();
+    assert_eq!(body["app_id"], "A1");
+    let updated: serde_json::Value =
+        serde_json::from_str(body["manifest"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        updated["display_information"],
+        manifest["display_information"]
+    );
+    assert_eq!(
+        updated["settings"]["event_subscriptions"]["request_url"],
+        manifest["settings"]["event_subscriptions"]["request_url"]
+    );
+    assert_eq!(updated["features"]["code_channels"]["enabled"], true);
+    let events = updated["settings"]["event_subscriptions"]["bot_events"]
+        .as_array()
+        .unwrap();
+    for expected in [
+        "app_mention",
+        "agent_session_stopped",
+        "channel_unarchive",
+        "tokens_revoked",
+    ] {
+        assert!(events.contains(&serde_json::json!(expected)));
+    }
+    assert_eq!(
+        updated["oauth_config"]["redirect_urls"],
+        manifest["oauth_config"]["redirect_urls"]
+    );
+    assert_eq!(
+        updated["oauth_config"]["scopes"]["bot"],
+        serde_json::json!(["chat:write", "custom:read", "code_channels:manage"])
+    );
+}
+
+#[tokio::test]
 async fn app_icon_is_uploaded_as_a_multipart_file_with_the_workspace_token() {
     let server = MockServer::start().await;
     let (provisioner, db) = provisioner(&server);

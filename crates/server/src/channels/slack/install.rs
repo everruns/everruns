@@ -499,7 +499,9 @@ async fn begin_install(
                         org.org_id,
                         existing.team_id.as_deref(),
                         &existing.app_id,
-                        &super::events::slack_bot_scopes(config.agent_surface_enabled),
+                        &crate::domains::agent_channels::record::slack_channel::slack_scopes(
+                            &config,
+                        ),
                     )
                     .await
                     .map_err(provisioning_error_response)?;
@@ -568,6 +570,7 @@ async fn begin_install(
         &redirect_uri,
         team_id_for_consent.as_deref(),
         config.agent_surface_enabled,
+        config.code_channels_enabled,
     );
     Ok(Json(BeginInstallResponse { authorize_url }))
 }
@@ -578,8 +581,13 @@ fn authorize_url(
     redirect_uri: &str,
     team_id: Option<&str>,
     agent_surface_enabled: bool,
+    code_channels_enabled: bool,
 ) -> String {
-    let scopes = super::events::slack_bot_scopes(agent_surface_enabled).join(",");
+    let mut scopes = super::events::slack_bot_scopes(agent_surface_enabled);
+    if code_channels_enabled {
+        scopes.extend(["code_channels:manage", "channels:read", "groups:read"]);
+    }
+    let scopes = scopes.join(",");
     let mut authorize_url = format!(
         "{SLACK_OAUTH_AUTHORIZE_URL}?client_id={}&state={}&redirect_uri={}&scope={}",
         urlencoding_encode(client_id),
@@ -1267,6 +1275,7 @@ mod tests {
                 redirect,
                 Some("T1"),
                 agent_surface_enabled,
+                false,
             ))
             .unwrap();
             let params: std::collections::HashMap<_, _> = url.query_pairs().collect();

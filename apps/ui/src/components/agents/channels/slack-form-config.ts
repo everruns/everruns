@@ -6,6 +6,7 @@ export function buildSlackChannelConfig(state: ChannelFormState) {
     ...(state.slackBotToken.trim() ? { bot_token: state.slackBotToken.trim() } : {}),
     ...(state.slackTeamId.trim() ? { team_id: state.slackTeamId.trim() } : {}),
     ...(state.slackChannelId.trim() ? { channel_id: state.slackChannelId.trim() } : {}),
+    code_channels_enabled: state.slackCodeChannelsEnabled,
     agent_surface_enabled: state.slackAgentSurfaceEnabled,
     session_strategy: state.slackSessionStrategy,
     ...(state.slackResponsePolicy !== "all_messages"

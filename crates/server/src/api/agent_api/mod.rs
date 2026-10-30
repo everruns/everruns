@@ -1076,6 +1076,7 @@ pub async fn agent_api_submit_tool_approvals(
     };
     match resolve_tool_approvals(
         &ApprovalServices {
+            external_actor: None,
             db: &state.db,
             event_service: &state.event_service,
             runner: state.message_service.runner(),

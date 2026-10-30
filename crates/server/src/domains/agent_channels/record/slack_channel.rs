@@ -28,6 +28,10 @@ pub enum SlackResponsePolicy {
 /// Parsed from the `channel_config` JSON field on App.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SlackChannelConfig {
+    /// Create a dedicated durable code task for each channel mention. Requires
+    /// manifest update and renewed workspace consent. DMs retain pane behavior.
+    #[serde(default)]
+    pub code_channels_enabled: bool,
     /// Slack signing secret for verifying webhook requests.
     ///
     /// May be empty while the channel is being configured. An empty value
@@ -87,6 +91,15 @@ pub struct SlackChannelConfig {
         skip_serializing_if = "is_default_ag_ui_generic_tool_text"
     )]
     pub generic_tool_text: String,
+}
+
+/// Required scopes for this endpoint, shared by manifest, consent and health.
+pub(crate) fn slack_scopes(config: &SlackChannelConfig) -> Vec<&'static str> {
+    let mut scopes = slack_bot_scopes(config.agent_surface_enabled);
+    if config.code_channels_enabled {
+        scopes.extend(["code_channels:manage", "channels:read", "groups:read"]);
+    }
+    scopes
 }
 
 /// OAuth consent must request the same bot scopes the manifest declares.
@@ -150,6 +163,7 @@ mod tests {
     #[test]
     fn test_slack_channel_config_timestamps_skipped_when_none() {
         let config = SlackChannelConfig {
+            code_channels_enabled: false,
             signing_secret: "s".into(),
             bot_token: "t".into(),
             provisioned_app: None,

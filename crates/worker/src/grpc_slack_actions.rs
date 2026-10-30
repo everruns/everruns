@@ -61,6 +61,9 @@ impl everruns_capabilities::slack_action::SlackActionInvoker for GrpcSlackAction
 
         use proto::invoke_slack_action_response::Result as Wire;
         match response.result {
+            Some(Wire::CodeTaskUpdated(revision)) => {
+                Ok(SlackActionOutcome::CodeTaskUpdated { revision })
+            }
             Some(Wire::MessagePosted(r)) => Ok(SlackActionOutcome::MessagePosted {
                 channel: r.channel,
                 timestamp: r.timestamp,

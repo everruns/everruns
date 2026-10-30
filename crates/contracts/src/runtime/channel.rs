@@ -543,6 +543,16 @@ pub trait ChannelProgressSurface: Send + Sync {
     async fn update(&self, handle: &str, text: &str, context: &DeliveryContext) -> DeliveryResult;
 }
 
+/// Lifecycle of the conversation, independent of human-readable progress text.
+/// Finishing a turn makes the session active; closing a task is explicit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelSessionState {
+    Processing,
+    Active,
+    Suspended,
+    Closed,
+}
+
 /// The agent-pane affordances a platform may offer alongside the reply itself:
 /// a live status line while a turn runs, and a thread title.
 ///
@@ -550,6 +560,16 @@ pub trait ChannelProgressSurface: Send + Sync {
 /// product and the status is decoration — so the dispatcher logs and continues.
 #[async_trait]
 pub trait ChannelAgentSurface: Send + Sync {
+    /// Publish lifecycle on platforms with a separate session state. Other
+    /// surfaces can keep using only the progress line below.
+    async fn set_session_state(
+        &self,
+        _state: ChannelSessionState,
+        _context: &DeliveryContext,
+    ) -> DeliveryResult {
+        DeliveryResult::Ok
+    }
+
     /// Set the live status line for a thread. An empty `status` clears it.
     async fn set_status(&self, status: &str, context: &DeliveryContext) -> DeliveryResult;
 

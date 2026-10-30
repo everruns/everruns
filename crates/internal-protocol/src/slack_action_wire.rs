@@ -16,6 +16,7 @@ use crate::proto;
 impl From<SlackAction> for proto::invoke_slack_action_request::Action {
     fn from(action: SlackAction) -> Self {
         match action {
+            SlackAction::CodeTask { request } => Self::CodeTask(request),
             SlackAction::PostMessage {
                 input_message_id,
                 tool_call_id,
@@ -67,6 +68,7 @@ impl From<proto::invoke_slack_action_request::Action> for SlackAction {
     fn from(action: proto::invoke_slack_action_request::Action) -> Self {
         use proto::invoke_slack_action_request::Action;
         match action {
+            Action::CodeTask(request) => Self::CodeTask { request },
             Action::PostMessage(a) => Self::PostMessage {
                 input_message_id: a.input_message_id,
                 tool_call_id: a.tool_call_id,
@@ -97,6 +99,7 @@ impl From<proto::invoke_slack_action_request::Action> for SlackAction {
 impl From<SlackActionOutcome> for proto::invoke_slack_action_response::Result {
     fn from(outcome: SlackActionOutcome) -> Self {
         match outcome {
+            SlackActionOutcome::CodeTaskUpdated { revision } => Self::CodeTaskUpdated(revision),
             SlackActionOutcome::MessagePosted { channel, timestamp } => {
                 Self::MessagePosted(proto::SlackMessagePosted { channel, timestamp })
             }
@@ -212,6 +215,9 @@ mod tests {
 
     #[test]
     fn every_action_round_trips() {
+        round_trip_action(SlackAction::CodeTask {
+            request: "{\"expected_revision\":7}".into(),
+        });
         round_trip_action(SlackAction::PostMessage {
             input_message_id: "message-1".into(),
             tool_call_id: "call-1".into(),
@@ -308,6 +314,10 @@ mod tests {
     #[test]
     fn every_outcome_maps_to_its_own_variant() {
         use proto::invoke_slack_action_response::Result as Wire;
+        assert!(matches!(
+            Wire::from(SlackActionOutcome::CodeTaskUpdated { revision: 8 }),
+            Wire::CodeTaskUpdated(8)
+        ));
         assert!(matches!(
             Wire::from(SlackActionOutcome::MessagePosted {
                 channel: "C1".into(),
