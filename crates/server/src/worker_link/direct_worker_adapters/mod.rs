@@ -511,12 +511,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn set_session_status(&self, org_id: i64, session_id: Uuid, status: &str) -> Result<()> {
         let id = SessionId::from_uuid(session_id);
-        let update = UpdateSession {
-            status: Some(status.to_string()),
-            ..Default::default()
-        };
         self.db
-            .update_session(org_id, id, update)
+            .set_session_status(org_id, id, status)
             .await
             .inspect_err(|e| tracing::error!("Failed to update session status: {e}"))
             .map_err(|_| store_error("Failed to update session status"))?;

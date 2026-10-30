@@ -1189,3 +1189,68 @@ async fn test_personal_access_token_use_is_stamped_at_most_once_a_minute() {
     let later = last_used(db.clone()).await.unwrap();
     assert!(later > first, "a use after a minute is stamped again");
 }
+
+/// The worker reports a session's status at least twice a turn. A report of
+/// the status the row already has must not write, except a re-park, which
+/// restarts the tool-result timeout clock (measured from `updated_at`).
+#[tokio::test]
+async fn test_set_session_status_writes_only_changes_and_reparks() {
+    let db = StorageBackend::test_database();
+    let session = db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
+            capabilities: serde_json::json!({}),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    // Postgres keeps microseconds.
+    let past = chrono::SubsecRound::trunc_subsecs(Utc::now() - chrono::Duration::minutes(10), 6);
+    let stored = |db: StorageBackend| async move {
+        let row = db
+            .get_session(DEFAULT_ORG_ID, session.id)
+            .await
+            .unwrap()
+            .unwrap();
+        (row.status, row.updated_at)
+    };
+
+    set_session_status_and_updated_at(&db, session.id, "active", past).await;
+    assert!(
+        db.set_session_status(DEFAULT_ORG_ID, session.id, "active")
+            .await
+            .unwrap()
+    );
+    let (status, updated_at) = stored(db.clone()).await;
+    assert_eq!((status.as_str(), updated_at), ("active", past), "no-op");
+
+    assert!(
+        db.set_session_status(DEFAULT_ORG_ID, session.id, "idle")
+            .await
+            .unwrap()
+    );
+    let (status, updated_at) = stored(db.clone()).await;
+    assert_eq!(status, "idle");
+    assert!(updated_at > past, "a change is written");
+
+    set_session_status_and_updated_at(&db, session.id, "waiting_for_tool_results", past).await;
+    db.set_session_status(DEFAULT_ORG_ID, session.id, "waiting_for_tool_results")
+        .await
+        .unwrap();
+    let (_, updated_at) = stored(db.clone()).await;
+    assert!(updated_at > past, "a re-park restarts the timeout clock");
+
+    assert!(
+        !db.set_session_status(DEFAULT_ORG_ID, SessionId::new(), "idle")
+            .await
+            .unwrap(),
+        "unknown session"
+    );
+    assert!(
+        !db.set_session_status(DEFAULT_ORG_ID + 1, session.id, "idle")
+            .await
+            .unwrap(),
+        "another org's session"
+    );
+}

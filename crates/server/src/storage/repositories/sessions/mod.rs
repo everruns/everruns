@@ -1216,6 +1216,45 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
+    /// Set a session's status; returns false when the session does not exist.
+    ///
+    /// The worker reports a status at least twice a turn and needs only an
+    /// acknowledgement, so this skips `update_session`'s full `RETURNING` row
+    /// (with its event-count subquery). A report of the status the row already
+    /// has writes nothing (no row lock, no WAL, no flushed commit), except a
+    /// re-park, which restarts the tool-result timeout clock as before.
+    pub async fn set_session_status(
+        &self,
+        org_id: i64,
+        id: SessionId,
+        status: &str,
+    ) -> Result<bool> {
+        let exists = sqlx::query_scalar::<_, bool>(
+            r#"
+            WITH target AS (
+                SELECT id, status FROM sessions WHERE org_id = $1 AND id = $2
+            ),
+            changed AS (
+                UPDATE sessions s
+                SET status = $3
+                FROM target t
+                -- Re-parking always writes: the tool-result timeout sweep
+                -- measures a parked turn's age from updated_at.
+                WHERE s.id = t.id
+                  AND (t.status IS DISTINCT FROM $3 OR $3 = 'waiting_for_tool_results')
+                RETURNING s.id
+            )
+            SELECT EXISTS (SELECT 1 FROM target)
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .bind(status)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(exists)
+    }
+
     /// Update session by org and session id
     pub async fn update_session(
         &self,
