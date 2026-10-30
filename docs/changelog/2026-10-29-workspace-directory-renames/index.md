@@ -4,7 +4,8 @@ description: Shell mv and embedded Python os.rename now preserve nested files an
 date: 2026-10-29
 kind: fix
 significance: notable
-products: [platform, framework]
+products: [platform, framework, cloud]
+cloud: 2026-10-30
 surfaces: [agent, code]
 links:
   docs: [/capabilities/bashkit-shell/]
