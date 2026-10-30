@@ -264,6 +264,8 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
             "terminal_stream_errors": 0,
             "stream_connections": 1,
             "stream_errors": 0,
+            "setup_stream_errors": 0,
+            "post_phase_stream_errors": 0,
             "replayed_frames": 0,
             "forced_disconnects": 0,
             "http_status": {},
@@ -815,6 +817,30 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
 
 
 class StreamTests(unittest.IsolatedAsyncioTestCase):
+    def test_stream_errors_keep_setup_measurement_and_cleanup_separate(self):
+        from unittest.mock import patch
+
+        stream = Stream(None, actor())
+        with patch("capacity.stream.time.time", side_effect=[1, 4, 9]):
+            for _ in range(3):
+                stream.record_error("unexpected_eof")
+        counts = stream.error_stats(2, 8)
+        self.assertEqual(stream.errors, 3)
+        self.assertEqual(
+            counts,
+            {
+                "setup_stream_errors": 1,
+                "stream_errors": 1,
+                "post_phase_stream_errors": 1,
+            },
+        )
+        r = {**report(), **counts}
+        self.assertFalse(verdict(r, 500)["passed"])
+        r.update(stream_errors=0)
+        self.assertFalse(verdict(r, 500)["passed"], "setup errors still fail")
+        r.update(setup_stream_errors=0)
+        self.assertTrue(verdict(r, 500)["passed"], "cleanup errors remain diagnostic")
+
     async def test_audit_waits_for_global_measurement_barrier(self):
         from .run import wait_for_audit
 
@@ -823,11 +849,13 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
             args = SimpleNamespace(
                 audit_barrier=str(release),
                 shard_index=0,
+                shards=2,
                 duration=1,
                 turn_timeout=1,
                 setup_timeout=1,
             )
-            task = asyncio.create_task(wait_for_audit(args))
+            Path(str(release) + ".1.done").write_text(json.dumps({"end_epoch": 20}))
+            task = asyncio.create_task(wait_for_audit(args, 10))
             try:
                 done = Path(str(release) + ".0.done")
                 while not done.exists():
@@ -836,7 +864,7 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
                     task.done(), "audit must not overlap another shard's load"
                 )
                 release.write_text("{}")
-                await asyncio.wait_for(task, 1)
+                self.assertEqual(await asyncio.wait_for(task, 1), 20)
             finally:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)

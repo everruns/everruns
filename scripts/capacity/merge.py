@@ -68,6 +68,8 @@ def merge(directories):
         "terminal_stream_errors",
         "stream_connections",
         "stream_errors",
+        "setup_stream_errors",
+        "post_phase_stream_errors",
         "replayed_frames",
         "forced_disconnects",
         "poll_requests",

@@ -92,7 +92,11 @@ admitted turn must complete, and persisted inputs must appear exactly once and b
 observed on SSE. A separate durable audit verifies final answer size, tool/LLM
 rounds and simulator pacing, rejecting the simulator's tiny fallback response.
 Setup, tool, schedule, background-read and unexpected stream
-failures fail the gate. Resource coverage and process liveness are checked, with a
+failures fail the gate.
+Stream errors carry safe codes and timestamps. Setup errors and errors within the
+global measured window fail their gates; errors after every generator has finished
+measurement remain separate diagnostics, including disconnects during verification.
+Resource coverage and process liveness are checked, with a
 75% effective-memory budget. For sufficiently sampled steady runs, late pickup
 p95 cannot exceed twice early pickup p95 or one second, whichever is larger.
 Incomplete turns or missed arrival schedules independently fail. The queue trend

@@ -41,6 +41,7 @@ class Stream:
         self.ready = asyncio.Event()
         self.connected = False
         self.connections = self.errors = self.replays = self.frames = 0
+        self.error_events = []  # timestamps and safe codes, never response bodies
         self.forced = 0
         self.cycles = 0
         self.reconnect_ms = []
@@ -49,6 +50,17 @@ class Stream:
         self.failed_tools = 0
         self.task = None
         self._last_closed = None
+
+    def record_error(self, kind):
+        self.errors += 1
+        self.error_events.append((time.time(), kind))
+
+    def error_stats(self, start, end):
+        return {
+            "setup_stream_errors": sum(at < start for at, _ in self.error_events),
+            "stream_errors": sum(start <= at <= end for at, _ in self.error_events),
+            "post_phase_stream_errors": sum(at > end for at, _ in self.error_events),
+        }
 
     def start(self):
         self.task = asyncio.create_task(self.read())
@@ -166,12 +178,12 @@ class Stream:
                     if graceful:
                         self.cycles += 1
                     else:
-                        self.errors += 1  # unsolicited EOF requires a reconnect
-            except (httpx.HTTPError, ValueError, json.JSONDecodeError):
+                        self.record_error("unexpected_eof")
+            except (httpx.HTTPError, ValueError, json.JSONDecodeError) as error:
                 if graceful:
                     self.cycles += 1
                 else:
-                    self.errors += 1
+                    self.record_error(type(error).__name__)
             finally:
                 self.connected = False
             self._last_closed = self._last_closed or time.perf_counter()

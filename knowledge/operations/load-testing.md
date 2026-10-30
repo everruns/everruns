@@ -86,6 +86,8 @@ capacity claim; co-located generators limit conclusions to the measured machine.
 Commands, workload defaults and gates live with the benchmark, not in this concept.
 Local generators synchronize the end of measurement before any journal audit;
 verification traffic must not compete with another generator's measured workload.
+Stream error accounting uses that global measurement window. Setup failures
+remain gated; disconnects during later verification remain separate diagnostics.
 
 Qualification also verifies persisted output size, file-tool rounds and pacing.
 A successful tiny simulator fallback must not silently reduce the offered load.

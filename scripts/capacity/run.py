@@ -96,6 +96,7 @@ def verdict(report, ack_p95):
         or not report["poll_errors"],
         "no_unexpected_stream_errors": report.get("fault_mode", False)
         or not report.get("stream_errors", 0),
+        "no_setup_stream_errors": not report.get("setup_stream_errors", 0),
         "no_setup_audit_or_schedule_errors": not any(
             not key.startswith("turn:") or key == "turn:ValueError"
             for key in report["errors"]
@@ -769,7 +770,7 @@ async def run(args):
         # Another generator may still be serving its last long turn. Journal
         # audits add substantial database traffic and must stay outside every
         # generator's timed phase, not just this one's.
-        await wait_for_audit(args)
+        measurement_end = await wait_for_audit(args, start_wall + elapsed)
         fault_task.cancel()
         for poller in pollers:
             poller.cancel()
@@ -909,7 +910,22 @@ async def run(args):
         "http_status": dict(results.http_status),
         "http_versions": dict(transport_versions),
         "stream_connections": sum(s.connections for s in streams.values()),
-        "stream_errors": sum(s.errors for s in streams.values()),
+        **{
+            key: sum(
+                s.error_stats(start_wall, measurement_end)[key]
+                for s in streams.values()
+            )
+            for key in [
+                "setup_stream_errors",
+                "stream_errors",
+                "post_phase_stream_errors",
+            ]
+        },
+        "stream_error_events": [
+            {"session_id": s.actor.session, "epoch": epoch, "kind": kind}
+            for s in streams.values()
+            for epoch, kind in s.error_events
+        ],
         "terminal_stream_errors": sum(
             s.terminal_error is not None for s in streams.values()
         ),
@@ -933,18 +949,26 @@ async def run(args):
     return report["passed"]
 
 
-async def wait_for_audit(args):
+async def wait_for_audit(args, end_epoch):
     if not getattr(args, "audit_barrier", None):
-        return
+        return end_epoch
     from .local_setup import atomic_json
 
     release = Path(args.audit_barrier)
-    atomic_json(Path(str(release) + f".{args.shard_index}.done"), {})
+    atomic_json(
+        Path(str(release) + f".{args.shard_index}.done"), {"end_epoch": end_epoch}
+    )
     deadline = time.monotonic() + args.duration + args.turn_timeout + args.setup_timeout
     while not release.exists():
         if time.monotonic() > deadline:
             raise TimeoutError("other generators did not finish the measured phase")
         await asyncio.sleep(0.05)
+    # A fast generator keeps its streams alive while another drains its last
+    # long turn. Use the global end for stream errors, before journal verification.
+    return max(
+        json.loads(Path(str(release) + f".{shard}.done").read_text())["end_epoch"]
+        for shard in range(args.shards)
+    )
 
 
 def main(argv=None):
