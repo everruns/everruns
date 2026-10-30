@@ -8,6 +8,9 @@
   handling, preserve method/URI and connection identity, isolate consent scope,
   and bound negotiation and all continuation rounds by one deadline. See
   [MCP Server Specification](integrations/mcp-servers.md).
+
+- Add outbound MCP client metadata-document negotiation with existing-client precedence and capability-based DCR fallback. See [Runtime MCP](integrations/runtime-mcp.md).
+
 ## 2026-10-29
 
 - Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.

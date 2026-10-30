@@ -242,6 +242,20 @@ slow, full or failing listener cannot fail a turn or delay other listeners, and
 nothing a listener does is written to session history. Drops are counted in
 `Engine::observer_stats`. `McpAuthProvider` requires the `mcp` feature.
 
+For outbound MCP OAuth login, `everruns_core::mcp::oauth::prepare_login_with_options`
+accepts `LoginOptions` with an optional `client_metadata_url`. Publish your
+public-client metadata at that HTTPS URL first, including the exact URL as
+`client_id`, `client_name`, your `redirect_uris`, and
+`token_endpoint_auth_method: "none"`. The host owns document hosting and must
+ensure its callback is covered by the document.
+
+The helper prefers a supplied configured or saved client, then the metadata URL
+when the authorization server advertises `client_id_metadata_document_supported`,
+then dynamic registration. Keep saved registrations scoped to their issuing
+authorization server. The client does not fetch the document; the authorization
+server does. The existing `prepare_login` API retains its configured-client/DCR
+behavior. Both APIs use the same PKCE, callback validation and token exchange.
+
 ## Related
 
 - [Advanced capabilities](/framework/advanced-capabilities/) for typed capability packages that need no Core contract.
