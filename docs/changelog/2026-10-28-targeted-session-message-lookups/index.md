@@ -5,6 +5,7 @@ date: 2026-10-28
 kind: fix
 significance: minor
 products: [platform, cloud]
+release: "0.50.0"
 surfaces: [api, operations]
 ---
 

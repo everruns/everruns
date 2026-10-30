@@ -6,6 +6,7 @@ cloud: 2026-10-26
 kind: fix
 significance: notable
 products: [platform, cloud]
+release: "0.50.0"
 surfaces: [agent, code]
 links:
   docs: [/capabilities/user-mcp-servers/]

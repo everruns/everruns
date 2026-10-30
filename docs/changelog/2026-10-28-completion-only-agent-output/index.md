@@ -5,6 +5,7 @@ date: 2026-10-28
 kind: improvement
 significance: minor
 products: [platform, cloud, framework]
+release: "0.50.0"
 surfaces: [api, code, operations]
 links:
   docs: [/features/explicit-communication/]
