@@ -43,6 +43,8 @@ provisioned by Everruns and cannot be edited or archived.
 
 ## Build a reusable snapshot
 
+<iframe src="https://www.youtube-nocookie.com/embed/QyjGHq6LTuw?rel=0" title="Build reusable sandbox snapshots in Everruns" loading="lazy" style="width:100%;aspect-ratio:16/9;border:0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
 Open an editable Daytona template, select and save a named **Organization account**,
 then open **Build snapshot**. Enter an **Install script** to install the software you
 need. The script runs with `/bin/sh` once in fresh provider compute; it is separate from bootstrap

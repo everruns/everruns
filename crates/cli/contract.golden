@@ -30,6 +30,8 @@ agents examples list	--context-revision --reason
 agents export	--format --out <agent>!
 agents exposures resume	--agent --context-revision --reason <agent_id>
 agents exposures suspend	--agent --context-revision --reason <agent_id>
+agents external-worker disable	--agent-id! --context-revision --reason
+agents external-worker get	--agent-id! --context-revision --reason
 agents failures list	--after --agent --before --context-revision --limit --offset --reason <agent_id>
 agents get	--context-revision --id --reason <id>
 agents github connect	--agent-id! --context-revision --owner-org --reason --return-to

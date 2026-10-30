@@ -629,7 +629,7 @@ async fn compact_request_preserves_endpoint_query_and_complete_contract() {
     );
 }
 #[test]
-fn cache_key_tracks_stable_prefix_and_family_but_not_turn_input() {
+fn cache_key_tracks_family_and_model_but_not_prompt_tools_or_input() {
     let base = cache_config();
     let instructions = Some("stable system prompt".into());
     let key = |config: &LlmCallConfig,
@@ -656,6 +656,8 @@ fn cache_key_tracks_stable_prefix_and_family_but_not_turn_input() {
     disabled.prompt_cache = None;
     assert_eq!(key(&disabled, &instructions, &None, &[]), None);
     for field in ["session_id", "model", "instructions", "tools"] {
+        // Prompt and tool changes keep the session on one cache route.
+        let routes = matches!(field, "session_id" | "model");
         let mut config = base.clone();
         let mut prompt = instructions.clone();
         let mut tools = None;
@@ -674,9 +676,9 @@ fn cache_key_tracks_stable_prefix_and_family_but_not_turn_input() {
             }
             _ => unreachable!(),
         }
-        assert_ne!(
-            key(&config, &prompt, &tools, &[]).unwrap(),
-            expected,
+        assert_eq!(
+            key(&config, &prompt, &tools, &[]).unwrap() != expected,
+            routes,
             "{field}"
         );
     }

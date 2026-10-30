@@ -26,10 +26,9 @@ impl Database {
         // "If an outbox write fails after canonical state commits, a periodic
         // reconciler must be able to discover and enqueue missing projection
         // work from canonical tables." Never fail the canonical event write
-        // because the reporting projector queue is unavailable. No reconciler
-        // job exists yet (tracked separately); until it lands, a failed
-        // enqueue means the corresponding fact will remain stale until the
-        // canonical row is touched again and the next enqueue succeeds.
+        // because the reporting projector queue is unavailable. The bounded
+        // repair job (`repair_missing_event_projections`) inserts outbox rows
+        // for events whose enqueue failed or was lost.
         let rows: Vec<&EventRow> = rows
             .iter()
             .filter(|row| {
@@ -49,6 +48,11 @@ impl Database {
             SELECT s.org_id, 'event', e.event_id, e.event_id, 'event_projection', 'pending', NOW()
             FROM UNNEST($1::text[], $2::uuid[]) AS e(event_id, session_id)
             JOIN sessions s ON s.id = e.session_id
+            -- Commit without waiting for the WAL flush (this statement's
+            -- transaction only): the event itself already committed durably,
+            -- and the repair job re-enqueues a row a crash loses. One flushed
+            -- commit per stored batch otherwise (2026-10-30 load test).
+            WHERE (SELECT set_config('synchronous_commit', 'off', true)) IS NOT NULL
             ON CONFLICT (org_id, source_type, source_id, source_version, reason)
             DO NOTHING
             "#,
@@ -64,7 +68,7 @@ impl Database {
                     session_id = %row.session_id.uuid(),
                     event_type = %row.event_type,
                     error = %e,
-                    "reporting outbox enqueue failed; event persisted, projection may remain stale until reconciliation lands or the source row is updated again"
+                    "reporting outbox enqueue failed; event persisted, projection waits for the repair job"
                 );
             }
         }

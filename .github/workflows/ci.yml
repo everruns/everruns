@@ -296,6 +296,8 @@ jobs:
             # libraries/assets they exercise. Workflow-specific harnesses under
             # .github/scripts stay owned by their dedicated jobs.
             shell:
+              - 'examples/cloudflare-data-agent/**'
+              - 'docs/how-to/cloudflare-agent.md'
               - '.github/scripts/ci/**'
               - 'scripts/run-shell-tests.sh'
               - 'scripts/docker-release-source.py'

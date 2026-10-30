@@ -1,0 +1,21 @@
+---
+import GenerativeUIGallery from "./GenerativeUIGallery.astro";
+import { galleryCategories, GALLERY_ROOT } from "../../generative-ui-catalog.mjs";
+import { withBase } from "../../site.config.mjs";
+interface Props { group: string; }
+const { group } = Astro.props;
+---
+<nav class="gallery-category-nav" aria-label="Component categories">
+  <a href={withBase(`${GALLERY_ROOT}/`)}>All categories</a>
+  {galleryCategories.map((category) => <a href={withBase(`${GALLERY_ROOT}/${category.slug}/`)} aria-current={category.group === group ? "page" : undefined}>{category.group}</a>)}
+</nav>
+<p>Try the controls and expand <strong>A2UI example</strong> for source. Actions display their message and values locally; no account or agent run is needed. Use <strong>Reset</strong> to start again. External maps and media load only when you select their load button.</p>
+<GenerativeUIGallery group={group} />
+<p class="gallery-related">Using these components in chat? See <a href={withBase("/features/generative-ui/")}>Generative UI in chat</a> and <a href={withBase("/integrations/ag-ui/")}>AG-UI support</a>.</p>
+<p>Examples adapted from the <a href="https://docs.copilotkit.ai/generative-ui/components/standard-catalog">CopilotKit standard catalog</a>, under the <a href="https://github.com/everruns/everruns/blob/main/apps/ui/generative-ui/COPILOTKIT-LICENSE">MIT license</a>.</p>
+<style>
+  .gallery-category-nav { display: flex; flex-wrap: wrap; gap: .4rem; margin-block: 1rem; }
+  .gallery-category-nav a { padding: .3rem .6rem; border: 1px solid var(--sl-color-gray-5); border-radius: 4px; font-size: .8rem; text-decoration: none; }
+  .gallery-category-nav a[aria-current="page"] { background: var(--sl-color-gray-6); border-color: var(--sl-color-text-accent); color: var(--sl-color-text); font-weight: 600; }
+  .gallery-related { margin-top: 1.5rem; }
+</style>

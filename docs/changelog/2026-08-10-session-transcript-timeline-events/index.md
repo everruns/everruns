@@ -7,13 +7,14 @@ significance: notable
 products: [platform, cloud]
 surfaces: [ui]
 release: "0.18.0"
-visual: "A completed session at /sessions/{id} showing the Transcript, Timeline and Events tabs with Transcript selected; crop to the tab bar and the first few transcript messages"
 links:
   docs: [/features/ui/]
   prs: [everruns/everruns#3113]
 ---
 
 A session page now shows a run in three separate tabs instead of one combined Timeline:
+
+![Session page tab bar with the Trace view of a completed two-turn run](./session-tabs-trace@2x.png)
 
 - **Transcript** is the default view: a full-width, read-only replay of the conversation.
 - **Timeline** is the execution history, with noisy worker details collapsed.

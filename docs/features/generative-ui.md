@@ -9,8 +9,7 @@ Console chat and [Work Chat](/features/channels/#work-chat) render the same
 69-component standard catalog: layouts, text, inputs, tables, charts, maps,
 media, overlays and composite cards.
 
-Browse the [component gallery](/features/generative-ui-gallery/) for light and
-dark screenshots and complete A2UI examples covering all 69 components.
+Browse the [component gallery](/reference/generative-ui/) to try live controls and copy complete A2UI examples covering all 69 components. Start with [forms and inputs](/reference/generative-ui/inputs/), [charts and tables](/reference/generative-ui/data/), or [layouts](/reference/generative-ui/layout/).
 
 For example, ask: **“Show a release review with a chart and a form for my
 feedback.”** The Agent can mix prose and widgets in one answer. Inputs and tabs

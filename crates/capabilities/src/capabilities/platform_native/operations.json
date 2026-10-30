@@ -9446,6 +9446,24 @@
     "read_only": true
   },
   {
+    "description": "Revoke external execution; queued sessions stay bound without native fallback.",
+    "input_schema": {
+      "description": "Revoke external execution without removing the persistent routing binding.",
+      "properties": {
+        "agent_id": {
+          "description": "Agent public ID or name; the HTTP route supplies this value.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "disable_external_agent",
+    "read_only": false
+  },
+  {
     "description": "Disable a machine-payment wallet account.",
     "input_schema": {
       "properties": {
@@ -10725,6 +10743,24 @@
       "type": "object"
     },
     "name": "get_eval_run_share",
+    "read_only": true
+  },
+  {
+    "description": "Get an Agent's external execution endpoint.",
+    "input_schema": {
+      "description": "Identify the Agent whose external execution status should be read.",
+      "properties": {
+        "agent_id": {
+          "description": "Agent public ID or name; the HTTP route supplies this value.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_external_agent",
     "read_only": true
   },
   {

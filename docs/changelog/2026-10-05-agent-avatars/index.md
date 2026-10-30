@@ -10,12 +10,13 @@ release: "0.42.0"
 links:
   docs: [/features/ui/]
   prs: [everruns/everruns#4198, everruns/everruns#4220]
-visual: "Agent page Branding sheet with the Choose preset avatar grid open (/agents/<id>), cropped to the sheet"
 ---
 
 **In the UI:** open an agent's **Branding** sheet. Drop a PNG, JPEG, GIF or WebP
 image on the avatar and position the square crop, or use **Choose preset** to
 search 25 curated avatars and save one with **Use avatar**.
+
+![Choose preset dialog with the curated avatar grid and Use avatar](./choose-preset-avatar@2x.png)
 
 **In code:** `PUT /v1/agents/{agent_id}/avatar` uploads an image as the
 multipart field `file`, and `PUT /v1/agents/{agent_id}/avatar/preset` selects a

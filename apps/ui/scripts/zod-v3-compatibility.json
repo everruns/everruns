@@ -712,5 +712,60 @@
     "package": "@copilotkit/web-inspector",
     "version": "1.83.0",
     "files": {}
+  },
+  "@copilotkit/runtime@1.83.0": {
+    "package": "@copilotkit/runtime",
+    "version": "1.83.0",
+    "declared_zod": "^3.25.18",
+    "files": {
+      "dist/agent/index.cjs": {
+        "before": "274aef04a794cb2285c80d42e187f279c85d348e0b6915257d7007e88021f1a1",
+        "after": "93f36f98bb9d44c59319e96660b89909f52cb42adbca61e197157d69cd86610f"
+      },
+      "dist/agent/index.d.cts": {
+        "before": "59d89d2d25bf3c8b96408d499bc780f1c160e3a9da14859516a61fdfd9b216db",
+        "after": "b4130996130131a258e2bd218d6bf5b91bca672a5d33d4c4623740440b7aa86d"
+      },
+      "dist/agent/index.d.mts": {
+        "before": "996e85d5ebd83a2beb9fe6796053d0361690c80ea80e0c1163422c0c4eb6375f",
+        "after": "ddc385a24940fcf84bca6cee08700bcc4b1f92e972a312aeea544489e86f770f"
+      },
+      "dist/agent/index.mjs": {
+        "before": "298b366af1c8c57acbd7b4b29934bb8af646d6db5fb9ab7ffc433d760daa226b",
+        "after": "25bd4828726cff00284f233c8c19638c32f773dfbfdfdbf0111241f9f8a4d306"
+      },
+      "dist/v2/runtime/intelligence-platform/client.cjs": {
+        "before": "021d87834e88686b59f57a9d03a122c02b0b47db17b5c0c6f8e90e0ee41489d2",
+        "after": "fd6f1838123320c06b5edf008fa85e239732e7292cd3e84e58f24f26e344f2dc"
+      },
+      "dist/v2/runtime/intelligence-platform/client.mjs": {
+        "before": "25d61fda1cd0ef3d103664822f49abfbef25699fe1ea6c52acef547eac369b4f",
+        "after": "727737dae754ac2b585823100e5ac4582e8d3cd9f06c9681fccb649f53ff64a7"
+      },
+      "dist/v2/runtime/intelligence-platform/learning-management.cjs": {
+        "before": "be0c7af50e3e1944ddd1e96af672ea11d96d7a15b2b4e6ef7bc3469a808ffe2f",
+        "after": "66b2bdf0f86238ff6ec240e6310dc74bf7c9326fb5b9f568f389597befedea96"
+      },
+      "dist/v2/runtime/intelligence-platform/learning-management.d.cts": {
+        "before": "331aacbd87e1bd8a8f86735781c8cff236552baa9aeb6bbb29fc9cdfb5e31485",
+        "after": "61a275e6d2faeaaa6815d023dc734925d1ccb43508743aa0c58e1ea4efb9ca33"
+      },
+      "dist/v2/runtime/intelligence-platform/learning-management.d.mts": {
+        "before": "f684e6649d9e27772d4c84220c951d158780317c3f078a94e5fdb8cb93936df8",
+        "after": "c2821840a81ccb2f4e802a743e6bf98e9a008cae7b5bb34fac24d1aab8a073fc"
+      },
+      "dist/v2/runtime/intelligence-platform/learning-management.mjs": {
+        "before": "8123bb9c42bb2af6c1a118b3ef91b6eabd5c39e1bedaafeaafd0a98d66070134",
+        "after": "9c8519746cd3f50de9c9560b473d421f87b8c2768ce3f90f3a666e1acbd8eae5"
+      },
+      "dist/v2/runtime/intelligence-platform/trajectories.cjs": {
+        "before": "110d1ea17f305eb212287cea52574460449632734c7d96b988cd1b9a4458cb54",
+        "after": "f1d295777a9baf6e8529e8caa52fee3357091a589013fe10437d0f84c458d09d"
+      },
+      "dist/v2/runtime/intelligence-platform/trajectories.mjs": {
+        "before": "15a3473924c60fc7eabf3cc8edf545bb8f9a058faa3f16fd1677f508111fd848",
+        "after": "370c3e289d38a98964e64778aec67dd65061da3f9d39e96105150434c3be54fb"
+      }
+    }
   }
 }

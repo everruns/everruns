@@ -305,8 +305,9 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
    - A third small pool (`DATABASE_RELAXED_POOL_MAX`, default 4) commits with `synchronous_commit = off`: it does not
      wait for the WAL flush. Only writes whose loss in a database crash is harmless use it: the reporting projector's
      fact upserts and outbox completions (WAL order means a lost fact also loses its completion, so the row is
-     projected again), and lease renewals, which set the same option per statement. Chat events, messages and the
-     outbox inserts keep waiting for the flush. Reason: at 500 agents RDS spent most of its time on WAL flush waits
+     projected again). Lease renewals and the outbox enqueue after an event write set the same option per statement
+     on the request pool (the bounded repair job re-enqueues a lost outbox row). Chat events and messages keep waiting
+     for the flush. Reason: at 500 agents RDS spent most of its time on WAL flush waits
      (load test 2026-10-29). `0` puts this work on the background pool.
    - Sizes and defaults live in `crates/server/src/storage/repositories/mod.rs`.
 

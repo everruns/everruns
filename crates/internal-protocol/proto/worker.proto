@@ -507,6 +507,7 @@ message SetSessionStatusRequest {
 }
 
 message SetSessionStatusResponse {
+    // Unset: a status write is acknowledged only (EVE-882).
     Session session = 1;
 }
 

@@ -10,13 +10,14 @@ release: "0.25.0"
 links:
   docs: [/built-ins/harnesses/platform-chat/]
   prs: [everruns/everruns#3508, everruns/everruns#3507]
-visual: "Chats sidebar for a new user showing the pinned Platform Chat thread open (/chats); crop to sidebar and the chat welcome"
 ---
 
 A new user used to land on **Chats** with an empty list and a counterpart picker.
 The app now creates a thread on the built-in Platform Chat harness on first entry,
 pins it, and ends onboarding in it. An existing thread is reused and an archived
 one is not recreated.
+
+![Platform Chat welcome with starter prompts beside the sidebar Chat entry](./platform-chat-welcome@2x.png)
 
 Platform Chat also runs on a wider capability set, adding current time, message
 timestamps, a to-do list, prompt caching, tool call repair and parallel tool

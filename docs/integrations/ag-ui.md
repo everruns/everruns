@@ -6,7 +6,7 @@ appliesTo: [framework, platform, cloud]
 
 Everruns supports **AG-UI 1.0**, the event protocol used by CopilotKit and
 other agent frontends. **A2UI** is the component format rendered inside chat
-messages. Use the [component gallery](/features/generative-ui-gallery/) to browse
+messages. Use the [component gallery](/reference/generative-ui/) to browse
 all 69 supported components, or [Generative UI in chat](/features/generative-ui/)
 to enable them in console chat and Work Chat.
 

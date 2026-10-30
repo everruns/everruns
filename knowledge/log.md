@@ -2,13 +2,21 @@
 
 ## 2026-10-29
 
+- Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.
+
+- Made the public generative UI gallery interactive using the shared chat renderer, with local action previews, reset, theme sync, and opt-in external media.
+
 - Give the cost-planner drawer isolated local Chat drafts, bounded displayed totals and guarded Undo, preserving host price and inference boundaries. See [Agent Cost Estimation](ui/agent-cost-estimation.md).
+- Preserve protected worker ingress for customer HTTPS execution: reject unsupported registration, retain revocation, and prove dispatch discloses no input. See [Custom workers](operations/custom-workers.md).
 
 - Remove the narrated Sandbox Builder video from Git and the docs player; keep the approved cut outside Git until its YouTube publication and verified embed. See [Product Videos](docs/product-videos.md).
 
 - Keep channel drafts unavailable while the type chooser is visible, and expire bindings when changing types. See [Chat mode](ui/chat-mode.md).
 
 - Fixed host-priced monthly capacity estimates so their usage units remain independent of task volume.
+- Patch the libz-sys build-script disclosure and retire affected Rust target caches without weakening advisory checks. See [CI Build Time](project/ci-build-time.md).
+
+- Keep external-worker secret setup outside agent command catalogs while retaining status and revocation commands. See [Custom workers](operations/custom-workers.md).
 
 - Publish the approved [Sandbox Builder walkthrough](docs/product-videos.md) in its feature guide and existing changelog, with English captions.
 
@@ -22,6 +30,8 @@
 - Bounded Work Chat upstream setup without aborting an established SSE response at 30 seconds. See [Work Chat](integrations/work-chat.md).
 
 - Added first-class authenticated Console, Agent API and Work Chat capacity qualification with simulated models, durable delivery oracles and independent resource sampling. See [load testing](operations/load-testing.md).
+
+- Route shell and embedded-interpreter directory renames through atomic workspace metadata moves, preserving file identities and rejecting protected trees, mount crossings and destination collisions. See [File Store](runtime-resources/file-store.md).
 
 ## 2026-10-28
 
@@ -62,6 +72,7 @@
 - Added plain-language [Agent Cost Estimation](ui/agent-cost-estimation.md) in the agent page header, with task and monthly costs and optional advanced assumptions.
 
 - Added agent-aware cost planning with bounded utility inference, editable task mix, user/task projections and a permanent redirect from the original shared announcement.
+- Added opt-in self-service HTTPS worker registration, response-stream execution through the restricted worker validator, and a Cloudflare/private-D1 example. See [Custom workers](operations/custom-workers.md).
 
 ## 2026-10-27
 

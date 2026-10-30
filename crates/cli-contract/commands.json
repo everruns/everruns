@@ -1360,6 +1360,58 @@
     ]
   },
   {
+    "wire_name": "disable_external_agent",
+    "path": [
+      "agents",
+      "external-worker"
+    ],
+    "verb": "disable",
+    "description": "Revoke external execution; queued sessions stay bound without native fallback.",
+    "method": "DELETE",
+    "http_path": "/v1/agents/{agent_id}/external-worker",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent public ID or name; the HTTP route supplies this value."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Revoke external execution while retaining queued work",
+        "command": "everruns agents external-worker disable --agent-id agent_01h9 --reason 'Pause external execution'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_external_agent",
+    "path": [
+      "agents",
+      "external-worker"
+    ],
+    "verb": "get",
+    "description": "Get an Agent's external execution endpoint.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/external-worker",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent public ID or name; the HTTP route supplies this value."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect an Agent's external runtime without credentials",
+        "command": "everruns agents external-worker get --agent-id agent_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "list_agent_failures",
     "path": [
       "agents",

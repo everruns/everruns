@@ -7,7 +7,7 @@ significance: notable
 products: [platform, cloud]
 surfaces: [ui]
 links:
-  docs: [/integrations/ag-ui/, /features/generative-ui/, /features/generative-ui-gallery/]
+  docs: [/integrations/ag-ui/, /features/generative-ui/, /reference/generative-ui/]
 ---
 
 Console chat and Work Chat now share the 69-component A2UI 1.0 standard catalog.
@@ -26,8 +26,12 @@ Busy and read-only views disable message actions. HTML widgets remain sandboxed
 without scripts or external network access. See [Generative UI in chat](/features/generative-ui/)
 for the supported format and interaction limits.
 
-Explore the [component gallery](/features/generative-ui-gallery/) for screenshots
+Explore the [component gallery](/reference/generative-ui/) for interactive examples
 in both themes and the A2UI source for each example. See [AG-UI support](/integrations/ag-ui/)
 for the event protocol and chat integration boundaries.
 
 ![A quote request form rendered by the shared chat component catalog](./review-form@2x.png)
+
+**Update 2026-10-29:** Browse eight focused pages under **Reference → Generative UI**.
+Live controls show action results locally and include Reset; no account or agent
+run is needed.

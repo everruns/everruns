@@ -267,6 +267,18 @@ impl InMemoryEventDelivery {
 const NATS_STREAM_NAME: &str = "EVENTS";
 /// Subject prefix for session events: events.<session_id>
 const NATS_SUBJECT_PREFIX: &str = "events";
+const DEFAULT_NATS_EVENT_STREAM_MAX_BYTES: i64 = 1_073_741_824;
+
+fn parse_nats_event_stream_max_bytes(value: Option<&str>) -> Result<i64> {
+    let Some(value) = value else {
+        return Ok(DEFAULT_NATS_EVENT_STREAM_MAX_BYTES);
+    };
+    let bytes: i64 = value
+        .parse()
+        .context("NATS_EVENT_STREAM_MAX_BYTES must be a positive integer")?;
+    anyhow::ensure!(bytes > 0, "NATS_EVENT_STREAM_MAX_BYTES must be positive");
+    Ok(bytes)
+}
 
 /// NATS JetStream event delivery.
 /// Each session gets a subject: `events.<session_id>`.
@@ -274,17 +286,34 @@ const NATS_SUBJECT_PREFIX: &str = "events";
 pub struct NatsEventDelivery {
     client: async_nats::Client,
     jetstream: async_nats::jetstream::Context,
+    stream_max_bytes: i64,
 }
 
 impl NatsEventDelivery {
     pub async fn connect(url: &str) -> Result<Self> {
+        let value = match std::env::var("NATS_EVENT_STREAM_MAX_BYTES") {
+            Ok(value) => Some(value),
+            Err(std::env::VarError::NotPresent) => None,
+            Err(error) => {
+                return Err(error).context("NATS_EVENT_STREAM_MAX_BYTES is not valid Unicode");
+            }
+        };
+        let stream_max_bytes = parse_nats_event_stream_max_bytes(value.as_deref())?;
+        Self::connect_with_stream_max_bytes(url, stream_max_bytes).await
+    }
+
+    async fn connect_with_stream_max_bytes(url: &str, stream_max_bytes: i64) -> Result<Self> {
         let client = crate::live_updates::nats::connect(url)
             .await
             .context("Failed to connect to NATS")?;
 
         let jetstream = async_nats::jetstream::new(client.clone());
 
-        let delivery = Self { client, jetstream };
+        let delivery = Self {
+            client,
+            jetstream,
+            stream_max_bytes,
+        };
         delivery.ensure_stream().await?;
         info!("NATS JetStream stream '{}' ready", NATS_STREAM_NAME);
         Ok(delivery)
@@ -301,7 +330,7 @@ impl NatsEventDelivery {
             storage: async_nats::jetstream::stream::StorageType::Memory,
             num_replicas: 1,
             discard: async_nats::jetstream::stream::DiscardPolicy::Old,
-            max_bytes: 1_073_741_824, // 1 GB max
+            max_bytes: self.stream_max_bytes,
             ..Default::default()
         };
 
@@ -494,6 +523,24 @@ mod tests {
             metadata: None,
             tags: None,
             sequence: None,
+        }
+    }
+
+    #[test]
+    fn nats_stream_budget_accepts_only_positive_byte_counts() {
+        assert_eq!(
+            parse_nats_event_stream_max_bytes(None).unwrap(),
+            DEFAULT_NATS_EVENT_STREAM_MAX_BYTES
+        );
+        assert_eq!(
+            parse_nats_event_stream_max_bytes(Some("536870912")).unwrap(),
+            536_870_912
+        );
+        for invalid in ["", "0", "-1", "1MiB", "9223372036854775808"] {
+            assert!(
+                parse_nats_event_stream_max_bytes(Some(invalid)).is_err(),
+                "{invalid}"
+            );
         }
     }
 
@@ -800,6 +847,67 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[tokio::test]
+    async fn nats_stream_budget_does_not_rewrite_an_existing_stream() {
+        let broker = TestNatsServer::start().await;
+        let original = NatsEventDelivery::connect_with_stream_max_bytes(&broker.url(), 32_768)
+            .await
+            .unwrap();
+        let next = NatsEventDelivery::connect_with_stream_max_bytes(&broker.url(), 16_384)
+            .await
+            .unwrap();
+        let stream = next.jetstream.get_stream(NATS_STREAM_NAME).await.unwrap();
+        assert_eq!(stream.cached_info().config.max_bytes, 32_768);
+        original.shutdown().await;
+        next.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn bounded_nats_stream_evicts_old_messages_and_recovers_after_restart() {
+        let mut broker = TestNatsServer::start().await;
+        let publisher = NatsEventDelivery::connect_with_stream_max_bytes(&broker.url(), 16_384)
+            .await
+            .unwrap();
+        let session = Uuid::new_v4();
+        for _ in 0..50 {
+            let mut event = make_test_event(session);
+            if let EventData::OutputMessageDelta(delta) = &mut event.data {
+                delta.accumulated = "x".repeat(1_024);
+            }
+            publisher.publish(&event).await.unwrap();
+        }
+        let info = publisher
+            .jetstream
+            .get_stream(NATS_STREAM_NAME)
+            .await
+            .unwrap()
+            .cached_info()
+            .clone();
+        assert_eq!(info.config.max_bytes, 16_384);
+        assert!(info.state.bytes <= 16_384);
+        assert!(
+            info.state.first_sequence > 1,
+            "old messages should be evicted"
+        );
+        let mut subscriber = publisher.subscribe(session).await.unwrap();
+        let event = make_test_event(session);
+        publisher.publish(&event).await.unwrap();
+        let received = tokio::time::timeout(std::time::Duration::from_secs(5), subscriber.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(received.id, event.id);
+        broker.restart(&publisher).await;
+        publisher.publish(&make_test_event(session)).await.unwrap();
+        let recovered = publisher
+            .jetstream
+            .get_stream(NATS_STREAM_NAME)
+            .await
+            .unwrap();
+        assert_eq!(recovered.cached_info().config.max_bytes, 16_384);
+        publisher.shutdown().await;
     }
 
     #[tokio::test]
