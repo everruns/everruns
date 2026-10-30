@@ -96,7 +96,7 @@ CI runs the offline checks without provider credentials. Live model behavior is 
 
 ## Demo and recording
 
-The screencast types a question into the same interactive binary shown above, then displays the actual Opus tool calls and answer. VHS hides most provider wait time but does not replace the model or tools with scripted output. Read the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/everruns-support-agent/demo/transcript.txt) at your own pace.
+Watch the screencast or read the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/everruns-support-agent/demo/transcript.txt) to see the tool calls and answer.
 
 With credentials exported and VHS, ffmpeg, and a VHS-compatible browser installed:
 
@@ -104,7 +104,8 @@ With credentials exported and VHS, ffmpeg, and a VHS-compatible browser installe
 bash examples/everruns-support-agent/demo/record.sh
 ```
 
-The script uses an exported `ANTHROPIC_API_KEY` when present, otherwise Doppler project `everruns-dev`, config `dev`. It updates `demo/demo.gif` and `demo/transcript.txt` only after a successful turn.
+Export `ANTHROPIC_API_KEY` before recording. The script updates `demo/demo.gif` and
+`demo/transcript.txt` after a successful run.
 
 ## Adapt it
 

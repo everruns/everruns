@@ -464,7 +464,7 @@ mod tests {
         let target = view.target.expect("bashkit supplies compute");
         assert_eq!(target.kind, "vfs");
         assert_eq!(target.provider.as_deref(), Some("bashkit"));
-        // The load-bearing claim: a caller learns `cargo build` is impossible
+        // Verify that a caller learns `cargo build` is impossible
         // here before the first turn rather than from a confusing tool error.
         assert!(!view.capabilities.native_processes);
         assert!(view.capabilities.portable_checkpoint);

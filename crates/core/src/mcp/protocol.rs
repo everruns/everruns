@@ -52,9 +52,8 @@ pub fn client_info() -> Value {
 
 /// What this client can answer when a server asks for input mid-call.
 ///
-/// Capability declaration is load-bearing, not cosmetic: under MRTR a server
-/// **MUST NOT** ask for an input type the client did not declare, so an
-/// accurate declaration is what keeps servers from blocking on prompts nobody
+/// Under MRTR a server **MUST NOT** ask for an input type the client did not
+/// declare. Accurate declarations keep servers from blocking on prompts nobody
 /// can answer. Everything here defaults to "cannot", and a host turns a flag on
 /// only by supplying the machinery that answers it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

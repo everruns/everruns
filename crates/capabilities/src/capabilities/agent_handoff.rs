@@ -1861,7 +1861,7 @@ mod tests {
         );
     }
 
-    /// Regression for the confused-deputy issue this PR fixes: the child
+    /// Regression for a confused-deputy issue: the child
     /// session must be created with the *target's* harness, not the
     /// parent session's harness. If a future refactor reintroduces
     /// `parent_session.harness_id` here, the child would inherit the
