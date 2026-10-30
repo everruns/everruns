@@ -143,34 +143,37 @@ async def post_message(
 ):
     url, payload = actor.send(body, key)
     deadline = time.monotonic() + 15
-    delay = 0.25
-    while True:
-        try:
-            response = await authenticated_request(
-                client,
-                actor,
-                "POST",
-                url,
-                json=payload,
-                headers={"Idempotency-Key": key},
-            )
-            results.http_status[str(response.status_code)] += 1
-            response.raise_for_status()
-            break
-        except (httpx.TransportError, httpx.HTTPStatusError) as error:
-            status = (
-                error.response.status_code
-                if isinstance(error, httpx.HTTPStatusError)
-                else None
-            )
-            if (
-                not retry_transient
-                or time.monotonic() + delay > deadline
-                or (status is not None and status != 409 and status < 500)
-            ):
-                raise
-            await asyncio.sleep(delay)
-            delay = min(delay * 2, 2)
+
+    async def send(replay=False):
+        delay = 0.25
+        while True:
+            try:
+                response = await authenticated_request(
+                    client,
+                    actor,
+                    "POST",
+                    url,
+                    json=payload,
+                    headers={"Idempotency-Key": key},
+                )
+                results.http_status[str(response.status_code)] += 1
+                response.raise_for_status()
+                return response
+            except (httpx.TransportError, httpx.HTTPStatusError) as error:
+                status = (
+                    error.response.status_code
+                    if isinstance(error, httpx.HTTPStatusError)
+                    else None
+                )
+                retryable = (status == 409 and (replay or retry_transient)) or (
+                    retry_transient and (status is None or status >= 500)
+                )
+                if not retryable or time.monotonic() + delay > deadline:
+                    raise
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 2)
+
+    response = await send()
     original = (
         response.json().get("output", {})
         if actor.path == "console"
@@ -180,28 +183,16 @@ async def post_message(
         # Admit the original, discard its response, and send exactly the same intent.
         # Independent reconnect tests exercise a real closed stream; this injection
         # deliberately qualifies ambiguous acknowledgment, not a packet-loss model.
-        for _ in range(5):
-            replay = await authenticated_request(
-                client,
-                actor,
-                "POST",
-                url,
-                json=payload,
-                headers={"Idempotency-Key": key},
-            )
-            results.http_status[str(replay.status_code)] += 1
-            if replay.status_code != 409:
-                replay.raise_for_status()
-                value = (
-                    replay.json().get("output", {})
-                    if actor.path == "console"
-                    else replay.json()
-                )
-                if value.get("id") != original.get("id"):
-                    raise ValueError("idempotency returned a different message")
-                return original
-            await asyncio.sleep(0.25)
-        raise ValueError("idempotency remained in progress")
+        # Restart can interrupt this replay too. Share the original retry budget
+        # and retain the exact payload/key rather than abandoning an admitted turn.
+        replay = await send(replay=True)
+        value = (
+            replay.json().get("output", {})
+            if actor.path == "console"
+            else replay.json()
+        )
+        if value.get("id") != original.get("id"):
+            raise ValueError("idempotency returned a different message")
     return original
 
 

@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import httpx
 
@@ -485,6 +486,87 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 [r.headers["Idempotency-Key"] for r in calls], ["same-key"] * 2
             )
+
+    async def test_lost_ack_replay_recovers_restart_errors_with_the_same_intent(self):
+        for path in ["console", "agent-api", "work-chat"]:
+            calls = []
+            statuses = iter([201, None, 502, 409, 200])
+
+            def respond(req):
+                calls.append(req)
+                status = next(statuses)
+                if status is None:
+                    raise httpx.ConnectError("restart", request=req)
+                msg = {"id": "message"}
+                return httpx.Response(
+                    status, json={"output": msg} if path == "console" else msg
+                )
+
+            with tempfile.TemporaryDirectory() as directory:
+                results = Results(Path(directory))
+                async with httpx.AsyncClient(
+                    transport=httpx.MockTransport(respond)
+                ) as client:
+                    with patch("capacity.run.asyncio.sleep"):
+                        value = await post_message(
+                            client, actor(path), {"message": {}}, "same-key",
+                            results, lose_ack=True, retry_transient=True,
+                        )
+                results.handle.close()
+            self.assertEqual(value["id"], "message")
+            self.assertEqual(len(calls), 5)
+            self.assertEqual(len({r.content for r in calls}), 1)
+            self.assertTrue(all(r.headers["Idempotency-Key"] == "same-key" for r in calls))
+            self.assertEqual(dict(results.http_status), {"201": 1, "502": 1, "409": 1, "200": 1})
+
+    async def test_lost_ack_replay_preserves_non_retryable_and_identity_failures(self):
+        for status, identifier, retry, exception in [
+            (400, "message", True, httpx.HTTPStatusError),
+            (502, "message", False, httpx.HTTPStatusError),
+            (200, "different", True, ValueError),
+        ]:
+            calls = []
+
+            def respond(req):
+                calls.append(req)
+                return httpx.Response(
+                    201 if len(calls) == 1 else status,
+                    json={"id": "message" if len(calls) == 1 else identifier},
+                )
+
+            with tempfile.TemporaryDirectory() as directory:
+                results = Results(Path(directory))
+                async with httpx.AsyncClient(
+                    transport=httpx.MockTransport(respond)
+                ) as client:
+                    with self.assertRaises(exception):
+                        await post_message(
+                            client, actor("agent-api"), {"message": {}}, "same-key",
+                            results, lose_ack=True, retry_transient=retry,
+                        )
+                results.handle.close()
+            self.assertEqual(len(calls), 2)
+
+    async def test_lost_ack_replay_shares_original_retry_deadline(self):
+        calls = []
+
+        def respond(req):
+            calls.append(req)
+            return httpx.Response(
+                201 if len(calls) == 1 else 409, json={"id": "message"}
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            results = Results(Path(directory))
+            async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+                with patch("capacity.run.time.monotonic", side_effect=[0, 15]):
+                    with self.assertRaises(httpx.HTTPStatusError):
+                        await post_message(
+                            client, actor("agent-api"), {"message": {}}, "same-key",
+                            results, lose_ack=True, retry_transient=True,
+                        )
+            results.handle.close()
+        self.assertEqual(len(calls), 2)
 
     async def test_audit_catches_duplicated_unacknowledged_inputs_and_missing_stream_echo(
         self,
