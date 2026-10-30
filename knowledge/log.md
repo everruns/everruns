@@ -8,6 +8,10 @@
   handling, preserve method/URI and connection identity, isolate consent scope,
   and bound negotiation and all continuation rounds by one deadline. See
   [MCP Server Specification](integrations/mcp-servers.md).
+
+- Added opt-in local skill inspection with content- and origin-bound reports, revalidated activation receipts, and explicit heuristic limits. See [Skills Registry](project/skills-registry.md#opt-in-persistent-instruction-inspection).
+- Extended the shared inspector into Yolop's approved memory writes and selected recalls, with title-only automatic disclosure and no body-derived disclosure. Hosted memory mount integration remains separate.
+
 ## 2026-10-29
 
 - Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.

@@ -97,6 +97,39 @@ Only activate skills that are relevant to the current task.";
 
 #[async_trait]
 impl Capability for SkillsCapability {
+    fn config_schema(&self) -> Option<Value> {
+        Some(super::artifact_inspection::config_schema())
+    }
+
+    fn validate_config(&self, config: &Value) -> Result<(), String> {
+        super::artifact_inspection::validate_config(config)
+    }
+
+    fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
+        if super::artifact_inspection::enabled(config) {
+            super::ScopedSkillsCapability::new(super::SkillsConfig::default())
+                .with_report_only_inspection()
+                .tools()
+        } else {
+            self.tools()
+        }
+    }
+
+    async fn system_prompt_contribution_with_config(
+        &self,
+        ctx: &SystemPromptContext,
+        config: &Value,
+    ) -> Option<String> {
+        if super::artifact_inspection::enabled(config) {
+            super::ScopedSkillsCapability::new(super::SkillsConfig::default())
+                .with_report_only_inspection()
+                .system_prompt_contribution(ctx)
+                .await
+        } else {
+            self.system_prompt_contribution(ctx).await
+        }
+    }
+
     fn id(&self) -> &str {
         SKILLS_CAPABILITY_ID
     }
