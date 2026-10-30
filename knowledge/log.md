@@ -2,6 +2,8 @@
 
 ## 2026-10-30
 
+- Refresh Bashkit to consume the patched Wasmtime runtime without advisory exceptions. See [Bashkit requirements](execution/bashkit-requirements.md).
+
 * **MCP resource continuations.** HTTP resource reads share tool-call input
   handling, preserve method/URI and connection identity, isolate consent scope,
   and bound negotiation and all continuation rounds by one deadline. See
