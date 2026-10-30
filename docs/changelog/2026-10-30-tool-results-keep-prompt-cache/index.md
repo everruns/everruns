@@ -1,6 +1,6 @@
 ---
 title: "Sessions with tool calls keep the prompt cache again"
-description: "History loaded for a worker kept each tool result's time as of loading, so every model call rewrote earlier time facts and lost the prompt cache after the first tool call."
+description: "Workers gave each loaded tool result its load time, so every model call rewrote earlier time facts and lost the prompt cache after the first tool call."
 date: 2026-10-30
 kind: fix
 significance: notable
