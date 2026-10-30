@@ -9,6 +9,44 @@ use chrono::{DateTime, Utc};
 use everruns_server_macros::sql;
 use uuid::Uuid;
 
+/// Seconds a rotated MCP OAuth refresh token may be presented once more.
+///
+/// Decision: strict single-use rotation turned a lost token response, or two
+/// sessions of one MCP host refreshing together, into `invalid_grant` and a
+/// full reconnect, and access tokens here live 15 minutes, so refreshes are
+/// frequent. One replay inside this window gets a fresh pair; a later replay is
+/// treated as a leaked token and deletes the token's whole rotation family
+/// (OAuth 2.0 Security BCP, RFC 9700 §4.14.2). The added exposure is one more
+/// redemption of an already-used token for at most a minute; an unused stolen
+/// token was always redeemable.
+pub const REFRESH_REUSE_GRACE_SECS: i64 = 60;
+
+/// What a replay of an already-rotated refresh token means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpentRefresh {
+    /// Inside the window and the replay is unused: mint once more.
+    Grace,
+    /// Inside the window but already replayed: refuse, revoke nothing, so a
+    /// third concurrent refresh cannot disconnect the request that won.
+    Refuse,
+    /// After the window: reuse of a leaked token.
+    Reuse,
+}
+
+pub fn spent_refresh(
+    rotated_at: DateTime<Utc>,
+    grace_used: bool,
+    now: DateTime<Utc>,
+) -> SpentRefresh {
+    if (now - rotated_at).num_seconds() > REFRESH_REUSE_GRACE_SECS {
+        SpentRefresh::Reuse
+    } else if grace_used {
+        SpentRefresh::Refuse
+    } else {
+        SpentRefresh::Grace
+    }
+}
+
 impl Database {
     // ============================================
     // Personal Access Tokens
@@ -499,8 +537,8 @@ impl Database {
     ) -> Result<OAuthRefreshTokenRow> {
         let row = sqlx::query_as::<_, OAuthRefreshTokenRow>(
             sql!(r#"
-            INSERT INTO oauth_refresh_tokens (token_hash, client_id, user_id, org_id, scope, expires_at, grant_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO oauth_refresh_tokens (token_hash, client_id, user_id, org_id, scope, expires_at, grant_id, family_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING {OAuthRefreshTokenRow}
             "#),
         )
@@ -511,6 +549,7 @@ impl Database {
         .bind(&input.scope)
         .bind(input.expires_at)
         .bind(input.grant_id)
+        .bind(input.family_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -535,26 +574,75 @@ impl Database {
         Ok(row)
     }
 
-    /// Atomically consume an MCP OAuth refresh token by hash if it is still
-    /// valid. Mirrors the regular auth refresh-token consume path so refresh
-    /// token rotation remains single-use under concurrent client retries.
-    pub async fn consume_oauth_refresh_token_by_hash(
-        &self,
-        token_hash: &str,
-    ) -> Result<Option<OAuthRefreshTokenRow>> {
-        let row = sqlx::query_as::<_, OAuthRefreshTokenRow>(sql!(
+    /// Exchange an MCP OAuth refresh token: mark it rotated if it is live and
+    /// unused, else honour one replay inside [`REFRESH_REUSE_GRACE_SECS`], else
+    /// refuse, deleting the token's family when the replay comes after the
+    /// window. Each winning step is one conditional UPDATE, so concurrent
+    /// requests cannot both win it.
+    pub async fn use_oauth_refresh_token(&self, token_hash: &str) -> Result<OAuthRefreshUse> {
+        let first = sqlx::query_as::<_, OAuthRefreshTokenRow>(sql!(
             r#"
-            DELETE FROM oauth_refresh_tokens
+            UPDATE oauth_refresh_tokens
+            SET rotated_at = NOW()
             WHERE token_hash = $1
               AND expires_at > NOW()
+              AND rotated_at IS NULL
             RETURNING {OAuthRefreshTokenRow}
             "#
         ))
         .bind(token_hash)
         .fetch_optional(&self.pool)
         .await?;
+        if let Some(row) = first {
+            return Ok(OAuthRefreshUse::Mint(row));
+        }
 
-        Ok(row)
+        let grace = sqlx::query_as::<_, OAuthRefreshTokenRow>(sql!(
+            r#"
+            UPDATE oauth_refresh_tokens
+            SET grace_used = TRUE
+            WHERE token_hash = $1
+              AND expires_at > NOW()
+              AND rotated_at >= NOW() - make_interval(secs => $2)
+              AND NOT grace_used
+            RETURNING {OAuthRefreshTokenRow}
+            "#
+        ))
+        .bind(token_hash)
+        .bind(REFRESH_REUSE_GRACE_SECS as f64)
+        .fetch_optional(&self.pool)
+        .await?;
+        if let Some(row) = grace {
+            return Ok(OAuthRefreshUse::Mint(row));
+        }
+
+        let spent = sqlx::query_as::<_, OAuthRefreshTokenRow>(sql!(
+            r#"
+            SELECT {OAuthRefreshTokenRow}
+            FROM oauth_refresh_tokens
+            WHERE token_hash = $1
+            "#
+        ))
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some(spent) = spent else {
+            return Ok(OAuthRefreshUse::Refused);
+        };
+        let Some(rotated_at) = spent.rotated_at else {
+            return Ok(OAuthRefreshUse::Refused); // expired, never used
+        };
+        match spent_refresh(rotated_at, spent.grace_used, Utc::now()) {
+            SpentRefresh::Reuse => {
+                let family = spent.family();
+                sqlx::query("DELETE FROM oauth_refresh_tokens WHERE id = $1 OR family_id = $1")
+                    .bind(family)
+                    .execute(&self.pool)
+                    .await?;
+                Ok(OAuthRefreshUse::ReuseDetected)
+            }
+            SpentRefresh::Grace | SpentRefresh::Refuse => Ok(OAuthRefreshUse::Refused),
+        }
     }
 
     pub async fn delete_oauth_refresh_token(&self, id: Uuid) -> Result<bool> {
@@ -574,3 +662,6 @@ impl Database {
         Ok(result.rows_affected())
     }
 }
+
+#[cfg(test)]
+mod tests;
