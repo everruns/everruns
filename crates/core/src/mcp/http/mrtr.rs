@@ -2,6 +2,18 @@
 
 use super::*;
 
+/// Reserve resource consent scopes before a tool can enter either MRTR or the
+/// Tasks extension's separate elicitation path.
+pub(super) fn validate_tool_consent_scope(tool_name: &str) -> Result<()> {
+    // THREAT[TM-TOOL-034]: a tool cannot impersonate a resource consent scope.
+    if tool_name.starts_with("resources/read:") {
+        return Err(anyhow!(
+            "MCP tool name uses the reserved resource consent scope"
+        ));
+    }
+    Ok(())
+}
+
 /// Resource continuations run inline so dropping the caller cancels both input
 /// collection and retries. One deadline covers negotiation and every round.
 #[allow(clippy::too_many_arguments)]
@@ -23,6 +35,7 @@ pub(super) async fn request_with_inputs(
     let capabilities = ClientCapabilities {
         url_elicitation: is_resource_read && handlers.url.is_some(),
         form_elicitation: is_resource_read && handlers.form.is_some(),
+        tasks: false,
     };
     tokio::time::timeout(CALL_TIMEOUT, async {
         let (text, negotiated) = negotiate_and_send(
@@ -139,14 +152,6 @@ pub(super) async fn resolve_input_required(
         let Some(input_required) = protocol::input_required_from_result(json) else {
             return Ok(text);
         };
-
-        // Consent stores predate resource reads and key on a string target.
-        // THREAT[TM-TOOL-034]: fail closed for a tool impersonating a resource scope.
-        if request.method == "tools/call" && request.input_target.starts_with("resources/read:") {
-            return Err(anyhow!(
-                "MCP tool name uses the reserved resource consent scope"
-            ));
-        }
 
         let input_responses = gather_input_responses(
             &input_required,

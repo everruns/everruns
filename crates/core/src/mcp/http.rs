@@ -11,7 +11,7 @@
 
 mod mrtr;
 
-use mrtr::{MrtrRequest, request_with_inputs, resolve_input_required};
+use mrtr::{MrtrRequest, request_with_inputs, resolve_input_required, validate_tool_consent_scope};
 
 use crate::mcp::auth::McpCredential;
 use crate::mcp::discovery::{DiscoveryAccumulator, McpDiscoveryError, check_page_bytes};
@@ -737,6 +737,7 @@ pub async fn http_call_tool(
     credential: Option<&McpCredential>,
     elicitation: Option<&dyn UrlElicitationHandler>,
 ) -> Result<McpToolCallResult> {
+    validate_tool_consent_scope(tool_name)?;
     let capabilities = ClientCapabilities {
         url_elicitation: elicitation.is_some(),
         form_elicitation: false,
@@ -1275,6 +1276,7 @@ impl McpTransport for HttpTransport {
         credential: Option<&McpCredential>,
         idempotency_key: Option<&str>,
     ) -> Result<McpToolCallResult> {
+        validate_tool_consent_scope(tool_name)?;
         let (url, headers) = Self::http_parts(connection)?;
         let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
         // This transport can keep polling, so `tools/call` may become a task.

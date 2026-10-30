@@ -549,5 +549,8 @@ async fn tool_cannot_consume_a_resource_consent_scope() {
             .contains("reserved resource consent scope")
     );
     assert!(consent.seen.lock().unwrap().is_empty());
-    assert_eq!(egress.bodies().len(), 1);
+    assert!(
+        egress.bodies().is_empty(),
+        "reject before a tool can enter task polling"
+    );
 }
