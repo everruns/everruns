@@ -5,7 +5,7 @@ date: 2026-10-28
 kind: improvement
 significance: notable
 products: [platform]
-surfaces: [ui]
+surfaces: [ui, api]
 links:
   docs: [/built-ins/harnesses/platform-chat/, /features/agent-api/]
 ---
@@ -32,3 +32,8 @@ recovery; this does not provide an offline model or application shell.
 
 Hosted Work Chat streams stay open past 30 seconds. Connection timeouts cover
 setup; leaving the conversation closes the stream.
+
+## Update 2026-10-30
+
+After a worker restarts, completed turns keep their saved answer reference and
+work counters. Recovery does not regenerate the answer.

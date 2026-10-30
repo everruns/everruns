@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-30
+
+- Preserve saved answer identity and workload counters when a worker resumes between the answer and turn completion. See [Sans-IO Turn State](foundations/sans-io-turn-state.md).
+
 ## 2026-10-29
 
 - Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.
