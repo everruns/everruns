@@ -8,6 +8,7 @@ products: [platform, framework]
 surfaces: [agent, code]
 links:
   docs: [/capabilities/bashkit-shell/]
+  prs: [everruns/everruns#5072]
 ---
 
 [Bashkit Shell](/capabilities/bashkit-shell/) can rename workspace directories
