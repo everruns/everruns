@@ -190,6 +190,44 @@ impl ChannelSessionPort for ServerChannelPort {
             Some(principal) => (*principal, None),
             None => (context.owner_principal_id, context.resolved_owner_user_id),
         };
+        let is_code = channel.channel_type == ChannelType::Slack
+            && request
+                .binding_key
+                .as_deref()
+                .is_some_and(|key| key.starts_with("slack:code:"));
+        let mut approval_mode = "normal";
+        if is_code {
+            // Code requires a hard gate and must preserve a stricter inherited policy.
+            let agent = match context.agent_id {
+                Some(id) => crate::domains::agents::queries::get_by_public_id(
+                    &self.db,
+                    context.org_id,
+                    &id.to_string(),
+                )
+                .await
+                .map_err(ChannelError::Other)?,
+                None => None,
+            };
+            let harness = crate::domains::harnesses::queries::resolve_effective(
+                &self.db,
+                context.org_id,
+                context.harness_id,
+            )
+            .await
+            .map_err(ChannelError::Other)?;
+            if agent
+                .iter()
+                .flat_map(|a| &a.capabilities)
+                .chain(harness.iter().flat_map(|h| &h.capabilities))
+                .any(|c| {
+                    c.id() == "tool_approval"
+                        && everruns_core::builtins::ApprovalMode::from_config(c.config_value())
+                            == everruns_core::builtins::ApprovalMode::Protective
+                })
+            {
+                approval_mode = "protective";
+            }
+        }
         let session = self
             .sessions
             .create_from_app(
@@ -217,6 +255,17 @@ impl ChannelSessionPort for ServerChannelPort {
                     .chain(session_tags.iter().cloned())
                     .collect(),
                     hints: session_hints.clone(),
+                    capabilities: if is_code {
+                        vec![
+                            everruns_contracts::CapabilityRef::new("slack"),
+                            everruns_contracts::CapabilityRef::with_config(
+                                "tool_approval",
+                                serde_json::json!({"mode":approval_mode}),
+                            ),
+                        ]
+                    } else {
+                        Vec::new()
+                    },
                     ..CreateSessionRequest::default()
                 },
             )
@@ -268,6 +317,18 @@ impl ChannelSessionPort for ServerChannelPort {
             }
         }
         let tags = (!message.tags.is_empty()).then_some(message.tags);
+        // Trusted Code ingress supplies a stable input identity for crash replay.
+        let client_message_id = (scope(channel)?.channel.channel_type == ChannelType::Slack)
+            .then(|| {
+                message
+                    .metadata
+                    .as_ref()?
+                    .get("slack_code_message_id")?
+                    .as_str()?
+                    .parse::<uuid::Uuid>()
+                    .ok()
+            })
+            .flatten();
         let created = self
             .messages
             .create(
@@ -291,7 +352,7 @@ impl ChannelSessionPort for ServerChannelPort {
                     metadata: message.metadata,
                     tags,
                     external_actor: message.external_actor,
-                    client_message_id: None,
+                    client_message_id,
                 },
             )
             .await

@@ -373,6 +373,97 @@ async fn a_rename_in_the_pane_becomes_the_session_title() {
 }
 
 #[tokio::test]
+async fn root_session_controls_resolve_only_an_existing_thread() {
+    let mut config = slack_config(SessionBinding::Conversation);
+    config.agent_surface_enabled = true;
+    let slack = Slack::new(config).await;
+    let session = session_of(&slack.send(pane_message("1.0")).await.unwrap());
+    for (channel, thread, title) in [
+        ("D1", Some("1.0"), "Root title"),
+        ("D1", None, "No thread"),
+        ("D1", Some("9.0"), "Unknown thread"),
+    ] {
+        slack
+            .send(json!({
+                "type": "event_callback", "team_id": "T1",
+                "event": {"type": "agent_session_title_changed", "channel": channel,
+                    "thread_ts": thread, "title": title, "user": "U1"}
+            }))
+            .await
+            .unwrap();
+    }
+    assert_eq!(slack.title(&session).await.as_deref(), Some("Root title"));
+    assert_eq!(slack.bindings().await, 1);
+}
+
+#[tokio::test]
+async fn root_stop_cannot_cancel_a_different_channel_with_the_same_thread_timestamp() {
+    let mut config = slack_config(SessionBinding::Thread);
+    config.agent_surface_enabled = true;
+    let slack = Slack::new(config).await;
+    let session: SessionId = session_of(&slack.send(pane_message("1.0")).await.unwrap())
+        .parse()
+        .unwrap();
+    let stops = || {
+        json!({
+            "type": "event_callback", "team_id": "T1",
+            "event": {"type": "agent_session_stopped", "channel": "D_OTHER", "thread_ts": "1.0", "user": "U1"}
+        })
+    };
+    slack.send(stops()).await.unwrap();
+    let cancelled = || async {
+        slack
+            .db
+            .list_events(
+                session,
+                None,
+                None,
+                &["turn.cancelled".into()],
+                &[],
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+    };
+    assert!(cancelled().await.is_empty());
+    let mut stop = stops();
+    stop["event"]["channel"] = json!("D1");
+    slack.send(stop.clone()).await.unwrap();
+    assert_eq!(cancelled().await.len(), 1);
+    // Repeated stops use the shared terminal-state guard.
+    slack.send(stop).await.unwrap();
+    assert_eq!(cancelled().await.len(), 1);
+    assert_eq!(slack.bindings().await, 1);
+}
+
+#[tokio::test]
+async fn restricted_pane_accepts_legacy_controls_but_rejects_conflicting_channels() {
+    let mut config = slack_config(SessionBinding::Thread);
+    config.agent_surface_enabled = true;
+    config.channel_id = Some("D1".into());
+    let slack = Slack::new(config).await;
+    let session = session_of(&slack.send(pane_message("1.0")).await.unwrap());
+    slack
+        .send(pane_event(
+            "agent_session_title_changed",
+            "1.0",
+            json!({"title": "Legacy title"}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(slack.title(&session).await.as_deref(), Some("Legacy title"));
+    let mut conflicting = pane_event(
+        "agent_session_title_changed",
+        "1.0",
+        json!({"title": "Wrong channel"}),
+    );
+    conflicting["event"]["channel"] = json!("D_OTHER");
+    slack.send(conflicting).await.unwrap();
+    assert_eq!(slack.title(&session).await.as_deref(), Some("Legacy title"));
+}
+
+#[tokio::test]
 async fn where_the_user_looks_is_kept_without_an_event() {
     let mut config = slack_config(SessionBinding::Thread);
     config.agent_surface_enabled = true;

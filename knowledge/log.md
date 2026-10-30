@@ -64,6 +64,8 @@
 
 ## 2026-10-29
 
+- Implemented the [Slack Code](integrations/slack-code.md) durable task worker, shared session routing, review projection, requester hard approvals and opt-in installation. Live release qualification is blocked by the test app lacking Code scopes and an app-management grant.
+
 - Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.
 
 - Made the public generative UI gallery interactive using the shared chat renderer, with local action previews, reset, theme sync, and opt-in external media.
@@ -96,6 +98,8 @@
 - Route shell and embedded-interpreter directory renames through atomic workspace metadata moves, preserving file identities and rejecting protected trees, mount crossings and destination collisions. See [File Store](runtime-resources/file-store.md).
 
 ## 2026-10-28
+
+- Started [Slack Code](integrations/slack-code.md) with a typed session lifecycle, documented status payloads and scoped root/legacy controls; recorded remaining implementation and release gates.
 
 - Preserve provider attribution for Knowledge embeddings and retain deployment-owned index operation receipts separately from host pricing. See [Knowledge Indexing and Storage](runtime-resources/knowledge-indexing.md).
 - Unified console and Work Chat generative UI on a shared 69-component A2UI 1.0 catalog, with generated prompts, message actions, legacy compatibility and browser qualification. See [A2UI](ui/a2ui.md).

@@ -94,6 +94,77 @@ pub(crate) struct SlackEvent {
     pub(crate) attachments: Vec<SlackAttachment>,
 }
 
+impl SlackEvent {
+    /// Both generations of session events occur in the wild. Reject conflicting
+    /// coordinates instead of authorizing one channel and acting on another.
+    pub(crate) fn session_coordinates(&self) -> Option<(&str, Option<&str>)> {
+        let nested = self.assistant_thread.as_ref();
+        let channel = matching_coordinate(
+            self.channel.as_deref(),
+            nested.and_then(|thread| thread.channel_id.as_deref()),
+        )??;
+        let thread = matching_coordinate(
+            self.thread_ts.as_deref(),
+            nested.and_then(|thread| thread.thread_ts.as_deref()),
+        )?;
+        Some((channel, thread))
+    }
+}
+
+fn matching_coordinate<'a>(
+    root: Option<&'a str>,
+    nested: Option<&'a str>,
+) -> Option<Option<&'a str>> {
+    match (root, nested) {
+        (Some(root), Some(nested)) if root != nested => None,
+        (Some(value), _) | (_, Some(value)) if value.trim().is_empty() => None,
+        (root, nested) => Some(root.or(nested)),
+    }
+}
+
+#[cfg(test)]
+mod session_coordinate_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn root_and_legacy_session_events_resolve_the_same_conversation() {
+        for payload in [
+            json!({"type": "agent_session_stopped", "channel": "D1", "thread_ts": "1.0"}),
+            json!({"type": "agent_session_stopped", "assistant_thread": {"channel_id": "D1", "thread_ts": "1.0"}}),
+            json!({"type": "agent_session_stopped", "channel": "D1", "assistant_thread": {"thread_ts": "1.0"}}),
+        ] {
+            let event: SlackEvent = serde_json::from_value(payload).unwrap();
+            assert_eq!(event.session_coordinates(), Some(("D1", Some("1.0"))));
+        }
+    }
+
+    #[test]
+    fn channel_wide_events_do_not_invent_a_thread() {
+        let event: SlackEvent = serde_json::from_value(json!({
+            "type": "agent_session_stopped", "channel": "C1"
+        }))
+        .unwrap();
+        assert_eq!(event.session_coordinates(), Some(("C1", None)));
+    }
+
+    #[test]
+    fn ambiguous_or_empty_coordinates_fail_closed() {
+        for payload in [
+            json!({"channel": "C1", "assistant_thread": {"channel_id": "C2"}}),
+            json!({"channel": "C1", "thread_ts": "1.0", "assistant_thread": {"thread_ts": "2.0"}}),
+            json!({"channel": ""}),
+            json!({"channel": "C1", "thread_ts": ""}),
+            json!({}),
+        ] {
+            let mut payload = payload;
+            payload["type"] = json!("agent_session_stopped");
+            let event: SlackEvent = serde_json::from_value(payload).unwrap();
+            assert_eq!(event.session_coordinates(), None);
+        }
+    }
+}
+
 /// Slack file attachment object (subset of fields we care about).
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]

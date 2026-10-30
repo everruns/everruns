@@ -25,6 +25,7 @@ import {
 import {
   SlackConversationSettings,
   SlackAgentPaneSettings,
+  SlackCodeSettings,
 } from "@/components/apps/slack-conversation-settings";
 import { CronInput, isSupportedCronExpression } from "@/components/apps/cron-label";
 import {
@@ -120,6 +121,7 @@ export type ChannelFormState = {
   /** Public id of the Slack app Everruns created for this channel, once there is one. */
   slackAppId: string;
   slackAgentSurfaceEnabled: boolean;
+  slackCodeChannelsEnabled: boolean;
   slackSessionStrategy: SessionStrategy;
   slackResponsePolicy: SlackResponsePolicy;
   scheduleCronExpression: string;
@@ -184,6 +186,7 @@ export function getDefaultChannelFormState(
     slackInstallTeamId: "",
     slackAppId: "",
     slackAgentSurfaceEnabled: false,
+    slackCodeChannelsEnabled: false,
     slackSessionStrategy: "per_thread",
     slackResponsePolicy: "all_messages",
     scheduleCronExpression: "0 0 * * * * *",
@@ -377,6 +380,7 @@ export function getDefaultChannelFormState(
       ),
       slackAppId: config.slack_app_id || "",
       slackAgentSurfaceEnabled: config.agent_surface_enabled ?? false,
+      slackCodeChannelsEnabled: config.code_channels_enabled ?? false,
       slackSessionStrategy: config.session_strategy || "per_thread",
       slackResponsePolicy: config.response_policy || "all_messages",
     };
@@ -1357,6 +1361,12 @@ export function ChannelForm({
               onSessionStrategyChange={(value) => update("slackSessionStrategy", value)}
             />
 
+            <SlackCodeSettings
+              idPrefix={slackFormId}
+              enabled={state.slackCodeChannelsEnabled}
+              configured={state.slackCredentialsConfigured}
+              onChange={(checked) => update("slackCodeChannelsEnabled", checked)}
+            />
             <SlackAgentPaneSettings
               idPrefix={slackFormId}
               enabled={state.slackAgentSurfaceEnabled}

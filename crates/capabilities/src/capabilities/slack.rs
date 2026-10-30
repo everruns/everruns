@@ -20,6 +20,7 @@ use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use serde_json::{Value, json};
 
+mod code_task;
 mod model_view;
 
 use crate::slack_action::{
@@ -84,7 +85,11 @@ impl Capability for SlackCapability {
              message created. `channel` and `timestamp` come from the Slack message you are \
              replying to: copy them exactly from its `[slack channel=... timestamp=...]` annotation, \
              including every fractional digit. Never infer the timestamp from a date. Prefer a reaction over a \
-             message when you only need to acknowledge something.",
+             message when you only need to acknowledge something. In a Slack Code task, use \
+             slack_code_task to keep repository context, a real diff and the summary current after \
+             meaningful changes. Use the publication revision on the task input, then the latest \
+             returned revision. When the task is finished and validation is recorded, queue a final \
+             summary with complete=true; the runtime archives only after the turn ends.",
         )
     }
 
@@ -97,6 +102,7 @@ impl Capability for SlackCapability {
             Box::new(SlackUpdateMessageTool),
             Box::new(SlackLookupUserTool),
             Box::new(SlackUploadFileTool),
+            Box::new(code_task::SlackCodeTaskTool),
         ]
     }
 
@@ -145,6 +151,9 @@ async fn run(context: &ToolContext, action: SlackAction) -> ToolExecutionResult 
 
 fn outcome_to_json(outcome: SlackActionOutcome) -> Value {
     match outcome {
+        SlackActionOutcome::CodeTaskUpdated { revision } => {
+            json!({"queued":true,"revision":revision})
+        }
         SlackActionOutcome::MessagePosted { channel, timestamp } => json!({
             "success": true, "channel": channel, "timestamp": timestamp,
         }),
@@ -933,6 +942,7 @@ mod tests {
                 "slack_update_message",
                 "slack_lookup_user",
                 "slack_upload_file",
+                "slack_code_task",
             ]
         );
     }

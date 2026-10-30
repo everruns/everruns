@@ -149,6 +149,7 @@ pub(crate) enum ApprovalResolveError {
 /// What resolving a batch writes through: storage, the event log, and the
 /// durable runner that resumes the turn.
 pub(crate) struct ApprovalServices<'a> {
+    pub(crate) external_actor: Option<everruns_core::channel::ExternalActor>,
     pub(crate) db: &'a std::sync::Arc<StorageBackend>,
     pub(crate) event_service: &'a EventService,
     pub(crate) runner: &'a std::sync::Arc<dyn everruns_core::host::TurnBackend>,
@@ -175,6 +176,7 @@ pub(crate) async fn resolve_tool_approvals(
         event_service,
         runner,
         credential_authorizer,
+        external_actor,
     } = services;
     if pending.is_empty() {
         return Err(ApprovalResolveError::NotFound(
@@ -272,6 +274,7 @@ pub(crate) async fn resolve_tool_approvals(
     // Inherit the run's controls so the resumed turn stays on the model the
     // person was talking to (same reasoning as `mcp_url_consent`).
     let mut message = RuntimeMessage::user(spoken.join("\n"));
+    message.external_actor = external_actor.clone();
     message.controls = latest_user_controls(db, session_id).await;
     let mut events = vec![EventRequest::new(
         session_id,
@@ -492,6 +495,7 @@ pub async fn submit_tool_approvals(
     );
     let resolved = resolve_tool_approvals(
         &ApprovalServices {
+            external_actor: None,
             db: &state.db,
             event_service: &state.event_service,
             runner: &state.runner,
