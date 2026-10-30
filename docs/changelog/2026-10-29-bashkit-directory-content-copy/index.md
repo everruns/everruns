@@ -4,7 +4,8 @@ description: Recursive copies using source/. preserve nested companion files, hi
 date: 2026-10-29
 kind: fix
 significance: notable
-products: [bashkit]
+products: [bashkit, cloud]
+cloud: 2026-10-30
 surfaces: [code, agent]
 links:
   prs: [everruns/bashkit#2796]
