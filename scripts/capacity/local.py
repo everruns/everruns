@@ -87,18 +87,17 @@ def build(args):
             built["chat-capacity-fixture"],
             built["everruns-worker"],
         )
-    subprocess.run(
-        ["pnpm", "install", "--frozen-lockfile"],
-        cwd=ROOT / "apps/chat-ui",
-        check=True,
-        stdout=subprocess.DEVNULL,
-    )
-    subprocess.run(
-        ["pnpm", "build"],
-        cwd=ROOT / "apps/chat-ui",
-        check=True,
-        stdout=subprocess.DEVNULL,
-    )
+    # Package managers report install failures on stdout. Keep those diagnostics
+    # beside the Rust build output instead of discarding the reason for failure.
+    with open(args.build_log, "a") as log:
+        for command in [["pnpm", "install", "--frozen-lockfile"], ["pnpm", "build"]]:
+            subprocess.run(
+                command,
+                cwd=ROOT / "apps/chat-ui",
+                check=True,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
 
 
 def bootstrap(lab):
