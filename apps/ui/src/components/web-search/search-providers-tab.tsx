@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 // Web search → Providers: one card per way the organization can search.
 // Model provider search lists which connected model providers offer it and
@@ -6,6 +7,7 @@
 // Automatic; free search is always there. Admins connect, test, rotate and
 // disconnect accounts here (knowledge/integrations/web-search.md, UI).
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState, type ReactNode } from "react";
 import { FlaskConical, KeyRound, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -146,6 +148,10 @@ export function SearchProvidersTab({
   onGoToDefaults: () => void;
   onNotice: (notice: Notice) => void;
 }) {
+  const { displayLocale } = useLocale();
+
+  const requestConfirmation = useConfirmation();
+  const ui = useUiTranslations();
   const remove = useDeleteOrganizationConnection();
   const [testing, setTesting] = useState<string | null>(null);
 
@@ -161,7 +167,7 @@ export function SearchProvidersTab({
   if (error || !catalog) {
     return (
       <p role="alert" className="text-sm text-destructive">
-        Could not load search providers.
+        {ui("Could not load search providers.")}
       </p>
     );
   }
@@ -197,13 +203,15 @@ export function SearchProvidersTab({
 
   const role = (account: SearchAccountSummary): ReactNode => {
     if (defaults.provider === "account" && defaults.account_id === account.id) {
-      return <Badge variant="accent">Organization default</Badge>;
+      return <Badge variant="accent">{ui("Organization default")}</Badge>;
     }
     const position = order.findIndex((entry) => entry.id === account.id);
-    if (account.status !== "ready") return <span className="text-muted-foreground">Not used</span>;
+    if (account.status !== "ready")
+      return <span className="text-muted-foreground">{ui("Not used")}</span>;
     return (
       <Badge variant="outline" className="border-info/40 text-info">
-        Automatic #{position + 1}
+        {ui("Automatic #")}
+        {position + 1}
       </Badge>
     );
   };
@@ -213,14 +221,16 @@ export function SearchProvidersTab({
       <ProviderCard
         testId="native-search-card"
         icon={<SearchProviderIcon kind="native" className="size-5" />}
-        title="Model provider search"
+        title={ui("Model provider search")}
         subtitle="Built in · native"
         status={
           <StatusDot tone={allowNative ? "ok" : "off"}>
-            {allowNative ? "Allowed" : "Turned off"}
+            {allowNative ? ui("Allowed") : ui("Turned off")}
           </StatusDot>
         }
-        description="The model searches through its own provider and cites what it read. Picked first in Automatic."
+        description={ui(
+          "The model searches through its own provider and cites what it read. Picked first in Automatic.",
+        )}
         facts={[
           [
             "Works with",
@@ -268,7 +278,7 @@ export function SearchProvidersTab({
         }
         actions={
           <Button variant="ghost" size="sm" onClick={onGoToDefaults}>
-            Settings
+            {ui("Settings")}
           </Button>
         }
       />
@@ -287,10 +297,12 @@ export function SearchProvidersTab({
             title={connector?.name ?? label}
             subtitle={`Search account · ${account.name}`}
             status={
-              <StatusDot tone={ready ? "ok" : "warn"}>{ready ? "Active" : "Needs a key"}</StatusDot>
+              <StatusDot tone={ready ? "ok" : "warn"}>
+                {ready ? ui("Active") : ui("Needs a key")}
+              </StatusDot>
             }
             description={
-              connector?.description ?? "An organization search account. Searches bill its key."
+              connector?.description ?? ui("An organization search account. Searches bill its key.")
             }
             facts={[
               [
@@ -299,11 +311,11 @@ export function SearchProvidersTab({
                   "Configured"
                 ) : (
                   <span key="cred" className="text-warning">
-                    Not set
+                    {ui("Not set")}
                   </span>
                 ),
               ],
-              ["Connected", new Date(account.connected_at).toLocaleDateString()],
+              ["Connected", new Date(account.connected_at).toLocaleDateString(displayLocale)],
               ["Cost", "Billed on this key by the provider"],
               ["Role", role(account)],
             ]}
@@ -314,8 +326,8 @@ export function SearchProvidersTab({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Test ${label}`}
-                    title="Run a test search"
+                    aria-label={ui("Test {value0}", { value0: label })}
+                    title={ui("Run a test search")}
                     disabled={!ready || testing !== null}
                     onClick={() => void runTest(`account:${account.id}`, label)}
                   >
@@ -324,8 +336,8 @@ export function SearchProvidersTab({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Rotate key of ${label}`}
-                    title="Rotate key"
+                    aria-label={ui("Rotate key of {value0}", { value0: label })}
+                    title={ui("Rotate key")}
                     onClick={() => onRotate(account)}
                   >
                     <KeyRound className="size-4" />
@@ -333,11 +345,15 @@ export function SearchProvidersTab({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Disconnect ${label}`}
-                    title="Disconnect"
+                    aria-label={ui("Disconnect {value0}", { value0: label })}
+                    title={ui("Disconnect")}
                     disabled={remove.isPending}
                     onClick={async () => {
-                      if (!window.confirm(`Disconnect ${label}? Agents set to it fall back.`)) {
+                      if (
+                        !(await requestConfirmation(
+                          `Disconnect ${label}? Agents set to it fall back.`,
+                        ))
+                      ) {
                         return;
                       }
                       try {
@@ -369,7 +385,7 @@ export function SearchProvidersTab({
           icon={<SearchProviderIcon kind="hosted" className="size-5" />}
           title={hostedBuiltIn.name}
           subtitle="Built in · no key"
-          status={<StatusDot tone="ok">Active</StatusDot>}
+          status={<StatusDot tone="ok">{ui("Active")}</StatusDot>}
           description={hostedBuiltIn.description}
           facts={[
             ["Cost", hostedBuiltIn.price_note ?? "Included"],
@@ -390,17 +406,19 @@ export function SearchProvidersTab({
       <ProviderCard
         testId="free-search-card"
         icon={<SearchProviderIcon kind="free" className="size-5" />}
-        title={freeBuiltIn?.name ?? "Free search"}
+        title={freeBuiltIn?.name ?? ui("Free search")}
         subtitle="Built in · no key"
-        status={<StatusDot tone="ok">Active</StatusDot>}
-        description="Best-effort results from DuckDuckGo, with DuckDuckGo Lite and Mojeek as fallbacks. Developer queries also check GitHub, npm and crates.io."
+        status={<StatusDot tone="ok">{ui("Active")}</StatusDot>}
+        description={ui(
+          "Best-effort results from DuckDuckGo, with DuckDuckGo Lite and Mojeek as fallbacks. Developer queries also check GitHub, npm and crates.io.",
+        )}
         facts={[
           ["Cost", "Free"],
           ["Reliability", "Best effort, can be rate limited"],
           [
             "Role",
             <Badge key="role" variant="outline">
-              Last resort in every plan
+              {ui("Last resort in every plan")}
             </Badge>,
           ],
         ]}
@@ -410,8 +428,8 @@ export function SearchProvidersTab({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Test Free search"
-              title="Run a test search"
+              aria-label={ui("Test Free search")}
+              title={ui("Run a test search")}
               disabled={testing !== null}
               onClick={() => void runTest("free", "Free search")}
             >
@@ -428,10 +446,10 @@ export function SearchProvidersTab({
           className="flex min-h-48 flex-col items-center justify-center gap-1.5 border border-dashed bg-card/40 p-6 text-center transition-colors hover:border-muted-foreground/60 hover:bg-card"
         >
           <Plus className="size-5 text-muted-foreground" />
-          <span className="text-sm font-medium">Connect search provider</span>
+          <span className="text-sm font-medium">{ui("Connect search provider")}</span>
           <span className="text-xs text-muted-foreground">
             {catalog.connectors.map((connector) => connector.name).join(" · ") ||
-              "No search connectors available"}
+              ui("No search connectors available")}
           </span>
         </button>
       )}

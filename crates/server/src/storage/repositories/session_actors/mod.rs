@@ -66,8 +66,19 @@
 //   `MAX_ACTOR_JOURNAL_LIMIT` events per call; the caller pages with
 //   `has_more`. A turn's log is bounded in practice by its iteration cap, so
 //   one page is the common case.
+// - The journal leaves out `llm.generation` (EVERRUNS-37). Each one records
+//   the whole prompt sent to the model, again in the provider request body,
+//   so a turn's generations grow with the square of its iterations and were
+//   nearly all of a resume's read (a 35-iteration turn: 10 MB of
+//   generations, 0.25 MB of everything else; prod reads of 300-500 events
+//   took over a second) while no fold or scan reads them. They are
+//   observability records, never a turn's input or state. `head_sequence`
+//   is still the log's, so the cursor and the fence see every event.
 
+mod capability_admission;
 mod detached;
+mod journal_admission;
+mod journal_snapshot;
 pub(super) mod rows;
 use rows::*;
 
@@ -197,6 +208,20 @@ impl Database {
         ttl: Duration,
         max_per_org: i64,
     ) -> Result<Vec<LeasedActorRow>> {
+        self.lease_session_actors_for_worker(holder, limit, ttl, max_per_org, None)
+            .await
+    }
+
+    /// `None` is the built-in fleet; a deployment id selects only that custom
+    /// worker's agent. Filtering happens before the bounded candidate scan.
+    pub async fn lease_session_actors_for_worker(
+        &self,
+        holder: &str,
+        limit: i64,
+        ttl: Duration,
+        max_per_org: i64,
+        custom_worker_id: Option<uuid::Uuid>,
+    ) -> Result<Vec<LeasedActorRow>> {
         let limit = limit.clamp(0, MAX_ACTOR_LEASE_BATCH);
         if limit == 0 {
             return Ok(Vec::new());
@@ -216,6 +241,16 @@ impl Database {
                       SELECT 1 FROM detached_tool_calls d
                       WHERE d.session_id = session_actors.session_id
                   )
+                  AND CASE WHEN $6::uuid IS NULL THEN NOT EXISTS (
+                      SELECT 1 FROM sessions s JOIN custom_workers w
+                        ON w.agent_id = s.agent_id AND w.org_id = s.org_id
+                      WHERE s.id = session_actors.session_id
+                  ) ELSE EXISTS (
+                      SELECT 1 FROM sessions s JOIN custom_workers w
+                        ON w.agent_id = s.agent_id AND w.org_id = s.org_id
+                      WHERE s.id = session_actors.session_id
+                        AND w.id = $6 AND w.enabled
+                  ) END
                 ORDER BY runnable_since, session_id
                 LIMIT $2
                 FOR UPDATE SKIP LOCKED
@@ -271,6 +306,7 @@ impl Database {
         .bind(max_per_org.max(0))
         .bind(holder)
         .bind(ttl_millis(ttl))
+        .bind(custom_worker_id)
         .fetch_all(&self.pool)
         .await?)
     }
@@ -294,6 +330,11 @@ impl Database {
                 cancel_reported = (cancel_requested_at IS NOT NULL),
                 consumed_seq = GREATEST(consumed_seq, $5)
             WHERE session_id = $1 AND lease_holder = $2 AND lease_fence = $3
+              -- Commit without waiting for the WAL flush (this statement's
+              -- transaction only): a renewal a crash loses only makes the lease
+              -- look older, and the fence guards every write its holder makes.
+              -- About one in seven of a turn's commits (2026-10-29 load test).
+              AND (SELECT set_config('synchronous_commit', 'off', true)) IS NOT NULL
             RETURNING inbox_seq,
                       CASE WHEN cancel_requested_at IS NOT NULL
                            THEN COALESCE(cancel_inbox_seq, inbox_seq)
@@ -305,7 +346,9 @@ impl Database {
         .bind(fence)
         .bind(ttl_millis(ttl))
         .bind(consumed_seq)
-        .fetch_optional(&self.pool)
+        // The raw pool: the relaxed commit above must never reach a caller's
+        // command transaction.
+        .fetch_optional(self.pool.raw())
         .await?)
     }
 
@@ -344,6 +387,38 @@ impl Database {
                 cancel_reported = FALSE
             WHERE session_id = $1 AND lease_holder = $2 AND lease_fence = $3
             RETURNING runnable_since IS NOT NULL
+            "#,
+        )
+        .bind(session_id)
+        .bind(holder)
+        .bind(fence)
+        .bind(consumed_inbox_seq)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    /// Hand `holder`'s lease on `session_id` back mid-turn (a draining worker,
+    /// between steps): like [`Self::release_session_actor`], but the actor
+    /// stays runnable, keeping its place in the queue, so the next lease call
+    /// resumes the open turn from the log at once. A pending cancel is left
+    /// for the next holder. `None` when the lease was already lost.
+    pub async fn hand_off_session_actor(
+        &self,
+        session_id: SessionId,
+        holder: &str,
+        fence: i64,
+        consumed_inbox_seq: i64,
+    ) -> Result<Option<bool>> {
+        Ok(sqlx::query_scalar::<_, bool>(
+            r#"
+            UPDATE session_actors SET
+                lease_holder = NULL,
+                lease_expires_at = NULL,
+                consumed_seq = GREATEST(consumed_seq, $4),
+                attempts = 0,
+                runnable_since = COALESCE(runnable_since, NOW())
+            WHERE session_id = $1 AND lease_holder = $2 AND lease_fence = $3
+            RETURNING TRUE
             "#,
         )
         .bind(session_id)
@@ -428,14 +503,47 @@ impl Database {
 
     /// The tail of `session_id`'s log an actor folds to resume: events after
     /// `after_sequence`, or from the latest `turn.started` (the whole log when
-    /// no turn started yet). At most `limit` events, capped at
-    /// [`MAX_ACTOR_JOURNAL_LIMIT`].
+    /// no turn started yet), without `llm.generation` records. At most
+    /// `limit` events, capped at [`MAX_ACTOR_JOURNAL_LIMIT`].
     pub async fn read_session_actor_journal(
         &self,
         session_id: SessionId,
         after_sequence: Option<i32>,
         limit: i64,
     ) -> Result<ActorJournalRows> {
+        let (events, has_more) =
+            Self::actor_journal_events_on(&self.pool, session_id, after_sequence, limit).await?;
+        let head_sequence = Self::actor_journal_head_on(&self.pool, session_id).await?;
+        Ok(ActorJournalRows {
+            events,
+            has_more,
+            head_sequence,
+        })
+    }
+
+    pub(super) async fn read_session_actor_journal_on(
+        connection: &mut sqlx::PgConnection,
+        session_id: SessionId,
+        after_sequence: Option<i32>,
+        limit: i64,
+    ) -> Result<ActorJournalRows> {
+        let (events, has_more) =
+            Self::actor_journal_events_on(&mut *connection, session_id, after_sequence, limit)
+                .await?;
+        let head_sequence = Self::actor_journal_head_on(connection, session_id).await?;
+        Ok(ActorJournalRows {
+            events,
+            has_more,
+            head_sequence,
+        })
+    }
+
+    async fn actor_journal_events_on<'e>(
+        connection: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+        session_id: SessionId,
+        after_sequence: Option<i32>,
+        limit: i64,
+    ) -> Result<(Vec<EventRow>, bool)> {
         let limit = if limit <= 0 {
             DEFAULT_ACTOR_JOURNAL_LIMIT
         } else {
@@ -455,6 +563,7 @@ impl Database {
                       LIMIT 1
                   ), 0)
               END
+              AND event_type <> 'llm.generation'
             ORDER BY sequence
             LIMIT $3
             "#
@@ -462,20 +571,22 @@ impl Database {
         .bind(session_id)
         .bind(after_sequence)
         .bind(limit + 1)
-        .fetch_all(&self.pool)
+        .fetch_all(connection)
         .await?;
         let has_more = events.len() as i64 > limit;
         events.truncate(limit as usize);
-        let head_sequence = sqlx::query_scalar::<_, Option<i32>>(
+        Ok((events, has_more))
+    }
+
+    async fn actor_journal_head_on<'e>(
+        connection: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+        session_id: SessionId,
+    ) -> Result<Option<i32>> {
+        Ok(sqlx::query_scalar::<_, Option<i32>>(
             "SELECT MAX(sequence) FROM events WHERE session_id = $1",
         )
         .bind(session_id)
-        .fetch_one(&self.pool)
-        .await?;
-        Ok(ActorJournalRows {
-            events,
-            has_more,
-            head_sequence,
-        })
+        .fetch_one(connection)
+        .await?)
     }
 }

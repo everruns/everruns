@@ -93,6 +93,48 @@ a narrow column on the right holds the settings:
 Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats**, and
 **Sessions**. Preview's Files card follows the same filesystem rule.
 
+#### Estimate agent cost
+
+Open **Agents**, select an agent, then click **Estimate cost** in the page header.
+The button is available from every tab, including while editing.
+
+**Smart estimate** suggests three typical tasks from the agent’s instructions and tools.
+Optionally describe a workload, then choose **Update estimate** to regenerate the suggestions.
+Adjust each task’s relative frequency, or set it to zero to exclude it.
+
+Plan **By tasks** with tasks per day, or **By users** with active users and tasks per user per day.
+Sliders and exact number inputs update average task, daily and monthly costs immediately, without
+another AI call. The chart shows monthly spend as usage grows, with lighter and heavier task
+scenarios. A month means 30 days of use.
+
+Suggestions are editable assumptions, not measured behavior. **Advanced assumptions** lets you
+adjust each task’s model calls and token counts. Current catalog prices determine the money;
+the utility model does not invent prices. Missing prices and oversized tasks are shown explicitly.
+
+Smart estimates require the deployment’s utility LLM service. The **Manual calculator** remains
+available if smart estimates are unavailable. Neither mode executes tasks or saves the agent.
+The **Manual calculator** covers AI tokens only. Smart estimates can include additional costs below.
+These are planning estimates, not quotes or spending limits. Compare representative Playground
+runs before budgeting.
+
+In **Smart estimate**, use **Other operating costs** to include sandbox runtime, paid tools,
+media generation, subagent work, and monthly hosting or platform fees. Enter resource usage
+per average task and the provider's unit price. For a sandbox, use the complete instance price,
+including memory, and include idle time. For subagents, enter the estimated cost of one child
+task. These resource inputs are your assumptions; the AI task suggestions do not infer them.
+An unknown price is shown as **price needed**, not as free usage. Monthly fees are added once,
+including at zero task volume; the daily projection allocates one thirtieth of those fees.
+
+Where a host supplies prepaid service rates, the dashboard separates credit spend from external
+provider bills. Model prices come from the selected model catalog, and managed service rates
+come from the host. Adding a resource to a plan does not change its billing arrangement.
+
+**Advanced assumptions** also accepts an extra model-spend allowance for retries, cached-input
+reads, and cache writes. Cache shares cannot exceed 100% combined. The retry allowance covers
+model spend only: add repeated tool work and sandbox time to resource quantities. Cache prices
+follow the model catalog, including context tiers. The chart varies model workload while keeping
+resource assumptions fixed. Only resources you include contribute to the estimate.
+
 #### Avatar
 
 **Branding** starts with the agent's avatar. Drop a PNG, JPEG, GIF, or WebP image (at most 10 MB)

@@ -1,0 +1,11 @@
+---
+import DefaultHead from "@astrojs/starlight/components/Head.astro";
+import sansFont from "@fontsource-variable/geist/files/geist-latin-wght-normal.woff2?url";
+import monoFont from "@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?url";
+---
+
+<!-- Discover the fonts with the document, before CSS reveals its font faces.
+     Use the same assets as slate.css so the preloads satisfy those requests. -->
+<link rel="preload" href={sansFont} as="font" type="font/woff2" crossorigin />
+<link rel="preload" href={monoFont} as="font" type="font/woff2" crossorigin />
+<DefaultHead />

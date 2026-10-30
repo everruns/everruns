@@ -1,5 +1,9 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
+import { usePolicies } from "@/hooks/use-policies";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
 import { useState, type ReactNode } from "react";
 import {
   Clock3,
@@ -25,6 +29,7 @@ import {
   EMPTY_TRIGGER_FORM,
   isTriggerFormValid,
   TriggerFormFields,
+  scheduleTriggerDraftSchema,
   type TriggerFormState,
 } from "@/components/agents/trigger-form";
 import {
@@ -47,15 +52,20 @@ import { Switch } from "@/components/ui/switch";
 import { formatDistanceToNow } from "@/lib/formatting";
 
 function TriggerRuns({ agentId, triggerId }: { agentId: string; triggerId: string }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const { data: runs = [], isLoading } = useAgentTriggerRuns(agentId, triggerId);
-  if (isLoading) return <p className="text-xs text-muted-foreground">Loading recent outcomes…</p>;
-  if (runs.length === 0) return <p className="text-xs text-muted-foreground">No runs yet.</p>;
+  if (isLoading)
+    return <p className="text-xs text-muted-foreground">{ui("Loading recent outcomes…")}</p>;
+  if (runs.length === 0)
+    return <p className="text-xs text-muted-foreground">{ui("No runs yet.")}</p>;
   return (
     <div className="flex flex-wrap gap-2">
       {runs.slice(0, 5).map((run) => (
         <span key={run.id} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
           <Badge variant={run.status === "completed" ? "default" : "outline"}>{run.status}</Badge>
-          {formatDistanceToNow(new Date(run.scheduled_at), { addSuffix: true })}
+          {formatDistanceToNow(new Date(run.scheduled_at), { addSuffix: true }, displayLocale)}
         </span>
       ))}
     </div>
@@ -69,6 +79,7 @@ export function AgentTriggersPanel({
   agentId: string;
   children?: ReactNode;
 }) {
+  const ui = useUiTranslations();
   const { data: triggers = [], isLoading } = useAgentTriggers(agentId);
   const updateTrigger = useUpdateAgentTrigger(agentId);
   const deleteTrigger = useDeleteAgentTrigger(agentId);
@@ -79,6 +90,45 @@ export function AgentTriggersPanel({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<TriggerFormState>(EMPTY_TRIGGER_FORM);
   const [error, setError] = useState<string | null>(null);
+  const policy = usePolicies("agents");
+  const canManage = !policy.isLoading && !policy.error && policy.can("agent.manage");
+  const savedTrigger = triggers.find((trigger) => trigger.id === editing?.id);
+  const savedConfig = savedTrigger ? getScheduleTriggerConfig(savedTrigger) : undefined;
+  const saved = {
+    cron_expression: savedConfig?.cron_expression ?? EMPTY_TRIGGER_FORM.cron_expression,
+    timezone: savedConfig?.timezone ?? "UTC",
+    session_mode: savedConfig?.session_mode ?? "shared_session",
+    message: savedConfig?.message ?? "",
+    enabled: savedTrigger?.enabled ?? true,
+  };
+  const values = {
+    ...form,
+    timezone: form.timezone ?? "UTC",
+    session_mode: form.session_mode ?? "shared_session",
+  };
+  usePageFormPrefill({
+    identity: editing?.id ?? "none",
+    open: dialogOpen,
+    values,
+    saved,
+    apply: setForm,
+  });
+  const chatDraft = usePageFormDraft({
+    schema: scheduleTriggerDraftSchema,
+    entityType: "agent_trigger",
+    entityId: editing?.id,
+    formId: "schedule",
+    label: "Edit trigger",
+    priority: 30,
+    // A deleted/loading trigger must keep owning this dialog's binding, rather
+    // than exposing the writable Agent form underneath it.
+    enabled: dialogOpen,
+    baseline: savedTrigger?.updated_at ?? "new",
+    values,
+    dirty: JSON.stringify(values) !== JSON.stringify(saved),
+    writable: !!savedTrigger && canManage && !updateTrigger.isPending,
+    apply: setForm,
+  });
 
   const openEdit = (trigger: AgentTrigger) => {
     const config = getScheduleTriggerConfig(trigger);
@@ -95,7 +145,8 @@ export function AgentTriggersPanel({
   };
 
   const save = async () => {
-    if (!editing) return;
+    if (!editing || !savedTrigger || !canManage || chatDraft.blocked || updateTrigger.isPending)
+      return;
     if (!isTriggerFormValid(form)) {
       setError("Enter a valid schedule and a non-empty message.");
       return;
@@ -113,22 +164,24 @@ export function AgentTriggersPanel({
     <section id="triggers" className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold tracking-tight">Triggers</h3>
-          <p className="text-sm text-muted-foreground">When this agent wakes up on its own</p>
+          <h3 className="text-lg font-semibold tracking-tight">{ui("Triggers")}</h3>
+          <p className="text-sm text-muted-foreground">
+            {ui("When this agent wakes up on its own")}
+          </p>
         </div>
         <LinkButton href={`/agents/${agentId}/triggers/new`} size="sm">
-          <Plus className="size-4" /> Add trigger
+          <Plus className="size-4" /> {ui("Add trigger")}
         </LinkButton>
       </div>
       {children}
       <div className="space-y-3">
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading triggers…</p>
+          <p className="text-sm text-muted-foreground">{ui("Loading triggers…")}</p>
         ) : triggers.length === 0 ? (
           <EmptyState
             icon={<Clock3 />}
-            title="No triggers yet"
-            description="Add a schedule or event to run this agent proactively."
+            title={ui("No triggers yet")}
+            description={ui("Add a schedule or event to run this agent proactively.")}
             className="border-solid bg-card py-8"
           />
         ) : (
@@ -164,10 +217,11 @@ export function AgentTriggersPanel({
                         <Webhook className="size-4 text-muted-foreground" />
                       )}
                       {isGithub ? (
-                        <span className="font-medium">GitHub pull requests</span>
+                        <span className="font-medium">{ui("GitHub pull requests")}</span>
                       ) : isMcpEvent ? (
                         <span className="font-medium">
-                          MCP event {mcpEventConfig.event} on {mcpEventConfig.server}
+                          {ui("MCP event")} {mcpEventConfig.event} {ui("on")}{" "}
+                          {mcpEventConfig.server}
                         </span>
                       ) : isSchedule ? (
                         <CronLabel
@@ -175,10 +229,10 @@ export function AgentTriggersPanel({
                           tz={getScheduleTriggerConfig(trigger).timezone}
                         />
                       ) : (
-                        <span className="font-medium">Webhook</span>
+                        <span className="font-medium">{ui("Webhook")}</span>
                       )}
                       <Badge variant={trigger.enabled ? "default" : "outline"}>
-                        {trigger.enabled ? "Enabled" : "Disabled"}
+                        {trigger.enabled ? ui("Enabled") : ui("Disabled")}
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">{config.message}</p>
@@ -187,21 +241,22 @@ export function AgentTriggersPanel({
                         {(githubConfig.events ?? []).join(", ")} ·{" "}
                         {githubConfig.repositories?.length
                           ? githubConfig.repositories.join(", ")
-                          : "all repositories"}
+                          : ui("all repositories")}
                       </p>
                     )}
                     <p className="text-xs text-muted-foreground">
                       {config.session_mode === "session_per_invocation"
-                        ? "New session per run"
+                        ? ui("New session per run")
                         : config.session_mode === "per_thread"
-                          ? "One session per pull request"
-                          : "One session for everything"}
+                          ? ui("One session per pull request")
+                          : ui("One session for everything")}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Switch
+                      disabled={!canManage || updateTrigger.isPending}
                       checked={trigger.enabled}
-                      aria-label={trigger.enabled ? "Disable trigger" : "Enable trigger"}
+                      aria-label={trigger.enabled ? ui("Disable trigger") : ui("Enable trigger")}
                       onCheckedChange={(enabled) =>
                         updateTrigger.mutate({ triggerId: trigger.id, request: { enabled } })
                       }
@@ -211,7 +266,7 @@ export function AgentTriggersPanel({
                         href={`/agents/${agentId}/triggers/${trigger.id}`}
                         variant="ghost"
                         size="icon-sm"
-                        aria-label="Open trigger editor"
+                        aria-label={ui("Open trigger editor")}
                       >
                         <ExternalLink className="size-4" />
                       </LinkButton>
@@ -222,19 +277,24 @@ export function AgentTriggersPanel({
                           size="sm"
                           variant="outline"
                           onClick={() => runTrigger.mutate(trigger.id)}
-                          disabled={!trigger.enabled || runTrigger.isPending}
+                          disabled={!canManage || !trigger.enabled || runTrigger.isPending}
                         >
-                          <Play className="size-4" /> Run now
+                          <Play className="size-4" /> {ui("Run now")}
                         </Button>
-                        <Button size="icon-sm" variant="ghost" onClick={() => openEdit(trigger)}>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          disabled={!canManage}
+                          onClick={() => openEdit(trigger)}
+                        >
                           <Pencil className="size-4" />
-                          <span className="sr-only">Quick edit trigger</span>
+                          <span className="sr-only">{ui("Quick edit trigger")}</span>
                         </Button>
                         <LinkButton
                           href={`/agents/${agentId}/triggers/${trigger.id}`}
                           variant="ghost"
                           size="icon-sm"
-                          aria-label="Open trigger editor"
+                          aria-label={ui("Open trigger editor")}
                         >
                           <ExternalLink className="size-4" />
                         </LinkButton>
@@ -243,17 +303,18 @@ export function AgentTriggersPanel({
                     <Button
                       size="icon-sm"
                       variant="ghost"
+                      disabled={!canManage || deleteTrigger.isPending}
                       onClick={() => deleteTrigger.mutate(trigger.id)}
                     >
                       <Trash2 className="size-4" />
-                      <span className="sr-only">Delete trigger</span>
+                      <span className="sr-only">{ui("Delete trigger")}</span>
                     </Button>
                   </div>
                 </div>
                 {isSchedule && <TriggerRuns agentId={agentId} triggerId={trigger.id} />}
                 {!isGithub && !isMcpEvent && (
                   <div className="border-t pt-4">
-                    <p className="mb-3 text-xs font-medium text-muted-foreground">Set up</p>
+                    <p className="mb-3 text-xs font-medium text-muted-foreground">{ui("Set up")}</p>
                     <TriggerSetupGuidance trigger={trigger} />
                   </div>
                 )}
@@ -266,19 +327,28 @@ export function AgentTriggersPanel({
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Edit trigger</DialogTitle>
+            <DialogTitle>{ui("Edit trigger")}</DialogTitle>
             <DialogDescription>
-              Configure when the agent wakes and what message starts the run.
+              {ui("Configure when the agent wakes and what message starts the run.")}
             </DialogDescription>
           </DialogHeader>
           <TriggerFormFields value={form} onChange={setForm} />
+          {chatDraft.notice}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
-            <Button onClick={save} disabled={updateTrigger.isPending}>
-              Save changes
+            {chatDraft.blocked && (
+              <Button variant="outline" onClick={() => setForm(saved)}>
+                {ui("Discard")}
+              </Button>
+            )}
+            <Button
+              onClick={save}
+              disabled={!savedTrigger || !canManage || updateTrigger.isPending || chatDraft.blocked}
+            >
+              {ui("Save changes")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -8,6 +8,7 @@
 // `recommendedModelIds`), and the footer applies the whole selection at once, so
 // a catalog of hundreds never has to be enabled row by row.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useLayoutEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
@@ -54,6 +55,7 @@ export function ModelSelectionList({
   onSelectedChange: (next: Set<string>) => void;
   showProvider?: boolean;
 }) {
+  const ui = useUiTranslations();
   const [search, setSearch] = useState("");
   const recommended = useMemo(() => recommendedModelIds(models), [models]);
   const groups = useMemo(() => {
@@ -86,15 +88,15 @@ export function ModelSelectionList({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <SearchInput
-        placeholder="Search models…"
+        placeholder={ui("Search models…")}
         value={search}
         onChange={(event) => setSearch(event.target.value)}
-        aria-label="Search models"
+        aria-label={ui("Search models")}
       />
       <div className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6">
         {groups.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            {search ? "No models match your search." : "No models to choose from."}
+            {search ? ui("No models match your search.") : ui("No models to choose from.")}
           </p>
         ) : (
           groups.map((group) => {
@@ -115,7 +117,7 @@ export function ModelSelectionList({
                     </span>
                   </span>
                   <Button variant="ghost" size="sm" onClick={() => setMany(ids, !all)}>
-                    {all ? "Clear" : "Select all"}
+                    {all ? ui("Clear") : ui("Select all")}
                   </Button>
                 </div>
                 <ul className="divide-y">
@@ -149,12 +151,16 @@ export function ModelSelectionList({
                             </span>
                           </span>
                         </label>
-                        {recommended.has(model.id) && <Badge variant="outline">Recommended</Badge>}
+                        {recommended.has(model.id) && (
+                          <Badge variant="outline">{ui("Recommended")}</Badge>
+                        )}
                         {model.profile?.decisions && (
                           <Badge
                             variant={model.profile.decisions.calibrated ? "success" : "outline"}
                           >
-                            {model.profile.decisions.calibrated ? "Calibrated" : "Uncalibrated"}
+                            {model.profile.decisions.calibrated
+                              ? ui("Calibrated")
+                              : ui("Uncalibrated")}
                           </Badge>
                         )}
                       </li>
@@ -258,6 +264,7 @@ function ModelSelectionBody({
   applying: boolean;
   error?: string | null;
 }) {
+  const ui = useUiTranslations();
   const adopted = !!usePageChatMode();
   const [reviewedModels, setReviewedModels] = useState(() => models.map((model) => ({ ...model })));
   const displayedModels = adopted ? reviewedModels : models;
@@ -323,17 +330,17 @@ function ModelSelectionBody({
               setReviewedModels(models.map((model) => ({ ...model })));
             }}
           >
-            Discard
+            {ui("Discard")}
           </Button>
         )}
         <Button variant="outline" onClick={onCancel} disabled={applying}>
-          Cancel
+          {ui("Cancel")}
         </Button>
         <Button
           onClick={() => !chat.blocked && onApply(selected, displayedModels)}
           disabled={applying || chat.blocked}
         >
-          {applying ? "Saving…" : selectionActionLabel(displayedModels, selected, mode)}
+          {applying ? ui("Saving…") : selectionActionLabel(displayedModels, selected, mode)}
         </Button>
       </DrawerFooter>
     </>

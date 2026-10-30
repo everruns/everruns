@@ -1,0 +1,116 @@
+@import "@copilotkit/react-core/v2/styles.css";
+@import "@openuidev/react-ui/components.css";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+.everruns-widget {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  margin-block: 0.75rem;
+  --genui-text: var(--text, #232625);
+  --genui-muted: var(--muted, #707570);
+  --genui-bg: var(--bg, #fafaf8);
+  --genui-panel: var(--surface, #f1f1ed);
+  --genui-border: var(--border, #dedfd9);
+  --genui-accent: var(--accent, #244d40);
+  --genui-on-accent: var(--on-accent, white);
+}
+.everruns-widget > fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.everruns-widget pre,
+.everruns-widget .widget-table {
+  overflow: auto;
+  max-width: 100%;
+}
+.everruns-widget img,
+.everruns-widget video,
+.everruns-widget iframe {
+  max-width: 100%;
+}
+.everruns-widget .widget-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.everruns-widget .widget-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 0.75rem;
+}
+.everruns-widget .widget-card {
+  border: 1px solid var(--border, #ddd);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+.everruns-widget .widget-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-block: 0.5rem;
+}
+.everruns-widget .widget-badge {
+  border: 1px solid var(--border, #ddd);
+  border-radius: 1rem;
+  padding: 0.1rem 0.5rem;
+}
+.everruns-widget[data-readonly] button,
+.everruns-widget[data-readonly] input,
+.everruns-widget[data-readonly] select,
+.everruns-widget[data-readonly] textarea {
+  cursor: default;
+}
+
+.console-widget .everruns-widget {
+  --genui-text: hsl(var(--foreground));
+  --genui-muted: hsl(var(--muted-foreground));
+  --genui-bg: hsl(var(--background));
+  --genui-panel: hsl(var(--card));
+  --genui-border: hsl(var(--border));
+  --genui-accent: hsl(var(--primary));
+  --genui-on-accent: hsl(var(--primary-foreground));
+}
+.everruns-widget .legacy-widget {
+  color: var(--genui-text);
+}
+.everruns-widget .legacy-widget input:not([type="checkbox"]),
+.everruns-widget .legacy-widget select,
+.everruns-widget .legacy-widget textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  color: var(--genui-text);
+  background: var(--genui-panel);
+  border: 1px solid var(--genui-border);
+  border-radius: 0.375rem;
+}
+.everruns-widget .legacy-widget button,
+.everruns-widget .legacy-widget a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem 0.75rem;
+  margin-block: 0.25rem;
+  border: 1px solid var(--genui-border);
+  border-radius: 0.375rem;
+  color: var(--genui-text);
+  background: var(--genui-panel);
+}
+.everruns-widget .legacy-widget button:not(:disabled):hover,
+.everruns-widget .legacy-widget a:hover {
+  filter: brightness(0.95);
+}
+.everruns-widget .legacy-widget :focus-visible {
+  outline: 2px solid var(--genui-accent);
+  outline-offset: 2px;
+}
+.everruns-widget .legacy-widget th,
+.everruns-widget .legacy-widget td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--genui-border);
+  text-align: start;
+}

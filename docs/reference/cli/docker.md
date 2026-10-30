@@ -17,7 +17,7 @@ Run Everruns on this machine with Docker.
 | [`docker stop`](#docker-stop) | Stop the containers. |
 | [`docker logs`](#docker-logs) | Show the containers' logs. |
 | [`docker open`](#docker-open) | Open the local UI in the browser. |
-| [`docker doctor`](#docker-doctor) | Check that Docker is installed, running and new enough. |
+| [`docker doctor`](#docker-doctor) | Check that Docker is ready, and run the system doctor on a running instance. |
 | [`docker upgrade`](#docker-upgrade) | Move the instance to this CLI's version (or --image-tag), backing up the database first. |
 | [`docker reset`](#docker-reset) | Delete the instance: containers, database and settings. |
 
@@ -97,7 +97,7 @@ everruns docker open [OPTIONS]
 
 ## docker doctor
 
-Check that Docker is installed, running and new enough.
+Check that Docker is ready, and run the system doctor on a running instance.
 
 ```bash
 everruns docker doctor [OPTIONS]

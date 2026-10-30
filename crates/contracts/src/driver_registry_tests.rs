@@ -17,6 +17,7 @@ fn test_disjoint_prompt_tokens_subtracts_cached_subset() {
 /// exactly what a wrapper adds.
 fn bare_call_config() -> LlmCallConfig {
     LlmCallConfig {
+        prefer_non_streaming: false,
         tool_baseline: None,
         system_prompt_baseline: None,
         model: "claude-opus-4-8".to_string(),

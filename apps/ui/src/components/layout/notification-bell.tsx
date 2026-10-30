@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useRouter } from "next/navigation";
 import { useHealthIssues } from "@/hooks/use-health-issues";
 import { Bell, AlertTriangle } from "lucide-react";
@@ -24,6 +25,7 @@ import { notificationMeta } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
 
 function NotificationMenuContent() {
+  const ui = useUiTranslations();
   const router = useRouter();
   const { notifications, isEnabled, openNotification, markViewed } = useNotificationsContext();
   const health = useHealthIssues(undefined, 0, isEnabled);
@@ -39,18 +41,20 @@ function NotificationMenuContent() {
     <>
       <DropdownMenuGroup>
         <DropdownMenuLabel className="flex items-center justify-between">
-          Action required
+          {ui("Action required")}
           <span className="text-xs text-muted-foreground">
-            {health.data?.total ?? "…"} unresolved
+            {health.data?.total ?? "…"} {ui("unresolved")}
           </span>
         </DropdownMenuLabel>
         {health.isError && (
           <div className="px-3 py-2 text-xs text-muted-foreground">
-            Could not load integration health.
+            {ui("Could not load integration health.")}
           </div>
         )}
         {health.data?.total === 0 && (
-          <div className="px-3 py-2 text-xs text-muted-foreground">No pending issues detected</div>
+          <div className="px-3 py-2 text-xs text-muted-foreground">
+            {ui("No pending issues detected")}
+          </div>
         )}
         {(health.data?.data ?? []).slice(0, 5).map((issue) => (
           <DropdownMenuItem
@@ -66,23 +70,23 @@ function NotificationMenuContent() {
               <div className="min-w-0">
                 <p className="text-sm font-medium">{issue.title}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {issue.agent_name ?? "Organization"} ·{" "}
-                  {issue.stale ? "Needs check" : "Action required"}
+                  {issue.agent_name ?? ui("Organization")} ·{" "}
+                  {issue.stale ? ui("Needs check") : ui("Action required")}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">{issue.body}</p>
-                <p className="mt-2 text-xs underline">Review issue</p>
+                <p className="mt-2 text-xs underline">{ui("Review issue")}</p>
               </div>
             </div>
           </DropdownMenuItem>
         ))}
         <DropdownMenuItem onClick={() => router.push("/settings/health")}>
-          View all health issues
+          {ui("View all health issues")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuLabel>Activity</DropdownMenuLabel>
+        <DropdownMenuLabel>{ui("Activity")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {activity.length === 0 ? (
-          <div className="px-3 py-6 text-sm text-muted-foreground">No notifications</div>
+          <div className="px-3 py-6 text-sm text-muted-foreground">{ui("No notifications")}</div>
         ) : (
           activity.map((notification) => (
             <DropdownMenuItem
@@ -123,7 +127,7 @@ function NotificationMenuContent() {
                         void markViewed(notification.id);
                       }}
                     >
-                      Mark read
+                      {ui("Mark read")}
                     </button>
                   )}
                 </div>
@@ -136,7 +140,7 @@ function NotificationMenuContent() {
         <>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => router.push("/chats/history")}>
-            View all chats
+            {ui("View all chats")}
           </DropdownMenuItem>
         </>
       )}
@@ -145,6 +149,7 @@ function NotificationMenuContent() {
 }
 
 export function NotificationBell() {
+  const ui = useUiTranslations();
   const { unviewedCount, isEnabled } = useNotificationsContext();
   const health = useHealthIssues(undefined, 0, isEnabled);
   const hasIssues = (health.data?.total ?? 0) > 0;
@@ -160,7 +165,10 @@ export function NotificationBell() {
           "relative inline-flex h-9 w-9 items-center justify-center border border-transparent transition-colors hover:border-border hover:bg-background",
           unviewedCount > 0 ? "text-foreground" : "text-muted-foreground",
         )}
-        aria-label={`Notifications, ${unviewedCount} unread, ${health.data?.total ?? 0} unresolved issues`}
+        aria-label={ui("Notifications, {value0} unread, {value1} unresolved issues", {
+          value0: unviewedCount,
+          value1: health.data?.total ?? 0,
+        })}
       >
         <Bell className="h-4 w-4" />
         {hasIssues && (
@@ -182,6 +190,7 @@ export function NotificationBell() {
 }
 
 export function NotificationIndicator() {
+  const ui = useUiTranslations();
   const context = useOptionalNotificationsContext();
   const health = useHealthIssues(undefined, 0, !!context?.isEnabled);
   const hasIssues = (health.data?.total ?? 0) > 0;
@@ -201,13 +210,15 @@ export function NotificationIndicator() {
         }
       />
       <span className="sr-only">
-        {context.unviewedCount} unread notifications; {health.data?.total ?? 0} unresolved issues
+        {context.unviewedCount} {ui("unread notifications;")} {health.data?.total ?? 0}{" "}
+        {ui("unresolved issues")}
       </span>
     </>
   );
 }
 
 export function NotificationMenuSub() {
+  const ui = useUiTranslations();
   const context = useOptionalNotificationsContext();
   const health = useHealthIssues(undefined, 0, !!context?.isEnabled);
   const hasIssues = (health.data?.total ?? 0) > 0;
@@ -220,7 +231,7 @@ export function NotificationMenuSub() {
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
         <Bell className="icon-sharp mr-2 h-4 w-4" />
-        Notifications
+        {ui("Notifications")}
         {hasIssues && <AlertTriangle className="ml-1 h-3 w-3 text-warning" />}
         {context.unviewedCount > 0 && (
           <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary-foreground">

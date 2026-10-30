@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useState, useCallback, useMemo } from "react";
@@ -17,7 +18,8 @@ import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { HarnessExampleCard } from "@/components/harnesses";
 
 export default function AllHarnessExamplesPage() {
-  usePageTitle("Examples", "Harnesses");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Examples"), ui("Harnesses"));
   const router = useRouter();
   const [exampleSearch, setExampleSearch] = useState("");
   useChatPageFilters({ search: exampleSearch });
@@ -61,16 +63,16 @@ export default function AllHarnessExamplesPage() {
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            aria-label="Back to harnesses"
+            aria-label={ui("Back to harnesses")}
             href="/harnesses"
           >
             <ArrowLeft className="w-4 h-4" />
           </LinkButton>
-          <h1 className="text-2xl font-bold">Example Harnesses</h1>
+          <h1 className="text-2xl font-bold">{ui("Example Harnesses")}</h1>
         </div>
         <SearchInput
           containerClassName="w-64"
-          placeholder="Search examples..."
+          placeholder={ui("Search examples...")}
           value={exampleSearch}
           onChange={(e) => setExampleSearch(e.target.value)}
         />
@@ -84,7 +86,9 @@ export default function AllHarnessExamplesPage() {
         emptyState={
           <div className="text-center py-12">
             <p className="text-muted-foreground">
-              {exampleSearch.trim() ? "No examples match your search" : "No examples available"}
+              {exampleSearch.trim()
+                ? ui("No examples match your search")
+                : ui("No examples available")}
             </p>
           </div>
         }

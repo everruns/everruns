@@ -10,7 +10,9 @@ jest.mock("next/link", () => ({
     children,
     prefetch,
     ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { prefetch?: boolean }) => (
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+    prefetch?: boolean;
+  }) => (
     <a {...props} data-prefetch={prefetch === undefined ? undefined : String(prefetch)}>
       {children}
     </a>
@@ -507,31 +509,33 @@ describe("Sidebar", () => {
     expect(links[1]).toHaveAttribute("href", "/chats/sess_1");
   });
 
-  it("hides Durable Execution navigation items by default (collapsed)", () => {
+  it("hides System navigation items by default (collapsed)", () => {
     render(<Sidebar />);
 
     expect(screen.queryByRole("link", { name: "Monitoring" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Health" })).not.toBeInTheDocument();
     expect(screen.queryByText("Workers")).not.toBeInTheDocument();
     expect(screen.queryByText("Workflows")).not.toBeInTheDocument();
     expect(screen.queryByText("Schedules")).not.toBeInTheDocument();
   });
 
-  it("shows Durable Execution navigation items when expanded", () => {
+  it("shows System navigation items when expanded, Health first", () => {
     render(<Sidebar />);
 
-    const toggle = screen.getByRole("button", { name: /durable execution/i });
+    const toggle = screen.getByRole("button", { name: /^system$/i });
     fireEvent.click(toggle);
 
+    expect(screen.getByRole("link", { name: "Health" })).toHaveAttribute("href", "/system/health");
     expect(screen.getByRole("link", { name: "Monitoring" })).toHaveAttribute("href", "/durable");
     expect(screen.getByText("Workers")).toBeInTheDocument();
     expect(screen.getByText("Workflows")).toBeInTheDocument();
     expect(screen.getByText("Schedules")).toBeInTheDocument();
   });
 
-  it("collapses Durable Execution section again on second click", () => {
+  it("collapses the System section again on second click", () => {
     render(<Sidebar />);
 
-    const toggle = screen.getByRole("button", { name: /durable execution/i });
+    const toggle = screen.getByRole("button", { name: /^system$/i });
     fireEvent.click(toggle);
     expect(screen.getByText("Workers")).toBeInTheDocument();
 
@@ -549,7 +553,7 @@ describe("Sidebar", () => {
     expect(workersLink).toHaveClass("bg-primary/5");
   });
 
-  it("hides Durable Execution when durable policy is denied", () => {
+  it("hides System when durable policy is denied", () => {
     mockUsePolicies.mockReturnValue({
       data: { policies: { "durable.view": false } },
       can: () => false,
@@ -557,7 +561,7 @@ describe("Sidebar", () => {
 
     render(<Sidebar />);
 
-    expect(screen.queryByText("Durable Execution")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^system$/i })).not.toBeInTheDocument();
   });
 });
 
@@ -581,7 +585,7 @@ describe("Sidebar with config", () => {
     expect(screen.getByText("Custom Page")).toBeInTheDocument();
     // Default items should not appear
     expect(screen.queryByText("Building")).not.toBeInTheDocument();
-    expect(screen.queryByText("Durable Execution")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^system$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Custom Page" })).toHaveAttribute(
       "data-prefetch",
       "false",

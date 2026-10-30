@@ -38,6 +38,7 @@ const mockNotFound = jest.fn(() => {
   throw new Error("NEXT_NOT_FOUND");
 });
 jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
   usePathname: () => mockPathname(),
   notFound: () => mockNotFound(),
 }));
@@ -108,7 +109,7 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
-    expect(screen.getAllByRole("link")).toHaveLength(14);
+    expect(screen.getAllByRole("link")).toHaveLength(15);
     for (const link of screen.getAllByRole("link")) {
       expect(link).toHaveAttribute("data-prefetch", "false");
     }

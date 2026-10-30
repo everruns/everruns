@@ -1,15 +1,17 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { useHealthIssues } from "@/hooks/use-health-issues";
 
 export function ChannelHealthWarning({ channelId }: { channelId: string }) {
+  const ui = useUiTranslations();
   const issues = useHealthIssues(channelId);
   if (issues.isError)
     return (
       <p role="status" className="text-xs text-muted-foreground">
-        Could not load integration health.
+        {ui("Could not load integration health.")}
       </p>
     );
   return (issues.data?.data ?? []).map((issue) => (
@@ -19,7 +21,7 @@ export function ChannelHealthWarning({ channelId }: { channelId: string }) {
         <p className="text-sm font-medium">{issue.title}</p>
         <p className="text-xs text-muted-foreground">{issue.body}</p>
         <Link href={issue.href} className="text-xs underline underline-offset-2">
-          Review issue
+          {ui("Review issue")}
         </Link>
       </div>
     </div>

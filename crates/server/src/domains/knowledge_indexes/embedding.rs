@@ -24,6 +24,9 @@ pub struct ResolvedEmbedder {
     /// Provider type that serves the call, named on usage records so embedding
     /// spend attributes to a provider like chat generations do (EVE-894).
     pub provider_type: String,
+    /// Snapshot attribution while resolving the account. Background usage has
+    /// no session listener from which to recover the managed-provider identity.
+    pub served_by: crate::storage::repositories::GenerationProvider,
 }
 
 /// Resolve and build the embeddings driver for an index's embedding model.
@@ -88,5 +91,9 @@ pub async fn build_embeddings_driver_for_model(
         driver,
         model_id: model.model_id,
         provider_type: resolved.provider_type,
+        served_by: crate::storage::repositories::GenerationProvider {
+            provider_config_id: Some(provider.id.to_string()),
+            managed: provider.managed,
+        },
     })
 }

@@ -44,6 +44,9 @@ const SYSTEM_LLM_METADATA_KEYS: &[&str] = &[
 const MAX_EMBEDDER_METADATA_KEYS: usize = MAX_METADATA_KEYS - SYSTEM_LLM_METADATA_KEYS.len();
 
 fn validate_create_limits(req: &CreateHarnessRequest) -> Result<(), CommandError> {
+    req.localizations
+        .validate()
+        .map_err(CommandError::bad_request)?;
     if req.intro_markdown.is_some() || req.short_description.is_some() || !req.starters.is_empty() {
         return Err(CommandError::bad_request(
             "Harness conversation presentation is deprecated; configure the Agent intro, description, and starters",
@@ -79,6 +82,11 @@ fn validate_create_limits(req: &CreateHarnessRequest) -> Result<(), CommandError
 }
 
 fn validate_update_limits(req: &UpdateHarnessRequest) -> Result<(), CommandError> {
+    if let Some(localizations) = &req.localizations {
+        localizations
+            .validate()
+            .map_err(CommandError::bad_request)?;
+    }
     if req.intro_markdown.is_some() || req.short_description.is_some() || req.starters.is_some() {
         return Err(CommandError::bad_request(
             "Harness conversation presentation is deprecated; configure the Agent intro, description, and starters",
@@ -264,6 +272,7 @@ impl Command for CreateHarness {
         // Persist
         let input = CreateHarnessRow {
             name: req.name,
+            localizations: req.localizations.clone(),
             display_name: req.display_name,
             icon: None,
             description: req.description,
@@ -506,6 +515,7 @@ impl Command for UpdateHarnessCmd {
         // Persist
         let input = UpdateHarness {
             name: req.name,
+            localizations: req.localizations.clone(),
             display_name: req.display_name,
             description: req.description,
             intro_markdown: req.intro_markdown,
@@ -712,6 +722,7 @@ impl Command for CopyHarness {
 
         let req = CreateHarnessRequest {
             name: copy_name,
+            localizations: source.localizations.clone(),
             display_name: source.display_name.as_ref().map(|d| format!("{d} (copy)")),
             description: source.description,
             intro_markdown: source.intro_markdown,
@@ -918,6 +929,7 @@ mod tests {
 
     fn basic_request(name: &str) -> CreateHarnessRequest {
         CreateHarnessRequest {
+            localizations: Default::default(),
             name: name.to_string(),
             display_name: None,
             description: None,
@@ -966,6 +978,7 @@ mod tests {
     #[test]
     fn update_rejects_deprecated_presentation() {
         let req = UpdateHarnessRequest {
+            localizations: Default::default(),
             name: None,
             display_name: None,
             description: None,
@@ -995,6 +1008,7 @@ mod tests {
         embedder_metadata: std::collections::HashMap<String, String>,
     ) -> UpdateHarnessRequest {
         UpdateHarnessRequest {
+            localizations: Default::default(),
             name: None,
             display_name: None,
             description: None,
@@ -1135,6 +1149,7 @@ mod tests {
         db.create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "seeded-system".to_string(),
                 display_name: None,
                 icon: None,

@@ -290,6 +290,7 @@ async fn context_never_reaches_the_entity_or_its_export() {
         .create_harness(
             DEFAULT_ORG_ID,
             crate::storage::CreateHarnessRow {
+                localizations: Default::default(),
                 name: "h".into(),
                 display_name: None,
                 icon: None,
@@ -315,6 +316,7 @@ async fn context_never_reaches_the_entity_or_its_export() {
         .create_agent(
             DEFAULT_ORG_ID,
             crate::storage::CreateAgentRow {
+                localizations: Default::default(),
                 public_id: agent.clone(),
                 name: "kids".into(),
                 display_name: None,

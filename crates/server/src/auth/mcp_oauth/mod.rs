@@ -67,6 +67,7 @@ fn verify_pkce_s256(verifier: &str, challenge: &str) -> bool {
 
 mod grants;
 mod redirect_uri;
+mod rotation;
 use redirect_uri::{
     is_loopback_http_uri, redirect_uri_matches, redirect_uri_registered, validate_redirect_uri,
 };
@@ -1272,6 +1273,7 @@ async fn handle_authorization_code_grant(
             scope: auth_code.scope,
             expires_at: Utc::now() + Duration::seconds(MCP_REFRESH_TOKEN_LIFETIME_SECS),
             grant_id: grant.id,
+            family_id: None,
         })
         .await
         .map_err(|_| OAuthErrorResponse {
@@ -1387,25 +1389,9 @@ async fn handle_refresh_token_grant(
     let new_refresh_token = generate_random_hex();
     let new_refresh_token_hash = hash_value(&new_refresh_token);
 
-    // Atomically consume the old refresh token before issuing the replacement.
-    // The earlier lookup lets us validate client/user and build the response
-    // without burning the token on unrelated transient failures; this consume
-    // is the single-use gate that closes concurrent refresh races.
-    let consumed_token = state
-        .db
-        .consume_oauth_refresh_token_by_hash(&token_hash)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to consume OAuth refresh token: {}", e);
-            OAuthErrorResponse {
-                error: "server_error".to_string(),
-                error_description: None,
-            }
-        })?
-        .ok_or_else(|| OAuthErrorResponse {
-            error: "invalid_grant".to_string(),
-            error_description: Some("Invalid or expired refresh token".to_string()),
-        })?;
+    // Rotate the old refresh token: the gate that closes concurrent refresh
+    // races, with one replay allowed in a short grace window (rotation.rs).
+    let consumed_token = rotation::rotate(state, client_id, &token_hash).await?;
     if consumed_token.client_id != client_id {
         return Err(OAuthErrorResponse {
             error: "invalid_grant".to_string(),
@@ -1423,6 +1409,7 @@ async fn handle_refresh_token_grant(
             scope: stored_token.scope,
             expires_at: Utc::now() + Duration::seconds(MCP_REFRESH_TOKEN_LIFETIME_SECS),
             grant_id: grant.id,
+            family_id: Some(consumed_token.family()),
         })
         .await
         .map_err(|_| OAuthErrorResponse {

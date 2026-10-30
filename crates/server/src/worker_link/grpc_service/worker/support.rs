@@ -112,19 +112,35 @@ pub(crate) fn mcp_tool_definition_to_proto(
         idempotent: hints.idempotent,
         open_world: hints.open_world,
         display_name: tool.display_name().map(str::to_string),
-        search_metadata: hints
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.get("mcp_server"))
-            .filter(|source| source.is_object())
-            .map(|source| {
-                everruns_internal_protocol::json_to_proto_struct(&serde_json::json!({
-                    "mcp_server": {
+        search_metadata: {
+            let mut metadata = serde_json::Map::new();
+            if let Some(source) = hints
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("mcp_server"))
+                .filter(|source| source.is_object())
+            {
+                metadata.insert("mcp_server".into(), serde_json::json!({
                         "name": source.get("name").and_then(serde_json::Value::as_str).unwrap_or_default(),
                         "description": source.get("description").and_then(serde_json::Value::as_str).unwrap_or_default(),
-                    }
-                }))
-            }),
+                }));
+            }
+            if let Some(description) = hints.capability_description.as_deref() {
+                metadata.insert(
+                    "capability".into(),
+                    serde_json::json!({
+                        "id": hints.capability_id,
+                        "name": hints.capability_name,
+                        "description": description,
+                    }),
+                );
+            }
+            (!metadata.is_empty()).then(|| {
+                everruns_internal_protocol::json_to_proto_struct(&serde_json::Value::Object(
+                    metadata,
+                ))
+            })
+        },
     }
 }
 
@@ -311,6 +327,26 @@ mod tests {
                 wire.search_metadata.as_ref().unwrap()
             ),
             serde_json::json!({"mcp_server":{"name":"alpha","description":"Basalt borehole surveying"}})
+        );
+    }
+
+    #[test]
+    fn platform_capability_search_context_crosses_the_mcp_worker_boundary() {
+        let tool: everruns_contracts::tool_types::ToolDefinition = serde_json::from_value(serde_json::json!({
+            "type":"builtin", "name":"mcp_alpha__inspect", "description":"Inspect records",
+            "parameters":{"type":"object"}, "hints":{"metadata":{"private_extension":"excluded"}}
+        })).unwrap();
+        let tool =
+            tool.with_capability_context("minerals", Some("Minerals"), "Scandium prospecting");
+        let wire = super::mcp_tool_definition_to_proto(&tool);
+        let metadata = everruns_internal_protocol::proto_struct_to_json(
+            wire.search_metadata.as_ref().unwrap(),
+        );
+        assert_eq!(
+            metadata,
+            serde_json::json!({"capability":{
+                "id":"minerals", "name":"Minerals", "description":"Scandium prospecting"
+            }})
         );
     }
 

@@ -122,6 +122,7 @@ mod tests {
             .create_harness(
                 DEFAULT_ORG_ID,
                 CreateHarnessRow {
+                    localizations: Default::default(),
                     name: "identity-harness".to_string(),
                     display_name: Some("Identity Harness".to_string()),
                     icon: None,
@@ -148,6 +149,7 @@ mod tests {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    localizations: Default::default(),
                     public_id,
                     name: "service-mcp-agent".to_string(),
                     display_name: Some("Service MCP Agent".to_string()),

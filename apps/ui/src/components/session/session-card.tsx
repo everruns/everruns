@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  useLocale as useFormattingLocale,
+  useLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { SessionIcon } from "@/components/icons/facet-icons";
 import { Info, Loader2, Zap, Pin, PinOff, CalendarClock, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn, shortenId } from "@/lib/utils";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
-import { useLocale } from "@/providers/locale-provider";
+
 import type { Session, ModelWithProvider, TokenUsage } from "@/lib/api/types";
 import type { SessionExportFormat } from "@/lib/api/sessions";
 import { getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
@@ -68,9 +74,12 @@ function truncateToLines(text: string, lines: number = 2): string {
  * Styled to match MessageInfoIcon component.
  */
 function SessionInfoIcon({ session }: { session: Session }) {
-  const formattedCreatedAt = new Date(session.created_at).toLocaleString();
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
+  const formattedCreatedAt = new Date(session.created_at).toLocaleString(displayLocale);
   const formattedStartedAt = session.started_at
-    ? new Date(session.started_at).toLocaleString()
+    ? new Date(session.started_at).toLocaleString(displayLocale)
     : null;
   const tagList = joinTags(session.tags);
 
@@ -81,7 +90,7 @@ function SessionInfoIcon({ session }: { session: Session }) {
           "p-0.5 rounded transition-colors flex-shrink-0",
           "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80",
         )}
-        aria-label="Session info"
+        aria-label={ui("Session info")}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -92,22 +101,22 @@ function SessionInfoIcon({ session }: { session: Session }) {
       <TooltipContent className="max-w-sm">
         <div className="space-y-1 text-xs">
           <div className="flex gap-2">
-            <span className="text-muted-foreground">Status:</span>
+            <span className="text-muted-foreground">{ui("Status:")}</span>
             <span className="capitalize">{session.status}</span>
           </div>
           <div className="flex gap-2">
-            <span className="text-muted-foreground">Created:</span>
+            <span className="text-muted-foreground">{ui("Created:")}</span>
             <span>{formattedCreatedAt}</span>
           </div>
           {formattedStartedAt && (
             <div className="flex gap-2">
-              <span className="text-muted-foreground">Started:</span>
+              <span className="text-muted-foreground">{ui("Started:")}</span>
               <span>{formattedStartedAt}</span>
             </div>
           )}
           {tagList && (
             <div className="flex gap-2">
-              <span className="text-muted-foreground">Tags:</span>
+              <span className="text-muted-foreground">{ui("Tags:")}</span>
               <span>{tagList}</span>
             </div>
           )}
@@ -131,6 +140,8 @@ export function SessionCard({
   onExport,
   failure,
 }: SessionCardProps) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const { t } = useLocale();
   const statusInfo = sessionOutcome(session);
   const displayTitle = session.title || `Session ${shortenId(session.id)}`;
@@ -165,7 +176,7 @@ export function SessionCard({
           </Badge>
           {session.archived_at && (
             <Badge variant="outline" className="flex-shrink-0 text-xs text-muted-foreground">
-              Archived
+              {ui("Archived")}
             </Badge>
           )}
           {agentName && (
@@ -221,12 +232,12 @@ export function SessionCard({
                     ? "text-primary hover:text-primary/80 hover:bg-muted/80"
                     : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80",
                 )}
-                aria-label={isPinned ? "Unpin session" : "Pin session"}
+                aria-label={isPinned ? ui("Unpin session") : ui("Pin session")}
                 onClick={() => onTogglePin(session.id, !isPinned)}
               >
                 {isPinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
               </TooltipTrigger>
-              <TooltipContent>{isPinned ? "Unpin session" : "Pin session"}</TooltipContent>
+              <TooltipContent>{isPinned ? ui("Unpin session") : ui("Pin session")}</TooltipContent>
             </Tooltip>
           )}
           <SessionInfoIcon session={session} />
@@ -251,28 +262,33 @@ export function SessionCard({
         </p>
       )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
-        <span>Channel: {sourceLabel(session.source ?? "unknown")}</span>
+        <span>
+          {ui("Channel:")} {sourceLabel(session.source ?? "unknown")}
+        </span>
         {session.last_message_at ? (
           <time
             dateTime={session.last_message_at}
-            title={new Date(session.last_message_at).toLocaleString()}
+            title={new Date(session.last_message_at).toLocaleString(displayLocale)}
           >
-            Last message {formatRelativeTime(session.last_message_at)}
+            {ui("Last message")} {formatRelativeTime(session.last_message_at, displayLocale)}
           </time>
         ) : (
-          <span>No messages yet</span>
+          <span>{ui("No messages yet")}</span>
         )}
-        <time dateTime={session.created_at} title={new Date(session.created_at).toLocaleString()}>
-          Created {formatRelativeTime(session.created_at)}
+        <time
+          dateTime={session.created_at}
+          title={new Date(session.created_at).toLocaleString(displayLocale)}
+        >
+          {ui("Created")} {formatRelativeTime(session.created_at, displayLocale)}
         </time>
         {session.usage && (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
-          <span className="flex items-center gap-1" title="Token usage">
+          <span className="flex items-center gap-1" title={ui("Token usage")}>
             <Zap className="w-3 h-3" />
             {formatTotalTokens(session.usage)}
           </span>
         )}
         {(session.active_schedule_count ?? 0) > 0 && (
-          <span className="flex items-center gap-1" title="Active schedules">
+          <span className="flex items-center gap-1" title={ui("Active schedules")}>
             <CalendarClock className="w-3 h-3" />
             {session.active_schedule_count}
           </span>
@@ -282,19 +298,19 @@ export function SessionCard({
         <div className="mt-3 flex flex-wrap items-center gap-3 border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium text-destructive">
-              {failure.count} failed {failure.count === 1 ? "turn" : "turns"} ·{" "}
-              {new Date(failure.at).toLocaleString()}
+              {failure.count} {ui("failed")} {failure.count === 1 ? ui("turn") : ui("turns")} ·{" "}
+              {new Date(failure.at).toLocaleString(displayLocale)}
               {failure.count > 1 && " · latest failure"}
             </p>
             <p className="mt-1 line-clamp-2 break-words" title={failure.error ?? undefined}>
-              {failure.error?.trim() || "No error details recorded"}
+              {failure.error?.trim() || ui("No error details recorded")}
             </p>
           </div>
           <Link
             href={failureTraceHref(session.id, failure.sequence)}
             className="shrink-0 text-destructive underline underline-offset-2"
           >
-            View failure
+            {ui("View failure")}
           </Link>
         </div>
       )}

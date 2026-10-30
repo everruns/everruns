@@ -31,6 +31,8 @@ import time
 import httpx
 
 DEFAULT_MIX = "chat-short=5,file-research=3,long-answer=1,thinking=1"
+# Scenarios that read /load-test/research.md, so each session is seeded first.
+SEEDED_SCENARIOS = {"file-research", "luna-agent", "sol-agent", "muse-agent"}
 
 RESEARCH_NOTES = "# Research notes\n\n" + (
     "The runtime stores session events durably, streams replies, and distributes turns across workers.\n"
@@ -172,7 +174,7 @@ async def run(args):
                     json={"harness_id": harness, "agent_id": agent, "model_id": args.model, "title": f"load test {i}"},
                 )
                 session_id = created.raise_for_status().json()["id"]
-                if "file-research" in names:
+                if SEEDED_SCENARIOS.intersection(names):
                     # Seed each session's own VFS before timing turns. Explicit
                     # local tools avoid random tools with invalid or external inputs.
                     (await client.post(

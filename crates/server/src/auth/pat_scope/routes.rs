@@ -26,6 +26,41 @@ use super::RouteAccess::{self, Never, PerCommand, Read, Write};
 /// `(method, path, class)` for hand-written routes in the OpenAPI document,
 /// sorted by path.
 pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
+    ("GET", "/v1/channels/{channel_id}/chat/shared/{token}", Read),
+    (
+        "POST",
+        "/v1/channels/{channel_id}/sessions/{session_id}/settings",
+        Write,
+    ),
+    (
+        "POST",
+        "/v1/channels/{channel_id}/sessions/{session_id}/share",
+        Never,
+    ),
+    (
+        "DELETE",
+        "/v1/channels/{channel_id}/sessions/{session_id}/share",
+        Never,
+    ),
+    ("GET", "/v1/e/{channel_id}/chat/shared/{token}", Read),
+    (
+        "POST",
+        "/v1/e/{channel_id}/sessions/{session_id}/settings",
+        Write,
+    ),
+    (
+        "POST",
+        "/v1/e/{channel_id}/sessions/{session_id}/share",
+        Never,
+    ),
+    (
+        "DELETE",
+        "/v1/e/{channel_id}/sessions/{session_id}/share",
+        Never,
+    ),
+    ("GET", "/v1/agents/{agent_id}/external-worker", Read),
+    ("POST", "/v1/agents/{agent_id}/external-worker", Never),
+    ("DELETE", "/v1/agents/{agent_id}/external-worker", Never),
     ("GET", "/v1/channels/{channel_id}/chat/config", Read),
     ("POST", "/v1/channels/{channel_id}/chat/main", Write),
     (
@@ -83,6 +118,8 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("PUT", "/v1/agents/{agent_id}", Write),
     ("DELETE", "/v1/agents/{agent_id}/avatar", Write),
     ("PUT", "/v1/agents/{agent_id}/avatar", Write),
+    ("GET", "/v1/agents/{agent_id}/tracing", Read),
+    ("PUT", "/v1/agents/{agent_id}/tracing", Write),
     ("GET", "/v1/agents/{agent_id}/avatar/preset", Read),
     ("PUT", "/v1/agents/{agent_id}/avatar/preset", Write),
     ("GET", "/v1/agents/{agent_id}/channels", Read),
@@ -720,6 +757,7 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/skills/config", Read),
     ("POST", "/v1/skills/upload", Write),
     ("POST", "/v1/skills/validate", Write),
+    ("GET", "/v1/system/doctor", Read),
     ("GET", "/v1/task-webhooks", Read),
     ("POST", "/v1/task-webhooks", Write),
     ("DELETE", "/v1/task-webhooks/{webhook_id}", Write),
@@ -735,6 +773,14 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
         Write,
     ),
     ("GET", "/v1/user/mcp-connections", Read),
+    // Organization exporter settings carry no personal OAuth grant minting.
+    ("GET", "/v1/tracing/defaults", Read),
+    ("PUT", "/v1/tracing/defaults", Write),
+    ("GET", "/v1/tracing/destinations", Read),
+    ("POST", "/v1/tracing/destinations", Write),
+    ("PUT", "/v1/tracing/destinations/{id}", Write),
+    ("DELETE", "/v1/tracing/destinations/{id}", Write),
+    ("POST", "/v1/tracing/destinations/{id}/test", Write),
     ("GET", "/v1/users", Read),
     ("DELETE", "/v1/users/me", Never),
     ("PATCH", "/v1/users/me", Write),

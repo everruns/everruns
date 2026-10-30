@@ -9,8 +9,8 @@ use anyhow::Result;
 use everruns_internal_protocol::proto::{
     self, ClaimDurableTasksRequest, CompleteDurableTaskRequest, DeregisterDurableWorkerRequest,
     DrainDurableWorkerRequest, FailDurableTaskRequest, HeartbeatDurableTaskRequest,
-    HeartbeatDurableWorkerRequest, RegisterDurableWorkerRequest, SubscribeTaskNotificationsRequest,
-    TaskNotification, TaskNotificationType,
+    HeartbeatDurableWorkerRequest, RegisterDurableWorkerRequest, ReportDurableWorkerChecksRequest,
+    SubscribeTaskNotificationsRequest, TaskNotification, TaskNotificationType, WorkerSelfCheck,
 };
 use everruns_internal_protocol::{WorkerServiceClient, json_to_proto_struct, uuid_to_proto_uuid};
 use tonic::service::interceptor::InterceptedService;
@@ -135,6 +135,17 @@ impl GrpcDurableStore {
 
         loop {
             attempt += 1;
+            let addrs = match tls_config {
+                Some(_) => Default::default(),
+                None => crate::grpc_balance::resolve(address).await,
+            };
+            if addrs.len() > 1 {
+                let channel =
+                    crate::grpc_balance::balanced_channel(address.to_string(), addrs, |e| e);
+                let client =
+                    WorkerServiceClient::with_interceptor(channel, GrpcClientAuth::from_env());
+                return Ok(Self { client });
+            }
             let mut ep = base_endpoint.clone();
             if let Some(ref tls) = tls_config {
                 ep = ep
@@ -261,22 +272,42 @@ impl GrpcDurableStore {
         })
     }
 
-    /// Register this worker with the control-plane
-    pub async fn register_worker(
-        &mut self,
-        worker_id: &str,
-        worker_group: Option<String>,
-        activity_types: Vec<String>,
-        max_concurrency: u32,
-    ) -> Result<()> {
+    /// Register this worker with the control-plane, saying what it runs.
+    pub async fn register_worker(&mut self, worker: &crate::durable::WorkerInfo) -> Result<()> {
         let request = RegisterDurableWorkerRequest {
-            worker_id: worker_id.to_string(),
-            worker_group,
-            activity_types,
-            max_concurrency: max_concurrency as i32,
+            worker_id: worker.id.clone(),
+            worker_group: worker.worker_group.clone(),
+            activity_types: worker.activity_types.clone(),
+            max_concurrency: worker.max_concurrency as i32,
+            version: worker.version.clone(),
+            hostname: worker.hostname.clone(),
+            protocol_version: worker.protocol_version().unwrap_or_default(),
         };
 
         self.client.register_durable_worker(request).await?;
+        Ok(())
+    }
+
+    /// Send this worker's checks on its own setup.
+    pub async fn report_worker_checks(
+        &mut self,
+        worker_id: &str,
+        checks: &[crate::self_checks::SelfCheck],
+    ) -> Result<()> {
+        let request = ReportDurableWorkerChecksRequest {
+            worker_id: worker_id.to_string(),
+            checks: checks
+                .iter()
+                .map(|check| WorkerSelfCheck {
+                    id: check.id.to_string(),
+                    title: check.title.to_string(),
+                    status: check.status.to_string(),
+                    summary: check.summary.clone(),
+                    fix: check.fix.clone(),
+                })
+                .collect(),
+        };
+        self.client.report_durable_worker_checks(request).await?;
         Ok(())
     }
 
@@ -464,10 +495,8 @@ fn proto_status_to_workflow(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{LazyLock, Mutex, MutexGuard};
+    use crate::grpc_test_env::TlsEnvGuard;
     use tonic::service::Interceptor;
-
-    static TLS_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     #[test]
     fn a_claimed_task_carries_its_workflow_status() {
@@ -489,60 +518,6 @@ mod tests {
             Some(crate::durable::WorkflowStatus::Cancelled)
         );
         assert_eq!(task.input, serde_json::json!({}));
-    }
-
-    struct TlsEnvGuard {
-        _lock: MutexGuard<'static, ()>,
-        ca_cert: Option<String>,
-        cert: Option<String>,
-        key: Option<String>,
-        domain: Option<String>,
-    }
-
-    impl TlsEnvGuard {
-        fn new() -> Self {
-            let lock = TLS_ENV_LOCK
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner());
-            Self {
-                _lock: lock,
-                ca_cert: std::env::var("WORKER_GRPC_TLS_CA_CERT").ok(),
-                cert: std::env::var("WORKER_GRPC_TLS_CERT").ok(),
-                key: std::env::var("WORKER_GRPC_TLS_KEY").ok(),
-                domain: std::env::var("WORKER_GRPC_TLS_DOMAIN").ok(),
-            }
-        }
-
-        fn set_var(&self, key: &str, value: &str) {
-            unsafe {
-                std::env::set_var(key, value);
-            }
-        }
-
-        fn remove_var(&self, key: &str) {
-            unsafe {
-                std::env::remove_var(key);
-            }
-        }
-    }
-
-    impl Drop for TlsEnvGuard {
-        fn drop(&mut self) {
-            restore_env_var("WORKER_GRPC_TLS_CA_CERT", self.ca_cert.as_deref());
-            restore_env_var("WORKER_GRPC_TLS_CERT", self.cert.as_deref());
-            restore_env_var("WORKER_GRPC_TLS_KEY", self.key.as_deref());
-            restore_env_var("WORKER_GRPC_TLS_DOMAIN", self.domain.as_deref());
-        }
-    }
-
-    fn restore_env_var(key: &str, value: Option<&str>) {
-        unsafe {
-            if let Some(value) = value {
-                std::env::set_var(key, value);
-            } else {
-                std::env::remove_var(key);
-            }
-        }
     }
 
     #[tokio::test]

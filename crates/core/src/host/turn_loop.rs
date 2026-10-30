@@ -177,6 +177,29 @@ pub trait TurnInbox: Send + Sync {
         client_tool_calls: Vec<ToolCall>,
         resume: TurnState,
     ) -> Result<()>;
+
+    /// Whether the host wants the turn to stop at the next step boundary and
+    /// hand it to another holder (a draining worker). Checked before every
+    /// step but the first; the turn then ends with [`handed_off`] after the
+    /// last step's events, and the next holder resumes it from the log.
+    fn should_hand_off(&self) -> bool {
+        false
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("turn handed off between steps")]
+struct HandedOff;
+
+/// The error [`drive_turn`] returns when the inbox asked it to stop between
+/// steps ([`TurnInbox::should_hand_off`]). Control flow, not a failure.
+pub fn handed_off() -> everruns_contracts::error::AgentLoopError {
+    everruns_contracts::error::AgentLoopError::Internal(HandedOff.into())
+}
+
+/// Whether `error` is [`handed_off`].
+pub fn is_handed_off(error: &everruns_contracts::error::AgentLoopError) -> bool {
+    matches!(error, everruns_contracts::error::AgentLoopError::Internal(inner) if inner.is::<HandedOff>())
 }
 
 /// The entry step of a fresh turn: run the input step of `drive`'s input
@@ -279,8 +302,16 @@ pub async fn drive_turn<A: RuntimeHostAdapter>(
     let mut pending_prompt_message_ids = Vec::new();
     // The client-side calls the last act left for the caller to run.
     let mut client_tool_calls = Vec::new();
+    // Steps this drive ran; a hand-off waits for at least one, so a turn
+    // always moves forward before it changes holder.
+    let mut steps: usize = 0;
 
     loop {
+        let next_is_step = matches!(plan, TurnPlan::ScheduleReason(_) | TurnPlan::ScheduleAct(_));
+        if steps > 0 && next_is_step && inbox.should_hand_off() {
+            return Err(handed_off());
+        }
+        steps += 1;
         match plan {
             TurnPlan::ScheduleReason(_) => {
                 let state = execution.state().clone();

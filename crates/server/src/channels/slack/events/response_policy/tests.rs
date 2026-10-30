@@ -76,6 +76,7 @@ async fn fixture(
         .create_agent(
             app.org_id,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: "dad-jokes".into(),
                 display_name: None,

@@ -178,6 +178,7 @@ pub(crate) async fn harness_with_user_hook(
         .create_harness(
             org_id,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: name.to_string(),
                 display_name: Some(name.to_string()),
                 icon: None,

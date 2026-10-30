@@ -1,0 +1,334 @@
+---
+title: Slate Components
+description: Buttons, badges, status, tags, inputs, tabs, cards, navigation, notices and empty states in the Everruns UI, with the rules for each.
+slug: design-system/components
+---
+
+import DsExample from "@docs-components/design-system/DsExample.astro";
+import DsIcon from "@docs-components/design-system/DsIcon.astro";
+
+Each example reproduces a production component from [`apps/ui/src/components/`](https://github.com/everruns/everruns/tree/main/apps/ui/src/components). The file named
+under each heading is the canonical version; build from it, not from this markup.
+
+## Buttons
+
+`components/ui/button.tsx`. 32px high, 14px medium label, 16px icon. Hover is the same fill at
+90%. Focus is a 3px ring in `ring / 0.5` with the border switching to `ring`.
+
+<DsExample caption="Create, commit, secondary, quiet, and destructive actions. The last button shows the focus ring.">
+  <div class="ds-stack">
+    <div class="ds-row">
+      <button class="ds-btn ds-btn-accent"><DsIcon name="plus" />New harness</button>
+      <button class="ds-btn"><DsIcon name="check" />Save changes</button>
+      <button class="ds-btn ds-btn-outline">Discard</button>
+      <button class="ds-btn ds-btn-outline"><DsIcon name="copy" />Copy</button>
+      <button class="ds-btn ds-btn-ghost">Cancel</button>
+      <button class="ds-btn ds-btn-danger ds-btn-icon" aria-label="Delete"><DsIcon name="trash-2" /></button>
+      <button class="ds-btn ds-btn-outline ds-btn-icon" aria-label="More actions"><DsIcon name="ellipsis" /></button>
+      <button class="ds-btn ds-btn-outline ds-focus">Focused</button>
+    </div>
+    <div class="ds-row">
+      <button class="ds-btn ds-btn-outline ds-btn-sm"><DsIcon name="pencil" size={14} />Edit</button>
+      <button class="ds-btn ds-btn-sm">Run</button>
+      <button class="ds-btn ds-btn-outline ds-btn-sm" disabled>Disabled</button>
+    </div>
+  </div>
+</DsExample>
+
+The tier matters more than the look:
+
+| Tier | Variant | Used for |
+|---|---|---|
+| Create | `accent`: gold fill, navy label | The one "make a new thing" action on a page: New agent, New harness, Add model, Test in Playground. |
+| Commit | `default`: navy fill | Saving an edit: Save changes. Never on a read-only page. |
+| Secondary | `outline` | Everything else in an action cluster: Edit, Copy, Export, Discard, Analyze. |
+| Quiet | `ghost` | Card footers, toolbars, Cancel in dialogs. |
+| Destructive | ghost icon in `destructive` | Row-level delete. Never a filled red button in a list. A filled `destructive` button is for the confirm step of a destructive dialog. |
+
+- One create or one commit action per page, never both. The create button sits last (far
+  right) in its cluster; Save changes sits first, with Discard to its right.
+- An action cluster holds at most six buttons. More go into the `⋯` menu, which also holds
+  History, Manager notes, Archive, and Delete ([entity actions menu](https://github.com/everruns/everruns/blob/main/knowledge/ui/entity-actions-menu.md)).
+- Labels are verbs in sentence case: "New session", not "New Session" or "Create".
+
+## Badges, status, and tags
+
+Three different things that look alike. Do not interchange them.
+
+<DsExample>
+  <div class="ds-stack">
+    <div class="ds-row">
+      <span class="ds-badge ds-badge-success">Enabled</span>
+      <span class="ds-badge ds-badge-secondary">Built-in</span>
+      <span class="ds-badge ds-badge-outline">Experimental</span>
+      <span class="ds-badge ds-badge-accent"><DsIcon name="pencil" size={12} />Editing</span>
+      <span class="ds-badge ds-badge-default">Default</span>
+      <span class="ds-badge ds-badge-destructive">Failed</span>
+      <span class="ds-id">agent_01a17a55c3e9</span>
+    </div>
+    <div class="ds-row" style="gap: 1.25rem">
+      <span class="ds-status ds-status-success">active</span>
+      <span class="ds-status ds-status-destructive">deleted</span>
+      <span class="ds-status">archived</span>
+    </div>
+    <div class="ds-row">
+      <span class="ds-tag">support</span>
+      <span class="ds-tag">docs</span>
+      <span class="ds-tag">tier-1</span>
+      <span class="ds-tag">+2</span>
+    </div>
+  </div>
+</DsExample>
+
+- **Badge** (`components/ui/badge.tsx`): an informational label. 11px medium, sentence case,
+  sharp corners. `success` for positives such as Enabled, `secondary` for neutral facts
+  (Built-in, Idle), `accent` for a transient mode (Editing, Draft), `outline` for plain
+  labels, `destructive` only for failure. The id chip is mono with a navy 6% tint.
+- **Status** (`components/ui/entity-status.tsx`): lifecycle on overview surfaces such as cards
+  and rows. A 6px dot and a 12px muted label. Color is a second cue; the word carries the
+  meaning. The masthead of a detail page may use a filled badge for the same state.
+- **Tag** (`components/ui/tag-input.tsx` for editing): a quiet `muted / 0.6` fill, 12px, no
+  border. Three show on a card, then `+N`.
+
+## Inputs and fields
+
+`components/ui/input.tsx`, `textarea.tsx`, `select.tsx`, `search-input.tsx`. 32px high, card
+surface, `input` border, the gold ring on focus. Labels are 12px medium muted, above the
+control.
+
+<DsExample>
+  <div class="ds-grid-2">
+    <div class="ds-field">
+      <span class="ds-label">Name</span>
+      <span class="ds-input">Support agent</span>
+    </div>
+    <div class="ds-field">
+      <span class="ds-label">Default model</span>
+      <span class="ds-input ds-focus">gpt-6.1-sol<DsIcon name="chevron-down" size={14} class="ds-muted" /></span>
+    </div>
+    <div class="ds-field">
+      <span class="ds-label">Search</span>
+      <span class="ds-input"><DsIcon name="search" size={14} class="ds-muted" /><span class="ds-placeholder">Search agents</span><span class="ds-kbd" style="margin-left: auto">⌘K</span></span>
+    </div>
+    <div class="ds-field">
+      <span class="ds-label">System prompt</span>
+      <span class="ds-input ds-textarea">You answer questions about Everruns using the docs.</span>
+    </div>
+  </div>
+</DsExample>
+
+Editable values wear bordered controls. Read-only facts are plain text: a 13px medium label
+over a muted value, no border. An archived record shows every value as read-only.
+
+## Tabs and view toggle
+
+`SectionTabs` in `components/ui/tabs.tsx`. 13px, optional icon and muted count; the selected
+tab is 600 weight with a 2px navy underline. Tabs filter a list by status, or switch the
+sections of a detail page. The grid and list toggle sits at the end of a list's control strip.
+
+<DsExample>
+  <div class="ds-strip">
+    <div class="ds-tabs">
+      <span class="ds-tab" aria-selected="true">All <span class="ds-count">12</span></span>
+      <span class="ds-tab">Active <span class="ds-count">9</span></span>
+      <span class="ds-tab">Archived <span class="ds-count">3</span></span>
+    </div>
+    <span class="ds-toggle" style="margin-bottom: 0.5rem"><span aria-pressed="true"><DsIcon name="layout-grid" size={14} /></span><span><DsIcon name="list" size={14} /></span></span>
+  </div>
+</DsExample>
+
+## Cards
+
+`components/ui/card.tsx` and `components/ui/entity-card.tsx`. Every list page shows its records
+as entity cards; domain cards such as `AgentCard` compose `EntityCard`, which composes `Card`.
+
+<DsExample dots>
+  <div class="ds-grid-2">
+    <div class="ds-card">
+      <div class="ds-card-body">
+        <div class="ds-card-head">
+          <span class="ds-card-title"><DsIcon name="facet:agent" size={20} />Support agent</span>
+          <span class="ds-status ds-status-success">active</span>
+        </div>
+        <p class="ds-card-desc">Answers product questions from the docs and opens a ticket when it cannot help.</p>
+        <div class="ds-detail"><DsIcon name="facet:harness" size={14} />Harness <b>Generic</b></div>
+        <div class="ds-detail"><DsIcon name="facet:exposure" size={14} />Channels <b>Slack</b></div>
+        <div class="ds-caps">
+          <span><DsIcon name="facet:knowledge" size={14} />Knowledge</span>
+          <span><DsIcon name="facet:memory" size={14} />Memory</span>
+          <span><DsIcon name="facet:capabilities" size={14} />Web search</span>
+          <span class="ds-muted">+2</span>
+        </div>
+        <div class="ds-row"><span class="ds-tag">support</span><span class="ds-tag">docs</span></div>
+      </div>
+      <div class="ds-card-footer"><span>12 sessions</span><span class="ds-btn ds-btn-ghost ds-btn-icon ds-btn-sm"><DsIcon name="pencil" size={14} /></span></div>
+    </div>
+    <div class="ds-card">
+      <div class="ds-card-body">
+        <div class="ds-card-head">
+          <span class="ds-card-title"><DsIcon name="facet:agent" size={20} />Release notes writer</span>
+          <span class="ds-status">archived</span>
+        </div>
+        <p class="ds-card-desc">Drafts the changelog entry for a merged pull request.</p>
+        <div class="ds-detail"><DsIcon name="facet:harness" size={14} />Harness <b>Coding</b></div>
+        <div class="ds-detail"><DsIcon name="facet:exposure" size={14} />Channels <b class="ds-muted" style="font-weight: 400">None configured</b><a>Add</a></div>
+      </div>
+      <div class="ds-card-footer"><span>No sessions</span><span class="ds-btn ds-btn-ghost ds-btn-icon ds-btn-sm"><DsIcon name="pencil" size={14} /></span></div>
+    </div>
+  </div>
+</DsExample>
+
+Anatomy, top to bottom:
+
+1. A plain 20px domain glyph (no tile; only the page masthead uses a tile), an 18px semibold
+   linked title, and the lifecycle status at the top right.
+2. The description at `foreground / 0.75`, clamped to two lines.
+3. Detail rows: `icon · label · value`, such as the harness. Agent channels sit here, above
+   tags; harness cards have no channels.
+4. Capabilities as icon and name, four, then `+N`. Tags, three, then `+N`. Overflow controls
+   are keyboard accessible and reveal the full set.
+5. A footer strip with usage on the left and ghost actions on the right.
+
+Rules: only the title and explicit links navigate, the card itself is inert. Never fix a card's
+height; let the body grow. No shadow; hover darkens the border. Slugs, ids, and creation dates
+belong on the detail page.
+
+### Rows
+
+Dense registries (Models, MCP tools) use a full-width row per record instead of a grid.
+
+<DsExample>
+  <div class="ds-list">
+    <div class="ds-list-row"><DsIcon name="facet:models" /><span class="ds-grow"><b style="font-weight: 600">gpt-6.1-sol</b> <span class="ds-muted ds-mono" style="font-size: 12px">openai</span></span><span class="ds-badge ds-badge-secondary">Default</span><span class="ds-status ds-status-success">enabled</span><span class="ds-btn ds-btn-ghost ds-btn-icon ds-btn-sm"><DsIcon name="ellipsis" size={14} /></span></div>
+    <div class="ds-list-row"><DsIcon name="facet:models" /><span class="ds-grow"><b style="font-weight: 600">claude-sonnet-5-5</b> <span class="ds-muted ds-mono" style="font-size: 12px">anthropic</span></span><span class="ds-status ds-status-success">enabled</span><span class="ds-btn ds-btn-ghost ds-btn-icon ds-btn-sm"><DsIcon name="ellipsis" size={14} /></span></div>
+    <div class="ds-list-row"><DsIcon name="facet:models" /><span class="ds-grow"><b style="font-weight: 600">gpt-6-luna</b> <span class="ds-muted ds-mono" style="font-size: 12px">openai</span></span><span class="ds-status">disabled</span><span class="ds-btn ds-btn-ghost ds-btn-icon ds-btn-sm"><DsIcon name="ellipsis" size={14} /></span></div>
+  </div>
+</DsExample>
+
+A row that stands for a record with its own page is a link as a whole: the name carries the
+link and the row is its click target. Columns hold what the reader scans for (status, last
+used), the ⋯ menu holds quick commands, and a chevron ends the row. Configuration and budgets
+live on the record's page, never in a row that expands. Below about 40rem the columns fold
+under the name. Agent channels use this list.
+
+## Navigation
+
+`components/layout/sidebar-navigation.tsx`, with the items in `lib/navigation.ts`. A 240px
+sidebar: the logo row, the organization switcher, search, then the groups.
+
+<DsExample flush>
+  <div style="display: flex">
+    <nav class="ds-sidebar">
+      <div class="ds-sidebar-logo"><img src="/docs/favicon.svg" alt="" width="22" height="22" />Everruns</div>
+      <div class="ds-input ds-sidebar-search"><DsIcon name="search" size={14} class="ds-muted" /><span class="ds-placeholder">Search</span><span class="ds-kbd" style="margin-left: auto">⌘K</span></div>
+      <span class="ds-nav-item" style="color: hsl(var(--foreground)); font-weight: 600"><DsIcon name="facet:chat" />Chat</span>
+      <div class="ds-nav-gap" />
+      <div class="ds-nav-label">Building</div>
+      <span class="ds-nav-item" aria-current="page"><DsIcon name="facet:agent" />Agents</span>
+      <span class="ds-nav-item"><DsIcon name="facet:playground" />Playground</span>
+      <span class="ds-nav-item"><DsIcon name="facet:harness" />Harnesses</span>
+      <span class="ds-nav-item"><DsIcon name="facet:sandbox" />Sandboxes</span>
+      <div class="ds-nav-gap" />
+      <div class="ds-nav-label">Operational</div>
+      <span class="ds-nav-item"><DsIcon name="facet:durable" />Monitoring<DsIcon name="flask-conical" size={14} class="ds-flask" /></span>
+      <span class="ds-nav-item"><DsIcon name="facet:session" />Sessions</span>
+      <div class="ds-nav-gap" />
+      <div class="ds-nav-label">Library</div>
+      <span class="ds-nav-item"><DsIcon name="facet:models" />Models</span>
+      <span class="ds-nav-item"><DsIcon name="facet:knowledge" />Knowledge<DsIcon name="flask-conical" size={14} class="ds-flask" /></span>
+    </nav>
+    <div class="ds-page bg-brand-dots" />
+  </div>
+</DsExample>
+
+- Groups, in order: Chat (no label), Building, Operational, Library, Quality, then Settings,
+  System (collapsed), and Dev in development builds. The navigation model in
+  `lib/navigation.ts` owns the item list; breadcrumbs take their group name from it.
+- Group labels are 12px medium muted sentence case. Groups are separated by 12px of space,
+  never by rules.
+- An item is a 13px label with its 16px Facet glyph. Selected: a 2px navy left marker, a
+  `primary / 0.05` tint, 600 weight. Hover: a border-colored marker and a light fill.
+- Experimental items carry the Lucide flask after the label.
+
+## Notices, banners, and empty states
+
+<DsExample flush>
+  <div class="ds-banner"><DsIcon name="flask-conical" size={14} /><b>Knowledge is in early access.</b><span class="ds-muted">Collections and search may change.</span><span style="margin-left: auto; text-decoration: underline; text-underline-offset: 3px">Learn more</span><span class="ds-btn ds-btn-ghost ds-btn-icon ds-btn-sm" aria-label="Dismiss"><DsIcon name="x" size={14} /></span></div>
+  <div class="ds-stack" style="padding: 1.5rem">
+    <div class="ds-notice"><DsIcon name="info" class="ds-muted" /><div><strong>No model provider configured</strong><span class="ds-muted">Add one in Settings, Providers to use Chat.</span></div></div>
+    <div class="ds-empty">
+      <DsIcon name="facet:sandbox" size={40} class="ds-muted" />
+      <h4>No sandboxes yet</h4>
+      <p>Sandboxes give agents an isolated machine for code and files. Create a template, then attach it to an agent.</p>
+      <div class="ds-row"><button class="ds-btn ds-btn-accent"><DsIcon name="plus" />New template</button><button class="ds-btn ds-btn-outline">Read the guide</button></div>
+    </div>
+  </div>
+</DsExample>
+
+- **Banner**: one full-width strip above the app shell, gold 10% tint, a glyph, a bold lead and
+  a muted continuation, one link, and a dismiss button. One at a time, never stacked.
+- **Notice** (`components/ui/notice.tsx`): an inline bordered message inside a page.
+- **Empty state**: teach what the thing is and offer the first action. Zero counters are
+  hidden rather than shown as "0".
+- Errors shown to ordinary users are short and generic. Full error detail belongs to the
+  developer surfaces, such as the session trace.
+
+
+## Choose the control by the task
+
+| Task | Shared component | Behavior |
+| --- | --- | --- |
+| A short, fixed set of values | `Select` | Keyboard selection with a named trigger. |
+| One resource from a growing catalog | `Combobox` | Search names and IDs; keep the selected label when results change. |
+| Several bound resources | `ResourceMultiSelect` | Searchable checkboxes; selected unavailable records remain removable. |
+| A change to the current presentation | `SegmentedControl` | One selected view; keyboard navigation through the choices. |
+| Navigation to another section | `SectionTabs` | Use links when the destination has its own URL. |
+| Commands on a record | `EntityActionsMenu` | Shared record and lifecycle groups, with destructive actions last. |
+| Tags | `TagInput` | Enter or comma adds a chip; Backspace removes the last chip. |
+| A numeric range | `Slider` | Native range keyboard semantics, Slate colors and focus. |
+
+Resource wrappers such as `ModelPicker`, `AgentSelect`, `HarnessSelect` and
+`VirtualUserSelect` own fetching, eligibility and lifecycle rules. They compose the same
+searchable control; a new picker must not build another popup or keyboard implementation.
+Keep model provider names visible because several accounts can serve the same model.
+Harness options include their purpose. Never silently clear an unavailable saved selection.
+
+<DsExample caption="Searchable picker anatomy. The app's component gallery exercises keyboard selection, empty results and asynchronous states.">
+  <div class="ds-stack" style="max-width: 360px">
+    <label class="ds-label">Default model</label>
+    <div class="ds-input ds-row" style="justify-content: space-between"><span>GPT-6 Luna (Team account)</span><DsIcon name="chevron-down" /></div>
+    <div style="border: 1px solid hsl(var(--border)); background: hsl(var(--popover)); padding: .5rem">
+      <input class="ds-input" aria-label="Search models example" placeholder="Search models" />
+      <div style="padding: .5rem; background: hsl(var(--muted))">GPT-6 Luna (Team account)</div>
+      <div style="padding: .5rem">GPT-6.1 Sol (Team account)</div>
+      <p class="ds-muted" style="font-size: 12px">Search by name or identifier</p>
+    </div>
+  </div>
+</DsExample>
+
+### Field and selection states
+
+Use `Field` to associate the label, hint and validation message with the control. Pass its
+hint ID through `aria-describedby`, and set `aria-invalid` when validation fails. Keep errors
+next to the field and announce them as alerts. A field label is never replaced by a placeholder.
+
+Searchable pickers support disabled options, grouping, descriptions, loading, request failure,
+no matching results, and a pagination footer. Search results must not change the current value.
+Closing a popup with Escape returns focus to its trigger. Popups use a portal and remain within
+the available viewport, including when opened inside a dialog.
+
+### Actions and feedback
+
+Use the shared `Button` with `loading` for a pending operation: it displays a spinner,
+disables repeat clicks and exposes `aria-busy`. Use `ConfirmDialog` for asynchronous destructive
+actions; failure keeps the dialog open with a retryable error. Routine confirmation requests
+use the page's `ConfirmationProvider` instead of browser confirmation popups. Navigation or
+an organization change cancels an unanswered request.
+
+`Pagination` owns Previous, page count and Next for numbered lists. Cursor-based lists retain
+a Load more footer rather than inventing a total page count. `QueryStateWrapper` composes
+`Notice` and `EmptyState`; distinguish no resources from no matches for the current filters.
+
+The production implementations live in
+[`apps/ui/src/components/ui/`](https://github.com/everruns/everruns/tree/main/apps/ui/src/components/ui).
+Interactive examples use those components at `/dev/ui-components` in a local development build.

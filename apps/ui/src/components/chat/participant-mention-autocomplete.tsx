@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { AtSign } from "lucide-react";
 import { ComposerAutocomplete } from "@/components/chat/composer-autocomplete";
@@ -37,6 +38,7 @@ export function ParticipantMentionAutocomplete({
   onDismiss: () => void;
   onSelect: (option: ParticipantMentionOption) => void;
 }) {
+  const ui = useUiTranslations();
   const normalizedQuery = query.toLocaleLowerCase();
   const filtered = options.filter((option) =>
     `${option.label} ${option.description ?? ""}`.toLocaleLowerCase().includes(normalizedQuery),
@@ -48,7 +50,7 @@ export function ParticipantMentionAutocomplete({
     <ComposerAutocomplete
       emptyMessage={emptyMessage}
       items={filtered}
-      label="Address a participant"
+      label={ui("Address a participant")}
       onDismiss={onDismiss}
       onSelect={onSelect}
       visible={visible}

@@ -1,5 +1,7 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 
 import { useSearchParams } from "next/navigation";
@@ -44,6 +46,9 @@ function ConnectionRow({
   onDisconnect: (provider: string) => void;
   isDisconnecting: boolean;
 }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const displayName = provider?.display_name ?? connection.provider;
   const icon = provider?.icon ?? "link";
   const isApiKey = connection.connection_type === "api_key";
@@ -87,13 +92,13 @@ function ConnectionRow({
             )}
           </div>
           <div className="text-sm text-muted-foreground">
-            Connected {new Date(connection.connected_at).toLocaleDateString()}
+            {ui("Connected")} {new Date(connection.connected_at).toLocaleDateString(displayLocale)}
             {connection.scopes && <span className="ml-2">({connection.scopes})</span>}
           </div>
           {verifyStatus === "valid" && (
             <div className="flex items-center gap-1 text-success text-xs mt-1">
               <CheckCircle className="h-3 w-3" />
-              API key is valid
+              {ui("API key is valid")}
             </div>
           )}
           {verifyStatus === "invalid" && (
@@ -112,7 +117,7 @@ function ConnectionRow({
             ) : (
               <ShieldCheck className="h-4 w-4 mr-1" />
             )}
-            {verify.isPending ? "Verifying..." : "Verify"}
+            {verify.isPending ? ui("Verifying...") : ui("Verify")}
           </Button>
         )}
         <Button
@@ -123,7 +128,7 @@ function ConnectionRow({
           disabled={isDisconnecting}
         >
           <Trash2 className="h-4 w-4 mr-1" />
-          Disconnect
+          {ui("Disconnect")}
         </Button>
       </div>
     </div>
@@ -139,6 +144,7 @@ function AvailableProviderRow({
   provider: ConnectionProviderType;
   onConnectApiKey: (provider: ConnectionProviderType) => void;
 }) {
+  const ui = useUiTranslations();
   const handleConnect = () => {
     if (provider.connection_type === "oauth") {
       window.location.href = `${getBackendUrl()}/v1/virtual-users/${identityId}/connections/${encodeURIComponent(provider.provider_id)}/authorize?return_to=${encodeURIComponent(window.location.pathname)}`;
@@ -170,13 +176,15 @@ function AvailableProviderRow({
         ) : (
           <LinkIcon className="h-4 w-4 mr-1" />
         )}
-        Connect
+        {ui("Connect")}
       </Button>
     </div>
   );
 }
 
 export function ConnectionsPanel({ identityId = "me" }: { identityId?: string }) {
+  const requestConfirmation = useConfirmation();
+  const ui = useUiTranslations();
   const { data: connections = [], isLoading, error } = useIdentityConnections(identityId);
   const { data: providers = [] } = useConnectionProviders();
   useChatPageRows(
@@ -206,7 +214,7 @@ export function ConnectionsPanel({ identityId = "me" }: { identityId?: string })
     const meta = providers.find((p) => p.provider_id === provider);
     const name = meta?.display_name ?? provider;
     if (
-      confirm(
+      await requestConfirmation(
         `Disconnect ${name}? New sessions will no longer have access to your ${name} account.`,
       )
     ) {
@@ -236,15 +244,15 @@ export function ConnectionsPanel({ identityId = "me" }: { identityId?: string })
       {/* Connected accounts */}
       <section>
         <div className="mb-4">
-          <h2 className="text-xl font-semibold">Connections</h2>
+          <h2 className="text-xl font-semibold">{ui("Connections")}</h2>
           <p className="text-sm text-muted-foreground">
-            Connections belong to this virtual user in the current organization.
+            {ui("Connections belong to this virtual user in the current organization.")}
           </p>
         </div>
 
         {error && (
           <div className="bg-destructive/10 text-destructive p-4 mb-4">
-            Failed to load connections: {error.message}
+            {ui("Failed to load connections:")} {error.message}
           </div>
         )}
 
@@ -257,8 +265,8 @@ export function ConnectionsPanel({ identityId = "me" }: { identityId?: string })
         ) : connections.length === 0 && availableProviders.length === 0 ? (
           <Card className="p-8 text-center">
             <LinkIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No connections available</h3>
-            <p className="text-muted-foreground">No connection providers are configured.</p>
+            <h3 className="text-lg font-medium mb-2">{ui("No connections available")}</h3>
+            <p className="text-muted-foreground">{ui("No connection providers are configured.")}</p>
           </Card>
         ) : (
           <div className="space-y-2">
@@ -280,9 +288,9 @@ export function ConnectionsPanel({ identityId = "me" }: { identityId?: string })
       {availableProviders.length > 0 && (
         <section>
           <div className="mb-4">
-            <h2 className="text-lg font-semibold">Available</h2>
+            <h2 className="text-lg font-semibold">{ui("Available")}</h2>
             <p className="text-sm text-muted-foreground">
-              Connect additional accounts to enable access in sessions.
+              {ui("Connect additional accounts to enable access in sessions.")}
             </p>
           </div>
           <div className="space-y-2">

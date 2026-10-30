@@ -4,26 +4,33 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 9110",
-    "build": "next build",
+    "build": "npm run typecheck && next build",
+    "typecheck": "next typegen && tsrs --noEmit --fast",
     "start": "next start",
-    "test": "tsx --test src/server/*.test.ts",
+    "test": "tsx --test src/server/*.test.ts src/components/*.test.ts",
     "e2e": "playwright test",
-    "test:broker": "tsx e2e/broker.integration.ts"
+    "test:broker": "tsx e2e/broker.integration.ts",
+    "postinstall": "node ../ui/scripts/patch-zod-v3.mjs"
   },
   "dependencies": {
+    "@everruns/generative-ui": "file:../ui/generative-ui",
+    "@openuidev/react-lang": "1.0.1",
+    "@openuidev/react-ui": "0.18.1",
     "next": "^16.3.8",
+    "pg": "^8.16.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "streamdown": "^2.6.0",
-    "pg": "^8.16.3"
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.3",
+    "@types/pg": "^8.15.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@types/pg": "^8.15.5",
+    "tsrs": "0.20.1-ts7.1.0-beta",
     "tsx": "^4.20.6",
-    "@playwright/test": "^1.63.0"
+    "typescript": "^5.9.3"
   }
 }

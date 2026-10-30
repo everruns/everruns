@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 // Every model from every provider, filtered by service, provider and status.
@@ -94,6 +95,7 @@ export function ModelsTab({
   onUpdate: (id: string, data: UpdateModelRequest) => Promise<boolean>;
   onDelete: (id: string) => void;
 }) {
+  const ui = useUiTranslations();
   const [service, setService] = useState<ModelService | "all">("all");
   const [search, setSearch] = useState("");
   useChatPageFilters({ search, provider_id: providerId, status, service });
@@ -149,14 +151,14 @@ export function ModelsTab({
   if (modelsError) {
     return (
       <div className="border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-        Failed to load models: {modelsError.message}
+        {ui("Failed to load models:")} {modelsError.message}
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Model service">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={ui("Model service")}>
         {serviceChips.map((chip) => {
           const Icon = SERVICE_ICONS[chip.key] ?? Layers;
           const pressed = service === chip.key;
@@ -187,16 +189,16 @@ export function ModelsTab({
       {service === "decisions" && (
         <div className="border bg-card px-4 py-3">
           <p className="text-[13px] font-medium">
-            Decision models return structured verdicts for the Jev capability
+            {ui("Decision models return structured verdicts for the Jev capability")}
           </p>
           <p className="text-xs text-muted-foreground">
-            Only calibrated models can be the decision default. Default:{" "}
+            {ui("Only calibrated models can be the decision default. Default:")}{" "}
             <span className="font-medium text-foreground">
-              {decisionDefault ? modelLabel(decisionDefault) : "None"}
+              {decisionDefault ? modelLabel(decisionDefault) : ui("None")}
             </span>{" "}
             ·{" "}
             <button type="button" className="text-primary hover:underline" onClick={onGoToDefaults}>
-              Change in Defaults
+              {ui("Change in Defaults")}
             </button>
           </p>
         </div>
@@ -206,18 +208,19 @@ export function ModelsTab({
         <div className="flex flex-wrap items-center gap-3 border border-accent/30 bg-accent/10 px-4 py-2.5 text-sm">
           <Sparkles className="icon-sharp size-4 text-accent-foreground" />
           <span className="flex-1">
-            {newModels.length} new {newModels.length === 1 ? "model" : "models"} discovered
-            {selectedProvider ? ` by ${selectedProvider.name}` : ""}.
+            {newModels.length} {ui("new")} {newModels.length === 1 ? ui("model") : ui("models")}{" "}
+            {ui("discovered")}
+            {selectedProvider ? ui(" by {value0}", { value0: selectedProvider.name }) : ""}.
           </span>
           <Button size="sm" onClick={() => onReviewNew(newModels)}>
-            Review
+            {ui("Review")}
           </Button>
         </div>
       )}
 
       <div className="flex flex-wrap items-center gap-3">
         <SearchInput
-          placeholder="Search models…"
+          placeholder={ui("Search models…")}
           value={search}
           onChange={(event) => {
             setSearch(event.target.value);
@@ -232,11 +235,11 @@ export function ModelsTab({
             resetPaging();
           }}
         >
-          <SelectTrigger aria-label="Provider" className="w-48">
-            <SelectValue>{selectedProvider?.name ?? "All providers"}</SelectValue>
+          <SelectTrigger aria-label={ui("Provider")} className="w-48">
+            <SelectValue>{selectedProvider?.name ?? ui("All providers")}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All providers</SelectItem>
+            <SelectItem value="all">{ui("All providers")}</SelectItem>
             {providers.map((provider) => (
               <SelectItem key={provider.id} value={provider.id}>
                 {provider.name}
@@ -244,7 +247,7 @@ export function ModelsTab({
             ))}
           </SelectContent>
         </Select>
-        <div className="inline-flex border" role="group" aria-label="Model status">
+        <div className="inline-flex border" role="group" aria-label={ui("Model status")}>
           {(
             [
               ["all", "All", scope.length],
@@ -275,12 +278,12 @@ export function ModelsTab({
             {selectedProvider && (
               <Button variant="outline" onClick={() => onChooseModels(selectedProvider)}>
                 <ListChecks className="icon-sharp size-4" />
-                Choose models
+                {ui("Choose models")}
               </Button>
             )}
             <Button variant="outline" onClick={onAddModel} disabled={providers.length === 0}>
               <Plus className="icon-sharp size-4" />
-              Add model
+              {ui("Add model")}
             </Button>
           </div>
         )}
@@ -316,9 +319,11 @@ export function ModelsTab({
               isTogglingEnabled={togglingModelId === model.id}
               badges={
                 <>
-                  {model.id === defaultModelId && <Badge variant="secondary">Org default</Badge>}
+                  {model.id === defaultModelId && (
+                    <Badge variant="secondary">{ui("Org default")}</Badge>
+                  )}
                   {model.id === decisionDefault?.id && (
-                    <Badge variant="secondary">Decision default</Badge>
+                    <Badge variant="secondary">{ui("Decision default")}</Badge>
                   )}
                 </>
               }
@@ -326,16 +331,16 @@ export function ModelsTab({
           ))}
           <div className="flex flex-wrap items-center gap-3 pt-1 text-sm text-muted-foreground">
             <span>
-              Showing {Math.min(visible, shown.length)} of {shown.length}
+              {ui("Showing")} {Math.min(visible, shown.length)} {ui("of")} {shown.length}
             </span>
             {shown.length > visible && (
               <Button variant="outline" size="sm" onClick={() => setVisible((v) => v + PAGE_SIZE)}>
-                Show {Math.min(PAGE_SIZE, shown.length - visible)} more
+                {ui("Show")} {Math.min(PAGE_SIZE, shown.length - visible)} {ui("more")}
               </Button>
             )}
             {providerId && (
               <Link href="/models" className="ml-auto text-primary hover:underline">
-                Clear provider filter →
+                {ui("Clear provider filter →")}
               </Link>
             )}
           </div>
@@ -362,6 +367,7 @@ function EmptyModels({
   onShowAll: () => void;
   onConnect: () => void;
 }) {
+  const ui = useUiTranslations();
   const [title, body] = !hasProviders
     ? [
         "No providers connected",
@@ -385,12 +391,12 @@ function EmptyModels({
       {!hasProviders && canManage && (
         <Button onClick={onConnect}>
           <Plus className="icon-sharp size-4" />
-          Connect provider
+          {ui("Connect provider")}
         </Button>
       )}
       {hasProviders && !searching && status === "enabled" && availableCount > 0 && (
         <Button variant="outline" onClick={onShowAll}>
-          Show all models
+          {ui("Show all models")}
         </Button>
       )}
     </Card>

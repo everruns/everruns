@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useQuery } from "@tanstack/react-query";
 import { CircleCheck, Circle, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,14 +31,15 @@ export function slackConnectionLabel(config: SlackChannelConfig): string {
 }
 
 export function SlackConnectionStatus({ channel }: { channel: AgentChannel }) {
+  const ui = useUiTranslations();
   const config = channel.channel_config as SlackChannelConfig;
   const configured = hasSlackCredentials(config);
   const received = !!config.first_message_received_at;
   const live = getChannelLifecyclePresentation(channel).isLive;
   const Icon = received ? CircleCheck : Circle;
   return (
-    <section className="space-y-2" aria-label="Slack connection">
-      <h3 className="text-sm font-medium">Slack connection</h3>
+    <section className="space-y-2" aria-label={ui("Slack connection")}>
+      <h3 className="text-sm font-medium">{ui("Slack connection")}</h3>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Icon className={received ? "size-4 text-success" : "size-4 text-muted-foreground"} />
         <span className="font-medium">{slackConnectionLabel(config)}</span>
@@ -45,15 +47,21 @@ export function SlackConnectionStatus({ channel }: { channel: AgentChannel }) {
       </div>
       <p className="text-xs text-muted-foreground">
         {!live
-          ? "Publish this channel to receive Slack messages. Installation and publication are separate."
+          ? ui(
+              "Publish this channel to receive Slack messages. Installation and publication are separate.",
+            )
           : !configured
-            ? "Add this agent to Slack or use credentials from an existing Slack app below."
+            ? ui("Add this agent to Slack or use credentials from an existing Slack app below.")
             : received
               ? // Signed message delivery is stronger evidence than the optional URL challenge.
-                "A signed Slack message has reached this channel."
+                ui("A signed Slack message has reached this channel.")
               : config.webhook_verified_at
-                ? "Slack verified the Request URL. Invite the bot to a channel, then @mention it to test."
-                : "No Slack message received yet. Invite the bot to a channel, then @mention it to test."}
+                ? ui(
+                    "Slack verified the Request URL. Invite the bot to a channel, then @mention it to test.",
+                  )
+                : ui(
+                    "No Slack message received yet. Invite the bot to a channel, then @mention it to test.",
+                  )}
       </p>
     </section>
   );
@@ -61,6 +69,7 @@ export function SlackConnectionStatus({ channel }: { channel: AgentChannel }) {
 
 // Mounted only inside the manual disclosure; normal installation needs no manifest or URL.
 export function SlackManualSetup({ channel }: { channel: AgentChannel }) {
+  const ui = useUiTranslations();
   const configured = hasSlackCredentials(channel.channel_config as SlackChannelConfig);
   const live = getChannelLifecyclePresentation(channel).isLive;
   const manifest = useQuery({
@@ -78,8 +87,12 @@ export function SlackManualSetup({ channel }: { channel: AgentChannel }) {
         <>
           <p className="text-xs text-muted-foreground">
             {live
-              ? "Create an app from this channel’s manifest in Slack, install it to your workspace, then enter its signing secret and bot token below."
-              : "Publish this channel before creating a Slack app from its manifest. Slack checks the Request URL during app creation."}
+              ? ui(
+                  "Create an app from this channel’s manifest in Slack, install it to your workspace, then enter its signing secret and bot token below.",
+                )
+              : ui(
+                  "Publish this channel before creating a Slack app from its manifest. Slack checks the Request URL during app creation.",
+                )}
           </p>
           {live && (
             <Button
@@ -92,39 +105,45 @@ export function SlackManualSetup({ channel }: { channel: AgentChannel }) {
                 window.open(manifest.data.create_url, "_blank", "noopener,noreferrer")
               }
             >
-              <ExternalLink className="size-3" /> Create Slack app
+              <ExternalLink className="size-3" /> {ui("Create Slack app")}
             </Button>
           )}
         </>
       )}
       {manifest.isLoading && (
-        <p className="text-xs text-muted-foreground">Loading the Slack app manifest…</p>
+        <p className="text-xs text-muted-foreground">{ui("Loading the Slack app manifest…")}</p>
       )}
       {manifest.isError && (
         <div role="alert" className="space-y-2">
-          <p className="text-xs text-destructive">Could not load the Slack app manifest.</p>
+          <p className="text-xs text-destructive">{ui("Could not load the Slack app manifest.")}</p>
           <Button type="button" size="sm" variant="outline" onClick={() => manifest.refetch()}>
-            Try again
+            {ui("Try again")}
           </Button>
         </div>
       )}
       {manifest.data && !isPublicHttpsUrl(requestUrl ?? null) && (
         <p className="text-xs text-destructive">
-          Set PUBLIC_APP_URL to a public HTTPS origin, restart Everruns, and reload before creating
-          the Slack app.
+          {ui(
+            "Set PUBLIC_APP_URL to a public HTTPS origin, restart Everruns, and reload before creating the Slack app.",
+          )}
         </p>
       )}
       <ChannelUsePanel channel={channel} />
       {configured && manifest.data && (
         <details>
-          <summary className="cursor-pointer text-sm">App manifest</summary>
+          <summary className="cursor-pointer text-sm">{ui("App manifest")}</summary>
           <p className="my-2 text-xs text-muted-foreground">
-            Save settings first to generate an updated manifest. Update your existing app in Slack
-            and reinstall it when permissions change.
+            {ui(
+              "Save settings first to generate an updated manifest. Update your existing app in Slack and reinstall it when permissions change.",
+            )}
           </p>
           <CodeBlock
             samples={[
-              { label: "Slack app manifest", language: "yaml", code: manifest.data.manifest_yaml },
+              {
+                label: ui("Slack app manifest"),
+                language: "yaml",
+                code: manifest.data.manifest_yaml,
+              },
             ]}
           />
         </details>

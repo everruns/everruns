@@ -1,0 +1,310 @@
+---
+title: Slate Page Layouts
+description: The five page zones and the list, detail, edit, and chat layouts of the Everruns UI, as full-page examples to start a redesign from.
+slug: design-system/layouts
+---
+
+import DsExample from "@docs-components/design-system/DsExample.astro";
+import DsIcon from "@docs-components/design-system/DsIcon.astro";
+
+## The five zones
+
+Every top-level entity screen composes the primitives in
+[`apps/ui/src/components/layout/page-layout.tsx`](https://github.com/everruns/everruns/blob/main/apps/ui/src/components/layout/page-layout.tsx). Only the zone contents change from page to
+page; no page invents a parallel shell.
+
+1. **Breadcrumb**: `Group / Section / Name / Mode`. The group comes from the sidebar.
+2. **Masthead**: a 40px icon tile with the gold 10% wash, the 28px title, a muted one-line
+   description, an optional meta line, and the action cluster on the right.
+3. **Control strip**: search on the left; status tabs and the view toggle on the right.
+4. **Body**: the records, or the workspace of a detail page.
+5. **Footer**: optional. It explains partial results or pagination, or links back.
+
+The page has 24px padding and 24px between zones, on the dot grid.
+
+## List page
+
+<DsExample flush caption="Agents list: masthead with Import and the gold create action, control strip, card grid, examples row.">
+  <div class="ds-page bg-brand-dots">
+    <div class="ds-crumbs"><span>Building</span><span class="ds-sep">/</span><span class="ds-current">Agents</span></div>
+    <div class="ds-masthead">
+      <div class="ds-masthead-main">
+        <span class="ds-tile"><DsIcon name="facet:agent" size={20} /></span>
+        <div><div class="ds-title">Agents</div><p class="ds-desc">Build, test, and run the agents in this organization.</p></div>
+      </div>
+      <div class="ds-row"><button class="ds-btn ds-btn-outline">Import</button><button class="ds-btn ds-btn-accent"><DsIcon name="plus" />New agent</button></div>
+    </div>
+    <div class="ds-strip">
+      <span class="ds-input"><DsIcon name="search" size={14} class="ds-muted" /><span class="ds-placeholder">Search agents</span></span>
+      <div class="ds-row" style="gap: 1.25rem; align-items: flex-end">
+        <div class="ds-tabs"><span class="ds-tab" aria-selected="true">All <span class="ds-count">4</span></span><span class="ds-tab">Active <span class="ds-count">3</span></span><span class="ds-tab">Archived <span class="ds-count">1</span></span></div>
+        <span class="ds-toggle" style="margin-bottom: 0.5rem"><span aria-pressed="true"><DsIcon name="layout-grid" size={14} /></span><span><DsIcon name="list" size={14} /></span></span>
+      </div>
+    </div>
+    <div class="ds-grid-2">
+      <div class="ds-card">
+        <div class="ds-card-body">
+          <div class="ds-card-head"><span class="ds-card-title"><DsIcon name="facet:agent" size={20} />Support agent</span><span class="ds-status ds-status-success">active</span></div>
+          <p class="ds-card-desc">Answers product questions from the docs and opens a ticket when it cannot help.</p>
+          <div class="ds-detail"><DsIcon name="facet:harness" size={14} />Harness <b>Generic</b></div>
+          <div class="ds-detail"><DsIcon name="facet:exposure" size={14} />Channels <b>Slack</b></div>
+          <div class="ds-row"><span class="ds-tag">support</span><span class="ds-tag">docs</span></div>
+        </div>
+        <div class="ds-card-footer"><span>12 sessions</span><span class="ds-btn ds-btn-ghost ds-btn-icon ds-btn-sm"><DsIcon name="pencil" size={14} /></span></div>
+      </div>
+      <div class="ds-card">
+        <div class="ds-card-body">
+          <div class="ds-card-head"><span class="ds-card-title"><DsIcon name="facet:agent" size={20} />PR reviewer</span><span class="ds-status ds-status-success">active</span></div>
+          <p class="ds-card-desc">Reviews pull requests against the repository's conventions and posts one summary comment.</p>
+          <div class="ds-detail"><DsIcon name="facet:harness" size={14} />Harness <b>Coding</b></div>
+          <div class="ds-detail"><DsIcon name="facet:exposure" size={14} />Channels <b>GitHub</b></div>
+          <div class="ds-row"><span class="ds-tag">code</span></div>
+        </div>
+        <div class="ds-card-footer"><span>48 sessions</span><span class="ds-btn ds-btn-ghost ds-btn-icon ds-btn-sm"><DsIcon name="pencil" size={14} /></span></div>
+      </div>
+    </div>
+    <div class="ds-row" style="justify-content: space-between"><b style="font-size: 15px; font-weight: 600">Example agents</b><span class="ds-footer-link">All examples<DsIcon name="chevron-right" size={14} /></span></div>
+    <div class="ds-grid-3">
+      <div class="ds-card"><div class="ds-card-body"><span style="font-weight: 600">Research agent</span><p class="ds-card-desc">Searches the web and writes a cited report.</p><div><button class="ds-btn ds-btn-outline ds-btn-sm">Import</button></div></div></div>
+      <div class="ds-card"><div class="ds-card-body"><span style="font-weight: 600">Incident commander</span><p class="ds-card-desc">Coordinates an incident channel and keeps the timeline.</p><div><button class="ds-btn ds-btn-outline ds-btn-sm">Import</button></div></div></div>
+      <div class="ds-card"><div class="ds-card-body"><span style="font-weight: 600">Meeting notes</span><p class="ds-card-desc">Turns a call transcript into decisions and follow-ups.</p><div><button class="ds-btn ds-btn-outline ds-btn-sm">Import</button></div></div></div>
+    </div>
+  </div>
+</DsExample>
+
+- The records get the full width. No facet or summary rail on list pages, and no count badge in
+  the masthead: counts live in the status tabs.
+- Genuine filters (category, provider) are toolbar controls in the control strip.
+- Example discovery is one row of compact previews with an import or setup action.
+- Dense registries such as Models switch the grid for [rows](/design-system/components/#rows).
+- Detail, editing, and operational screens with richer filtering may add a contextual rail.
+
+## Detail page
+
+One layout reads and edits. The substance of the record is a wide primary pane; configuration
+is a 340px config column. The [agent page](https://github.com/everruns/everruns/blob/main/knowledge/ui/agent-page.md)
+is the reference implementation.
+
+<DsExample flush caption="Agent detail: one tab row attached to the workspace, prompt in the primary pane, configuration in the column.">
+  <div class="ds-page bg-brand-dots">
+    <div class="ds-crumbs"><span>Building</span><span class="ds-sep">/</span><span>Agents</span><span class="ds-sep">/</span><span class="ds-current">Support agent</span></div>
+    <div class="ds-masthead">
+      <div class="ds-masthead-main">
+        <span class="ds-tile"><DsIcon name="facet:agent" size={20} /></span>
+        <div><div class="ds-title">Support agent <span class="ds-hash">#</span><span class="ds-badge ds-badge-success">Active</span></div><p class="ds-desc">Answers product questions from the docs and opens a ticket when it cannot help.</p></div>
+      </div>
+      <div class="ds-row"><button class="ds-btn ds-btn-outline"><DsIcon name="pencil" />Edit</button><button class="ds-btn ds-btn-outline ds-btn-icon" aria-label="More actions"><DsIcon name="ellipsis" /></button><button class="ds-btn ds-btn-accent"><DsIcon name="facet:playground" />Test in Playground</button></div>
+    </div>
+    <div class="ds-workspace">
+      <div class="ds-tabs"><span class="ds-tab" aria-selected="true">Agent</span><span class="ds-tab">Preview</span><span class="ds-tab">Integrations</span><span class="ds-tab">Stats</span><span class="ds-tab">Sessions <span class="ds-count">12</span></span></div>
+      <div class="ds-panes">
+        <div>
+          <div class="ds-pane-head">System prompt <span class="ds-mono">118 words · ~165 tokens</span><span class="ds-row"><button class="ds-btn ds-btn-outline ds-btn-sm">Source</button><button class="ds-btn ds-btn-outline ds-btn-sm"><DsIcon name="pencil" size={14} />Edit prompt</button></span></div>
+          <div class="ds-pane-body"><p>You answer questions about Everruns for people evaluating or running it.</p><p>Search the docs before you answer, cite the page you used, and say so plainly when the docs do not cover the question. When you cannot help, open a ticket with what the person asked.</p></div>
+        </div>
+        <div class="ds-config">
+          <div class="ds-field"><span class="ds-label">Harness</span><span class="ds-input">Generic<DsIcon name="chevron-down" size={14} class="ds-muted" style="margin-left: auto" /></span></div>
+          <div class="ds-field"><span class="ds-label">Capabilities</span><span class="ds-config-item"><DsIcon name="facet:knowledge" size={14} />Knowledge</span><span class="ds-config-item"><DsIcon name="facet:capabilities" size={14} />Web search</span></div>
+          <div class="ds-field"><span class="ds-label">Default model</span><span class="ds-input">gpt-6.1-sol</span></div>
+          <div class="ds-fact"><strong>Updated</strong>2 hours ago</div>
+          <div class="ds-more">
+            <span class="ds-label">More</span>
+            <div class="ds-more-row"><span>MCP servers</span><span>None</span><DsIcon name="chevron-right" size={14} class="ds-muted" /></div>
+            <div class="ds-more-row"><span>Branding</span><span>Inherited</span><DsIcon name="chevron-right" size={14} class="ds-muted" /></div>
+            <div class="ds-more-row"><span>Health check</span><span>Not run</span><DsIcon name="chevron-right" size={14} class="ds-muted" /></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <span class="ds-footer-link"><DsIcon name="arrow-left" size={14} />Back to Agents</span>
+  </div>
+</DsExample>
+
+- **One tab row**, attached to the workspace with no gap. Its selection is part of the address
+  (`?tab=`). Non-primary tabs drop the config column and use the full width.
+- **Set-once settings are More rows**, each showing its current value ("None", "Inherited",
+  "Not run") and opening a side sheet. They never become extra tabs.
+- **Controls are live in view mode.** Changing one enters edit mode with that change pending.
+  Nothing saves until Save changes.
+- The `#` after the name copies the record's id. History, Manager notes, Archive, and Delete
+  live in the `⋯` menu.
+- Older detail screens that have not moved to the workspace still use titled block cards in a
+  main column with a side rail. New detail screens use the workspace.
+
+## File browser
+
+Anything that is a set of files, such as a session's workspace or a Knowledge collection, opens
+on the same tree and viewer from
+[`apps/ui/src/components/files/`](https://github.com/everruns/everruns/blob/main/apps/ui/src/components/files/).
+The [Knowledge pages](https://github.com/everruns/everruns/blob/main/knowledge/ui/knowledge-pages.md)
+are the reference implementation.
+
+<DsExample flush caption="Knowledge collection, Files tab: folder tree beside the viewer, per-file controls in the viewer footer.">
+  <div class="ds-page bg-brand-dots">
+    <div class="ds-crumbs"><span>Library</span><span class="ds-sep">/</span><span>Knowledge</span><span class="ds-sep">/</span><span class="ds-current">support-playbooks</span></div>
+    <div class="ds-masthead">
+      <div class="ds-masthead-main">
+        <span class="ds-tile"><DsIcon name="facet:knowledge" size={20} /></span>
+        <div><div class="ds-title">support-playbooks <span class="ds-badge ds-badge-secondary">Hybrid search</span></div><p class="ds-desc">Escalation runbooks and canned answers for the support agent.</p></div>
+      </div>
+      <div class="ds-row"><button class="ds-btn ds-btn-outline"><DsIcon name="upload" />Upload files</button></div>
+    </div>
+    <div class="ds-tabs"><span class="ds-tab" aria-selected="true">Files <span class="ds-count">128</span></span><span class="ds-tab">Search</span><span class="ds-tab">Sources <span class="ds-count">2</span></span><span class="ds-tab">Settings</span></div>
+    <div class="ds-explorer">
+      <div class="ds-tree">
+        <div class="ds-tree-row"><DsIcon name="chevron-down" size={14} class="ds-muted" /><DsIcon name="folder" size={14} />notes</div>
+        <div class="ds-tree-row ds-nested"><DsIcon name="file-text" size={14} class="ds-muted" />refund-policy.md<span class="ds-size">2.1 KB</span></div>
+        <div class="ds-tree-row ds-nested" aria-selected="true"><DsIcon name="file-text" size={14} class="ds-muted" />vip-escalation.md<span class="ds-size">3 KB</span></div>
+        <div class="ds-tree-row"><DsIcon name="chevron-right" size={14} class="ds-muted" /><DsIcon name="folder" size={14} />playbooks</div>
+        <div class="ds-tree-row"><span style="width: 14px"></span><DsIcon name="file-text" size={14} class="ds-muted" />index.md<span class="ds-size">1.2 KB</span></div>
+      </div>
+      <div>
+        <div class="ds-pane-head">vip-escalation.md <span class="ds-status ds-status-success">Text ready</span><span class="ds-row"><button class="ds-btn ds-btn-outline ds-btn-sm ds-btn-icon" aria-label="Edit"><DsIcon name="pencil" size={14} /></button><button class="ds-btn ds-btn-outline ds-btn-sm ds-btn-icon" aria-label="Download"><DsIcon name="download" size={14} /></button></span></div>
+        <div class="ds-pane-body"><p><strong>VIP escalation</strong></p><p>Customers on the Enterprise plan get a named engineer within one business hour.</p></div>
+        <div class="ds-viewer-foot"><span>text/markdown</span><span>Updated 3 days ago</span><span class="ds-row" style="margin-left: auto"><DsIcon name="check" size={14} />Agent can read</span></div>
+      </div>
+    </div>
+  </div>
+</DsExample>
+
+- **One browser, many filesystems.** `FileBrowser` and `FileViewer` take a `FileSource` (list a
+  folder, read a file, a download URL, optional writes). A source without writes renders
+  read-only: no New, Edit, or Delete, and a lock on each file.
+- **The tree loads one folder at a time.** Folders expand on demand; never page a whole
+  recursive listing into the tree.
+- **The selection is part of the address** (`?file=`), so search results and shared links open
+  straight to a file.
+- **Per-file controls sit in the viewer footer**, not in the tree. Extraction or sync state is
+  a status dot in the viewer header; the tree shows a dot only when a file needs attention.
+- **Section tabs are paths** on pages whose tabs are whole sections (Knowledge, Sandboxes):
+  `/knowledge/{id}/sources`, with the shell as the tabs' layout.
+
+## Edit mode
+
+Edit is a mode of the same page (`?mode=edit`), not a separate layout, so the reader keeps their
+place.
+
+<DsExample flush caption="The same page in edit mode: Edit crumb, Editing badge, the consequence line, Save changes and Discard.">
+  <div class="ds-page bg-brand-dots">
+    <div class="ds-crumbs"><span>Building</span><span class="ds-sep">/</span><span>Agents</span><span class="ds-sep">/</span><span>Support agent</span><span class="ds-sep">/</span><span class="ds-current">Edit</span></div>
+    <div class="ds-masthead">
+      <div class="ds-masthead-main">
+        <span class="ds-tile"><DsIcon name="facet:agent" size={20} /></span>
+        <div><div class="ds-title">Support agent <span class="ds-badge ds-badge-accent"><DsIcon name="pencil" size={12} />Editing</span></div><p class="ds-consequence">Changes apply to new sessions only. Running sessions keep the current definition.</p></div>
+      </div>
+      <div class="ds-row"><button class="ds-btn"><DsIcon name="check" />Save changes</button><button class="ds-btn ds-btn-outline">Discard</button></div>
+    </div>
+    <div class="ds-workspace">
+      <div class="ds-tabs"><span class="ds-tab" aria-selected="true">Agent</span><span class="ds-tab">Preview</span><span class="ds-tab">Integrations</span><span class="ds-tab">Stats</span><span class="ds-tab">Sessions <span class="ds-count">12</span></span></div>
+      <div class="ds-panes">
+        <div>
+          <div class="ds-pane-head">System prompt <span class="ds-mono">121 words · ~170 tokens</span></div>
+          <div class="ds-pane-body"><span class="ds-input ds-textarea ds-focus" style="min-height: 9rem">You answer questions about Everruns for people evaluating or running it. Search the docs before you answer and cite the page you used.</span></div>
+        </div>
+        <div class="ds-config">
+          <div class="ds-field"><span class="ds-label">Capabilities</span><span class="ds-config-item"><DsIcon name="facet:knowledge" size={14} />Knowledge<DsIcon name="x" size={14} class="ds-muted" style="margin-left: auto" /></span><span class="ds-config-item"><DsIcon name="facet:capabilities" size={14} />Web search<DsIcon name="x" size={14} class="ds-muted" style="margin-left: auto" /></span><button class="ds-btn ds-btn-outline ds-btn-sm"><DsIcon name="plus" size={14} />Add capability</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</DsExample>
+
+1. The breadcrumb gains a final Edit crumb, and the status badge becomes the gold Editing badge.
+2. The masthead states the consequence of saving.
+3. The actions become navy Save changes, then Discard.
+4. The prompt becomes a mono textarea in the same place, with its checks directly under it.
+5. Config controls become editable: capabilities gain a remove control and an Add button.
+
+One Save sends the whole draft. Leaving with unsaved edits asks first.
+
+## Create page
+
+A page that creates a record of one of several kinds asks the question a person can answer
+first: who will use it. The New channel page is the reference.
+
+<DsExample caption="The kind chooser: two groups named by audience, one row per kind with a plain sentence and any prerequisite.">
+  <div class="ds-grid-2">
+    <div class="ds-stack">
+      <span class="ds-label">For people</span>
+      <div class="ds-list">
+        <div class="ds-list-row"><DsIcon name="globe" /><span class="ds-grow"><b style="font-weight: 600">Public Chat</b><br /><span class="ds-muted">A hosted chat page with your branding.</span></span><DsIcon name="chevron-right" size={14} class="ds-muted" /></div>
+        <div class="ds-list-row"><DsIcon name="message-square" /><span class="ds-grow"><b style="font-weight: 600">Slack</b><br /><span class="ds-muted">People message the agent in Slack.</span></span><span class="ds-muted" style="font-size: 12px">Needs a Slack workspace</span><DsIcon name="chevron-right" size={14} class="ds-muted" /></div>
+      </div>
+    </div>
+    <div class="ds-stack">
+      <span class="ds-label">For software</span>
+      <div class="ds-list">
+        <div class="ds-list-row"><DsIcon name="code" /><span class="ds-grow"><b style="font-weight: 600">Agent API</b><br /><span class="ds-muted">Call the agent from your own code.</span></span><DsIcon name="chevron-right" size={14} class="ds-muted" /></div>
+        <div class="ds-list-row"><DsIcon name="code" /><span class="ds-grow"><b style="font-weight: 600">Webhook</b><br /><span class="ds-muted">Another system sends an HTTP request.</span></span><DsIcon name="chevron-right" size={14} class="ds-muted" /></div>
+      </div>
+    </div>
+  </div>
+</DsExample>
+
+1. Nothing is preselected. Each kind is one row: icon, name, one sentence a newcomer
+   understands, and what must exist first. Protocol names stay in the row, not the headings.
+2. Choosing a kind keeps the same page: the masthead becomes "New Public Chat", the chosen
+   kind sits on top of the form with a Change type button, and the Create action appears.
+3. The form is split into named sections, each with a short hint in a left column. Advanced
+   settings with good defaults fold behind a one-line summary of their current values.
+4. The rail says what happens next, so the reader knows the record starts as a draft.
+
+## Chat
+
+The chat is one centered column, 820px at most, shared by the transcript and the composer.
+Product decisions: [chat experience](https://github.com/everruns/everruns/blob/main/knowledge/ui/chat-experience.md).
+
+<DsExample flush caption="A chat thread: header, user turn as a gold wash, collapsed work log, agent reply as prose, composer card.">
+  <div class="ds-chat-head"><span class="ds-avatar">SA</span><div style="flex: 1"><div class="ds-chat-title">Pricing question from the website</div><div class="ds-chat-sub">Support agent · gpt-6.1-sol</div></div><div class="ds-row"><button class="ds-btn ds-btn-outline ds-btn-sm"><DsIcon name="pin" size={14} />Pin</button><button class="ds-btn ds-btn-outline ds-btn-sm"><DsIcon name="share-2" size={14} />Share</button></div></div>
+  <div class="bg-brand-dots" style="padding: 0 1.5rem">
+    <div class="ds-chat">
+      <div class="ds-user-turn">Does the starter credit cover both models, or only the default one?</div>
+      <div class="ds-work-log"><DsIcon name="chevron-right" size={14} />Worked for 8s<span class="ds-errors"><DsIcon name="circle-alert" size={12} />1 error</span></div>
+      <div class="ds-agent-turn"><p>Both. The starter credit applies to any model the built-in provider serves, including the default.</p><p>The details are on <span class="ds-entity-ref"><DsIcon name="facet:report" size={12} />Billing and credits</span>, and the current balance is in <span class="ds-file">settings/billing</span>.</p></div>
+      <div class="ds-user-turn">And what happens when it runs out?</div>
+      <div class="ds-work-log"><DsIcon name="chevron-down" size={14} /><span class="work-log-shimmer">Working for 3s</span></div>
+      <div class="ds-tool-lines"><span>✓ Searched docs for "spend cap"</span><span>● Reading billing page</span></div>
+      <div class="ds-composer">
+        <div class="ds-composer-text">Message Support agent</div>
+        <div class="ds-composer-bar"><span class="ds-btn ds-btn-ghost ds-btn-icon"><DsIcon name="paperclip" /></span><span class="ds-chip">gpt-6.1-sol · medium<DsIcon name="chevron-down" size={14} class="ds-muted" /></span><button class="ds-btn ds-btn-icon" style="margin-left: auto" aria-label="Send"><DsIcon name="arrow-up" /></button></div>
+      </div>
+    </div>
+  </div>
+</DsExample>
+
+- **Agent replies are prose.** No card, no edge rule, no avatar tile. An agent mark appears only
+  in multi-agent sessions, where the speaker must be named.
+- **User turns are a tinted block**: right aligned, at most `min(78%, 42rem)`, a gold 12% wash,
+  no edge rule.
+- **Tool activity lives in the work log**, a fold above the reply that starts and stays
+  collapsed while the turn runs. The header carries the live signal ("Working for 12s", with
+  the shimmer) and keeps the error count visible while folded. Opened, it lists one row per
+  step behind a 1px rule.
+- Cards that need the person (approvals, questions, connection setup) render outside the fold
+  so they cannot be hidden.
+- Prose links entities inline with a small glyph and an underline, and names files with a mono
+  token. No pills in prose.
+- The composer is a bordered card: the text area, then attach, the model and effort chip, and
+  send or stop in one slot on the right.
+
+
+## Reuse the page composition
+
+Standard product routes use `PageContainer`, `PageBreadcrumb`, `PageMasthead`,
+`PageControlStrip`, `PageMain` and `PageFooter`. List pages add `PageColumns` and `PageRail`
+when facets are useful. Creation and editing pages reuse the masthead and section cards;
+do not wrap an already card-based form in an extra card. Keep the same outer composition
+while data loads or a query fails.
+
+Reports and dense operational routes use the same primitives with full-width content as
+needed. Chat and session workspaces retain their own reading and split-pane compositions.
+The older `PageShell`, `PageHeader` and `PageBody` API is retired.
+
+Settings uses its existing destination model in both presentations: a sidebar on large
+screens and one destination selector on narrow screens. The form should be reachable in the
+first viewport rather than following a full screen of navigation.
+
+A form field consists of its label, control, optional hint and validation message. Keep
+feature-specific draft state and validation in its owner; share the presentation. Changing a
+control on an explicit-save page must not silently adopt autosave behavior. Pending, saved
+and failed states must remain visible wherever autosave is used.

@@ -116,11 +116,8 @@ impl WorkerServiceImpl {
         &self,
         request: Request<SetSessionStatusRequest>,
     ) -> Result<Response<SetSessionStatusResponse>, Status> {
-        use crate::records::wire::schema_session_to_proto;
-
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
 
         // Validate status value
         let valid_statuses = ["started", "active", "idle", "waiting_for_tool_results"];
@@ -132,30 +129,31 @@ impl WorkerServiceImpl {
         }
 
         let parked = req.status == "waiting_for_tool_results";
-        let session = self
-            .session_service
-            .update_status(&internal_caller, session_id, req.status)
+        let session_id = everruns_contracts::typed_id::SessionId::from_uuid(session_id);
+        // Acknowledgement only: workers ignore the session in the response
+        // (EVE-882), so only the status is written and nothing is read back.
+        let found = self
+            .db
+            .set_session_status(req.org_id, session_id, &req.status)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to update session status: {}", e);
                 Status::internal("Failed to update session status")
-            })?
-            .ok_or_else(|| session_not_found_status(session_id))?;
+            })?;
+        if !found {
+            return Err(session_not_found_status(session_id.uuid()));
+        }
         if parked {
             crate::background::tool_result_timeout::arm_parked_turn(
                 &self.db,
                 self.durable_store.as_deref(),
                 req.org_id,
-                everruns_contracts::typed_id::SessionId::from_uuid(session_id),
+                session_id,
             )
             .await;
         }
 
-        let proto_session = schema_session_to_proto(&session);
-
-        Ok(Response::new(SetSessionStatusResponse {
-            session: Some(proto_session),
-        }))
+        Ok(Response::new(SetSessionStatusResponse { session: None }))
     }
 
     pub(crate) async fn handle_set_session_title(

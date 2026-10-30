@@ -9,7 +9,7 @@
     "test:security": "node --test scripts/test-zod-security.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.32.1",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "deepsec": "^2.3.10"
   },
   "engines": {
@@ -22,10 +22,11 @@
       "@hono/node-server": "^2.0.5",
       "brace-expansion": "5.0.12",
       "tar": "7.5.22",
-      "undici": "^7.29.1",
+      "undici": "7.30.1",
       "zod": "4.6.7",
-      "@modelcontextprotocol/sdk": "1.32.1",
-      "ip-address": "10.7.4"
+      "@modelcontextprotocol/sdk": "1.32.2",
+      "ip-address": "10.7.4",
+      "body-parser": "2.4.0"
     },
     "patchedDependencies": {
       "zod@4.6.7": "patches/zod@4.6.7.patch",

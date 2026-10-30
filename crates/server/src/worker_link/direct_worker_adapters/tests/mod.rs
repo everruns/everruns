@@ -70,6 +70,80 @@ mod internal_commands;
 mod phase_read_tests;
 
 #[tokio::test]
+async fn single_message_lookup_bypasses_history_window_in_both_worker_transports() {
+    use crate::storage::{CreateEventRow, DbMessageRetriever};
+    use everruns_core::{InputMessage, RuntimeMessage, events::InputMessageData};
+    use everruns_internal_protocol::proto::{
+        GetMessageRequest, worker_service_server::WorkerService,
+    };
+
+    let adapters = test_adapters();
+    let session = adapters.db.create_test_session().await;
+    let other = adapters.db.create_test_session().await;
+    let input = DbMessageRetriever::new(adapters.db.clone())
+        .add(session.uuid(), InputMessage::user("original task"))
+        .await
+        .unwrap();
+    let rows = (0..crate::storage::repository::MESSAGE_SAFETY_LIMIT)
+        .map(|_| CreateEventRow {
+            session_id: session,
+            event_type: "input.message".into(),
+            ts: chrono::Utc::now(),
+            context: serde_json::json!({}),
+            data: serde_json::to_value(InputMessageData::new(RuntimeMessage::user("later")))
+                .unwrap(),
+            metadata: None,
+            tags: None,
+        })
+        .collect();
+    adapters.db.create_events(rows).await.unwrap();
+    let grpc = crate::worker_link::grpc_service::WorkerServiceImpl::new(
+        adapters.event_service.as_ref().clone(),
+        adapters.db.clone(),
+        None,
+        None,
+        crate::oss_host_composition_for_grade(everruns_core::DeploymentGrade::Dev),
+    );
+    for id in [session, other] {
+        let direct = adapters
+            .get_message(id.uuid(), input.id.uuid())
+            .await
+            .unwrap();
+        assert_eq!(
+            direct.as_ref().map(|m| m.id),
+            (id == session).then_some(input.id)
+        );
+        let message = GetMessageRequest {
+            session_id: Some(everruns_internal_protocol::uuid_to_proto_uuid(id.uuid())),
+            message_id: Some(everruns_internal_protocol::uuid_to_proto_uuid(
+                input.id.uuid(),
+            )),
+        };
+        assert_eq!(
+            grpc.get_message(tonic::Request::new(message.clone()))
+                .await
+                .unwrap_err()
+                .code(),
+            tonic::Code::Unauthenticated
+        );
+        let mut request = tonic::Request::new(message);
+        request
+            .extensions_mut()
+            .insert(crate::worker_link::grpc_service::authority::WorkerAuthority::Development);
+        let response = grpc.get_message(request).await.unwrap().into_inner();
+        assert_eq!(response.message.is_some(), id == session);
+        if let Some(message) = response.message {
+            assert_eq!(
+                message.id,
+                Some(everruns_internal_protocol::uuid_to_proto_uuid(
+                    input.id.uuid()
+                ))
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn build_mcp_tool_definitions_skips_non_mcp_capabilities() {
     let adapters = test_adapters();
     let agent_id = Uuid::new_v4();
@@ -127,6 +201,7 @@ async fn scoped_mcp_lookup_uses_current_agent_config_in_direct_and_grpc_paths() 
             org_id,
             agent_id,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: agent_id.to_string(),
                 name: "pinned-mcp-agent".to_string(),
                 display_name: None,
@@ -207,15 +282,19 @@ async fn scoped_mcp_lookup_uses_current_agent_config_in_direct_and_grpc_paths() 
         None,
         crate::oss_host_composition_for_grade(everruns_core::DeploymentGrade::Dev),
     );
+    let mut request = tonic::Request::new(GetMcpServerByPrefixRequest {
+        input_message_id: None,
+        org_id,
+        session_id: Some(ProtoUuid {
+            value: session.id.uuid().to_string(),
+        }),
+        server_prefix: "docs".to_string(),
+    });
+    request
+        .extensions_mut()
+        .insert(crate::worker_link::grpc_service::authority::WorkerAuthority::Development);
     let grpc = grpc_service
-        .get_mcp_server_by_prefix(tonic::Request::new(GetMcpServerByPrefixRequest {
-            input_message_id: None,
-            org_id,
-            session_id: Some(ProtoUuid {
-                value: session.id.uuid().to_string(),
-            }),
-            server_prefix: "docs".to_string(),
-        }))
+        .get_mcp_server_by_prefix(request)
         .await
         .expect("gRPC pinned MCP lookup")
         .into_inner()
@@ -307,6 +386,7 @@ pub(super) async fn seed_harness_for_platform_store(
     db.create_harness(
         org_id,
         CreateHarnessRow {
+            localizations: Default::default(),
             name: name.to_string(),
             display_name: None,
             icon: None,
@@ -557,33 +637,7 @@ async fn session_creation_authority_uses_owner_permission_and_returns_root() {
     assert!(denied.to_string().contains("Access denied"));
 }
 
-/// Regression: the direct platform store's command ctx must carry the
-/// event service — wait_for_idle probes terminal turn events through the
-/// list_events command, and without it every subagent wait failed with
-/// "Event service not configured".
-#[tokio::test]
-async fn platform_store_wait_for_idle_reaches_event_service() {
-    use everruns_core::DEFAULT_ORG_ID;
-
-    let adapters = test_adapters();
-    let user_id = seed_platform_owner(&adapters.db, DEFAULT_ORG_ID, "waiter@example.com").await;
-    let harness_id =
-        seed_harness_for_platform_store(&adapters.db, DEFAULT_ORG_ID, "wait-harness", false).await;
-    let session_id =
-        seed_platform_session(&adapters.db, DEFAULT_ORG_ID, harness_id, Some(user_id)).await;
-    let store = adapters
-        .platform_store(DEFAULT_ORG_ID, session_id)
-        .for_execution(session_id.uuid())
-        .unwrap();
-
-    // No terminal turn events exist, so a zero-timeout wait reports a
-    // timeout — the point is it must NOT fail on a missing event service.
-    let status = store
-        .wait_for_idle(session_id, Some(0))
-        .await
-        .expect("wait_for_idle should reach the event service");
-    assert!(status.starts_with("timeout"), "unexpected status: {status}");
-}
+mod session_wait;
 
 /// EVE-1234: platform-tool commands run with the `/v1/providers` service
 /// instances. Without them `sync_provider_models` answered 503 "Model sync is
@@ -653,6 +707,7 @@ async fn seed_agent(db: &StorageBackend) -> Uuid {
     let id = AgentId::new();
     let public_id = id.to_string();
     let create = CreateAgentRow {
+        localizations: Default::default(),
         public_id,
         name: "test-agent".to_string(),
         display_name: Some("Test Agent".to_string()),

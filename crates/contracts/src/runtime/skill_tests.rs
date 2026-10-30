@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn yaml_metadata_preserves_scalar_types_and_aliases() {
+    let skill = parse_skill_md(
+        "---\nname: yaml-compat\ndescription: Unicode α and quotes\nmetadata:\n  enabled: true\n  country: NO\n  switch: off\n  code: '0012'\n  original: &value [one, two]\n  copy: *value\n---\nInstructions.",
+    ).unwrap();
+    assert_eq!(skill.metadata["enabled"], serde_json::json!(true));
+    assert_eq!(skill.metadata["country"], serde_json::json!("NO"));
+    assert_eq!(skill.metadata["switch"], serde_json::json!("off"));
+    assert_eq!(skill.metadata["code"], serde_json::json!("0012"));
+    assert_eq!(skill.metadata["copy"], skill.metadata["original"]);
+}
+
+#[test]
+fn yaml_metadata_rejects_excessive_nesting() {
+    let nested = format!("{}0{}", "[".repeat(70), "]".repeat(70));
+    let source = format!(
+        "---\nname: bounded\ndescription: Bounds\nmetadata:\n  nested: {nested}\n---\nInstructions."
+    );
+    assert!(parse_skill_md(&source).is_err());
+}
+
+#[test]
 fn test_parse_valid_skill_md() {
     let content = r#"---
 name: pdf-processing

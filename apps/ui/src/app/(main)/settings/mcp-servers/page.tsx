@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -9,7 +10,8 @@ import { UserMcpServersPanel } from "@/components/connections/user-mcp-servers-p
 import { stripConnectResultParams } from "@/lib/connect-error";
 
 export default function McpServersSettingsPage() {
-  usePageTitle("MCP servers", "Settings");
+  const ui = useUiTranslations();
+  usePageTitle(ui("MCP servers"), ui("Settings"));
   const searchParams = useSearchParams();
   const [success, setSuccess] = useState(() =>
     searchParams.get("connected") ? "Signed in." : null,

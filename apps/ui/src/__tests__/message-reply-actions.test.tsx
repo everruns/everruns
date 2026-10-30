@@ -7,6 +7,7 @@ import { forkSession } from "@/lib/api/sessions";
 const push = jest.fn();
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 jest.mock("@/providers/locale-provider", () => ({
+  ...jest.requireActual("@/providers/locale-provider"),
   useLocale: () => ({ locale: "en", t: (key: string) => key }),
 }));
 jest.mock("@/providers/org-provider", () => ({

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { NotebookPen } from "lucide-react";
@@ -20,6 +21,7 @@ export function ManagerNotesHint({
   kind: EntityKind;
   enabled: boolean;
 }) {
+  const ui = useUiTranslations();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const notes = useManagerContext(entityRef, enabled);
@@ -34,7 +36,7 @@ export function ManagerNotesHint({
       className="inline-flex items-center gap-1.5 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
     >
       <NotebookPen className="size-3.5" />
-      This {entityKindLabel(kind)} has manager notes
+      {ui("This")} {entityKindLabel(kind)} {ui("has manager notes")}
     </Link>
   );
 }

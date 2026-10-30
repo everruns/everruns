@@ -8,3 +8,6 @@ pub(crate) mod catalog;
 pub(crate) mod cli_tree;
 mod command_line;
 pub(crate) mod positional;
+
+#[cfg(test)]
+mod platform_native_tests;

@@ -150,6 +150,8 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     // signature, runtime token) after the channel is found, so a placeholder
     // channel is a 404 first. A PAT counts there only as an org member
     // (`agent_api_auth::org_member`), restricted to `*` in rollout step 3.
+    // Work Chat mutations also have valid-channel read-PAT denial coverage in
+    // `work_chat_org_members_require_full_scope_on_both_url_spellings`.
     ("POST", "/v1/apps/{}/a2a/{}", INGRESS),
     ("POST", "/v1/apps/{}/fcp", INGRESS),
     ("POST", "/v1/apps/{}/webhooks/{}", INGRESS),
@@ -158,6 +160,9 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     ("POST", "/v1/channels/{}/chat/main", INGRESS),
     ("POST", "/v1/channels/{}/sessions/{}/files", INGRESS),
     ("DELETE", "/v1/channels/{}/sessions/{}/files", INGRESS),
+    ("POST", "/v1/channels/{}/sessions/{}/settings", INGRESS),
+    ("POST", "/v1/channels/{}/sessions/{}/share", INGRESS),
+    ("DELETE", "/v1/channels/{}/sessions/{}/share", INGRESS),
     ("POST", "/v1/channels/{}/runtime-auth", INGRESS),
     ("POST", "/v1/channels/{}/sessions", INGRESS),
     ("POST", "/v1/channels/{}/sessions/{}/cancel", INGRESS),
@@ -178,6 +183,9 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     ("POST", "/v1/e/{}/chat/main", INGRESS),
     ("POST", "/v1/e/{}/sessions/{}/files", INGRESS),
     ("DELETE", "/v1/e/{}/sessions/{}/files", INGRESS),
+    ("POST", "/v1/e/{}/sessions/{}/settings", INGRESS),
+    ("POST", "/v1/e/{}/sessions/{}/share", INGRESS),
+    ("DELETE", "/v1/e/{}/sessions/{}/share", INGRESS),
     ("POST", "/v1/e/{}/runtime-auth", INGRESS),
     ("POST", "/v1/e/{}/sessions", INGRESS),
     ("POST", "/v1/e/{}/sessions/{}/cancel", INGRESS),
@@ -259,6 +267,7 @@ struct Answer {
     status: u16,
     code: Option<String>,
     challenge: Option<String>,
+    detail: Option<String>,
 }
 
 impl Answer {
@@ -304,13 +313,18 @@ async fn send(
         .ok()
         .and_then(Result::ok)
         .unwrap_or_default();
-    let code = serde_json::from_slice::<serde_json::Value>(&body)
-        .ok()
+    let problem = serde_json::from_slice::<serde_json::Value>(&body).ok();
+    let code = problem
+        .as_ref()
         .and_then(|value| value["code"].as_str().map(str::to_string));
+    let detail = problem
+        .as_ref()
+        .and_then(|value| value["detail"].as_str().map(str::to_string));
     Some(Answer {
         status,
         code,
         challenge,
+        detail,
     })
 }
 
@@ -332,6 +346,56 @@ async fn sweep(port: u16, context: ServerContext) {
         .unwrap();
     let read_token = mint_pat(&context.db, &["read"]).await;
     let full_token = mint_pat(&context.db, &["*"]).await;
+
+    // A documented read route can return 404 for a missing entity, just like
+    // an unmounted route. Require the domain's response for each review route
+    // (both methods), while the general sweep below checks write-scope denial.
+    let missing_review_resources = [
+        (
+            format!("/v1/organization-accounts/{}", uuid::Uuid::now_v7()),
+            serde_json::json!({"name": "Review account"}),
+            "Account not found",
+        ),
+        (
+            format!(
+                "/v1/sandbox-template-metadata/{}",
+                everruns_contracts::typed_id::SandboxTemplateId::new()
+            ),
+            serde_json::json!({"display_name": "Review template"}),
+            "Sandbox Template not found",
+        ),
+        (
+            format!(
+                "/v1/virtual-users/{}/self-profile",
+                everruns_contracts::typed_id::VirtualUserId::new()
+            ),
+            serde_json::json!({"name": "Review profile"}),
+            "Profile not found",
+        ),
+        (
+            format!("/v1/tracing/policies/{}", uuid::Uuid::now_v7()),
+            serde_json::json!({"mode": "off", "destination_ids": []}),
+            "Tracing policy not found",
+        ),
+        (
+            format!("/v1/tracing/destination-metadata/{}", uuid::Uuid::now_v7()),
+            serde_json::json!({"enabled": false}),
+            "Destination not found",
+        ),
+    ];
+    for (path, body, detail) in missing_review_resources {
+        for (method, token) in [
+            ("GET", &read_token),
+            ("GET", &full_token),
+            ("PATCH", &full_token),
+        ] {
+            let answer = send(&client, &base, token, method, &path, Some(body.clone()))
+                .await
+                .expect("review route answers");
+            assert_eq!(answer.status, 404, "{method} {path}: {:?}", answer.detail);
+            assert_eq!(answer.detail.as_deref(), Some(detail), "{method} {path}");
+        }
+    }
 
     // `read`: Write and Never answer exactly 403 insufficient_scope; Read never does.
     let mut wrong = Vec::new();

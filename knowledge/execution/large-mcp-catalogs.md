@@ -72,6 +72,14 @@ unattached or unauthorized operations do not contribute results or ranking
 statistics. The index contains metadata only; every selected identity resolves
 against the live registry and current authorization at execution.
 
+Name, description and schema fields have independent BM25 IDF and length
+normalization. A verbose schema or common invocation-envelope words must not
+dilute a distinctive operation name; the authentic platform comparison exposed
+that failure in the previous pooled index. Complete names accept whitespace,
+hyphen or underscore separators while preserving canonical MCP namespace
+identity and authorized same-name ambiguity. Broad workflow queries remain
+ranked without a global score cutoff or stemming.
+
 `tool_search` remains legacy by default. With `bounded: true`, it returns at
 most eight operations, bounded by `max_result_bytes` (32 KiB by default), and
 discloses at most 32 optional schemas or 64 KiB of optional active schemas by
@@ -197,11 +205,13 @@ same-named tools on different servers must never route by a guessed string split
 
 The cached registry index records tool name, description and searchable schema
 property names/descriptions. It also records MCP server names and configured
-descriptions, scoring a server once regardless of its tool count. Server
-description text can find generic operations such as `search` or `get` without
-turning metadata into execution instructions. The native bounded search and
-CLI `tools search` use this server-aware index. Legacy native `tool_search`
-remains unchanged unless `bounded: true` is opted in.
+descriptions plus declared capability IDs, names and descriptions; full system
+prompts are not indexed. Server context and owner capability text are each
+scored once per MCP source. Built-in operations share one capability-context
+score per capability, independent of operation count. This context can help
+find a relevant source without turning metadata into execution instructions.
+The native bounded search and CLI `tools search` use this same index. Legacy
+native `tool_search` remains unchanged unless `bounded: true` is opted in.
 
 Search receives the current visible operation set; forbidden documents do not
 contribute to ranking. A selected result is resolved against the live registry
@@ -209,17 +219,42 @@ and checked again by the normal execution policy. Server namespacing keeps
 same-named operations on different servers distinct. The index is metadata, not
 authority, and a registry revision invalidates it.
 
+An exact capability- or server-context-only query returns a bounded source
+browse/refinement, not an arbitrary first set of operations. A follow-up query
+for an operation loads its selected schema through the existing `tool_search`
+disclosure path. Source and operation results use the same authorization
+scope. Replacing or detaching a capability or MCP source rebuilds the index;
+search and dispatch check current scope.
+
 Bounded native search returns at most eight schemas, within a default 32 KiB
 response. `max_result_bytes` may be configured from 1 KiB through 64 KiB.
 `max_active_tools` defaults to 32 optional revealed schemas and may be set from
 1 through 128; `max_active_bytes` defaults to 64 KiB and may be set from 1 KiB
 through 1 MiB. These two active limits account for optional disclosed schemas;
 eager, client-side and `Never` tools remain in the model list separately.
-Results that do not fit are omitted with an explicit count/refinement hint;
-no-match responses browse at most 16 authorized server sources instead of
+Results that do not fit are omitted with an explicit count/refinement hint.
+Bounded `omitted_tools` identities let the model refine a byte-omitted candidate
+by exact name without treating it as disclosed. These identities share the
+existing result byte budget, include only authorized top candidates, and vanish
+when their schema is admitted, preserving the single-schema boundary budget.
+No-match responses browse at most 16 authorized server sources instead of
 listing every operation. Bounded mode uses the default `reveal: redefine`
 behavior so selected schemas become callable typed native tools on the next
 step.
+
+Sparse use is the intended profile: catalog completeness belongs to the
+runtime, while only task-selected schemas belong in the model's working set.
+Exact authorized operation identities suppress incidental lexical matches;
+ambiguous unqualified MCP operations retain each matching server identity.
+Broad task queries keep ranked retrieval so a workflow can discover several
+related operations together. The shared index applies this rule to native and
+CLI discovery without a task-calibrated global score threshold.
+
+CLI browsing has its own output budget: root/server help returns at most 64
+entries and 12 KiB, explicitly reports omissions, and directs the model to
+search. One operation's help still supplies its schema. This closes the observed
+path where full server help inserted a large inventory into subsequent model
+requests; a stable initial prompt alone cannot prevent that history growth.
 
 ### Native and CLI surfaces, disclosure and caching
 
@@ -266,6 +301,15 @@ Everruns Framework against a Rust MCP fixture through `McpServer::stdio`.
 There is no gateway or second search implementation between the subject and
 fixture. The fixture exercises real `tools/list` pagination and `tools/call`,
 with synthetic ticket and deployment state.
+
+Usage projection belongs to the Everruns adapter, not a generic recursive
+event walk: generation/message/reason/turn/session records can repeat the same
+usage. The shared [Rust projection](../../evals/common/README.md) separates
+uncached input, cached input, request coverage and actual schema-array bytes.
+The retained study summaries were corrected without rewriting their raw traces
+or task outcomes. A separate [platform surface experiment](../../evals/platform-capability/README.md#matched-cli-versus-eager-native-functions)
+uses real operation schemas over an in-process state fixture; eager native
+there is distinct from bounded native discovery here.
 
 The study varies catalog size (50, 600, 2,000, 10,000), one or ten servers, and
 native, CLI, and hybrid surfaces. Its cases cover a normal read, a request

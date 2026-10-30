@@ -5,6 +5,7 @@
  * Keep rendering local to the UI because file content already exists client-side.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { relativeFilePath } from "@/lib/path-utils";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,7 @@ export function InitialFilesPreview({
   title = "Files",
   description = "Files configured on this item. New sessions may merge files from other layers, with later layers overriding earlier files by path.",
 }: InitialFilesPreviewProps) {
+  const ui = useUiTranslations();
   const sortedFiles = useMemo(
     () =>
       Array.isArray(files)
@@ -74,7 +76,7 @@ export function InitialFilesPreview({
       </CardHeader>
       <CardContent>
         {sortedFiles.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">No files configured.</p>
+          <p className="text-sm text-muted-foreground italic">{ui("No files configured.")}</p>
         ) : (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
             <ScrollArea className="h-[420px] border bg-muted/20">
@@ -105,7 +107,7 @@ export function InitialFilesPreview({
                             {file.is_readonly && (
                               <Badge variant="outline" className="gap-1 text-[10px]">
                                 <Lock className="h-3 w-3" />
-                                read-only
+                                {ui("read-only")}
                               </Badge>
                             )}
                           </div>
@@ -122,7 +124,7 @@ export function InitialFilesPreview({
                 <InitialFileContentPreview file={selectedFile} />
               ) : (
                 <div className="flex h-[420px] items-center justify-center p-6 text-sm text-muted-foreground">
-                  Select a file to preview its contents.
+                  {ui("Select a file to preview its contents.")}
                 </div>
               )}
             </div>
@@ -134,6 +136,7 @@ export function InitialFilesPreview({
 }
 
 function InitialFileContentPreview({ file }: { file: InitialFile }) {
+  const ui = useUiTranslations();
   const previewType = getInitialFilePreviewType(file);
   const extension = getFileExtension(file.path);
 
@@ -142,10 +145,11 @@ function InitialFileContentPreview({ file }: { file: InitialFile }) {
       <div className="flex h-[420px] flex-col items-center justify-center gap-3 p-6 text-center">
         <FileArchive className="h-10 w-10 text-muted-foreground" />
         <div className="space-y-1">
-          <p className="text-sm font-medium">Binary file</p>
+          <p className="text-sm font-medium">{ui("Binary file")}</p>
           <p className="text-sm text-muted-foreground">
-            This asset is stored as base64 and can be copied into new sessions, but it does not have
-            an inline preview.
+            {ui(
+              "This asset is stored as base64 and can be copied into new sessions, but it does not have an inline preview.",
+            )}
           </p>
         </div>
       </div>

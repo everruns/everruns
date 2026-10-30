@@ -27,6 +27,8 @@ pub const EXAMPLE_TAG_PREFIX: &str = "example:";
 /// A read-only agent example defined in code
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentExample {
+    /// Locale-keyed display names and descriptions.
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     /// Name (e.g. "dad-jokes-agent")
     #[schema(example = "dad-jokes-agent")]
     pub name: String,
@@ -131,6 +133,7 @@ fn capability_refs(seed: &SeedAgent) -> Vec<everruns_contracts::CapabilityRef> {
 
 pub(crate) fn seed_to_example(seed: &SeedAgent, setup: Option<&TemplateSetup>) -> AgentExample {
     AgentExample {
+        localizations: crate::harnesses::localizations::for_builtin(seed.name),
         name: seed.name.to_string(),
         display_name: seed.display_name.to_string(),
         description: seed.description.to_string(),
@@ -244,6 +247,7 @@ impl Command for AdoptAgentExample {
         }
 
         let req = CreateAgentRequest {
+            localizations: crate::harnesses::localizations::for_builtin(seed.name),
             service_virtual_user_id: None,
             id: None,
             name: unique_name(ctx, seed.name).await?,

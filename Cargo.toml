@@ -33,6 +33,7 @@ members = [
     "crates/serve-agentcore",
     "crates/serve-celld",
     "examples/support-agent",
+    "examples/custom-data-agent",
     "examples/everruns-support-agent",
     "examples/coding-review-agent",
     "examples/research-agent",
@@ -58,7 +59,6 @@ members = [
 exclude = [
     # Independently resolved, source-only hosting reference.
     "crates/durable-object",
-    "vendor/postgresql_archive",
     "research/infinity_context",
     "research/lua-vs-bash",
     "examples/weekend-concierge-host",
@@ -125,7 +125,7 @@ mimalloc = "0.1"
 axum = { version = "0.8", features = ["macros"] }
 axum-extra = { version = "0.12", features = ["cookie", "multipart", "query"] }
 hyper = { version = "1", features = ["server", "http1", "http2"] }
-hyper-util = { version = "0.1", features = ["tokio", "server-auto", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio", "server-auto", "server-graceful", "http1", "http2"] }
 tower = "0.5"
 tower-http = { version = "0.7", features = ["cors", "trace", "set-header"] }
 
@@ -172,6 +172,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # OpenTelemetry (exporter deps are activated only by everruns-core's
 # observability feature; scripts/lib/check-observability-isolation.sh enforces it)
 opentelemetry = "0.33"
+opentelemetry-http = "0.33"
+http = "1"
 opentelemetry_sdk = { version = "0.33", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.33", features = ["http-proto", "reqwest-blocking-client"] }
 tracing-opentelemetry = "0.34"
@@ -227,6 +229,7 @@ git2 = { version = "0.21", default-features = false }
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "stream", "rustls", "blocking", "form"] }
 clap = { version = "4", features = ["derive", "env"] }
 serde_yaml = "0.9"
+serde-saphyr = { version = "2.0.0", default-features = false, features = ["serialize", "deserialize"] }
 eventsource-stream = "0.2"
 regex = "1.11"
 aho-corasick = "1.1"
@@ -296,7 +299,7 @@ moka = { version = "0.12", features = ["future", "sync"] }
 
 # Fault injection testing
 fail = "0.5"
-rstest = "0.27"
+rstest = "0.28"
 tempfile = "3"
 
 # File watching and gitignore
@@ -370,8 +373,3 @@ codegen-units = 256
 # must stay actionable. line-tables-only keeps that signal at modest cost.
 debug = "line-tables-only"
 strip = false
-
-# Upstream archive0.21 still selects vulnerable ZIP8; see vendor patch provenance.
-[patch.crates-io]
-
-postgresql_archive = { path = "vendor/postgresql_archive" }

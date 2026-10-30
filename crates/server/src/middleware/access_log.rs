@@ -26,7 +26,7 @@ use axum::extract::MatchedPath;
 use axum::middleware::Next;
 use axum::response::Response;
 
-const NOISE_PATHS: &[&str] = &["/health", "/metrics"];
+const NOISE_PATHS: &[&str] = &["/health", "/health/ready", "/metrics"];
 
 /// Axum middleware that emits one tracing event per HTTP request.
 ///

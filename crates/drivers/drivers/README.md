@@ -29,6 +29,7 @@ vendor features turn on the matching features here and re-export this crate as
 | `codex` | `codex` | Legacy Codex | Codex Responses |
 | `cloudflare` | `cloudflare` | Cloudflare AI Gateway | OpenAI Chat Completions |
 | `fireworks` | `fireworks` | Fireworks AI | OpenAI Chat Completions |
+| `groq` | `groq` | Groq | OpenAI Chat Completions |
 | `gemini` | `gemini` | Google Gemini | Gemini API |
 | `mai` | `mai` | Microsoft AI (Foundry) | OpenAI Chat Completions |
 | `meta` | `meta` | Meta | Open Responses |
@@ -280,6 +281,33 @@ Hosts provide the browser opener and an implementation of
 `chatgpt::auth::TokenStore`; `RotatingAuth` loads credentials under its lease and
 persists the full rotated pair before producing authentication headers. Hosts
 with writers outside that lease must implement atomic `compare_and_save`.
+`chatgpt::auth::MemoryTokenStore` keeps a grant in process for tests and
+ephemeral use.
+
+`codex::driver(store)` assembles the provider: it wires `RotatingAuth`, maps the
+typed `TokenRoute` (`Codex` or `ChatGptPlan`) to its backend, and returns one
+`Provider` that serves both chat and `list_models`. Options the route cannot
+use, malformed URLs, and ephemeral grants that cannot authenticate fail in
+`build()` with a named `CodexDriverError`.
+
+```rust,no_run
+# #[cfg(feature = "codex")]
+# fn grant() -> everruns_drivers::chatgpt::CodexAuth { unimplemented!() }
+# #[cfg(feature = "codex")]
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use everruns_drivers::codex::{self, MemoryTokenStore, TokenRoute};
+use std::sync::Arc;
+
+let store = Arc::new(MemoryTokenStore::new(grant()));
+let provider = codex::driver(store)
+    .route(TokenRoute::Codex)
+    .originator("my-app")
+    .build()?;
+let models = provider.list_models().await?;
+// Or hold a grant only in memory:
+let provider = codex::driver::ephemeral(grant()).build()?;
+# Ok(()) }
+```
 `chatgpt::login::LoginAttempt` handles loopback PKCE and verified dynamic
 registration; credentials and registration are host-owned. Embedders can call
 `LoginAttempt::with_success_page_html` to replace the default plain-text
@@ -287,3 +315,13 @@ login-complete response with their own HTML page.
 
 The `chatgpt-login` example provides a private-file handoff for remote self-hosted
 installations. See [ChatGPT plan](https://everruns.com/docs/features/chatgpt/).
+
+## Native offline batches
+
+Native Rust providers expose `ChatDriver::batch_driver()` for Anthropic,
+OpenAI Responses / Chat Completions, Gemini inline, Mistral inline and Groq
+Files/Batches. Fireworks requires `FireworksChatDriver::with_batch` with an
+explicit account and trusted signed-artifact origins. The Framework
+[`Batch` guide](https://everruns.com/docs/framework/batch-model-requests/)
+shows persistence, recovery, limits and unsupported hosting modes. There is no
+synchronous fallback. Fireworks cancellation is explicitly unsupported.

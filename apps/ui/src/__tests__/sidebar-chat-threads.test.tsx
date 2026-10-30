@@ -3,6 +3,7 @@ import { SidebarChatThreads } from "@/components/layout/sidebar-chat-threads";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { SIDEBAR_THREAD_LIMIT } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
+import { LocaleProvider } from "@/providers/locale-provider";
 
 jest.mock("next/link", () => ({
   __esModule: true,
@@ -51,6 +52,35 @@ function setThreads(threads: Session[]) {
 
 describe("SidebarChatThreads", () => {
   beforeEach(() => jest.clearAllMocks());
+  afterEach(() => localStorage.clear());
+
+  it("localizes shortcut labels while preserving authored thread titles", () => {
+    localStorage.setItem("everruns.ui-language", "uk");
+    setThreads(
+      Array.from({ length: SIDEBAR_THREAD_LIMIT + 1 }, (_, index) =>
+        thread(`sess_${index}`, index === 0 ? "New subchat" : `Thread ${index}`),
+      ),
+    );
+
+    render(
+      <LocaleProvider>
+        <SidebarChatThreads pathname="/chats/history" />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByRole("link", { name: "Новий додатковий чат" })).toHaveAttribute(
+      "title",
+      "Новий додатковий чат",
+    );
+    expect(screen.getByRole("link", { name: "Усі чати" })).toHaveAttribute(
+      "href",
+      "/chats/history",
+    );
+    expect(screen.getByRole("link", { name: "New subchat" })).toHaveAttribute(
+      "href",
+      "/chats/sess_0",
+    );
+  });
 
   it("identifies side chats as a separate group and marks the selected conversation", () => {
     setThreads([thread("sess_a", "Alpha"), thread("sess_b", "Beta")]);

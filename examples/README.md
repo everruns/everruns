@@ -6,6 +6,7 @@ repository: these Cargo packages depend on local workspace crates.
 
 | Example | Learn | Run from repository root |
 | --- | --- | --- |
+| [Custom Data Agent Worker](custom-data-agent/) | Run private database tools behind the Platform worker protocol | `cargo run -p everruns-custom-data-agent` |
 | [Support](support-agent/) | Combine account facts and policy | `cargo run -p everruns-support-agent` |
 | [Everruns Support](everruns-support-agent/) | Search and read a citable docs corpus | `cargo run -p everruns-framework-support-agent` |
 | [Code Review](coding-review-agent/) | Execute a fixed reproduction before reporting a defect | `cargo run -p everruns-coding-review-agent` |

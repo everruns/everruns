@@ -16,6 +16,7 @@
 * [Localization And Timezone Resolution](localization.md) - Locale/timezone resolution and backend localization rules.
 * [Notifications](notifications.md) - Generic user notifications.
 * [Actionable Health Issues](health-issues.md) - Persistent operational issues and verified recovery through notifications.
+* [System Doctor](system-doctor.md) - Whole-install health checks in plain language, adapted to every hosting mode.
 * [Email Sending](email.md) - Internal email delivery abstraction.
 * [Egress Service](egress.md) - Host-owned outbound network boundary and future gateway.
 * [Utility LLM Service](utility-llm.md) - Internal utility LLM service for capability internals.
@@ -23,3 +24,5 @@
 * [OpenRouter Decisions Proposal](openrouter-decisions-proposal.md) - Provider service and catalog design.
 * [Voice Channels on the Platform Server](voice.md) - How the server runs voice calls: voice channel type, call routes, delegated voice loop, leases and events.
 * [Session Counts](session-counts.md) - Denormalized session counters and the reads they exist to keep cheap.
+
+* [Customer-hosted Custom Workers](custom-workers.md) - Restricted agent-scoped execution, persistent routing and customer-owned private tools.

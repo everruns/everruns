@@ -10,6 +10,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Download, MonitorPlay } from "lucide-react";
 import type { Event } from "@/lib/api/types";
 import { getApiBaseUrl } from "@/lib/api/client";
@@ -83,9 +84,10 @@ export function DesktopRecordingCards({
   sessionId: string;
   recordings: DesktopRecording[];
 }) {
+  const ui = useUiTranslations();
   if (recordings.length === 0) return null;
   return (
-    <div role="list" aria-label="Desktop recordings of this turn">
+    <div role="list" aria-label={ui("Desktop recordings of this turn")}>
       {recordings.map((recording) => {
         const url = sessionFileDownloadUrl(sessionId, recording.path);
         return (
@@ -97,7 +99,7 @@ export function DesktopRecordingCards({
           >
             <div className="flex items-center gap-2 px-3 py-2">
               <MonitorPlay className="h-3.5 w-3.5 flex-none text-muted-foreground" />
-              <span className="font-medium text-foreground">Desktop recording</span>
+              <span className="font-medium text-foreground">{ui("Desktop recording")}</span>
               <span className="truncate text-xs text-muted-foreground">
                 {recording.path} · {formatSize(recording.sizeBytes)}
               </span>
@@ -107,13 +109,13 @@ export function DesktopRecordingCards({
                 className="ml-auto flex flex-none items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
               >
                 <Download className="h-3.5 w-3.5" />
-                Download
+                {ui("Download")}
               </a>
             </div>
             {/* A silent screen capture has no speech to caption. */}
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
             <video
-              aria-label={`Desktop recording ${recording.path}`}
+              aria-label={ui("Desktop recording {value0}", { value0: recording.path })}
               controls
               preload="metadata"
               src={url}

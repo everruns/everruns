@@ -234,6 +234,10 @@ impl Command for CheckHealthIssue {
             }
             // Same cooldown as a channel check.
             None if Utc::now() - row.last_checked_at < chrono::Duration::seconds(15) => false,
+            None if row.code == crate::domains::trace_exports::health::CODE => {
+                crate::domains::trace_exports::health::refresh(&ctx.db, ctx.org_id()).await?;
+                true
+            }
             None if row.code == active_turns::ACTIVE_TURN_LIMIT => {
                 active_turns::recheck(&ctx.db, ctx.org_id(), OrgCaps::from_env()).await?;
                 true

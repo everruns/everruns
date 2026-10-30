@@ -86,6 +86,13 @@ impl WorkerRegistry for InMemoryWorkflowEventStore {
     async fn drain_worker(&self, worker_id: &str) -> Result<(), StoreError> {
         // Unknown ids are a no-op, as the PostgreSQL UPDATE matches no row.
         if let Some(worker) = self.workers.write().get_mut(worker_id) {
+            if worker.status != "draining" {
+                set_metadata(
+                    worker,
+                    WORKER_META_DRAINING_SINCE,
+                    serde_json::json!(Utc::now()),
+                );
+            }
             worker.status = "draining".to_string();
             worker.accepting_tasks = false;
         }
@@ -99,7 +106,38 @@ impl WorkerRegistry for InMemoryWorkflowEventStore {
         {
             worker.status = "active".to_string();
             worker.accepting_tasks = true;
+            if let Some(serde_json::Value::Object(metadata)) = worker.metadata.as_mut() {
+                metadata.remove(WORKER_META_DRAINING_SINCE);
+            }
         }
         Ok(())
+    }
+
+    async fn record_worker_checks(
+        &self,
+        worker_id: &str,
+        checks: serde_json::Value,
+    ) -> Result<(), StoreError> {
+        if let Some(worker) = self.workers.write().get_mut(worker_id) {
+            set_metadata(worker, WORKER_META_SELF_CHECKS, checks);
+            set_metadata(
+                worker,
+                WORKER_META_SELF_CHECKED_AT,
+                serde_json::json!(Utc::now()),
+            );
+        }
+        Ok(())
+    }
+}
+
+fn set_metadata(worker: &mut WorkerInfo, key: &str, value: serde_json::Value) {
+    let metadata = worker
+        .metadata
+        .get_or_insert_with(|| serde_json::Value::Object(Default::default()));
+    if !metadata.is_object() {
+        *metadata = serde_json::Value::Object(Default::default());
+    }
+    if let serde_json::Value::Object(map) = metadata {
+        map.insert(key.to_string(), value);
     }
 }

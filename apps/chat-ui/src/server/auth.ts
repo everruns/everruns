@@ -15,12 +15,20 @@ type Flow = {
   selectedSession?: string;
 };
 type Session = {
+  recoveryId?: string;
   channel: string;
   identity: string;
   refresh?: string;
   subject: string;
   expires: number;
 };
+/** Non-credential namespace for tab-local intent, renewed at each browser login. */
+export async function recoveryScope(request: Request): Promise<string | null> {
+  const token = (await cookies()).get(SESSION)?.value;
+  if (!token) return null;
+  const session = await read<Session>("session", token);
+  return session?.channel === channelOf(request) ? (session.recoveryId ?? null) : null;
+}
 async function discovery() {
   const cfg = settings();
   const response = await fetch(`${cfg.issuer}/.well-known/openid-configuration`, {
@@ -243,6 +251,7 @@ export async function authenticate(request: Request, action: string): Promise<Re
       "session",
       {
         channel,
+        recoveryId: random(),
         identity: consumed.identity,
         refresh: consumed.refresh,
         subject: consumed.subject,

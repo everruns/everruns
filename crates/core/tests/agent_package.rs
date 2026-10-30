@@ -2,6 +2,64 @@
 use everruns_core::agent_package::{AgentPackage, Format};
 
 #[test]
+fn localizations_survive_every_agent_file_format_and_zip() {
+    let original = AgentPackage::parse(r#"{
+      "schema_version":1,"name":"support","display_name":"Support","instructions":"Help customers.",
+      "localizations":{"uk_UA":{"display_name":"Підтримка"},"uk":{"description":"Допомога клієнтам"},"de":{"display_name":"Kundensupport"},"fr":{"display_name":"Assistance"},"es":{"display_name":"Asistencia"},"zh_CN":{"display_name":"客户支持"},"en_GB":{"display_name":"Customer support"}}
+    }"#, Format::Json).unwrap();
+    for format in [Format::Markdown, Format::Toml, Format::Yaml, Format::Json] {
+        let text = original.to_string(format).unwrap();
+        let restored = AgentPackage::parse(&text, format).unwrap();
+        assert!(
+            original.diff(&restored).unwrap().is_empty(),
+            "{format:?}: {text}"
+        );
+        assert_eq!(restored.manifest.name, "support");
+        assert_eq!(
+            restored
+                .manifest
+                .localizations
+                .resolve("UK-ua", |entry| entry.display_name.as_deref()),
+            Some("Підтримка")
+        );
+        assert_eq!(
+            restored
+                .manifest
+                .localizations
+                .resolve("de-DE", |entry| entry.display_name.as_deref()),
+            Some("Kundensupport")
+        );
+        for (locale, expected) in [
+            ("fr-CA", "Assistance"),
+            ("es-MX", "Asistencia"),
+            ("zh-CN", "客户支持"),
+            ("en-GB", "Customer support"),
+        ] {
+            assert_eq!(
+                restored
+                    .manifest
+                    .localizations
+                    .resolve(locale, |entry| entry.display_name.as_deref()),
+                Some(expected)
+            );
+        }
+    }
+    let restored = AgentPackage::from_zip(&original.to_zip().unwrap()).unwrap();
+    assert!(original.diff(&restored).unwrap().is_empty());
+    let mut changed = restored;
+    changed
+        .manifest
+        .localizations
+        .0
+        .get_mut("de")
+        .unwrap()
+        .display_name = Some("Hilfe".into());
+    let diff = original.diff(&changed).unwrap();
+    assert_eq!(diff.len(), 1);
+    assert_eq!(diff[0].path, "/localizations/de/display_name");
+}
+
+#[test]
 fn legacy_markdown_keeps_prompt_and_capability_config() {
     let package = AgentPackage::parse(
         "---\nname: Dad Jokes\ncapabilities:\n  - current_time\n---\nTell a joke.\n",
@@ -651,4 +709,29 @@ fn explicitly_selected_manifest_does_not_overwrite_other_manifest_assets() {
         package.files().unwrap()[0].content,
         "This is a runtime asset, not the selected manifest"
     );
+}
+
+#[test]
+fn yaml_preserves_scalar_types_aliases_and_literal_merge_keys() {
+    let text = "name: test\ninstructions: Hi\ncapabilities:\n  - ref: current_time\n    config:\n      enabled: true\n      country: NO\n      switch: off\n      original: &value [one, two]\n      copy: *value\n      merged: {<<: {key: value}}\n";
+    let package = AgentPackage::parse(text, Format::Yaml).unwrap();
+    let exported: serde_json::Value =
+        serde_json::from_str(&package.to_string(Format::Json).unwrap()).unwrap();
+    let config = &exported["capabilities"][0]["config"];
+    assert_eq!(config["enabled"], true);
+    assert_eq!(config["country"], "NO");
+    assert_eq!(config["switch"], "off");
+    assert_eq!(config["copy"], config["original"]);
+    assert_eq!(config["merged"]["<<"]["key"], "value");
+    assert!(config["merged"].get("key").is_none());
+}
+
+#[test]
+fn yaml_and_markdown_frontmatter_reject_excessive_nesting() {
+    let nested = format!("{}0{}", "[".repeat(70), "]".repeat(70));
+    let text = format!(
+        "name: test\ninstructions: Hi\ncapabilities:\n  - ref: current_time\n    config: {{nested: {nested}}}\n"
+    );
+    assert!(AgentPackage::parse(&text, Format::Yaml).is_err());
+    assert!(AgentPackage::parse(&format!("---\n{text}---\nHi"), Format::Markdown).is_err());
 }

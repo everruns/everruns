@@ -64,13 +64,70 @@ The host's database role needs only the browser credential/admission table.
 It has no platform-management credentials. The backend-for-frontend allowlist
 reaches consumer execution and self-service routes only.
 
+## Browser recovery
+
+The host supplies a random, non-credential recovery namespace after authenticating
+the browser session. It changes on login and remains stable across credential
+refresh. Tab-local drafts and unconfirmed message requests are bound to that
+namespace and conversation, including the original Agent API idempotency key.
+Reload never resends them automatically. Retry preserves the original body and
+key; requests beyond the local retry window require review rather than silently
+exceeding the server's idempotency retention. Discard removes only the local copy.
+Logout clears all local recovery. Legacy sessions without a recovery namespace
+keep memory-only behavior and show the storage warning.
+
+SSE framing handles split UTF-8 and CRLF delimiters, bounds partial frames and
+retained events, and advances its durable sequence before a React state update.
+Reconnects use bounded backoff; access rejection ends the stream loop. API reads
+and each stream reconnect still renew channel authority through the existing BFF.
+See [Chat recovery](../ui/chat-recovery.md) for the transport decision and
+[consumer recovery tests](../../apps/chat-ui/src/server/client-recovery.test.ts).
+
 ## Sources
 
 - [Channel configuration](../../crates/server/src/domains/agent_channels/record/work_chat.rs)
 - [Effective features](../../crates/server/src/domains/agent_channels/work_chat.rs)
-- [Consumer routes](../../crates/server/src/api/agent_api/work_chat.rs)
+- [Consumer routes](../../crates/server/src/api/agent_api/work_chat/mod.rs)
 - [Consumer delegation](../../crates/server/src/worker_link/consumer_delegation.rs)
 - [Standalone browser host](../../apps/chat-ui/)
 - [Execution API](agent-execution-api.md)
 - [Virtual users](../runtime-resources/virtual-users.md)
 - [Coordination](../runtime-resources/coordination.md)
+
+## Rich worker experience
+
+The browser host renders Markdown together with structured OpenUI and A2UI blocks,
+using the [shared generative-UI renderer](../ui/a2ui.md) rather than executing
+generated JavaScript. Both chat hosts use the same 69-component A2UI 1.0 catalog,
+OpenUI actions and legacy tree adapter. Component colors follow the host theme. Widget
+message actions use the consumer's existing conversation and execution policy.
+Read-only shares disable those actions. Malformed widgets fall back to source.
+
+Work logs belong to individual replies. Task chips link to the existing delegated
+sessions. Conversation search, pagination, pinning, renaming and archive/reopen
+operate within the caller's channel history. The permanent main conversation
+cannot be archived or renamed through consumer settings. Archived conversations
+remain readable and require reopening before another message.
+
+The channel owner may curate model choices. Empty selection retains the Agent's
+default. Message controls accept those models and typed reasoning effort only;
+other execution channels keep ignoring caller model controls. Existing budgets
+and approval rules apply, with no new rollout flags.
+
+The composer accepts up to three files with a combined four-megabyte limit,
+including paste and drag-and-drop. Workspace previews support Markdown, raster
+images, searchable CSV and text. HTML/SVG previews run without scripts in an
+opaque iframe whose content policy denies network access. Editing retains the
+existing revision check; downloading is available for text and binary files.
+
+## Published conversations
+
+A consumer can explicitly publish the messages and structured widgets of one
+owned conversation. The random link grants read authority only, never session,
+workspace, tool, question or approval authority. Shares remain bound to the live
+channel; revocation and replacement serialize against the session. History is
+paged and rate limited. Public views use the channel's safe message projection,
+exclude tool output and routing metadata, and do not cache responses.
+
+Publishing is a user action, not the default visibility of consumer history.
+Source: [experience routes](../../crates/server/src/api/agent_api/work_chat/experience.rs).

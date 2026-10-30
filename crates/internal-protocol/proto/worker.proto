@@ -3,12 +3,34 @@
 // Decision: Rust types in schemas crate are source of truth, proto mirrors them
 // Decision: Batched RPCs for latency optimization (GetTurnContext, EmitEventStream)
 // Decision: Use google.protobuf.Value/Struct for JSON values instead of strings
+// Decision: the hot payloads (message content, event data) also have a sibling
+//   `bytes *_json` field holding the serde_json encoding. Building and walking a
+//   Struct tree per field was the largest CPU cost on the server under load.
+//   Receivers prefer the bytes and fall back to the Struct; senders switch over
+//   with `SEND_JSON_BYTES` once every receiver understands the bytes.
 
 syntax = "proto3";
 
 package everruns.internal;
 
 import "google/protobuf/struct.proto";
+
+// Restricted, opt-in customer-worker boundary. These credentials never grant
+// access to WorkerService. All reads and writes require a live session lease.
+service CustomWorkerService {
+    rpc LeaseActors(LeaseActorsRequest) returns (LeaseActorsResponse);
+    rpc RenewActorLease(RenewActorLeaseRequest) returns (RenewActorLeaseResponse);
+    rpc ReleaseActor(ReleaseActorRequest) returns (ReleaseActorResponse);
+    rpc ReadJournal(CustomWorkerJournalRequest) returns (ReadActorJournalResponse);
+    // The CP namespaces turn/span identities; the returned event carries the
+    // canonical ids. One recorded input owns one custom turn.
+    rpc EmitEvent(EmitEventRequest) returns (EmitEventResponse);
+}
+
+message CustomWorkerJournalRequest {
+    ReadActorJournalRequest journal = 1;
+    ActorFence actor_fence = 2;
+}
 
 // Service for workers to communicate with control plane
 service WorkerService {
@@ -89,6 +111,10 @@ service WorkerService {
     // Deregister a durable worker
     rpc DeregisterDurableWorker(DeregisterDurableWorkerRequest) returns (DeregisterDurableWorkerResponse);
 
+    // The worker's checks on its own setup, sent after registration and
+    // every few minutes; the system doctor shows them
+    rpc ReportDurableWorkerChecks(ReportDurableWorkerChecksRequest) returns (ReportDurableWorkerChecksResponse);
+
     // === Circuit breaker operations ===
     // Served over everruns-durable's DistributedCircuitBreaker for workers to
     // guard external calls. No worker calls them today: turn steps run
@@ -108,23 +134,23 @@ service WorkerService {
     // Workers subscribe with their activity types and receive notifications when tasks become available
     rpc SubscribeTaskNotifications(SubscribeTaskNotificationsRequest) returns (stream TaskNotification);
 
-    // === Image resolution operations ===
-    // Used to resolve image_file content parts to actual image data for LLM calls
+    // === Image and file resolution operations ===
+    // Resolve image_file / file content parts for LLM calls. These answer with
+    // metadata and a short-lived signed HTTP URL; the worker fetches the bytes
+    // over HTTP. Bytes never travel over this link.
 
-    // Resolve a single image by ID (returns base64 + media_type)
+    // Resolve a single image by ID (media_type + url)
     rpc ResolveImage(ResolveImageRequest) returns (ResolveImageResponse);
 
     // Resolve multiple images in a batch (more efficient for multimodal messages)
     rpc ResolveImages(ResolveImagesRequest) returns (ResolveImagesResponse);
 
-    // Resolve multiple files (e.g. PDFs) in a batch. Files are always
-    // returned inline as base64 (no presigned-URL variant).
+    // Resolve multiple files (e.g. PDFs) in a batch.
     rpc ResolveFiles(ResolveFilesRequest) returns (ResolveFilesResponse);
 
-    // Persist and read image artifacts for tool-side image generation/editing.
-    // These and the resolvers above stay RPCs by design: they carry bytes (up
-    // to 100 MiB) that outgrow an internal command's 1 MiB JSON.
-    rpc CreateImageArtifact(CreateImageArtifactRequest) returns (CreateImageArtifactResponse);
+    // Read image artifacts for tool-side image editing: info plus a signed URL.
+    // Generated images are stored by an HTTP upload beside gRPC
+    // (`blob_wire::IMAGE_UPLOAD_PATH`), so no RPC carries image bytes.
     rpc GetImageArtifact(GetImageArtifactRequest) returns (GetImageArtifactResponse);
 
     // Resolve default provider credentials for tool-side API clients and the
@@ -169,6 +195,11 @@ service WorkerService {
     rpc LeaseActors(LeaseActorsRequest) returns (LeaseActorsResponse);
     rpc RenewActorLease(RenewActorLeaseRequest) returns (RenewActorLeaseResponse);
     rpc ReleaseActor(ReleaseActorRequest) returns (ReleaseActorResponse);
+    // A draining worker gives the lease back between steps of a running turn:
+    // like ReleaseActor, but the actor stays runnable so another worker resumes
+    // the turn from the log at once instead of after the lease TTL. A server
+    // without it answers UNIMPLEMENTED and the worker lets the lease expire.
+    rpc HandOffActor(ReleaseActorRequest) returns (ReleaseActorResponse);
     rpc ReadActorJournal(ReadActorJournalRequest) returns (ReadActorJournalResponse);
     // Detached tool calls: a call a holder took off its turn so the turn
     // parks while the call runs (knowledge/execution/detached-tool-calls.md).
@@ -476,6 +507,7 @@ message SetSessionStatusRequest {
 }
 
 message SetSessionStatusResponse {
+    // Unset: a status write is acknowledged only (EVE-882).
     Session session = 1;
 }
 
@@ -515,6 +547,13 @@ message Message {
     // for the same reason — a derived phase is only `has_tool_calls`, and a
     // consumer cannot tell that from the value alone.
     optional string phase_source = 11;
+    // serde_json encodings of `content`, `controls`, `metadata` and
+    // `external_actor`; preferred over the Struct fields when set (empty
+    // `content_json` means absent).
+    bytes content_json = 12;
+    optional bytes controls_json = 13;
+    optional bytes metadata_json = 14;
+    optional bytes external_actor_json = 15;
 }
 
 message GetMessageRequest {
@@ -530,6 +569,9 @@ message LoadMessagesRequest {
     Uuid session_id = 1;
     optional int32 message_limit = 2;
     optional int64 after_sequence = 3;
+    // Leave `total_count` at 0 instead of counting the session's messages.
+    // A worker extending its cached history sets it with `after_sequence`.
+    optional bool skip_total_count = 4;
 }
 
 message LoadMessagesResponse {
@@ -624,6 +666,10 @@ message EventRequest {
     google.protobuf.Struct data = 4;  // Event-specific payload (deserialized based on event_type)
     optional google.protobuf.Struct metadata = 5;  // Optional metadata object
     repeated string tags = 6;  // Optional tags
+    // serde_json encodings of `data` / `metadata`; preferred over the Struct
+    // fields when set (empty `data_json` means absent).
+    bytes data_json = 7;
+    optional bytes metadata_json = 8;
 }
 
 // Event - stored event with id and sequence assigned by storage
@@ -636,6 +682,10 @@ message Event {
     optional google.protobuf.Struct metadata = 6;  // Optional metadata object
     repeated string tags = 7;  // Optional tags
     int32 sequence = 8;  // Sequence number within session (always set for stored events)
+    // serde_json encodings of `data` / `metadata`; preferred over the Struct
+    // fields when set (empty `data_json` means absent).
+    bytes data_json = 9;
+    optional bytes metadata_json = 10;
 }
 
 message EventContext {
@@ -875,11 +925,35 @@ message RegisterDurableWorkerRequest {
     optional string worker_group = 2;
     repeated string activity_types = 3;
     int32 max_concurrency = 4;
+    // What the worker runs, so the system doctor can spot version skew.
+    // Unset or 0 from workers built before they reported it.
+    optional string version = 5;
+    optional string hostname = 6;
+    uint32 protocol_version = 7;
 }
 
 message RegisterDurableWorkerResponse {
     bool registered = 1;
 }
+
+// === Worker self-checks ===
+
+// One finding of the worker about its own setup. `status` is ok, info,
+// warning or problem, as in the system doctor.
+message WorkerSelfCheck {
+    string id = 1;
+    string title = 2;
+    string status = 3;
+    string summary = 4;
+    optional string fix = 5;
+}
+
+message ReportDurableWorkerChecksRequest {
+    string worker_id = 1;
+    repeated WorkerSelfCheck checks = 2;
+}
+
+message ReportDurableWorkerChecksResponse {}
 
 // === Heartbeat worker ===
 
@@ -960,14 +1034,13 @@ message ResolveImageRequest {
 message ResolveImageResponse {
     // True if image was found
     bool found = 1;
-    // Base64-encoded image data (without data URL prefix)
-    // Empty when url is provided or when found=false
-    string base64 = 2;
+    // Inline base64 bytes were removed: bytes never travel over gRPC.
+    reserved 2;
+    reserved "base64";
     // MIME type (e.g., "image/png", "image/jpeg")
     // Empty string when found=false
     string media_type = 3;
-    // Presigned URL to fetch the image binary via HTTP GET
-    // When present, workers should use this instead of the base64 field
+    // Short-lived signed URL; GET it for the image bytes. Set when found.
     string url = 4;
 }
 
@@ -997,12 +1070,17 @@ message ResolveFilesResponse {
 }
 
 message ResolvedFileData {
-    // Base64-encoded file bytes
-    string base64 = 1;
+    // Inline base64 bytes were removed: bytes never travel over gRPC.
+    reserved 1;
+    reserved "base64";
     // MIME type, e.g. application/pdf
     string media_type = 2;
     // Original filename, when known
     string filename = 3;
+    // Short-lived signed URL; GET it for the file bytes.
+    string url = 4;
+    // Stored size, so the worker can bound the fetch before reading it.
+    int64 size_bytes = 5;
 }
 
 message StoredImageInfo {
@@ -1014,30 +1092,20 @@ message StoredImageInfo {
     optional Timestamp created_at = 6;
 }
 
-message StoredImage {
-    StoredImageInfo info = 1;
-    bytes data = 2;
-}
-
-message CreateImageArtifactRequest {
-    int64 org_id = 1;
-    string filename = 2;
-    string content_type = 3;
-    bytes data = 4;
-    optional google.protobuf.Struct metadata = 5;
-}
-
-message CreateImageArtifactResponse {
-    StoredImageInfo image = 1;
-}
-
 message GetImageArtifactRequest {
     int64 org_id = 1;
     Uuid image_id = 2;
 }
 
 message GetImageArtifactResponse {
-    optional StoredImage image = 1;
+    // The former inline image (info plus bytes) was removed: bytes never
+    // travel over gRPC.
+    reserved 1;
+    reserved "image";
+    // Set when the image exists.
+    optional StoredImageInfo info = 2;
+    // Short-lived signed URL; GET it for the image bytes. Set with info.
+    string url = 3;
 }
 
 message GetDefaultProviderCredentialsRequest {
@@ -1069,13 +1137,12 @@ message GetDefaultProviderCredentialsResponse {
 
 // Resolved image data for batch response
 message ResolvedImageData {
-    // Base64-encoded image data (without data URL prefix)
-    // Empty when url is provided
-    string base64 = 1;
+    // Inline base64 bytes were removed: bytes never travel over gRPC.
+    reserved 1;
+    reserved "base64";
     // MIME type (e.g., "image/png", "image/jpeg")
     string media_type = 2;
-    // Presigned URL to fetch the image binary via HTTP GET
-    // When present, workers should use this instead of the base64 field
+    // Short-lived signed URL; GET it for the image bytes.
     string url = 3;
 }
 

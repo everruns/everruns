@@ -76,6 +76,7 @@ pub struct DaytonaClient {
     api_base: String,
     toolbox_base: String,
     management: management::Client,
+    download_limit: Option<usize>,
 }
 
 impl DaytonaClient {
@@ -105,7 +106,15 @@ impl DaytonaClient {
             api_base,
             toolbox_base,
             management,
+            download_limit: None,
         }
+    }
+
+    /// Bound untrusted toolbox output before allocating the complete response.
+    /// Build scripts may alter even the binaries used to truncate their logs.
+    pub fn with_download_limit(mut self, bytes: usize) -> Self {
+        self.download_limit = Some(bytes);
+        self
     }
 
     /// Generated Toolbox client for one sandbox.
@@ -201,7 +210,7 @@ impl DaytonaClient {
     /// Raw toolbox GET that returns bytes (file download, command logs).
     async fn toolbox_download(&self, sandbox_id: &str, path: &str) -> Result<Vec<u8>, String> {
         let url = format!("{}/{sandbox_id}{path}", self.toolbox_base);
-        let resp = self
+        let mut resp = self
             .http
             .get(&url)
             .bearer_auth(&self.api_key)
@@ -210,6 +219,23 @@ impl DaytonaClient {
             .map_err(|e| format!("Failed to connect to sandbox: {e}"))?;
 
         let status = resp.status();
+        if let Some(limit) = self.download_limit {
+            let mut body = Vec::new();
+            while let Some(chunk) = resp
+                .chunk()
+                .await
+                .map_err(|e| format!("Failed to read sandbox output: {e}"))?
+            {
+                if chunk.len() > limit.saturating_sub(body.len()) {
+                    return Err("Sandbox output exceeds the configured byte limit".into());
+                }
+                body.extend_from_slice(&chunk);
+            }
+            if !status.is_success() {
+                return Err(format!("Sandbox API error ({status})"));
+            }
+            return Ok(body);
+        }
         if !status.is_success() {
             let body_text = resp
                 .text()
@@ -342,6 +368,49 @@ impl DaytonaClient {
             .or_api_error(DAYTONA)
             .await?;
         Ok(sandbox_info(sandbox))
+    }
+
+    /// Bake the stopped sandbox's filesystem, never its memory or live sessions.
+    pub async fn create_sandbox_snapshot(
+        &self,
+        sandbox_id: &str,
+        name: &str,
+    ) -> Result<(), String> {
+        self.management
+            .create_sandbox_snapshot()
+            .sandbox_id_or_name(sandbox_id)
+            .body(management::types::CreateSandboxSnapshot {
+                name: name.to_string(),
+                include_memory: false,
+            })
+            .send()
+            .await
+            .or_api_error_ignoring_body(DAYTONA)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_snapshot(&self, id: &str) -> Result<SnapshotInfo, String> {
+        let snapshot = self
+            .management
+            .get_snapshot()
+            .id(id)
+            .send()
+            .await
+            .or_api_error(DAYTONA)
+            .await?;
+        Ok(snapshot_info(snapshot))
+    }
+
+    pub async fn delete_snapshot(&self, id: &str) -> Result<(), String> {
+        self.management
+            .remove_snapshot()
+            .id(id)
+            .send()
+            .await
+            .or_api_error_ignoring_body(DAYTONA)
+            .await?;
+        Ok(())
     }
 
     /// Every sandbox carrying all of `labels`, following `nextCursor` until
@@ -684,7 +753,14 @@ impl DaytonaClient {
             tokio::time::sleep(EXEC_POLL_INTERVAL).await;
 
             // Fetch session command logs (raw bytes with stream markers).
-            let logs_ok = self.toolbox_download(sandbox_id, &logs_path).await.ok();
+            let logs_result = self.toolbox_download(sandbox_id, &logs_path).await;
+            if logs_result
+                .as_ref()
+                .is_err_and(|e| e == "Sandbox output exceeds the configured byte limit")
+            {
+                return Err("Sandbox output exceeds the configured byte limit".into());
+            }
+            let logs_ok = logs_result.ok();
 
             let had_new_output = logs_ok
                 .as_ref()
@@ -707,10 +783,14 @@ impl DaytonaClient {
 
             if let Ok(Some(exit_code)) = status {
                 // Final log fetch to capture any trailing output.
-                let final_logs = self
-                    .toolbox_download(sandbox_id, &logs_path)
-                    .await
-                    .unwrap_or_default();
+                let final_result = self.toolbox_download(sandbox_id, &logs_path).await;
+                if final_result
+                    .as_ref()
+                    .is_err_and(|e| e == "Sandbox output exceeds the configured byte limit")
+                {
+                    return Err("Sandbox output exceeds the configured byte limit".into());
+                }
+                let final_logs = final_result.unwrap_or_default();
 
                 if final_logs.len() > raw_bytes_emitted {
                     let delta = parse_exec_output_delta(
@@ -791,6 +871,41 @@ impl DaytonaClient {
         let encoded = urlencoding::encode(path);
         self.toolbox_download(sandbox_id, &format!("/files/download?path={encoded}"))
             .await
+    }
+
+    /// [`Self::file_download`] as a stream of chunks, so a large file (a
+    /// desktop recording) is never held whole in memory.
+    pub async fn file_download_stream(
+        &self,
+        sandbox_id: &str,
+        path: &str,
+    ) -> Result<futures::stream::BoxStream<'static, Result<Vec<u8>, String>>, String> {
+        use futures::StreamExt;
+        let encoded = urlencoding::encode(path);
+        let url = format!(
+            "{}/{sandbox_id}/files/download?path={encoded}",
+            self.toolbox_base
+        );
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to connect to sandbox: {e}"))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body_text = resp.text().await.unwrap_or_default();
+            return Err(format!("Sandbox API error ({status}): {body_text}"));
+        }
+        Ok(resp
+            .bytes_stream()
+            .map(|chunk| {
+                chunk
+                    .map(|bytes| bytes.to_vec())
+                    .map_err(|e| format!("Failed to read file bytes: {e}"))
+            })
+            .boxed())
     }
 
     pub async fn file_upload(

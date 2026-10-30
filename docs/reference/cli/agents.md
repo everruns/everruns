@@ -26,6 +26,7 @@ Agent definitions and their configuration.
 | [`agents draft`](#agents-draft) | Revise an agent draft from a conversation with the agent builder. |
 | [`agents get`](#agents-get) | Get a single agent by ID or name. |
 | [`agents list`](#agents-list) | List all active agents. |
+| [`agents cost-plan`](#agents-cost-plan) | Suggest editable typical task workloads for agent cost planning. |
 | [`agents preview`](#agents-preview) | Preview the final agent shape with capabilities applied. |
 | [`agents upsert`](#agents-upsert) | Upsert agent — create (201) or update (200) by ID. |
 | [`agents avatar presets`](#agents-avatar-presets) | List the curated agent avatars: stable id, name, family, suggested role, description and search keywords. |
@@ -50,6 +51,8 @@ Agent definitions and their configuration.
 | [`agents examples list`](#agents-examples-list) | List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). |
 | [`agents exposures resume`](#agents-exposures-resume) | Let an agent's live channels accept traffic again. |
 | [`agents exposures suspend`](#agents-exposures-suspend) | Stop every channel on an agent from accepting traffic. |
+| [`agents external-worker disable`](#agents-external-worker-disable) | Revoke external execution; queued sessions stay bound without native fallback. |
+| [`agents external-worker get`](#agents-external-worker-get) | Get an Agent's external execution endpoint. |
 | [`agents failures list`](#agents-failures-list) | List sessions with failed turns. |
 | [`agents github connect`](#agents-github-connect) | Start connecting an agent to GitHub through its own GitHub App. |
 | [`agents github disconnect`](#agents-github-disconnect) | Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. |
@@ -344,6 +347,27 @@ Example:
 everruns agents list --search triage --limit 20
 ```
 
+## agents cost-plan
+
+Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.
+
+```bash
+everruns agents cost-plan [OPTIONS] --agent <agent>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT>` | Required. Request to preview the final agent shape with capabilities applied. |
+| `--guidance <GUIDANCE>` | Optional description of the workload to plan. |
+| `--locale <LOCALE>` |  |
+
+Example:
+
+```bash
+# Suggest task workloads for a draft without running or saving it
+everruns agents cost-plan --agent '{"system_prompt":"Draft short customer replies"}'
+```
+
 ## agents preview
 
 Preview the final agent shape with capabilities applied.
@@ -388,6 +412,7 @@ everruns agents upsert [OPTIONS] --name <name> --system-prompt <system_prompt> [
 | `--harness-id <HARNESS_ID>` | Harness ID used as this agent's base execution environment. |
 | `--initial-files <INITIAL_FILES>` | Starter files copied into each new session for this agent. |
 | `--intro-markdown <INTRO_MARKDOWN>` | Markdown intro shown as an intro box on a fresh Platform Chat thread. Images are allowed. |
+| `--localizations <LOCALIZATIONS>` | Locale-keyed display overlays. |
 | `--max-iterations <MAX_ITERATIONS>` | Maximum number of LLM iterations per turn for this agent. |
 | `--max-output-tokens <MAX_OUTPUT_TOKENS>` | Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ... |
 | `--mcpServers <MCPSERVERS>` |  |
@@ -860,6 +885,44 @@ Example:
 ```bash
 # Stop an agent answering on its exposed surfaces without deleting it
 everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'
+```
+
+## agents external-worker disable
+
+Revoke external execution; queued sessions stay bound without native fallback.
+
+```bash
+everruns agents external-worker disable [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent public ID or name; the HTTP route supplies this value. |
+
+Example:
+
+```bash
+# Revoke external execution while retaining queued work
+everruns agents external-worker disable --agent-id agent_01h9 --reason 'Pause external execution'
+```
+
+## agents external-worker get
+
+Get an Agent's external execution endpoint.
+
+```bash
+everruns agents external-worker get [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent public ID or name; the HTTP route supplies this value. |
+
+Example:
+
+```bash
+# Inspect an Agent's external runtime without credentials
+everruns agents external-worker get --agent-id agent_01h9
 ```
 
 ## agents failures list

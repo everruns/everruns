@@ -1,10 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   buildChannelConfig,
-  ChannelTypePicker,
   getDefaultChannelFormState,
   isChannelFormValid,
 } from "@/components/agents/channels/channel-form";
+import { ChannelTypePicker } from "@/components/agents/channels/channel-type-picker";
 import { VoiceTalkButton } from "@/components/agents/channels/voice-talk-button";
 import type { AgentChannel } from "@/lib/api/types";
 
@@ -26,11 +26,11 @@ describe("voice channel kind", () => {
 
   it("is offered only when the voice feature flag is on", () => {
     mockUseFeatureFlag.mockImplementation((flag: string) => flag !== "voice");
-    const { rerender } = render(<ChannelTypePicker value="webhook" onChange={jest.fn()} />);
+    const { rerender } = render(<ChannelTypePicker onChange={jest.fn()} />);
     expect(screen.queryByText("Voice")).not.toBeInTheDocument();
 
     mockUseFeatureFlag.mockImplementation(() => true);
-    rerender(<ChannelTypePicker value="webhook" onChange={jest.fn()} />);
+    rerender(<ChannelTypePicker onChange={jest.fn()} />);
     expect(screen.getByText("Voice")).toBeInTheDocument();
   });
 

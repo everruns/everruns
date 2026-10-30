@@ -9,6 +9,7 @@ async fn test_create_and_get_agent() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),
@@ -110,6 +111,7 @@ async fn test_create_and_list_sessions() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),
@@ -498,6 +500,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "stats-agent".to_string(),
                 display_name: Some("Stats Agent".to_string()),
@@ -528,6 +531,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "stats-harness".to_string(),
                 display_name: Some("Stats Harness".to_string()),
                 icon: None,
@@ -615,6 +619,7 @@ async fn test_session_updated_at() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),
@@ -688,6 +693,7 @@ async fn test_events_sequence() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),
@@ -760,6 +766,7 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),

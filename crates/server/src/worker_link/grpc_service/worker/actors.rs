@@ -27,6 +27,28 @@ fn requested_actor_lease_ttl(ttl_ms: u32) -> Duration {
     }
 }
 
+/// Encoded bytes one journal page may carry. Decision: a quarter of the gRPC
+/// message cap, so a page always fits with room for the envelope. Counting
+/// events alone did not: one turn's 400 events encoded to ~200 MB, over the
+/// 64 MiB cap, and every lease of that session failed on the read.
+const ACTOR_JOURNAL_PAGE_BYTES: usize = everruns_internal_protocol::MAX_GRPC_MESSAGE_SIZE / 4;
+
+/// Keep the leading `events` that fit `budget` encoded bytes, always at least
+/// one so paging advances. `true` when some were left for the next page.
+fn fit_journal_page(events: &mut Vec<proto::Event>, budget: usize) -> bool {
+    let mut used = 0;
+    let fits = events
+        .iter()
+        .position(|event| {
+            used += prost::Message::encoded_len(event);
+            used > budget
+        })
+        .map_or(events.len(), |over| over.max(1));
+    let cut = fits < events.len();
+    events.truncate(fits);
+    cut
+}
+
 fn requested_max_per_org(max_leased_per_org: u32) -> i64 {
     if max_leased_per_org == 0 {
         DEFAULT_ACTOR_LEASES_PER_ORG
@@ -139,25 +161,98 @@ impl WorkerServiceImpl {
         }))
     }
 
+    pub(crate) async fn handle_hand_off_actor(
+        &self,
+        request: Request<proto::ReleaseActorRequest>,
+    ) -> Result<Response<proto::ReleaseActorResponse>, Status> {
+        let req = request.into_inner();
+        require_holder(&req.holder)?;
+        let session_id = SessionId::from_uuid(parse_uuid(req.session_id.as_ref())?);
+        let released = self
+            .db
+            .hand_off_session_actor(session_id, &req.holder, req.fence, req.consumed_inbox_seq)
+            .await
+            .map_err(|e| internal_status("Failed to hand off actor", e))?;
+        Ok(Response::new(proto::ReleaseActorResponse {
+            released: released.is_some(),
+            still_runnable: released.is_some(),
+        }))
+    }
+
     pub(crate) async fn handle_read_actor_journal(
         &self,
         request: Request<proto::ReadActorJournalRequest>,
     ) -> Result<Response<proto::ReadActorJournalResponse>, Status> {
+        let authority = super::super::authority::resolve(request.extensions())?.clone();
         let req = request.into_inner();
         let session_id = SessionId::from_uuid(parse_uuid(req.session_id.as_ref())?);
-        let journal = self
-            .db
-            .read_session_actor_journal(session_id, req.after_sequence, i64::from(req.limit))
-            .await
-            .map_err(|e| internal_status("Failed to read actor journal", e))?;
+        let limit = i64::from(req.limit);
+        let journal = match authority {
+            super::super::authority::WorkerAuthority::ActorJournal(scope) => {
+                scope
+                    .read_journal(&self.db, session_id, req.after_sequence, limit)
+                    .await?
+            }
+            super::super::authority::WorkerAuthority::VerifiedJournal(scope) => {
+                scope
+                    .read_journal(&self.db, session_id, req.after_sequence, limit)
+                    .await?
+            }
+            super::super::authority::WorkerAuthority::LegacyWorker
+            | super::super::authority::WorkerAuthority::Development => self
+                .db
+                .read_session_actor_journal(session_id, req.after_sequence, limit)
+                .await
+                .map_err(|e| internal_status("Failed to read actor journal", e))?,
+        };
+        let mut events: Vec<proto::Event> = journal
+            .events
+            .into_iter()
+            .map(|row| schema_event_to_proto(&EventService::row_to_event(row)))
+            .collect();
+        let cut = fit_journal_page(&mut events, ACTOR_JOURNAL_PAGE_BYTES);
         Ok(Response::new(proto::ReadActorJournalResponse {
-            events: journal
-                .events
-                .into_iter()
-                .map(|row| schema_event_to_proto(&EventService::row_to_event(row)))
-                .collect(),
-            has_more: journal.has_more,
+            events,
+            has_more: journal.has_more || cut,
             head_sequence: journal.head_sequence,
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(sequence: i32, payload: usize) -> proto::Event {
+        proto::Event {
+            event_type: "x".repeat(payload),
+            sequence,
+            ..Default::default()
+        }
+    }
+
+    fn sequences(events: &[proto::Event]) -> Vec<i32> {
+        events.iter().map(|event| event.sequence).collect()
+    }
+
+    #[test]
+    fn a_journal_page_stops_at_its_byte_budget() {
+        let mut events = vec![event(1, 40), event(2, 40), event(3, 40)];
+        assert!(fit_journal_page(&mut events, 100));
+        assert_eq!(sequences(&events), vec![1, 2]);
+    }
+
+    #[test]
+    fn a_journal_page_keeps_one_event_over_the_budget_so_paging_advances() {
+        let mut events = vec![event(1, 500), event(2, 10)];
+        assert!(fit_journal_page(&mut events, 100));
+        assert_eq!(sequences(&events), vec![1]);
+    }
+
+    #[test]
+    fn a_journal_page_within_the_budget_is_whole() {
+        let mut events = vec![event(1, 10), event(2, 10)];
+        assert!(!fit_journal_page(&mut events, 100));
+        assert_eq!(sequences(&events), vec![1, 2]);
     }
 }

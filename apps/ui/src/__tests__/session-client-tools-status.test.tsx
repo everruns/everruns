@@ -33,7 +33,10 @@ jest.mock("next/navigation", () => ({ usePathname: () => "/agents/agent_1" }));
 jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({ currentOrg: { public_id: "org_1" } }),
 }));
-jest.mock("@/providers/locale-provider", () => ({ useLocale: () => ({ locale: "en" }) }));
+jest.mock("@/providers/locale-provider", () => ({
+  ...jest.requireActual("@/providers/locale-provider"),
+  useLocale: () => ({ locale: "en" }),
+}));
 jest.mock("@/providers/webmcp-context", () => ({ useWebMcp: () => ({}) }));
 jest.mock("@/hooks/use-webmcp-tool", () => ({ useWebMcpTool: jest.fn() }));
 jest.mock("@/hooks/use-chat-sends", () => ({ useChatSends: () => ({}) }));

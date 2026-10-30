@@ -1,5 +1,14 @@
 "use client";
+import {
+  Select as SharedSelect,
+  SelectTrigger as SharedSelectTrigger,
+  SelectContent as SharedSelectContent,
+  SelectValue as SharedSelectValue,
+  SelectItem as SharedSelectItem,
+} from "@/components/ui/select";
 
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
+import { getDisplayName } from "@/lib/entity-lifecycle";
 import { useEffect, useState } from "react";
 import { inspectAgentPackage, type AgentPackagePreview } from "@/lib/api/agents";
 import { AgentPackageReview, PackageChangeReview } from "./agent-package-review";
@@ -29,6 +38,8 @@ export function AgentImportDialog({
   onClose: () => void;
   onImported: (agent: Agent) => void;
 }) {
+  const ui = useUiTranslations();
+  const { displayLocale } = useLocale();
   const importAgent = useImportAgent();
   const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
@@ -98,37 +109,46 @@ export function AgentImportDialog({
       }}
     >
       <DialogContent
+        chatProtected="Import agent"
         className={`flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl ${preview ? "h-[90vh]" : ""}`}
       >
         <DialogHeader className="shrink-0 border-b p-4 pr-12 sm:px-6">
-          <DialogTitle>Import agent</DialogTitle>
+          <DialogTitle>{ui("Import agent")}</DialogTitle>
           <DialogDescription>
-            Review {file?.name} before importing. Starting files affect new sessions; existing
-            session files stay intact.
+            {ui("Review")} {file?.name}{" "}
+            {ui(
+              "before importing. Starting files affect new sessions; existing session files stay intact.",
+            )}
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="grid gap-3 border-b bg-muted/30 p-4 sm:px-6">
             <label className="grid gap-2 text-sm sm:grid-cols-[auto_minmax(0,320px)] sm:items-center sm:justify-start">
-              Destination
-              <select
-                aria-label="Import destination"
-                className="rounded border bg-background p-2"
-                value={target}
+              {ui("Destination")}
+              <SharedSelect
+                value={String(target)}
                 disabled={busy}
-                onChange={(e) => setTarget(e.target.value)}
+                onValueChange={(selection) => setTarget(selection)}
               >
-                <option value="">Create a new agent</option>
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.name}>
-                    Update {agent.display_name || agent.name}
-                  </option>
-                ))}
-              </select>
+                <SharedSelectTrigger
+                  aria-label={ui("Import destination")}
+                  className="rounded border bg-background p-2"
+                >
+                  <SharedSelectValue />
+                </SharedSelectTrigger>
+                <SharedSelectContent>
+                  <SharedSelectItem value="">{ui("Create a new agent")}</SharedSelectItem>
+                  {agents.map((agent) => (
+                    <SharedSelectItem key={agent.id} value={String(agent.name)}>
+                      {ui("Update")} {getDisplayName(agent, displayLocale)}
+                    </SharedSelectItem>
+                  ))}
+                </SharedSelectContent>
+              </SharedSelect>
             </label>
             {busy && (
               <p role="status" className="text-sm text-muted-foreground">
-                Checking package…
+                {ui("Checking package…")}
               </p>
             )}
             {error && (
@@ -137,7 +157,7 @@ export function AgentImportDialog({
               </p>
             )}
             {valid && !busy && (
-              <p className="text-sm">Package and destination dependencies are valid.</p>
+              <p className="text-sm">{ui("Package and destination dependencies are valid.")}</p>
             )}
           </div>
           {preview && !busy && (
@@ -156,10 +176,10 @@ export function AgentImportDialog({
         </div>
         <DialogFooter className="shrink-0 border-t bg-background p-4 sm:px-6">
           <Button variant="outline" disabled={busy} onClick={onClose}>
-            Cancel
+            {ui("Cancel")}
           </Button>
           <Button disabled={!valid || busy} onClick={apply}>
-            {target ? "Apply changes" : "Import"}
+            {target ? ui("Apply changes") : ui("Import")}
           </Button>
         </DialogFooter>
       </DialogContent>

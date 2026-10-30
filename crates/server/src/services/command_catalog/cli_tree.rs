@@ -30,7 +30,7 @@ pub fn contracts() -> &'static [ContractCommand] {
             .filter_map(|desc| {
                 let meta = (desc.meta)();
                 // Internal worker plumbing is nobody's command line.
-                if meta.is_internal() || meta.is_retired() {
+                if meta.is_internal() || meta.is_retired() || meta.is_interactive_secret_setup() {
                     return None;
                 }
                 // Every command is part of the command line. A declared route
@@ -126,7 +126,7 @@ mod tests {
                 // `discover` never shows internal worker commands.
                 .filter(|desc| {
                     let meta = (desc.meta)();
-                    !meta.is_internal() && !meta.is_retired()
+                    !meta.is_internal() && !meta.is_retired() && !meta.is_interactive_secret_setup()
                 })
                 .map(|desc| {
                     let meta = (desc.meta)();
@@ -252,46 +252,32 @@ mod tests {
         );
     }
 
-    /// The canonical harness the offline eval subject reproduces: its system prompt
-    /// and its one tool.
-    ///
-    /// The harness contract is that the platform is a command in the session's shell, so
-    /// what the eval must reproduce is a `bash` tool and nothing else. Reading
-    /// the schema off `BashTool` rather than restating it is what keeps the two
-    /// arms of the A/B differing only in the surface under test.
+    /// The CLI comparison keeps its captured operator prompt. Native Platform
+    /// Chat now has additional tools and different interface instructions; do
+    /// not silently replace this historical CLI arm's prompt with native prose.
+    /// Its shell schema still follows the real Bash tool.
     #[test]
-    fn the_eval_harness_matches_the_shipped_one() {
+    fn the_eval_cli_snapshot_uses_the_current_shell_schema() {
         use everruns_core::Tool;
         use everruns_integrations::bashkit::BashTool;
 
+        let harness: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../../evals/platform-capability/harness.json"
+        ))
+        .expect("captured CLI harness");
         let bash = BashTool::default();
-        let harness = serde_json::json!({
-            "system_prompt": crate::platform_chat_agent::system_prompt(),
-            "tools": [
-                {
-                    "name": bash.name(),
-                    "description": bash.description(),
-                    "schema": bash.parameters_schema(),
-                },
-            ]
-        });
-        let generated = serde_json::to_string_pretty(&harness).expect("harness serializes") + "\n";
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../evals/platform-capability/harness.json"
-        );
-
-        if std::env::var("UPDATE_EVAL_CATALOG").is_ok() {
-            std::fs::write(path, &generated).expect("write harness.json");
-            return;
-        }
-
-        let checked_in = std::fs::read_to_string(path).expect("read harness.json");
         assert_eq!(
-            checked_in.trim(),
-            generated.trim(),
-            "evals/platform-capability/harness.json is stale. Run \
-             `UPDATE_EVAL_CATALOG=1 cargo test -p everruns-server the_eval_`."
+            harness["tools"],
+            serde_json::json!([{
+                "name": bash.name(), "description": bash.description(),
+                "schema": bash.parameters_schema()
+            }])
+        );
+        assert!(
+            harness["system_prompt"]
+                .as_str()
+                .unwrap()
+                .contains("Platform operations are a command")
         );
     }
 
@@ -445,8 +431,10 @@ mod tests {
             // A fixture is deliberately not part of anyone's command line, so
             // its absence is the design rather than an omission.
             .filter(|meta| !meta.path.starts_with("/test/"))
-            // Internal worker plumbing is kept off the command line on purpose.
-            .filter(|meta| !meta.is_internal() && !meta.is_retired())
+            // Worker plumbing and interactive credential entry have no shell surface.
+            .filter(|meta| {
+                !meta.is_internal() && !meta.is_retired() && !meta.is_interactive_secret_setup()
+            })
             .map(|meta| meta.name)
             .filter(|name| !contracts().iter().any(|c| c.wire_name == *name))
             .collect();

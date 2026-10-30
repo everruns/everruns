@@ -12,6 +12,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: format!("channel-harness-{}", uuid::Uuid::now_v7().simple()),
                 display_name: Some("Channel Harness".to_string()),
                 icon: None,
@@ -36,6 +37,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            localizations: Default::default(),
             public_id: public_id.clone(),
             name: format!("channel-agent-{}", uuid::Uuid::now_v7().simple()),
             display_name: Some("Channel Agent".to_string()),

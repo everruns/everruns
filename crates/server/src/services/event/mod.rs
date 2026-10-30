@@ -43,6 +43,7 @@ use uuid::Uuid;
 /// sessions and keeps memory predictable. Mirrors the PAT auth cache
 /// (`auth::builtin`) and reuses the same moka version.
 mod deleted_session;
+mod tool_images;
 use deleted_session::{session_gone, single_session};
 
 const AGENT_METADATA_CACHE_MAX_CAPACITY: u64 = 10_000;
@@ -272,6 +273,7 @@ impl EventService {
         self.attach_session_participant_metadata(request).await;
         self.attach_service_mcp_provenance(request).await?;
         Self::validate_event_type_consistency(request)?;
+        self.offload_tool_images(request).await;
         for listener in self.listeners.iter() {
             if let Ok(Some(carrier)) =
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -283,6 +285,23 @@ impl EventService {
             }
         }
         Ok(())
+    }
+
+    /// Move a tool result's inline screenshots into the image store, so the
+    /// stored event (and every history reload) carries references only.
+    async fn offload_tool_images(&self, request: &mut EventRequest) {
+        if !tool_images::has_inline_images(&request.data) {
+            return;
+        }
+        let org_id = match self.db.get_session_unscoped(request.session_id).await {
+            Ok(Some(session)) => session.org_id,
+            Ok(None) => return,
+            Err(error) => {
+                tracing::warn!(session_id = %request.session_id, error = %error, "failed to load session for tool image offload; kept inline");
+                return;
+            }
+        };
+        tool_images::offload(&self.db, org_id, &mut request.data).await;
     }
 
     async fn attach_service_mcp_provenance(&self, request: &mut EventRequest) -> Result<()> {
@@ -939,6 +958,7 @@ mod tests {
     mod cancelled_caller;
     mod emit_conditional;
     mod service_mcp_responder;
+    mod tool_images;
 
     fn sample_metadata() -> AgentEventMetadata {
         AgentEventMetadata {

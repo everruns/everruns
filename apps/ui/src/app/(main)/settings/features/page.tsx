@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 
 import { FeaturesIcon } from "@/components/icons/facet-icons";
@@ -14,7 +15,8 @@ import { useOrg } from "@/providers/org-provider";
 import type { OrgFeatureFlagSetting } from "@/lib/api/types";
 
 export default function FeaturesSettingsPage() {
-  usePageTitle("Features", "Settings");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Features"), ui("Settings"));
   const { currentOrg } = useOrg();
   const canManage = currentOrg?.role === "owner" || currentOrg?.role === "admin";
   const { data, isLoading, error } = useOrgFeatureFlagSettings();
@@ -41,27 +43,28 @@ export default function FeaturesSettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
       <div>
-        <h2 className="text-lg font-semibold">Features</h2>
+        <h2 className="text-lg font-semibold">{ui("Features")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Choose which features are enabled for{" "}
+          {ui("Choose which features are enabled for")}{" "}
           <span className="font-medium text-foreground">
-            {currentOrg?.name ?? "this organization"}
+            {currentOrg?.name ?? ui("this organization")}
           </span>
-          . Adoption features start disabled. Production features start enabled and can be turned
-          off.
+          {ui(
+            ". Adoption features start disabled. Production features start enabled and can be turned off.",
+          )}
         </p>
       </div>
 
       {!canManage && (
         <Card className="flex items-start gap-3 border-warning/30 bg-warning/5 p-4 text-sm">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-          <p>Only organization owners and admins can change feature settings.</p>
+          <p>{ui("Only organization owners and admins can change feature settings.")}</p>
         </Card>
       )}
 
       {error && (
         <Card className="border-destructive/50 p-4 text-sm text-destructive">
-          Failed to load feature settings. Try refreshing the page.
+          {ui("Failed to load feature settings. Try refreshing the page.")}
         </Card>
       )}
 
@@ -75,7 +78,7 @@ export default function FeaturesSettingsPage() {
 
       {!isLoading && availableFlags.length === 0 && (
         <Card className="p-6 text-sm text-muted-foreground">
-          No configurable features are currently available for your organization.
+          {ui("No configurable features are currently available for your organization.")}
         </Card>
       )}
 
@@ -90,7 +93,7 @@ export default function FeaturesSettingsPage() {
                 {flag.grade !== "prod" && (
                   <span className="inline-flex items-center gap-1 text-xs text-warning">
                     <FeaturesIcon className="h-3.5 w-3.5" />
-                    {flag.grade === "dev" ? "Local development" : "Adoption"}
+                    {flag.grade === "dev" ? ui("Local development") : ui("Adoption")}
                   </span>
                 )}
               </div>
@@ -107,7 +110,7 @@ export default function FeaturesSettingsPage() {
                 checked={flag.effective}
                 disabled={!canManage || !flag.can_manage || updateFlags.isPending}
                 onCheckedChange={(checked) => handleToggle(flag, checked)}
-                aria-label={`Enable ${flag.label}`}
+                aria-label={ui("Enable {value0}", { value0: flag.label })}
               />
             </div>
           </Card>

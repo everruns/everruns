@@ -19,6 +19,8 @@
 // shows a "Set the avatar" step: download the agent's avatar, open the App's
 // settings page. Whether a logo is already set is not detected.
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
@@ -79,12 +81,13 @@ function ChoiceRow({
   action: ReactNode;
   children: ReactNode;
 }) {
+  const ui = useUiTranslations();
   return (
     <div className="flex flex-wrap items-start justify-between gap-3 py-3 last:pb-0">
       <div className="min-w-0 flex-[1_1_24rem] space-y-1">
         <h5 className="flex flex-wrap items-center gap-2 text-sm font-medium">
           {title}
-          {recommended && <Badge variant="outline">Recommended</Badge>}
+          {recommended && <Badge variant="outline">{ui("Recommended")}</Badge>}
         </h5>
         <p className="text-sm text-muted-foreground">{children}</p>
       </div>
@@ -103,12 +106,13 @@ export function AgentGitHubSection({
   avatar?: AgentAvatar | null;
   githubTriggerCount?: number;
 }) {
+  const ui = useUiTranslations();
   return (
     <section id="github" className="flex min-w-0 flex-col gap-3">
       <div>
-        <h3 className="text-lg font-semibold tracking-tight">GitHub</h3>
+        <h3 className="text-lg font-semibold tracking-tight">{ui("GitHub")}</h3>
         <p className="text-sm text-muted-foreground">
-          The name this agent uses when it reads code and comments on pull requests
+          {ui("The name this agent uses when it reads code and comments on pull requests")}
         </p>
       </div>
       <AgentGitHubCard agentId={agentId} avatar={avatar} githubTriggerCount={githubTriggerCount} />
@@ -123,16 +127,18 @@ function AvatarStep({
   avatar?: AgentAvatar | null;
   settingsUrl: string | null;
 }) {
+  const ui = useUiTranslations();
   const largest = avatar ? Math.max(...avatar.sizes) : null;
   return (
     <div className="space-y-2 border-t pt-3">
-      <h5 className="text-sm font-medium">Set the avatar</h5>
+      <h5 className="text-sm font-medium">{ui("Set the avatar")}</h5>
       <p className="text-sm text-muted-foreground">
-        GitHub shows this agent with a default logo until one is uploaded to its App, and GitHub
-        offers no way to set it for you.{" "}
+        {ui(
+          "GitHub shows this agent with a default logo until one is uploaded to its App, and GitHub offers no way to set it for you.",
+        )}{" "}
         {avatar
-          ? "Download the agent's avatar, then upload it as the logo in the App's settings."
-          : "Upload a logo in the App's settings, or give the agent an avatar first."}
+          ? ui("Download the agent's avatar, then upload it as the logo in the App's settings.")
+          : ui("Upload a logo in the App's settings, or give the agent an avatar first.")}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         {avatar && largest !== null && (
@@ -141,7 +147,7 @@ function AvatarStep({
             download="avatar.png"
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >
-            <Download className="size-4" /> Download avatar
+            <Download className="size-4" /> {ui("Download avatar")}
           </a>
         )}
         {settingsUrl && (
@@ -151,7 +157,7 @@ function AvatarStep({
             rel="noopener noreferrer"
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >
-            Open App settings <ExternalLink className="size-4" />
+            {ui("Open App settings")} <ExternalLink className="size-4" />
           </a>
         )}
       </div>
@@ -169,6 +175,8 @@ export function AgentGitHubCard({
   /** GitHub triggers on this agent, when the caller already has them. */
   githubTriggerCount?: number;
 }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const { data: status, isLoading } = useAgentGitHub(agentId);
   const disconnect = useDisconnectAgentGitHub(agentId);
   const choose = useChooseAgentEverrunsApp(agentId);
@@ -209,27 +217,30 @@ export function AgentGitHubCard({
               <GitPullRequest className="size-4" aria-hidden="true" />
             </span>
             <div className="min-w-0 space-y-1">
-              <h4 className="break-words font-medium">{status?.bot_login ?? "GitHub"}</h4>
+              <h4 className="break-words font-medium">{status?.bot_login ?? ui("GitHub")}</h4>
               {kindLabel && <p className="text-sm text-muted-foreground">{kindLabel}</p>}
               {isLoading || !status ? (
-                <p className="text-sm text-muted-foreground">Loading GitHub status…</p>
+                <p className="text-sm text-muted-foreground">{ui("Loading GitHub status…")}</p>
               ) : status.connected ? (
                 <>
-                  <p className="break-words text-sm">{status.account ?? "GitHub App installed"}</p>
+                  <p className="break-words text-sm">
+                    {status.account ?? ui("GitHub App installed")}
+                  </p>
                   <p className="text-sm text-muted-foreground">
                     {status.repository_selection === "selected"
-                      ? "Selected repositories"
-                      : "All repositories"}
+                      ? ui("Selected repositories")
+                      : ui("All repositories")}
                   </p>
                 </>
               ) : status.app_created ? (
                 <p className="text-sm text-muted-foreground">
-                  The agent&apos;s GitHub App exists but is not installed yet. Finish installing it
-                  and pick the repositories the agent may use.
+                  {ui(
+                    "The agent's GitHub App exists but is not installed yet. Finish installing it and pick the repositories the agent may use.",
+                  )}
                 </p>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Not connected. Choose how this agent appears on GitHub.
+                  {ui("Not connected. Choose how this agent appears on GitHub.")}
                 </p>
               )}
             </div>
@@ -243,11 +254,11 @@ export function AgentGitHubCard({
                   rel="noopener noreferrer"
                   className={buttonVariants({ variant: "outline", size: "sm" })}
                 >
-                  Manage on GitHub <ExternalLink className="size-4" />
+                  {ui("Manage on GitHub")} <ExternalLink className="size-4" />
                 </a>
               )}
               <Button variant="outline" size="sm" onClick={() => setConfirmOpen(true)}>
-                Disconnect
+                {ui("Disconnect")}
               </Button>
             </div>
           ) : status?.app_created ? (
@@ -258,14 +269,14 @@ export function AgentGitHubCard({
               <DropdownMenu>
                 <DropdownMenuTrigger
                   className={buttonVariants({ variant: "ghost", size: "icon" })}
-                  aria-label="GitHub actions"
+                  aria-label={ui("GitHub actions")}
                 >
                   <MoreHorizontal className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuPositioner>
                   <DropdownMenuContent>
                     <DropdownMenuItem onClick={onDisconnect} disabled={disconnect.isPending}>
-                      Start over
+                      {ui("Start over")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenuPositioner>
@@ -279,19 +290,19 @@ export function AgentGitHubCard({
           // so it reads as advice about the option, not about a button.
           <div className="divide-y border-t">
             <ChoiceRow
-              title="Give it its own GitHub App"
+              title={ui("Give it its own GitHub App")}
               recommended={choices.length > 0}
               action={
                 <ConnectGitHubButton agentId={agentId} status={status} label={CREATE_OWN_LABEL} />
               }
             >
-              Comments and reviews appear under the agent&apos;s own name. You create the App in
-              your personal GitHub account or in a GitHub organization, and it can only work on that
-              account&apos;s repositories.
+              {ui(
+                "Comments and reviews appear under the agent's own name. You create the App in your personal GitHub account or in a GitHub organization, and it can only work on that account's repositories.",
+              )}
             </ChoiceRow>
             {choices.length > 0 && (
               <ChoiceRow
-                title="Use the shared Everruns App"
+                title={ui("Use the shared Everruns App")}
                 action={
                   <DropdownMenu>
                     <DropdownMenuTrigger
@@ -306,7 +317,7 @@ export function AgentGitHubCard({
                     <DropdownMenuPositioner align="end">
                       <DropdownMenuContent className="w-60">
                         <DropdownMenuGroup>
-                          <DropdownMenuLabel>Work on</DropdownMenuLabel>
+                          <DropdownMenuLabel>{ui("Work on")}</DropdownMenuLabel>
                           {choices.map((choice) => (
                             <DropdownMenuItem
                               key={choice.connection_id}
@@ -321,20 +332,21 @@ export function AgentGitHubCard({
                   </DropdownMenu>
                 }
               >
-                Nothing to create. Comments appear under the Everruns App&apos;s name, shared with
-                every agent that uses it. It works only on GitHub accounts an admin of your
-                organization already connected: {choices.map((choice) => choice.account).join(", ")}
-                .
+                {ui(
+                  "Nothing to create. Comments appear under the Everruns App's name, shared with every agent that uses it. It works only on GitHub accounts an admin of your organization already connected:",
+                )}{" "}
+                {choices.map((choice) => choice.account).join(", ")}.
               </ChoiceRow>
             )}
           </div>
         )}
         {status?.connected && status.missing_permissions.length > 0 && (
           <p className="border bg-muted/50 p-3 text-sm" role="status">
-            This agent&apos;s GitHub App was created before CI triggers and lacks{" "}
-            {status.missing_permissions.join(", ")}. Open the App settings on GitHub, grant those
-            permissions, subscribe to the Workflow run and Check suite events, then accept the
-            change on the installation.
+            {ui("This agent's GitHub App was created before CI triggers and lacks")}{" "}
+            {status.missing_permissions.join(", ")}
+            {ui(
+              ". Open the App settings on GitHub, grant those permissions, subscribe to the Workflow run and Check suite events, then accept the change on the installation.",
+            )}
           </p>
         )}
         {status?.connected && status.kind === "agent_app" && (
@@ -346,15 +358,18 @@ export function AgentGitHubCard({
               href={`/agents/${agentId}/triggers/new?type=github`}
               className={buttonVariants({ size: "sm" })}
             >
-              <Plus className="size-4" /> Add pull request trigger
+              <Plus className="size-4" /> {ui("Add pull request trigger")}
             </Link>
             <Link
               href={`/agents/${agentId}?tab=integrations#triggers`}
               className={buttonVariants({ variant: "ghost", size: "sm" })}
             >
               {githubTriggerCount === undefined
-                ? "GitHub triggers"
-                : `${githubTriggerCount} GitHub ${pluralize(githubTriggerCount, "trigger")}`}
+                ? ui("GitHub triggers")
+                : ui("{value0} GitHub {value1}", {
+                    value0: githubTriggerCount,
+                    value1: pluralize(githubTriggerCount, "trigger", undefined, displayLocale),
+                  })}
             </Link>
           </div>
         )}
@@ -364,19 +379,21 @@ export function AgentGitHubCard({
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Disconnect GitHub?</DialogTitle>
+            <DialogTitle>{ui("Disconnect GitHub?")}</DialogTitle>
             <DialogDescription>
               {shared
-                ? "The agent stops acting as the Everruns App. The installation stays linked to the organization. GitHub triggers will stop firing."
-                : "This uninstalls the agent's GitHub App. GitHub triggers will stop firing."}
+                ? ui(
+                    "The agent stops acting as the Everruns App. The installation stays linked to the organization. GitHub triggers will stop firing.",
+                  )
+                : ui("This uninstalls the agent's GitHub App. GitHub triggers will stop firing.")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmOpen(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button variant="destructive" onClick={onDisconnect} disabled={disconnect.isPending}>
-              Disconnect
+              {ui("Disconnect")}
             </Button>
           </DialogFooter>
         </DialogContent>

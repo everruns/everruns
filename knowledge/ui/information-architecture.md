@@ -61,8 +61,9 @@ authoring is the activity that brings the user to the page.
 | **Quality** | Evaluation, observation, and reporting. |
 
 Settings sits below the groups and is not one of them: it configures the workspace rather
-than being a thing the user works on. Durable Execution and Dev keep their existing
-policy and dev-mode gating and stay out of the five groups for the same reason.
+than being a thing the user works on. System (Health first, then the durable execution
+pages; formerly "Durable Execution") and Dev keep their existing policy and dev-mode
+gating and stay out of the five groups for the same reason.
 
 ## The hard cases, worked
 

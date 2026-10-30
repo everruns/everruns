@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 import {
   bashToolCall,
@@ -30,20 +31,24 @@ import { parseWebSearchDetails } from "@/lib/web-search";
 const webSearchDetails = parseWebSearchDetails(fallbackDetails);
 
 export default function ToolActivityDevPage() {
+  const ui = useUiTranslations();
   return (
     <DevPageShell
       eyebrow="Tool Outputs"
-      title="Tool Outputs"
-      description="A section-per-output reference page built entirely from the production tool transcript components."
+      title={ui("Tool Outputs")}
+      description={ui(
+        "A section-per-output reference page built entirely from the production tool transcript components.",
+      )}
       widthClassName="max-w-7xl"
     >
       <div className="space-y-6">
         <section className="space-y-4 border border-border/70 bg-card/90 p-4">
-          <h2 className="text-lg font-semibold text-foreground">Conversational approval</h2>
+          <h2 className="text-lg font-semibold text-foreground">{ui("Conversational approval")}</h2>
           <div className="space-y-3">
             <p className="text-sm text-foreground">
-              I can create Coding Agent with the Worker harness and Daytona sandbox. Shall I
-              proceed?
+              {ui(
+                "I can create Coding Agent with the Worker harness and Daytona sandbox. Shall I proceed?",
+              )}
             </p>
             <ToolActivityGroup
               toolCalls={[
@@ -62,7 +67,7 @@ export default function ToolActivityDevPage() {
             />
           </div>
           <p id="consent-preview" className="text-right text-sm text-foreground">
-            Approved
+            {ui("Approved")}
           </p>
           <ToolActivityGroup
             toolCalls={[
@@ -102,15 +107,19 @@ export default function ToolActivityDevPage() {
         </section>
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Standalone tool outputs</h2>
+            <h2 className="text-lg font-semibold text-foreground">
+              {ui("Standalone tool outputs")}
+            </h2>
             <p className="text-sm text-muted-foreground">
-              Bash, file reads, file writes, and todo plans as they appear in the transcript.
+              {ui(
+                "Bash, file reads, file writes, and todo plans as they appear in the transcript.",
+              )}
             </p>
           </div>
 
           <div className="grid min-w-0 gap-4 xl:grid-cols-2 [&>*]:min-w-0">
             <div className="space-y-2">
-              <p className="text-sm font-medium text-foreground">Bash output</p>
+              <p className="text-sm font-medium text-foreground">{ui("Bash output")}</p>
               <BashToolCallCard
                 toolCall={bashToolCall}
                 toolResult={bashToolResult}
@@ -119,12 +128,12 @@ export default function ToolActivityDevPage() {
             </div>
 
             <div className="space-y-2">
-              <p className="text-sm font-medium text-foreground">Read file output</p>
+              <p className="text-sm font-medium text-foreground">{ui("Read file output")}</p>
               <ReadFileToolCallCard toolCall={readFileToolCall} toolResult={readFileToolResult} />
             </div>
 
             <div className="space-y-2">
-              <p className="text-sm font-medium text-foreground">Write file output</p>
+              <p className="text-sm font-medium text-foreground">{ui("Write file output")}</p>
               <WriteFileToolCallCard
                 toolCall={writeFileToolCall}
                 toolResult={writeFileToolResult}
@@ -132,7 +141,7 @@ export default function ToolActivityDevPage() {
             </div>
 
             <div className="space-y-2">
-              <p className="text-sm font-medium text-foreground">Todo plan output</p>
+              <p className="text-sm font-medium text-foreground">{ui("Todo plan output")}</p>
               <TodoListRenderer
                 arguments={todoToolCall.arguments}
                 result={todoToolResult.result}
@@ -144,10 +153,11 @@ export default function ToolActivityDevPage() {
 
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Grouped activity</h2>
+            <h2 className="text-lg font-semibold text-foreground">{ui("Grouped activity")}</h2>
             <p className="text-sm text-muted-foreground">
-              The shared multi-tool execution card used when a turn batches several non-shell tool
-              calls.
+              {ui(
+                "The shared multi-tool execution card used when a turn batches several non-shell tool calls.",
+              )}
             </p>
           </div>
 
@@ -161,10 +171,13 @@ export default function ToolActivityDevPage() {
 
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Narrated tool timeline</h2>
+            <h2 className="text-lg font-semibold text-foreground">
+              {ui("Narrated tool timeline")}
+            </h2>
             <p className="text-sm text-muted-foreground">
-              The Daytona-style narrated activity block that tracks an execution across several tool
-              steps.
+              {ui(
+                "The Daytona-style narrated activity block that tracks an execution across several tool steps.",
+              )}
             </p>
           </div>
 
@@ -177,10 +190,11 @@ export default function ToolActivityDevPage() {
 
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Web search</h2>
+            <h2 className="text-lg font-semibold text-foreground">{ui("Web search")}</h2>
             <p className="text-sm text-muted-foreground">
-              The &quot;Searched&quot; row for a web_search call that fell back: model provider
-              search skipped, Brave Search rate limited, free search answered.
+              {ui(
+                'The "Searched" row for a web_search call that fell back: model provider search skipped, Brave Search rate limited, free search answered.',
+              )}
             </p>
           </div>
 
@@ -189,10 +203,13 @@ export default function ToolActivityDevPage() {
 
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Combined transcript grouping</h2>
+            <h2 className="text-lg font-semibold text-foreground">
+              {ui("Combined transcript grouping")}
+            </h2>
             <p className="text-sm text-muted-foreground">
-              The router component that decides when to render standalone rows, grouped activity, or
-              todo cards.
+              {ui(
+                "The router component that decides when to render standalone rows, grouped activity, or todo cards.",
+              )}
             </p>
           </div>
 

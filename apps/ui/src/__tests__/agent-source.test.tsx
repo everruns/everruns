@@ -80,8 +80,12 @@ it("requires a valid preview and sends the exact reviewed commit when enabling s
   show();
   fireEvent.click(await screen.findByRole("button", { name: "Sync from GitHub" }));
   expect(screen.getByRole("button", { name: "Enable continuous sync" })).toBeDisabled();
-  await screen.findByRole("option", { name: "acme/agents" });
-  fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "acme/agents" } });
+  fireEvent.click(await screen.findByLabelText("Repository"));
+  fireEvent.pointerDown(await screen.findByRole("option", { name: "acme/agents" }), {
+    pointerType: "mouse",
+    button: 0,
+  });
+  fireEvent.click(await screen.findByRole("option", { name: "acme/agents" }));
   await waitFor(() => expect(screen.getByLabelText("Branch")).toHaveValue("main"));
   fireEvent.change(screen.getByLabelText("Package folder or manifest"), {
     target: { value: "agents/support" },
@@ -110,11 +114,20 @@ it("requires explicit two-way selection and review before enabling repository wr
   mocked.connectAgentSource.mockResolvedValue({ ...source, mode: "two_way" });
   show();
   fireEvent.click(await screen.findByRole("button", { name: "Sync from GitHub" }));
-  expect(screen.getByLabelText("Sync direction")).toHaveValue("pull");
-  fireEvent.change(screen.getByLabelText("Sync direction"), { target: { value: "two_way" } });
-  expect(screen.getByText(/Requires Contents write permission/)).toBeInTheDocument();
-  await screen.findByRole("option", { name: "acme/agents" });
-  fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "acme/agents" } });
+  expect(screen.getByLabelText("Sync direction")).toHaveTextContent("Sync from GitHub");
+  fireEvent.click(screen.getByLabelText("Sync direction"));
+  fireEvent.pointerDown(await screen.findByRole("option", { name: /Sync with GitHub/ }), {
+    pointerType: "mouse",
+    button: 0,
+  });
+  fireEvent.click(await screen.findByRole("option", { name: /Sync with GitHub/ }));
+  expect(await screen.findByText(/Requires Contents write permission/)).toBeInTheDocument();
+  fireEvent.click(await screen.findByLabelText("Repository"));
+  fireEvent.pointerDown(await screen.findByRole("option", { name: "acme/agents" }), {
+    pointerType: "mouse",
+    button: 0,
+  });
+  fireEvent.click(await screen.findByRole("option", { name: "acme/agents" }));
   await waitFor(() => expect(screen.getByLabelText("Branch")).toHaveValue("main"));
   fireEvent.click(screen.getByRole("button", { name: "Preview changes" }));
   await waitFor(() =>
@@ -141,7 +154,7 @@ it("shows retained local edits and a review action for a two-way conflict", asyn
   expect(await screen.findByText("Conflict")).toBeInTheDocument();
   expect(screen.getByText(/Your local definition is retained/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Review GitHub version" }));
-  expect(screen.getByLabelText("Sync direction")).toHaveValue("two_way");
+  expect(screen.getByLabelText("Sync direction")).toHaveTextContent("Sync with GitHub");
   expect(screen.getByRole("button", { name: "Enable continuous sync" })).toBeDisabled();
 });
 it("invalidates a preview when the source selection changes", async () => {
@@ -153,8 +166,12 @@ it("invalidates a preview when the source selection changes", async () => {
   });
   show();
   fireEvent.click(await screen.findByRole("button", { name: "Sync from GitHub" }));
-  await screen.findByRole("option", { name: "acme/agents" });
-  fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "acme/agents" } });
+  fireEvent.click(await screen.findByLabelText("Repository"));
+  fireEvent.pointerDown(await screen.findByRole("option", { name: "acme/agents" }), {
+    pointerType: "mouse",
+    button: 0,
+  });
+  fireEvent.click(await screen.findByRole("option", { name: "acme/agents" }));
   await waitFor(() => expect(screen.getByLabelText("Branch")).toHaveValue("main"));
   fireEvent.click(screen.getByRole("button", { name: "Preview changes" }));
   await screen.findByText("dependencies: Missing model");
@@ -189,8 +206,12 @@ it("omits the disconnected Source card and resets a cancelled connection form", 
   await waitFor(() => expect(screen.queryByText("Loading source…")).not.toBeInTheDocument());
   expect(screen.queryByRole("region", { name: "Agent source" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Sync from GitHub" }));
-  await screen.findByRole("option", { name: "acme/agents" });
-  fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "acme/agents" } });
+  fireEvent.click(await screen.findByLabelText("Repository"));
+  fireEvent.pointerDown(await screen.findByRole("option", { name: "acme/agents" }), {
+    pointerType: "mouse",
+    button: 0,
+  });
+  fireEvent.click(await screen.findByRole("option", { name: "acme/agents" }));
   await waitFor(() => expect(screen.getByLabelText("Branch")).toHaveValue("main"));
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   fireEvent.click(screen.getByRole("button", { name: "Sync from GitHub" }));

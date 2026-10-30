@@ -141,6 +141,7 @@ jest.mock("@/providers/org-provider", () => ({
 }));
 
 jest.mock("@/providers/locale-provider", () => ({
+  ...jest.requireActual("@/providers/locale-provider"),
   useLocale: () => ({ locale: "en", backendLocale: "en-US", t: (key: string) => key }),
 }));
 
@@ -278,3 +279,8 @@ describe("session detail is a read-only recording", () => {
     }
   });
 });
+
+// Consumer action tests stub the decision boundary; dialog lifecycle is covered separately.
+jest.mock("@/components/ui/confirmation-provider", () => ({
+  useConfirmation: () => (message: string) => Promise.resolve(window.confirm(message)),
+}));

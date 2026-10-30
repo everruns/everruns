@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -20,7 +21,7 @@ import {
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
+
 import { cn } from "@/lib/utils";
 import { capabilityConfigRecord } from "./capability-config";
 import { CapabilitySettingsEditor, hasCapabilitySettings } from "./capability-settings-editor";
@@ -49,6 +50,7 @@ export function SelectedCapabilityList({
   onMoveDown,
   compact = false,
 }: SelectedCapabilityListProps) {
+  const ui = useUiTranslations();
   const { locale } = useLocale();
   // Track which capability settings are expanded
   const [expandedSettings, setExpandedSettings] = useState<Set<CapabilityId>>(new Set());
@@ -81,7 +83,7 @@ export function SelectedCapabilityList({
           compact ? "px-2 py-1.5 text-[13px]" : "py-4 text-center text-sm",
         )}
       >
-        No capabilities selected
+        {ui("No capabilities selected")}
       </div>
     );
   }
@@ -100,11 +102,14 @@ export function SelectedCapabilityList({
               <div className="flex items-start gap-2">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-destructive">Capability unavailable</p>
+                  <p className="text-sm font-medium text-destructive">
+                    {ui("Capability unavailable")}
+                  </p>
                   <p className="mt-1 break-all text-xs text-muted-foreground">{capConfig.ref}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    It may have been disabled, uninstalled, or reinstalled. Remove it, then select
-                    the current capability if available.
+                    {ui(
+                      "It may have been disabled, uninstalled, or reinstalled. Remove it, then select the current capability if available.",
+                    )}
                   </p>
                 </div>
                 <button
@@ -112,7 +117,9 @@ export function SelectedCapabilityList({
                   onClick={() => onRemove(capConfig.ref)}
                   disabled={disabled}
                   className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-50"
-                  aria-label={`Remove unavailable capability ${capConfig.ref}`}
+                  aria-label={ui("Remove unavailable capability {value0}", {
+                    value0: capConfig.ref,
+                  })}
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -134,14 +141,14 @@ export function SelectedCapabilityList({
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-destructive">
-                    {localizedCapabilityName(cap, locale)} was removed
+                    {localizedCapabilityName(cap, locale)} {ui("was removed")}
                   </p>
                   <p className="mt-1 break-all text-xs text-muted-foreground">{capConfig.ref}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {localizedCapabilityDescription(cap, locale)}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    It no longer provides tools or a instructions. Remove it.
+                    {ui("It no longer provides tools or a instructions. Remove it.")}
                   </p>
                 </div>
                 <button
@@ -149,7 +156,7 @@ export function SelectedCapabilityList({
                   onClick={() => onRemove(capConfig.ref)}
                   disabled={disabled}
                   className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-50"
-                  aria-label={`Remove removed capability ${capConfig.ref}`}
+                  aria-label={ui("Remove removed capability {value0}", { value0: capConfig.ref })}
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -181,7 +188,7 @@ export function SelectedCapabilityList({
                     onClick={() => onMoveUp(index)}
                     disabled={index === 0 || disabled}
                     className="text-muted-foreground hover:text-foreground disabled:opacity-30 p-0.5"
-                    aria-label="Move up"
+                    aria-label={ui("Move up")}
                   >
                     <ChevronUp className="w-3 h-3" />
                   </button>
@@ -190,7 +197,7 @@ export function SelectedCapabilityList({
                     onClick={() => onMoveDown(index)}
                     disabled={index === selected.length - 1 || disabled}
                     className="text-muted-foreground hover:text-foreground disabled:opacity-30 p-0.5"
-                    aria-label="Move down"
+                    aria-label={ui("Move down")}
                   >
                     <ChevronDown className="w-3 h-3" />
                   </button>
@@ -213,7 +220,7 @@ export function SelectedCapabilityList({
                   {cap.is_mcp && (
                     <Badge variant="outline" className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0">
                       <Plug className="w-2.5 h-2.5" />
-                      MCP
+                      {ui("MCP")}
                     </Badge>
                   )}
                   {isDeprecated && (
@@ -224,13 +231,14 @@ export function SelectedCapabilityList({
                           className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0 border-warning text-warning"
                         >
                           <AlertTriangle className="w-2.5 h-2.5" />
-                          Deprecated
+                          {ui("Deprecated")}
                         </Badge>
                       </TooltipTrigger>
                       <TooltipContent>
                         <p>
-                          Scheduled for removal. It still works today; plan to replace it before it
-                          is removed.
+                          {ui(
+                            "Scheduled for removal. It still works today; plan to replace it before it is removed.",
+                          )}
                         </p>
                       </TooltipContent>
                     </Tooltip>
@@ -238,7 +246,7 @@ export function SelectedCapabilityList({
                   {cap.is_guardrail && (
                     <Badge variant="outline" className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0">
                       <Shield className="w-2.5 h-2.5" />
-                      Guardrail
+                      {ui("Guardrail")}
                     </Badge>
                   )}
                   {isRequired && (
@@ -249,11 +257,13 @@ export function SelectedCapabilityList({
                           className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0"
                         >
                           <Lock className="w-2.5 h-2.5" />
-                          Required
+                          {ui("Required")}
                         </Badge>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Required by: {dependents.map((d) => capabilityName(d)).join(", ")}</p>
+                        <p>
+                          {ui("Required by:")} {dependents.map((d) => capabilityName(d)).join(", ")}
+                        </p>
                       </TooltipContent>
                     </Tooltip>
                   )}
@@ -270,7 +280,7 @@ export function SelectedCapabilityList({
                         isSettingsExpanded && "text-foreground",
                         hasConfigValues && !isSettingsExpanded && "text-primary",
                       )}
-                      aria-label="Toggle settings"
+                      aria-label={ui("Toggle settings")}
                     >
                       <Settings className="size-3.5" />
                     </button>
@@ -287,7 +297,7 @@ export function SelectedCapabilityList({
                     </TooltipTrigger>
                     <TooltipContent>
                       <p>
-                        Cannot remove: required by{" "}
+                        {ui("Cannot remove: required by")}{" "}
                         {dependents.map((d) => capabilityName(d)).join(", ")}
                       </p>
                     </TooltipContent>
@@ -298,7 +308,7 @@ export function SelectedCapabilityList({
                     onClick={() => onRemove(capConfig.ref)}
                     disabled={disabled}
                     className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive p-1 transition-opacity"
-                    aria-label="Remove capability"
+                    aria-label={ui("Remove capability")}
                   >
                     <X className="size-3.5" />
                   </button>

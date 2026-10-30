@@ -4,7 +4,9 @@ use std::collections::HashMap;
 
 use uuid::Uuid;
 
+use super::RuntimeMessage;
 use crate::file_services::{FileResolver, ResolvedFile};
+use crate::image_services::ResolvedImage;
 
 /// Resolve files with one resolver call each.
 ///
@@ -30,6 +32,99 @@ pub(crate) async fn resolve_files_one_by_one(
         }
     }
     resolved
+}
+
+impl super::ReasonAtom {
+    /// Resolve image_file references to actual image data
+    ///
+    /// This method extracts all image_file IDs from the messages and resolves
+    /// them to base64-encoded image data using the configured ImageResolver.
+    ///
+    /// # Returns
+    ///
+    /// A HashMap mapping image IDs to ResolvedImage data. If no ImageResolver
+    /// is configured, or if resolution fails for some images, those images
+    /// will simply be missing from the map (and converted to placeholder text).
+    pub(super) async fn resolve_images(
+        &self,
+        messages: &[RuntimeMessage],
+    ) -> HashMap<Uuid, ResolvedImage> {
+        let mut resolved = HashMap::new();
+
+        // Check if we have an image resolver
+        let resolver = match &self.image_resolver {
+            Some(r) => r,
+            None => return resolved,
+        };
+
+        // Collect all unique image_file IDs from all messages
+        let image_ids: Vec<Uuid> = messages
+            .iter()
+            .flat_map(crate::engine::llm_conversions::extract_image_file_ids)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if image_ids.is_empty() {
+            return resolved;
+        }
+
+        tracing::debug!(
+            image_count = image_ids.len(),
+            "ReasonAtom: resolving image_file references"
+        );
+
+        // One batch: a turn can reference many screenshots, and a remote
+        // worker would otherwise pay a round trip per image.
+        match resolver.resolve_images(&image_ids).await {
+            Ok(images) => {
+                for image_id in &image_ids {
+                    if !images.contains_key(image_id) {
+                        tracing::warn!(
+                            image_id = %image_id,
+                            "ReasonAtom: image not found during resolution"
+                        );
+                    }
+                }
+                resolved = images;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "ReasonAtom: failed to resolve images"
+                );
+            }
+        }
+
+        tracing::debug!(
+            resolved_count = resolved.len(),
+            "ReasonAtom: image resolution complete"
+        );
+
+        resolved
+    }
+
+    pub(super) async fn resolve_files(
+        &self,
+        messages: &[RuntimeMessage],
+    ) -> HashMap<Uuid, ResolvedFile> {
+        let Some(resolver) = &self.file_resolver else {
+            return HashMap::new();
+        };
+
+        let file_ids: Vec<Uuid> = messages
+            .iter()
+            .flat_map(crate::engine::llm_conversions::extract_file_ids)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if file_ids.is_empty() {
+            return HashMap::new();
+        }
+
+        resolve_files_one_by_one(resolver.as_ref(), file_ids).await
+    }
 }
 
 #[cfg(test)]

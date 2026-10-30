@@ -14,6 +14,7 @@
  * retrieval, a provider-native feed, or the web — only the shared envelope.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import type { ReactNode } from "react";
 import type { TextAnnotation, VerificationVerdict } from "@/lib/api/schema-types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -113,24 +114,25 @@ function isLinkableUri(uri: string): boolean {
 }
 
 function VerifiedBadge({ verified }: { verified?: VerificationVerdict | null }) {
+  const ui = useUiTranslations();
   if (!verified) return null;
   if (verified.status === "entailed") {
     return (
       <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-success">
-        <ShieldCheck className="h-3 w-3" /> verified
+        <ShieldCheck className="h-3 w-3" /> {ui("verified")}
       </span>
     );
   }
   if (verified.status === "unsupported") {
     return (
       <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-warning">
-        <ShieldAlert className="h-3 w-3" /> unsupported
+        <ShieldAlert className="h-3 w-3" /> {ui("unsupported")}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground">
-      <ShieldQuestion className="h-3 w-3" /> unverified
+      <ShieldQuestion className="h-3 w-3" /> {ui("unverified")}
     </span>
   );
 }
@@ -187,10 +189,13 @@ export function CitationChip({ source }: { source: CitationSource }): ReactNode 
 
 /** The deduped "Sources" strip rendered below a cited message. */
 export function MessageSources({ sources }: { sources: CitationSource[] }): ReactNode {
+  const ui = useUiTranslations();
   if (sources.length === 0) return null;
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border/50 pt-2">
-      <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Sources</span>
+      <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+        {ui("Sources")}
+      </span>
       {sources.map((source) => {
         const isLinkable = isLinkableUri(source.uri);
         const label = (

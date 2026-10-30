@@ -51,6 +51,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Pause or resume all of an agent's live channels at once.",
     ),
     (
+        "agents external-worker",
+        "Inspect or disable a customer-hosted agent runtime.",
+    ),
+    (
         "agents failures",
         "Sessions with failed turns, including recovered sessions.",
     ),
@@ -281,6 +285,14 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Sandbox Template names and descriptions, without execution settings.",
     ),
     (
+        "sandbox-templates",
+        "Reusable sandbox configurations and their provider snapshots.",
+    ),
+    (
+        "sandbox-templates builds",
+        "Install scripts, snapshot verification, and new template revisions.",
+    ),
+    (
         "sandbox-targets",
         "Sandbox providers this deployment offers.",
     ),
@@ -393,6 +405,15 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "tasks",
         "Background tasks across every session in the organization.",
+    ),
+    ("tracing", "Customer tracing destinations and routing."),
+    (
+        "tracing destinations",
+        "Inspect destinations and update names or pause exports.",
+    ),
+    (
+        "tracing routing",
+        "Organization defaults and per-agent trace routing.",
     ),
     ("user", "Your own account settings."),
     (

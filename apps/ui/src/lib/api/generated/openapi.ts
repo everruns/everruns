@@ -119,6 +119,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/cost-plan": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Plan agent cost workloads
+     * @description Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.
+     */
+    post: operations["plan_agent_costs"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/diff": {
     parameters: {
       query?: never;
@@ -800,6 +820,32 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/external-worker": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read an Agent's external execution status */
+    get: operations["get_external_agent"];
+    put?: never;
+    /**
+     * Connect or rotate an external HTTPS worker
+     * @description Requires dangerous-settings permission and installation enablement. Stop
+     *     active turns first. The preinstalled secret is encrypted and never returned.
+     */
+    post: operations["register_external_agent"];
+    /**
+     * Disable external worker execution
+     * @description Revocation never falls back to the built-in runtime.
+     */
+    delete: operations["disable_external_agent"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/failures": {
     parameters: {
       query?: never;
@@ -1126,6 +1172,24 @@ export interface paths {
     /** Get aggregate usage stats for an agent */
     get: operations["get_agent_stats"];
     put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/tracing": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get agent routing */
+    get: operations["get_agent_routing"];
+    /** Save agent routing */
+    put: operations["save_agent_routing"];
     post?: never;
     delete?: never;
     options?: never;
@@ -1765,6 +1829,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}/chat/shared/{token}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read work chat share */
+    get: operations["read_work_chat_share"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/fcp": {
     parameters: {
       query?: never;
@@ -1949,6 +2030,41 @@ export interface paths {
      */
     post: operations["agent_api_answer_questions"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Update work chat conversation */
+    post: operations["update_work_chat_conversation"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/share": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Share work chat conversation */
+    post: operations["share_work_chat_conversation"];
+    /** Revoke work chat share */
+    delete: operations["revoke_work_chat_share"];
     options?: never;
     head?: never;
     patch?: never;
@@ -2806,6 +2922,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/e/{channel_id}/chat/shared/{token}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read work chat share legacy
+     * @deprecated
+     */
+    get: operations["read_work_chat_share_legacy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/e/{channel_id}/fcp": {
     parameters: {
       query?: never;
@@ -2958,6 +3094,50 @@ export interface paths {
      */
     post: operations["agent_api_answer_questions_legacy"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Update work chat conversation legacy
+     * @deprecated
+     */
+    post: operations["update_work_chat_conversation_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/share": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Share work chat conversation legacy
+     * @deprecated
+     */
+    post: operations["share_work_chat_conversation_legacy"];
+    /**
+     * Revoke work chat share legacy
+     * @deprecated
+     */
+    delete: operations["revoke_work_chat_share_legacy"];
     options?: never;
     head?: never;
     patch?: never;
@@ -5876,6 +6056,86 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sandbox-template-builds/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Sandbox Template build
+     * @description Inspect a build attempt in the authenticated organization.
+     */
+    get: operations["get_sandbox_template_build"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-builds/{id}/apply": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Save built snapshot as new revision
+     * @description Atomically apply a ready snapshot to its unchanged source template. Existing Agent and Session pins do not move.
+     */
+    post: operations["apply_sandbox_template_build"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-builds/{id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Cancel Sandbox Template build
+     * @description Cancel queued or running build work and clean up its disposable resources.
+     */
+    post: operations["cancel_sandbox_template_build"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-builds/{id}/discard": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Discard unused build artifact
+     * @description Remove an unused build artifact. Applied artifacts remain pinned and cannot be discarded.
+     */
+    post: operations["discard_sandbox_template_build"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sandbox-template-metadata/{id}": {
     parameters: {
       query?: never;
@@ -5918,6 +6178,30 @@ export interface paths {
      * @description Create a reusable Sandbox Template and its first immutable revision.
      */
     post: operations["create_sandbox_template"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-templates/{id}/builds": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Sandbox Template builds
+     * @description List twenty build attempts at an optional offset, bounded logs, and captured software notes.
+     */
+    get: operations["list_sandbox_template_builds"];
+    put?: never;
+    /**
+     * Build a Sandbox Template snapshot
+     * @description Run an install script in fresh isolated compute and bake a reusable provider snapshot. Does not revise the template.
+     */
+    post: operations["start_sandbox_template_build"];
     delete?: never;
     options?: never;
     head?: never;
@@ -7375,6 +7659,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/system/doctor": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Check the whole install */
+    get: operations["run_system_doctor"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/task-webhooks": {
     parameters: {
       query?: never;
@@ -7430,6 +7731,125 @@ export interface paths {
     options?: never;
     head?: never;
     patch?: never;
+    trace?: never;
+  };
+  "/v1/tracing/defaults": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get defaults */
+    get: operations["get_defaults"];
+    /** Save defaults */
+    put: operations["save_defaults"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/tracing/destination-metadata/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read safe destination metadata
+     * @description Read safe destination metadata. Never returns receiver authentication.
+     */
+    get: operations["get_tracing_destination_metadata"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update tracing destination metadata
+     * @description Update safe destination metadata while preserving its receiver and current authentication.
+     */
+    patch: operations["update_tracing_destination_metadata"];
+    trace?: never;
+  };
+  "/v1/tracing/destinations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List destinations */
+    get: operations["list_destinations"];
+    put?: never;
+    /** Create destination */
+    post: operations["create_destination"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/tracing/destinations/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Update destination */
+    put: operations["update_destination"];
+    post?: never;
+    /** Delete destination */
+    delete: operations["delete_destination"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/tracing/destinations/{id}/test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Test destination */
+    post: operations["test_destination"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/tracing/policies/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get tracing policy
+     * @description Read organization or agent trace routing without credentials.
+     */
+    get: operations["get_tracing_policy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Set organization or agent destinations for future turns
+     * @description Set organization or agent destinations for future turns. Requires organization settings authority; never accepts credentials.
+     */
+    patch: operations["update_tracing_policy"];
     trace?: never;
   };
   "/v1/user/connected-clients": {
@@ -8381,6 +8801,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 50
@@ -8701,6 +9123,11 @@ export interface components {
       id: string;
       status: components["schemas"]["ChannelStatus"];
     };
+    /** @description Three representative workload hypotheses; prices and usage frequency are set separately. */
+    AgentCostPlan: {
+      /** @description Exactly three suggested tasks that users can edit before projecting costs. */
+      tasks: components["schemas"]["CostPlanTask"][];
+    };
     /**
      * @description Metadata for a write-only credential bound to one agent: either an MCP
      *     tool parameter or an HTTP API the agent's shell calls.
@@ -8838,6 +9265,8 @@ export interface components {
        * @example conversation
        */
       harness_name: string;
+      /** @description Locale-keyed display names and descriptions. */
+      localizations: components["schemas"]["EntityLocalizations"];
       /**
        * @description Name (e.g. "dad-jokes-agent")
        * @example dad-jokes-agent
@@ -9016,6 +9445,8 @@ export interface components {
     AgentHarnessSummary: {
       display_name?: string | null;
       id?: string | null;
+      /** @description Locale-keyed display names and descriptions. */
+      localizations: components["schemas"]["EntityLocalizations"];
       name?: string | null;
       source: components["schemas"]["AgentHarnessSource"];
       status: components["schemas"]["AgentHarnessStatus"];
@@ -9228,6 +9659,7 @@ export interface components {
      *     or costs, which are management's.
      */
     AgentSessionView: {
+      archived: boolean;
       /** Format: date-time */
       created_at: string;
       /** @example session_01933b5a000070008000000000000001 */
@@ -9245,6 +9677,7 @@ export interface components {
        *     them; a list leaves them out.
        */
       pending_questions?: components["schemas"]["PendingQuestionView"][] | null;
+      pinned: boolean;
       /**
        * @description `started`, `active`, `idle`, `waitingforinput` or `failed`.
        * @example idle
@@ -10625,6 +11058,20 @@ export interface components {
       /** @description Whether the name is available for use. */
       available: boolean;
     };
+    /**
+     * @description The part of the install a check covers. The order is the display order.
+     * @enum {string}
+     */
+    CheckArea:
+      | "control_plane"
+      | "database"
+      | "workers"
+      | "security"
+      | "messaging"
+      | "storage"
+      | "observability"
+      | "models"
+      | "integrations";
     /** @description Request to check a provider credential without storing it. */
     CheckCredentialsRequest: {
       /**
@@ -10652,6 +11099,12 @@ export interface components {
       /** @description Whether the name is available for use. */
       available: boolean;
     };
+    /**
+     * @description How a check came out. Ordered from best to worst so the report's verdict
+     *     is the maximum.
+     * @enum {string}
+     */
+    CheckStatus: "ok" | "info" | "warning" | "problem";
     /** @description Circuit breaker response */
     CircuitBreakerResponse: {
       /**
@@ -11537,6 +11990,35 @@ export interface components {
        */
       src_path: string;
     };
+    /** @description One illustrative task and its editable token and model-call assumptions. */
+    CostPlanTask: {
+      /** @description Expected steps and the main uncertainty behind the workload estimate. */
+      assumption: string;
+      /**
+       * Format: int32
+       * @description Model calls per task, including follow-ups after tools; between 1 and 100.
+       */
+      calls: number;
+      /** @description Example user request that this task represents. */
+      description: string;
+      /**
+       * Format: int32
+       * @description Initial user-input tokens, excluding system instructions and tool schemas.
+       */
+      message_tokens: number;
+      /** @description Short name of the representative task. */
+      name: string;
+      /**
+       * Format: int32
+       * @description Output tokens per model call, including reasoning and tool arguments.
+       */
+      output_tokens: number;
+      /**
+       * Format: int32
+       * @description New tool-result tokens added at each step of the task.
+       */
+      tool_result_tokens: number;
+    };
     /**
      * @description A pricing tier that activates above a context token threshold.
      *     For example, OpenAI charges higher rates for prompts exceeding 200K tokens.
@@ -11736,6 +12218,8 @@ export interface components {
        * @example Hey, I'm Ava. Ask me anything about your account.
        */
       intro_markdown?: string | null;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 20
@@ -12194,6 +12678,8 @@ export interface components {
        * @example I triage incidents, dig through logs, and draft the update.
        */
       intro_markdown?: string | null;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Remote MCP servers scoped to this harness. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -13199,6 +13685,93 @@ export interface components {
     DeleteQuery: {
       recursive?: boolean;
     };
+    /** @description Non-secret receiver settings and explicit content capture consent. */
+    DestinationConfig: {
+      /**
+       * @description Explicit consent to export message and tool content; defaults to metadata only.
+       * @example false
+       */
+      capture_content?: boolean;
+      /**
+       * @description Explicit consent to export reasoning; also requires content capture.
+       * @example false
+       */
+      capture_reasoning?: boolean;
+      /**
+       * @description Whether customer exports may be sent to this receiver; false pauses delivery.
+       * @example true
+       */
+      enabled?: boolean;
+      /**
+       * @description HTTPS receiver endpoint without embedded credentials, query parameters, or fragments.
+       * @example https://collector.example.com/v1/traces
+       */
+      endpoint: string;
+      /**
+       * @description Human-readable destination name, from 1 to 128 characters.
+       * @example Production traces
+       */
+      name: string;
+      /**
+       * Format: uuid
+       * @description Braintrust project identifier; required for Braintrust receivers.
+       * @example 00000000-0000-0000-0000-000000000002
+       */
+      project_id?: string | null;
+      /** @description Receiver protocol: Braintrust project or generic OTLP over HTTPS. */
+      provider: components["schemas"]["TraceProvider"];
+    };
+    /** @description Destination settings, safe delivery health, and routing usage; excludes credentials. */
+    DestinationView: {
+      /**
+       * Format: int64
+       * @description Number of agent policies that explicitly select this destination.
+       * @example 0
+       */
+      agent_selections: number;
+      /** @description Non-secret destination settings, including capture consent and pause state. */
+      config: components["schemas"]["DestinationConfig"];
+      /**
+       * Format: int64
+       * @description Number of events omitted by bounded customer export delivery.
+       * @example 0
+       */
+      dropped_events: number;
+      /**
+       * Format: uuid
+       * @description Destination identifier owned by the current organization.
+       * @example 00000000-0000-0000-0000-000000000001
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description Time the receiver last accepted an export, or null before any acceptance.
+       * @example 2026-10-28T00:00:00Z
+       */
+      last_accepted_at?: string | null;
+      /**
+       * Format: date-time
+       * @description Time of the latest delivery attempt, or null before the first attempt.
+       * @example 2026-10-28T00:00:00Z
+       */
+      last_attempt_at?: string | null;
+      /**
+       * @description Sanitized delivery failure; never includes receiver credentials or response bodies.
+       * @example Receiver unavailable
+       */
+      last_error?: string | null;
+      /**
+       * @description Whether this destination is selected in organization defaults.
+       * @example false
+       */
+      organization_default: boolean;
+      /**
+       * Format: int64
+       * @description Current revision used to reject stale saves and deletes.
+       * @example 1
+       */
+      revision: number;
+    };
     /** @description Query for diff endpoint */
     DiffQuery: {
       /**
@@ -13279,6 +13852,76 @@ export interface components {
       data: components["schemas"]["DlqEntryResponse"][];
       /** @description Total number of items matching the query, across all pages. */
       total: number;
+    };
+    /**
+     * @description One check's outcome, written for an operator: what is true, why it
+     *     matters, and what to do.
+     */
+    DoctorCheck: {
+      area: components["schemas"]["CheckArea"];
+      /** @description How to fix it. */
+      fix?: string | null;
+      /**
+       * @description Stable identifier, `area.name`.
+       * @example database.migrations
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description When the check observed this.
+       */
+      observed_at: string;
+      status: components["schemas"]["CheckStatus"];
+      /**
+       * @description What the check found, in one sentence.
+       * @example All 14 migrations are applied.
+       */
+      summary: string;
+      /**
+       * @description Short name of what is checked.
+       * @example Migrations applied
+       */
+      title: string;
+      /** @description What goes wrong if this is not fixed. */
+      why?: string | null;
+    };
+    /** @description The whole install's health. */
+    DoctorReport: {
+      /**
+       * @description Authentication mode.
+       * @example full
+       */
+      auth_mode: string;
+      /**
+       * Format: date-time
+       * @description When the checks ran.
+       */
+      checked_at: string;
+      /** @description Every check, problems first. */
+      checks: components["schemas"]["DoctorCheck"][];
+      /**
+       * @description Deployment grade (`dev`, `poc`, `preview`, `prod`). Decides how strict
+       *     the security checks are.
+       * @example prod
+       */
+      grade: string;
+      /**
+       * @description What the doctor found this install is made of, one fact per entry.
+       * @example [
+       *       "Postgres 16.4",
+       *       "3 workers",
+       *       "NATS",
+       *       "S3 blob storage"
+       *     ]
+       */
+      setup: string[];
+      /** @description The worst status of any check. */
+      status: components["schemas"]["CheckStatus"];
+      /**
+       * @description Server build version.
+       * @example 0.50.0
+       */
+      version: string;
     };
     /** @description A GitHub trigger to create once GitHub is connected on the agent. */
     DraftGitHubTrigger: {
@@ -13482,6 +14125,20 @@ export interface components {
       via_agent_id?: string | null;
       /** @description The session through which an agent made the change. */
       via_session_id?: string | null;
+    };
+    /**
+     * @description Display-only translations shared by portable agent files and platform resources.
+     *     Addresses, tool identifiers and execution instructions never use these values.
+     */
+    EntityLocalization: {
+      /** @description Localized description (1–2000 characters when set). */
+      description?: string | null;
+      /** @description Localized display name (1–255 characters when set). */
+      display_name?: string | null;
+    };
+    /** @description Locale-keyed display overlays. Deserialization normalizes tags and bounds input. */
+    EntityLocalizations: {
+      [key: string]: components["schemas"]["EntityLocalization"];
     };
     /**
      * @description One revision of an entity: the entry that made it and the entity as it
@@ -14485,6 +15142,23 @@ export interface components {
       /** @description Source channel identifier (e.g. "slack", "discord") */
       source: string;
     };
+    /** @description Public status of a customer-hosted HTTPS runtime; credentials are never exposed. */
+    ExternalAgent: {
+      /** @description Whether this binding can lease new work. Disabled bindings retain routing. */
+      enabled: boolean;
+      /**
+       * @description Verified public HTTPS URL that receives signed invocation requests.
+       * @example https://sales.example.workers.dev/
+       */
+      endpoint_url: string;
+      /** @description Sanitized dispatch error, cleared after a successful invocation or registration. */
+      last_error?: string | null;
+      /**
+       * Format: date-time
+       * @description Time of the latest invocation attempt, if any.
+       */
+      last_invoked_at?: string | null;
+    };
     /**
      * @description Result status reported alongside externally computed scores.
      * @enum {string}
@@ -15331,6 +16005,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -15394,6 +16070,8 @@ export interface components {
       display_name: string;
       /** @description Display glyph name rendered by the UI (e.g. `bar-chart`). */
       icon?: string | null;
+      /** @description Locale-keyed display names and descriptions. */
+      localizations: components["schemas"]["EntityLocalizations"];
       /** @description Unique slug (e.g. `data-analyst`). */
       name: string;
       /**
@@ -16381,6 +17059,8 @@ export interface components {
          * @example false
          */
         is_built_in?: boolean;
+        /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+        localizations?: components["schemas"]["EntityLocalizations"];
         /**
          * @description Maximum number of LLM iterations per turn for this agent.
          * @example 50
@@ -17261,6 +17941,8 @@ export interface components {
          * @example false
          */
         is_built_in?: boolean;
+        /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+        localizations?: components["schemas"]["EntityLocalizations"];
         /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
         mcpServers?: components["schemas"]["BTreeMap"];
         /**
@@ -18536,6 +19218,8 @@ export interface components {
          * @example false
          */
         is_built_in?: boolean;
+        /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+        localizations?: components["schemas"]["EntityLocalizations"];
         /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
         mcpServers?: components["schemas"]["BTreeMap"];
         /**
@@ -19239,6 +19923,8 @@ export interface components {
       instructions_file?: string | null;
       /** @description Optional Markdown introduction shown before the conversation starts. */
       intro_markdown?: string | null;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Optional tool-loop iteration limit. Omission keeps the host default. */
       max_iterations?: number | null;
       /**
@@ -23125,6 +23811,18 @@ export interface components {
        */
       redact_content?: boolean;
     };
+    /** @description Register a predeployed HTTPS endpoint after a signed ownership challenge. */
+    RegisterExternalAgent: {
+      /** @description Agent public ID or name; the HTTP route supplies this value. */
+      agent_id?: string;
+      /** @description Preinstall this random, 32+ character secret in the endpoint. Never a user PAT. */
+      endpoint_secret: string;
+      /**
+       * @description Verified public HTTPS URL that receives signed invocation requests.
+       * @example https://sales.example.workers.dev/
+       */
+      endpoint_url: string;
+    };
     /** @description A display-name change that preserves the connected account credential. */
     RenameOrganizationConnectionRequest: {
       name: string;
@@ -23650,6 +24348,18 @@ export interface components {
        */
       overlap_hours?: number | null;
     };
+    /**
+     * @description How an agent combines its destinations with organization defaults.
+     * @enum {string}
+     */
+    RoutingMode: "inherit" | "add" | "replace" | "off";
+    /** @description Customer destinations selected for future turns; never changes platform telemetry. */
+    RoutingPolicy: {
+      /** @description Distinct destination identifiers from this organization; at most eight selections. */
+      destination_ids?: string[];
+      /** @description Use organization defaults, add selections, replace defaults, or disable customer exports. */
+      mode?: components["schemas"]["RoutingMode"];
+    };
     /** @description Turns started and failed in one bucket. */
     RunBucket: {
       /** Format: int64 */
@@ -23753,6 +24463,85 @@ export interface components {
       /** @description Ordered commands replayed when creating or recovering physical compute. */
       commands?: string[];
     };
+    /**
+     * @description Reference data resolved by the server from an applied artifact in this tenant.
+     *     Software notes remain untrusted author content, never runtime policy.
+     */
+    SandboxBuildProvenance: {
+      /**
+       * @description Applied build resolved from the exact tenant, provider account, and snapshot.
+       * @example sbxbuild_01933b5a000070008000000000000001
+       */
+      build_id: string;
+      /**
+       * Format: date-time
+       * @description Time the originating build attempt was accepted.
+       * @example 2026-10-29T00:01:00Z
+       */
+      built_at: string;
+      /**
+       * @description Exact immutable provider snapshot selected by the Session.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
+      snapshot_id: string;
+      /**
+       * @description Author-supplied reference notes, never trusted instructions or policy.
+       * @example # Installed tools
+       *     - HTTPie 3.2.4
+       */
+      software_notes?: string | null;
+      /**
+       * @description Optional check that passed after installation and in fresh snapshot compute.
+       * @example /home/daytona/.venvs/devtools/bin/http --version
+       */
+      verification_command?: string | null;
+    };
+    /**
+     * @description Inputs for a single isolated installation and reusable filesystem snapshot.
+     *     Build compute receives no workload credentials or private Session state.
+     */
+    SandboxBuildRequest: {
+      build_network?: components["schemas"]["SandboxNetworkPolicy"] | null;
+      /**
+       * @description POSIX shell install script, 1–32768 UTF-8 bytes. Keep secrets out of it.
+       * @example python -m venv /home/daytona/.venvs/devtools
+       *     /home/daytona/.venvs/devtools/bin/pip install httpie==3.2.4
+       */
+      install_script: string;
+      /**
+       * @description Optional bounded, author-supplied Markdown captured from the builder.
+       * @example /home/daytona/.everruns/sandbox.md
+       */
+      metadata_path?: string | null;
+      /**
+       * @description Source revision to guard against concurrent template edits.
+       * @example sbxtplrev_01933b5a000070008000000000000001
+       */
+      source_revision_id: string;
+      /**
+       * Format: int64
+       * @description Total build deadline, including installation and fresh verification, in seconds.
+       * @example 600
+       */
+      timeout_seconds?: number;
+      /**
+       * @description Optional check run after installation and again in fresh snapshot compute.
+       * @example /home/daytona/.venvs/devtools/bin/http --version
+       */
+      verification_command?: string | null;
+    };
+    /**
+     * @description Durable build lifecycle. Ready artifacts can be applied only after cleanup completes.
+     * @enum {string}
+     */
+    SandboxBuildStatus:
+      | "queued"
+      | "running"
+      | "ready"
+      | "failed"
+      | "cancelled"
+      | "applied"
+      | "discarded";
     /**
      * @description What the Sandbox target can actually do.
      *
@@ -24211,6 +25000,103 @@ export interface components {
        */
       updated_at: string;
     };
+    /**
+     * @description Tenant-scoped build attempt, retained inputs, bounded output, and provider artifact.
+     *     Management credentials are stored separately and never appear in this record.
+     */
+    SandboxTemplateBuild: {
+      /**
+       * @description Immutable template revision created by applying this artifact, if applied.
+       * @example sbxtplrev_01933b5a000070008000000000000002
+       */
+      applied_revision_id?: string | null;
+      /**
+       * @description Disposable installation compute identifier or its persisted submission name.
+       * @example 550e8400-e29b-41d4-a716-446655440001
+       */
+      builder_id?: string | null;
+      /**
+       * @description Whether cancellation was accepted; stale worker saves cannot erase this request.
+       * @example false
+       */
+      cancel_requested: boolean;
+      /**
+       * @description Whether provider resources still require confirmed cleanup or reconciliation.
+       * @example false
+       */
+      cleanup_pending: boolean;
+      /**
+       * Format: date-time
+       * @description Time this build attempt was accepted.
+       * @example 2026-10-29T00:00:00Z
+       */
+      created_at: string;
+      /**
+       * @description Bounded failure explanation, absent when no failure has been recorded.
+       * @example Command failed with exit code 23
+       */
+      error?: string | null;
+      /**
+       * @description Unique build attempt identifier.
+       * @example sbxbuild_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * @description UTF-8 execution-output tail, bounded to 32 KiB.
+       * @example HTTPie 3.2.4
+       *     Verification passed
+       */
+      logs: string;
+      /** @description Original immutable installation and verification inputs. */
+      request: components["schemas"]["SandboxBuildRequest"];
+      /**
+       * @description Parent template whose immutable source revision supplied the build configuration.
+       * @example sbxtpl_01933b5a000070008000000000000001
+       */
+      sandbox_template_id: string;
+      /**
+       * @description Provider snapshot identifier, present once the artifact has been resolved.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
+      snapshot_id?: string | null;
+      /**
+       * @description Deterministic provider artifact name used to reconcile uncertain submissions.
+       * @example everruns-build-01933b5a000070008000000000000001
+       */
+      snapshot_name: string;
+      /**
+       * Format: date-time
+       * @description Submission time used when reconciling a snapshot response lost in transport.
+       * @example 2026-10-29T00:00:00Z
+       */
+      snapshot_requested_at?: string | null;
+      /**
+       * @description Up to 16 KiB of author-supplied Markdown, presented as untrusted reference data.
+       * @example # Installed tools
+       *     - HTTPie 3.2.4
+       */
+      software_notes?: string | null;
+      /** @description Exact source spec; no runtime credentials or workspace are attached. */
+      source_spec: components["schemas"]["SandboxTemplateSpec"];
+      /** @description Persisted lifecycle state; inspect cleanup_pending before applying a Ready build. */
+      status: components["schemas"]["SandboxBuildStatus"];
+      /**
+       * @description Current execution or cleanup step.
+       * @example installing
+       */
+      step: string;
+      /**
+       * Format: date-time
+       * @description Time of the last persisted build update.
+       * @example 2026-10-29T00:01:00Z
+       */
+      updated_at: string;
+      /**
+       * @description Disposable fresh-snapshot verification compute identifier or submission name.
+       * @example 550e8400-e29b-41d4-a716-446655440002
+       */
+      verification_sandbox_id?: string | null;
+    };
     /** @description Editable template metadata; omitted fields retain their current values. */
     SandboxTemplateMetadataRequest: {
       description?: string | null;
@@ -24309,6 +25195,18 @@ export interface components {
       /** @description Spans clipped to the window, oldest first. */
       spans: components["schemas"]["SandboxStateSpan"][];
     };
+    /** @description Create or update a receiver; omitted authentication preserves existing credentials. */
+    SaveDestinationRequest: {
+      /** @description Non-secret destination settings, including capture consent and pause state. */
+      config: components["schemas"]["DestinationConfig"];
+      /**
+       * Format: int64
+       * @description Expected current revision for updates; omit when creating a destination.
+       * @example 1
+       */
+      revision?: number | null;
+      secrets?: components["schemas"]["TraceSecrets"] | null;
+    };
     /** @description Organization-owned provider account input (sandbox provider or search account). */
     SaveOrganizationConnectionRequest: components["schemas"]["CreateConnectionRequest"] & {
       /**
@@ -24316,6 +25214,17 @@ export interface components {
        * @example Production Daytona
        */
       name: string;
+    };
+    /** @description Save routing only when the supplied revision still matches the current policy. */
+    SaveRoutingRequest: {
+      /** @description Routing mode and the organization-owned destination selections to save. */
+      policy: components["schemas"]["RoutingPolicy"];
+      /**
+       * Format: int64
+       * @description Current revision used to reject stale saves and deletes.
+       * @example 1
+       */
+      revision: number;
     };
     /**
      * @description A user-saved report definition — a named, persistable wrapper around a
@@ -25673,6 +26582,7 @@ export interface components {
     SessionSandboxCredentialSource: "none" | "session_user" | "agent" | "organization";
     /** @description The primary Sandbox a Session is running in. */
     SessionSandboxResponse: {
+      build?: components["schemas"]["SandboxBuildProvenance"] | null;
       capabilities: components["schemas"]["SandboxCapabilities"];
       containment: components["schemas"]["SandboxContainment"];
       /** @description Most recent checkpoint used to recover this logical Sandbox. */
@@ -25957,6 +26867,11 @@ export interface components {
     /** @description Set or clear the person's risk label for one tool. */
     SetUserMcpToolLabelRequest: {
       label?: components["schemas"]["McpToolLabel"] | null;
+    };
+    Settings: {
+      archived?: boolean | null;
+      pinned?: boolean | null;
+      title?: string | null;
     };
     /**
      * @description How many times a tool call may safely be executed given the same inputs.
@@ -26481,6 +27396,19 @@ export interface components {
       display_name: string;
       id: components["schemas"]["sbxtplId"];
     };
+    /** @description Result of sending synthetic data to the receiver; contains no customer turn content. */
+    TestTraceResponse: {
+      /**
+       * @description Whether the receiver accepted the synthetic export; partial OTLP rejection is false.
+       * @example true
+       */
+      accepted: boolean;
+      /**
+       * @description Safe explanation of the synthetic test result.
+       * @example Receiver accepted the test trace
+       */
+      message: string;
+    };
     /**
      * @description A claim-level citation attached to a span of generated text.
      *
@@ -26849,6 +27777,11 @@ export interface components {
      *     for execution gating (auto vs requires_approval).
      */
     ToolHints: {
+      /**
+       * @description Declared capability description for source-aware tool discovery.
+       *     Never populate this with system prompts, conversation state or secrets.
+       */
+      capability_description?: string | null;
       /**
        * @description Capability that contributed this tool definition.
        *
@@ -27372,6 +28305,11 @@ export interface components {
       /** @description The value, when it fits or `full` was asked for. */
       value?: unknown;
     };
+    /**
+     * @description Receiver protocol used for customer trace delivery.
+     * @enum {string}
+     */
+    TraceProvider: "braintrust" | "otlp";
     /** @description One message of a model request. */
     TraceRequestMessage: {
       /** @description The whole message, when asked for and within the limit. */
@@ -27607,6 +28545,13 @@ export interface components {
      * @enum {string}
      */
     TraceScoreStatus: "pending" | "scoring" | "completed" | "errored" | "skipped";
+    /** @description Write-only receiver authentication, encrypted at rest and never returned. */
+    TraceSecrets: {
+      /** @description Authentication headers: Authorization, X-API-Key, or Api-Key. Values are write-only. */
+      headers?: {
+        [key: string]: string;
+      };
+    };
     /**
      * @description A model call, tool call, approval, sub-agent or message. Empty fields are
      *     left out: a page carries hundreds of these.
@@ -27861,6 +28806,38 @@ export interface components {
       turn_count: number;
       /** @description Turns in turn order. */
       turns: components["schemas"]["TraceTurn"][];
+    };
+    /** @description Safe destination settings used by native reads and change history. */
+    TracingDestinationMetadata: components["schemas"]["DestinationConfig"] & {
+      /**
+       * Format: uuid
+       * @description Destination identifier owned by the current organization.
+       * @example 00000000-0000-0000-0000-000000000001
+       */
+      id: string;
+    };
+    /** @description Safe organization or agent routing metadata returned by native commands. */
+    TracingPolicyMetadata: {
+      /** @description Distinct destination identifiers from this organization; at most eight selections. */
+      destination_ids: string[];
+      /**
+       * @description Organization public ID or agent public ID whose routing policy is selected.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      id: string;
+      /** @description Use organization defaults, add selections, replace defaults, or disable customer exports. */
+      mode: components["schemas"]["RoutingMode"];
+    };
+    /** @description Current routing policy and the revision required for a guarded save. */
+    TracingPolicyView: {
+      /** @description Routing mode and the organization-owned destination selections to save. */
+      policy: components["schemas"]["RoutingPolicy"];
+      /**
+       * Format: int64
+       * @description Current revision used to reject stale saves and deletes.
+       * @example 1
+       */
+      revision: number;
     };
     /**
      * @description Action taken during transcript repair for a dangling tool call.
@@ -28218,6 +29195,7 @@ export interface components {
        * @example Hey, I'm Ava. Ask me anything about your account.
        */
       intro_markdown?: string | null;
+      localizations?: components["schemas"]["EntityLocalizations"] | null;
       /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 20
@@ -28620,6 +29598,7 @@ export interface components {
        * @example I triage incidents, dig through logs, and draft the update.
        */
       intro_markdown?: string | null;
+      localizations?: components["schemas"]["EntityLocalizations"] | null;
       mcpServers?: components["schemas"]["BTreeMap"] | null;
       /**
        * @description Name, unique per org.
@@ -29766,6 +30745,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 50
@@ -30360,6 +31341,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -30846,6 +31829,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -32020,6 +33005,26 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ResourceConfigResponse"];
+        };
+      };
+    };
+  };
+  plan_agent_costs: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentCostPlan"];
         };
       };
     };
@@ -33773,6 +34778,71 @@ export interface operations {
       };
     };
   };
+  get_external_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExternalAgent"] | null;
+        };
+      };
+    };
+  };
+  register_external_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RegisterExternalAgent"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExternalAgent"];
+        };
+      };
+    };
+  };
+  disable_external_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_agent_failures: {
     parameters: {
       query?: {
@@ -34573,6 +35643,54 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_agent_routing: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingPolicyView"];
+        };
+      };
+    };
+  };
+  save_agent_routing: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SaveRoutingRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingPolicyView"];
         };
       };
     };
@@ -36134,6 +37252,36 @@ export interface operations {
       };
     };
   };
+  read_work_chat_share: {
+    parameters: {
+      query?: {
+        before?: number;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        token: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Read-only transcript page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   message_channel: {
     parameters: {
       query?: never;
@@ -36275,6 +37423,7 @@ export interface operations {
         limit?: number | null;
         /** @description `next_page_token` of the previous page. */
         page_token?: string | null;
+        include_archived?: boolean;
       };
       header?: never;
       path: {
@@ -36820,6 +37969,94 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  update_work_chat_conversation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Settings"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  share_work_chat_conversation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revocable link token */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_work_chat_share: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -39056,6 +40293,36 @@ export interface operations {
       };
     };
   };
+  read_work_chat_share_legacy: {
+    parameters: {
+      query?: {
+        before?: number;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        token: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Read-only transcript page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   message_endpoint: {
     parameters: {
       query?: never;
@@ -39587,6 +40854,94 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  update_work_chat_conversation_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Settings"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  share_work_chat_conversation_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revocable link token */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_work_chat_share_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -41813,6 +43168,11 @@ export interface operations {
         version?: string | null;
         offset?: number | null;
         length?: number | null;
+        /**
+         * @description List only the immediate children of `path`: its files plus one entry per
+         *     subfolder (`kind: "folder"`), for browsing a collection folder by folder.
+         */
+        tree?: boolean | null;
       };
       header?: never;
       path?: never;
@@ -42006,6 +43366,11 @@ export interface operations {
         version?: string | null;
         offset?: number | null;
         length?: number | null;
+        /**
+         * @description List only the immediate children of `path`: its files plus one entry per
+         *     subfolder (`kind: "folder"`), for browsing a collection folder by folder.
+         */
+        tree?: boolean | null;
       };
       header?: never;
       path: {
@@ -42117,6 +43482,11 @@ export interface operations {
         version?: string | null;
         offset?: number | null;
         length?: number | null;
+        /**
+         * @description List only the immediate children of `path`: its files plus one entry per
+         *     subfolder (`kind: "folder"`), for browsing a collection folder by folder.
+         */
+        tree?: boolean | null;
       };
       header?: never;
       path: {
@@ -42148,6 +43518,11 @@ export interface operations {
         version?: string | null;
         offset?: number | null;
         length?: number | null;
+        /**
+         * @description List only the immediate children of `path`: its files plus one entry per
+         *     subfolder (`kind: "folder"`), for browsing a collection folder by folder.
+         */
+        tree?: boolean | null;
       };
       header?: never;
       path: {
@@ -47068,6 +48443,98 @@ export interface operations {
       };
     };
   };
+  get_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
+        };
+      };
+    };
+  };
+  apply_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplate"];
+        };
+      };
+    };
+  };
+  cancel_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
+        };
+      };
+    };
+  };
+  discard_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
+        };
+      };
+    };
+  };
   get_sandbox_template_metadata: {
     parameters: {
       query?: never;
@@ -47156,6 +48623,56 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SandboxTemplate"];
+        };
+      };
+    };
+  };
+  list_sandbox_template_builds: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"][];
+        };
+      };
+    };
+  };
+  start_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SandboxBuildRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
         };
       };
     };
@@ -50732,6 +52249,54 @@ export interface operations {
       };
     };
   };
+  run_system_doctor: {
+    parameters: {
+      query?: {
+        /** @description Run every check now instead of returning the report from the last minute */
+        refresh?: boolean;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Health of every part of the install */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DoctorReport"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Platform user access is required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description The system doctor is not available */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_webhooks: {
     parameters: {
       query?: never;
@@ -51009,6 +52574,252 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SessionTask"][];
+        };
+      };
+    };
+  };
+  get_defaults: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingPolicyView"];
+        };
+      };
+    };
+  };
+  save_defaults: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SaveRoutingRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingPolicyView"];
+        };
+      };
+    };
+  };
+  get_tracing_destination_metadata: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Tracing resource ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingDestinationMetadata"];
+        };
+      };
+    };
+  };
+  update_tracing_destination_metadata: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Tracing resource ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingDestinationMetadata"];
+        };
+      };
+    };
+  };
+  list_destinations: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DestinationView"][];
+        };
+      };
+    };
+  };
+  create_destination: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SaveDestinationRequest"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DestinationView"];
+        };
+      };
+    };
+  };
+  update_destination: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Destination ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SaveDestinationRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DestinationView"];
+        };
+      };
+    };
+  };
+  delete_destination: {
+    parameters: {
+      query: {
+        revision: number;
+      };
+      header?: never;
+      path: {
+        /** @description Destination ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  test_destination: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Destination ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TestTraceResponse"];
+        };
+      };
+    };
+  };
+  get_tracing_policy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Tracing resource ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingPolicyMetadata"];
+        };
+      };
+    };
+  };
+  update_tracing_policy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Tracing resource ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TracingPolicyMetadata"];
         };
       };
     };

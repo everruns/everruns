@@ -5,6 +5,12 @@
  */
 "use client";
 
+import {
+  useLocale as useFormattingLocale,
+  useLocale as useDisplayLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useState } from "react";
@@ -36,6 +42,8 @@ import { getDisplayName } from "@/lib/entity-lifecycle";
 import type { Session } from "@/lib/api/types";
 
 function ThreadRow({ thread, counterpart }: { thread: Session; counterpart?: string }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const archived = isArchivedThread(thread);
   return (
     <div
@@ -58,7 +66,7 @@ function ThreadRow({ thread, counterpart }: { thread: Session; counterpart?: str
             </span>
             {archived && (
               <span className="flex-none border border-border/70 px-1.5 text-xs font-medium text-muted-foreground">
-                Archived
+                {ui("Archived")}
               </span>
             )}
           </span>
@@ -67,7 +75,7 @@ function ThreadRow({ thread, counterpart }: { thread: Session; counterpart?: str
           )}
         </div>
         <span className="ml-auto flex-none text-xs text-muted-foreground">
-          {formatRelativeTime(thread.updated_at)}
+          {formatRelativeTime(thread.updated_at, displayLocale)}
         </span>
       </Link>
       <div className="mr-3 flex items-center gap-1">
@@ -79,6 +87,8 @@ function ThreadRow({ thread, counterpart }: { thread: Session; counterpart?: str
 }
 
 export default function ChatsPageClient() {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   // Archived threads are hidden until asked for; the filter is always offered
   // so "show all chats" is one click from any state of this page, including
   // the empty one.
@@ -104,9 +114,11 @@ export default function ChatsPageClient() {
   // in the list cannot unmount the form mid-navigation.
   // Same counterpart rule as the thread header: the agent when there is one,
   // otherwise the harness the thread is bound to.
-  const agentNameById = new Map(agents.map((agent) => [agent.id, getDisplayName(agent)]));
+  const agentNameById = new Map(
+    agents.map((agent) => [agent.id, getDisplayName(agent, displayLocale)]),
+  );
   const harnessNameById = new Map(
-    harnesses.map((harness) => [harness.id, getDisplayName(harness)]),
+    harnesses.map((harness) => [harness.id, getDisplayName(harness, displayLocale)]),
   );
   const counterpartOf = (thread: Session) =>
     (thread.agent_id ? agentNameById.get(thread.agent_id) : undefined) ??
@@ -116,8 +128,8 @@ export default function ChatsPageClient() {
     <PageContainer>
       <PageMasthead
         icon={<ChatIcon />}
-        title="All chats"
-        description="Your subchats for managing Everruns."
+        title={ui("All chats")}
+        description={ui("Your subchats for managing Everruns.")}
         actions={
           <>
             <ArchiveFilter
@@ -129,15 +141,15 @@ export default function ChatsPageClient() {
             />
             <Link href="/chats/new" className={buttonVariants()}>
               <Plus className="size-4" />
-              New subchat
+              {ui("New subchat")}
             </Link>
           </>
         }
       />
 
       <Input
-        aria-label="Search chats"
-        placeholder="Search chats..."
+        aria-label={ui("Search chats")}
+        placeholder={ui("Search chats...")}
         value={search}
         onChange={(e) => {
           setSearch(e.target.value);
@@ -163,11 +175,11 @@ export default function ChatsPageClient() {
           ) : (
             <EmptyState
               icon={<ChatIcon />}
-              title="No subchats yet"
-              description="Start a fresh conversation with your Everruns assistant."
+              title={ui("No subchats yet")}
+              description={ui("Start a fresh conversation with your Everruns assistant.")}
               action={
                 <Link href="/chats/new" className={buttonVariants()}>
-                  New subchat
+                  {ui("New subchat")}
                 </Link>
               }
             />
@@ -183,14 +195,14 @@ export default function ChatsPageClient() {
           disabled={offset === 0}
           onClick={() => setOffset(Math.max(0, offset - 20))}
         >
-          Previous
+          {ui("Previous")}
         </Button>
         <Button
           variant="outline"
           disabled={offset + 20 >= (total ?? 0)}
           onClick={() => setOffset(offset + 20)}
         >
-          Next
+          {ui("Next")}
         </Button>
       </div>
     </PageContainer>

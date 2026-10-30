@@ -20,7 +20,8 @@ With object storage on (`STORAGE_BLOB_BACKEND=s3`), a file can be up to 2 GiB an
 10 GiB by default, and copying a file or forking a session no longer copies its stored bytes.
 Deployments that keep file bytes in PostgreSQL keep the previous 100 MiB and 500 MiB limits. Both
 are set with `SESSION_FILE_SINGLE_MAX_BYTES` and `SESSION_FILE_MAX_BYTES`
-([environment variables](/sre/environment-variables/)).
+([environment variables](/sre/environment-variables/)). Daytona desktop recordings stream from
+the Sandbox into session files under the same limit, so recordings over 100 MB are kept too.
 
 ```bash
 # Upload a recording as the raw request body

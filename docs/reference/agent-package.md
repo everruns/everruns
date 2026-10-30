@@ -79,6 +79,7 @@ table, rather than to the agent.
 | `name` | String | Required stable address: 1–255 lowercase letters, digits or hyphens, starting and ending with a letter or digit. No resource ID. |
 | `display_name` | String | Optional human-readable title; host falls back to `name`. |
 | `description` | String | Optional purpose or scope description. |
+| `localizations` | Table keyed by locale | Optional display-name and description overrides. Up to 64 locales; missing fields fall back independently. |
 | `instructions` | String | Inline instructions; folders otherwise read `instructions_file` or `instructions.md`. |
 | `instructions_file` | String | Safe package-relative instructions path; mutually exclusive with nonempty `instructions`. |
 | `tags` | Array of strings | Empty; order does not affect diffs. |
@@ -105,6 +106,36 @@ binds a model explicitly. Serve uses its simulator when a model is omitted.
 Framework file creation recognizes `base`, `conversation`, `worker` and
 `bashkit-worker` (the deprecated `worker-base` binds Bashkit Worker); custom harnesses require a host binding. Defaults that belong to the
 host are not frozen into portable exports.
+
+## Localized display names
+
+Agent packages carry translations alongside their default display text:
+
+```toml
+schema_version = 1
+name = "customer-support"
+display_name = "Customer Support"
+instructions = "Help customers with their orders."
+
+[localizations.uk]
+display_name = "Підтримка клієнтів"
+description = "Допомога із замовленнями."
+
+[localizations.de]
+display_name = "Kundensupport"
+```
+
+Translations affect presentation. Stable names and execution instructions keep
+their authored values. Each display field resolves independently through the
+exact locale, its language, English, then the default field. Tags normalize for
+lookup, including underscore spellings such as `uk_UA`. Duplicate normalized
+tags, blank translations and unknown translation fields fail validation. Display
+names allow up to 255 characters and descriptions up to 2,000.
+
+The same object works in JSON, YAML and Markdown frontmatter. Folder and ZIP
+exports preserve it; semantic diffs report translation changes. Omitting the map
+in a complete import clears existing translations. A partial API update omits
+`localizations` to preserve it, or sends `{}` to clear it.
 
 ## Select and map files
 

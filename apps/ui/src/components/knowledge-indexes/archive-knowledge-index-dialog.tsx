@@ -1,14 +1,7 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { useUiTranslations } from "@/providers/locale-provider";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { KnowledgeIndex } from "@/lib/api/types";
 
 interface ArchiveKnowledgeIndexDialogProps {
@@ -26,29 +19,17 @@ export function ArchiveKnowledgeIndexDialog({
   onOpenChange,
   onArchive,
 }: ArchiveKnowledgeIndexDialogProps) {
-  async function handleArchive() {
-    await onArchive();
-    onOpenChange(false);
-  }
-
+  const ui = useUiTranslations();
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Archive Knowledge Index</DialogTitle>
-          <DialogDescription>
-            {index ? `Archive ${index.name}?` : "Archive this knowledge index?"}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button variant="destructive" onClick={handleArchive} disabled={isPending || !index}>
-            Archive
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={ui("Archive Knowledge Index")}
+      description={index ? `Archive ${index.name}?` : ui("Archive this knowledge index?")}
+      confirmLabel={ui("Archive")}
+      isPending={isPending}
+      disabled={!index}
+      onConfirm={onArchive}
+    />
   );
 }

@@ -291,6 +291,20 @@ pub trait SessionActorStore: Send + Sync {
         consumed_inbox_seq: i64,
     ) -> Result<ActorRelease>;
 
+    /// Hand the lease back mid-turn, between steps, leaving the actor
+    /// runnable so the next lease resumes the open turn from the log at once
+    /// (a draining holder). `None` when this store cannot: the holder then
+    /// lets the lease expire, which resumes the turn too, one TTL later.
+    async fn hand_off_actor(
+        &self,
+        _session_id: SessionId,
+        _holder: &str,
+        _fence: u64,
+        _consumed_inbox_seq: i64,
+    ) -> Result<Option<ActorRelease>> {
+        Ok(None)
+    }
+
     /// The tail of `session_id`'s event log to fold: events after
     /// `after_sequence`, or from the latest `turn.started` (the whole log when
     /// no turn started yet). Page with [`ActorJournal::has_more`]. `limit` 0 =

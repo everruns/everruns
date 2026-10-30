@@ -158,6 +158,7 @@ impl ActsAsArrangement {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    localizations: Default::default(),
                     public_id: public_id.to_string(),
                     name: "acts-as-agent".to_string(),
                     display_name: None,
@@ -393,6 +394,9 @@ async fn start_grpc_server(
             }
         });
         tonic::transport::Server::builder()
+            .layer(tonic::service::InterceptorLayer::new(
+                everruns_server::worker_link::grpc_service::GrpcAuthInterceptor::new(None),
+            ))
             .add_service(service.into_server())
             .serve_with_incoming(ReceiverStream::new(incoming_rx))
             .await

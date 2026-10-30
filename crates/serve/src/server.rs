@@ -56,6 +56,7 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
     let mut router = Router::new()
         .route("/health", get(health))
         .route("/v1/agent", get(agent_card))
+        .route("/v1/doctor", get(crate::doctor::doctor))
         .route("/v1/sessions", post(create_session))
         .route("/v1/sessions/{id}", get(get_session))
         .route("/v1/sessions/{id}/messages", post(create_message))
@@ -453,7 +454,7 @@ pub(crate) async fn create_message(
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     if let Some(metadata) = body.metadata {
-        message["metadata"] = metadata;
+        message["metadata"] = everruns_contracts::public_metadata::message(&metadata);
     }
     Ok((StatusCode::CREATED, Json(message)).into_response())
 }

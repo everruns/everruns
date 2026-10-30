@@ -1,5 +1,13 @@
 "use client";
+import {
+  Select as SharedSelect,
+  SelectTrigger as SharedSelectTrigger,
+  SelectContent as SharedSelectContent,
+  SelectValue as SharedSelectValue,
+  SelectItem as SharedSelectItem,
+} from "@/components/ui/select";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, RefreshCw } from "lucide-react";
@@ -53,6 +61,7 @@ export function AgentSourcePanel({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const { data: source, isLoading, error: loadError } = useAgentSource(agentId);
   const { data: github } = useAgentGitHub(agentId);
   const { data: repositories, error: repoError } = useGitHubRepositories(
@@ -133,15 +142,19 @@ export function AgentSourcePanel({
   return (
     <>
       {(source || isLoading || loadError) && (
-        <section className="space-y-3 border bg-card p-4" aria-label="Agent source" id="source">
+        <section
+          className="space-y-3 border bg-card p-4"
+          aria-label={ui("Agent source")}
+          id="source"
+        >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 space-y-1">
-              <h2 className="font-semibold">Source</h2>
+              <h2 className="font-semibold">{ui("Source")}</h2>
               {isLoading ? (
-                <p className="text-sm text-muted-foreground">Loading source…</p>
+                <p className="text-sm text-muted-foreground">{ui("Loading source…")}</p>
               ) : loadError ? (
                 <p role="alert" className="break-words text-sm text-destructive">
-                  Could not load Agent source.
+                  {ui("Could not load Agent source.")}
                 </p>
               ) : source ? (
                 <>
@@ -150,16 +163,20 @@ export function AgentSourcePanel({
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {source.mode === "two_way"
-                      ? "Two-way sync. Edit here or in GitHub; conflicting changes pause sync."
-                      : "Managed by GitHub. Edit the repository to update this Agent."}
+                      ? ui("Two-way sync. Edit here or in GitHub; conflicting changes pause sync.")
+                      : ui("Managed by GitHub. Edit the repository to update this Agent.")}
                   </p>
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                     <Badge variant="outline">{sourceStatus(source)}</Badge>
                     {source.applied_commit && (
                       <span className="font-mono">{source.applied_commit.slice(0, 7)}</span>
                     )}
-                    <span>Last checked: {date(source.last_checked_at)}</span>
-                    <span>Last synced: {date(source.last_synced_at)}</span>
+                    <span>
+                      {ui("Last checked:")} {date(source.last_checked_at)}
+                    </span>
+                    <span>
+                      {ui("Last synced:")} {date(source.last_synced_at)}
+                    </span>
                   </div>
                 </>
               ) : null}
@@ -177,10 +194,10 @@ export function AgentSourcePanel({
                     })
                   }
                 >
-                  <RefreshCw className="size-4" /> Sync now
+                  <RefreshCw className="size-4" /> {ui("Sync now")}
                 </Button>
                 <Button size="sm" variant="outline" onClick={start} disabled={busy}>
-                  {source.status === "conflict" ? "Review GitHub version" : "Change source"}
+                  {source.status === "conflict" ? ui("Review GitHub version") : ui("Change source")}
                 </Button>
                 <Button
                   size="sm"
@@ -188,7 +205,7 @@ export function AgentSourcePanel({
                   disabled={busy}
                   onClick={() => setDisconnectOpen(true)}
                 >
-                  Disconnect
+                  {ui("Disconnect")}
                 </Button>
               </div>
             )}
@@ -200,15 +217,15 @@ export function AgentSourcePanel({
               rel="noopener noreferrer"
               className={buttonVariants({ variant: "link", size: "sm" })}
             >
-              View on GitHub <ExternalLink className="size-4" />
+              {ui("View on GitHub")} <ExternalLink className="size-4" />
             </a>
           )}
           {source?.error && (
             <p role="alert" className="break-words text-sm text-destructive">
               {source.error}{" "}
               {source.mode === "two_way"
-                ? "Your local definition is retained."
-                : "The last successfully synced definition is retained."}
+                ? ui("Your local definition is retained.")
+                : ui("The last successfully synced definition is retained.")}
             </p>
           )}
           {error && !open && (
@@ -226,48 +243,57 @@ export function AgentSourcePanel({
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>{source ? "Change Agent source" : "Sync with GitHub"}</DialogTitle>
+            <DialogTitle>{source ? ui("Change Agent source") : ui("Sync with GitHub")}</DialogTitle>
             <DialogDescription>
-              Select a repository, branch, and package folder or manifest. Review changes before
-              enabling continuous sync. Enabling applies the reviewed GitHub version and replaces
-              local authored changes. Choose whether edits can also be saved from Everruns to
-              GitHub.
+              {ui(
+                "Select a repository, branch, and package folder or manifest. Review changes before enabling continuous sync. Enabling applies the reviewed GitHub version and replaces local authored changes. Choose whether edits can also be saved from Everruns to GitHub.",
+              )}
             </DialogDescription>
           </DialogHeader>
           {!github?.connected ? (
             <p className="text-sm">
-              Connect GitHub in this Agent&apos;s{" "}
+              {ui("Connect GitHub in this Agent's")}{" "}
               <a
                 href={`/agents/${agentId}?tab=integrations#github`}
                 className="underline"
                 onClick={() => setOpen(false)}
               >
-                Integrations
+                {ui("Integrations")}
               </a>{" "}
-              first.
+              {ui("first.")}
             </p>
           ) : (
             <>
               <div className="space-y-2">
-                <Label htmlFor="source-mode">Sync direction</Label>
-                <select
-                  id="source-mode"
-                  className="h-9 w-full border bg-background px-3 text-sm"
-                  value={mode}
+                <Label htmlFor="source-mode">{ui("Sync direction")}</Label>
+                <SharedSelect
+                  value={String(mode)}
                   disabled={busy}
-                  onChange={(event) => {
-                    setMode(event.target.value as "pull" | "two_way");
+                  onValueChange={(selection) => {
+                    setMode(selection as "pull" | "two_way");
                     setPreview(null);
                   }}
                 >
-                  <option value="pull">Sync from GitHub · read-only in Everruns</option>
-                  <option value="two_way">Sync with GitHub · edit on either side</option>
-                </select>
+                  <SharedSelectTrigger
+                    id="source-mode"
+                    className="h-9 w-full border bg-background px-3 text-sm"
+                  >
+                    <SharedSelectValue />
+                  </SharedSelectTrigger>
+                  <SharedSelectContent>
+                    <SharedSelectItem value="pull">
+                      {ui("Sync from GitHub · read-only in Everruns")}
+                    </SharedSelectItem>
+                    <SharedSelectItem value="two_way">
+                      {ui("Sync with GitHub · edit on either side")}
+                    </SharedSelectItem>
+                  </SharedSelectContent>
+                </SharedSelect>
                 {mode === "two_way" && (
                   <p className="text-sm text-muted-foreground">
-                    Requires Contents write permission in the GitHub App and installation. Saved
-                    edits are committed directly to the selected branch. Branch protection still
-                    applies. File paths are preserved; manifest formatting may be normalized.
+                    {ui(
+                      "Requires Contents write permission in the GitHub App and installation. Saved edits are committed directly to the selected branch. Branch protection still applies. File paths are preserved; manifest formatting may be normalized.",
+                    )}
                   </p>
                 )}
               </div>
@@ -278,38 +304,44 @@ export function AgentSourcePanel({
                   rel="noopener noreferrer"
                   className="text-sm underline"
                 >
-                  Open GitHub App settings <ExternalLink className="inline size-3" />
+                  {ui("Open GitHub App settings")} <ExternalLink className="inline size-3" />
                 </a>
               )}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="source-repository">Repository</Label>
-                  <select
-                    id="source-repository"
-                    className="h-9 w-full border bg-background px-3 text-sm"
-                    value={location.repository}
+                  <Label htmlFor="source-repository">{ui("Repository")}</Label>
+                  <SharedSelect
+                    value={String(location.repository)}
                     disabled={busy}
-                    onChange={(event) => {
-                      const repo = event.target.value;
+                    onValueChange={(selection) => {
+                      const repo = selection;
                       setOptions(null);
                       perform(() => browse({ repository: repo, branch: "", path: "" }));
                     }}
                   >
-                    <option value="">Select a repository</option>
-                    {repositories?.map((repo) => (
-                      <option key={repo.full_name} value={repo.full_name}>
-                        {repo.full_name}
-                      </option>
-                    ))}
-                  </select>
+                    <SharedSelectTrigger
+                      id="source-repository"
+                      className="h-9 w-full border bg-background px-3 text-sm"
+                    >
+                      <SharedSelectValue />
+                    </SharedSelectTrigger>
+                    <SharedSelectContent>
+                      <SharedSelectItem value="">{ui("Select a repository")}</SharedSelectItem>
+                      {repositories?.map((repo) => (
+                        <SharedSelectItem key={repo.full_name} value={String(repo.full_name)}>
+                          {repo.full_name}
+                        </SharedSelectItem>
+                      ))}
+                    </SharedSelectContent>
+                  </SharedSelect>
                   {repoError && (
                     <p role="alert" className="break-words text-sm text-destructive">
-                      Could not list repositories. Check the GitHub connection.
+                      {ui("Could not list repositories. Check the GitHub connection.")}
                     </p>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="source-branch">Branch</Label>
+                  <Label htmlFor="source-branch">{ui("Branch")}</Label>
                   <Input
                     id="source-branch"
                     list="source-branches"
@@ -319,7 +351,7 @@ export function AgentSourcePanel({
                       change({ ...location, branch: event.target.value, path: "" });
                       setOptions(null);
                     }}
-                    placeholder="main"
+                    placeholder={ui("main")}
                   />
                   <datalist id="source-branches">
                     {options?.branches.map((branch) => (
@@ -330,26 +362,27 @@ export function AgentSourcePanel({
                   </datalist>
                 </div>
                 <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="source-path">Package folder or manifest</Label>
+                  <Label htmlFor="source-path">{ui("Package folder or manifest")}</Label>
                   <div className="flex gap-2">
                     <Input
                       id="source-path"
                       value={location.path}
                       disabled={busy || !location.repository}
                       onChange={(event) => change({ ...location, path: event.target.value })}
-                      placeholder="agents/support or agents/support/agent.toml"
+                      placeholder={ui("agents/support or agents/support/agent.toml")}
                     />
                     <Button
                       variant="outline"
                       disabled={busy || !location.repository || !location.branch}
                       onClick={() => perform(() => browse(location))}
                     >
-                      Browse folder
+                      {ui("Browse folder")}
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Leave empty for the repository root. Folder packages include declared files and
-                    skills.
+                    {ui(
+                      "Leave empty for the repository root. Folder packages include declared files and skills.",
+                    )}
                   </p>
                   {options && (
                     <div className="flex flex-wrap gap-2">
@@ -371,7 +404,7 @@ export function AgentSourcePanel({
                             )
                           }
                         >
-                          Parent folder
+                          {ui("Parent folder")}
                         </Button>
                       )}
                       {options.paths.map((path) => (
@@ -403,7 +436,7 @@ export function AgentSourcePanel({
                   })
                 }
               >
-                {busy ? "Loading…" : "Preview changes"}
+                {busy ? ui("Loading…") : ui("Preview changes")}
               </Button>
               {preview?.preview && (
                 <AgentPackageReview preview={preview.preview} changes={preview.changes} />
@@ -422,7 +455,7 @@ export function AgentSourcePanel({
           )}
           <DialogFooter>
             <Button variant="outline" disabled={busy} onClick={() => setOpen(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button
               disabled={busy || !preview?.valid}
@@ -441,7 +474,7 @@ export function AgentSourcePanel({
                 })
               }
             >
-              {busy ? "Applying…" : "Enable continuous sync"}
+              {busy ? ui("Applying…") : ui("Enable continuous sync")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -454,15 +487,16 @@ export function AgentSourcePanel({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Disconnect source sync?</DialogTitle>
+            <DialogTitle>{ui("Disconnect source sync?")}</DialogTitle>
             <DialogDescription>
-              Your current definition stays in Everruns and remains editable. New sync attempts
-              stop. A GitHub write already in flight may still complete.
+              {ui(
+                "Your current definition stays in Everruns and remains editable. New sync attempts stop. A GitHub write already in flight may still complete.",
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" disabled={busy} onClick={() => setDisconnectOpen(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button
               disabled={busy}
@@ -474,7 +508,7 @@ export function AgentSourcePanel({
                 })
               }
             >
-              Disconnect source sync
+              {ui("Disconnect source sync")}
             </Button>
           </DialogFooter>
         </DialogContent>

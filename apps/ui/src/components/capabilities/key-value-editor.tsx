@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +34,7 @@ export function KeyValueEditor({
   valuePlaceholder?: string;
   addLabel?: string;
 }) {
+  const ui = useUiTranslations();
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -74,7 +76,7 @@ export function KeyValueEditor({
                 size="sm"
                 className="h-9 w-9 p-0 shrink-0"
                 onClick={() => onChange(pairs.filter((_, i) => i !== index))}
-                aria-label={`Remove ${keyPlaceholder.toLowerCase()}`}
+                aria-label={ui("Remove {value0}", { value0: keyPlaceholder.toLowerCase() })}
               >
                 <X className="h-4 w-4" />
               </Button>

@@ -15,6 +15,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type { OnboardingStep } from "./onboarding-stepper";
 import { OSS_ONBOARDING_STEPS } from "./steps";
+import { useUiTranslations } from "@/providers/locale-provider";
 
 export interface OnboardingArcConfig {
   /** Full step list for the arc, in render order. */
@@ -51,11 +52,16 @@ export interface OnboardingArc extends OnboardingArcConfig {
 }
 
 export function useOnboardingArc(): OnboardingArc {
+  const ui = useUiTranslations();
   const { steps, ossStepOffset } = useContext(OnboardingArcContext);
   return {
     steps,
     ossStepOffset,
     stepIndex: (ossIndex) => ossStepOffset + ossIndex,
-    stepLabel: (ossIndex) => `Step ${ossStepOffset + ossIndex + 1} of ${steps.length}`,
+    stepLabel: (ossIndex) =>
+      ui("Step {current} of {total}", {
+        current: ossStepOffset + ossIndex + 1,
+        total: steps.length,
+      }),
   };
 }

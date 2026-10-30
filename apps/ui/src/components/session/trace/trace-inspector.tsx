@@ -3,6 +3,7 @@
 // Right-hand inspector of the Trace tab: facts and payloads of the selected
 // step, fetched by step on demand. Batches are described from their row.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -96,6 +97,7 @@ function Payload({
   error?: boolean;
   onLoadFull?: () => void;
 }) {
+  const ui = useUiTranslations();
   const text =
     typeof payload.value === "string"
       ? payload.value
@@ -106,7 +108,9 @@ function Payload({
     <Section
       title={title}
       meta={formatBytes(payload.size_bytes)}
-      action={<CopyButton value={text} label={`Copy ${title.toLowerCase()}`} />}
+      action={
+        <CopyButton value={text} label={ui("Copy {value0}", { value0: title.toLowerCase() })} />
+      }
     >
       <JsonView
         value={payload.value ?? undefined}
@@ -115,7 +119,7 @@ function Payload({
       />
       {payload.truncated && onLoadFull && (
         <Button variant="link" size="sm" className="mt-1 h-auto p-0 text-xs" onClick={onLoadFull}>
-          Cut at 50 KB · Load full
+          {ui("Cut at 50 KB · Load full")}
         </Button>
       )}
     </Section>
@@ -137,6 +141,7 @@ export function TraceInspector({
   onPrev?: () => void;
   onNext?: () => void;
 }) {
+  const ui = useUiTranslations();
   const stepTarget = target?.type === "step" ? { turn: target.turn, step: target.step } : null;
   const stepSession = (target?.type === "step" && target.sessionId) || sessionId;
   const { data, isLoading, error } = useSessionTraceStep(stepSession, stepTarget, full);
@@ -144,7 +149,7 @@ export function TraceInspector({
   if (!target) {
     return (
       <div className="px-5 py-6 text-sm text-muted-foreground">
-        Select a step to see its input, output and raw events.
+        {ui("Select a step to see its input, output and raw events.")}
       </div>
     );
   }
@@ -160,7 +165,7 @@ export function TraceInspector({
             className="size-6"
             onClick={onPrev}
             disabled={!onPrev}
-            aria-label="Previous step"
+            aria-label={ui("Previous step")}
           >
             <ChevronUp className="size-3.5" />
           </Button>
@@ -170,7 +175,7 @@ export function TraceInspector({
             className="size-6"
             onClick={onNext}
             disabled={!onNext}
-            aria-label="Next step"
+            aria-label={ui("Next step")}
           >
             <ChevronDown className="size-3.5" />
           </Button>
@@ -206,7 +211,10 @@ export function TraceInspector({
           ]}
         />
         {b.failures.length > 0 && (
-          <Section title="Failed calls" meta={`${b.failures.length} of ${formatCount(b.failed)}`}>
+          <Section
+            title={ui("Failed calls")}
+            meta={`${b.failures.length} of ${formatCount(b.failed)}`}
+          >
             <ul className="space-y-1.5 text-xs">
               {b.failures.map((f) => (
                 <li key={f.step} className="flex gap-2">
@@ -232,7 +240,9 @@ export function TraceInspector({
     );
   }
   if (error || !data) {
-    return <div className="px-5 py-6 text-sm text-destructive">Could not load this step.</div>;
+    return (
+      <div className="px-5 py-6 text-sm text-destructive">{ui("Could not load this step.")}</div>
+    );
   }
   return (
     <StepDetail
@@ -259,6 +269,7 @@ function StepDetail({
   header: (label: string, title: string, mono: boolean, status?: string) => React.ReactNode;
   onLoadFull?: () => void;
 }) {
+  const ui = useUiTranslations();
   const step: TraceStep = detail.step;
   const isModel = step.kind === "model" || step.kind === "answer";
   const title = isModel
@@ -303,13 +314,13 @@ function StepDetail({
       )}
       <Facts items={facts} />
       {step.narration && (
-        <Section title={step.kind === "answer" ? "Answer" : "Narration"}>
+        <Section title={step.kind === "answer" ? ui("Answer") : ui("Narration")}>
           <p className="text-sm leading-[1.55] break-words whitespace-pre-wrap">{step.narration}</p>
         </Section>
       )}
       {request && (
         <Section
-          title="Request"
+          title={ui("Request")}
           meta={`${formatCount(request.message_count)} messages · ${formatCount(request.tool_count)} tools`}
           action={
             <Button
@@ -318,7 +329,7 @@ function StepDetail({
               className="h-auto p-0 text-xs"
               onClick={() => setSheetOpen(true)}
             >
-              View full request
+              {ui("View full request")}
             </Button>
           }
         >
@@ -331,7 +342,8 @@ function StepDetail({
             )}
             {request.new_from > 0 && (
               <li className="border-t border-border/60 bg-muted/50 px-2.5 py-1.5 italic text-muted-foreground first:border-t-0">
-                {formatCount(request.new_from)} earlier messages, unchanged since the previous call
+                {formatCount(request.new_from)}{" "}
+                {ui("earlier messages, unchanged since the previous call")}
               </li>
             )}
             {request.new_messages.map((m) => (
@@ -350,24 +362,26 @@ function StepDetail({
       {step.name === "web_search" && (
         <WebSearchTraceSection sessionId={sessionId} detail={detail} />
       )}
-      {detail.input && <Payload title="Input" payload={detail.input} onLoadFull={onLoadFull} />}
+      {detail.input && (
+        <Payload title={ui("Input")} payload={detail.input} onLoadFull={onLoadFull} />
+      )}
       {detail.output && (
         <Payload
-          title={step.status === "error" ? "Error" : isModel ? "Response" : "Output"}
+          title={step.status === "error" ? ui("Error") : isModel ? ui("Response") : ui("Output")}
           payload={detail.output}
           error={step.status === "error"}
           onLoadFull={onLoadFull}
         />
       )}
       <Section
-        title="Events"
+        title={ui("Events")}
         meta={String(detail.events.length)}
         action={
           <Link
             href={`/sessions/${sessionId}/events`}
             className="text-xs font-medium text-primary hover:underline"
           >
-            Open in Events
+            {ui("Open in Events")}
           </Link>
         }
       >
@@ -400,6 +414,7 @@ function StepDetail({
 }
 
 function RequestRow({ role, preview, isNew }: { role: string; preview: string; isNew?: boolean }) {
+  const ui = useUiTranslations();
   return (
     <li
       className={cn(
@@ -415,7 +430,9 @@ function RequestRow({ role, preview, isNew }: { role: string; preview: string; i
       </span>
       <span className="min-w-0 flex-1 truncate">{preview || "—"}</span>
       {isNew && (
-        <span className="shrink-0 border border-accent bg-accent/15 px-1 text-[10px]">new</span>
+        <span className="shrink-0 border border-accent bg-accent/15 px-1 text-[10px]">
+          {ui("new")}
+        </span>
       )}
     </li>
   );

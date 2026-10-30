@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, CircleQuestionMark, Clock3, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -230,6 +231,7 @@ export function AskUserToolCall({
   requestedAt,
   toolResultsMap,
 }: AskUserToolCallProps) {
+  const ui = useUiTranslations();
   const elicitation = request.mcp_elicitation;
   const [selections, setSelections] = useState(() =>
     initialSelections(request.questions, elicitation != null),
@@ -328,7 +330,7 @@ export function AskUserToolCall({
     return (
       <div className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground">
         <X className="h-4 w-4" />
-        Questions closed
+        {ui("Questions closed")}
       </div>
     );
   }
@@ -423,23 +425,28 @@ export function AskUserToolCall({
         {elicitation ? (
           <div>
             <p className="text-sm font-medium text-foreground">
-              Questions from MCP server {elicitation.server}
+              {ui("Questions from MCP server")} {elicitation.server}
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Everruns is not asking these. Your answers are sent to {elicitation.server} only.
+              {ui("Everruns is not asking these. Your answers are sent to")} {elicitation.server}{" "}
+              {ui("only.")}
             </p>
             {elicitation.message && (
               <p className="mt-2 text-sm text-foreground">
-                <span className="text-muted-foreground">{elicitation.server} says: </span>
+                <span className="text-muted-foreground">
+                  {elicitation.server} {ui("says:")}{" "}
+                </span>
                 {elicitation.message}
               </p>
             )}
           </div>
         ) : (
           <div>
-            <p className="text-sm font-medium text-foreground">The agent needs your input</p>
+            <p className="text-sm font-medium text-foreground">
+              {ui("The agent needs your input")}
+            </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Answer each question to continue the conversation.
+              {ui("Answer each question to continue the conversation.")}
             </p>
           </div>
         )}
@@ -461,7 +468,9 @@ export function AskUserToolCall({
               <div className="flex w-full items-center gap-2">
                 <Badge variant="outline">{question.header}</Badge>
                 {question.multi_select && (
-                  <span className="text-[11px] text-muted-foreground">Select all that apply</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {ui("Select all that apply")}
+                  </span>
                 )}
               </div>
               <p id={labelId} className="text-sm font-medium text-foreground">
@@ -469,8 +478,8 @@ export function AskUserToolCall({
               </p>
               {question.kind === "text" ? (
                 <Textarea
-                  aria-label={`${question.header} answer`}
-                  placeholder="Type your answer"
+                  aria-label={ui("{value0} answer", { value0: question.header })}
+                  placeholder={ui("Type your answer")}
                   value={selection.otherText}
                   disabled={status === "submitting"}
                   onChange={(event) =>
@@ -507,7 +516,7 @@ export function AskUserToolCall({
                             {option.label}
                             {option.default && !elicitation && (
                               <Badge variant="accent" className="py-0">
-                                Recommended
+                                {ui("Recommended")}
                               </Badge>
                             )}
                           </span>
@@ -537,7 +546,7 @@ export function AskUserToolCall({
                           onChange={() => selectOther(question)}
                           className="h-4 w-4 accent-primary"
                         />
-                        Other
+                        {ui("Other")}
                         {shortcutHeld &&
                           status === "idle" &&
                           (question.options?.length ?? 0) < 9 && (
@@ -551,9 +560,9 @@ export function AskUserToolCall({
                       </label>
                       {selection.otherSelected && (
                         <Input
-                          aria-label={`${question.header} other answer`}
+                          aria-label={ui("{value0} other answer", { value0: question.header })}
                           className="mt-2"
-                          placeholder="Type another answer"
+                          placeholder={ui("Type another answer")}
                           value={selection.otherText}
                           disabled={status === "submitting"}
                           onChange={(event) =>
@@ -579,7 +588,7 @@ export function AskUserToolCall({
       <div className="border-t border-border px-4 py-3">
         {request.questions.some((question) => question.kind !== "text") && (
           <p className="mb-3 text-xs text-muted-foreground">
-            Hold {shortcutModifier} to show option shortcuts (1–9).
+            {ui("Hold")} {shortcutModifier} {ui("to show option shortcuts (1–9).")}
           </p>
         )}
         {showCountdown && (
@@ -591,7 +600,7 @@ export function AskUserToolCall({
                 : `Declining ${elicitation.server}'s questions in ${formatCountdown(expiresAt - now)}`
               : request.questions.some((question) => question.kind === "text")
                 ? now >= expiresAt
-                  ? "Skipping unanswered questions now"
+                  ? ui("Skipping unanswered questions now")
                   : `Skipping unanswered questions in ${formatCountdown(expiresAt - now)}`
                 : now >= expiresAt
                   ? `Continuing with ${defaults} now`
@@ -608,10 +617,10 @@ export function AskUserToolCall({
             disabled={status === "submitting"}
             onClick={() => void submit("declined")}
           >
-            Decline
+            {ui("Decline")}
           </Button>
           <Button type="submit" size="sm" disabled={status === "submitting" || !isComplete}>
-            {status === "submitting" ? "Submitting…" : "Continue"}
+            {status === "submitting" ? ui("Submitting…") : ui("Continue")}
           </Button>
         </div>
       </div>

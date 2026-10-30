@@ -94,7 +94,8 @@ pub(super) fn spawn_grpc_server(
                 grpc_svc.set_org_rate_limiter(Arc::new(deps.org_rate_limiter));
                 // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
                 // Mitigation: Bearer token auth + optional mTLS validated before spawn.
-                let auth_interceptor = grpc_service::GrpcAuthInterceptor::new(Some(grpc_token));
+                let auth_interceptor =
+                    grpc_service::GrpcAuthInterceptor::new(Some(grpc_token.clone()));
                 tracing::info!("gRPC server listening on {}", grpc_addr);
 
                 let mut builder = tonic::transport::Server::builder();
@@ -107,16 +108,23 @@ pub(super) fn spawn_grpc_server(
                         }
                     }
                 }
+                // Workers GET image and file bytes from signed paths on this
+                // same endpoint, so bytes never ride inside gRPC messages.
+                let routes = grpc_svc.into_routes(grpc_token.clone());
+                // Stops last on SIGTERM, after HTTP drained (crate::shutdown).
+                let shutdown = crate::shutdown::server_shutdown();
+                shutdown.grpc_started();
                 if let Err(e) = builder
                     .layer(tonic::service::interceptor::InterceptorLayer::new(
                         auth_interceptor,
                     ))
-                    .add_service(grpc_svc.into_server())
-                    .serve(grpc_addr)
+                    .add_routes(routes)
+                    .serve_with_shutdown(grpc_addr, shutdown.stop_grpc().clone().cancelled_owned())
                     .await
                 {
                     tracing::error!(error = %e, "gRPC server error");
                 }
+                shutdown.grpc_stopped();
             }
         },
     );
@@ -374,6 +382,10 @@ pub(super) async fn start_maintenance(
     let mut agent_source_ctx = deps.agent_source_ctx;
     agent_source_ctx.db = deps.background_db.clone();
     let cluster_jobs = vec![
+        crate::domains::sandbox_templates::builds::runner::job(
+            deps.background_db.clone(),
+            deps.encryption.clone(),
+        ),
         crate::domains::agents::source::source_sync_job(agent_source_ctx),
         crate::background::actor_history_retention::retention_job(deps.background_pool.clone()),
         crate::background::blob_gc::blob_gc_job(
@@ -430,4 +442,91 @@ pub(super) async fn start_maintenance(
     ) {
         supervisor.track("reporting_background", handle);
     }
+}
+
+/// Customer worker credentials are never accepted by the trusted listener.
+/// A separate port lets operators expose only this narrow service.
+pub(super) fn spawn_custom_worker_server(
+    supervisor: &mut TaskSupervisor,
+    db: Arc<StorageBackend>,
+    events: Arc<services::EventService>,
+) -> Result<()> {
+    let address = match std::env::var("CUSTOM_WORKER_GRPC_BIND_ADDR") {
+        Ok(address) => address
+            .parse::<std::net::SocketAddr>()
+            .context("Invalid CUSTOM_WORKER_GRPC_BIND_ADDR")?,
+        Err(std::env::VarError::NotPresent) => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    let tls = grpc_service::grpc_server_tls_from_env_result()?;
+    anyhow::ensure!(
+        address.ip().is_loopback() || tls.is_some(),
+        "Custom worker listener requires TLS when bound outside loopback"
+    );
+    if let Some(tls) = tls.clone() {
+        tonic::transport::Server::builder().tls_config(tls)?;
+    }
+    supervisor.spawn(
+        "custom_worker_grpc",
+        RestartPolicy::always_after(Duration::from_secs(5)),
+        move || {
+            let db = db.clone();
+            let events = events.clone();
+            let tls = tls.clone();
+            async move {
+                let mut server = tonic::transport::Server::builder();
+                if let Some(tls) = tls {
+                    match server.tls_config(tls) {
+                        Ok(configured) => server = configured,
+                        Err(error) => {
+                            tracing::error!(%error, "Custom worker TLS failed");
+                            return;
+                        }
+                    }
+                }
+                let service =
+                    crate::worker_link::custom_workers::CustomWorkerServiceImpl::new(db, events);
+                if let Err(error) = server
+                    .add_service(service.into_server())
+                    .serve(address)
+                    .await
+                {
+                    tracing::error!(%error, "Custom worker listener failed");
+                }
+            }
+        },
+    );
+    Ok(())
+}
+
+/// The response transport holds only an internal custom-worker credential.
+pub(super) fn spawn_external_workers(
+    supervisor: &mut TaskSupervisor,
+    db: Arc<StorageBackend>,
+    event_service: Arc<services::EventService>,
+    encryption: Option<Arc<EncryptionService>>,
+    egress: Arc<dyn everruns_core::EgressService>,
+) -> Result<()> {
+    if crate::domains::external_agents::enabled() {
+        let encryption = encryption
+            .clone()
+            .context("External agents require encryption")?;
+        let external_db = db.clone();
+        let external_events = event_service.clone();
+        supervisor.spawn(
+            "external_agents",
+            crate::background::supervised_task::RestartPolicy::always_after(
+                std::time::Duration::from_secs(5),
+            ),
+            move || {
+                crate::worker_link::custom_workers::http::run(
+                    external_db.clone(),
+                    external_events.clone(),
+                    encryption.clone(),
+                    egress.clone(),
+                )
+            },
+        );
+    }
+    Ok(())
 }

@@ -85,6 +85,7 @@ impl DbHarnessStore {
 
             cursor = row.parent_harness_id;
             chain.push(Harness {
+                localizations: row.localizations.clone(),
                 id: row.id,
                 name: row.name,
                 display_name: row.display_name,

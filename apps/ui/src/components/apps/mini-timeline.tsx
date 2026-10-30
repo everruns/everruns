@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
 
 export type TimelineBin = {
@@ -18,10 +19,14 @@ export function MiniTimeline({
   length?: number;
   className?: string;
 }) {
+  const ui = useUiTranslations();
   const bins = Array.from({ length }, (_, index) => runs[index] ?? { hour: String(index) });
 
   return (
-    <div className={cn("flex items-end gap-1", className)} aria-label={`${length} hour timeline`}>
+    <div
+      className={cn("flex items-end gap-1", className)}
+      aria-label={ui("{value0} hour timeline", { value0: length })}
+    >
       {bins.map((bin, index) => {
         const ok = bin.ok ?? 0;
         const err = bin.err ?? 0;
@@ -30,7 +35,12 @@ export function MiniTimeline({
         return (
           <span
             key={`${bin.hour}-${index}`}
-            title={`${bin.hour}: ${ok} ok, ${err} errors${running ? `, ${running} running` : ""}`}
+            title={ui("{value0}: {value1} ok, {value2} errors{value3}", {
+              value0: bin.hour,
+              value1: ok,
+              value2: err,
+              value3: running ? `, ${running} running` : "",
+            })}
             className={cn(
               "h-6 w-1.5 border",
               total === 0 && "border-muted bg-muted/40",

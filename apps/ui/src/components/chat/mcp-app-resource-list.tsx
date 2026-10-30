@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { McpCardIframe } from "@/components/mcp/mcp-card-iframe";
 import type { McpAppResource } from "./tool-call-utils";
 
@@ -9,6 +10,7 @@ interface McpAppResourceListProps {
 }
 
 export function McpAppResourceList({ resources, className }: McpAppResourceListProps) {
+  const ui = useUiTranslations();
   if (resources.length === 0) return null;
 
   return (
@@ -20,7 +22,7 @@ export function McpAppResourceList({ resources, className }: McpAppResourceListP
           html={resource.html}
           height={360}
           maxWidth="100%"
-          title={`MCP App (${resource.uri})`}
+          title={ui("MCP App ({value0})", { value0: resource.uri })}
           className="rounded-md border border-border/70 bg-background"
         />
       ))}

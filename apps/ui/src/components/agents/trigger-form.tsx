@@ -1,5 +1,15 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
+import { z } from "zod";
+
+export const scheduleTriggerDraftSchema = z.strictObject({
+  message: z.string().max(256 * 1024),
+  cron_expression: z.string().max(256),
+  timezone: z.string().max(128),
+  session_mode: z.enum(["shared_session", "session_per_invocation"]),
+  enabled: z.boolean(),
+});
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { CronInput, isSupportedCronExpression } from "@/components/apps/cron-label";
 import { Label } from "@/components/ui/label";
@@ -46,6 +56,7 @@ export function TriggerFormFields({
   onChange: (next: TriggerFormState) => void;
   idPrefix?: string;
 }) {
+  const ui = useUiTranslations();
   return (
     <>
       <CronInput
@@ -55,7 +66,7 @@ export function TriggerFormFields({
         onTimezoneChange={(timezone) => onChange({ ...value, timezone })}
       />
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-session-mode`}>Session mode</Label>
+        <Label htmlFor={`${idPrefix}-session-mode`}>{ui("Session mode")}</Label>
         <Select
           value={value.session_mode}
           onValueChange={(session_mode) =>
@@ -66,18 +77,18 @@ export function TriggerFormFields({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="shared_session">Shared session</SelectItem>
-            <SelectItem value="session_per_invocation">New session per run</SelectItem>
+            <SelectItem value="shared_session">{ui("Shared session")}</SelectItem>
+            <SelectItem value="session_per_invocation">{ui("New session per run")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-message`}>Message</Label>
+        <Label htmlFor={`${idPrefix}-message`}>{ui("Message")}</Label>
         <Textarea
           id={`${idPrefix}-message`}
           value={value.message}
           onChange={(event) => onChange({ ...value, message: event.target.value })}
-          placeholder="Run the daily digest"
+          placeholder={ui("Run the daily digest")}
           rows={4}
         />
       </div>
@@ -87,7 +98,7 @@ export function TriggerFormFields({
           checked={value.enabled}
           onCheckedChange={(enabled) => onChange({ ...value, enabled })}
         />
-        <Label htmlFor={`${idPrefix}-enabled`}>Enabled</Label>
+        <Label htmlFor={`${idPrefix}-enabled`}>{ui("Enabled")}</Label>
       </div>
     </>
   );

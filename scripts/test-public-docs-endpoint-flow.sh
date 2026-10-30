@@ -8,7 +8,7 @@ SLACK_GUIDE="$ROOT/docs/capabilities/slack.md"
 required_guide_text=(
   'Select **Integrations**.'
   'Select **Add channel**.'
-  'Select **Save channel**.'
+  'Select **Create channel**.'
   'Select **Publish**'
   'Open **Settings** > **Slack workspaces**.'
   'Select **Add to Slack**'

@@ -18,6 +18,7 @@ agents check-rules delete	--context-revision --reason --rule-id!
 agents check-rules list	--context-revision --reason
 agents check-rules upsert	--category --context-revision --enabled! --kind! --match-mode --message --pattern --reason --rubric --rule-id! --severity
 agents copy	--context-revision --id --reason <id>
+agents cost-plan	--agent! --context-revision --guidance --locale --reason
 agents create	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --reason --tag/-t... --writable
 agents credentials create	--agent-id --auth --context-revision --description --env-name --header-name --label! --mcp-server-name --parameter-name --reason --tool-name --url
 agents delete	--context-revision --id --reason <id>
@@ -29,6 +30,8 @@ agents examples list	--context-revision --reason
 agents export	--format --out <agent>!
 agents exposures resume	--agent --context-revision --reason <agent_id>
 agents exposures suspend	--agent --context-revision --reason <agent_id>
+agents external-worker disable	--agent-id! --context-revision --reason
+agents external-worker get	--agent-id! --context-revision --reason
 agents failures list	--after --agent --before --context-revision --limit --offset --reason <agent_id>
 agents get	--context-revision --id --reason <id>
 agents github connect	--agent-id! --context-revision --owner-org --reason --return-to
@@ -62,7 +65,7 @@ agents triggers runs list	--agent-id! --context-revision --reason --trigger-id!
 agents triggers trigger	--agent-id! --context-revision --reason --trigger-id!
 agents triggers update	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --target-binding-key --target-channel-id --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --reason --tag/-t... --writable <agent_id>
-agents upsert	--capabilities --communication --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --max-output-tokens --mcpServers --name! --network-access --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
+agents upsert	--capabilities --communication --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --localizations --max-iterations --max-output-tokens --mcpServers --name! --network-access --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents validate	--remote <file>!
 budgets check	--budget-id! --context-revision --reason
 budgets create	--context-revision --currency! --limit! --metadata --period --reason --soft-limit --subject-id! --subject-type!
@@ -143,13 +146,13 @@ files push	--delete --dry-run --session/-s! <local_dir>
 files sync	--conflict --delete --dry-run --exclude... --interval --no-gitignore --session/-s! --verbose/-v <local_dir>
 harnesses check-name check	--context-revision --exclude-id --name! --reason
 harnesses copy	--context-revision --id --reason <id>
-harnesses create	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --initial-files --intro-markdown --mcpServers --name! --network-access --parent-harness-id --reason --short-description --starters --system-prompt --tags...
+harnesses create	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --initial-files --intro-markdown --localizations --mcpServers --name! --network-access --parent-harness-id --reason --short-description --starters --system-prompt --tags...
 harnesses delete	--context-revision --id --reason <id>
 harnesses destroy	--context-revision --id --reason <id>
 harnesses get	--context-revision --id --reason <id>
 harnesses list	--context-revision --include-archived --reason --search
 harnesses preview	--capabilities --context-revision --mcp-servers --parent-harness-id --reason --system-prompt
-harnesses update	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --id --initial-files --intro-markdown --mcpServers --name --network-access --parent-harness-id --reason --short-description --starters --status --system-prompt --tags... <id>
+harnesses update	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --id --initial-files --intro-markdown --localizations --mcpServers --name --network-access --parent-harness-id --reason --short-description --starters --status --system-prompt --tags... <id>
 health-issues check	--context-revision --issue-id! --reason
 health-issues get	--context-revision --issue-id! --reason
 health-issues list	--channel-id --context-revision --limit --offset --reason
@@ -164,14 +167,14 @@ images list	--context-revision --limit --offset --reason
 knowledge create	--context-revision --description --embedding-model-id --indexer-id --indexing --name! --reason --rules
 knowledge delete	--collection-id! --context-revision --reason
 knowledge files delete	--collection-id! --context-revision --path! --reason
-knowledge files list	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason
+knowledge files list	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree
 knowledge files update	--collection-id! --context-revision --indexable --metadata --path! --readable --reason
 knowledge files write	--collection-id! --content --content-base64 --context-revision --indexable --metadata --mime-type --path! --readable --reason
 knowledge get	--collection-id! --context-revision --reason
 knowledge indexers create	--context-revision --credential-binding-id! --endpoint! --name! --reason
 knowledge indexers list	--context-revision --reason
 knowledge list	--after --context-revision --limit --reason
-knowledge okf validate	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason
+knowledge okf validate	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree
 knowledge search	--collections... --context-revision --lexical-only --limit --metadata --path --query! --reason
 knowledge sources add	--collection-id! --config --connection-owner --context-revision --kind! --reason --root-path
 knowledge sync	--collection-id! --context-revision --reason
@@ -277,6 +280,12 @@ resources grants revoke	--context-revision --grant-id! --id! --reason
 sandbox-targets list	--context-revision --reason
 sandbox-template-metadata get	--context-revision --id! --reason
 sandbox-template-metadata update	--context-revision --description --display-name --id! --reason
+sandbox-templates builds apply	--context-revision --id! --reason
+sandbox-templates builds cancel	--context-revision --id! --reason
+sandbox-templates builds discard	--context-revision --id! --reason
+sandbox-templates builds get	--context-revision --id! --reason
+sandbox-templates builds list	--context-revision --id! --offset --reason
+sandbox-templates builds start	--build-network --context-revision --id! --install-script! --metadata-path --reason --source-revision-id! --timeout-seconds --verification-command
 sandboxes get	--context-revision --id --reason <id>
 sandboxes list	--agent-id --context-revision --include-in-process --limit --needs-attention --offset --provider --reason --sandbox-template-id --search --state
 sandboxes stats get	--agent-id --context-revision --include-in-process --needs-attention --provider --reason --sandbox-template-id --search --state
@@ -359,8 +368,13 @@ skills list	--context-revision --include-archived --reason --search
 skills update	--context-revision --id --reason --skill-md --status <id>
 skills usage	--context-revision --reason
 status
+system doctor	--context-revision --reason --refresh
 system health	--context-revision --reason
 tasks list	--context-revision --created-after --kind --limit --reason --root-session-id --state
+tracing destinations get	--context-revision --id! --reason
+tracing destinations update	--context-revision --enabled --id! --name --reason
+tracing routing get	--context-revision --id! --reason
+tracing routing update	--context-revision --destination-ids!... --expected-revision --id! --mode! --reason
 user connections list	--context-revision --provider --reason
 user connections providers list	--context-revision --reason --search
 users list	--context-revision --reason --search

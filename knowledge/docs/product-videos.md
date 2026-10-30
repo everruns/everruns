@@ -1,7 +1,7 @@
 ---
 type: Playbook
 title: Product Video Knowledge
-description: Ownership and discovery of the canonical Everruns product-video guide and published Slack walkthrough.
+description: Ownership and discovery of the canonical Everruns product-video guide and published product walkthroughs.
 tags:
   - everruns
   - documentation
@@ -54,3 +54,14 @@ The public embeds live in the A2A/PACT and Poppy feature pages and PACT changelo
 The Slack walkthrough illustrates both
 [Slack DMs and files](../../docs/changelog/2026-10-13-slack-agents-dms-and-files/index.md)
 and [scheduled Slack briefings](../../docs/changelog/2026-10-12-scheduled-turns-post-to-slack/index.md).
+
+The [Sandbox Builder walkthrough](https://www.youtube.com/watch?v=QyjGHq6LTuw)
+is public on Everruns @everrunshq with uploaded English captions and embedding enabled.
+The 52-second Sarah cut uses the real local app and a live Daytona build to show an
+install script, fresh-snapshot verification, readable software notes, separate
+build/runtime network policies and an immutable revision. Package installation and
+provider waits are shortened; synthesized narration is disclosed.
+The [Sandbox Templates guide](../../docs/features/sandbox-templates.md#build-a-reusable-snapshot)
+and [snapshot-builder changelog](../../docs/changelog/2026-10-29-sandbox-snapshot-builder/index.md)
+embed the public YouTube video alongside the feature instructions and screenshot.
+Keep the narrated video binary outside Git.

@@ -559,6 +559,13 @@ async fn create_daytona_instance(
         // Daytona's default image is the one that ships the desktop; its size
         // is fixed at create time.
         Some(display) => {
+            // A builder can bake the desktop base. Keep its pinned snapshot
+            // instead of silently replacing it with Daytona's default image.
+            create_body.snapshot = config
+                .provider_config
+                .get("snapshot")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
             create_body.env = [
                 (
                     crate::daytona::computer::RESOLUTION_ENV.to_string(),
@@ -839,9 +846,12 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             return Ok(Vec::new());
         }
         let api_key = get_managed_api_key(context, &config.credential).await?;
-        crate::daytona::recording::collect(&build_client(api_key, config), &instance.external_id)
-            .await
-            .map_err(ToolExecutionResult::tool_error)
+        crate::daytona::recording::collect(
+            std::sync::Arc::new(build_client(api_key, config)),
+            &instance.external_id,
+        )
+        .await
+        .map_err(ToolExecutionResult::tool_error)
     }
 
     async fn pause(

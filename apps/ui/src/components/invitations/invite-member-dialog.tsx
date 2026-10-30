@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { usePageFormDraft, draftText } from "@/components/chat-mode/use-page-form-draft";
@@ -50,6 +51,7 @@ export function InviteMemberDialog({
   onOpenChange,
   canInviteOwner,
 }: InviteMemberDialogProps) {
+  const ui = useUiTranslations();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<OrgRole>("member");
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +61,7 @@ export function InviteMemberDialog({
   const chat = usePageFormDraft({
     schema: canInviteOwner ? ownerInvitationSchema : invitationSchema,
     entityType: "invitation",
-    label: "Invite a member",
+    label: ui("Invite a member"),
     priority: 30,
     enabled: open && !created,
     baseline: "new",
@@ -115,10 +117,10 @@ export function InviteMemberDialog({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <MailCheck className="h-5 w-5" />
-                Invitation created
+                {ui("Invitation created")}
               </DialogTitle>
               <DialogDescription>
-                {created.email} was invited as {created.role}.
+                {created.email} {ui("was invited as")} {created.role}.
               </DialogDescription>
             </DialogHeader>
 
@@ -127,7 +129,7 @@ export function InviteMemberDialog({
             </p>
 
             <div className="space-y-2">
-              <Label htmlFor="invite-link">Invite link</Label>
+              <Label htmlFor="invite-link">{ui("Invite link")}</Label>
               <div className="flex items-center gap-2">
                 <Input
                   id="invite-link"
@@ -141,7 +143,7 @@ export function InviteMemberDialog({
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                This link is shown only once and expires when the invitation does.
+                {ui("This link is shown only once and expires when the invitation does.")}
               </p>
             </div>
 
@@ -154,7 +156,7 @@ export function InviteMemberDialog({
 
             <DialogFooter>
               <Button type="button" onClick={() => onOpenChange(false)}>
-                Done
+                {ui("Done")}
               </Button>
             </DialogFooter>
           </>
@@ -162,36 +164,36 @@ export function InviteMemberDialog({
           <form onSubmit={handleSubmit}>
             {chat.notice}
             <DialogHeader>
-              <DialogTitle>Invite a member</DialogTitle>
+              <DialogTitle>{ui("Invite a member")}</DialogTitle>
               <DialogDescription>
-                Send an invitation by email, or share the generated invite link.
+                {ui("Send an invitation by email, or share the generated invite link.")}
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 my-4">
               <div className="space-y-2">
-                <Label htmlFor="invite-email">Email</Label>
+                <Label htmlFor="invite-email">{ui("Email")}</Label>
                 <Input
                   id="invite-email"
                   type="email"
                   required
                   autoComplete="off"
-                  placeholder="teammate@example.com"
+                  placeholder={ui("teammate@example.com")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="invite-role">Role</Label>
+                <Label htmlFor="invite-role">{ui("Role")}</Label>
                 <Select value={role} onValueChange={(v) => setRole(v as OrgRole)}>
                   <SelectTrigger id="invite-role" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="member">Member</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    {canInviteOwner && <SelectItem value="owner">Owner</SelectItem>}
+                    <SelectItem value="member">{ui("Member")}</SelectItem>
+                    <SelectItem value="admin">{ui("Admin")}</SelectItem>
+                    {canInviteOwner && <SelectItem value="owner">{ui("Owner")}</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
@@ -206,10 +208,10 @@ export function InviteMemberDialog({
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
+                {ui("Cancel")}
               </Button>
               <Button type="submit" disabled={chat.blocked || createInvite.isPending}>
-                {createInvite.isPending ? "Creating..." : "Create invitation"}
+                {createInvite.isPending ? ui("Creating...") : ui("Create invitation")}
               </Button>
             </DialogFooter>
           </form>

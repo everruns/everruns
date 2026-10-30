@@ -18,6 +18,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "channel-harness".to_string(),
                 display_name: Some("Channel Harness".to_string()),
                 icon: None,
@@ -42,6 +43,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            localizations: Default::default(),
             public_id: public_id.clone(),
             name: "channel-agent".to_string(),
             display_name: Some("Channel Agent".to_string()),

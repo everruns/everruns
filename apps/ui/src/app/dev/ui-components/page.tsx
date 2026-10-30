@@ -1,5 +1,7 @@
 "use client";
+import { SharedPatterns } from "./shared-patterns";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { Suspense, useState, type ReactNode } from "react";
 import {
@@ -146,6 +148,7 @@ function ShowcaseSection({
   sources: string[];
   children: ReactNode;
 }) {
+  const ui = useUiTranslations();
   return (
     <section id={id} className="scroll-mt-6 border border-border/70 bg-card/90">
       <div className="border-b border-border/70 px-4 py-3">
@@ -153,7 +156,7 @@ function ShowcaseSection({
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-            Source
+            {ui("Source")}
           </span>
           {sources.map((source) => (
             <code
@@ -175,6 +178,7 @@ function SampleIconTile() {
 }
 
 export default function DevUiComponentsPage() {
+  const ui = useUiTranslations();
   const [environment, setEnvironment] = useState("development");
   const [showArchived, setShowArchived] = useState(true);
   const [notifications, setNotifications] = useState(true);
@@ -185,12 +189,14 @@ export default function DevUiComponentsPage() {
   return (
     <DevPageShell
       eyebrow="Slate design system"
-      title="Core UI Components"
-      description="Interactive reference for the shared primitives and composition patterns used across Everruns."
+      title={ui("Core UI Components")}
+      description={ui(
+        "Interactive reference for the shared primitives and composition patterns used across Everruns.",
+      )}
       widthClassName="max-w-7xl"
     >
       <div className="space-y-6">
-        <nav className="flex flex-wrap gap-2" aria-label="Component groups">
+        <nav className="flex flex-wrap gap-2" aria-label={ui("Component groups")}>
           {[
             ["layout", "Layout"],
             ["buttons", "Buttons"],
@@ -213,8 +219,10 @@ export default function DevUiComponentsPage() {
 
         <ShowcaseSection
           id="layout"
-          title="Application page composition"
-          description="A compact rendering of the same components and content hierarchy used by the Agents list page."
+          title={ui("Application page composition")}
+          description={ui(
+            "A compact rendering of the same components and content hierarchy used by the Agents list page.",
+          )}
           sources={[
             "src/app/(main)/agents/page.tsx",
             "src/components/layout/page-layout.tsx",
@@ -224,49 +232,51 @@ export default function DevUiComponentsPage() {
           <div className="overflow-hidden border bg-background">
             <PageContainer className="gap-4 p-4">
               {/* A gallery sample, not this page's own location — no group prefix. */}
-              <PageBreadcrumb group={false} items={[{ label: "Agents" }]} />
+              <PageBreadcrumb group={false} items={[{ label: ui("Agents") }]} />
               <PageMasthead
                 icon={<AgentIcon />}
-                title="Agents"
+                title={ui("Agents")}
                 badges={
                   <Badge variant="outline" className="font-mono">
                     12
                   </Badge>
                 }
-                description="Reusable agent definitions — instructions, capabilities, and model."
+                description={ui(
+                  "Reusable agent definitions — instructions, capabilities, and model.",
+                )}
                 meta={
                   <>
-                    <span>10 active</span>
-                    <span>2 archived</span>
+                    <span>{ui("10 active")}</span>
+                    <span>{ui("2 archived")}</span>
                   </>
                 }
                 actions={
                   <>
                     <Button variant="outline">
-                      <Upload /> Import
+                      <Upload /> {ui("Import")}
                     </Button>
                     <Button variant="accent">
-                      <Plus /> New agent
+                      <Plus /> {ui("New agent")}
                     </Button>
                   </>
                 }
               />
               <PageControlStrip className="flex flex-wrap items-center gap-3">
-                <SearchInput placeholder="Search agents…" containerClassName="w-64" />
+                <SearchInput placeholder={ui("Search agents…")} containerClassName="w-64" />
                 <div className="flex-1" />
                 <SectionTabs
                   value={sectionTab}
                   onValueChange={setSectionTab}
                   items={[
-                    { value: "all", label: "All" },
-                    { value: "active", label: "Active" },
-                    { value: "archived", label: "Archived" },
+                    { value: "all", label: ui("All") },
+                    { value: "active", label: ui("Active") },
+                    { value: "archived", label: ui("Archived") },
                   ]}
                 />
                 <div className="flex border">
                   <button
                     type="button"
-                    aria-label="Grid view"
+                    aria-label={ui("Grid view")}
                     aria-pressed={true}
                     className="inline-flex size-8 items-center justify-center border-r bg-muted text-foreground"
                   >
@@ -274,7 +284,7 @@ export default function DevUiComponentsPage() {
                   </button>
                   <button
                     type="button"
-                    aria-label="List view"
+                    aria-label={ui("List view")}
                     aria-pressed={false}
                     className="inline-flex size-8 items-center justify-center text-muted-foreground hover:bg-muted/50"
                   >
@@ -293,29 +303,31 @@ export default function DevUiComponentsPage() {
                   </div>
                 </PageMain>
                 <PageRail>
-                  <RailSection label="Status">
+                  <RailSection label={ui("Status")}>
                     <div className="flex flex-col gap-1.5 text-[13px]">
                       <div className="flex items-center justify-between text-foreground">
-                        <span>Active</span>
+                        <span>{ui("Active")}</span>
                         <span className="text-muted-foreground">10</span>
                       </div>
                       <div className="flex items-center justify-between text-muted-foreground">
-                        <span>Archived</span>
+                        <span>{ui("Archived")}</span>
                         <span>2</span>
                       </div>
                     </div>
                   </RailSection>
-                  <RailSection label="Tags">
+                  <RailSection label={ui("Tags")}>
                     <div className="flex flex-wrap gap-1.5">
-                      <span className="border bg-muted px-2 py-0.5 text-xs">research</span>
-                      <span className="border bg-muted px-2 py-0.5 text-xs">production</span>
+                      <span className="border bg-muted px-2 py-0.5 text-xs">{ui("research")}</span>
+                      <span className="border bg-muted px-2 py-0.5 text-xs">
+                        {ui("production")}
+                      </span>
                     </div>
                   </RailSection>
                 </PageRail>
               </PageColumns>
               <PageFooter>
-                <span>Showing 10 of 12 agents</span>
-                <span className="text-primary">View archived →</span>
+                <span>{ui("Showing 10 of 12 agents")}</span>
+                <span className="text-primary">{ui("View archived →")}</span>
               </PageFooter>
             </PageContainer>
           </div>
@@ -323,41 +335,47 @@ export default function DevUiComponentsPage() {
 
         <ShowcaseSection
           id="buttons"
-          title="Buttons"
-          description="All semantic variants, supported sizes, icon buttons, and disabled states."
+          title={ui("Buttons")}
+          description={ui(
+            "All semantic variants, supported sizes, icon buttons, and disabled states.",
+          )}
           sources={["src/components/ui/button.tsx", "src/components/ui/tooltip.tsx"]}
         >
           <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-2">
-              <Button>Default</Button>
-              <Button variant="secondary">Secondary</Button>
-              <Button variant="outline">Outline</Button>
-              <Button variant="ghost">Ghost</Button>
+              <Button>{ui("Default")}</Button>
+              <Button variant="secondary">{ui("Secondary")}</Button>
+              <Button variant="outline">{ui("Outline")}</Button>
+              <Button variant="ghost">{ui("Ghost")}</Button>
               <Button variant="accent">
-                <Sparkles /> Accent
+                <Sparkles /> {ui("Accent")}
               </Button>
               <Button variant="destructive">
-                <Trash2 /> Destructive
+                <Trash2 /> {ui("Destructive")}
               </Button>
-              <Button variant="link">Link button</Button>
-              <Button disabled>Disabled</Button>
+              <Button variant="link">{ui("Link button")}</Button>
+              <Button disabled>{ui("Disabled")}</Button>
             </div>
             <Separator />
             <TooltipProvider>
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm">
-                  <CirclePlus /> Small
+                  <CirclePlus /> {ui("Small")}
                 </Button>
                 <Button>
-                  <CirclePlus /> Default
+                  <CirclePlus /> {ui("Default")}
                 </Button>
                 <Button size="lg">
-                  <CirclePlus /> Large
+                  <CirclePlus /> {ui("Large")}
                 </Button>
                 {(["icon-sm", "icon", "icon-lg"] as const).map((size) => (
                   <Tooltip key={size}>
                     <TooltipTrigger asChild>
-                      <Button size={size} variant="outline" aria-label={`Settings, ${size}`}>
+                      <Button
+                        size={size}
+                        variant="outline"
+                        aria-label={ui("Settings, {value0}", { value0: size })}
+                      >
                         <Settings />
                       </Button>
                     </TooltipTrigger>
@@ -371,8 +389,10 @@ export default function DevUiComponentsPage() {
 
         <ShowcaseSection
           id="identity"
-          title="Identifiers and badges"
-          description="Readable entity names with exact-ID copy actions, avatars, status badges, and icon tiles."
+          title={ui("Identifiers and badges")}
+          description={ui(
+            "Readable entity names with exact-ID copy actions, avatars, status badges, and icon tiles.",
+          )}
           sources={[
             "src/components/ui/entity-identity.tsx",
             "src/components/ui/entity-card.tsx",
@@ -383,35 +403,39 @@ export default function DevUiComponentsPage() {
         >
           <div className="grid gap-5 lg:grid-cols-2">
             <div className="space-y-3">
-              <Label>EntityIdentity</Label>
+              <Label>{ui("EntityIdentity")}</Label>
               <div className="max-w-md border bg-background p-3">
-                <EntityIdentity value={sampleId}>Research assistant</EntityIdentity>
+                <EntityIdentity value={sampleId}>{ui("Research assistant")}</EntityIdentity>
               </div>
-              <Label>Standalone copy-ID button</Label>
+              <Label>{ui("Standalone copy-ID button")}</Label>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Research assistant</span>
-                <CopyButton value={sampleId} label={`Copy ID: ${sampleId}`} kind="id" />
+                <span className="text-sm text-muted-foreground">{ui("Research assistant")}</span>
+                <CopyButton
+                  value={sampleId}
+                  label={ui("Copy ID: {value0}", { value0: sampleId })}
+                  kind="id"
+                />
               </div>
             </div>
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge>Default</Badge>
-                <Badge variant="secondary">Secondary</Badge>
-                <Badge variant="outline">Outline</Badge>
-                <Badge variant="accent">Experimental</Badge>
+                <Badge>{ui("Default")}</Badge>
+                <Badge variant="secondary">{ui("Secondary")}</Badge>
+                <Badge variant="outline">{ui("Outline")}</Badge>
+                <Badge variant="accent">{ui("Experimental")}</Badge>
                 <Badge variant="success">
-                  <Check /> Healthy
+                  <Check /> {ui("Healthy")}
                 </Badge>
-                <Badge variant="destructive">Failed</Badge>
+                <Badge variant="destructive">{ui("Failed")}</Badge>
               </div>
               <div className="flex items-center gap-3">
                 <Avatar>
-                  <AvatarFallback>ER</AvatarFallback>
+                  <AvatarFallback>{ui("ER")}</AvatarFallback>
                 </Avatar>
                 <SampleIconTile />
                 <IconTile icon={<Layers3 />} />
                 <span className="text-sm text-muted-foreground">
-                  Avatar · small tile · masthead tile
+                  {ui("Avatar · small tile · masthead tile")}
                 </span>
               </div>
             </div>
@@ -420,8 +444,10 @@ export default function DevUiComponentsPage() {
 
         <ShowcaseSection
           id="cards"
-          title="Cards"
-          description="The production AgentCard plus the lower-level card primitives it composes."
+          title={ui("Cards")}
+          description={ui(
+            "The production AgentCard plus the lower-level card primitives it composes.",
+          )}
           sources={[
             "src/components/agents/agent-card.tsx",
             "src/components/ui/card.tsx",
@@ -431,28 +457,30 @@ export default function DevUiComponentsPage() {
           <div className="grid gap-4 lg:grid-cols-3">
             <div className="space-y-2">
               <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-                Card primitive
+                {ui("Card primitive")}
               </p>
               <Card>
                 <CardHeader>
-                  <CardTitle>Card title</CardTitle>
-                  <CardDescription>Header, content, action, and footer slots.</CardDescription>
+                  <CardTitle>{ui("Card title")}</CardTitle>
+                  <CardDescription>
+                    {ui("Header, content, action, and footer slots.")}
+                  </CardDescription>
                   <CardAction>
-                    <Badge variant="outline">Draft</Badge>
+                    <Badge variant="outline">{ui("Draft")}</Badge>
                   </CardAction>
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground">
-                  Flexible content stays deliberately unopinionated.
+                  {ui("Flexible content stays deliberately unopinionated.")}
                 </CardContent>
                 <CardFooter className="border-t text-xs text-muted-foreground">
-                  Updated just now
+                  {ui("Updated just now")}
                 </CardFooter>
               </Card>
             </div>
 
             <div className="space-y-2">
               <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-                Production AgentCard
+                {ui("Production AgentCard")}
               </p>
               <AgentCard agent={sampleAgent} allCapabilities={sampleCapabilities} showEditButton />
               <AgentCard
@@ -476,7 +504,7 @@ export default function DevUiComponentsPage() {
 
             <div className="space-y-2">
               <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-                Production HarnessCard
+                {ui("Production HarnessCard")}
               </p>
               <HarnessCard
                 harness={{
@@ -500,30 +528,30 @@ export default function DevUiComponentsPage() {
                 allCapabilities={sampleCapabilities}
               />
               <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-                EntityCard row variant
+                {ui("EntityCard row variant")}
               </p>
               <EntityCard
                 variant="row"
                 icon={<SampleIconTile />}
-                title="Support triage"
+                title={ui("Support triage")}
                 copyValue="agent_support_triage"
-                inlineBadges={<Badge variant="outline">Idle</Badge>}
+                inlineBadges={<Badge variant="outline">{ui("Idle")}</Badge>}
                 headerActions={
-                  <Button size="icon-sm" variant="ghost" aria-label="More options">
+                  <Button size="icon-sm" variant="ghost" aria-label={ui("More options")}>
                     <Ellipsis />
                   </Button>
                 }
               >
-                <p className="mt-1 text-xs text-muted-foreground">Last run 8 minutes ago</p>
+                <p className="mt-1 text-xs text-muted-foreground">{ui("Last run 8 minutes ago")}</p>
               </EntityCard>
               <EntityCard
                 variant="row"
                 icon={<SampleIconTile />}
-                title="Incident responder"
-                inlineBadges={<Badge variant="success">Running</Badge>}
+                title={ui("Incident responder")}
+                inlineBadges={<Badge variant="success">{ui("Running")}</Badge>}
                 headerActions={
                   <Button size="sm" variant="outline">
-                    View
+                    {ui("View")}
                   </Button>
                 }
               />
@@ -533,8 +561,10 @@ export default function DevUiComponentsPage() {
 
         <ShowcaseSection
           id="menus"
-          title="Menus and tabs"
-          description="Dropdown actions, labeled selects, segmented tabs, and section navigation."
+          title={ui("Menus and tabs")}
+          description={ui(
+            "Dropdown actions, labeled selects, segmented tabs, and section navigation.",
+          )}
           sources={[
             "src/components/ui/dropdown-menu.tsx",
             "src/components/ui/select.tsx",
@@ -546,46 +576,47 @@ export default function DevUiComponentsPage() {
             <div className="flex flex-wrap items-end gap-4">
               <DropdownMenu>
                 <DropdownMenuTrigger className={buttonVariants({ variant: "outline" })}>
-                  Actions <ChevronDown />
+                  {ui("Actions")} <ChevronDown />
                 </DropdownMenuTrigger>
                 <DropdownMenuPositioner align="start">
                   <DropdownMenuContent className="w-52">
                     <DropdownMenuGroup>
-                      <DropdownMenuLabel>Agent actions</DropdownMenuLabel>
+                      <DropdownMenuLabel>{ui("Agent actions")}</DropdownMenuLabel>
                       <DropdownMenuItem>
-                        <Play /> Start session <DropdownMenuShortcut>⌘↵</DropdownMenuShortcut>
+                        <Play /> {ui("Start session")}{" "}
+                        <DropdownMenuShortcut>⌘↵</DropdownMenuShortcut>
                       </DropdownMenuItem>
                       <DropdownMenuItem>
-                        <Settings /> Configure
+                        <Settings /> {ui("Configure")}
                       </DropdownMenuItem>
                       <DropdownMenuCheckboxItem
                         checked={showArchived}
                         onCheckedChange={setShowArchived}
                       >
-                        Show archived
+                        {ui("Show archived")}
                       </DropdownMenuCheckboxItem>
                     </DropdownMenuGroup>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem variant="destructive">
-                      <Trash2 /> Delete
+                      <Trash2 /> {ui("Delete")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenuPositioner>
               </DropdownMenu>
 
               <div className="space-y-1.5">
-                <Label htmlFor="showcase-environment">Environment</Label>
+                <Label htmlFor="showcase-environment">{ui("Environment")}</Label>
                 <Select value={environment} onValueChange={setEnvironment}>
                   <SelectTrigger id="showcase-environment" className="w-48">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      <SelectLabel>Runtime</SelectLabel>
-                      <SelectItem value="development">Development</SelectItem>
-                      <SelectItem value="staging">Staging</SelectItem>
+                      <SelectLabel>{ui("Runtime")}</SelectLabel>
+                      <SelectItem value="development">{ui("Development")}</SelectItem>
+                      <SelectItem value="staging">{ui("Staging")}</SelectItem>
                       <SelectSeparator />
-                      <SelectItem value="production">Production</SelectItem>
+                      <SelectItem value="production">{ui("Production")}</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -594,23 +625,23 @@ export default function DevUiComponentsPage() {
 
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList>
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="activity">Activity</TabsTrigger>
+                <TabsTrigger value="overview">{ui("Overview")}</TabsTrigger>
+                <TabsTrigger value="activity">{ui("Activity")}</TabsTrigger>
                 <TabsTrigger value="disabled" disabled>
-                  Disabled
+                  {ui("Disabled")}
                 </TabsTrigger>
               </TabsList>
               <TabsContent
                 value="overview"
                 className="border bg-background p-3 text-sm text-muted-foreground"
               >
-                Overview panel content
+                {ui("Overview panel content")}
               </TabsContent>
               <TabsContent
                 value="activity"
                 className="border bg-background p-3 text-sm text-muted-foreground"
               >
-                Activity panel content
+                {ui("Activity panel content")}
               </TabsContent>
             </Tabs>
 
@@ -618,9 +649,9 @@ export default function DevUiComponentsPage() {
               value={sectionTab}
               onValueChange={setSectionTab}
               items={[
-                { value: "all", label: "All" },
-                { value: "active", label: "Active", icon: <Activity className="size-4" /> },
-                { value: "scheduled", label: "Scheduled", icon: <Clock3 className="size-4" /> },
+                { value: "all", label: ui("All") },
+                { value: "active", label: ui("Active"), icon: <Activity className="size-4" /> },
+                { value: "scheduled", label: ui("Scheduled"), icon: <Clock3 className="size-4" /> },
               ]}
             />
           </div>
@@ -628,8 +659,10 @@ export default function DevUiComponentsPage() {
 
         <ShowcaseSection
           id="entity-actions"
-          title="Entity actions menu"
-          description="The one header overflow menu on every entity page: the kind's own actions, then Record (History, Manager notes), then Lifecycle (Archive, Delete). Empty groups drop with their divider; Manager notes is hidden from readers."
+          title={ui("Entity actions menu")}
+          description={ui(
+            "The one header overflow menu on every entity page: the kind's own actions, then Record (History, Manager notes), then Lifecycle (Archive, Delete). Empty groups drop with their divider; Manager notes is hidden from readers.",
+          )}
           sources={[
             "src/components/entity-actions/entity-actions-menu.tsx",
             "src/components/entity-actions/history-sheet.tsx",
@@ -651,7 +684,7 @@ export default function DevUiComponentsPage() {
                     permissions={{ manage: variant.manage }}
                     actions={
                       variant.lifecycle
-                        ? [{ id: "copy", label: "Copy", icon: <Layers3 />, onSelect: () => {} }]
+                        ? [{ id: "copy", label: ui("Copy"), icon: <Layers3 />, onSelect: () => {} }]
                         : []
                     }
                     archive={variant.lifecycle ? { onSelect: () => {} } : undefined}
@@ -665,8 +698,10 @@ export default function DevUiComponentsPage() {
 
         <ShowcaseSection
           id="forms"
-          title="Form controls"
-          description="Inputs, search, textarea, checkbox, switch, validation, and disabled states."
+          title={ui("Form controls")}
+          description={ui(
+            "Inputs, search, textarea, checkbox, switch, validation, and disabled states.",
+          )}
           sources={[
             "src/components/ui/input.tsx",
             "src/components/ui/search-input.tsx",
@@ -678,22 +713,22 @@ export default function DevUiComponentsPage() {
           <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="showcase-name">Name</Label>
+                <Label htmlFor="showcase-name">{ui("Name")}</Label>
                 <Input id="showcase-name" defaultValue="Research assistant" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="showcase-search">Search</Label>
-                <SearchInput id="showcase-search" placeholder="Search agents…" />
+                <Label htmlFor="showcase-search">{ui("Search")}</Label>
+                <SearchInput id="showcase-search" placeholder={ui("Search agents…")} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="showcase-error">Invalid value</Label>
+                <Label htmlFor="showcase-error">{ui("Invalid value")}</Label>
                 <Input id="showcase-error" defaultValue="Duplicate name" aria-invalid />
-                <p className="text-xs text-destructive">This name is already in use.</p>
+                <p className="text-xs text-destructive">{ui("This name is already in use.")}</p>
               </div>
             </div>
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="showcase-instructions">Instructions</Label>
+                <Label htmlFor="showcase-instructions">{ui("Instructions")}</Label>
                 <Textarea
                   id="showcase-instructions"
                   defaultValue="Be concise, verify sources, and surface uncertainty."
@@ -701,13 +736,13 @@ export default function DevUiComponentsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox id="showcase-checkbox" checked={checked} onCheckedChange={setChecked} />
-                <Label htmlFor="showcase-checkbox">Allow tool calls</Label>
+                <Label htmlFor="showcase-checkbox">{ui("Allow tool calls")}</Label>
               </div>
               <div className="flex items-center justify-between border bg-background p-3">
                 <div>
-                  <Label htmlFor="showcase-switch">Notifications</Label>
+                  <Label htmlFor="showcase-switch">{ui("Notifications")}</Label>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Notify when a run needs attention.
+                    {ui("Notify when a run needs attention.")}
                   </p>
                 </div>
                 <Switch
@@ -721,40 +756,48 @@ export default function DevUiComponentsPage() {
           </div>
         </ShowcaseSection>
 
+        <SharedPatterns />
+
         <ShowcaseSection
           id="feedback"
-          title="Notices and empty states"
-          description="Reusable inline feedback variants and the canonical zero-state composition."
+          title={ui("Notices and empty states")}
+          description={ui(
+            "Reusable inline feedback variants and the canonical zero-state composition.",
+          )}
           sources={["src/components/ui/notice.tsx", "src/components/layout/page-layout.tsx"]}
         >
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="space-y-3">
               <Notice icon={<Info />}>
-                <NoticeTitle>Information</NoticeTitle>
+                <NoticeTitle>{ui("Information")}</NoticeTitle>
                 <NoticeDescription>
-                  Configuration changes apply to the next session.
+                  {ui("Configuration changes apply to the next session.")}
                 </NoticeDescription>
               </Notice>
               <Notice variant="warning" icon={<AlertTriangle />}>
-                <NoticeTitle>Review required</NoticeTitle>
-                <NoticeDescription>This agent can call tools with side effects.</NoticeDescription>
+                <NoticeTitle>{ui("Review required")}</NoticeTitle>
+                <NoticeDescription>
+                  {ui("This agent can call tools with side effects.")}
+                </NoticeDescription>
               </Notice>
               <Notice variant="success" icon={<ShieldCheck />}>
-                <NoticeTitle>Connection healthy</NoticeTitle>
-                <NoticeDescription>Credentials were verified successfully.</NoticeDescription>
+                <NoticeTitle>{ui("Connection healthy")}</NoticeTitle>
+                <NoticeDescription>
+                  {ui("Credentials were verified successfully.")}
+                </NoticeDescription>
               </Notice>
               <Notice variant="destructive" icon={<AlertTriangle />}>
-                <NoticeTitle>Run failed</NoticeTitle>
-                <NoticeDescription>The provider rejected the request.</NoticeDescription>
+                <NoticeTitle>{ui("Run failed")}</NoticeTitle>
+                <NoticeDescription>{ui("The provider rejected the request.")}</NoticeDescription>
               </Notice>
             </div>
             <EmptyState
               icon={<AgentIcon />}
-              title="No agents yet"
-              description="Create an agent to start a session and see activity here."
+              title={ui("No agents yet")}
+              description={ui("Create an agent to start a session and see activity here.")}
               action={
                 <Button>
-                  <CirclePlus /> Create agent
+                  <CirclePlus /> {ui("Create agent")}
                 </Button>
               }
               className="h-full min-h-64 bg-background"

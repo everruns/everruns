@@ -8,12 +8,16 @@
 //!
 //! Decision: no recording state of our own. The Sandbox's recording list is
 //! the record: a recording without an end time is the one running, and a
-//! collected recording is deleted from the Sandbox, so whatever is listed has
-//! not been collected yet. A turn that starts while the last one is still being
+//! stored recording is deleted from the Sandbox, so whatever is listed has
+//! not been stored yet. The video streams out of the Sandbox, so it is deleted
+//! only once the collector has stored it ([`DesktopRecording::remove`]). A turn that starts while the last one is still being
 //! collected may lose its first seconds of video, never the whole turn: its
 //! next desktop action starts a new recording.
 
+use std::sync::Arc;
+
 use everruns_contracts::session_sandbox::DesktopRecording;
+use futures::FutureExt;
 use reqwest::Method;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -21,9 +25,10 @@ use serde_json::{Value, json};
 use crate::daytona::client::DaytonaClient;
 use crate::daytona::computer::computer_use;
 
-/// Largest recording collected. A bigger file is still removed from the
-/// Sandbox and reported, but its video is not kept.
-pub const MAX_RECORDING_BYTES: u64 = 100 * 1024 * 1024;
+/// Largest recording collected: the object-storage per-file limit. A bigger
+/// file is still reported, without its video. The collector applies its own
+/// storage limit on top.
+pub const MAX_RECORDING_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// Label on recordings Everruns starts.
 const RECORDING_LABEL: &str = "everruns";
@@ -121,20 +126,21 @@ pub async fn ensure_started(client: &DaytonaClient, sandbox_id: &str) -> Result<
     .map(|_| ())
 }
 
-/// Stop every running recording, download the finished ones and delete them
-/// from the Sandbox. Failed recordings are deleted without a download.
+/// Stop every running recording and hand back the finished ones, each with
+/// its video as a stream and a handle that deletes it from the Sandbox.
+/// Failed recordings are deleted here, without a download.
 pub async fn collect(
-    client: &DaytonaClient,
+    client: Arc<DaytonaClient>,
     sandbox_id: &str,
 ) -> Result<Vec<DesktopRecording>, String> {
     let mut finished = Vec::new();
-    for recording in list(client, sandbox_id).await? {
+    for recording in list(&client, sandbox_id).await? {
         if !recording.is_active() {
             finished.push(recording);
             continue;
         }
         let stopped = computer_use(
-            client,
+            &client,
             sandbox_id,
             Method::POST,
             "/recordings/stop",
@@ -148,33 +154,34 @@ pub async fn collect(
 
     let mut collected = Vec::new();
     for recording in finished {
-        if !recording.failed() {
-            let size_bytes = recording.size_bytes.unwrap_or(0);
-            let content = if size_bytes > MAX_RECORDING_BYTES {
-                None
-            } else {
-                let bytes = client
-                    .file_download(sandbox_id, &recording.file_path)
-                    .await?;
-                (bytes.len() as u64 <= MAX_RECORDING_BYTES).then_some(bytes)
-            };
-            collected.push(DesktopRecording {
-                file_name: recording.stored_name(),
-                duration_seconds: recording.duration_seconds,
-                size_bytes: content
-                    .as_ref()
-                    .map_or(size_bytes, |bytes| bytes.len() as u64),
-                content,
-            });
+        let delete_path = format!("/recordings/{}", path_segment(&recording.id)?);
+        if recording.failed() {
+            computer_use(&client, sandbox_id, Method::DELETE, &delete_path, None).await?;
+            continue;
         }
-        computer_use(
-            client,
-            sandbox_id,
-            Method::DELETE,
-            &format!("/recordings/{}", path_segment(&recording.id)?),
-            None,
-        )
-        .await?;
+        let size_bytes = recording.size_bytes.unwrap_or(0);
+        let body = if size_bytes > MAX_RECORDING_BYTES {
+            None
+        } else {
+            Some(
+                client
+                    .file_download_stream(sandbox_id, &recording.file_path)
+                    .await?,
+            )
+        };
+        let (client, sandbox_id) = (client.clone(), sandbox_id.to_string());
+        collected.push(DesktopRecording {
+            file_name: recording.stored_name(),
+            duration_seconds: recording.duration_seconds,
+            size_bytes,
+            body,
+            remove: async move {
+                computer_use(&client, &sandbox_id, Method::DELETE, &delete_path, None)
+                    .await
+                    .map(|_| ())
+            }
+            .boxed(),
+        });
     }
     Ok(collected)
 }

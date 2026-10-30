@@ -15,7 +15,7 @@ import { failureTextClass, toolFailureSeverity } from "./failure-severity";
 import { basename } from "@/lib/path-utils";
 import { formatFileSize } from "@/lib/formatting";
 import { ExecutedArgumentsNotice } from "./executed-arguments";
-import { buildImageSrc, getFullText, isImagePart, type ToolCallContent } from "./tool-call-utils";
+import { getFullText, isImagePart, resultImageSrc, type ToolCallContent } from "./tool-call-utils";
 import { formatImageCount } from "@/lib/i18n";
 import { useLocale } from "@/providers/locale-provider";
 
@@ -75,12 +75,12 @@ function parseReadFileResult(
 ): ParsedReadFileResult {
   const rawText = getFullText(result);
   const payload = parseReadFilePayload(rawText);
-  const images = (result ?? []).filter(isImagePart).reduce<ParsedReadFileImage[]>((all, part) => {
-    const src = buildImageSrc(part);
+  const images = (result ?? []).reduce<ParsedReadFileImage[]>((all, part) => {
+    const src = resultImageSrc(part);
     if (!src) return all;
     all.push({
       src,
-      mediaType: part.media_type,
+      mediaType: isImagePart(part) ? part.media_type : undefined,
     });
     return all;
   }, []);

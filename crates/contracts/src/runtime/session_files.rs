@@ -17,6 +17,16 @@ use std::sync::Arc;
 /// - Project files onto real disk or object storage
 #[async_trait]
 pub trait SessionFileSystem: Send + Sync {
+    /// Atomically move a directory tree to an absent destination in the same
+    /// filesystem. Preserve file identities and content; reject roots, protected
+    /// descendants, mount crossings and moves into the source tree. Backends
+    /// without this guarantee fail closed rather than copy and delete.
+    async fn rename_directory(&self, _session: SessionId, _from: &str, _to: &str) -> Result<()> {
+        Err(crate::runtime::error::AgentLoopError::config(
+            "filesystem does not support atomic directory rename",
+        ))
+    }
+
     /// Explicit writable Memory authorization for background consolidation.
     /// Ordinary workspace files never qualify merely by their pathname.
     /// Authorization includes the source session's visibility: a private
@@ -285,6 +295,17 @@ impl WorkspaceScopedFileSystem {
 
 #[async_trait]
 impl SessionFileSystem for WorkspaceScopedFileSystem {
+    async fn rename_directory(&self, session: SessionId, from: &str, to: &str) -> Result<()> {
+        let scope = self.scope(session, from);
+        if self.inner.session_scoped_path(from) != self.inner.session_scoped_path(to)
+            || scope != self.scope(session, to)
+        {
+            return Err(crate::runtime::error::AgentLoopError::config(
+                "directory rename cannot cross session scopes",
+            ));
+        }
+        self.inner.rename_directory(scope, from, to).await
+    }
     async fn dreaming_scope(
         &self,
         _: SessionId,
@@ -423,6 +444,9 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
 
 #[async_trait]
 impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
+    async fn rename_directory(&self, session: SessionId, from: &str, to: &str) -> Result<()> {
+        (**self).rename_directory(session, from, to).await
+    }
     async fn dreaming_scope(
         &self,
         session: SessionId,

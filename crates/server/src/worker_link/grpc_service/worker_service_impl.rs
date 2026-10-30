@@ -1,6 +1,6 @@
 // `WorkerService` trait implementation for the gRPC service.
 //
-// Delegation only. A trait impl cannot be split across modules, so every
+// Authorization gate and delegation only. A trait impl cannot be split across modules, so every
 // handler body lives in `super::worker::<domain>` as an inherent method and
 // `delegate!` below generates the RPC that forwards to it. Keep it that way: a
 // body added here is a body nobody will find again.
@@ -23,6 +23,10 @@ macro_rules! delegate {
                     &self,
                     request: Request<$req>,
                 ) -> Result<Response<$resp>, Status> {
+                    super::authority::check_rpc(&request, stringify!($rpc))?;
+                    super::authority::admit_ingress(
+                        &self.db, super::authority::resolve(request.extensions())?,
+                    ).await?;
                     self.$handler(request).await
                 }
             )*
@@ -85,6 +89,8 @@ delegate! {
         -> DrainDurableWorkerResponse;
     deregister_durable_worker => handle_deregister_durable_worker(DeregisterDurableWorkerRequest)
         -> DeregisterDurableWorkerResponse;
+    report_durable_worker_checks => handle_report_durable_worker_checks(ReportDurableWorkerChecksRequest)
+        -> ReportDurableWorkerChecksResponse;
 
     // Circuit breaker state.
     check_circuit_breaker => handle_check_circuit_breaker(CheckCircuitBreakerRequest)
@@ -102,8 +108,6 @@ delegate! {
     resolve_image => handle_resolve_image(ResolveImageRequest) -> ResolveImageResponse;
     resolve_images => handle_resolve_images(ResolveImagesRequest) -> ResolveImagesResponse;
     resolve_files => handle_resolve_files(ResolveFilesRequest) -> ResolveFilesResponse;
-    create_image_artifact => handle_create_image_artifact(CreateImageArtifactRequest)
-        -> CreateImageArtifactResponse;
     get_image_artifact => handle_get_image_artifact(GetImageArtifactRequest)
         -> GetImageArtifactResponse;
 
@@ -129,6 +133,7 @@ delegate! {
     renew_actor_lease => handle_renew_actor_lease(proto::RenewActorLeaseRequest)
         -> proto::RenewActorLeaseResponse;
     release_actor => handle_release_actor(proto::ReleaseActorRequest) -> proto::ReleaseActorResponse;
+    hand_off_actor => handle_hand_off_actor(proto::ReleaseActorRequest) -> proto::ReleaseActorResponse;
     read_actor_journal => handle_read_actor_journal(proto::ReadActorJournalRequest)
         -> proto::ReadActorJournalResponse;
     detach_tool_call => handle_detach_tool_call(proto::DetachToolCallRequest)

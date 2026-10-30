@@ -150,3 +150,36 @@ This option makes no measured resource or cost savings claim.
 
 - [Event Reference](/event-reference/), complete event type catalog with payloads.
 - [Events as the primary store](/explanation/events/), design rationale.
+
+
+## Public metadata and replay state
+
+Message APIs, event lists and SSE, trace previews, and JSONL message exports return
+reviewed public annotations rather than the runtime's metadata map. Client message
+IDs, origin/source, locale, model and reasoning effort, provider trace identifiers,
+user-facing error fields, initiator identity, and page context/actions remain
+available. Page draft descriptors retain the browser binding and revision; they
+do not expose arbitrary form snapshots. Unknown keys, script execution inputs,
+and recorded tool-change replay state are withheld, including on historical
+messages. External actor identity and usage fields retain their existing contracts.
+Event-envelope metadata contains public initiator identity and participant/operation
+identifiers, without execution authority or arbitrary source envelopes.
+
+Applications that need arbitrary annotations returned with a message should put
+them in `metadata.custom`, for example `{"custom":{"ticket":"SUP-123"}}`. This
+namespace is caller-owned JSON: do not put secrets there. Existing unknown
+metadata keys remain in storage but are no longer returned. Move those annotations
+to `custom` on new writes; existing records are not automatically reclassified as
+caller-owned because their provenance cannot be established safely.
+
+Full generation diagnostics still intentionally expose the prompt, declared tools,
+and provider request (with provider replay artifacts removed). Agent API visibility
+settings continue to restrict which diagnostics an execution caller sees. A `full`
+visibility setting does not restore hidden message metadata.
+
+Filtering happens when reading. Stored events, internal worker traffic, and trusted
+Framework `canonical_json()` / local journal backups retain the original replay
+state. Treat those trusted records as sensitive; do not forward them as public API
+responses. Deploy updated API/Serve/Workers binaries to cover historical and new
+reads. Previously downloaded exports, client caches and external telemetry are not
+rewritten by an upgrade.

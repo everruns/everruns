@@ -4,6 +4,8 @@
 // listed after they are canceled or deleted, so the recording shows what was
 // set up and what was removed.
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { AlertCircle, CalendarClock, Repeat } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,8 +24,12 @@ function scheduleStatus(schedule: SessionSchedule): "Active" | "Disabled" | "Del
 }
 
 export function SessionScheduleList({ schedules }: { schedules: SessionSchedule[] }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   if (schedules.length === 0) {
-    return <div className="text-sm text-muted-foreground">This session scheduled no work.</div>;
+    return (
+      <div className="text-sm text-muted-foreground">{ui("This session scheduled no work.")}</div>
+    );
   }
 
   return (
@@ -55,12 +61,23 @@ export function SessionScheduleList({ schedules }: { schedules: SessionSchedule[
                 <div className="text-xs text-muted-foreground">
                   {cadence}
                   {schedule.next_trigger_at && status === "Active"
-                    ? ` · next ${formatScheduledDateTime(schedule.next_trigger_at, schedule.timezone)}`
+                    ? ui(" · next {value0}", {
+                        value0: formatScheduledDateTime(
+                          schedule.next_trigger_at,
+                          schedule.timezone,
+                        ),
+                      })
                     : ""}
-                  {schedule.trigger_count > 0 ? ` · fired ${schedule.trigger_count}×` : ""}
-                  {` · registered ${formatRelativeTime(schedule.created_at)}`}
+                  {schedule.trigger_count > 0
+                    ? ui(" · fired {value0}×", { value0: schedule.trigger_count })
+                    : ""}
+                  {ui(" · registered {value0}", {
+                    value0: formatRelativeTime(schedule.created_at, displayLocale),
+                  })}
                   {schedule.deleted_at
-                    ? ` · deleted ${formatRelativeTime(schedule.deleted_at)}`
+                    ? ui(" · deleted {value0}", {
+                        value0: formatRelativeTime(schedule.deleted_at, displayLocale),
+                      })
                     : ""}
                 </div>
               </div>
@@ -84,6 +101,7 @@ export function SessionSchedulesSection({
   /** The Files tab already names this pane, so it skips the section heading. */
   showHeading?: boolean;
 }) {
+  const ui = useUiTranslations();
   const { data: schedules, isLoading, error } = useSessionSchedules(sessionId);
 
   if (isLoading) return <Skeleton className="h-24 w-full" />;
@@ -92,13 +110,13 @@ export function SessionSchedulesSection({
     return (
       <div className="flex items-center gap-2 text-destructive">
         <AlertCircle className="h-5 w-5" />
-        <span>{error instanceof Error ? error.message : "Failed to load schedules"}</span>
+        <span>{error instanceof Error ? error.message : ui("Failed to load schedules")}</span>
       </div>
     );
   }
 
   const heading = showHeading ? (
-    <h2 className="text-sm font-medium text-muted-foreground">Schedules</h2>
+    <h2 className="text-sm font-medium text-muted-foreground">{ui("Schedules")}</h2>
   ) : null;
 
   if (!schedules || schedules.length === 0) {
@@ -106,7 +124,7 @@ export function SessionSchedulesSection({
     return (
       <section className="space-y-3">
         {heading}
-        <div className="text-sm text-muted-foreground">This session scheduled no work.</div>
+        <div className="text-sm text-muted-foreground">{ui("This session scheduled no work.")}</div>
       </section>
     );
   }

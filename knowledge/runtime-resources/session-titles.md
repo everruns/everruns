@@ -34,6 +34,9 @@ roll back together. The reservation remains committed on failure. Advisory work
 may be dropped under load or during shutdown; the next eligible turn can try
 again. This deliberately uses bounded process tasks rather than durable queued
 jobs: the feature does not promise eventual generation.
+Reference-only background work can overlap automatic title writes. Conflicting
+session writers still make advisory work yield immediately, preserving explicit
+rename priority without interfering with ordinary trace references.
 The composed listener future has a bounded stack footprint, so model resolution
 and event emission do not exhaust ordinary runtime or test thread stacks.
 

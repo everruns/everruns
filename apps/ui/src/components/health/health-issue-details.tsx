@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -31,6 +32,9 @@ export function HealthIssueDetails({
   issue: HealthIssue;
   canManage?: boolean;
 }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const { currentOrg } = useOrg();
   const { requiresAuth, user } = useAuth();
   const check = useHealthIssueAction("check");
@@ -54,25 +58,25 @@ export function HealthIssueDetails({
   return (
     <section
       className="space-y-4 border border-border bg-card p-4"
-      aria-label="Health issue details"
+      aria-label={ui("Health issue details")}
     >
       <div className="flex items-start gap-3">
         <Icon className={`mt-0.5 size-4 shrink-0 ${resolved ? "text-success" : "text-warning"}`} />
         <div className="min-w-0 space-y-1">
           <h3 className="text-base font-medium">{issue.title}</h3>
           <p className="text-xs text-muted-foreground">
-            {issue.agent_name ?? "Organization"}
-            {config?.team_id ? ` · ${config.team_id}` : ""}
+            {issue.agent_name ?? ui("Organization")}
+            {config?.team_id ? ui(" · {value0}", { value0: config.team_id }) : ""}
           </p>
           <p className="text-sm">{issue.body}</p>
         </div>
       </div>
       {issue.stale && (
         <p className="text-sm text-warning">
-          Verification is unavailable or out of date.{" "}
+          {ui("Verification is unavailable or out of date.")}{" "}
           {resolved
-            ? "Run a fresh check before relying on this previous result."
-            : "The issue remains open until a fresh check succeeds."}
+            ? ui("Run a fresh check before relying on this previous result.")
+            : ui("The issue remains open until a fresh check succeeds.")}
         </p>
       )}
       {resolved && issue.stale && canManage && (
@@ -84,7 +88,7 @@ export function HealthIssueDetails({
             disabled={check.isPending}
             onClick={() => check.mutate(issue.id)}
           >
-            {check.isPending ? "Checking…" : "Check again"}
+            {check.isPending ? ui("Checking…") : ui("Check again")}
           </Button>
           {check.error && (
             <p role="alert" className="text-sm text-destructive">
@@ -95,7 +99,7 @@ export function HealthIssueDetails({
       )}
       {!resolved && issue.missing_scopes.length > 0 && (
         <div className="space-y-2 bg-muted p-3">
-          <p className="text-sm font-medium">Additional permissions</p>
+          <p className="text-sm font-medium">{ui("Additional permissions")}</p>
           <ul className="space-y-2">
             {issue.missing_scopes.map((scope) => (
               <li key={scope} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
@@ -115,15 +119,16 @@ export function HealthIssueDetails({
             disabled={check.isPending}
             onClick={() => check.mutate(issue.id)}
           >
-            {check.isPending ? "Checking…" : "Check again"}
+            {check.isPending ? ui("Checking…") : ui("Check again")}
           </Button>
         </div>
       )}
       {!resolved && !orgIssue && (
         <>
           <p className="text-xs text-muted-foreground">
-            Review and approve the permissions in Slack. Your workspace may require administrator
-            approval. Updating app settings alone does not grant permissions to an installed bot.
+            {ui(
+              "Review and approve the permissions in Slack. Your workspace may require administrator approval. Updating app settings alone does not grant permissions to an installed bot.",
+            )}
           </p>
           {canManage ? (
             <div className="flex flex-wrap gap-2">
@@ -156,12 +161,12 @@ export function HealthIssueDetails({
                     }
                   }}
                 >
-                  {connecting ? "Opening Slack…" : "Reconnect Slack"}
+                  {connecting ? ui("Opening Slack…") : ui("Reconnect Slack")}
                   <ExternalLink className="size-3" />
                 </Button>
               ) : (
                 <LinkButton href={integrationHref} size="sm">
-                  Open integration settings
+                  {ui("Open integration settings")}
                 </LinkButton>
               )}
               <Button
@@ -171,24 +176,24 @@ export function HealthIssueDetails({
                 disabled={check.isPending || connecting}
                 onClick={() => check.mutate(issue.id)}
               >
-                {check.isPending ? "Checking…" : "Check again"}
+                {check.isPending ? ui("Checking…") : ui("Check again")}
               </Button>
             </div>
           ) : (
-            <p className="text-sm">An administrator needs to reconnect this integration.</p>
+            <p className="text-sm">{ui("An administrator needs to reconnect this integration.")}</p>
           )}
           {canManage && !config?.slack_app_provisioned && (
             <p className="text-xs text-muted-foreground">
-              For a manually configured app: add the listed bot scopes in Slack’s OAuth &amp;
-              Permissions settings, reinstall the existing app, and save the refreshed bot token in
-              Everruns.
+              {ui(
+                "For a manually configured app: add the listed bot scopes in Slack’s OAuth & Permissions settings, reinstall the existing app, and save the refreshed bot token in Everruns.",
+              )}
             </p>
           )}
           {connectError && (
             <p role="alert" className="text-sm text-destructive">
               {connectError}{" "}
               <Link className="underline" href={integrationHref}>
-                Configure manually
+                {ui("Configure manually")}
               </Link>
             </p>
           )}
@@ -206,12 +211,13 @@ export function HealthIssueDetails({
                 disabled={snooze.isPending || !!issue.snoozed_until}
                 onClick={() => snooze.mutate(issue.id)}
               >
-                {issue.snoozed_until ? "Reminder snoozed" : "Remind me tomorrow"}
+                {issue.snoozed_until ? ui("Reminder snoozed") : ui("Remind me tomorrow")}
               </Button>
               {issue.snoozed_until && (
                 <p className="text-xs text-muted-foreground">
-                  Snoozed until {new Date(issue.snoozed_until).toLocaleString()}. The issue remains
-                  open.
+                  {ui("Snoozed until")}{" "}
+                  {new Date(issue.snoozed_until).toLocaleString(displayLocale)}
+                  {ui(". The issue remains open.")}
                 </p>
               )}
             </div>
@@ -238,20 +244,20 @@ export function HealthIssueDetails({
               disabled={snooze.isPending || !!issue.snoozed_until}
               onClick={() => snooze.mutate(issue.id)}
             >
-              {issue.snoozed_until ? "Reminder snoozed" : "Remind me tomorrow"}
+              {issue.snoozed_until ? ui("Reminder snoozed") : ui("Remind me tomorrow")}
             </Button>
           )}
         </>
       )}
       <p className="text-xs text-muted-foreground">
-        Detected {new Date(issue.first_detected_at).toLocaleString()} · Last checked{" "}
-        {new Date(issue.last_checked_at).toLocaleString()}
+        {ui("Detected")} {new Date(issue.first_detected_at).toLocaleString(displayLocale)}{" "}
+        {ui("· Last checked")} {new Date(issue.last_checked_at).toLocaleString(displayLocale)}
       </p>
       <details className="text-xs text-muted-foreground">
-        <summary>Technical details</summary>
+        <summary>{ui("Technical details")}</summary>
         <p className="mt-2">
           {issue.code}
-          {issue.error_code ? ` · ${issue.error_code}` : ""}
+          {issue.error_code ? ui(" · {value0}", { value0: issue.error_code }) : ""}
         </p>
       </details>
     </section>

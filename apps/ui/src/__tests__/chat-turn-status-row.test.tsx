@@ -19,6 +19,7 @@ jest.mock("@/hooks", () => ({
 }));
 jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
 jest.mock("@/providers/locale-provider", () => ({
+  ...jest.requireActual("@/providers/locale-provider"),
   useLocale: () => ({ locale: "en", t: (key: string) => key }),
 }));
 jest.mock("@/components/chat/message-info-icon", () => ({ MessageInfoIcon: () => null }));

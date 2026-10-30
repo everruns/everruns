@@ -286,6 +286,16 @@ pub(super) fn matches_current(kind: EntityKind, recorded: &Value, current: &Valu
             );
         }
         if let Some(object) = value.as_object_mut() {
+            // Pre-localization revisions omit the newly defaulted empty map.
+            // Keep nonempty overlays in the comparison to detect concurrent edits.
+            if matches!(kind, EntityKind::Agent | EntityKind::Harness)
+                && object
+                    .get("localizations")
+                    .and_then(Value::as_object)
+                    .is_some_and(Map::is_empty)
+            {
+                object.remove("localizations");
+            }
             for locator in restore_locators(kind) {
                 object.remove(*locator);
             }
@@ -339,6 +349,18 @@ async fn secret_columns(
     };
     let db = &ctx.db;
     match kind {
+        EntityKind::TracingDestination => {
+            match db.tracing_destination(org, id).await.ok().flatten() {
+                Some(row) => Some(vec![(
+                    "authentication",
+                    db.tracing_secrets(org, row.connection_id)
+                        .await
+                        .ok()
+                        .flatten(),
+                )]),
+                None => None,
+            }
+        }
         EntityKind::Provider => db
             .get_provider(org, id)
             .await
@@ -490,6 +512,8 @@ pub fn restore_command(kind: EntityKind) -> Option<(&'static str, &'static str)>
         EntityKind::OrganizationDecision => ("set_default_decision_model", ""),
         EntityKind::UserProfile => ("update_account_profile", "id"),
         EntityKind::OrganizationAccount => ("update_organization_account_name", "id"),
+        EntityKind::TracingPolicy => ("update_tracing_policy", "id"),
+        EntityKind::TracingDestination => ("update_tracing_destination_metadata", "id"),
         EntityKind::SandboxTemplate => ("update_sandbox_template_metadata", "id"),
         EntityKind::Agent => ("update_agent", "id"),
         EntityKind::Harness => ("update_harness", "id"),
@@ -555,6 +579,27 @@ pub(super) fn update_params(command: &str) -> Option<Map<String, Value>> {
     Some(params)
 }
 
+/// Replacement-style commands default omitted settings instead of patching them.
+/// A field inverse must send CURRENT values for every unselected setting.
+pub(super) fn preserve_replacement_fields(
+    kind: EntityKind,
+    entity_ref: &str,
+    params: &mut Value,
+    current: &Value,
+    fields: &[String],
+) -> Result<(), CommandError> {
+    if !matches!(kind, EntityKind::Knowledge | EntityKind::TracingPolicy) {
+        return Ok(());
+    }
+    let (_, preserved) = restore_call(kind, entity_ref, current, current)?;
+    for (field, value) in preserved.as_object().into_iter().flatten() {
+        if !fields.contains(field) {
+            params[field] = value.clone();
+        }
+    }
+    Ok(())
+}
+
 /// `kind`'s update command and the params that make the entity look like
 /// `snapshot`: every snapshot field the command takes, never a secret.
 pub(super) fn restore_call(
@@ -591,7 +636,14 @@ pub(super) fn restore_call(
             && !VOLATILE.contains(&field.as_str())
             && snapshot.get(field).is_none()
         {
-            params.insert(field.clone(), Value::Null);
+            let empty = if field == "localizations"
+                && matches!(kind, EntityKind::Agent | EntityKind::Harness)
+            {
+                serde_json::json!({})
+            } else {
+                Value::Null
+            };
+            params.insert(field.clone(), empty);
         }
     }
     if kind == EntityKind::Provider {

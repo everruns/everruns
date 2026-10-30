@@ -1,5 +1,7 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { ProviderAccountIcon } from "@/components/icons/facet-icons";
 import { useMemo, useState } from "react";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
@@ -22,7 +24,11 @@ import { EmptyState, PageMain } from "@/components/layout";
 // Provider accounts tab. The page header and tabs come from the shell
 // (../sandboxes-shell.tsx).
 export default function SandboxProviderAccountsPage() {
-  usePageTitle("Provider accounts", "Sandboxes");
+  const { displayLocale } = useLocale();
+
+  const requestConfirmation = useConfirmation();
+  const ui = useUiTranslations();
+  usePageTitle(ui("Provider accounts"), ui("Sandboxes"));
   const connections = useOrganizationConnections();
   const { data: allProviders = [] } = useConnectionProviders();
   const providers = useMemo(
@@ -57,7 +63,10 @@ export default function SandboxProviderAccountsPage() {
           isLoading={connections.isLoading}
           error={connections.error}
           emptyState={
-            <EmptyState icon={<ProviderAccountIcon />} title="No organization provider accounts" />
+            <EmptyState
+              icon={<ProviderAccountIcon />}
+              title={ui("No organization provider accounts")}
+            />
           }
         >
           {(accounts) => (
@@ -91,7 +100,7 @@ export default function SandboxProviderAccountsPage() {
                             }
                           }}
                         >
-                          <RefreshCw className="size-3.5" /> Test
+                          <RefreshCw className="size-3.5" /> {ui("Test")}
                         </Button>
                         {provider ? (
                           <Button
@@ -99,19 +108,19 @@ export default function SandboxProviderAccountsPage() {
                             variant="outline"
                             onClick={() => setEditing({ provider, account })}
                           >
-                            Rotate
+                            {ui("Rotate")}
                           </Button>
                         ) : null}
                         <Button
                           size="icon"
                           variant="ghost"
                           disabled={remove.isPending}
-                          aria-label={`Disconnect ${account.name}`}
+                          aria-label={ui("Disconnect {value0}", { value0: account.name })}
                           onClick={async () => {
                             if (
-                              !window.confirm(
+                              !(await requestConfirmation(
                                 `Disconnect ${account.name}? Templates using this account must be changed first.`,
-                              )
+                              ))
                             )
                               return;
                             try {
@@ -128,12 +137,12 @@ export default function SandboxProviderAccountsPage() {
                     }
                     footer={
                       <EntityCardFooter
-                        meta={`Connected ${new Date(account.connected_at).toLocaleDateString()}`}
+                        meta={`Connected ${new Date(account.connected_at).toLocaleDateString(displayLocale)}`}
                       />
                     }
                   >
                     <EntityCardDescription>
-                      Available to Sandbox Templates that explicitly select this account.
+                      {ui("Available to Sandbox Templates that explicitly select this account.")}
                     </EntityCardDescription>
                   </EntityCard>
                 );
@@ -143,7 +152,7 @@ export default function SandboxProviderAccountsPage() {
         </QueryStateWrapper>
 
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Available providers</h2>
+          <h2 className="text-lg font-semibold">{ui("Available providers")}</h2>
           <div className="grid gap-3 xl:grid-cols-2">
             {providers.map((provider) => (
               <div
@@ -158,7 +167,7 @@ export default function SandboxProviderAccountsPage() {
                   </div>
                 </div>
                 <Button variant="outline" onClick={() => setEditing({ provider })}>
-                  <Plus className="size-4" /> Connect
+                  <Plus className="size-4" /> {ui("Connect")}
                 </Button>
               </div>
             ))}

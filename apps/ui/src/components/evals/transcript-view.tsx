@@ -6,6 +6,7 @@
 // shape, not any one provider's event schema, so the same component can grow to
 // render native everruns sessions too.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Badge } from "@/components/ui/badge";
 import type { EvalTranscript } from "@/lib/api/types";
 
@@ -32,6 +33,7 @@ export function TranscriptView({
   transcript?: EvalTranscript;
   metrics?: Record<string, number>;
 }) {
+  const ui = useUiTranslations();
   const hasTranscript =
     transcript &&
     ((transcript.input?.length ?? 0) > 0 ||
@@ -41,13 +43,17 @@ export function TranscriptView({
   const metricEntries = metrics ? Object.entries(metrics) : [];
 
   if (!hasTranscript && metricEntries.length === 0) {
-    return <p className="text-xs text-muted-foreground">No transcript captured for this result.</p>;
+    return (
+      <p className="text-xs text-muted-foreground">
+        {ui("No transcript captured for this result.")}
+      </p>
+    );
   }
 
   return (
     <div className="rounded-md border bg-muted/30 p-3 text-sm">
       {transcript?.input && transcript.input.length > 0 && (
-        <Section title="Input">
+        <Section title={ui("Input")}>
           {transcript.input.map((turn, i) => (
             <div key={i} className="mb-1 whitespace-pre-wrap rounded bg-background p-2 text-sm">
               {turn}
@@ -57,7 +63,7 @@ export function TranscriptView({
       )}
 
       {transcript?.final_response && (
-        <Section title="Final response">
+        <Section title={ui("Final response")}>
           <div className="whitespace-pre-wrap rounded bg-background p-2 text-sm">
             {transcript.final_response}
           </div>
@@ -65,7 +71,7 @@ export function TranscriptView({
       )}
 
       {transcript?.tool_calls && transcript.tool_calls.length > 0 && (
-        <Section title={`Tool calls (${transcript.tool_calls.length})`}>
+        <Section title={ui("Tool calls ({value0})", { value0: transcript.tool_calls.length })}>
           <div className="flex flex-wrap gap-1">
             {transcript.tool_calls.map((tool, i) => (
               <Badge key={`${tool}-${i}`} variant="outline" className="text-xs">
@@ -77,7 +83,7 @@ export function TranscriptView({
       )}
 
       {transcript?.output && transcript.output.length > 0 && (
-        <Section title="Output parts">
+        <Section title={ui("Output parts")}>
           <pre className="overflow-x-auto rounded bg-background p-2 text-xs">
             {JSON.stringify(transcript.output, null, 2)}
           </pre>
@@ -85,7 +91,7 @@ export function TranscriptView({
       )}
 
       {metricEntries.length > 0 && (
-        <Section title="Metrics">
+        <Section title={ui("Metrics")}>
           <div className="flex flex-wrap gap-1">
             {metricEntries.map(([key, value]) => (
               <Badge key={key} variant="secondary" className="text-xs">

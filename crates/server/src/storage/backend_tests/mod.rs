@@ -61,6 +61,7 @@ pub(super) async fn create_session_with_events(db: &StorageBackend) -> SessionId
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: format!("filter-test-agent-{}", Uuid::now_v7().simple()),
                 display_name: Some("Filter Test Agent".to_string()),
@@ -129,6 +130,7 @@ pub(super) async fn create_session_with_content_events(db: &StorageBackend) -> S
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "search-test-agent".to_string(),
                 display_name: Some("Search Test Agent".to_string()),
@@ -271,6 +273,7 @@ pub(super) async fn create_test_agent(
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            localizations: Default::default(),
             public_id: AgentId::new().to_string(),
             name: name.to_string(),
             display_name: Some("Test Agent".to_string()),

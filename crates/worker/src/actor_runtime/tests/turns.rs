@@ -534,6 +534,35 @@ async fn a_turn_that_keeps_killing_its_worker_is_sealed() {
     fixture.assert_idle();
 }
 
+// Production, 2026-10-27: one turn's log grew to ~200 MB encoded, over the
+// gRPC cap, so every lease failed reading it, ahead of the poison guard, and
+// the session re-read the whole turn every few seconds for hours. The guard
+// runs before the read and seals the turn from its first event.
+#[tokio::test]
+async fn a_turn_whose_log_cannot_be_read_is_still_sealed() {
+    let mut fixture = Fixture::new(model("Never.", vec![])).await;
+    fixture.poison_attempts = 1;
+    let (crashing, probe) = fixture.worker("w1");
+    probe.hang_at_flush.store(1, Ordering::SeqCst);
+    fixture.send("Crash.").await;
+    crash_at(&fixture, &crashing, &probe.hung).await;
+    fixture.store.oversize_reads();
+
+    let (next, _) = fixture.worker("w2");
+    let mut leases = 0;
+    while run_once(&next).await {
+        leases += 1;
+        assert!(leases < 5, "the turn keeps being leased");
+        fixture.store.expire(fixture.session_id);
+    }
+
+    let types = fixture.types().await;
+    assert_eq!(fixture.count("turn.started").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.sealed").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.completed").await, 0, "{types:?}");
+    fixture.assert_idle();
+}
+
 // EVE-1301, chaos harness: a PostgreSQL pool exhaustion ended three leases in
 // a row on control-plane errors (harness load, journal read, transport), and
 // the fourth lease sealed the turn as one that keeps killing its worker: the
@@ -1053,4 +1082,42 @@ async fn a_holder_that_dies_before_idling_leaves_the_next_holder_to_idle_the_ses
             fixture.assert_idle();
         }
     }
+}
+
+/// A draining worker hands the lease back between steps instead of holding
+/// the turn until its lease runs out: the next worker leases the actor at once
+/// and finishes the same turn, without running the finished act again.
+#[tokio::test]
+async fn a_draining_worker_hands_the_turn_off_between_steps() {
+    let fixture = Fixture::new(model("Read.", vec![vec![call("c1", "read_inbox")]])).await;
+    fixture.gate.hold_first.store(true, Ordering::SeqCst);
+    let (draining, _) = fixture.worker("w1");
+    fixture.send("Read my inbox.").await;
+
+    let run = {
+        let draining = draining.clone();
+        tokio::spawn(async move { run_once(&draining).await })
+    };
+    tokio::time::timeout(WAIT, fixture.gate.held.notified())
+        .await
+        .expect("the act starts");
+    // Shutdown begins mid-act: the act finishes, the next reason does not.
+    draining.hand_off.store(true, Ordering::SeqCst);
+    fixture.gate.release.notify_one();
+    assert!(run.await.unwrap());
+
+    assert_eq!(fixture.store.hand_offs(), 1);
+    let row = fixture.store.row(fixture.session_id);
+    assert!(row.holder.is_none(), "the lease was handed back");
+    assert!(row.runnable.is_some(), "and the actor is runnable at once");
+    assert_eq!(fixture.count("act.completed").await, 1);
+    assert!(fixture.answers().await.is_empty());
+
+    let (survivor, _) = fixture.worker("w2");
+    assert_eq!(run_until_idle(&survivor).await, 1);
+    assert_eq!(fixture.tool_calls(), vec!["read_inbox"], "never run twice");
+    assert_eq!(fixture.count("turn.started").await, 1, "the same turn");
+    assert_eq!(fixture.count("turn.completed").await, 1);
+    assert_eq!(fixture.answers().await, vec!["Read."]);
+    fixture.assert_idle();
 }
