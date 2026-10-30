@@ -83,9 +83,8 @@ pub struct GrpcClient {
 impl GrpcClient {
     /// Set session status (started, active, idle).
     ///
-    /// Acknowledgement only (EVE-882): the wire response still carries the
-    /// stored record for older workers, but status mutation exposes no
-    /// session record to the caller.
+    /// Acknowledgement only (EVE-882): the response carries no session
+    /// record.
     pub async fn set_session_status(
         &self,
         org_id: i64,
