@@ -32,7 +32,7 @@ async-trait = "0.1"
 # The real shell, so the v2 arm runs the model's script rather than a splitter's
 # guess at it: loops, pipes, redirection and `jq` are the interpreter's, and
 # `everruns` is a builtin in it exactly as the harness ships it.
-bashkit = { version = "0.20.1", default-features = false, features = ["cpython", "jq", "tzdata", "aws-lc-rs"] }
+bashkit = { version = "0.20.2", default-features = false, features = ["cpython", "jq", "tzdata", "aws-lc-rs"] }
 
 # Validate both adapters against the captured canonical operation schema.
 jsonschema = { version = "0.26", default-features = false }

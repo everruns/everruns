@@ -2,7 +2,7 @@
 
 ## 2026-10-30
 
-- Refresh Bashkit to consume the patched Wasmtime runtime without advisory exceptions. See [Bashkit requirements](execution/bashkit-requirements.md).
+- Raise the Bashkit dependency floor to 0.20.2 for Wasmtime 48.0.8 security fixes without advisory exceptions. See [Bashkit requirements](execution/bashkit-requirements.md) and [Dependency Surface](project/dependency-surface.md).
 
 * **MCP resource continuations.** HTTP resource reads share tool-call input
   handling, preserve method/URI and connection identity, isolate consent scope,

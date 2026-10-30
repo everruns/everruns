@@ -1150,9 +1150,9 @@ dependencies = [
 
 [[package]]
 name = "bashkit-scripted-tool"
-version = "0.20.1"
+version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f0558fa65b4cf3c3337e1d3befe5fb187174d2952f7df649d0fefff0f1329f8"
+checksum = "fe4fa21455ed983c66357c2fd4f300d9cdd0c23e979ef9a3a07176d71af6b6ee"
 dependencies = [
  "async-trait",
  "bashkit",

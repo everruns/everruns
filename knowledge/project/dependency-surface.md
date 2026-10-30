@@ -55,9 +55,9 @@ before/after under the constraints in [Build Artifact Size](build-artifact-size.
 
 ## Bashkit runtime dependency
 
-The workspace and standalone shell evals use published Bashkit 0.20.1 or
+The workspace and standalone shell evals use published Bashkit 0.20.2 or
 newer in the same compatible release series. This keeps Wasmtime's security
-fix and the Windows CPython COFF embedding fix together. The corrected
+fixes through 48.0.8 and the Windows CPython COFF embedding fix together. The corrected
 component preserves 64 KiB runtime alignment without requiring an
 unsupported Windows over-aligned static. Python stays enabled in the hosted
 integration catalog.
