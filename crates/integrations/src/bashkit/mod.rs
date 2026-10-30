@@ -1127,6 +1127,13 @@ impl FileSystem for SessionFileSystemAdapter {
 
     async fn rename(&self, from: &Path, to: &Path) -> bashkit::Result<()> {
         let from_session = Self::store_path(from);
+        if self.stat(from).await?.file_type == FileType::Directory {
+            return self
+                .store
+                .rename_directory(self.session_id, &from_session, &Self::store_path(to))
+                .await
+                .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())));
+        }
 
         // Read source file
         let content = self.read_file(from).await?;
@@ -1286,6 +1293,7 @@ impl SearchProvider for SessionSearchProvider {
 
 #[cfg(test)]
 mod tests {
+    mod rename;
     use super::*;
     use crate::bashkit::session_file::FileInfo;
     use crate::bashkit::typed_id::SessionId;
@@ -1326,6 +1334,14 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MockFileStore {
+        async fn rename_directory(
+            &self,
+            session: SessionId,
+            from: &str,
+            to: &str,
+        ) -> everruns_contracts::error::Result<()> {
+            rename::move_directory(self, session, from, to)
+        }
         fn is_mount_resolver(&self) -> bool {
             false
         }
@@ -2343,39 +2359,6 @@ mod tests {
             .unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "file.txt");
-    }
-
-    #[tokio::test]
-    async fn test_adapter_rename_file() {
-        let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
-        let adapter = SessionFileSystemAdapter::new(session_id, store);
-
-        // Write original file
-        adapter
-            .write_file(Path::new("/workspace/old.txt"), b"data")
-            .await
-            .unwrap();
-
-        // Rename it
-        adapter
-            .rename(
-                Path::new("/workspace/old.txt"),
-                Path::new("/workspace/new.txt"),
-            )
-            .await
-            .unwrap();
-
-        // Old file should not exist
-        let old_result = adapter.read_file(Path::new("/workspace/old.txt")).await;
-        assert!(old_result.is_err());
-
-        // New file should have the content
-        let new_content = adapter
-            .read_file(Path::new("/workspace/new.txt"))
-            .await
-            .unwrap();
-        assert_eq!(new_content, b"data");
     }
 
     #[tokio::test]

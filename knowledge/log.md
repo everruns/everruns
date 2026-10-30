@@ -27,6 +27,8 @@
 
 - Excluded permanently redirected announcements from the canonical docs sitemap while preserving their inbound links. See [Documentation Site](ui/documentation.md#sitemap-requirements).
 
+- Route shell and embedded-interpreter directory renames through atomic workspace metadata moves, preserving file identities and rejecting protected trees, mount crossings and destination collisions. See [File Store](runtime-resources/file-store.md).
+
 ## 2026-10-28
 
 - Preserve provider attribution for Knowledge embeddings and retain deployment-owned index operation receipts separately from host pricing. See [Knowledge Indexing and Storage](runtime-resources/knowledge-indexing.md).
