@@ -1126,3 +1126,66 @@ async fn test_agent_trigger_list_filters_by_agent() {
         .unwrap();
     assert_eq!(all.len(), 3);
 }
+
+/// Every API request authenticates with its token, so stamping `last_used_at`
+/// each time made one hot row lock and one waiting commit per request
+/// (2026-10-30 load test: 0.15 average active sessions on that UPDATE alone).
+#[tokio::test]
+async fn test_personal_access_token_use_is_stamped_at_most_once_a_minute() {
+    let db = StorageBackend::test_database();
+    let user = db
+        .create_user(CreateUserRow {
+            email: "pat-touch@example.com".to_string(),
+            name: "Pat Touch".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+    let token = db
+        .create_personal_access_token(CreatePersonalAccessTokenRow {
+            user_id: user.id,
+            name: "touch".to_string(),
+            token_hash: "touch_hash".to_string(),
+            token_prefix: "evr_pat_".to_string(),
+            scopes: vec![],
+            expires_at: None,
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+    let last_used = |db: StorageBackend| async move {
+        db.list_personal_access_tokens_for_user(user.id)
+            .await
+            .unwrap()
+            .remove(0)
+            .last_used_at
+    };
+
+    db.update_personal_access_token_last_used(token.id)
+        .await
+        .unwrap();
+    let first = last_used(db.clone()).await.expect("first use is stamped");
+    db.update_personal_access_token_last_used(token.id)
+        .await
+        .unwrap();
+    assert_eq!(last_used(db.clone()).await, Some(first), "within a minute");
+
+    sqlx::query(
+        "UPDATE personal_access_tokens SET last_used_at = NOW() - INTERVAL '2 minutes' WHERE id = $1",
+    )
+    .bind(token.id)
+    .execute(db.pool())
+    .await
+    .unwrap();
+    db.update_personal_access_token_last_used(token.id)
+        .await
+        .unwrap();
+    let later = last_used(db.clone()).await.unwrap();
+    assert!(later > first, "a use after a minute is stamped again");
+}

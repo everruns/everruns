@@ -77,9 +77,15 @@ impl Database {
         Ok(rows)
     }
 
+    /// Record a use, at most once a minute per token, like `touch_agent_key`.
+    /// Every request authenticates with its token, so an unconditional stamp
+    /// was one row lock and one flushed commit per request on a hot row.
     pub async fn update_personal_access_token_last_used(&self, id: Uuid) -> Result<()> {
-        sqlx::query("UPDATE personal_access_tokens SET last_used_at = NOW() WHERE id = $1")
-            .bind(id)
+        sqlx::query(
+            "UPDATE personal_access_tokens SET last_used_at = NOW()
+             WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '1 minute')",
+        )
+        .bind(id)
             .execute(&self.pool)
             .await?;
 
