@@ -74,8 +74,9 @@ compiled into the binary.
 
 ## Try it
 
-Both examples run offline. Without a model gateway they use a scripted
-simulator, so you need no keys and no network.
+The examples use real models; follow each example's credential requirements.
+The Bashkit workspace walkthrough below uses `OPENAI_API_KEY` and checks
+files across a server restart.
 
 ```sh
 cargo run -p serve-example-revenue-analyst            # dev server on :3000, live console
@@ -101,6 +102,7 @@ credential chain whenever `AWS_REGION` is set.
 | Example | Shows |
 |---|---|
 | [`examples/serve/hello`](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
+| [`examples/serve/bashkit-workspace`](https://github.com/everruns/everruns/tree/main/examples/serve/bashkit-workspace) | Bashkit shell commands, resulting files, persistence across turns and a server restart, and session isolation. Real model; includes an automated walkthrough. |
 | [`examples/serve/revenue-analyst`](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | The full layout: a tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals, and the bashkit sandbox. |
 | [`examples/serve/ag-ui`](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | The `ag-ui` feature: an agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
 | [`examples/serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | The `a2a` feature: a served `researcher`, and an `everruns` agent that delegates to it over A2A. |

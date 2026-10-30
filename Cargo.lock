@@ -8787,6 +8787,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serve-example-bashkit-workspace"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "everruns-serve",
+ "everruns-serve-build",
+ "tokio",
+]
+
+[[package]]
 name = "serve-example-celld"
 version = "0.1.0"
 dependencies = [

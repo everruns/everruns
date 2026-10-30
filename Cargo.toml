@@ -50,6 +50,7 @@ members = [
     "examples/serve/ag-ui",
     "examples/serve/agentcore",
     "examples/serve/agentcore-workspace",
+    "examples/serve/bashkit-workspace",
     "examples/serve/celld",
     "examples/serve/hello",
     "examples/serve/revenue-analyst",

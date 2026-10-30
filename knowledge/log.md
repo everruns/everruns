@@ -21,6 +21,9 @@
 
 - Add outbound MCP client metadata-document negotiation with existing-client precedence and capability-based DCR fallback. See [Runtime MCP](integrations/runtime-mcp.md).
 
+- Added the [Serve Bashkit workspace walkthrough](framework/serve.md), checking
+  shell output, files across turns and a graceful restart, and session isolation.
+
 ## 2026-10-29
 
 - Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.

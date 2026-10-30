@@ -61,8 +61,9 @@ compiled into the binary.
 
 ## Try it
 
-Both examples run offline against a scripted simulator, so no keys or network
-are needed. From a checkout of the repository:
+The examples use real models; follow each example's credential requirements.
+The Bashkit workspace walkthrough below uses `OPENAI_API_KEY` and checks
+files across a server restart. From a checkout of the repository:
 
 ```sh
 cargo run -p serve-example-revenue-analyst            # dev server on :3000 with a live console
@@ -88,6 +89,7 @@ default credential chain whenever `AWS_REGION` is set.
 | Example | Shows |
 | --- | --- |
 | [Hello app](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
+| [Bashkit workspace](https://github.com/everruns/everruns/tree/main/examples/serve/bashkit-workspace) | Shell commands, resulting files, persistence across turns and a server restart, and session isolation. Includes a real-model walkthrough. |
 | [Revenue Analyst](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | A tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals and the Bashkit sandbox. |
 | [AG-UI app](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | An agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
 | [AgentCore app](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore) | The same kind of app packaged for Amazon Bedrock AgentCore Runtime. |

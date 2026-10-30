@@ -208,6 +208,16 @@ and [DO qualification](durable-object-native.md) for tested failure domains.
 
 ## See also
 
+- [Bashkit workspace example](../../examples/serve/bashkit-workspace/README.md):
+  a real-model HTTP walkthrough checks files across turns and a graceful
+  restart with the same build and data directory, plus session isolation.
+  Shell process state is not persistent; workspace files and session stores
+  must both be retained. Selecting Bashkit does not grant workspace writes;
+  the example explicitly scopes its write policy to its disposable demo subtree.
+  The walkthrough does not claim crash-during-write
+  or remote-host durability.
+  [Serve's host tests](../../crates/serve/src/execution_host_tests.rs) cover
+  the storage contract with real Bashkit and a scripted model confined to tests.
 - [Application API Boundaries](application-api.md)
 - [Framework Harnesses](harnesses.md)
 - `crates/serve/README.md`, `crates/serve/docs/`
