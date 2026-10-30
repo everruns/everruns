@@ -20,10 +20,6 @@ from runtime policy. Everruns checks a fresh launch and cleans up disposable com
 
 <iframe src="https://www.youtube-nocookie.com/embed/QyjGHq6LTuw?rel=0" title="Build reusable sandbox snapshots in Everruns" loading="lazy" style="width:100%;aspect-ratio:16/9;border:0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 
-[Watch on YouTube](https://www.youtube.com/watch?v=QyjGHq6LTuw). English captions are available.
-The walkthrough uses the real local app and a live Daytona build. Package installation
-and provider waits are shortened; narration is synthesized with Sarah via ElevenLabs/OpenRouter.
-
 **In code:** The same lifecycle is available through the API and `everruns sandbox-templates builds`.
 Cancel running attempts or discard unused snapshots. Applied artifacts remain retained for older
 pins. Provider credentials stay outside build compute; scripts receive no workload credentials or
