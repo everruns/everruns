@@ -40,7 +40,8 @@ def percentiles(values):
         "count": len(values),
         "mean": sum(values) / len(values),
         **{
-            f"p{p}": values[min(len(values) - 1, int((len(values) - 1) * p / 100))]
+            # Nearest rank: a four-sample p95 must include the slowest request.
+            f"p{p}": values[math.ceil(len(values) * p / 100) - 1]
             for p in [50, 95, 99]
         },
     }

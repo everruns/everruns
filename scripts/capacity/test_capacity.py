@@ -49,6 +49,13 @@ def report():
 
 
 class CapacityTests(unittest.IsolatedAsyncioTestCase):
+    def test_small_sample_percentiles_do_not_hide_the_slowest_quarter(self):
+        from .run import percentiles
+
+        p = percentiles([10, 20, 30, 3000])
+        self.assertEqual(p["p95"], 3000)
+        self.assertEqual(p["p99"], 3000)
+
     def test_failed_turn_diagnostics_do_not_confuse_late_completion_with_loss(self):
         from .run import failed_observation
 

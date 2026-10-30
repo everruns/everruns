@@ -87,6 +87,7 @@ creation quotas because all synthetic clients share one loopback address. These
 settings are recorded; a pass establishes capacity for that topology, not an
 out-of-the-box deployment or its production rate-limit policy.
 
+Percentiles use nearest rank on raw samples, including small smoke populations.
 Steady admission must reach 99.9%, acknowledgment p95 must stay below 500 ms, every
 admitted turn must complete, and persisted inputs must appear exactly once and be
 observed on SSE. A separate durable audit verifies final answer size, tool/LLM
