@@ -102,6 +102,8 @@ sibling-example dependency, external executor or custom turn loop. Its
 checks that dependency boundary. The Worker installs the authority command
 exports from its Engine Wasm and imports the storage service directly, avoiding
 a second reducer upload.
+The chat also minifies its JS glue and strips Wasm name/producer sections;
+these build changes preserve the Agent policy identity.
 
 The Agent identity hashes immutable application policy instead of Framework
 sources and locks. Historical live/review registrations retain that same
@@ -139,8 +141,10 @@ The [walkthrough](../../docs/framework/examples/durable-chat.md) owns setup and
 deployment procedures. Its [workerd suite](../../examples/cloudflare-durable-chat/test/chat-e2e.mjs)
 and [CI](../../.github/workflows/cloudflare-durable-chat.yml) cover retained
 registration/model selection, forks, lost acknowledgements and autonomous
-search/reminder recovery. Platform limits and measured bundle size must be
-reported separately from any project artifact budget.
+search/reminder recovery. Its optional previous-package mode writes journals
+with an earlier Engine before upgrading at a recovery restart, so runtime
+compatibility is tested across actual Wasm artifacts. Platform limits and measured
+bundle size must be reported separately from any project artifact budget.
 
 ## Host requirements
 

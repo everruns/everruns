@@ -19,5 +19,7 @@ JS
 )"
 export AGENT_BUILD_ID="chat-$BUILD_DIGEST"
 cargo build --manifest-path "$APP_ROOT/Cargo.toml" --locked --release --target wasm32-unknown-unknown
-wasm-bindgen "$CARGO_TARGET_DIR/wasm32-unknown-unknown/release/everruns_cloudflare_durable_chat.wasm" --target web --out-dir "$APP_ROOT/pkg"
+# Match the maintained isolate build: debugging sections do not affect exports
+# or the immutable Agent identity.
+wasm-bindgen "$CARGO_TARGET_DIR/wasm32-unknown-unknown/release/everruns_cloudflare_durable_chat.wasm" --target web --remove-name-section --remove-producers-section --out-dir "$APP_ROOT/pkg"
 printf '{"build_id":"%s","framework":1}\n' "$AGENT_BUILD_ID" > "$APP_ROOT/worker/build.json"

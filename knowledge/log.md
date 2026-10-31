@@ -19,6 +19,11 @@
 - Use standard OpenAI endpoint settings in [Serve](framework/serve.md), with
   provider-scoped routing and endpoint-visible model IDs; simplify the Bashkit
   example's first-run instructions.
+* **Chat rebase qualification.** Adopt Framework 0.50 dependencies and the
+  maintained isolate build's minification/debug-section stripping. Add an
+  optional workerd upgrade mode that creates old-Engine journals and switches
+  artifacts during interrupted child recovery. See
+  [The isolate host](framework/wasm-kernel.md).
 
 - Raise the Bashkit dependency floor to 0.20.2 for Wasmtime 48.0.8 security fixes without advisory exceptions. See [Bashkit requirements](execution/bashkit-requirements.md) and [Dependency Surface](project/dependency-surface.md).
 

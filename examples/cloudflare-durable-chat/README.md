@@ -94,6 +94,15 @@ admission. Synthetic model responses exist only in tests. The hosting audit chec
 resolved dependencies and requires Framework Engine, ObjectHosting and the shared
 driver while refusing a custom runner or sibling-example dependency.
 
+To qualify an Engine upgrade, save the previous build's generated `pkg/` outside
+the checkout before building the new revision. Run
+`EVERRUNS_CHAT_UPGRADE_FROM=/absolute/path/to/previous-pkg npm test`.
+The suite creates journals with that package and switches to the current package
+when it restarts the interrupted search. It checks retained history, models,
+registrations, child recovery and subsequent reminders. Run this mode separately
+from bundle checks because it temporarily swaps generated package files and
+restores them on exit.
+
 ## Deploy
 
 Check the complete bundle with `npm run check:bundle`. Cloudflare's

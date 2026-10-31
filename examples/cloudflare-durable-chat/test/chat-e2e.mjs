@@ -2,13 +2,19 @@
 // is confined to this test; the runnable app always calls a real provider.
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { cp, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temp = await mkdtemp(join(tmpdir(), "everruns-chat-"));
+// Optional real upgrade: generate the initial SQLite journals with an earlier
+// Engine package, then restore the newly built package at the recovery restart.
+// Only generated files change; finally restores them even after an assertion.
+const upgradeFrom = process.env.EVERRUNS_CHAT_UPGRADE_FROM;
+const currentPkg = join(temp, "current-pkg");
+let upgradePending = false;
 const port = 24000 + Math.floor(Math.random() * 1000),
   base = `http://127.0.0.1:${port}`;
 const calls = [];
@@ -126,6 +132,7 @@ await new Promise((r) => model.listen(0, "127.0.0.1", r));
 const config = {
   name: "everruns-chat-test",
   main: join(root, "test/worker-fixture.js"),
+  minify: true,
   compatibility_flags: ["nodejs_compat"],
   rules: [{ type: "Text", globs: ["**/*.html"], fallthrough: true }],
   compatibility_date: "2026-10-01",
@@ -253,6 +260,12 @@ async function socket() {
   return { ws, messages };
 }
 try {
+  if (upgradeFrom) {
+    await cp(join(root, "pkg"), currentPkg, { recursive: true });
+    // Set before copying so a partially copied package is also restored.
+    upgradePending = true;
+    await cp(resolve(upgradeFrom), join(root, "pkg"), { recursive: true });
+  }
   processHandle = start();
   await until("Worker ready", () => state(), 90000);
   // Import actual old-format SQLite data; unfinished legacy work is not replayed.
@@ -459,6 +472,13 @@ try {
   );
   await kill();
   b.ws.close();
+  if (upgradePending) {
+    await cp(currentPkg, join(root, "pkg"), { recursive: true });
+    upgradePending = false;
+    console.log(
+      "chat e2e: switched from the previous Engine package to the current build",
+    );
+  }
   slowSearch = false;
   const before = calls.length;
   // Host configuration may change on restart. Existing sessions must reconstruct
@@ -580,6 +600,8 @@ try {
   throw e;
 } finally {
   await kill();
+  if (upgradePending)
+    await cp(currentPkg, join(root, "pkg"), { recursive: true });
   model.close();
   model.closeAllConnections();
   await rm(temp, { recursive: true, force: true });
