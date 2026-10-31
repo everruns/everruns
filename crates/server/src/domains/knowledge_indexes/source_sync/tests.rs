@@ -377,6 +377,7 @@ fn test_driver_registry() -> Arc<DriverRegistry> {
         credential_schema: CredentialFormSchema::empty(),
         base_url_env: None,
         oauth: None,
+        recommended_models: None,
         chat: None,
         provider: None,
         embeddings: Some(Arc::new(|_config| {

@@ -318,6 +318,24 @@ impl MistralModelInfo {
 
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const MISTRAL_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "mistral",
+        recommended_models: &[
+            "mistral-large-4",
+            "magistral-medium-latest",
+            "mistral-medium-latest",
+            "devstral-medium-latest",
+        ],
+        coding_model: "mistral-large-4",
+        research_model: "magistral-medium-latest",
+        chat_model: "mistral-medium-latest",
+        small_model: "devstral-medium-latest",
+        decision_model: "devstral-medium-latest",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Mistral AI".into(),
@@ -328,6 +346,7 @@ pub fn descriptor() -> DriverDescriptor {
              Available models are discovered automatically on sync.",
         ),
         base_url_env: Some("MISTRAL_BASE_URL".into()),
+        recommended_models: Some(MISTRAL_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Mistral, |config| {
             Provider::new(config.provider.clone(), MistralChatDriver::new())
                 .base_url(

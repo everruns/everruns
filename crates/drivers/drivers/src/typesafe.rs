@@ -37,6 +37,7 @@ pub fn descriptor() -> DriverDescriptor {
         ),
         base_url_env: Some("TYPESAFE_BASE_URL".into()),
         oauth: None,
+        recommended_models: None,
         chat: None,
         embeddings: None,
         provider: Some(std::sync::Arc::new(configured)),

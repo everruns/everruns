@@ -561,6 +561,64 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// OpenAI providers also power realtime voice sessions, text embeddings,
 /// and calibrated decisions, so the descriptor declares those services
 /// alongside Chat.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const OPENAI_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "openai",
+        recommended_models: &[
+            "gpt-6.1-sol",
+            "gpt-6.1-terra",
+            "gpt-6-luna",
+            "gpt-6-astra",
+            "gpt-6-luna-decisions",
+        ],
+        coding_model: "gpt-6.1-sol",
+        research_model: "gpt-6-astra",
+        chat_model: "gpt-6-luna",
+        small_model: "gpt-6-luna",
+        decision_model: "gpt-6-luna-decisions",
+    };
+
+/// Curated model recommendations for this provider (Azure mirrors OpenAI's GPT family).
+pub const AZURE_OPENAI_RECOMMENDED:
+    everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "azure_openai",
+        recommended_models: &[
+            "gpt-6.1-sol",
+            "gpt-6.1-terra",
+            "gpt-6-luna",
+            "gpt-6-astra",
+            "gpt-6-luna-decisions",
+        ],
+        coding_model: "gpt-6.1-sol",
+        research_model: "gpt-6-astra",
+        chat_model: "gpt-6-luna",
+        small_model: "gpt-6-luna",
+        decision_model: "gpt-6-luna-decisions",
+    };
+
+/// Curated model recommendations for this provider (legacy completions endpoint,
+/// same GPT family).
+pub const OPENAI_COMPLETIONS_RECOMMENDED:
+    everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "openai_completions",
+        recommended_models: &[
+            "gpt-6.1-sol",
+            "gpt-6.1-terra",
+            "gpt-6-luna",
+            "gpt-6-astra",
+            "gpt-6-luna-decisions",
+        ],
+        coding_model: "gpt-6.1-sol",
+        research_model: "gpt-6-astra",
+        chat_model: "gpt-6-luna",
+        small_model: "gpt-6-luna",
+        decision_model: "gpt-6-luna-decisions",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     #[cfg(not(target_arch = "wasm32"))]
     let openai_embeddings_factory: EmbeddingsDriverFactory = std::sync::Arc::new(|config| {
@@ -610,6 +668,7 @@ pub fn descriptor() -> DriverDescriptor {
         base_url_env: Some("OPENAI_BASE_URL".into()),
         #[cfg(not(target_arch = "wasm32"))]
         embeddings: Some(openai_embeddings_factory),
+        recommended_models: Some(OPENAI_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::OpenAI, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             Provider::new(config.provider.clone(), OpenAIChatDriver::new())
@@ -640,6 +699,7 @@ pub fn azure_descriptor() -> DriverDescriptor {
             "Use an API key for your Azure OpenAI resource and set the resource endpoint as the base URL.",
         ),
         base_url_env: None,
+        recommended_models: Some(AZURE_OPENAI_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::AzureOpenAI, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             Provider::new(config.provider.clone(), OpenAIChatDriver::new())
@@ -667,6 +727,7 @@ pub fn completions_descriptor() -> DriverDescriptor {
             "Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).",
         ),
         base_url_env: Some("OPENAI_BASE_URL".into()),
+        recommended_models: Some(OPENAI_COMPLETIONS_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::OpenAICompletions, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             Provider::new(config.provider.clone(), OpenAICompletionsChatDriver::new())

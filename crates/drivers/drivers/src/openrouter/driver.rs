@@ -212,6 +212,26 @@ fn is_openrouter_api_url(api_url: &str) -> bool {
 /// ```
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const OPENROUTER_RECOMMENDED:
+    everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "openrouter",
+        recommended_models: &[
+            "muse-spark-1.3-contributor",
+            "gpt-6.1-sol",
+            "gpt-6-luna",
+            "gpt-6-astra",
+            "gpt-6-luna-decisions",
+        ],
+        coding_model: "muse-spark-1.3-contributor",
+        research_model: "gpt-6-astra",
+        chat_model: "gpt-6-luna",
+        small_model: "gpt-6-luna",
+        decision_model: "gpt-6-luna-decisions",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         services: vec![
@@ -241,6 +261,7 @@ pub fn descriptor() -> DriverDescriptor {
         // user-controlled API key, so an admin can connect without minting and
         // pasting a key manually. The key is stored like any other credential.
         oauth: Some(everruns_contracts::DriverOAuthConfig::openrouter()),
+        recommended_models: Some(OPENROUTER_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::OpenRouter, |config| {
             Provider::new(config.provider.clone(), OpenRouterChatDriver::new())
                 .base_url(

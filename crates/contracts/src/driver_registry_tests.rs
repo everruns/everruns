@@ -446,6 +446,7 @@ fn registry_distinguishes_missing_driver_from_missing_chat_service() {
         credential_schema: CredentialFormSchema::empty(),
         base_url_env: None,
         oauth: None,
+        recommended_models: None,
         chat: None,
         embeddings: None,
     });
