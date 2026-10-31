@@ -48,6 +48,14 @@ def affected(packages, paths, root):
 
 def risk_filters(paths):
     filters = set()
+    if any(p.startswith(('crates/server/src/api/mcp_endpoint/',
+                         'crates/server/src/services/command_catalog/',
+                         'crates/server/tests/domain/mcp_endpoint_test'))
+           or p in ('crates/server/src/worker_link/platform_command_surface.rs',
+                    '.github/scripts/ci/focused.py') for p in paths):
+        # Exercise the real transport, discovery and tenant boundaries, not
+        # only the shared command catalog or generated API descriptions.
+        filters.add('mcp_endpoint_test::')
     if any(p.startswith(('crates/server/src/domains/change_history/',
                          'crates/server/src/storage/entity_changes',
                          'crates/server/src/storage/manager_context',

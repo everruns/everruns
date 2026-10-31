@@ -202,6 +202,27 @@ class Policy(unittest.TestCase):
                 self.assertIn('domain', command)
                 self.assertIn('--lib', command)
 
+    def test_mcp_changes_run_endpoint_and_tenant_contracts(self):
+        paths = [
+            'crates/server/src/api/mcp_endpoint/mod.rs',
+            'crates/server/src/api/mcp_endpoint/resources.rs',
+            'crates/server/src/services/command_catalog/catalog.rs',
+            'crates/server/src/worker_link/platform_command_surface.rs',
+            'crates/server/tests/domain/mcp_endpoint_test.rs',
+            'crates/server/tests/domain/mcp_endpoint_test/tasks.rs',
+            '.github/scripts/ci/focused.py',
+        ]
+        server = dict(id='server', name='everruns-server',
+                      manifest_path='/repo/crates/server/Cargo.toml',
+                      dependencies=[], targets=[{'kind': ['lib']}])
+        for path in paths:
+            with self.subTest(path=path):
+                selection = focused.select(
+                    {'packages': [server], 'workspace_members': ['server']},
+                    [path], Path('/repo'))['include'][0]
+                self.assertIn('mcp_endpoint_test::', selection['risk_filters'])
+                self.assertIn('domain', next(focused.commands(selection)))
+
     def test_history_changes_cover_rest_and_command_revision_contracts(self):
         for path in ['crates/server/src/domains/change_history/mod.rs',
                      'crates/server/src/domains/change_history/snapshot.rs',
