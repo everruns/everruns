@@ -1,22 +1,22 @@
-version: 0.49.0
-date: 2026-10-26
+version: 0.50.0
+date: 2026-10-30
 headline:
-  - Thousands of
-  - MCP tools.
+  - Customer-hosted
+  - agent workers.
 summary:
-  - Agent source syncs with GitHub.
-  - Helm chart and everruns docker up.
-  - Sandbox network policy on Daytona and E2B.
+  - System health doctor checks the install.
+  - Sandbox snapshots from install scripts.
+  - Agent cost estimates, Framework batches.
 highlights:
-  - title: Thousands of MCP tools
-    description: MCP servers with 2,000+ tools; long tool calls run as MCP Tasks.
-    source: "#4870"
-  - title: GitHub sync
-    description: Agent source syncs from GitHub, and edits in Everruns commit back.
-    source: "#4919"
-  - title: Scoped credentials
-    description: Write-only credentials bound to a user, agent, session or organization.
-    source: "#4828"
-  - title: Knowledge
-    description: Notes, source trees and files in one Knowledge feature, with optional search.
-    source: "#4886"
+  - title: Customer-hosted workers
+    description: Your own agent runtime over HTTPS, with Everruns sessions and traces.
+    source: "#5057"
+  - title: System health
+    description: One report checks every part of a self-hosted install.
+    source: "#4971"
+  - title: Sandbox snapshot builder
+    description: Sandbox snapshots built from install scripts on Daytona and verified.
+    source: "#5040"
+  - title: Cost estimates
+    description: Per-task and monthly model spend from an agent's configuration.
+    source: "#5050"
