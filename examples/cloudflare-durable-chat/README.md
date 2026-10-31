@@ -8,6 +8,13 @@ with shared conversations, forks, reminders and a recoverable history-search chi
 [Open the Cloudflare demo](https://everruns-durable-chat.everruns.workers.dev/)
 · [Read the walkthrough](../../docs/framework/examples/durable-chat.mdx)
 
+[Watch the 55-second demo](https://everruns-durable-chat-video.everruns.workers.dev/)
+· [Download the MP4](https://everruns-durable-chat-video.everruns.workers.dev/walkthrough.mp4)
+
+The recording shows shared chat, a committed fork, cited history search and a
+reminder running with browsers closed. It uses real Muse responses in two fresh
+demo rooms, shortened waits, synthesized Sarah narration and English captions.
+
 ## See it in action
 
 ![Alice and Bob share a chat room and the assistant recalls their PostgreSQL decision.](../../docs/framework/examples/durable-chat-shared.png)
