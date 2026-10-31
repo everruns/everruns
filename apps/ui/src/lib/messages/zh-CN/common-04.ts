@@ -1,5 +1,6 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  "Loading page": "正在加载页面",
   "Step {current} of {total}": "{total} 的步骤 {current}",
   "Step {current} / {total}": "步骤 {current} / {total}",
   "Every step persisted: agents that survive restarts, deploys, and outages.":
