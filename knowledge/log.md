@@ -2,11 +2,14 @@
 
 ## 2026-10-31
 
+- Added opt-in local skill inspection with content- and origin-bound reports, revalidated activation receipts, and explicit heuristic limits. See [Skills Registry](project/skills-registry.md#opt-in-persistent-instruction-inspection).
+- Extended the shared inspector into Yolop's approved memory writes and selected recalls, with title-only automatic disclosure and no body-derived disclosure. Hosted memory mount integration remains separate.
+
 - Record the admission/idempotency crash boundary exposed by authenticated recovery benchmarks; failed recovery remains a failed result. See [Load Testing](operations/load-testing.md).
 
-## 2026-10-30
-
 - Preserve saved answer identity and workload counters when a worker resumes between the answer and turn completion. See [Sans-IO Turn State](foundations/sans-io-turn-state.md).
+
+## 2026-10-30
 
 - Raise the Bashkit dependency floor to 0.20.2 for Wasmtime 48.0.8 security fixes without advisory exceptions. See [Bashkit requirements](execution/bashkit-requirements.md) and [Dependency Surface](project/dependency-surface.md).
 
