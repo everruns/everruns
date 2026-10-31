@@ -156,6 +156,11 @@ def turns(rows: list[list[str]]) -> list[dict]:
     return out
 
 
+def measured(ts: list[dict], since_ms: float) -> list[dict]:
+    """Turns that started once the load began, leaving out the warm-up."""
+    return [t for t in ts if t["start"] >= since_ms]
+
+
 def pct(values, p):
     values = sorted(v for v in values if v is not None)
     if not values:

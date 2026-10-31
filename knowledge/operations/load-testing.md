@@ -417,6 +417,11 @@ stays the final check after a deploy.
   persisted events, with the same definitions as the hosted runs. Database load
   is sampled from `pg_stat_activity` twice a second, as average and peak active
   sessions split by wait event, the shape RDS Performance Insights reports.
+- **Warm-up.** One session and turn run before anything is measured. The first
+  session on a fresh database creates the user's principals; hundreds of
+  sessions starting together all miss that read and queue on one row lock, a
+  first-use cost a long-lived database never pays. Background work is then
+  measured idle for `--idle-seconds` and subtracted from the per-turn numbers.
 - **Prod-shaped mode.** `--cpus postgres=0,server=1-2,worker=3` pins each role
   with `taskset`. `--fsync-delay-ms` preloads a shim (`fsync_delay.c`) that
   delays every PostgreSQL `fsync` and `fdatasync`, so commits pay a

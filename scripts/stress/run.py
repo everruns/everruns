@@ -196,6 +196,12 @@ def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int,
         topo.require_shared_event_delivery()
         model_ids, _ = chaos_fixtures()(Api(topo.base_urls), a)
         procs = {"server": [s.popen.pid for s in topo.servers], "worker": [w.popen.pid for w in topo.workers]}
+        # One session and turn before measuring: the first session on a fresh
+        # database creates the user's principals, and hundreds racing to do
+        # that queue on one row lock, a cost production never pays per turn.
+        warm = argparse.Namespace(**{**vars(a), "sessions": 1, "messages": 1, "think": 0.0})
+        os.makedirs(os.path.join(out_dir, "warm-up"), exist_ok=True)
+        drive(warm, topo.base_urls[:1], model_ids["instant"], os.path.join(out_dir, "warm-up"))
         # Idle first: background work of every process (leases, sweeps) is
         # charged per second, so per-turn numbers do not shrink just because
         # a bigger run spreads the same background over more turns.
@@ -209,12 +215,12 @@ def run_point(args, point, pg: infra.Postgres, valkey_port: int, nats_port: int,
         before = metrics.counters(pg, procs)
         sampler = metrics.Sampler(pg, procs)
         sampler.start()
-        t0 = time.monotonic()
+        t0, load_start_ms = time.monotonic(), time.time() * 1000
         drivers = drive(a, topo.base_urls, model_ids["instant"], out_dir)
         elapsed = time.monotonic() - t0
         load = sampler.stop()
         after = metrics.counters(pg, procs)
-        ts = metrics.turns(metrics.turn_rows(pg))
+        ts = metrics.measured(metrics.turns(metrics.turn_rows(pg)), load_start_ms)
         summary = metrics.turn_summary(ts)
         result = {
             "label": label(point),
