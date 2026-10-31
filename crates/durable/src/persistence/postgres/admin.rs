@@ -155,10 +155,7 @@ impl DurableAdmin for PostgresWorkflowEventStore {
         .bind(heartbeat_threshold)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to get system health");
-            StoreError::Database(e.to_string())
-        })?;
+        .map_err(|e| store_failure("durable.admin.system_health", "Failed to get system health", e))?;
 
         Ok(SystemHealth {
             total_workers: row.get::<i64, _>("total_workers") as usize,

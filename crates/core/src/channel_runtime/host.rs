@@ -1011,7 +1011,9 @@ impl ChannelHost {
                 match host.recover().await {
                     Ok(0) => {}
                     Ok(resumed) => debug!(resumed, "channel: resumed pending deliveries"),
-                    Err(error) => warn!(%error, "channel: recovery failed"),
+                    Err(error) => {
+                        crate::report_repeated_failure!(warn, %error, "channel: recovery failed")
+                    }
                 }
             }
         })

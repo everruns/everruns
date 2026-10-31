@@ -80,7 +80,7 @@ pub fn spawn_reporting_background_task(db: Arc<StorageBackend>) -> Vec<JoinHandl
                     }
                     Ok(_) => {}
                     Err(error) => {
-                        tracing::error!(%error, "Reporting projector run failed");
+                        everruns_core::report_repeated_failure!(error, %error, "Reporting projector run failed");
                     }
                 }
             }

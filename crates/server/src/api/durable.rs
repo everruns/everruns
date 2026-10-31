@@ -145,7 +145,7 @@ impl AppState {
                         let health = match s.get_system_health().await {
                             Ok(h) => h,
                             Err(e) => {
-                                tracing::error!("Metrics sampler: failed to get health: {}", e);
+                                everruns_core::report_repeated_failure!(error, error = %e, "Metrics sampler: failed to get health");
                                 continue;
                             }
                         };
@@ -991,7 +991,7 @@ pub async fn get_health(
 ) -> ApiResult<HealthResponse> {
     let store = state.get_store()?;
     let health = store.get_system_health().await.map_err(|e| {
-        tracing::error!("Failed to get system health: {}", e);
+        everruns_core::report_repeated_failure!(error, error = %e, "Failed to get system health");
         ErrorResponse::new("Internal server error".to_string())
             .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;

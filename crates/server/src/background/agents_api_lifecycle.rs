@@ -324,7 +324,9 @@ pub fn spawn_agents_api_lifecycle_task(
             match drain_deletions(&pool, deleter.as_ref()).await {
                 Ok(0) => {}
                 Ok(deleted) => tracing::info!(deleted, "Agents API provider sessions deleted"),
-                Err(error) => tracing::warn!(%error, "Agents API deletion pass failed"),
+                Err(error) => {
+                    everruns_core::report_repeated_failure!(warn, %error, "Agents API deletion pass failed")
+                }
             }
         }
     }))

@@ -31,7 +31,7 @@ impl WorkerServiceImpl {
             .claim_task(&req.worker_id, &req.activity_types, req.max_tasks as usize)
             .await
             .map_err(|e| {
-                tracing::warn!(error = %e, "Failed to claim tasks");
+                everruns_core::report_repeated_failure!(warn, error = %e, "Failed to claim tasks");
                 Status::internal("Failed to claim tasks")
             })?;
 
@@ -292,7 +292,7 @@ impl WorkerServiceImpl {
             )
             .await
             .map_err(|e| {
-                tracing::warn!(worker_id = %req.worker_id, error = %e, "Failed to heartbeat worker");
+                everruns_core::report_repeated_failure!(warn, worker_id = %req.worker_id, error = %e, "Failed to heartbeat worker");
                 Status::internal("Failed to heartbeat worker")
             })?;
 

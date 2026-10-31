@@ -136,7 +136,10 @@ impl ValkeyClient {
         {
             Ok(result) => result,
             Err(e) => {
-                tracing::error!(
+                // Callers fail open, so this line is the evidence the limiter
+                // stopped enforcing: bounded, never dropped (EVE-1328).
+                everruns_core::report_repeated_failure!(
+                    error,
                     error = %e,
                     key = %key,
                     "Valkey rate limit check failed"
@@ -172,7 +175,8 @@ impl ValkeyClient {
         {
             Ok(value) => value,
             Err(e) => {
-                tracing::error!(
+                everruns_core::report_repeated_failure!(
+                    error,
                     error = %e,
                     key = %key,
                     "Valkey nonce SET NX failed"

@@ -328,6 +328,12 @@ everruns_core::plugins::manifest::StringOrArray::Single	variant
 everruns_core::plugins::manifest::parse_agent_plugins_v1_manifest	function
 everruns_core::provider_resolution	module
 everruns_core::provider_resolution::ProviderStore	trait
+everruns_core::report_repeated_failure	macro
+everruns_core::report_throttle	module
+everruns_core::report_throttle::REPEATED_FAILURES	static
+everruns_core::report_throttle::REPEATED_FAILURE_REPORT_INTERVAL	constant
+everruns_core::report_throttle::ReportThrottle	struct
+everruns_core::report_throttle::ReportThrottle::admit_at	function
 everruns_core::runtime_context	module
 everruns_core::runtime_context::AssembledTurnContext	struct
 everruns_core::runtime_context::ResolvedModelExecution	struct

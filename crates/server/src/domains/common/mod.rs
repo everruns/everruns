@@ -217,7 +217,7 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
         return CommandError::not_found(nf.resource());
     }
     if crate::errors::is_database_pool_exhausted(&e) {
-        tracing::warn!(error = ?e, "database request pool exhausted");
+        everruns_core::report_repeated_failure!(warn, error = ?e, "database request pool exhausted");
         return CommandError::unavailable(crate::errors::DATABASE_POOL_EXHAUSTED_DETAIL)
             .with_code(crate::errors::DATABASE_POOL_EXHAUSTED_CODE)
             .with_retry_after(crate::errors::DATABASE_POOL_RETRY_AFTER_SECONDS);
