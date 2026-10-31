@@ -17,6 +17,7 @@
 //! assert_eq!(FileSystemCapability.id(), "session_file_system");
 //! ```
 
+mod edit_diagnostics;
 mod inline_media;
 mod stable_tools;
 
@@ -738,7 +739,7 @@ fn plan_text_edits(
     let line_ending = detect_line_ending(body);
     let mut planned = Vec::with_capacity(edits.len());
 
-    for edit in edits {
+    for (index, edit) in edits.iter().enumerate() {
         let old_text = align_to_file_line_endings(
             edit.old_text
                 .strip_prefix('\u{feff}')
@@ -754,9 +755,12 @@ fn plan_text_edits(
 
         let mut matches = body.match_indices(&old_text);
         let Some((start, _)) = matches.next() else {
-            return Err(format!(
-                "Could not find an exact match for old_text: '{}'",
-                truncate_snippet(&old_text, 80)
+            return Err(edit_diagnostics::missing_match(
+                body,
+                &old_text,
+                &new_text,
+                line_ending,
+                index + 1,
             ));
         };
         if matches.next().is_some() {
@@ -1666,7 +1670,7 @@ impl Tool for EditFileTool {
             Ok(result) => result,
             Err(error) if rebased => {
                 return ToolExecutionResult::tool_error(format!(
-                    "File '{}' changed since the last read (expected {}, found {}) and the edits conflict with its current content: {}. Read the file again before editing.",
+                    "File '{}' changed since the last read (expected {}, found {}) and the edits conflict with its current content: {}",
                     display_path, expected_hash, current_hash, error
                 ));
             }
@@ -2353,6 +2357,8 @@ impl Tool for StatFileTool {
 
 #[cfg(test)]
 mod tests {
+    mod edit_diagnostics_tests;
+
     use self::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
     use self::tool_types::ToolCall;
     use super::*;
@@ -3584,34 +3590,6 @@ mod tests {
             value["content_hash"].as_str().unwrap(),
             value["previous_content_hash"].as_str().unwrap()
         );
-    }
-
-    #[tokio::test]
-    async fn test_edit_file_batch_replace_success() {
-        let store = Arc::new(MockFileStore::default());
-        store.add_text_file("/batch.txt", "one\ntwo\nthree\n");
-        let context = make_context(store.clone());
-        let expected_hash = read_hash(&context, "/workspace/batch.txt").await;
-
-        let result = EditFileTool
-            .execute_with_context(
-                json!({
-                    "path": "/workspace/batch.txt",
-                    "expected_hash": expected_hash,
-                    "edits": [
-                        {"old_text": "one", "new_text": "ONE"},
-                        {"old_text": "three", "new_text": "THREE"}
-                    ]
-                }),
-                &context,
-            )
-            .await;
-        let value = expect_success(result);
-
-        assert_eq!(store.content("/batch.txt").unwrap(), "ONE\ntwo\nTHREE\n");
-        assert_eq!(value["applied_edits"], 2);
-        assert_eq!(value["rebased"], false);
-        assert_eq!(value["first_changed_line"], 1);
     }
 
     #[tokio::test]
