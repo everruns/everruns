@@ -8419,6 +8419,26 @@ export interface paths {
     patch: operations["update_own_virtual_user_profile"];
     trace?: never;
   };
+  "/v1/work-chat/hosts/{label}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get work chat by host
+     * @description Public bootstrap for the live Work Chat published at this hostname.
+     */
+    get: operations["get_work_chat_by_host"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/workspaces": {
     parameters: {
       query?: never;
@@ -54532,6 +54552,35 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["VirtualUser"];
         };
+      };
+    };
+  };
+  get_work_chat_by_host: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        label: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description No live Work Chat uses this hostname */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
