@@ -75,6 +75,76 @@ test("each reply receives the work from its own user turn", () => {
   assert.equal(logs.get("a1")?.length, 1);
   assert.equal((logs.get("a2")?.[0].data.tool_call as { id: string }).id, "tool2");
 });
+test("a replay that appends an earlier turn does not merge its work into the next", () => {
+  const events: ChatEvent[] = [
+    {
+      sequence: 4,
+      type: "input.message",
+      data: {
+        message: { id: "u2", role: "user", content: [{ type: "text", text: "Give me a joke" }] },
+      },
+    },
+    {
+      sequence: 1,
+      type: "input.message",
+      data: {
+        message: { id: "u1", role: "user", content: [{ type: "text", text: "What do we see?" }] },
+      },
+    },
+    {
+      sequence: 2,
+      type: "tool.started",
+      data: { tool_call: { id: "read1", name: "read_file" }, narration: "Reading the page" },
+    },
+    {
+      sequence: 3,
+      type: "conversation.message",
+      data: { message_id: "a1", text: "It's the About panel." },
+    },
+    {
+      sequence: 5,
+      type: "tool.started",
+      data: {
+        tool_call: { id: "send", name: "send_message" },
+        narration: "Sending message: Why don't skeletons fight?",
+      },
+    },
+    {
+      sequence: 6,
+      type: "tool.completed",
+      data: { tool_call_id: "send", tool_name: "send_message", display_name: "Send message" },
+    },
+    {
+      sequence: 7,
+      type: "tool.started",
+      data: { tool_call: { id: "read2", name: "web_search" }, narration: "Searching" },
+    },
+    {
+      sequence: 8,
+      type: "output.message.delta",
+      data: { message_id: "a1", delta: " should not steal the next turn" },
+    },
+  ];
+  assert.deepEqual(
+    conversationMessages(events).map((message) => message.id),
+    ["u1", "a1", "u2"],
+  );
+  const { logs, byUser, pending } = workForMessages(events);
+  assert.deepEqual(
+    logs.get("a1")?.map((event) => (event.data.tool_call as { id: string }).id),
+    ["read1"],
+  );
+  assert.deepEqual(
+    byUser.get("u1")?.map((event) => (event.data.tool_call as { id: string }).id),
+    ["read1"],
+  );
+  assert.deepEqual(
+    byUser.get("u2")?.map((event) => (event.data.tool_call as { name: string }).name),
+    ["web_search"],
+  );
+  assert.equal(pending.length, 1);
+  assert.equal((pending[0].data.tool_call as { id: string }).id, "read2");
+});
 
 test("artifact URLs decode file names once and stay on workspace mounts", () => {
   assert.equal(artifactPath("/workspace/my%20report.md#summary"), "/workspace/my report.md");

@@ -1,4 +1,5 @@
 "use client";
+import { orderedEvents } from "./transcript";
 export type ChatEvent = {
   id?: string;
   sequence?: number;
@@ -23,20 +24,39 @@ function replyId(event: ChatEvent) {
   return typeof id === "string" ? id : undefined;
 }
 
+function userMessageId(event: ChatEvent) {
+  const message = event.data.message as { id?: string } | undefined;
+  const id = message?.id ?? event.id;
+  return typeof id === "string" && id ? id : undefined;
+}
+
 export function workForMessages(events: ChatEvent[]) {
   const logs = new Map<string, ChatEvent[]>();
+  const byUser = new Map<string, ChatEvent[]>();
   let current: ChatEvent[] = [];
-  for (const event of events) {
-    if (event.type === "input.message") current = [];
+  let userId: string | undefined;
+  // A reply id belongs to the turn that produced it. A later delta must not
+  // replace that turn's work with the next turn's tools.
+  const closed = new Set<string>();
+  for (const event of orderedEvents(events)) {
+    if (event.type === "input.message") {
+      for (const id of logs.keys()) closed.add(id);
+      current = [];
+      userId = userMessageId(event);
+      if (userId) byUser.set(userId, []);
+      continue;
+    }
     if (
       (event.type === "tool.started" || event.type === "tool.completed") &&
       !COMMUNICATION.has(toolName(event))
-    )
+    ) {
       current.push(event);
+      if (userId) byUser.set(userId, [...current]);
+    }
     const id = replyId(event);
-    if (id) logs.set(id, [...current]);
+    if (id && !closed.has(id)) logs.set(id, [...current]);
   }
-  return { logs, pending: current };
+  return { logs, byUser, pending: current };
 }
 export function WorkLog({ events, running = false }: { events: ChatEvent[]; running?: boolean }) {
   const steps = new Map<string, { label: string; done: boolean; failed: boolean }>();

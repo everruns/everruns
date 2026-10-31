@@ -20,6 +20,8 @@ The person already has the text, so the chat does not wait on another model
 call to repeat it. Tools that still need to run belong in that same step, or
 before the message.
 
+Earlier work stays on its own question when a live update arrives out of order.
+
 See [Work Chat](/features/channels/#work-chat) and
 [Explicit communication](/features/explicit-communication/).
 

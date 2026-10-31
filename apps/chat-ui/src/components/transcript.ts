@@ -6,6 +6,20 @@ export type ChatEvent = {
   data: Record<string, unknown>;
 };
 export type Message = { id: string; role: string; text: string };
+
+// Live reconnects append a replay at the end. Sequence order is what separates
+// one turn's work from the next.
+export function orderedEvents(events: ChatEvent[]): ChatEvent[] {
+  return events
+    .map((event, index) => ({ event, index }))
+    .sort((a, b) => {
+      const as = a.event.sequence;
+      const bs = b.event.sequence;
+      if (typeof as === "number" && typeof bs === "number" && as !== bs) return as - bs;
+      return a.index - b.index;
+    })
+    .map(({ event }) => event);
+}
 function messageOf(event: ChatEvent): Message | null {
   if (event.type === "conversation.message") {
     const text = typeof event.data.text === "string" ? event.data.text : "";
@@ -34,7 +48,7 @@ function messageOf(event: ChatEvent): Message | null {
 }
 export function conversationMessages(events: ChatEvent[]): Message[] {
   const messages = new Map<string, Message>();
-  for (const event of events) {
+  for (const event of orderedEvents(events)) {
     const message = messageOf(event);
     if (message) {
       messages.set(message.id, message);

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageContent } from "./message-content";
 import { FilePreview, downloadFile } from "./file-preview";
 import { WorkLog, workForMessages } from "./work-log";
-import { conversationMessages } from "./transcript";
+import { conversationMessages, orderedEvents } from "./transcript";
 import { SharedChat } from "./shared-chat";
 import { consumeSse, streamFailure } from "../client/sse";
 import { presentViewer, type Viewer } from "../profile";
@@ -592,9 +592,10 @@ function WorkChat({ config }: { config: Config }) {
     }
     setUpload(files);
   };
-  const messages = conversationMessages(events);
-  const turnWork = workForMessages(events);
-  const turnState = events.findLast((event) =>
+  const ordered = orderedEvents(events);
+  const messages = conversationMessages(ordered);
+  const turnWork = workForMessages(ordered);
+  const turnState = ordered.findLast((event) =>
     ["turn.started", "turn.completed", "turn.failed", "turn.cancelled"].includes(event.type),
   );
   const running = turnState
@@ -848,47 +849,59 @@ function WorkChat({ config }: { config: Config }) {
               </p>
             </div>
           )}
-          {messages.map((message) => (
-            <article
-              key={message.id}
-              className={message.role === "user" ? "message user" : "message assistant"}
-            >
-              <span className="sr-only">{message.role}</span>
-              {message.role !== "user" && <WorkLog events={turnWork.logs.get(message.id) ?? []} />}
-              <MessageContent
-                text={message.text}
-                streaming={running && message.id === messages.at(-1)?.id}
-                onMessage={
-                  !session?.archived && !running && !busy
-                    ? (text) => send(text, { fromWidget: true })
-                    : undefined
-                }
-                onFile={
-                  config.features.files
-                    ? (path) => {
-                        setPanel("files");
-                        void browse(path);
-                      }
-                    : undefined
-                }
-              />
-              {message.role !== "user" && (
-                <button
-                  className="copy-message"
-                  aria-label="Copy message"
-                  onClick={() =>
-                    navigator.clipboard
-                      .writeText(message.text)
-                      .then(() => setNotice("Message copied."))
-                      .catch(fail)
-                  }
+          {messages.map((message, index) => {
+            const next = messages[index + 1];
+            const ownWork =
+              message.role === "user" && next?.role !== "assistant"
+                ? (turnWork.byUser.get(message.id) ?? [])
+                : [];
+            return (
+              <div key={message.id}>
+                <article
+                  className={message.role === "user" ? "message user" : "message assistant"}
                 >
-                  Copy
-                </button>
-              )}
-            </article>
-          ))}
-          {running && <WorkLog events={turnWork.pending} running />}
+                  <span className="sr-only">{message.role}</span>
+                  {message.role !== "user" && (
+                    <WorkLog events={turnWork.logs.get(message.id) ?? []} />
+                  )}
+                  <MessageContent
+                    text={message.text}
+                    streaming={running && message.id === messages.at(-1)?.id}
+                    onMessage={
+                      !session?.archived && !running && !busy
+                        ? (text) => send(text, { fromWidget: true })
+                        : undefined
+                    }
+                    onFile={
+                      config.features.files
+                        ? (path) => {
+                            setPanel("files");
+                            void browse(path);
+                          }
+                        : undefined
+                    }
+                  />
+                  {message.role !== "user" && (
+                    <button
+                      className="copy-message"
+                      aria-label="Copy message"
+                      onClick={() =>
+                        navigator.clipboard
+                          .writeText(message.text)
+                          .then(() => setNotice("Message copied."))
+                          .catch(fail)
+                      }
+                    >
+                      Copy
+                    </button>
+                  )}
+                </article>
+                {ownWork.length > 0 && (
+                  <WorkLog events={ownWork} running={running && index === messages.length - 1} />
+                )}
+              </div>
+            );
+          })}
           {!!work.length && (
             <div className="work-chips">
               {work.slice(0, 8).map((task) => (
