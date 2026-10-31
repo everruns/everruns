@@ -124,12 +124,14 @@ impl ModelSyncService {
             .list_models_for_provider(org_id, provider_id)
             .await?;
         for entry in decision_entries {
-            let wire_id =
-                if provider_row.provider_type == "openrouter" && entry.model_id == "jev-1.13.0" {
-                    "typesafe/jev-1.13".to_string()
-                } else {
-                    entry.model_id
-                };
+            let wire_id = if provider_row.provider_type == "openrouter" {
+                everruns_contracts::model_profile_data::openrouter_decision_model_id(
+                    &entry.model_id,
+                )
+                .to_owned()
+            } else {
+                entry.model_id
+            };
             if !existing.iter().any(|model| model.model_id == wire_id) {
                 self.db
                     .create_model(

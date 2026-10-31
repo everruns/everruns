@@ -122,3 +122,62 @@ fn noul_criteria_are_omitted_or_complete_on_the_wire() {
         "{half}"
     );
 }
+
+#[tokio::test]
+async fn jev_1_14_and_latest_use_exact_account_wire_ids() {
+    for (model, wire) in [
+        ("jev-1.14.0", "typesafe/jev-1.14"),
+        ("typesafe/jev-1.14", "typesafe/jev-1.14"),
+        ("jev-latest", "~typesafe/jev-latest"),
+        ("typesafe/jev-latest", "~typesafe/jev-latest"),
+        ("~typesafe/jev-latest", "~typesafe/jev-latest"),
+        ("other/jev-1.14.0", "other/jev-1.14.0"),
+        ("typesafe/jev-1.14-20261014", "typesafe/jev-1.14-20261014"),
+    ] {
+        let server = MockServer::start().await;
+        let mut reply = response();
+        reply["model"] = json!("typesafe/jev-1.14-20261014");
+        Mock::given(method("POST"))
+            .and(path("/v1/systemone"))
+            .and(header("authorization", "Bearer test-key"))
+            .and(body_partial_json(json!({"model": wire})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(reply))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider = Provider::services("router")
+            .with_decisions(OpenRouterDecisionDriver::default())
+            .base_url(format!("{}/v1", server.uri()))
+            .auth(everruns_contracts::BearerAuth::new("test-key"));
+        let outcome = provider
+            .evaluate_decisions(request().model(model))
+            .await
+            .unwrap();
+        assert_eq!(outcome.model, "typesafe/jev-1.14-20261014");
+    }
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .and(body_partial_json(json!({"model": "jev-1.14.0"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(response()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let provider = Provider::services("direct")
+        .with_decisions(SystemOneDecisionDriver::default())
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(everruns_contracts::BearerAuth::new("test-key"));
+    provider
+        .evaluate_decisions(request().model("jev-1.14.0"))
+        .await
+        .unwrap();
+    for received in server.received_requests().await.unwrap() {
+        assert!(
+            received
+                .headers
+                .keys()
+                .all(|name| !name.as_str().starts_with("typesafe-danger-zone"))
+        );
+    }
+}
