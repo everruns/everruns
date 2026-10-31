@@ -39,13 +39,12 @@
 // otherwise keeps only its hash.
 // Read-only commands ignore the header; running them twice is harmless.
 //
-// Decision: the claim commits on its own, before the command runs, so a
-// concurrent retry sees the request in flight. For a transactional command
-// (`Command::transactional`) the stored response is written inside the
-// command's transaction, so the change, its history entry and the response a
-// retry replays commit together; a failure to store it fails the request and
-// rolls the change back. The release after a failure runs once that rollback
-// is done.
+// Decision: transactional commands and message admission commit the claim,
+// change and replay response together. A transaction-scoped try-lock gives a
+// live contender an immediate 409 without committing a claim before the
+// operation. Failure or cancellation rolls everything back. External startup
+// operations keep separately committed claims and release their own on error;
+// legacy pending claims retain their lease during rolling upgrades.
 //
 // Decision: the envelope's `reason` is the change reason the command records in
 // entity history (`domains::change_history`). It sits beside `params`, not in
