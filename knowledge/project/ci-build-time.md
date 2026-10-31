@@ -200,7 +200,13 @@ durable 9.1m to 2-3m.
   plus 3,812 passing unit tests and 66 passing contracts exhausted its forty-minute
   budget before persistence validation completed
   ([run](https://github.com/everruns/everruns/actions/runs/40816428430)).
-  That shard now has a bounded sixty-minute budget; other shards keep forty minutes.
+  That shard now has a bounded sixty-minute budget. The domain shard followed after
+  the 0.50.0 version bump changed every cache key: a 27m35s cold compile left
+  seven minutes for its tests, and it timed out twice
+  ([run](https://github.com/everruns/everruns/actions/runs/41169505295/attempts/1)).
+  It now has sixty minutes too; durable keeps forty. Docs Build & Check compiles
+  the server for its notebooks (about 15 minutes cold) and was cancelled at its
+  twenty-minute limit on every full run of that release, so it has thirty-five.
   Test selection, cache keys, compile memory limits, profiles and execution
   concurrency are unchanged. This margin is not evidence
   of a warm-cache latency improvement or a guarantee that a cache remains resident.

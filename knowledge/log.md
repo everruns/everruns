@@ -2,6 +2,7 @@
 
 ## 2026-10-31
 
+- Give the domain PostgreSQL shard (60 minutes) and Docs Build & Check (35 minutes) cold-build headroom after a version bump's cold compile timed out every 0.50.0 full run. See [CI Build Time](project/ci-build-time.md).
 - Added opt-in local skill inspection with content- and origin-bound reports, revalidated activation receipts, and explicit heuristic limits. See [Skills Registry](project/skills-registry.md#opt-in-persistent-instruction-inspection).
 - Extended the shared inspector into Yolop's approved memory writes and selected recalls, with title-only automatic disclosure and no body-derived disclosure. Hosted memory mount integration remains separate.
 - Added Jev 1.14 to the decision catalog with explicit provider wire aliases and text-only default limits.
