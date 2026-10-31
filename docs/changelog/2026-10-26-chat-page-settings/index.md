@@ -19,7 +19,7 @@ selections apply atomically; private profile history stays owner-only.
 
 Knowledge tabs provide collection, source, search and file context.
 Translations, tracing, interface language, trigger edits and notes support drafts.
-Collection Undo preserves other settings. Protected controls stay manual.
+Protected controls stay manual.
 
 **New subchat** starts an independent conversation. Full Chat shows one conversation;
 Command/Ctrl-J opens it beside an app page. Core Chat and subchats need no flag.
@@ -29,7 +29,7 @@ See [Platform Chat](/built-ins/harnesses/platform-chat/).
 
 ## Update 2026-10-28
 
-Long dialogs scroll, keeping Save reachable.
+Long dialogs scroll; Save stays reachable.
 
 ## Update 2026-10-29
 
@@ -38,8 +38,7 @@ Cost-planner drafts update estimates locally and support Undo.
 
 ## Update 2026-10-31
 
-Saved changes collapse into a small bar at the bottom of the page. **Review** opens
-Before/After with per-field **Undo**; after **Undo all** the bar confirms and fades.
+Saved changes fold into a small bar with **Review** and **Undo**.
 
 ![A fresh subchat opens one conversation](./subchat@2x.png)
 
