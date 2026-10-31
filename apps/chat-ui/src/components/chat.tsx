@@ -17,13 +17,21 @@ import {
   type PendingMessage,
 } from "../client/recovery";
 
+// A recovered send may still name a model. Work Chat uses the Agent's model.
+function withoutModelChoice(body: unknown): unknown {
+  if (!body || typeof body !== "object") return body;
+  const record = body as { controls?: Record<string, unknown> };
+  if (!record.controls || !("model_id" in record.controls)) return body;
+  const { model_id: _model, ...controls } = record.controls;
+  return { ...record, controls };
+}
+
 type Config = {
   name: string;
   description?: string;
   logo?: string;
   interface_mode: "single_with_threads" | "multi_chat";
   features: { threads: boolean; files: boolean };
-  models?: Array<{ id: string; name: string }>;
 };
 type Question = {
   id: string;
@@ -199,7 +207,6 @@ function WorkChat({ config }: { config: Config }) {
     [archived, setArchived] = useState(false),
     [nextPage, setNextPage] = useState<string | null>(null);
   const [notice, setNotice] = useState(""),
-    [model, setModel] = useState(""),
     [effort, setEffort] = useState("");
   const [preview, setPreview] = useState(true);
   const end = useRef<HTMLDivElement>(null),
@@ -245,8 +252,7 @@ function WorkChat({ config }: { config: Config }) {
           next.description !== config.description ||
           next.logo !== config.logo ||
           next.features.files !== config.features.files ||
-          next.features.threads !== config.features.threads ||
-          JSON.stringify(next.models) !== JSON.stringify(config.models)
+          next.features.threads !== config.features.threads
         )
           window.location.reload();
       } catch {
@@ -482,7 +488,6 @@ function WorkChat({ config }: { config: Config }) {
             },
             files: attachments,
             controls: {
-              ...(model ? { model_id: model } : {}),
               ...(effort ? { reasoning: { effort } } : {}),
             },
           },
@@ -500,7 +505,12 @@ function WorkChat({ config }: { config: Config }) {
           "This pending send is older than the retry window. Review the conversation before sending again.",
         );
       if (!currentIntent()) return;
-      await api(`sessions/${id}/messages`, "POST", submission.body, submission.key);
+      await api(
+        `sessions/${id}/messages`,
+        "POST",
+        withoutModelChoice(submission.body),
+        submission.key,
+      );
       const live = currentRef.current.scope === scope && currentRef.current.selected === id;
       const originalText = (
         (
@@ -1081,20 +1091,6 @@ function WorkChat({ config }: { config: Config }) {
                     }}
                   />
                 </label>
-                {!!config.models?.length && (
-                  <select
-                    aria-label="Model"
-                    value={model}
-                    onChange={(event) => setModel(event.target.value)}
-                  >
-                    <option value="">Agent default</option>
-                    {config.models.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
                 <select
                   aria-label="Reasoning effort"
                   value={effort}

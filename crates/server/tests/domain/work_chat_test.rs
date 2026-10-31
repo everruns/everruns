@@ -78,6 +78,7 @@ async fn work_chat_multi_chat_needs_no_coordination_and_rejects_unauthenticated_
         .assert_success()
         .json();
     assert_eq!(bootstrap["interface_mode"], "multi_chat");
+    assert!(bootstrap.get("models").is_none());
     assert_eq!(bootstrap["features"]["threads"], false);
     assert!(bootstrap["logo"].is_null(), "no avatar yet");
     call(
@@ -906,26 +907,29 @@ async fn work_chat_organizes_owned_conversations_and_revokes_read_only_links() {
 }
 
 #[tokio::test]
-async fn work_chat_accepts_only_publisher_selected_model_controls() {
+async fn work_chat_uses_the_agent_model() {
     let server = TestServer::in_memory().await;
     let channel = setup(&server, json!([]), "multi_chat").await;
-    let provider: Value = server
-        .post(
-            "/v1/providers",
-            json!({"name":format!("chat-models-{}",uuid::Uuid::new_v4()),"provider_type":"llmsim"}),
+    let model = everruns_contracts::typed_id::ModelId::new();
+    server
+        .patch(
+            &format!(
+                "/v1/agents/{}/channels/{}",
+                channel.agent_id, channel.channel_id
+            ),
+            json!({"channel_config":{"interface_mode":"multi_chat","allowed_model_ids":[model],"execution":{"visibility":"full"}}}),
         )
         .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    let model: Value = server
-        .post(
-            &format!("/v1/providers/{}/models", provider["id"].as_str().unwrap()),
-            json!({"model_id":"llmsim","display_name":"Work Chat test model","enabled":true}),
-        )
+        .assert_success();
+    let saved: Value = server
+        .get(&format!(
+            "/v1/agents/{}/channels/{}",
+            channel.agent_id, channel.channel_id
+        ))
         .await
-        .assert_status(StatusCode::CREATED)
+        .assert_success()
         .json();
-    server.patch(&format!("/v1/agents/{}/channels/{}",channel.agent_id,channel.channel_id),json!({"channel_config":{"interface_mode":"multi_chat","allowed_model_ids":[model["id"]],"execution":{"visibility":"full"}}})).await.assert_success();
+    assert!(saved["channel_config"].get("allowed_model_ids").is_none());
     publish(&server, &channel).await.assert_success();
     let token = consumer_token(&server, &channel, "model-user").await;
     let base = format!("/v1/channels/{}", channel.channel_id);
@@ -934,7 +938,7 @@ async fn work_chat_accepts_only_publisher_selected_model_controls() {
         .await
         .assert_success()
         .json();
-    assert_eq!(config["models"][0]["name"], "Work Chat test model");
+    assert!(config.get("models").is_none());
     let session: Value = call(
         &server,
         Method::POST,
@@ -945,8 +949,27 @@ async fn work_chat_accepts_only_publisher_selected_model_controls() {
     .await
     .assert_status(StatusCode::CREATED)
     .json();
-    let sent:Value=call(&server,Method::POST,&format!("{base}/sessions/{}/messages",session["id"].as_str().unwrap()),Some(&token),Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Hello"}]},"controls":{"model_id":model["id"],"reasoning":{"effort":"high"}}}))).await.assert_status(StatusCode::CREATED).json();
-    assert_eq!(sent["controls"]["model_id"], model["id"]);
+    let id = session["id"].as_str().unwrap();
+    call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions/{id}/messages"),
+        Some(&token),
+        Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Hello"}]},"controls":{"model_id":model}})),
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+    let sent: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions/{id}/messages"),
+        Some(&token),
+        Some(json!({"message":{"role":"user","content":[{"type":"text","text":"Hello"}]},"controls":{"reasoning":{"effort":"high"}}})),
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json();
+    assert!(sent["controls"].get("model_id").is_none_or(Value::is_null));
     assert_eq!(sent["controls"]["reasoning"]["effort"], "high");
 }
 

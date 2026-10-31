@@ -100,7 +100,6 @@ async fn work_chat_bootstrap(state: &ChannelApiState, id: &str) -> ApiResponse<R
         "interface_mode": cfg.interface_mode,
         "features": features,
         "org_members": cfg.execution.org_members,
-        "models": experience::models(state, context.org_id, &cfg).await?,
         "logo": agent_logo(state, &context).await,
         "public_url": host.as_deref().and_then(public_url)
     }))

@@ -65,11 +65,6 @@ pub async fn validate(
     harness: HarnessId,
     config: &WorkChatConfig,
 ) -> Result<ChatFeatures, CommandError> {
-    if config.allowed_model_ids.len() > 30 {
-        return Err(CommandError::bad_request(
-            "Choose at most 30 models for Work Chat",
-        ));
-    }
     let features = features(db, org, agent, harness).await?;
     features
         .validate(config.interface_mode)

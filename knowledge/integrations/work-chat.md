@@ -113,10 +113,10 @@ operate within the caller's channel history. The permanent main conversation
 cannot be archived or renamed through consumer settings. Archived conversations
 remain readable and require reopening before another message.
 
-The channel owner may curate model choices. Empty selection retains the Agent's
-default. Message controls accept those models and typed reasoning effort only;
-other execution channels keep ignoring caller model controls. Existing budgets
-and approval rules apply, with no new rollout flags.
+Messages use the model configured on the Agent. A caller cannot select a
+different model. Message controls accept typed reasoning effort only; other
+execution channels keep ignoring caller controls. Existing budgets and approval
+rules apply, with no new rollout flags.
 
 The composer accepts up to three files with a combined four-megabyte limit,
 including paste and drag-and-drop. Workspace previews support Markdown, raster

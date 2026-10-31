@@ -81,9 +81,8 @@ and traffic profile. Limited requests return HTTP 429 with `Retry-After`.
 Work Chat includes structured OpenUI/A2UI rendering, reply work logs, task cards,
 multiple attachments, Markdown/image/CSV/HTML artifact previews, downloads and
 revision-checked source editing. Conversation actions support rename, pin,
-archive/reopen and explicit revocable read-only links. Publishers curate the
-optional model list on the channel; empty retains the Agent default. No separate
-feature flag enables these UI features.
+archive/reopen and explicit revocable read-only links. Messages use the model
+configured on the Agent. No separate feature flag enables these UI features.
 
 Public links expose projected messages and widgets only. They do not reuse a
 consumer credential or expose workspace files. Preview frames have an opaque

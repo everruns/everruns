@@ -17,9 +17,12 @@ pub enum ChatInterface {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorkChatConfig {
-    /// Owner-curated models available to consumers; empty keeps the Agent default.
-    #[serde(default)]
-    pub allowed_model_ids: Vec<everruns_contracts::typed_id::ModelId>,
+    /// Older configs stored a consumer model list under this name. Work Chat
+    /// uses the Agent's model. The list is accepted so those configs still
+    /// load, then dropped on the next save.
+    #[serde(default, skip_serializing)]
+    #[schema(ignore)]
+    allowed_model_ids: Vec<everruns_contracts::typed_id::ModelId>,
     #[serde(default)]
     #[schema(example = "multi_chat")]
     pub interface_mode: ChatInterface,
@@ -78,6 +81,13 @@ fn default_execution() -> AgentApiChannelConfig {
     }
 }
 
+impl WorkChatConfig {
+    /// Forget a consumer model list. The Agent's configured model is used.
+    pub fn prepare(&mut self) {
+        self.allowed_model_ids.clear();
+    }
+}
+
 impl Default for WorkChatConfig {
     fn default() -> Self {
         Self {
@@ -104,6 +114,21 @@ mod tests {
             .validate(ChatInterface::SingleWithThreads)
             .is_ok()
         );
+    }
+
+    #[test]
+    fn a_saved_consumer_model_list_is_dropped() {
+        let id = everruns_contracts::typed_id::ModelId::new();
+        let mut config: WorkChatConfig = serde_json::from_value(serde_json::json!({
+            "allowed_model_ids": [id],
+            "interface_mode": "multi_chat"
+        }))
+        .unwrap();
+        assert_eq!(config.allowed_model_ids, vec![id]);
+        let stored = serde_json::to_value(&config).unwrap();
+        assert!(stored.get("allowed_model_ids").is_none());
+        config.prepare();
+        assert!(config.allowed_model_ids.is_empty());
     }
 
     #[test]

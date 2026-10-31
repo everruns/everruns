@@ -257,9 +257,8 @@ formats. Replies include expandable work logs, and background task cards open
 their delegated conversation.
 
 Consumers can search, pin, rename and archive independent conversations. Archived
-conversations retain their history and can be reopened. A channel owner can choose
-which models appear in the composer's model selector; leaving the list empty
-uses the Agent default. Reasoning effort and existing spending controls apply.
+conversations retain their history and can be reopened. Messages use the model
+configured on the Agent. Reasoning effort and existing spending controls apply.
 
 Attach up to three files totaling 4 MB through the composer, paste or drag-and-drop.
 The Workspace panel previews Markdown, images, CSV tables and text, supports
