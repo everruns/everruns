@@ -31,6 +31,7 @@ Changelog: https://everruns.com/docs/changelog/2026-10-31-everruns-0-50-1/
 
 ### What's Changed
 
+- test(drivers): isolate native response wire fixtures ([#5116](https://github.com/everruns/everruns/pull/5116)) by [@chaliy](https://github.com/chaliy)
 - fix(mcp): keep canonical operations in bounded discover results ([#5114](https://github.com/everruns/everruns/pull/5114)) by [@chaliy](https://github.com/chaliy)
 - perf(chat): add capacity benchmarks and fix crash recovery ([#5046](https://github.com/everruns/everruns/pull/5046)) by [@chaliy](https://github.com/chaliy)
 - ci: allow cold builds to finish full validation ([#5111](https://github.com/everruns/everruns/pull/5111)) by [@chaliy](https://github.com/chaliy)
