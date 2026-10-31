@@ -85,8 +85,11 @@ impl WorkerRegistry for PostgresWorkflowEventStore {
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
-            error!(error = %e, "Failed to update worker heartbeat");
-            StoreError::Database(e.to_string())
+            store_failure(
+                "durable.workers.heartbeat",
+                "Failed to update worker heartbeat",
+                e,
+            )
         })?;
 
         Ok(WorkerHeartbeat {

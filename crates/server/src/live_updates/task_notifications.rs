@@ -114,7 +114,7 @@ impl TaskNotificationBroadcaster {
             let mut listener = match sqlx::postgres::PgListener::connect(&database_url).await {
                 Ok(listener) => listener,
                 Err(e) => {
-                    error!("Failed to create PostgreSQL listener: {}", e);
+                    everruns_core::report_repeated_failure!(error, error = %e, "Failed to create PostgreSQL listener");
                     // Wait before retry
                     tokio::select! {
                         _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => continue,

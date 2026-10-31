@@ -118,7 +118,7 @@ pub fn spawn_session_scheduler(
             )
             .await
             {
-                tracing::error!(error = %e, "Session schedule poll failed");
+                everruns_core::report_repeated_failure!(error, error = %e, "Session schedule poll failed");
             }
 
             // Orphan sweep: run at most once per ORPHAN_SWEEP_INTERVAL.

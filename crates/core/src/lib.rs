@@ -112,6 +112,10 @@ pub mod error_reporter;
 // once, so one incident reports as one incident (EVE-1071).
 pub mod database_failure;
 
+// Bounds how often one call site reports a failure that keeps repeating, so a
+// datastore outage cannot exhaust the embedder's error budget (EVE-1328).
+pub mod report_throttle;
+
 // Observability implementations live behind the opt-in `otel`/`braintrust` host features
 // (EVE-651, EVE-876): exporter listeners (Braintrust, OpenTelemetry), the
 // CompositeEventListener fan-out, and OpenTelemetry/OTLP initialization. They

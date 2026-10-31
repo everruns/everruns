@@ -670,7 +670,7 @@ impl WorkerServiceImpl {
         )
         .await
         .map_err(|error| {
-            tracing::error!(%error, org_id, "Failed to resolve gRPC command feature flags");
+            everruns_core::report_repeated_failure!(error, %error, org_id, "Failed to resolve gRPC command feature flags");
             Status::internal("Failed to resolve organization feature flags")
         })?;
 

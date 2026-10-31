@@ -155,7 +155,8 @@ impl AuthRateLimiter {
                         Err(RateLimitError)
                     }
                     Err(RateLimitCheckError::BackendError) => {
-                        tracing::warn!(
+                        everruns_core::report_repeated_failure!(
+                            warn,
                             "Per-account login limit Valkey error — denying (fail-closed)"
                         );
                         Err(RateLimitError)
@@ -199,7 +200,8 @@ impl AuthRateLimiter {
                             return Err(RateLimitError);
                         }
                         Err(RateLimitCheckError::BackendError) => {
-                            tracing::warn!(
+                            everruns_core::report_repeated_failure!(
+                                warn,
                                 "Email-send budget Valkey error — denying (fail-closed)"
                             );
                             return Err(RateLimitError);
@@ -243,7 +245,7 @@ impl AuthRateLimiter {
                         Err(RateLimitError)
                     }
                     Err(RateLimitCheckError::BackendError) => {
-                        tracing::warn!(ip = %ip, endpoint, "Auth rate limit Valkey error — denying (fail-closed)");
+                        everruns_core::report_repeated_failure!(warn, ip = %ip, endpoint, "Auth rate limit Valkey error — denying (fail-closed)");
                         Err(RateLimitError)
                     }
                 }

@@ -108,18 +108,24 @@ pub fn log_database_failure(
     rendered: &str,
 ) -> DatabaseFailureKind {
     let kind = DatabaseFailureKind::classify(rendered);
-    match kind.shared_message() {
-        Some(shared) => tracing::error!(
+    let message = kind.shared_message().unwrap_or(fallback);
+    // EVE-1328: a pool exhaustion repeats on every tick of every poller, so
+    // the report is bounded per (subsystem, kind); repeats are still logged.
+    match crate::report_throttle::REPEATED_FAILURES.admit(subsystem, kind.as_str()) {
+        Some(suppressed) => tracing::error!(
             subsystem,
             db_failure = kind.as_str(),
             error = %rendered,
-            "{shared}"
+            suppressed_since_last_report = suppressed,
+            report_interval_seconds = crate::report_throttle::REPEATED_FAILURES.interval().as_secs(),
+            "{message}"
         ),
-        None => tracing::error!(
+        None => tracing::info!(
             subsystem,
             db_failure = kind.as_str(),
             error = %rendered,
-            "{fallback}"
+            report_suppressed = true,
+            "{message}"
         ),
     }
     kind
