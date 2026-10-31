@@ -51,9 +51,10 @@ use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 
 use crate::ExecutionContext;
 use crate::engine::{ActInput, ActPlan, TurnPlan, TurnState};
+#[cfg(feature = "actor-runtime")]
+use crate::events::TurnCompletedData;
 use crate::events::{
     Event, EventContext, EventData, EventRequest, RecoveryMode, TokenUsage, ToolCompletedData,
-    TurnCompletedData,
 };
 use crate::host::runtime_host::{RuntimeHostAdapter, reason_turn_context};
 use crate::runtime_context::AssembledTurnContext;
@@ -93,6 +94,7 @@ pub struct OpenTurn {
     input_message_id: MessageId,
     started_at: DateTime<Utc>,
     reasons: u32,
+    #[cfg(feature = "actor-runtime")]
     latest_reason_completed: bool,
     tool_call_count: u32,
     /// Failed `tool.completed` calls so far: issues the turn carries on from.
@@ -147,6 +149,7 @@ impl OpenTurn {
     }
 
     /// Complete a saved answer without discarding its identity and work summary.
+    #[cfg(feature = "actor-runtime")]
     pub(crate) fn completed_data(&self, now: DateTime<Utc>) -> TurnCompletedData {
         // Output can commit before reason.completed. Its saved answer proves
         // that final phase ran, but its missing usage must not become a partial
@@ -247,6 +250,7 @@ impl TurnLogFold {
                     input_message_id: data.input_message_id,
                     started_at: event.ts,
                     reasons: 0,
+                    #[cfg(feature = "actor-runtime")]
                     latest_reason_completed: false,
                     tool_call_count: 0,
                     issue_count: 0,
@@ -295,15 +299,24 @@ impl TurnLogFold {
             // only what was there at that attempt's `reason.started`.
             EventData::ReasonStarted(_) => {
                 turn.steered_since_reason = false;
-                turn.latest_reason_completed = false;
+                #[cfg(feature = "actor-runtime")]
+                {
+                    turn.latest_reason_completed = false;
+                }
             }
             EventData::ReasonRecovered(data) if matches!(data.mode, RecoveryMode::Restart) => {
                 turn.steered_since_reason = false;
-                turn.latest_reason_completed = false;
+                #[cfg(feature = "actor-runtime")]
+                {
+                    turn.latest_reason_completed = false;
+                }
             }
             EventData::ReasonCompleted(data) => {
                 turn.reasons = turn.reasons.saturating_add(1);
-                turn.latest_reason_completed = true;
+                #[cfg(feature = "actor-runtime")]
+                {
+                    turn.latest_reason_completed = true;
+                }
                 turn.tool_call_count = turn.tool_call_count.saturating_add(data.tool_call_count);
                 if let Some(usage) = &data.usage {
                     match &mut turn.usage {

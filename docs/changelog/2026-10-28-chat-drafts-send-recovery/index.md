@@ -10,11 +10,10 @@ links:
   docs: [/built-ins/harnesses/platform-chat/, /features/agent-api/]
 ---
 
-Chat restores unsent text and unacknowledged messages when you return to a
-conversation in the same browser tab. Restored messages offer **Retry** and
-**Discard**. Retry preserves the original send; discarding a local copy does
-not cancel work the server already accepted. Storage failures leave text
-editable and explain how to preserve it.
+Chat restores unsent text and unacknowledged messages in the same browser
+tab. Restored messages offer **Retry** and **Discard**. Retry preserves the
+original send. Discarding a local copy does not cancel accepted work.
+Storage failures leave text editable.
 
 [Platform Chat](/built-ins/harnesses/platform-chat/) shares live session
 subscriptions with task views and reconnects after network return. Hosted
@@ -35,5 +34,5 @@ setup; leaving the conversation closes the stream.
 
 ## Update 2026-10-30
 
-After a worker restarts, completed turns keep their saved answer reference and
-work counters. Recovery does not regenerate the answer.
+Worker recovery reuses the saved answer and preserves its reference and work
+counters.
