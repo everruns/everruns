@@ -1,7 +1,7 @@
 ---
 title: Yolop preserves shell and background failure evidence
 description: Yolop stops on unhandled shell failures, keeps command diagnostics visible to the agent, and reports blocking background tasks when print-mode waiting expires.
-date: 2026-10-30
+date: 2026-10-31
 kind: fix
 significance: notable
 products: [yolop]
