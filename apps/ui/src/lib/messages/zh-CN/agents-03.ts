@@ -1,5 +1,6 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  Advanced: "高级",
   "Require visitors to sign in with Google. When on, every request must present a valid Google account; signed-in visitors skip the Turnstile challenge.":
     "要求访问者使用 Google 登录。启用后，每个请求都必须提供有效的 Google 帐户；已登录的访客可跳过十字转门挑战。",
   Required: "必填",

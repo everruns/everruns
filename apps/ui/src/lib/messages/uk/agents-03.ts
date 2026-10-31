@@ -1,5 +1,6 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 export const messages: Readonly<Record<string, string>> = {
+  Advanced: "Додатково",
   "Require visitors to sign in with Google. When on, every request must present a valid Google account; signed-in visitors skip the Turnstile challenge.":
     "Вимагати від відвідувачів входити в обліковий запис Google. Коли ввімкнено, кожен запит має містити дійсний обліковий запис Google; відвідувачі, які ввійшли в систему, пропускають завдання Турнікет.",
   Required: "Обов’язково",

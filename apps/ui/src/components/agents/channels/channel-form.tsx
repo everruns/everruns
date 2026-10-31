@@ -1191,10 +1191,7 @@ export function ChannelForm({
         </>
       )}
       {state.kind === "work_chat" && (
-        <FormSection
-          title="Chat site"
-          hint="How conversations are organized, and the limits that apply."
-        >
+        <FormSection title="Chat site" hint="How conversations are organized.">
           <WorkChatFields
             mode={state.chatInterface}
             onModeChange={(mode) => update("chatInterface", mode)}

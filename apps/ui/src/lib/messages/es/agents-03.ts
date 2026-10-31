@@ -1,5 +1,6 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  Advanced: "Avanzado",
   "Require visitors to sign in with Google. When on, every request must present a valid Google account; signed-in visitors skip the Turnstile challenge.":
     "Requerir que los visitantes inicien sesión con Google. Cuando está activado, cada solicitud debe presentar una cuenta de Google válida; los visitantes registrados se saltan el desafío Turnstile.",
   Required: "Requerido",
