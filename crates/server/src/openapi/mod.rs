@@ -207,6 +207,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::health_issues::snooze_health_issue,
         api::agent_channels::get_agent_chat_features,
         api::agent_api::work_chat::get_work_chat_config,
+        api::agent_api::work_chat::get_work_chat_by_host,
         api::agent_api::work_chat::experience::update_work_chat_conversation,
         api::agent_api::work_chat::experience::share_work_chat_conversation,
         api::agent_api::work_chat::experience::revoke_work_chat_share,

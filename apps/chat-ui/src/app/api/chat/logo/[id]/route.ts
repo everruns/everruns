@@ -13,7 +13,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   try {
     const upstream = settings().upstream;
     const config = await fetch(
-      `${upstream}/v1/channels/${channelOf(request)}/chat/config`,
+      `${upstream}/v1/channels/${await channelOf(request)}/chat/config`,
       { cache: "no-store", signal: AbortSignal.timeout(10000), redirect: "error" },
     );
     if (!config.ok) return new Response("Not found", { status: 404 });

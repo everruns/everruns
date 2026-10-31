@@ -123,6 +123,24 @@ async function main() {
   let admissions = 0;
   const api = httpServer((request, response) => {
     const path = new URL(request.url!, "http://execution.test").pathname;
+    const hostLabel = /^[abcdefghijkmnpqrstuvwxyz23456789]{10}$/;
+    if (path.startsWith("/v1/work-chat/hosts/")) {
+      const label = path.split("/").pop() ?? "";
+      if (!hostLabel.test(label)) {
+        response.writeHead(404);
+        response.end();
+        return;
+      }
+      return json(response, {
+        channel_id:
+          label === "k3m9pq2r7x"
+            ? "appchan_01933b5a000070008000000000000001"
+            : "appchan_01933b5a000070008000000000000002",
+        name: "Broker integration",
+        interface_mode: "multi_chat",
+        features: { threads: false, files: false },
+      });
+    }
     if (path.endsWith("/chat/config"))
       return json(response, {
         name: "Broker integration",
@@ -227,7 +245,7 @@ async function main() {
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ ignoreHTTPSErrors: true }),
       page = await context.newPage(),
-      host = "01933b5a000070008000000000000001.localhost",
+      host = "k3m9pq2r7x.localhost",
       origin = `https://${host}`;
 
     page.on("console", (entry) => {
@@ -302,7 +320,7 @@ async function main() {
 
     assert.ok(handoff);
     assert.equal((await context.request.get(handoff)).status(), 400, "handoff replay");
-    const sibling = "01933b5a000070008000000000000002.localhost";
+    const sibling = "n4w8st6y2v.localhost";
     assert.equal(
       (
         await context.request.post(`${origin}/api/sessions`, {

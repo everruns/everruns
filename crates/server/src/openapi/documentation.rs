@@ -320,7 +320,9 @@ fn apply(spec: &mut Value) {
             }
             if group == &"agent-api" {
                 let public_read = method == "get"
-                    && (path.ends_with("/chat/config") || path.ends_with("/chat/shared/{token}"));
+                    && (path.ends_with("/chat/config")
+                        || path.ends_with("/chat/shared/{token}")
+                        || path == "/v1/work-chat/hosts/{label}");
                 operation["security"] = if public_read {
                     json!([])
                 } else {

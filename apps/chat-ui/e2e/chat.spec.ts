@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 test.use({ deviceScaleFactor: 2 });
-const origin = "http://01933b5a000070008000000000000001.localhost:9140";
+const origin = "http://k3m9pq2r7x.localhost:9140";
 const root = { id: "session_main", title: "Launch research", status: "idle" };
 const events = [
   {

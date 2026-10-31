@@ -48,9 +48,10 @@ spending limit is shared; it is an admission check, not a prepaid reservation.
 
 The optional standalone browser host in `apps/chat-ui` serves one channel per
 hostname. The deployment configures its domain and OIDC provider; no hosted
-vendor or cloud domain is hardcoded upstream. Channel identifiers supply stable
-DNS-safe labels. The hostname, never a browser-supplied API URL or org, selects
-the channel.
+vendor or cloud domain is hardcoded upstream. Each Work Chat is assigned a
+stable DNS label when the channel is created. That label is not the channel
+id. The hostname, never a browser-supplied API URL, org, or channel id, selects
+the channel: the host asks the API which channel owns the label.
 
 Browser login uses a fixed broker callback with state, nonce and PKCE. Durable,
 single-use handoffs bind the destination channel and initiating browser.

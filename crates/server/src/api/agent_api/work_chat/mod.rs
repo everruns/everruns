@@ -3,7 +3,7 @@
 use super::*;
 pub(crate) mod experience;
 use crate::domains::agent_channels::record::work_chat::{
-    ChatFeatures, ChatInterface, WorkChatConfig,
+    ChatFeatures, ChatInterface, WorkChatConfig, host_label_ok,
 };
 use crate::domains::session_files::service::{CreateFileInput, WorkspaceFileService};
 use axum::extract::Query;
@@ -18,7 +18,7 @@ fn file_revision(file: &everruns_core::SessionFile) -> String {
 }
 
 pub(super) fn routes() -> Router<ChannelApiState> {
-    let mut router = Router::new();
+    let mut router = Router::new().route("/v1/work-chat/hosts/{label}", get(get_work_chat_by_host));
     for prefix in ["/v1/channels", "/v1/e"] {
         router = router
             .route(
@@ -57,23 +57,54 @@ async fn agent_logo(
     Some(avatar.path(crate::domains::agents::avatar::AvatarShape::Circle, 64))
 }
 
-fn public_url(channel: &str) -> Option<String> {
+fn chat_domain() -> Option<String> {
     let domain = std::env::var("CHAT_DOMAIN").ok()?;
     if domain.is_empty()
         || domain.split('.').any(|label| {
             label.is_empty()
                 || !label
                     .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
         })
     {
         return None;
     }
-    Some(format!(
-        "https://{}.{}",
-        channel.strip_prefix("appchan_")?,
-        domain
-    ))
+    Some(domain)
+}
+
+/// `https://<assigned-label>.<CHAT_DOMAIN>`. A channel id is not a hostname.
+fn public_url(label: &str) -> Option<String> {
+    if !host_label_ok(label) {
+        return None;
+    }
+    Some(format!("https://{label}.{}", chat_domain()?))
+}
+
+async fn work_chat_bootstrap(state: &ChannelApiState, id: &str) -> ApiResponse<Response> {
+    let (context, channel) = resolve_api_channel(state, id).await?;
+    if channel_liveness(&context, &channel).is_err() {
+        return Err(not_found());
+    }
+    let cfg = config(&channel)?;
+    let features = validate_agent(state, &context, &channel).await?;
+    let host = state
+        .db
+        .work_chat_host(&channel.public_id.to_string())
+        .await
+        .map_err(internal_error)?;
+    Ok(Json(json!({
+        "channel_id": channel.public_id,
+        "name": context.name,
+        "description": context.description,
+        "experience": "work_chat",
+        "interface_mode": cfg.interface_mode,
+        "features": features,
+        "org_members": cfg.execution.org_members,
+        "models": experience::models(state, context.org_id, &cfg).await?,
+        "logo": agent_logo(state, &context).await,
+        "public_url": host.as_deref().and_then(public_url)
+    }))
+    .into_response())
 }
 
 fn config(channel: &IngressChannel) -> ApiResponse<WorkChatConfig> {
@@ -112,17 +143,31 @@ pub(crate) async fn get_work_chat_config(
     State(state): State<ChannelApiState>,
     Path(id): Path<String>,
 ) -> Response {
+    work_chat_bootstrap(&state, &id)
+        .await
+        .unwrap_or_else(|response| response)
+}
+
+#[utoipa::path(get, operation_id="get_work_chat_by_host", path="/v1/work-chat/hosts/{label}", description="Public bootstrap for the live Work Chat published at this hostname.", params(("label" = String, Path)), responses((status=200,description="Success",body=Value),(status=404,description="No live Work Chat uses this hostname")),tag="agent-execution")]
+pub(crate) async fn get_work_chat_by_host(
+    State(state): State<ChannelApiState>,
+    Path(label): Path<String>,
+) -> Response {
     let result = async {
-        let (context, channel) = resolve_api_channel(&state, &id).await?;
-        if channel_liveness(&context, &channel).is_err() { return Err(not_found()); }
-        let cfg = config(&channel)?;
-        let features = validate_agent(&state, &context, &channel).await?;
-        Ok(Json(json!({"channel_id":channel.public_id,"name":context.name,"description":context.description,
-            "experience":"work_chat","interface_mode":cfg.interface_mode,"features":features,
-            "org_members":cfg.execution.org_members,"models":experience::models(&state, context.org_id, &cfg).await?,
-            "logo":agent_logo(&state, &context).await,
-            "public_url":public_url(&channel.public_id.to_string())})).into_response())
-    }.await;
+        // A channel id is 32 hex characters. This route does not accept one.
+        let label = label.to_ascii_lowercase();
+        if !host_label_ok(&label) {
+            return Err(not_found());
+        }
+        let id = state
+            .db
+            .work_chat_public_id_by_host(&label)
+            .await
+            .map_err(internal_error)?
+            .ok_or_else(not_found)?;
+        work_chat_bootstrap(&state, &id).await
+    }
+    .await;
     result.unwrap_or_else(|response| response)
 }
 
@@ -654,5 +699,19 @@ mod tests {
         )
         .expect("real tool");
         assert_eq!(read["data"]["narration"], "Reading report.md");
+    }
+
+    #[test]
+    fn public_url_uses_the_assigned_host_not_the_channel_id() {
+        unsafe { std::env::set_var("CHAT_DOMAIN", "chat.example") };
+        assert_eq!(
+            public_url("k3m9pq2r7x").as_deref(),
+            Some("https://k3m9pq2r7x.chat.example")
+        );
+        assert!(public_url("01933b5a000070008000000000000001").is_none());
+        assert!(public_url("appchan_01933b5a000070008000000000000001").is_none());
+        unsafe { std::env::set_var("CHAT_DOMAIN", "not a domain") };
+        assert!(public_url("k3m9pq2r7x").is_none());
+        unsafe { std::env::set_var("CHAT_DOMAIN", "chat.example") };
     }
 }

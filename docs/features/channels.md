@@ -189,14 +189,16 @@ The old `/v1/e/{channel_id}/…` and `/v1/apps/{app_id}/…` ingress paths remai
 ## Work Chat
 
 Publish **Work Chat** to give an Agent a dedicated browser experience with its
-own consumer sign-in. Each channel has a stable, unique hostname on the hosted
-content domain configured by your deployment. Several Work Chat channels can
+own consumer sign-in. Each channel has a stable hostname on the hosted content
+domain configured by your deployment. That hostname is assigned when the
+channel is created and is not the channel id. Several Work Chat channels can
 point to the same Agent.
 
 The channel page shows that address after you publish. Copy it from
 **Settings** or **Connect**, or use **Open chat page** in the header. The
-address stays the same when you change settings. Publishing alone does not
-create the hostname until the deployment has a hosted chat domain.
+address stays the same when you change settings. A link built from the channel
+id does not open the chat. Publishing alone does not create the hostname until
+the deployment has a hosted chat domain.
 
 Choose **Multiple conversations** for a conversation list, or **Single chat
 with threads** for one permanent main conversation per consumer and related

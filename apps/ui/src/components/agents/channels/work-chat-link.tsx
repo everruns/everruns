@@ -7,8 +7,9 @@ import { api } from "@/lib/api/client";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { AgentChannel } from "@/lib/api/types";
 
-/// Hosted Work Chat addresses are `https://<channel>.<chat-domain>`. Anything
-/// else is not a link we will open from the console.
+/// Hosted Work Chat addresses are `https://<assigned-host>.<chat-domain>`.
+/// The host is not the channel id. Anything else is not a link we will open
+/// from the console.
 export function workChatUrl(value: unknown): string | null {
   if (typeof value !== "string" || !value) return null;
   try {

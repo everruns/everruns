@@ -1,7 +1,8 @@
 # Hosted Work Chat
 
 Standalone Next.js browser host for published `work_chat` channels. It serves
-one channel per `<channel-id-without-appchan-prefix>.<CHAT_DOMAIN>`. The console
+one channel per `<assigned-host>.<CHAT_DOMAIN>`. The host is a short label
+assigned when the channel is created. It is not the channel id. The console
 and this host run independently. Several channels may target the same Agent.
 
 The publisher chooses `multi_chat` or `single_with_threads`. Single mode

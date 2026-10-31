@@ -118,6 +118,46 @@ async fn work_chat_config_uses_the_agent_avatar() {
 }
 
 #[tokio::test]
+async fn work_chat_public_url_is_not_the_channel_id() {
+    unsafe { std::env::set_var("CHAT_DOMAIN", "chat.example") };
+    let server = TestServer::in_memory().await;
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    publish(&server, &channel).await.assert_success();
+    let bootstrap: Value = server
+        .get(&format!("/v1/channels/{}/chat/config", channel.channel_id))
+        .await
+        .assert_success()
+        .json();
+    let url = bootstrap["public_url"].as_str().expect("public url");
+    let label = url
+        .strip_prefix("https://")
+        .and_then(|rest| rest.strip_suffix(".chat.example"))
+        .expect(url);
+    assert_eq!(label.len(), 10, "{url}");
+    assert!(
+        !channel.channel_id.contains(label),
+        "public host {label} is inside {}",
+        channel.channel_id
+    );
+    let via_host: Value = server
+        .get(&format!("/v1/work-chat/hosts/{label}"))
+        .await
+        .assert_success()
+        .json();
+    assert_eq!(via_host["channel_id"], channel.channel_id);
+    assert_eq!(via_host["public_url"], url);
+    let hex = channel.channel_id.trim_start_matches("appchan_");
+    server
+        .get(&format!("/v1/work-chat/hosts/{hex}"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .get(&format!("/v1/work-chat/hosts/{}", hex.to_ascii_uppercase()))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn worker_role_does_not_qualify_for_thread_interface() {
     let server = TestServer::in_memory().await;
     let channel = setup(

@@ -10,7 +10,7 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
     const path = (await params).path.join("/");
     if (path !== "chat/recovery" && !allowed.test(path))
       return new Response("Not found", { status: 404 });
-    const channel = channelOf(request);
+    const channel = await channelOf(request);
     if (path === "chat/config") {
       if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
       return Response.json(await bootstrap(channel), { headers: { "Cache-Control": "no-store" } });

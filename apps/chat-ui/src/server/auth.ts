@@ -1,7 +1,7 @@
 // THREAT[TM-AUTH-039]: browser-bound, one-use handoffs and host-only opaque sessions.
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { cookies } from "next/headers";
-import { settings, channelOf, hostOf, bootstrap } from "./config";
+import { settings, channelOf, hostOf, hostLabel, bootstrap, HOST_LABEL } from "./config";
 import { viewerFromIdToken, type Viewer } from "../profile";
 import { random, hash, save, read, remove, updateSession, admitLogin } from "./store";
 const SESSION = "__Host-everruns_chat",
@@ -10,6 +10,7 @@ const SESSION = "__Host-everruns_chat",
 const attrs = { httpOnly: true, secure: true, sameSite: "lax" as const, path: "/" };
 type Flow = {
   channel: string;
+  host: string;
   browser: string;
   verifier: string;
   nonce: string;
@@ -31,7 +32,7 @@ export async function viewerFor(request: Request): Promise<Viewer | null> {
   const token = (await cookies()).get(SESSION)?.value;
   if (!token) return null;
   const session = await read<Session>("session", token);
-  if (!session || session.channel !== channelOf(request)) return null;
+  if (!session || session.channel !== (await channelOf(request))) return null;
   return viewerFromIdToken(session.identity);
 }
 
@@ -40,7 +41,7 @@ export async function recoveryScope(request: Request): Promise<string | null> {
   const token = (await cookies()).get(SESSION)?.value;
   if (!token) return null;
   const session = await read<Session>("session", token);
-  return session?.channel === channelOf(request) ? (session.recoveryId ?? null) : null;
+  return session?.channel === (await channelOf(request)) ? (session.recoveryId ?? null) : null;
 }
 async function discovery() {
   const cfg = settings();
@@ -100,7 +101,7 @@ async function identity(token: string, nonce?: string) {
   return claims as { sub: string; exp: number };
 }
 export async function tokenFor(request: Request): Promise<string | null> {
-  const channel = channelOf(request),
+  const channel = await channelOf(request),
     jar = await cookies(),
     token = jar.get(SESSION)?.value;
   if (!token) return null;
@@ -157,7 +158,9 @@ export async function authenticate(request: Request, action: string): Promise<Re
     url = new URL(request.url);
   if (action === "start") {
     await admitLogin(request.headers.get("x-forwarded-for") ?? "direct");
-    const channel = channelOf(request);
+    const label = hostLabel(hostOf(request), cfg.domain);
+    if (!label) throw new Error("Unknown chat host");
+    const channel = await channelOf(request);
     await bootstrap(channel);
     const browser = random();
     const selected = url.searchParams.get("session");
@@ -170,6 +173,7 @@ export async function authenticate(request: Request, action: string): Promise<Re
       "flow",
       {
         channel,
+        host: label,
         browser: hash(browser),
         verifier: random(),
         nonce: random(),
@@ -235,15 +239,15 @@ export async function authenticate(request: Request, action: string): Promise<Re
         },
         60,
       );
-      const label = flow.channel.slice("appchan_".length);
+      if (!HOST_LABEL.test(flow.host)) throw new Error("Invalid login destination");
       return Response.redirect(
-        `https://${label}.${cfg.domain}/auth/complete?code=${encodeURIComponent(code)}`,
+        `https://${flow.host}.${cfg.domain}/auth/complete?code=${encodeURIComponent(code)}`,
         303,
       );
     }
     throw new Error("Unknown login route");
   }
-  const channel = channelOf(request);
+  const channel = await channelOf(request);
   if (action === "complete") {
     const code = url.searchParams.get("code") ?? "",
       pending = await read<Flow & Session>("handoff", code);

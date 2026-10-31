@@ -51,6 +51,26 @@ impl ChatFeatures {
     }
 }
 
+/// Public DNS label. Ten characters, so it cannot be a channel id
+/// (`appchan_` plus 32 hex digits). The alphabet skips 0/o and 1/l.
+pub const HOST_LABEL_ALPHABET: &[u8] = b"abcdefghijkmnpqrstuvwxyz23456789";
+pub const HOST_LABEL_LEN: usize = 10;
+
+pub fn host_label_ok(label: &str) -> bool {
+    label.len() == HOST_LABEL_LEN
+        && label
+            .bytes()
+            .all(|byte| HOST_LABEL_ALPHABET.contains(&byte))
+}
+
+pub fn new_host_label() -> String {
+    use rand::RngExt;
+    let mut rng = rand::rng();
+    (0..HOST_LABEL_LEN)
+        .map(|_| HOST_LABEL_ALPHABET[rng.random_range(0..HOST_LABEL_ALPHABET.len())] as char)
+        .collect()
+}
+
 fn default_execution() -> AgentApiChannelConfig {
     AgentApiChannelConfig {
         visibility: ApiVisibility::Full,
@@ -84,5 +104,17 @@ mod tests {
             .validate(ChatInterface::SingleWithThreads)
             .is_ok()
         );
+    }
+
+    #[test]
+    fn a_host_label_is_not_a_channel_id() {
+        let id = "01933b5a000070008000000000000001";
+        assert!(!host_label_ok(id));
+        assert!(!host_label_ok(&format!("appchan_{id}")));
+        assert!(!host_label_ok("login"));
+        let label = new_host_label();
+        assert!(host_label_ok(&label), "{label}");
+        assert!(!label.contains(id));
+        assert!(label.chars().all(|c| !"01lo".contains(c)));
     }
 }

@@ -870,6 +870,7 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
         Write,
     ),
     ("GET", "/v1/virtual-users/{identity_id}/sessions", Read),
+    ("GET", "/v1/work-chat/hosts/{label}", Read),
     ("GET", "/v1/workspaces", Read),
     ("DELETE", "/v1/workspaces/{workspace_id}", Write),
     ("GET", "/v1/workspaces/{workspace_id}", Read),
