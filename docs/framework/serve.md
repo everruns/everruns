@@ -89,6 +89,14 @@ routes `provider/model` IDs through OpenRouter unchanged. With serve's
 `bedrock/us.anthropic.claude-sonnet-4-6`) call Amazon Bedrock on the AWS
 default credential chain whenever `AWS_REGION` is set.
 
+OpenAI and OpenRouter HTTP requests honor `HTTP_PROXY`, `HTTPS_PROXY`,
+`ALL_PROXY` and `NO_PROXY` (including lowercase forms). Configure only a
+trusted forward proxy that blocks private and metadata destinations when it
+resolves and connects. Serve validates destination URLs before
+forwarding, refuses redirects, and keeps TLS verification enabled. The proxy
+performs the final DNS/address check; a failed proxy request does not fall
+back to a direct connection.
+
 | Example | Shows |
 | --- | --- |
 | [Hello app](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |

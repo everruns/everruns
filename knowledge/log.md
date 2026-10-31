@@ -12,6 +12,10 @@
   show pending sidebar feedback instead of replacing static page chrome with
   generic skeletons. See [Navigation Information Architecture](ui/information-architecture.md).
 
+- Separate configured forward proxies from provider destinations in the shared
+  HTTP transport, retaining destination validation and assigning outbound DNS
+  enforcement to the trusted proxy. See [LLM Drivers](foundations/llm-drivers.md#host-owned-transport).
+
 - Use standard OpenAI endpoint settings in [Serve](framework/serve.md), with
   provider-scoped routing and endpoint-visible model IDs; simplify the Bashkit
   example's first-run instructions.

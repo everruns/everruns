@@ -2964,6 +2964,7 @@ dependencies = [
  "gloo-timers",
  "hex",
  "http",
+ "hyper-util",
  "insta",
  "inventory",
  "jsonschema",

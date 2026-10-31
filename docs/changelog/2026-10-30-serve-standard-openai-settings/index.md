@@ -37,6 +37,13 @@ fn main() {
 ```
 
 The endpoint must support the Responses API. The explicit URL/key pair takes
-precedence over OpenRouter for OpenAI models. Other provider routes and the
-HTTP security checks are unchanged. See [Serve](/framework/serve/) for routing
-and the shorter Bashkit example instructions.
+precedence over OpenRouter for OpenAI models. Other provider routes are
+unchanged. See [Serve](/framework/serve/) for routing and the shorter Bashkit
+example instructions.
+
+The shared Chat Completions and Responses HTTP transport also honors standard
+forward-proxy settings without rejecting the proxy's private infrastructure
+address as a model destination. Destination validation, redirect refusal,
+TLS verification and timeouts remain enabled. A configured proxy must enforce
+public-address DNS checks on its outbound connections; proxy failures never
+fall back to a direct route.
