@@ -511,7 +511,9 @@ fn deploy_plan(app: &App) {
         manifest.sandbox.kind
     );
     for model in &manifest.models {
-        println!("  6. route model `{model}` through the gateway (SERVE_GATEWAY_URL)");
+        println!(
+            "  6. configure model `{model}` with OPENAI_API_KEY (optionally OPENAI_BASE_URL) or OPENROUTER_API_KEY"
+        );
     }
     println!("  7. give the branch a preview URL; run `eval --against <preview>` before promotion");
     println!(

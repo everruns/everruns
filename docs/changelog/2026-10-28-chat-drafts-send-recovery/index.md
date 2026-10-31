@@ -5,6 +5,7 @@ date: 2026-10-28
 kind: improvement
 significance: notable
 products: [platform]
+release: "0.50.0"
 surfaces: [ui]
 links:
   docs: [/built-ins/harnesses/platform-chat/, /features/agent-api/]

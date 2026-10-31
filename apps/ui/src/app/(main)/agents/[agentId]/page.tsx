@@ -176,7 +176,9 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
     setActiveTab(deepLink.tab);
   }
   const [editRequested, setEditRequested] = useState(() => searchParams.get("mode") === "edit");
-  const [sourceOpen, setSourceOpen] = useState(false);
+  // `?sync=github` reopens the Sync dialog after connecting GitHub in this tab
+  // (the fallback when the browser blocks the connect popup).
+  const [sourceOpen, setSourceOpen] = useState(() => searchParams.get("sync") === "github");
   const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null);
   // Optional "Reason for this change", sent with Save and with Archive/Delete.
   const [saveReason, setSaveReason] = useState("");
@@ -339,7 +341,11 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
       return;
     }
     try {
-      await updateAgent.mutateAsync({ agentId, request: result.request, reason: saveReason });
+      await updateAgent.mutateAsync({
+        agentId,
+        request: result.request,
+        reason: saveReason,
+      });
       chatMode?.recordAction(`Saved page draft changes to ${pageLabel}`);
       draft.reset();
       chatDraft.changes.clear();
@@ -362,7 +368,11 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
         properties: {},
         additionalProperties: false,
       },
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
       execute: async () => {
         webmcp.assertBinding(webmcp.bindingToken);
         if (!agent || agent.id !== agentId || agent.status !== "active") {
@@ -395,7 +405,9 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
         const blob =
           format === "zip"
             ? await exportAgentPackage(agent.name)
-            : new Blob([await exportAgent.mutateAsync(agentId)], { type: "text/markdown" });
+            : new Blob([await exportAgent.mutateAsync(agentId)], {
+                type: "text/markdown",
+              });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
@@ -494,7 +506,11 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
       label: ui("Localization"),
       summary: Object.keys(draft.localizations).join(", ") || ui("Default"),
     },
-    { id: "branding", label: ui("Branding"), summary: brandingParts.join(" · ") },
+    {
+      id: "branding",
+      label: ui("Branding"),
+      summary: brandingParts.join(" · "),
+    },
     {
       id: "mcp",
       label: ui("MCP servers"),
@@ -558,7 +574,11 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
         : ui("None"),
     },
     ...(!builtIn ? [{ id: "tracing", label: ui("Tracing"), summary: ui("Destinations") }] : []),
-    { id: "health", label: ui("Health check"), summary: ui(healthSummary(latestHealth)) },
+    {
+      id: "health",
+      label: ui("Health check"),
+      summary: ui(healthSummary(latestHealth)),
+    },
   ].filter((row) => row.id !== "files" || showFiles);
 
   const canArchive = canEdit;
@@ -620,7 +640,10 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                 id: "observe",
                 label: ui("Observe this agent"),
                 icon: <Telescope className="size-4" />,
-                href: { pathname: "/observers/new", query: { agent_id: agentId } },
+                href: {
+                  pathname: "/observers/new",
+                  query: { agent_id: agentId },
+                },
               },
             ]
           : []),
@@ -661,7 +684,11 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
       <ChatChangesContext.Provider
         value={
           chatChanges
-            ? { ...chatChanges, canUndo: canEdit, pending: chatChanges.pending || editing }
+            ? {
+                ...chatChanges,
+                canUndo: canEdit,
+                pending: chatChanges.pending || editing,
+              }
             : null
         }
       >

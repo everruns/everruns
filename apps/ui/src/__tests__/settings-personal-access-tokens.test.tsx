@@ -1,7 +1,9 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
-import PersonalAccessTokensPage from "@/app/(main)/settings/personal-access-tokens/page";
+import PersonalAccessTokensPage, {
+  defaultPersonalAccessTokenName,
+} from "@/app/(main)/settings/personal-access-tokens/page";
 
 // Mock personal access token data
 const mockTokens = [
@@ -116,6 +118,44 @@ describe("PersonalAccessTokensPage", () => {
     expect(screen.getByText(/Failed to load personal access tokens/)).toBeInTheDocument();
   });
 
+  it("puts an optional dated name at the bottom and submits it when left blank", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({ token: "evr_pat_secret_test" });
+    mockUseCreatePersonalAccessToken.mockReturnValue({
+      mutateAsync,
+      isPending: false,
+    });
+
+    render(<PersonalAccessTokensPage />, { wrapper });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Create token/i })[0]);
+
+    const dialog = await screen.findByRole("dialog");
+    const suggested = defaultPersonalAccessTokenName(new Date(), "en");
+    const name = within(dialog).getByLabelText(/Name/);
+    const access = within(dialog).getByRole("group", { name: "Access" });
+    const expiration = within(dialog).getByRole("group", { name: "Expiration" });
+    const submit = within(dialog).getByRole("button", { name: /^Create token$/i });
+
+    expect(name).toHaveValue(suggested);
+    expect(name).not.toBeRequired();
+    expect(submit).toBeEnabled();
+    const follows = Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(access.compareDocumentPosition(expiration) & follows).toBeTruthy();
+    expect(expiration.compareDocumentPosition(name) & follows).toBeTruthy();
+    expect(name.compareDocumentPosition(submit) & follows).toBeTruthy();
+
+    fireEvent.change(name, { target: { value: "   " } });
+    fireEvent.click(submit);
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        name: suggested,
+        scopes: ["*"],
+        expires_in_days: 90,
+      });
+    });
+  });
+
   it("submits the default 90 day expiration when creating a token", async () => {
     const mutateAsync = jest.fn().mockResolvedValue({ token: "evr_pat_secret_test" });
     mockUseCreatePersonalAccessToken.mockReturnValue({
@@ -128,7 +168,7 @@ describe("PersonalAccessTokensPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Create token/i })[0]);
 
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Name"), {
+    fireEvent.change(within(dialog).getByLabelText(/Name/), {
       target: { value: "Test Token" },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: /^Create token$/i }));
@@ -154,7 +194,7 @@ describe("PersonalAccessTokensPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Create token/i })[0]);
 
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Name"), {
+    fireEvent.change(within(dialog).getByLabelText(/Name/), {
       target: { value: "Unlimited Token" },
     });
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Never expires/i }));
@@ -182,7 +222,7 @@ describe("PersonalAccessTokensPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Create token/i })[0]);
 
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Name"), {
+    fireEvent.change(within(dialog).getByLabelText(/Name/), {
       target: { value: "Custom Token" },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "Custom" }));
@@ -233,7 +273,7 @@ describe("PersonalAccessTokensPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Create token/i })[0]);
 
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Name"), {
+    fireEvent.change(within(dialog).getByLabelText(/Name/), {
       target: { value: "CI reader" },
     });
     fireEvent.click(within(dialog).getByRole("radio", { name: /Read-only/ }));

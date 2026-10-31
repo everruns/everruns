@@ -16,8 +16,11 @@
 mod agents_api_support;
 
 mod anthropic_parallel_tool_calls;
+mod decision_discovery;
 mod discovery;
-mod fireworks_chat;
+// Paused 2026-10-31: the Fireworks account is suspended (spending limit), so
+// every call returns 412. Restore `fireworks_chat.rs` from git history and
+// re-add its `mod` once billing is restored.
 mod meta_model_api;
 mod openai_agents_api;
 mod openai_astra_compaction;

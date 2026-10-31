@@ -2,8 +2,9 @@
 
 The full [serve](../../../crates/serve) project layout in one app. The
 warehouse is an in-memory SQLite; the agent runs on `openai/gpt-6.1-sol` (the
-reviewer on `openai/gpt-6-luna`), so set `OPENAI_API_KEY` (or a host's
-`SERVE_GATEWAY_URL` / `OPENROUTER_API_KEY`).
+reviewer on `openai/gpt-6-luna`), so set `OPENAI_API_KEY` or
+`OPENROUTER_API_KEY`. Optional `OPENAI_BASE_URL` selects a compatible Responses
+API endpoint when used with `OPENAI_API_KEY`.
 
 ```sh
 cargo run -p serve-example-revenue-analyst              # dev server on :3000

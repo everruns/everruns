@@ -222,10 +222,34 @@ pub fn tools_call_retry_body(
     request_state: Option<&str>,
     input_responses: &BTreeMap<String, Value>,
 ) -> Value {
-    let mut body = tools_call_body(id, name, arguments, version, capabilities);
+    request_retry_body(
+        id,
+        "tools/call",
+        &json!({ "name": name, "arguments": arguments }),
+        version,
+        capabilities,
+        request_state,
+        input_responses,
+    )
+}
+
+/// Retry the original method and parameters, replacing only MRTR round state.
+/// State from an earlier round must not survive when the server omits it.
+pub fn request_retry_body(
+    id: i64,
+    method: &str,
+    params: &Value,
+    version: &str,
+    capabilities: ClientCapabilities,
+    request_state: Option<&str>,
+    input_responses: &BTreeMap<String, Value>,
+) -> Value {
+    let mut body = request_body(id, method, params, version, capabilities);
     let Some(params) = body["params"].as_object_mut() else {
         return body;
     };
+    params.remove("requestState");
+    params.remove("inputResponses");
     if let Some(request_state) = request_state {
         params.insert("requestState".to_string(), json!(request_state));
     }

@@ -134,7 +134,10 @@ async fn begin_link(state: &AppState, user_id: Uuid) -> (CookieJar, String) {
         }),
         management_user(user_id, OrgRole::Admin),
         CookieJar::new(),
-        Query(github_org::LinkQuery { return_to: None }),
+        Query(github_org::LinkQuery {
+            return_to: None,
+            popup: None,
+        }),
     )
     .await
     .unwrap();
@@ -576,6 +579,7 @@ async fn members_cannot_attach_the_shared_app_to_an_agent_directly() {
         },
         CookieJar::new(),
         None,
+        false,
     )
     .await
     .unwrap_err();

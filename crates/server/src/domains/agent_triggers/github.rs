@@ -359,6 +359,9 @@ pub struct GitHubDeliveryRecipients {
     pub bot_login: Option<String>,
     /// Service virtual users whose agents' GitHub triggers are candidates.
     pub identities: Vec<VirtualUserId>,
+    /// The shared App installation an org link received this delivery for;
+    /// it wakes Agent source bindings that read through that link.
+    pub org_link_installation: Option<i64>,
 }
 
 impl GitHubDeliveryRecipients {
@@ -368,6 +371,7 @@ impl GitHubDeliveryRecipients {
             org_id: app.org_id,
             bot_login: Some(format!("{}[bot]", app.slug)),
             identities: vec![app.virtual_user_id],
+            org_link_installation: None,
         }
     }
 
@@ -385,6 +389,7 @@ impl GitHubDeliveryRecipients {
             identities: db
                 .list_everruns_app_identities(org_id, installation_id)
                 .await?,
+            org_link_installation: Some(installation_id),
         })
     }
 }
@@ -425,8 +430,14 @@ pub async fn dispatch_github_delivery(
         )
     {
         let identities: Vec<_> = recipients.identities.iter().map(|id| id.uuid()).collect();
-        db.request_agent_source_push(recipients.org_id, &identities, repo, branch)
-            .await?;
+        db.request_agent_source_push(
+            recipients.org_id,
+            &identities,
+            recipients.org_link_installation,
+            repo,
+            branch,
+        )
+        .await?;
     }
     if recipients.identities.is_empty()
         || sent_by_bot(recipients.bot_login.as_deref(), &delivery.payload)

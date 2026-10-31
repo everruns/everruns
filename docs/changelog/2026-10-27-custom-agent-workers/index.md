@@ -5,6 +5,7 @@ date: 2026-10-27
 kind: feature
 significance: notable
 products: [platform]
+release: "0.50.0"
 surfaces: [code, operations]
 links:
   docs: [/how-to/custom-agent-workers/]

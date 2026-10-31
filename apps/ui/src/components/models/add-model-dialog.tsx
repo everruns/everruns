@@ -187,7 +187,11 @@ export function AddModelDialog({
                   const canonical = profile.key.split("/").slice(1).join("/");
                   setModelId(
                     modelType === "decisions" && selectedProvider?.provider_type === "openrouter"
-                      ? `typesafe/${canonical === "jev-1.13.0" ? "jev-1.13" : canonical}`
+                      ? ({
+                          "jev-1.14.0": "typesafe/jev-1.14",
+                          "jev-1.13.0": "typesafe/jev-1.13",
+                          "jev-latest": "~typesafe/jev-latest",
+                        }[canonical] ?? canonical)
                       : canonical,
                   );
                   setDisplayName(profile.profile.name);

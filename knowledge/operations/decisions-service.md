@@ -24,6 +24,11 @@ authentication shared by their typed services. [System One](../../crates/drivers
 is shared by direct TypeSafe and OpenRouter. Its response validator rejects missing answers, type
 mismatches, invalid distributions and out-of-range scores. Exact provider aliases are explicit;
 unknown IDs stay opaque. Requested and returned snapshot identities remain separate.
+Jev 1.14 uses the existing text primitives and shared default context limits; experimental
+images, Box and direct long-context opt-ins are outside this integration. The shared
+[wire mapping](../../crates/contracts/src/model_profile_data/decision_models.rs) keeps catalog
+sync and execution consistent, including OpenRouter's tilde-prefixed rolling alias.
+[Provider documentation](https://docs.typesafe.ai/models) owns release facts and pricing.
 
 The [host router](../../crates/core/src/host/decisions/registry.rs) composes a provider registry and
 an explicit default model. The utility LLM fallback remains opt-in and reports uncalibrated labels.

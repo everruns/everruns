@@ -34,8 +34,9 @@ linked binary knows what the macros registered.
 3. Ask the owner for any missing secrets before the first deploy.
 4. Provision `DATABASE_URL`, `NATS_URL` and the sandbox adapter, and pass them
    in as environment variables.
-5. Point `SERVE_GATEWAY_URL` and `SERVE_GATEWAY_KEY` at the model gateway, so
-   the app holds no provider keys.
+5. Supply `OPENAI_API_KEY` for `openai/…` models, with optional `OPENAI_BASE_URL`
+   for a compatible Responses API endpoint, or configure `OPENROUTER_API_KEY`.
+   Credentials stay in the runtime environment, outside the app binary.
 6. Give each branch a preview URL, and run `eval --against <preview>` before
    promoting it.
 

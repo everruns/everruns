@@ -3,7 +3,7 @@ import { useOrgScopedQuery } from "./create-crud-hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { queryKeys } from "@/lib/query-keys";
-import { getAgentSource } from "@/lib/api/agent-source";
+import { getAgentSource, listAgentSourceAccounts } from "@/lib/api/agent-source";
 
 export const agentSourceKey = (id: string) => ["agent-source", id] as const;
 export function useAgentSource(id: string) {
@@ -26,4 +26,14 @@ export function useAgentSource(id: string) {
     lastCommit.current = commit;
   }, [query.data?.applied_commit, client, id]);
   return query;
+}
+
+export const agentSourceAccountsKey = (id: string) => ["agent-source", id, "accounts"] as const;
+/** GitHub accounts the Sync dialog can read through, with their repositories. */
+export function useAgentSourceAccounts(id: string, enabled: boolean) {
+  return useOrgScopedQuery({
+    queryKey: agentSourceAccountsKey(id),
+    queryFn: () => listAgentSourceAccounts(id),
+    enabled,
+  });
 }

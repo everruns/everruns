@@ -167,7 +167,49 @@ the agent then follows. For archive-based skills, the instructions reference com
 relative path and the agent reads them with ordinary filesystem tools. Because registry skills are
 already mounted into the session VFS before the tool runs, activation is a read, not a fetch.
 
-#### Idempotence
+#### Opt-in persistent instruction inspection
+
+The `skills` capability accepts `report_only_inspection: true`. It is off by
+default. Both the hosted workspace capability and the multi-scope capability
+use the same local inspector for catalog discovery and activation. The prompt
+catalog carries a short finding count; `list_skills` and `activate_skill`
+return the structured report. Invalid catalog entries can have findings but
+remain invalid for activation.
+
+Inspection covers raw `SKILL.md`, including metadata, before substitutions.
+It does not inspect referenced files, activation arguments, or arbitrary tool
+output. Rules and report shapes live in
+[`artifact_inspection.rs`](../../crates/core/src/builtins/artifact_inspection.rs).
+The report binds the raw content hash, parser version (including its default),
+session namespace, observed scope/path, artifact kind, and inspection ruleset. Origin is an observed
+location, not authenticated publisher provenance; user-controlled metadata and
+read-only mounts must never become trust signals. A report is not an approval.
+
+With inspection enabled, activation re-reads the winning scope before consulting
+its receipt. Cached results are reused only when the complete result, including
+the inspection binding and substituted instructions, matches. Inspected receipts
+are isolated from legacy name-only activations so disabling the feature does not
+replay a report. Session IDs keep identical VFS paths in separate sessions from
+sharing review bindings. A concurrent edit after a read does not change the report's
+meaning: it describes exactly the bytes returned by that read, not future reads.
+
+The inspector has no I/O, bounds scanning and findings, records no excerpts, and
+marks truncated scans. It never deletes or quarantines artifacts, executes skill
+commands, grants approval, or contacts external scanners. Reports are heuristic:
+false positives and missed attacks are expected. Empty findings and XML wrappers
+do not establish prompt-injection safety; filesystem, sandbox, approval, and
+command-substitution guards remain necessary.
+
+The pure artifact contract also accepts memory text. Yolop's memory adapter
+uses it for approved writes and selected recalls, and inspects only already-visible
+titles during automatic disclosure. Its full reports bind canonical note content
+and observed store identity. Yolop needs an Everruns dependency revision containing
+the shared inspector; temporary local validation may use a Cargo patch config,
+but its committed dependency sources are not replaced with sibling paths or a
+vendored implementation. Hosted memory mounts and persisted human review decisions
+remain separate follow-ups.
+
+#### Default activation cache
 
 `activate_skill` is idempotent within a session. The first successful activation is recorded in the session resource registry under `resource_id = "skill_activation:{name}"` with the tool result stored as metadata. Subsequent calls for the same skill short-circuit and return the cached result with an extra `already_active: true` flag, no VFS re-read, no re-parse, no re-mount. This keeps the handle contract stable across retries and planner loops that re-emit the same activation.
 

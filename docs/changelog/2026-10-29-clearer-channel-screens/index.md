@@ -5,6 +5,7 @@ date: 2026-10-29
 kind: improvement
 significance: minor
 products: [platform, cloud]
+release: "0.50.0"
 surfaces: [ui]
 links:
   docs: [/features/channels/]

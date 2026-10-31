@@ -7,9 +7,9 @@
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useState, type ReactNode } from "react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FeatureFlags } from "@/lib/api/types";
 import { ExperimentalBadge } from "@/components/ui/experimental-badge";
@@ -20,6 +20,17 @@ import { useOrg } from "@/providers/org-provider";
 import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 
 const isDev = process.env.NODE_ENV === "development";
+
+function NavigationPending() {
+  const ui = useUiTranslations();
+  const { pending } = useLinkStatus();
+  return pending ? (
+    <span role="status" className="ml-auto">
+      <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+      <span className="sr-only">{ui("Loading page")}</span>
+    </span>
+  ) : null;
+}
 
 function NavLink({ item, pathname }: { item: NavigationItem; pathname: string }) {
   const ui = useUiTranslations();
@@ -62,6 +73,7 @@ function NavLink({ item, pathname }: { item: NavigationItem; pathname: string })
       )}
       {item.warningTooltip && <WarningBadge tooltip={item.warningTooltip} />}
       {item.experimental && !item.warningTooltip && <ExperimentalBadge />}
+      <NavigationPending />
     </Link>
   );
 }

@@ -4381,6 +4381,45 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/source/accounts": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "List GitHub accounts for Agent source sync",
+        "description": "Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.",
+        "operationId": "list_agent_source_accounts",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSourceAccounts"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/source/options": {
       "post": {
         "tags": [
@@ -20651,6 +20690,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "popup",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -35715,11 +35762,40 @@
           }
         }
       },
+      "AgentSourceAccounts": {
+        "type": "object",
+        "description": "Development GitHub accounts available to an Agent's source sync.",
+        "required": [
+          "available",
+          "personal",
+          "organization"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "The deployment has the shared Everruns GitHub App configured."
+          },
+          "install_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where a person installs the shared Everruns App on another GitHub account."
+          },
+          "organization": {
+            "$ref": "#/components/schemas/OrganizationSourceAccount"
+          },
+          "personal": {
+            "$ref": "#/components/schemas/PersonalSourceAccount"
+          }
+        }
+      },
       "AgentSourceStatus": {
         "type": "object",
         "description": "Continuous GitHub source binding, applied revision and reconciliation status.",
         "required": [
           "mode",
+          "github_account",
           "local_dirty",
           "generation",
           "repository",
@@ -35755,6 +35831,11 @@
             "format": "uuid",
             "description": "Binding generation used to detect a concurrent reconnect or disconnect.",
             "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c"
+          },
+          "github_account": {
+            "type": "string",
+            "description": "GitHub account the source reads through: personal, organization, or\nagent for a binding made before sync stopped using the Agent's identity.",
+            "example": "organization"
           },
           "last_checked_at": {
             "type": [
@@ -38878,6 +38959,17 @@
                 "format": "uuid",
                 "description": "Current binding generation when replacing a source; omit for an unbound Agent.",
                 "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c"
+              },
+              "github_account": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SourceGitHubAccount",
+                    "description": "Development GitHub account the source reads and writes through; omitted\nprefers the caller's own GitHub, then the organization's link."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "mode": {
                 "$ref": "#/components/schemas/SourceMode",
@@ -57620,6 +57712,42 @@
           }
         }
       },
+      "OrganizationSourceAccount": {
+        "type": "object",
+        "description": "The organization's links to the shared Everruns GitHub App.",
+        "required": [
+          "can_connect",
+          "accounts",
+          "repositories"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Linked GitHub accounts."
+          },
+          "can_connect": {
+            "type": "boolean",
+            "description": "The caller may link another GitHub account (organization admins)."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why repositories could not be listed, when they could not."
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRepository"
+            },
+            "description": "Repositories reachable through the linked installations."
+          }
+        }
+      },
       "OutputMessageCompletedData": {
         "type": "object",
         "description": "Data for output.message.completed event",
@@ -59815,6 +59943,42 @@
           "tool_call_id": {
             "type": "string",
             "description": "The `ask_user` call to name in `POST …/question-answers`."
+          }
+        }
+      },
+      "PersonalSourceAccount": {
+        "type": "object",
+        "description": "The caller's own GitHub sign-in.",
+        "required": [
+          "connected",
+          "repositories"
+        ],
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "description": "The caller has signed in to GitHub."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why repositories could not be listed, when they could not."
+          },
+          "login": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub login of that sign-in.",
+            "example": "octocat"
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRepository"
+            },
+            "description": "Repositories reachable through the shared App's installations the person can access."
           }
         }
       },
@@ -66840,6 +67004,14 @@
           }
         }
       },
+      "SourceGitHubAccount": {
+        "type": "string",
+        "description": "Development GitHub account a source reads and writes through. Never the\nAgent's runtime GitHub identity.",
+        "enum": [
+          "personal",
+          "organization"
+        ]
+      },
       "SourceInput": {
         "type": "object",
         "description": "A connected repository mounted beneath a non-overlapping collection path.",
@@ -66917,6 +67089,17 @@
             "description": "Branch to browse; omitted uses the repository's default branch.",
             "example": "main"
           },
+          "github_account": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SourceGitHubAccount",
+                "description": "Development GitHub account to read through; omitted prefers the caller's own."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "path": {
             "type": "string",
             "description": "Repository-relative directory to browse; empty selects the root.",
@@ -66926,6 +67109,30 @@
             "type": "string",
             "description": "GitHub repository in owner/name form.",
             "example": "acme/agents"
+          }
+        }
+      },
+      "SourceRepository": {
+        "type": "object",
+        "description": "One repository a development account can reach.",
+        "required": [
+          "full_name",
+          "account",
+          "private"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "GitHub account that owns the repository.",
+            "example": "acme"
+          },
+          "full_name": {
+            "type": "string",
+            "description": "Repository in owner/name form.",
+            "example": "acme/agents"
+          },
+          "private": {
+            "type": "boolean"
           }
         }
       },

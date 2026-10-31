@@ -233,9 +233,8 @@ jobs:
           # points somewhere else is the residue of an attempt that tagged and
           # then failed to publish. It pins this package to that older commit
           # permanently, and no re-run can clear it. Fail here, where the remedy
-          # is one command, rather than dispatching a run whose head is the stale
-          # commit -- the correlation selector rejects it on headSha and the
-          # controller then misreports it as "did not start".
+          # is one command, rather than dispatching a run whose requested source
+          # disagrees with the immutable tag.
           NEW_TAGS=()
           for i in $(seq 0 $((count - 1))); do
             TAG=$(jq -r ".[$i].tag" release-plan.json)
@@ -275,10 +274,12 @@ jobs:
             echo "::group::Release $PKG $VER ($TAG)"
 
             # gh workflow run does not return a run ID. Give this dispatch a
-            # controller-unique identity, then accept only a workflow run whose
-            # event, package, tag, SHA, and correlation all match.
+            # controller-unique identity, then accept only a main-branch run
+            # whose event, package, source SHA, tag and correlation all match.
+            # OIDC trusts main's workflow; the job independently validates and
+            # checks out the immutable release tag, even if main has advanced.
             CORRELATION="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${i}-${SHA}"
-            gh workflow run publish-crates.yml --ref "$TAG" \
+            gh workflow run publish-crates.yml --ref main \
               -f package="$PKG" -f tag="$TAG" -f sha="$SHA" \
               -f correlation="$CORRELATION"
 
@@ -288,7 +289,7 @@ jobs:
             for _ in $(seq 1 30); do
               sleep 6
               gh run list --workflow=publish-crates.yml --event=workflow_dispatch \
-                --limit=100 --json databaseId,displayTitle,event,headSha \
+                --limit=100 --json databaseId,displayTitle,event,headBranch \
                 > publish-runs.json
               if CAND=$(python3 scripts/select_publish_run.py \
                 --package "$PKG" --tag "$TAG" --sha "$SHA" \
