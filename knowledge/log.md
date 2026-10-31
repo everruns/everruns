@@ -19,6 +19,11 @@
 - Use standard OpenAI endpoint settings in [Serve](framework/serve.md), with
   provider-scoped routing and endpoint-visible model IDs; simplify the Bashkit
   example's first-run instructions.
+* **Chat tutorial visuals.** Add real Cloudflare demo screenshots for shared
+  conversation, forks and cited history search, plus desktop/mobile architecture
+  diagrams and the reminder wakeup flow. Share the curated assets between
+  the walkthrough and example README. See [The isolate host](framework/wasm-kernel.md).
+
 * **Chat rebase qualification.** Adopt Framework 0.50 dependencies and the
   maintained isolate build's minification/debug-section stripping. Add an
   optional workerd upgrade mode that creates old-Engine journals and switches

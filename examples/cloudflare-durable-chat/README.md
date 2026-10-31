@@ -5,6 +5,34 @@ sessions **inside native Durable Objects**. It recreates
 [Earendil's multiplayer tutorial](https://earendil.com/posts/pi-durable-on-cloudflare/)
 with shared conversations, forks, reminders and a recoverable history-search child.
 
+[Open the Cloudflare demo](https://everruns-durable-chat.everruns.workers.dev/)
+· [Read the walkthrough](../../docs/framework/examples/durable-chat.mdx)
+
+## See it in action
+
+![Alice and Bob share a chat room and the assistant recalls their PostgreSQL decision.](../../docs/framework/examples/durable-chat-shared.png)
+
+Two browsers share one committed conversation. **Copy room link** invites another
+participant; **Fork here** starts a separate conversation from a committed message.
+
+![A new conversation searches the original decision; the sidebar shows its search child and a fork.](../../docs/framework/examples/durable-chat-history.png)
+
+A new conversation calls `search_history` and retrieves the earlier decision with
+citations. Its search child runs as an independent Framework session. These are
+actual captures of the deployed demo using Muse Spark 1.3 Contributor.
+
+## How it works
+
+<picture>
+  <source media="(max-width: 40rem)" srcset="../../docs/framework/examples/durable-chat-mobile.svg" />
+  <img src="../../docs/framework/examples/durable-chat.svg" alt="Browsers share a ChatRoom Durable Object. Stable admissions reach one ChatSession Durable Object per conversation or search child. Each runs Everruns Engine with its own journal and alarm, calling OpenRouter through the shared driver and fetch." />
+</picture>
+
+The room owns presence, the conversation directory and reminder delivery.
+Each conversation or search child runs Engine inside its own Durable Object.
+Room and session alarms keep scheduled and interrupted work moving while every
+browser is closed; reconnecting reads committed history.
+
 ## Run
 
 Requires Rust 1.96, Node.js 24, the wasm32 target and wasm-bindgen-cli 0.2.129.
@@ -151,4 +179,4 @@ This is experimental hosting for small demo rooms. There is no automatic
 compaction, individual identity or production quota system. Shared access permits
 use of the configured model budget. External tool effects require idempotency or
 reconciliation. The chat client displays committed snapshots rather than token
-streams. See the [walkthrough](../../docs/framework/examples/durable-chat.md).
+streams. See the [walkthrough](../../docs/framework/examples/durable-chat.mdx).

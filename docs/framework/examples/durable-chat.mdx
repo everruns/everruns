@@ -2,7 +2,11 @@
 title: Durable multiplayer chat on Cloudflare
 description: Build a shared chat room with ordinary Everruns Agents and Engine sessions inside Cloudflare Durable Objects, with forks, reminders and history search.
 appliesTo: [framework]
+slug: framework/examples/durable-chat
 ---
+
+import desktopDiagram from "./durable-chat.svg?url&no-inline";
+import mobileDiagram from "./durable-chat-mobile.svg?url&no-inline";
 
 This walkthrough recreates
 [Earendil's multiplayer chat tutorial](https://earendil.com/posts/pi-durable-on-cloudflare/)
@@ -15,6 +19,17 @@ The independently built
 uses the shared Engine session-hosting profile and OpenRouter driver. It has no
 celld dependency, external executor or container. This is experimental hosting;
 read [Durable Object hosting](/framework/durable-objects/) for its guarantees.
+
+## See the demo
+
+[Open the Cloudflare demo](https://everruns-durable-chat.everruns.workers.dev/),
+create a conversation, and copy the room link into a second browser.
+
+![Alice and Bob share a launch-planning room. The assistant recalls their PostgreSQL decision, both participants are present, and committed messages have Fork here controls.](./durable-chat-shared.png)
+
+Alice and Bob see the same committed conversation. **Copy room link** invites
+another browser; **Fork here** starts a new conversation from a committed message.
+This is the deployed demo with real Muse Spark 1.3 Contributor responses.
 
 ## Run the chat
 
@@ -49,17 +64,13 @@ Ask for a reminder in 30 seconds, close the browsers, and return after the deadl
 
 ## Framework execution, application services
 
-```mermaid
-flowchart TB
-  Browser[Shared chat browsers] --> Room[ChatRoom Durable Object]
-  Room -->|Stable admission IDs| Session[ChatSession Durable Object]
-  Session --> Engine[Everruns Engine and ObjectHosting]
-  Engine --> Actor[Shared actor execution and recovery]
-  Actor --> Driver[Shared OpenRouter driver]
-  Driver --> Fetch[Host fetch transport]
-  Actor -->|Application tools| Room
-  Room -->|Independent Framework session| Child[History-search ChatSession]
-```
+<picture className="er-responsive-diagram">
+  <source media="(max-width: 40rem)" srcSet={mobileDiagram} />
+  <img
+    src={desktopDiagram}
+    alt="Shared browsers use public room routes to a ChatRoom Durable Object. Stable admissions reach a ChatSession Durable Object for each conversation or search child, running Everruns Engine with its own journal and alarm. The shared driver calls OpenRouter through fetch."
+  />
+</picture>
 
 A room is addressed through `/rooms/<name>/...`. Its conversation directory,
 receipts and reminder outbox live in the room DO. Each conversation is a separate
@@ -133,6 +144,8 @@ instruction.
 Schedules are an explicit application service here. A durable session journal
 alone does not provide a scheduler or room directory.
 
+![A reminder is persisted in the room, browsers disconnect, the room alarm admits a stable reminder message, the session alarm runs Engine and commits a reply, and a reconnecting browser reads the result.](./durable-chat-reminders.svg)
+
 ## Recover a history-search child
 
 `search_history` creates a child keyed by the parent tool execution identity.
@@ -140,6 +153,12 @@ That identity distinguishes different assistant tool-call messages even when a
 provider reuses a call ID. The child is an ordinary Framework session with its
 own durable admission and alarm. It can query room history through
 `search_conversations`, returning conversation IDs and sequence numbers.
+
+![A second conversation invokes search_history, receives a cited PostgreSQL decision and answers. The sidebar shows the original conversation, a fork and independent history-search children.](./durable-chat-history.png)
+
+**Decision lookup** retrieves the choice recorded in **Launch plan**. The sidebar
+also shows **Fork of Launch plan** and the independent **History search** children.
+The tool result carries source conversation IDs and sequence numbers.
 
 A parent interrupted while waiting can repeat this idempotent tool. It finds the
 same child and reads its reconstructible admission outcome; it does not create

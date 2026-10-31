@@ -137,7 +137,7 @@ remains unchanged for service deployments.
 These remain application concerns; native SQLite host services do not implicitly
 provide equivalent ports for an object adapter.
 
-The [walkthrough](../../docs/framework/examples/durable-chat.md) owns setup and
+The [walkthrough](../../docs/framework/examples/durable-chat.mdx) owns setup and
 deployment procedures. Its [workerd suite](../../examples/cloudflare-durable-chat/test/chat-e2e.mjs)
 and [CI](../../.github/workflows/cloudflare-durable-chat.yml) cover retained
 registration/model selection, forks, lost acknowledgements and autonomous
@@ -145,6 +145,13 @@ search/reminder recovery. Its optional previous-package mode writes journals
 with an earlier Engine before upgrading at a recovery restart, so runtime
 compatibility is tested across actual Wasm artifacts. Platform limits and measured
 bundle size must be reported separately from any project artifact budget.
+
+The walkthrough owns shared screenshot/diagram assets used by its example README.
+Curated UI captures use a fresh room, generic participant data and real Muse
+responses from the deployed demo, never the scripted test provider. They show
+shared presence, a committed fork and a cited history-search child; they do not
+qualify a newer source revision as deployed. The desktop/mobile architecture
+renders share one Mermaid source.
 
 ## Host requirements
 
