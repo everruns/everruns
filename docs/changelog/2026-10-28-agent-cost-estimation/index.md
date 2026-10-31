@@ -6,7 +6,7 @@ supersededBy: 2026-10-28-smart-agent-cost-projections
 kind: feature
 significance: notable
 products: [platform, cloud]
-release: "0.50.0"
+release: "0.50.1"
 surfaces: [ui]
 links:
   docs: [/features/ui/]

@@ -25,6 +25,7 @@ Pull requests run formatting, linting, repository guards, affected workspace tes
 and relevant UI/docs checks. The affected set includes reverse Cargo dependencies;
 server persistence, authorization, and migration changes add focused contracts.
 Idempotent admission and request-transaction changes also execute the real Agent API and Console cancellation/replay contracts.
+MCP adapter, shared command-catalog and MCP domain-test changes execute the endpoint protocol and tenant-isolation contracts in focused PR validation.
 History and manager-context changes exercise the real REST/command revision
 contract before merge, including the first mutation's restorable baseline.
 API and command changes also exercise the production-router scope sweep;

@@ -5,7 +5,7 @@ date: 2026-10-29
 kind: improvement
 significance: notable
 products: [platform, cloud]
-release: "0.50.0"
+release: "0.50.1"
 surfaces: [ui]
 links:
   docs: [/integrations/ag-ui/, /features/generative-ui/, /reference/generative-ui/]

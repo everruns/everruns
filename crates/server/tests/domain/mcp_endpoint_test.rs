@@ -2169,63 +2169,43 @@ async fn test_mcp_adversarial_tool_chain_cannot_escape_org_scope() {
         .as_str()
         .expect("org2 session id");
 
-    let discover_agents = mcp_tool_call(
-        &server,
-        "discover",
-        json!({ "query": "agent", "include_schemas": true }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&discover_agents),
-        "discover agent failed: {}",
-        tool_text(&discover_agents)
-    );
-    let discover_agent_text = tool_text(&discover_agents);
-    assert!(discover_agent_text.contains("list_agents"));
-    assert!(discover_agent_text.contains("get_agent"));
-
-    // Broad entity discovery is intentionally bounded and read-first. Resolve
-    // the mutation by exact name before exercising its tenant boundary below.
-    let discover_update_agent = mcp_tool_call(
-        &server,
-        "discover",
-        json!({ "query": "update_agent", "include_schemas": true }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&discover_update_agent),
-        "discover update_agent failed: {}",
-        tool_text(&discover_update_agent)
-    );
-    assert!(tool_text(&discover_update_agent).contains("update_agent"));
-
-    let discover_sessions = mcp_tool_call(
-        &server,
-        "discover",
-        json!({ "query": "session", "include_schemas": true }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&discover_sessions),
-        "discover session failed: {}",
-        tool_text(&discover_sessions)
-    );
-    let discover_session_text = tool_text(&discover_sessions);
-    assert!(discover_session_text.contains("list_sessions"));
-    assert!(discover_session_text.contains("get_session"));
-
-    let discover_create_message = mcp_tool_call(
-        &server,
-        "discover",
-        json!({ "query": "create_message", "include_schemas": true }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&discover_create_message),
-        "discover create_message failed: {}",
-        tool_text(&discover_create_message)
-    );
-    assert!(tool_text(&discover_create_message).contains("create_message"));
+    // Broad searches are bounded and their rankings change as the catalog
+    // grows. Resolve every command exactly so this chain always reaches its
+    // tenant-boundary assertions instead of depending on the first page.
+    for command in [
+        "list_agents",
+        "get_agent",
+        "update_agent",
+        "list_sessions",
+        "get_session",
+        "create_message",
+    ] {
+        let response = mcp_tool_call(
+            &server,
+            "discover",
+            json!({ "query": command, "include_schemas": true }),
+        )
+        .await;
+        assert!(
+            !tool_is_error(&response),
+            "discover {command} failed: {}",
+            tool_text(&response)
+        );
+        let payload = tool_json(&response);
+        let operations = payload["operations"].as_array().unwrap();
+        assert_eq!(operations.len(), 1, "exact lookup for {command}: {payload}");
+        assert_eq!(operations[0]["name"], command);
+        assert_eq!(payload["include_schemas"], true);
+        // Oversized schemas are intentionally replaced by runnable help.
+        assert!(
+            operations[0]
+                .get("help")
+                .or_else(|| operations[0].get("bash_usage"))
+                .and_then(Value::as_str)
+                .is_some(),
+            "missing command help for {command}: {payload}"
+        );
+    }
 
     let wrong_org_query = mcp_tool_call(
         &server,

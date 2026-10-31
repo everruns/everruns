@@ -5,6 +5,7 @@ date: 2026-10-30
 kind: feature
 significance: minor
 products: [framework, yolop]
+release: "0.50.1"
 surfaces: [code, cli]
 links:
   docs: [/framework/host-services/]
