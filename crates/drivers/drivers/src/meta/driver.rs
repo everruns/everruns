@@ -162,6 +162,24 @@ async fn list_meta_models(
 /// Register Meta Model API as a chat provider.
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const META_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "meta",
+        recommended_models: &[
+            "muse-spark-1.3-contributor",
+            "muse-spark-1.3",
+            "muse-wonder-1.0",
+            "muse-spark-1.2",
+        ],
+        coding_model: "muse-spark-1.3-contributor",
+        research_model: "muse-wonder-1.0",
+        chat_model: "muse-spark-1.3",
+        small_model: "muse-spark-1.2",
+        decision_model: "muse-spark-1.2",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Meta".into(),
@@ -175,6 +193,7 @@ pub fn descriptor() -> DriverDescriptor {
         .with_api_key_fallback_env("META_API_KEY")
         .with_api_key_fallback_env("MODEL_API_KEY"),
         base_url_env: Some("LLAMA_BASE_URL".into()),
+        recommended_models: Some(META_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Meta, |config| {
             Provider::new(config.provider.clone(), MetaChatDriver::new())
                 .base_url(

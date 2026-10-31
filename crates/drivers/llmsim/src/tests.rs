@@ -518,6 +518,30 @@ async fn test_register_driver() {
     assert!(driver.is_ok());
 }
 
+#[test]
+fn test_recommended_models_cover_all_roles() {
+    let mut registry = DriverRegistry::new();
+    register_driver(&mut registry);
+
+    let entry = registry
+        .recommended_models(&DriverId::LlmSim)
+        .expect("llmsim declares recommended models");
+    assert_eq!(entry.provider, DriverId::LlmSim.as_str());
+    assert!(!entry.recommended_models.is_empty());
+    for role in [
+        entry.coding_model,
+        entry.research_model,
+        entry.chat_model,
+        entry.small_model,
+        entry.decision_model,
+    ] {
+        assert!(
+            entry.recommended_models.contains(&role),
+            "role default {role} not in recommended list"
+        );
+    }
+}
+
 #[tokio::test]
 async fn test_empty_response() {
     let config = LlmSimConfig {

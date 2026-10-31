@@ -472,6 +472,25 @@ fn cloudflare_credential_schema() -> CredentialFormSchema {
 
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const CLOUDFLARE_RECOMMENDED:
+    everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "cloudflare",
+        recommended_models: &[
+            "llama-3.3-70b-versatile",
+            "llama-4-maverick",
+            "mistral-large-3",
+            "step-3.5-flash",
+        ],
+        coding_model: "llama-3.3-70b-versatile",
+        research_model: "llama-4-maverick",
+        chat_model: "mistral-large-3",
+        small_model: "step-3.5-flash",
+        decision_model: "step-3.5-flash",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Cloudflare AI Gateway".into(),
@@ -479,6 +498,7 @@ pub fn descriptor() -> DriverDescriptor {
         // unless one is configured explicitly.
         base_url_env: None,
         credential_schema: cloudflare_credential_schema(),
+        recommended_models: Some(CLOUDFLARE_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Cloudflare, |config| {
             let base_url = config
                 .base_url

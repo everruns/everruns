@@ -40,6 +40,7 @@ pub use crate::stream_event::{
 // `DiscoveredModel` is the discovery module's own type; it lives there and is
 // re-exported here so every existing path keeps working.
 pub use crate::model_discovery::DiscoveredModel;
+use crate::recommended_models::ProviderRecommendedModels;
 
 /// Trait for LLM drivers
 ///
@@ -959,6 +960,9 @@ pub struct DriverDescriptor {
     /// Optional interactive OAuth connect flow. `Some` makes "Connect with
     /// {provider}" available as an alternative to entering a key by hand.
     pub oauth: Option<DriverOAuthConfig>,
+    /// Curated model recommendations owned by this driver's provider file.
+    /// `None` for drivers without a curated entry (external/custom gateways).
+    pub recommended_models: Option<ProviderRecommendedModels>,
     /// Chat service factory. `None` for drivers that only offer other services.
     pub chat: Option<DriverFactory>,
     /// Embeddings service factory. `None` for drivers that do not support embeddings.
@@ -983,6 +987,7 @@ impl DriverDescriptor {
             base_url_env: None,
             services: vec![ServiceKind::Chat],
             oauth: None,
+            recommended_models: None,
             chat: Some(Arc::new(factory)),
             embeddings: None,
             provider: None,
@@ -1251,6 +1256,16 @@ impl DriverRegistry {
     /// Get the registered descriptor for a provider type.
     pub fn descriptor(&self, provider_type: &DriverId) -> Option<&DriverDescriptor> {
         self.descriptors.get(provider_type)
+    }
+
+    /// Curated model recommendations for a provider, if its driver declares any.
+    /// External/custom drivers report `None`; callers should fall back to live
+    /// discovery (`rank_discovered_models`).
+    pub fn recommended_models(
+        &self,
+        provider_type: &DriverId,
+    ) -> Option<ProviderRecommendedModels> {
+        self.descriptors.get(provider_type)?.recommended_models
     }
 
     /// Whether the registered driver declares the given service.

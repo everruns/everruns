@@ -779,6 +779,24 @@ impl std::fmt::Debug for GeminiChatDriver {
 /// Register the Gemini driver with the driver registry
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const GEMINI_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "gemini",
+        recommended_models: &[
+            "gemini-4-argon",
+            "gemini-3.8-flash",
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
+        ],
+        coding_model: "gemini-4-argon",
+        research_model: "gemini-4-argon",
+        chat_model: "gemini-3.8-flash",
+        small_model: "gemini-3.5-flash-lite",
+        decision_model: "gemini-3.5-flash-lite",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Google Gemini".into(),
@@ -793,6 +811,7 @@ pub fn descriptor() -> DriverDescriptor {
         // GEMINI_BASE_URL was recognized before these names moved onto the
         // drivers; declaring it keeps existing dev setups working.
         base_url_env: Some("GEMINI_BASE_URL".into()),
+        recommended_models: Some(GEMINI_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Gemini, |config| {
             let provider =
                 everruns_contracts::Provider::new(config.provider.clone(), GeminiChatDriver::new())

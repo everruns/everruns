@@ -349,11 +349,30 @@ fn fireworks_credential_schema() -> CredentialFormSchema {
 /// ```
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const FIREWORKS_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "fireworks",
+        recommended_models: &[
+            "deepseek-v3.2",
+            "qwen3.7-max",
+            "llama-3.3-70b-versatile",
+            "step-3.5-flash",
+        ],
+        coding_model: "deepseek-v3.2",
+        research_model: "qwen3.7-max",
+        chat_model: "llama-3.3-70b-versatile",
+        small_model: "step-3.5-flash",
+        decision_model: "step-3.5-flash",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Fireworks AI".into(),
         credential_schema: fireworks_credential_schema(),
         base_url_env: Some("FIREWORKS_BASE_URL".into()),
+        recommended_models: Some(FIREWORKS_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Fireworks, |config| {
             Provider::new(config.provider.clone(), FireworksChatDriver::new())
                 .base_url(
