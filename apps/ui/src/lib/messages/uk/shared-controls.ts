@@ -15,4 +15,8 @@ export const messages: Readonly<Record<string, string>> = {
     "Не вдалося виконати запит. Спробуйте ще раз.",
   "Clear {value0}": "Очистити {value0}",
   "Filter by agent": "Фільтр за агентом",
+  "Changed again since your save": "Змінено знову після вашого збереження",
+  "Show values": "Показати значення",
+  "Hide values": "Сховати значення",
+  Empty: "Порожньо",
 };

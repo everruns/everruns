@@ -81,6 +81,29 @@ it("undoes one field at the receipt revision and preserves the other saved field
   await manager.undo(resource);
   expect(transport.restore).toHaveBeenLastCalledWith(resource, 1, 3, ["enabled"]);
   expect(manager.receipts()).toHaveLength(0);
+  expect(manager.undoneNotices()).toEqual([{ resource, count: 1 }]);
+});
+
+it("confirms a completed Undo all until shown or replaced by the next save", async () => {
+  const { manager, form, setRevision } = setup();
+  await manager.poll();
+  let write = await manager.beforeWrite("PATCH", endpoint);
+  setRevision(2);
+  await write!.succeeded({ ...resource, revision: 2 });
+  manager.update({ ...form, baseline: "saved-2" });
+  await manager.undo(resource);
+  expect(manager.receipts()).toHaveLength(0);
+  expect(manager.undoneNotices()).toEqual([{ resource, count: 2 }]);
+
+  write = await manager.beforeWrite("PATCH", endpoint);
+  setRevision(4);
+  await write!.succeeded({ ...resource, revision: 4 });
+  expect(manager.receipts()).toHaveLength(1);
+  expect(manager.undoneNotices()).toHaveLength(0);
+
+  await manager.undo(resource);
+  manager.clearUndone(resource);
+  expect(manager.undoneNotices()).toHaveLength(0);
 });
 
 it("keeps a failed restore visible and refuses Undo while a local draft is dirty", async () => {

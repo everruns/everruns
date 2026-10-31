@@ -14,4 +14,8 @@ export const messages: Readonly<Record<string, string>> = {
   "The request could not be completed. Please try again.": "无法完成请求。请重试。",
   "Clear {value0}": "清除{value0}",
   "Filter by agent": "按智能体筛选",
+  "Changed again since your save": "保存后又被修改",
+  "Show values": "显示值",
+  "Hide values": "隐藏值",
+  Empty: "空",
 };

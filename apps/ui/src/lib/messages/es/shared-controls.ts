@@ -15,4 +15,8 @@ export const messages: Readonly<Record<string, string>> = {
     "No se pudo completar la solicitud. Inténtalo de nuevo.",
   "Clear {value0}": "Borrar {value0}",
   "Filter by agent": "Filtrar por agente",
+  "Changed again since your save": "Cambió de nuevo después de guardar",
+  "Show values": "Mostrar valores",
+  "Hide values": "Ocultar valores",
+  Empty: "Vacío",
 };

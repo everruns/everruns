@@ -15,4 +15,8 @@ export const messages: Readonly<Record<string, string>> = {
     "La requête n’a pas pu aboutir. Réessayez.",
   "Clear {value0}": "Effacer {value0}",
   "Filter by agent": "Filtrer par agent",
+  "Changed again since your save": "Modifié à nouveau depuis votre enregistrement",
+  "Show values": "Afficher les valeurs",
+  "Hide values": "Masquer les valeurs",
+  Empty: "Vide",
 };

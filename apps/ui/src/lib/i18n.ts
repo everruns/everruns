@@ -238,6 +238,12 @@ const messages = {
     edit_count_one: "{count} edit",
     edit_count_few: "{count} edits",
     edit_count_many: "{count} edits",
+    saved_change_count_one: "Saved {count} change",
+    saved_change_count_few: "Saved {count} changes",
+    saved_change_count_many: "Saved {count} changes",
+    undone_change_count_one: "Undid {count} change",
+    undone_change_count_few: "Undid {count} changes",
+    undone_change_count_many: "Undid {count} changes",
     line_number: "line {value}",
     no_tasks: "No tasks",
     todos_completed_summary: "{completed} of {total} todos completed",
@@ -546,6 +552,12 @@ const messages = {
     edit_count_one: "{count} зміна",
     edit_count_few: "{count} зміни",
     edit_count_many: "{count} змін",
+    saved_change_count_one: "Збережено {count} зміну",
+    saved_change_count_few: "Збережено {count} зміни",
+    saved_change_count_many: "Збережено {count} змін",
+    undone_change_count_one: "Скасовано {count} зміну",
+    undone_change_count_few: "Скасовано {count} зміни",
+    undone_change_count_many: "Скасовано {count} змін",
     line_number: "рядок {value}",
     no_tasks: "Завдань немає",
     todos_completed_summary: "Завершено {completed} із {total} завдань",
@@ -677,7 +689,9 @@ type CountMessagePrefix =
   | "atif_images_omitted"
   | "atif_parts_exported"
   | "atif_export_stopped"
-  | "edit_count";
+  | "edit_count"
+  | "saved_change_count"
+  | "undone_change_count";
 
 function formatPluralMessage(
   locale: SupportedLocale,
@@ -714,4 +728,10 @@ export function formatAtifExportStopped(locale: SupportedLocale, count: number):
 }
 export function formatEditCount(locale: SupportedLocale, count: number): string {
   return formatPluralMessage(locale, "edit_count", count);
+}
+export function formatSavedChangeCount(locale: SupportedLocale, count: number): string {
+  return formatPluralMessage(locale, "saved_change_count", count);
+}
+export function formatUndoneChangeCount(locale: SupportedLocale, count: number): string {
+  return formatPluralMessage(locale, "undone_change_count", count);
 }
