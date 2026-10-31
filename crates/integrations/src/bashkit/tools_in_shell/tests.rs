@@ -192,6 +192,26 @@ fn install_cli_surface(context: &mut ToolContext, registry: &ToolRegistry) {
 }
 
 #[tokio::test]
+async fn multilingual_cli_search_keeps_authorized_canonical_names() {
+    let mut context = context(Some(Arc::new(Policy::default())), true);
+    let mut registry = ToolRegistry::new();
+    for name in ["café", "cafe\u{301}"] {
+        registry.register(EchoTool::named(name));
+    }
+    registry.register(ToolsMarkerTool);
+    install_cli_surface(&mut context, &registry);
+    context.tool_registry = Some(Arc::new(registry));
+    context.visible_tool_names = Some(Arc::new(std::collections::HashSet::from([
+        "café".into(),
+        TOOLS_COMMAND.into(),
+    ])));
+    let output = run("tools search cafe\u{301}", &context).await;
+    let stdout = output["stdout"].as_str().unwrap();
+    assert!(stdout.contains("tools café"), "{output}");
+    assert!(!stdout.contains("tools cafe\u{301}"), "{output}");
+}
+
+#[tokio::test]
 async fn capability_purpose_search_refines_sources_and_keeps_help_and_calls_in_scope() {
     let policy = Arc::new(Policy::default());
     let mut context = context(Some(policy), true);

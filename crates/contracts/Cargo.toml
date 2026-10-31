@@ -53,6 +53,8 @@ serde-saphyr = { workspace = true, optional = true }
 toml = { version = "1.1", optional = true }
 cron = { version = "0.17", optional = true }
 globset = { workspace = true, optional = true }
+icu_segmenter = { version = "2.4", default-features = false, features = ["compiled_data"], optional = true }
+unicode-normalization = { version = "0.1", optional = true }
 # Tree-sitter for structural outlines (EVE-248), only with `tree-sitter-outlines`.
 tree-sitter = { version = "0.27", optional = true }
 tree-sitter-rust = { version = "0.24", optional = true }
@@ -88,7 +90,7 @@ wasm-bindgen-futures = "0.4"
 session-sandbox = ["dep:inventory"]
 # Runtime SPI that integrations implement (`everruns_contracts::runtime`). Off for
 # provider-only builds, which keep the lean wire-protocol tree.
-runtime = ["session-sandbox", "dep:inventory", "dep:tokio-util", "dep:jsonschema", "dep:serde-saphyr", "dep:toml", "dep:cron", "dep:globset"]
+runtime = ["session-sandbox", "dep:inventory", "dep:tokio-util", "dep:jsonschema", "dep:serde-saphyr", "dep:toml", "dep:cron", "dep:globset", "dep:icu_segmenter", "dep:unicode-normalization"]
 default = ["definition"]
 definition = ["dep:schemars"]
 # Shared protocol drivers, request helpers, and streaming reconnect support.

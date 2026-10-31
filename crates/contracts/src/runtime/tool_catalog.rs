@@ -5,6 +5,10 @@
 //! server or capability, independently of how many operations it owns.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::LazyLock;
+
+use icu_segmenter::{WordSegmenter, WordSegmenterBorrowed};
+use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
 
 use crate::tool_types::ToolDefinition;
 use serde::Serialize;
@@ -14,11 +18,19 @@ const EXACT_NAME_BONUS: f64 = 10_000.0;
 const FIELD_WEIGHTS: [f64; 3] = [4.0, 1.0, 1.0];
 
 fn normalized_tool_name(name: &str) -> String {
-    name.trim()
+    // Normalize before trimming: a decomposed final accent belongs to the name.
+    name.nfc()
+        .collect::<String>()
+        .trim()
         .trim_matches(|character: char| {
-            !character.is_alphanumeric() && character != '_' && character != '-'
+            !character.is_alphanumeric()
+                && !is_combining_mark(character)
+                && character != '_'
+                && character != '-'
         })
         .to_lowercase()
+        .nfc()
+        .collect::<String>()
         .replace('-', "_")
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -76,20 +88,41 @@ pub struct ToolSearchIndex {
 }
 
 fn tokens(text: &str) -> Vec<String> {
-    let mut normalized = String::new();
+    // Preserve the existing identifier boundaries (including ASCII acronyms).
+    // NFC runs before splitting so decomposed accents cannot become separators.
+    let mut normalized = String::with_capacity(text.len());
     let mut previous_lowercase = false;
-    for character in text.chars() {
+    for character in text.nfc() {
         if character.is_uppercase() && previous_lowercase {
             normalized.push(' ');
         }
-        if character.is_alphanumeric() {
+        if character.is_alphanumeric() || is_combining_mark(character) {
             normalized.extend(character.to_lowercase());
         } else {
             normalized.push(' ');
         }
-        previous_lowercase = character.is_lowercase() || character.is_numeric();
+        if !is_combining_mark(character) {
+            previous_lowercase = character.is_lowercase() || character.is_numeric();
+        }
     }
-    normalized.split_whitespace().map(str::to_owned).collect()
+    // Most tool metadata is ASCII: keep its tokenization and avoid dictionary work.
+    if normalized.is_ascii() {
+        return normalized.split_whitespace().map(str::to_owned).collect();
+    }
+    // Fixed, compiled dictionaries need no locale, network, or model. Segment
+    // words rather than generating substrings/ngrams; output stays linear in input.
+    static SEGMENTER: LazyLock<WordSegmenterBorrowed<'static>> =
+        LazyLock::new(|| WordSegmenter::new_dictionary(Default::default()));
+    let normalized: String = normalized.nfc().collect();
+    let mut terms = Vec::new();
+    let mut start = 0;
+    for (end, kind) in SEGMENTER.segment_str(&normalized).iter_with_word_type() {
+        if kind.is_word_like() {
+            terms.push(normalized[start..end].to_owned());
+        }
+        start = end;
+    }
+    terms
 }
 
 fn add_terms(terms: &mut HashMap<String, usize>, text: &str, weight: usize) {
@@ -535,6 +568,124 @@ mod tests {
             }}));
         }
         definition
+    }
+
+    #[test]
+    fn multilingual_tokens_preserve_words_and_identifier_boundaries() {
+        for (text, expected) in [
+            ("搜索仓库问题", vec!["搜索", "仓库", "问题"]),
+            ("文書を検索", vec!["文書", "を", "検索"]),
+            ("ค้นหาเอกสาร", vec!["ค้นหา", "เอกสาร"]),
+            ("문서 검색", vec!["문서", "검색"]),
+            ("Поиск документов", vec!["поиск", "документов"]),
+            ("البحث عن الملفات", vec!["البحث", "عن", "الملفات"]),
+            ("फ़ाइल खोजें", vec!["फ़ाइल", "खोजें"]),
+            ("CAFÉ cafe\u{301}", vec!["café", "café"]),
+            (
+                "搜索GitHub_repoIssues",
+                vec!["搜索", "git", "hub", "repo", "issues"],
+            ),
+            (
+                "mcp_atlas__listItems HTTPServer v2Tool foo.bar",
+                vec![
+                    "mcp",
+                    "atlas",
+                    "list",
+                    "items",
+                    "httpserver",
+                    "v2",
+                    "tool",
+                    "foo",
+                    "bar",
+                ],
+            ),
+            (" \t，。!? 😀 ", vec![]),
+        ] {
+            assert_eq!(tokens(text), expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn multilingual_search_matches_descriptions_schemas_and_source_context() {
+        for (description, query) in [
+            ("搜索仓库问题", "仓库"),
+            ("文書を検索", "検索"),
+            ("ค้นหาเอกสาร", "เอกสาร"),
+            ("Café documents", "cafe\u{301}"),
+            ("Cafe\u{301} documents", "café"),
+            ("फ़ाइल खोजें", "फ़ाइल"),
+        ] {
+            let mut definition = operation("atlas", "get", description);
+            let index = ToolSearchIndex::new(&[definition.clone()]);
+            assert_eq!(
+                index.search_operations(query, 8, |_| true).len(),
+                1,
+                "{query}"
+            );
+            assert!(index.search_operations(query, 8, |_| false).is_empty());
+            let ToolDefinition::Builtin(tool) = &mut definition else {
+                unreachable!()
+            };
+            tool.description = "Read one item".into();
+            tool.parameters = json!({"type":"object","properties":{
+                "filter":{"type":"string","description":description}
+            }});
+            let index = ToolSearchIndex::new(&[definition.clone()]);
+            assert_eq!(
+                index.search_operations(query, 8, |_| true).len(),
+                1,
+                "schema: {query}"
+            );
+            let ToolDefinition::Builtin(tool) = &mut definition else {
+                unreachable!()
+            };
+            tool.parameters = json!({"type":"object"});
+            tool.hints.metadata =
+                Some(json!({"mcp_server":{"name":"atlas","description":description}}));
+            let index = ToolSearchIndex::new(&[definition]);
+            assert!(index.search_operations(query, 8, |_| true).is_empty());
+            assert_eq!(
+                index.search_sources(query, 8, |_| true).len(),
+                1,
+                "source: {query}"
+            );
+            assert!(index.search_sources(query, 8, |_| false).is_empty());
+        }
+    }
+
+    #[test]
+    fn unicode_exact_aliases_preserve_canonical_identity_and_scope() {
+        for (name, query) in [("café", "cafe\u{301}"), ("cafe\u{301}", "café")] {
+            let target = operation("atlas", name, "Read an item");
+            let other = operation("cloud", "other", "café");
+            let index = ToolSearchIndex::new(&[target.clone(), other]);
+            let hits = index.search_operations(query, 8, |_| true);
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].name, target.name());
+            assert!(hits[0].score >= EXACT_NAME_BONUS);
+            let hits = index.search_operations(query, 8, |name| name != target.name());
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].name, "mcp_cloud__other");
+            assert!(hits[0].score < EXACT_NAME_BONUS);
+        }
+    }
+
+    #[test]
+    fn unicode_matching_does_not_translate_fold_accents_or_merge_identities() {
+        let index = ToolSearchIndex::new(&[
+            operation("atlas", "café", "搜索仓库问题"),
+            operation("atlas", "cafe\u{301}", "文書を検索"),
+        ]);
+        let hits = index.search_operations("café", 8, |_| true);
+        assert_eq!(hits.len(), 2);
+        assert_ne!(hits[0].name, hits[1].name);
+        for query in ["cafe", "warehouse", "ＣＡＦÉ"] {
+            assert!(
+                index.search_operations(query, 8, |_| true).is_empty(),
+                "{query}"
+            );
+        }
+        assert_eq!(tokens("\u{301} \u{fe0f}"), Vec::<String>::new());
     }
 
     #[test]
