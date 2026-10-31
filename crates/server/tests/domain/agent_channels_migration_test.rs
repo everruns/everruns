@@ -938,8 +938,8 @@ async fn shared_session_reuse_still_matches_after_reparenting() {
 
 /// TM-AUTHZ-009: a session carrying the same surface tags but owned by a
 /// different principal must never be adopted. This is what makes
-/// `owner_principal_id` load-bearing on the endpoint rather than collapsible
-/// onto the agent.
+/// the endpoint’s `owner_principal_id` necessary; the agent’s owner alone
+/// cannot determine access.
 #[tokio::test]
 async fn session_owned_by_another_principal_is_not_adopted() {
     let pool = pool().await;

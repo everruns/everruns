@@ -2667,7 +2667,7 @@ export interface paths {
      *     ## Connection Cycling
      *
      *     Connections are automatically cycled every 10 minutes. Before closing, the server sends
-     *     a `disconnecting` event so clients can reconnect seamlessly.
+     *     a `disconnecting` event so clients can reconnect.
      *
      *     ## Retry Hints
      *
@@ -2843,7 +2843,7 @@ export interface paths {
      *     ## Connection Cycling
      *
      *     Connections are automatically cycled every 10 minutes. Before closing, the server sends
-     *     a `disconnecting` event so clients can reconnect seamlessly.
+     *     a `disconnecting` event so clients can reconnect.
      *
      *     ## Retry Hints
      *
@@ -7115,7 +7115,7 @@ export interface paths {
      *
      *     Connections are automatically cycled every 5 minutes to prevent stale connections
      *     through proxies and load balancers. Before closing, the server sends a `disconnecting`
-     *     event so clients can reconnect seamlessly without missing events.
+     *     event so clients can reconnect without missing events.
      *
      *     ## Retry Hints
      *

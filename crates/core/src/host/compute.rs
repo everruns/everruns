@@ -62,8 +62,8 @@ impl fmt::Display for ComputeKind {
 ///
 /// Tools and UI are assembled from this set. An operation a target cannot
 /// support is absent, never emulated with misleading semantics: Bashkit
-/// advertising `native_processes: false` is the load-bearing case, because a
-/// shell that merely fails on every binary looks broken rather than limited.
+/// must advertise `native_processes: false`: a shell that fails on every binary
+/// looks broken rather than limited.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ComputeCapabilities {
     /// Arbitrary native binaries and child processes.

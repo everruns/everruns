@@ -22,7 +22,7 @@ pub const SCHEMA: &str = "serve.manifest/v0";
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Manifest {
     pub schema: String,
-    /// Always true for now: serve is a proof of concept.
+    /// Always true in the current implementation.
     pub experimental: bool,
     pub app: AppInfo,
     /// Stable hash of everything below; sessions are pinned to it.

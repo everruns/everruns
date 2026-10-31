@@ -243,7 +243,7 @@ impl AnthropicChatDriver {
         // use adaptive thinking: `thinking: {type: "adaptive"}` plus
         // `output_config.effort`. On Fable 5.x and Opus 5.5/5/4.8/4.7 the budget-based
         // `thinking: {type: "enabled", budget_tokens}` form is removed and
-        // returns 400, so this split is load-bearing, not stylistic.
+        // returns 400, so these cases must stay separate.
         let (thinking, output_config) =
             match crate::anthropic::effort::resolve(config, wire_model, &profile) {
                 Some(effort) if uses_adaptive_thinking(wire_model) => {

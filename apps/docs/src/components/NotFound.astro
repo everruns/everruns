@@ -42,8 +42,6 @@ const pages = [
   <nav class="er-404-pages" aria-label="Popular pages">
     {pages.map((page) => <a href={docsPath(page.href)}>{page.label}</a>)}
   </nav>
-
-  <p class="er-404-credit">Illustration generated with ChatGPT</p>
 </div>
 
 <script>
@@ -181,9 +179,4 @@ const pages = [
     text-decoration-color: currentColor;
   }
 
-  .er-404-credit {
-    margin-top: 40px;
-    font-size: 12px;
-    color: hsl(var(--muted-foreground));
-  }
 </style>

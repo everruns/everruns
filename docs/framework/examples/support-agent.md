@@ -92,11 +92,12 @@ bash examples/support-agent/demo/record.sh --check
 
 Tests cover the distinct account states and rejection of unknown IDs. They do not grade the model's recommendation: compare a live response with the expected outcomes above.
 
-CI runs these offline checks without provider credentials. Live model behavior is evaluated separately; passing tests is not proof of answer quality.
+These checks run offline without provider credentials. To check the model’s answer,
+run the example and compare its output with the expected outcome above.
 
 ## Demo and recording
 
-The screencast runs the same `cargo run -q -p everruns-support-agent` command shown above. VHS hides most provider wait time but does not replace the model or tools with scripted output. Read the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/support-agent/demo/transcript.txt) at your own pace.
+Watch the screencast or read the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/support-agent/demo/transcript.txt) to see the tool calls and answer.
 
 With credentials exported and VHS, ffmpeg, and a VHS-compatible browser installed:
 
@@ -104,7 +105,8 @@ With credentials exported and VHS, ffmpeg, and a VHS-compatible browser installe
 bash examples/support-agent/demo/record.sh
 ```
 
-The recording script uses an exported `OPENAI_API_KEY` when present, otherwise Doppler project `everruns-dev`, config `dev`. It runs the real command inside VHS and updates `demo/demo.gif` plus `demo/transcript.txt` only after a successful turn. Public/demo data is safe here, but adapting tools may expose private data.
+Export `OPENAI_API_KEY` before recording. The script updates `demo/demo.gif` and
+`demo/transcript.txt` after a successful run.
 
 ## Adapt it
 
