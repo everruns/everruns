@@ -321,6 +321,8 @@ jobs:
               - '.github/crates-publish-set.txt'
               # scripts/test-chaos-harness.sh imports the chaos harness modules.
               - 'scripts/chaos/**'
+              # scripts/test-stress-bench.sh imports the stress bench modules.
+              - 'scripts/stress/**'
               # scripts/test-publish-crates-order.sh reads the publish workflow
               # and the workspace member manifests it publishes.
               - '.github/workflows/publish-crates.yml'
