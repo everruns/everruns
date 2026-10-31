@@ -16,7 +16,7 @@ use rows::*;
 
 use super::super::{CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelRow};
 use super::Database;
-use crate::errors::BadRequestError;
+use crate::errors::{BadRequestError, violated_unique_constraint};
 use anyhow::Result;
 use everruns_server_macros::sql;
 use uuid::Uuid;
@@ -234,42 +234,94 @@ impl Database {
         org_id: i64,
         input: CreateAgentChannelRow,
     ) -> Result<IngressChannelRow> {
-        let inserted = sqlx::query_scalar::<_, Uuid>(
-            r#"
-            INSERT INTO agent_channels (
-                agent_id, app_id, legacy_alias_id, public_id, channel_type,
-                channel_config, channel_config_encrypted, auth, auth_encrypted,
-                enabled, status, virtual_user_id, owner_principal_id,
-                resolved_owner_user_id
+        // Work Chat's public hostname is assigned once, here. Later updates do
+        // not write hosted_host, so the address stays put when settings change.
+        let assign_host = input.channel_type == "work_chat";
+        let mut host =
+            assign_host.then(crate::domains::agent_channels::record::work_chat::new_host_label);
+        for attempt in 0..8 {
+            let inserted = sqlx::query_scalar::<_, Uuid>(
+                r#"
+                INSERT INTO agent_channels (
+                    agent_id, app_id, legacy_alias_id, public_id, channel_type,
+                    channel_config, channel_config_encrypted, auth, auth_encrypted,
+                    enabled, status, virtual_user_id, owner_principal_id,
+                    resolved_owner_user_id, hosted_host
+                )
+                SELECT $2, NULL, NULL, $3, $4, $5, $6, $7, $8, $9, $10,
+                    $11, $12, $13, $14
+                FROM agents
+                WHERE org_id = $1 AND id = $2 AND status = 'active'
+                RETURNING id
+                "#,
             )
-            SELECT $2, NULL, NULL, $3, $4, $5, $6, $7, $8, $9, $10,
-                $11, $12, $13
-            FROM agents
-            WHERE org_id = $1 AND id = $2 AND status = 'active'
-            RETURNING id
-            "#,
-        )
-        .bind(org_id)
-        .bind(input.agent_id)
-        .bind(&input.public_id)
-        .bind(&input.channel_type)
-        .bind(&input.channel_config)
-        .bind(&input.channel_config_encrypted)
-        .bind(&input.auth)
-        .bind(&input.auth_encrypted)
-        .bind(input.enabled)
-        .bind(&input.status)
-        .bind(input.virtual_user_id)
-        .bind(input.owner_principal_id)
-        .bind(input.resolved_owner_user_id)
-        .fetch_optional(&self.pool)
-        .await?;
-        if inserted.is_none() {
-            return Err(BadRequestError::new("Agent was not found or is not active").into());
+            .bind(org_id)
+            .bind(input.agent_id)
+            .bind(&input.public_id)
+            .bind(&input.channel_type)
+            .bind(&input.channel_config)
+            .bind(&input.channel_config_encrypted)
+            .bind(&input.auth)
+            .bind(&input.auth_encrypted)
+            .bind(input.enabled)
+            .bind(&input.status)
+            .bind(input.virtual_user_id)
+            .bind(input.owner_principal_id)
+            .bind(input.resolved_owner_user_id)
+            .bind(host.as_deref())
+            .fetch_optional(&self.pool)
+            .await;
+            match inserted {
+                Ok(Some(_)) => {
+                    return self
+                        .get_agent_channel(org_id, input.agent_id, &input.public_id)
+                        .await?
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("created Agent channel could not be reloaded")
+                        });
+                }
+                Ok(None) => {
+                    return Err(BadRequestError::new("Agent was not found or is not active").into());
+                }
+                Err(error) => {
+                    let error = anyhow::Error::from(error);
+                    let collision = assign_host
+                        && attempt + 1 < 8
+                        && violated_unique_constraint(&error).as_deref()
+                            == Some("agent_channels_hosted_host_idx");
+                    if collision {
+                        host = Some(
+                            crate::domains::agent_channels::record::work_chat::new_host_label(),
+                        );
+                        continue;
+                    }
+                    return Err(error);
+                }
+            }
         }
-        self.get_agent_channel(org_id, input.agent_id, &input.public_id)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("created Agent channel could not be reloaded"))
+        Err(anyhow::anyhow!("could not assign a Work Chat address"))
+    }
+
+    /// The public DNS label for a Work Chat, if this channel is one.
+    pub async fn work_chat_host(&self, public_id: &str) -> Result<Option<String>> {
+        sqlx::query_scalar(
+            "SELECT hosted_host FROM agent_channels WHERE public_id = $1 AND channel_type = 'work_chat'",
+        )
+        .bind(public_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(Into::into)
+    }
+
+    /// The channel that owns this public hostname. Other channel types have none.
+    pub async fn work_chat_public_id_by_host(&self, host: &str) -> Result<Option<String>> {
+        sqlx::query_scalar(
+            "SELECT public_id FROM agent_channels WHERE hosted_host = $1 AND channel_type = 'work_chat'",
+        )
+        .bind(host)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(Into::into)
     }
 
     pub async fn update_agent_channel(

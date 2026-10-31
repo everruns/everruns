@@ -243,4 +243,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Endpoint secret": "Endpoint secret",
   "Verify and connect": "Verify and connect",
   "Disable external worker": "Disable external worker",
+  "Organization users": "Organisation users",
+  "Members of this organization can sign in.": "Members of this organisation can sign in.",
 };

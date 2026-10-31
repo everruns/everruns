@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 test.use({ deviceScaleFactor: 2 });
-const origin = "http://01933b5a000070008000000000000001.localhost:9140";
+const origin = "http://k3m9pq2r7x.localhost:9140";
 const root = { id: "session_main", title: "Launch research", status: "idle" };
 const events = [
   {
@@ -49,14 +49,16 @@ test.beforeEach(async ({ page }) => {
     const url = new URL(route.request().url()),
       path = url.pathname;
     let data: unknown = {};
-    if (path === "/api/chat/config") {
+    if (path === "/api/chat/config" || path.startsWith("/api/chat/logo/")) {
       await route.continue();
       return;
     }
     if (path.endsWith("/sse")) {
       await route.fulfill({
         contentType: "text/event-stream",
-        body: events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+        body: path.includes("/session_new/")
+          ? ""
+          : events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
       });
       return;
     }
@@ -112,11 +114,30 @@ test("multi-chat renders transcript, workspace and a new conversation", async ({
   await expect(
     page.getByRole("heading", { name: "A focused launch, with room to learn" }),
   ).toBeVisible();
+  const logo = page.locator(".brand-logo");
+  await expect(logo).toHaveAttribute(
+    "src",
+    "/api/chat/logo/avatar_01933b5a000070008000000000000001",
+  );
+  await expect(logo).toHaveJSProperty("complete", true);
+  await expect(logo).not.toHaveJSProperty("naturalWidth", 0);
+  expect(
+    (
+      await request.get(`${origin}/api/chat/logo/avatar_00000000000000000000000000000000`)
+    ).status(),
+  ).toBe(404);
   await page.getByRole("button", { name: "Workspace", exact: true }).first().click();
   await expect(page.getByRole("button", { name: "▤ launch-brief.md" })).toBeVisible();
   await page.screenshot({ path: "../../work/work-chat-multi.png", fullPage: true });
   await page.getByRole("button", { name: "New conversation" }).click();
   await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+  const welcome = page.locator(".mark-logo");
+  await expect(welcome).toHaveAttribute(
+    "src",
+    "/api/chat/logo/avatar_01933b5a000070008000000000000001",
+  );
+  await expect(welcome).toHaveJSProperty("complete", true);
+  await expect(welcome).not.toHaveJSProperty("naturalWidth", 0);
 });
 test("single chat keeps a main conversation and exposes agent threads", async ({
   page,
@@ -175,6 +196,64 @@ test("untrusted assistant Markdown cannot execute HTML", async ({ page, request 
   expect(
     await page.evaluate(() => (window as Window & { __chatXss?: boolean }).__chatXss),
   ).toBeUndefined();
+});
+
+test("a sent message is the reply, not a work-log preview", async ({ page, request }) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  const events = [
+    {
+      id: "evt_user",
+      sequence: 1,
+      type: "input.message",
+      data: {
+        message: {
+          id: "message_user",
+          role: "user",
+          content: [{ type: "text", text: "What do we see here?" }],
+        },
+      },
+    },
+    {
+      id: "evt_send",
+      sequence: 2,
+      type: "tool.started",
+      data: {
+        tool_call: { id: "call_send", name: "send_message" },
+        display_name: "Send message",
+        narration:
+          "Sending message: It's the GitHub **About** panel for **Bashkit** (`bashkit.sh`).",
+      },
+    },
+    {
+      id: "evt_reply",
+      sequence: 3,
+      type: "conversation.message",
+      data: {
+        message_id: "message_reply",
+        text: "It's the GitHub **About** panel for **Bashkit** (`bashkit.sh`), described as a shell toolkit.",
+      },
+    },
+    {
+      id: "evt_done",
+      sequence: 4,
+      type: "tool.completed",
+      data: { tool_call_id: "call_send", tool_name: "send_message", display_name: "Send message" },
+    },
+    { id: "evt_turn", sequence: 5, type: "turn.completed", data: { turn_id: "turn_1" } },
+  ];
+  await page.route("**/api/sessions/*/sse**", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+    }),
+  );
+  await page.goto(origin);
+  const reply = page.locator(".message.assistant");
+  await expect(reply).toContainText("It's the GitHub About panel for Bashkit");
+  await expect(reply).toContainText("bashkit.sh");
+  await expect(reply).not.toContainText("**");
+  await expect(reply).not.toContainText("Sending message");
+  await expect(page.locator(".activity")).toHaveCount(0);
 });
 
 test("file editor preserves the revision and explains concurrent changes", async ({
@@ -611,8 +690,32 @@ test("an authorization rejection stops stream reconnection", async ({ page, requ
   await expect(page.getByRole("link", { name: "Continue to sign in →" })).toBeVisible({
     timeout: 15000,
   });
+  await expect(page.getByText("Sign in to continue")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveCount(1);
   await page.waitForTimeout(2200);
   expect(streams).toBe(1);
+  await expect(page.getByText("Sign in to continue")).toHaveCount(0);
+});
+
+test("the sidebar shows the signed-in person", async ({ page, request }) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  await page.route("**/api/chat/profile", async (route) => {
+    await route.fulfill({
+      json: {
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        picture: "javascript:alert(1)",
+      },
+    });
+  });
+  await page.goto(origin);
+  const account = page.locator("aside footer .account");
+  await expect(account.getByText("Ada Lovelace")).toBeVisible();
+  await expect(account.getByText("ada@example.com")).toBeVisible();
+  await expect(account.locator(".avatar")).toHaveText("AL");
+  await expect(account.locator("img")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+  await expect(page.locator("aside footer").getByText("Work Chat", { exact: true })).toHaveCount(0);
 });
 
 test("sign-out retires an attachment read before it can start a message", async ({

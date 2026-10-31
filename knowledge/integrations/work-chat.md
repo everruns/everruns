@@ -19,9 +19,14 @@ and configuration mutations use that same contract; invalidating a live channel
 rolls back the mutation. Runtime rechecks protect against deployment changes.
 
 Consumers are virtual users, not console members. Channel-bound runtime tokens
-reach consumer session and self-service routes only. Organization membership is
-an optional execution auth method. Identity providers remain extensible through
-the existing channel verifier and execution configuration.
+reach consumer session and self-service routes only. Who may sign in is the
+channel membership: open (anyone the deployment identity provider accepts),
+invites (one verified email plus invited emails), or organization users
+(a current member, matched by external id or by a verified email on a verified
+account). An unverified email is not an identity. The deployment provider is
+configured, not hardcoded. A publisher-chosen provider is a later membership
+variant. Personal access tokens for organization members stay an execution
+auth method on API channels.
 
 Sessions, workspaces, tasks, questions and approvals use existing services.
 The channel introduces no retention policy. One main conversation is bound per
@@ -48,9 +53,10 @@ spending limit is shared; it is an admission check, not a prepaid reservation.
 
 The optional standalone browser host in `apps/chat-ui` serves one channel per
 hostname. The deployment configures its domain and OIDC provider; no hosted
-vendor or cloud domain is hardcoded upstream. Channel identifiers supply stable
-DNS-safe labels. The hostname, never a browser-supplied API URL or org, selects
-the channel.
+vendor or cloud domain is hardcoded upstream. Each Work Chat is assigned a
+stable DNS label when the channel is created. That label is not the channel
+id. The hostname, never a browser-supplied API URL, org, or channel id, selects
+the channel: the host asks the API which channel owns the label.
 
 Browser login uses a fixed broker callback with state, nonce and PKCE. Durable,
 single-use handoffs bind the destination channel and initiating browser.
@@ -78,6 +84,9 @@ keep memory-only behavior and show the storage warning.
 
 SSE framing handles split UTF-8 and CRLF delimiters, bounds partial frames and
 retained events, and advances its durable sequence before a React state update.
+The host does not apply its short upstream deadline to that stream: aborting a
+live response resets the browser connection, and on HTTP/3 the reset is reported
+as a network error. The conversation service cycles the stream itself.
 Reconnects use bounded backoff; access rejection ends the stream loop. API reads
 and each stream reconnect still renew channel authority through the existing BFF.
 The BFF bounds upstream connection/header setup, then releases that deadline for
@@ -113,10 +122,10 @@ operate within the caller's channel history. The permanent main conversation
 cannot be archived or renamed through consumer settings. Archived conversations
 remain readable and require reopening before another message.
 
-The channel owner may curate model choices. Empty selection retains the Agent's
-default. Message controls accept those models and typed reasoning effort only;
-other execution channels keep ignoring caller model controls. Existing budgets
-and approval rules apply, with no new rollout flags.
+Messages use the model configured on the Agent. A caller cannot select a
+different model. Message controls accept typed reasoning effort only; other
+execution channels keep ignoring caller controls. Existing budgets and approval
+rules apply, with no new rollout flags.
 
 The composer accepts up to three files with a combined four-megabyte limit,
 including paste and drag-and-drop. Workspace previews support Markdown, raster

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { consumeSse } from "../client/sse";
+import { consumeSse, streamFailure } from "../client/sse";
 import {
   recoveryKey,
   readRecovery,
@@ -45,6 +45,20 @@ test("SSE rejects an unbounded partial frame and cancels its reader", async () =
     /too large/,
   );
   assert.equal(cancelled, true);
+});
+test("a dropped live stream reconnects instead of showing the browser network error", () => {
+  assert.equal(
+    (streamFailure(new TypeError("network error")) as Error).message,
+    "Reconnecting to your conversation…",
+  );
+  assert.equal(
+    (streamFailure(new TypeError("Failed to fetch")) as Error).message,
+    "Reconnecting to your conversation…",
+  );
+  assert.equal(
+    (streamFailure(new Error("Conversation update is too large")) as Error).message,
+    "Conversation update is too large",
+  );
 });
 test("consumer recovery keeps the original request key, separates login scopes, and retires on logout", () => {
   const values = new Map<string, string>();

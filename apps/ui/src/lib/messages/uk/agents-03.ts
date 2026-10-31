@@ -1,5 +1,21 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 export const messages: Readonly<Record<string, string>> = {
+  Advanced: "Додатково",
+  "Who can use this chat": "Хто може користуватися цим чатом",
+  "Open access": "Відкритий доступ",
+  "Anyone can register and sign in.": "Будь-хто може зареєструватися і ввійти.",
+  "Single user + invites": "Один користувач і запрошення",
+  "Only one person, plus the people they invite.": "Лише одна особа і люди, яких вона запрошує.",
+  "Organization users": "Користувачі організації",
+  "Members of this organization can sign in.": "Увійти можуть учасники цієї організації.",
+  "This person": "Ця особа",
+  "They sign in with this email.": "Ця особа входить із цією адресою електронної пошти.",
+  Invites: "Запрошення",
+  "One email per line. Each person signs in with their own account.":
+    "Одна адреса на рядок. Кожна особа входить зі свого облікового запису.",
+  "Enter this person's email.": "Введіть адресу електронної пошти цієї особи.",
+  "Use email addresses, one per line, up to 50.":
+    "Укажіть адреси електронної пошти, по одній на рядок, не більше ніж 50.",
   "Require visitors to sign in with Google. When on, every request must present a valid Google account; signed-in visitors skip the Turnstile challenge.":
     "Вимагати від відвідувачів входити в обліковий запис Google. Коли ввімкнено, кожен запит має містити дійсний обліковий запис Google; відвідувачі, які ввійшли в систему, пропускають завдання Турнікет.",
   Required: "Обов’язково",
@@ -160,8 +176,15 @@ export const messages: Readonly<Record<string, string>> = {
   "The agent's GitHub App exists but is not installed yet. Finish installing it and pick the repositories the agent may use.":
     "Додаток GitHub агента існує, але ще не встановлено. Завершіть установку та виберіть сховища, які агент може використовувати.",
   "The caller": "Абонент",
-  "The caller then sees the tool and its arguments, which it needs to decide.":
-    "Потім абонент бачить інструмент і його аргументи, які він повинен вирішити.",
+  "The person in the chat": "Людина в чаті",
+  "They see the tool and what it would do, and approve or reject it in the chat.":
+    "Вони бачать інструмент і що він зробить, і схвалюють або відхиляють його в чаті.",
+  "They see the tool and its arguments, and approve or reject it.":
+    "Вони бачать інструмент і його аргументи, і схвалюють або відхиляють його.",
+  "They decide in Everruns. The person in the chat only sees that a tool is waiting.":
+    "Вони вирішують в Everruns. Людина в чаті бачить лише те, що інструмент очікує.",
+  "They decide in Everruns. The caller only sees that a tool is waiting.":
+    "Вони вирішують в Everruns. Викликач бачить лише те, що інструмент очікує.",
   "The channel was saved.": "Канал збережено.",
   "The client ID of your app in the AgentID console. Tokens must be issued for it and last ten minutes; AgentID is a sign-in, not a long-lived API key.":
     "Ідентифікатор клієнта вашої програми в консолі AgentID. Для нього повинні бути видані токени і тривати десять хвилин; AgentID — це вхід, а не довгостроковий ключ API.",
@@ -305,7 +328,7 @@ export const messages: Readonly<Record<string, string>> = {
   "When the provider cannot answer": "Коли провайдер не може відповісти",
   "When this agent wakes up on its own": "Коли цей агент прокидається сам",
   "Where it works": "Де це працює",
-  "Who allows held-back tool calls": "Хто дозволяє утримувані виклики інструментів",
+  "Who approves a tool before it runs": "Хто схвалює інструмент перед запуском",
   "Who should this server act as?": "Кого повинен виконувати цей сервер?",
   "with a JSON-RPC 2.0 envelope. Only the": "з конвертом JSON-RPC 2.0. Тільки",
   "With failed turns": "З невдалими ходами",

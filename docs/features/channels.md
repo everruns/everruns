@@ -189,14 +189,16 @@ The old `/v1/e/{channel_id}/…` and `/v1/apps/{app_id}/…` ingress paths remai
 ## Work Chat
 
 Publish **Work Chat** to give an Agent a dedicated browser experience with its
-own consumer sign-in. Each channel has a stable, unique hostname on the hosted
-content domain configured by your deployment. Several Work Chat channels can
+own consumer sign-in. Each channel has a stable hostname on the hosted content
+domain configured by your deployment. That hostname is assigned when the
+channel is created and is not the channel id. Several Work Chat channels can
 point to the same Agent.
 
-The channel page shows that address after you publish. Copy it from
-**Settings** or **Connect**, or use **Open chat page** in the header. The
-address stays the same when you change settings. Publishing alone does not
-create the hostname until the deployment has a hosted chat domain.
+The channel page shows that address once, above the settings. Open it with
+**Open chat page** in the header. The address stays the same when you change
+settings. A link built from the channel id does not open the chat. Publishing
+alone does not create the hostname until the deployment has a hosted chat
+domain.
 
 Choose **Multiple conversations** for a conversation list, or **Single chat
 with threads** for one permanent main conversation per consumer and related
@@ -210,6 +212,7 @@ coordination capability does not qualify.
   "channel_type": "work_chat",
   "channel_config": {
     "interface_mode": "multi_chat",
+    "membership": "open",
     "execution": {
       "visibility": "full",
       "errors": "public"
@@ -218,10 +221,16 @@ coordination capability does not qualify.
 }
 ```
 
-Consumers are separate from console members. Configure channel identity methods
-and optional organization-member access through the existing
-[Agent API authentication](/features/agent-api/) settings. The browser host uses
-its deployment's OIDC provider and host-only sessions. It shows streamed replies,
+Choose who can sign in. **Open access** admits anyone who can register and sign
+in with the deployment's identity provider. On Everruns Cloud that is an
+[Everruns ID](https://id.everruns.com). **Single user + invites** admits one
+email address plus the people you list. **Organization users** admits current
+members of this organization. Someone who is not included is turned away at
+sign-in. A publisher-chosen provider, such as an external OpenID Connect
+issuer, is not a membership mode yet.
+
+Consumers are separate from console members. The browser host uses its
+deployment's identity provider and host-only sessions. It shows streamed replies,
 work activity, threads, questions and permitted approvals. Workspace tools enable
 file browsing and editing; read-only files remain protected. Provider reasoning,
 debug records and private runtime mounts are excluded.
@@ -237,6 +246,15 @@ Publishing a channel alone does not provision hosting or DNS.
 
 ### Work Chat interface
 
+The sidebar shows who is signed in. Their name comes from the identity
+provider, with email and picture when those claims are present. A provider
+that sends no name leaves the Work Chat label in place. The sidebar and the
+empty conversation use the Agent's avatar. An Agent with no avatar keeps the
+round mark.
+
+A message the Agent sends is the reply. It is rendered as Markdown, and it is
+not listed again as work. Other tool steps stay in the work log.
+
 The hosted chat renders Markdown, OpenUI charts and all 69 standard A2UI 1.0
 components inline, using the same renderer as console chat. See
 [Generative UI](/features/generative-ui/) for forms, bindings and saved-message
@@ -246,9 +264,8 @@ formats. Replies include expandable work logs, and background task cards open
 their delegated conversation.
 
 Consumers can search, pin, rename and archive independent conversations. Archived
-conversations retain their history and can be reopened. A channel owner can choose
-which models appear in the composer's model selector; leaving the list empty
-uses the Agent default. Reasoning effort and existing spending controls apply.
+conversations retain their history and can be reopened. Messages use the model
+configured on the Agent. Reasoning effort and existing spending controls apply.
 
 Attach up to three files totaling 4 MB through the composer, paste or drag-and-drop.
 The Workspace panel previews Markdown, images, CSV tables and text, supports

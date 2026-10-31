@@ -3,7 +3,7 @@
 use super::*;
 pub(crate) mod experience;
 use crate::domains::agent_channels::record::work_chat::{
-    ChatFeatures, ChatInterface, WorkChatConfig,
+    ChatFeatures, ChatInterface, WorkChatConfig, host_label_ok,
 };
 use crate::domains::session_files::service::{CreateFileInput, WorkspaceFileService};
 use axum::extract::Query;
@@ -18,7 +18,7 @@ fn file_revision(file: &everruns_core::SessionFile) -> String {
 }
 
 pub(super) fn routes() -> Router<ChannelApiState> {
-    let mut router = Router::new();
+    let mut router = Router::new().route("/v1/work-chat/hosts/{label}", get(get_work_chat_by_host));
     for prefix in ["/v1/channels", "/v1/e"] {
         router = router
             .route(
@@ -43,23 +43,68 @@ pub(super) fn routes() -> Router<ChannelApiState> {
     router.merge(experience::routes())
 }
 
-fn public_url(channel: &str) -> Option<String> {
+/// This channel's agent avatar, as a public circle preset, or nothing.
+async fn agent_logo(
+    state: &ChannelApiState,
+    context: &crate::domains::agent_channels::ingress::IngressContext,
+) -> Option<String> {
+    let agent = state
+        .db
+        .get_agent(context.org_id, context.agent_id?)
+        .await
+        .ok()??;
+    let avatar = crate::domains::agents::record::AgentAvatar::from_uuid(agent.avatar_id?);
+    Some(avatar.path(crate::domains::agents::avatar::AvatarShape::Circle, 64))
+}
+
+fn chat_domain() -> Option<String> {
     let domain = std::env::var("CHAT_DOMAIN").ok()?;
     if domain.is_empty()
         || domain.split('.').any(|label| {
             label.is_empty()
                 || !label
                     .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
         })
     {
         return None;
     }
-    Some(format!(
-        "https://{}.{}",
-        channel.strip_prefix("appchan_")?,
-        domain
-    ))
+    Some(domain)
+}
+
+/// `https://<assigned-label>.<CHAT_DOMAIN>`. A channel id is not a hostname.
+fn public_url(label: &str) -> Option<String> {
+    if !host_label_ok(label) {
+        return None;
+    }
+    Some(format!("https://{label}.{}", chat_domain()?))
+}
+
+async fn work_chat_bootstrap(state: &ChannelApiState, id: &str) -> ApiResponse<Response> {
+    let (context, channel) = resolve_api_channel(state, id).await?;
+    if channel_liveness(&context, &channel).is_err() {
+        return Err(not_found());
+    }
+    let cfg = config(&channel)?;
+    let features = validate_agent(state, &context, &channel).await?;
+    let host = state
+        .db
+        .work_chat_host(&channel.public_id.to_string())
+        .await
+        .map_err(internal_error)?;
+    Ok(Json(json!({
+        "channel_id": channel.public_id,
+        "name": context.name,
+        "description": context.description,
+        "experience": "work_chat",
+        "interface_mode": cfg.interface_mode,
+        "membership": cfg.membership,
+        "features": features,
+        "org_members": cfg.execution.org_members,
+        "logo": agent_logo(state, &context).await,
+        "public_url": host.as_deref().and_then(public_url)
+    }))
+    .into_response())
 }
 
 fn config(channel: &IngressChannel) -> ApiResponse<WorkChatConfig> {
@@ -98,15 +143,31 @@ pub(crate) async fn get_work_chat_config(
     State(state): State<ChannelApiState>,
     Path(id): Path<String>,
 ) -> Response {
+    work_chat_bootstrap(&state, &id)
+        .await
+        .unwrap_or_else(|response| response)
+}
+
+#[utoipa::path(get, operation_id="get_work_chat_by_host", path="/v1/work-chat/hosts/{label}", description="Public bootstrap for the live Work Chat published at this hostname.", params(("label" = String, Path)), responses((status=200,description="Success",body=Value),(status=404,description="No live Work Chat uses this hostname")),tag="agent-execution")]
+pub(crate) async fn get_work_chat_by_host(
+    State(state): State<ChannelApiState>,
+    Path(label): Path<String>,
+) -> Response {
     let result = async {
-        let (context, channel) = resolve_api_channel(&state, &id).await?;
-        if channel_liveness(&context, &channel).is_err() { return Err(not_found()); }
-        let cfg = config(&channel)?;
-        let features = validate_agent(&state, &context, &channel).await?;
-        Ok(Json(json!({"channel_id":channel.public_id,"name":context.name,"description":context.description,
-            "experience":"work_chat","interface_mode":cfg.interface_mode,"features":features,
-            "org_members":cfg.execution.org_members,"models":experience::models(&state, context.org_id, &cfg).await?,"public_url":public_url(&channel.public_id.to_string())})).into_response())
-    }.await;
+        // A channel id is 32 hex characters. This route does not accept one.
+        let label = label.to_ascii_lowercase();
+        if !host_label_ok(&label) {
+            return Err(not_found());
+        }
+        let id = state
+            .db
+            .work_chat_public_id_by_host(&label)
+            .await
+            .map_err(internal_error)?
+            .ok_or_else(not_found)?;
+        work_chat_bootstrap(&state, &id).await
+    }
+    .await;
     result.unwrap_or_else(|response| response)
 }
 
@@ -452,12 +513,40 @@ pub(crate) async fn delete_work_chat_file(
     result.unwrap_or_else(|response| response)
 }
 
+/// `send_message` and `no_reply` are the reply, not a work step. Their narration
+/// is the message body, which the transcript shows on its own.
+fn communication_tool(event: &Value) -> bool {
+    let data = &event["data"];
+    let name = data["tool_call"]["name"]
+        .as_str()
+        .or_else(|| data["tool_name"].as_str())
+        .unwrap_or("");
+    matches!(name, "send_message" | "channel_post_message" | "no_reply")
+}
+
 /// Work Chat projects the canonical stream rather than exposing debug events.
 pub(super) fn project(
     event: Value,
     config: &crate::domains::agent_channels::record::api::AgentApiChannelConfig,
 ) -> Option<Value> {
     let kind = event["type"].as_str()?;
+    if kind == "conversation.message" {
+        let text = event["data"]["text"].as_str()?;
+        if text.trim().is_empty() {
+            return None;
+        }
+        return Some(json!({
+            "id": event["id"],
+            "type": kind,
+            "ts": event["ts"],
+            "session_id": event["session_id"],
+            "sequence": event["sequence"],
+            "data": { "message_id": event["data"]["message_id"], "text": text }
+        }));
+    }
+    if matches!(kind, "tool.started" | "tool.completed") && communication_tool(&event) {
+        return None;
+    }
     if !matches!(
         kind,
         "input.message"
@@ -539,5 +628,90 @@ mod tests {
         ] {
             assert!(project(json!({"type":kind,"data":{"secret":"hidden"}}), &config).is_none());
         }
+    }
+
+    #[test]
+    fn a_sent_message_is_the_reply_and_not_a_work_step() {
+        use crate::domains::agent_channels::record::api::{AgentApiChannelConfig, ApiVisibility};
+        let config = AgentApiChannelConfig {
+            visibility: ApiVisibility::Full,
+            ..Default::default()
+        };
+        let sent = project(
+            json!({
+                "id": "evt_sent",
+                "type": "conversation.message",
+                "ts": "2026-10-30T00:00:00Z",
+                "session_id": "session_1",
+                "sequence": 3,
+                "data": {
+                    "message_id": "message_1",
+                    "text": "It's the **About** panel.",
+                    "tool_call_id": "call_1",
+                    "delivery": {"platform": "slack", "channel": "C1", "message_ref": "1.2"}
+                }
+            }),
+            &config,
+        )
+        .expect("sent message");
+        assert_eq!(sent["data"]["text"], "It's the **About** panel.");
+        assert!(sent["data"].get("tool_call_id").is_none());
+        assert!(sent["data"].get("delivery").is_none());
+        assert!(
+            project(
+                json!({"type":"conversation.message","data":{"text":"  "}}),
+                &config
+            )
+            .is_none()
+        );
+        for event in [
+            json!({
+                "type": "tool.started",
+                "data": {
+                    "tool_call": {"id": "call_1", "name": "send_message"},
+                    "narration": "Sending message: secret preview"
+                }
+            }),
+            json!({
+                "type": "tool.completed",
+                "data": {"tool_call_id": "call_1", "tool_name": "no_reply", "success": true}
+            }),
+            json!({
+                "type": "tool.started",
+                "data": {"tool_call": {"id": "call_9", "name": "channel_post_message"}}
+            }),
+        ] {
+            assert!(project(event, &config).is_none());
+        }
+        let read = project(
+            json!({
+                "id": "evt_tool",
+                "type": "tool.started",
+                "ts": "2026-10-30T00:00:00Z",
+                "session_id": "session_1",
+                "sequence": 2,
+                "data": {
+                    "tool_call": {"id": "call_2", "name": "read_file"},
+                    "narration": "Reading report.md"
+                }
+            }),
+            &config,
+        )
+        .expect("real tool");
+        assert_eq!(read["data"]["narration"], "Reading report.md");
+    }
+
+    #[test]
+    fn public_url_uses_the_assigned_host_not_the_channel_id() {
+        unsafe { std::env::set_var("CHAT_DOMAIN", "chat.example") };
+        assert_eq!(
+            public_url("k3m9pq2r7x").as_deref(),
+            Some("https://k3m9pq2r7x.chat.example")
+        );
+        assert!(public_url("01933b5a000070008000000000000001").is_none());
+        assert!(public_url("appchan_01933b5a000070008000000000000001").is_none());
+        unsafe { std::env::set_var("CHAT_DOMAIN", "not a domain") };
+        assert!(public_url("k3m9pq2r7x").is_none());
+        unsafe { std::env::set_var("CHAT_DOMAIN", "chat.example") };
     }
 }

@@ -353,6 +353,4 @@ export const messages: Readonly<Record<string, string>> = {
   Repositories: "存储库",
   "Request URL": "请求网址",
   "Require sign-in": "需要登录",
-  "Models consumers may select": "用户可选择的模型",
-  "Leave all unchecked to use the Agent default.": "全部不选时，使用智能体的默认模型。",
 };

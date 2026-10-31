@@ -1,5 +1,20 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  Advanced: "高级",
+  "Who can use this chat": "谁可以使用此聊天",
+  "Open access": "开放访问",
+  "Anyone can register and sign in.": "任何人都可以注册并登录。",
+  "Single user + invites": "单个用户和邀请",
+  "Only one person, plus the people they invite.": "仅限一个人，以及其邀请的人。",
+  "Organization users": "组织用户",
+  "Members of this organization can sign in.": "本组织的成员可以登录。",
+  "This person": "此人",
+  "They sign in with this email.": "此人使用此电子邮件登录。",
+  Invites: "邀请",
+  "One email per line. Each person signs in with their own account.":
+    "每行一个电子邮件。每个人使用自己的帐户登录。",
+  "Enter this person's email.": "输入此人的电子邮件。",
+  "Use email addresses, one per line, up to 50.": "请输入电子邮件地址，每行一个，最多 50 个。",
   "Require visitors to sign in with Google. When on, every request must present a valid Google account; signed-in visitors skip the Turnstile challenge.":
     "要求访问者使用 Google 登录。启用后，每个请求都必须提供有效的 Google 帐户；已登录的访客可跳过十字转门挑战。",
   Required: "必填",
@@ -156,8 +171,15 @@ export const messages: Readonly<Record<string, string>> = {
   "The agent's GitHub App exists but is not installed yet. Finish installing it and pick the repositories the agent may use.":
     "智能体的 GitHub 应用程序存在，但尚未安装。完成安装并选择智能体可能使用的存储库。",
   "The caller": "来电者",
-  "The caller then sees the tool and its arguments, which it needs to decide.":
-    "然后调用者会看到该工具及其需要决定的参数。",
+  "The person in the chat": "聊天中的人",
+  "They see the tool and what it would do, and approve or reject it in the chat.":
+    "他们会看到工具以及它将要做什么，并在聊天中批准或拒绝。",
+  "They see the tool and its arguments, and approve or reject it.":
+    "他们会看到工具及其参数，并批准或拒绝。",
+  "They decide in Everruns. The person in the chat only sees that a tool is waiting.":
+    "他们在 Everruns 中决定。聊天中的人只看到有一个工具在等待。",
+  "They decide in Everruns. The caller only sees that a tool is waiting.":
+    "他们在 Everruns 中决定。调用方只看到有一个工具在等待。",
   "The channel was saved.": "频道已保存。",
   "The client ID of your app in the AgentID console. Tokens must be issued for it and last ten minutes; AgentID is a sign-in, not a long-lived API key.":
     "AgentID 控制台中您的应用程序的客户端 ID。必须为其发行代币并持续十分钟； AgentID 是登录信息，而不是长期存在的 API 密钥。",
@@ -295,7 +317,7 @@ export const messages: Readonly<Record<string, string>> = {
   "When the provider cannot answer": "当提供者无法应答时",
   "When this agent wakes up on its own": "当该智能体自行唤醒时",
   "Where it works": "工作地点",
-  "Who allows held-back tool calls": "谁允许保留工具调用",
+  "Who approves a tool before it runs": "谁在工具运行前批准它",
   "Who should this server act as?": "这个服务器应该扮演谁的角色？",
   "with a JSON-RPC 2.0 envelope. Only the": "带有 JSON-RPC 2.0 信封。只有",
   "With failed turns": "转弯失败",

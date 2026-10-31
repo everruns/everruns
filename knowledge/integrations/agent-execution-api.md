@@ -137,7 +137,7 @@ Decided 2026-10-09: no task or run API in this design. A thin "one turn" wrapper
 
 Choosing the agent or harness, changing instructions, tools, models or capabilities, reading other callers' sessions, org listings, budgets, keys. Those are management. A caller who needs them is a member and uses the management API.
 
-[Work Chat](work-chat.md) adds consumer presentation controls: conversation organization and revocable read-only links. Its publisher-curated model list permits a per-message selection without granting model or Agent management. Other execution channel types retain the fixed-model contract.
+[Work Chat](work-chat.md) adds consumer presentation controls: conversation organization and revocable read-only links. It uses the Agent's model. A caller cannot select a different one. Other execution channel types retain the fixed-model contract.
 
 ## Auth
 

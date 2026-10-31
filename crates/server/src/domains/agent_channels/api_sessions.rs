@@ -158,6 +158,8 @@ pub enum ApiAuthError {
     InsufficientScope,
     /// The channel's stored config does not parse.
     Misconfigured,
+    /// A verified identity the Work Chat membership does not include.
+    NotAdmitted,
 }
 
 /// The channel's config, or `Misconfigured`.

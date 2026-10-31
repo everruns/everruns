@@ -75,8 +75,12 @@ import { SlackInstallError } from "@/components/slack/slack-install-error";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
-import { WorkChatFields } from "./work-chat-fields";
-import { WorkChatAddress } from "./work-chat-link";
+import {
+  WorkChatFields,
+  inviteList,
+  isWorkChatMembershipValid,
+  type WorkChatMembership,
+} from "./work-chat-fields";
 import { FoldedSettings, FormSection } from "./form-section";
 
 export const CHANNEL_FORM_KINDS: ChannelType[] = [
@@ -98,8 +102,10 @@ const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS = 120;
 
 export type ChannelFormState = {
   kind: ChannelType;
-  chatModels: string[];
   chatInterface: "single_with_threads" | "multi_chat";
+  chatMembership: WorkChatMembership;
+  chatMemberEmail: string;
+  chatInvites: string;
   enabled: boolean;
   slackSigningSecret: string;
   slackBotToken: string;
@@ -220,8 +226,10 @@ export function getDefaultChannelFormState(
     publicChatAgentIdClientId: "",
     voice: voiceFormStateFromConfig(),
     api: apiFormStateFromConfig(),
-    chatModels: [],
     chatInterface: "multi_chat",
+    chatMembership: "open",
+    chatMemberEmail: "",
+    chatInvites: "",
   };
 
   if (!channel) return base;
@@ -332,14 +340,18 @@ export function getDefaultChannelFormState(
   if (channel.channel_type === "work_chat") {
     const config = channel.channel_config as {
       interface_mode?: "single_with_threads" | "multi_chat";
-      allowed_model_ids?: string[];
+      membership?: WorkChatMembership;
+      member_email?: string;
+      invites?: string[];
       execution?: ApiChannelConfig;
     };
     return {
       ...base,
       kind: "work_chat",
-      chatModels: config.allowed_model_ids ?? [],
       chatInterface: config.interface_mode ?? "multi_chat",
+      chatMembership: config.membership ?? "open",
+      chatMemberEmail: config.member_email ?? "",
+      chatInvites: (config.invites ?? []).join("\n"),
       api: apiFormStateFromConfig(config.execution),
     };
   }
@@ -483,12 +495,24 @@ export function buildChannelConfig(state: ChannelFormState) {
     }
     case "voice":
       return buildVoiceChannelConfig(state.voice);
-    case "work_chat":
+    case "work_chat": {
+      const execution = buildApiChannelConfig(state.api);
+      delete execution.org_members;
+      const invites = inviteList(state.chatInvites).filter(
+        (email) => email !== state.chatMemberEmail.trim().toLowerCase(),
+      );
       return {
         interface_mode: state.chatInterface,
-        allowed_model_ids: state.chatModels,
-        execution: { ...buildApiChannelConfig(state.api), errors: "public", visibility: "full" },
+        membership: state.chatMembership,
+        ...(state.chatMembership === "invites"
+          ? {
+              member_email: state.chatMemberEmail.trim(),
+              ...(invites.length ? { invites } : {}),
+            }
+          : {}),
+        execution: { ...execution, errors: "public", visibility: "full" },
       };
+    }
     case "api":
       return buildApiChannelConfig(state.api);
     case "slack":
@@ -548,7 +572,13 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
     return true;
   }
   if (state.kind === "voice") return isVoiceFormValid(state.voice);
-  if (state.kind === "api" || state.kind === "work_chat") return isApiFormValid(state.api);
+  if (state.kind === "api") return isApiFormValid(state.api);
+  if (state.kind === "work_chat") {
+    return (
+      isApiFormValid(state.api) &&
+      isWorkChatMembershipValid(state.chatMembership, state.chatMemberEmail, state.chatInvites)
+    );
+  }
   if (state.kind === "slack") return true;
   return false;
 }
@@ -1196,18 +1226,22 @@ export function ChannelForm({
           </FormSection>
         </>
       )}
-      {state.kind === "work_chat" && channel && (
-        <FormSection title="Chat link">
-          <WorkChatAddress channel={channel} heading={false} />
-        </FormSection>
-      )}
       {state.kind === "work_chat" && (
-        <FormSection title="Chat site" hint="How the chat looks and which models people can pick.">
+        <FormSection title="Chat site" hint="How conversations are organized.">
           <WorkChatFields
-            modelIds={state.chatModels}
-            onModelsChange={(ids) => update("chatModels", ids)}
             mode={state.chatInterface}
             onModeChange={(mode) => update("chatInterface", mode)}
+            membership={state.chatMembership}
+            memberEmail={state.chatMemberEmail}
+            invites={state.chatInvites}
+            onMembershipChange={(next) =>
+              onChange({
+                ...state,
+                chatMembership: next.membership,
+                chatMemberEmail: next.memberEmail,
+                chatInvites: next.invites,
+              })
+            }
             value={state.api}
             onChange={(api) => update("api", api)}
           />

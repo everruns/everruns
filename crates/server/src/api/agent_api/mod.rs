@@ -184,6 +184,12 @@ async fn authorize(
                 "This credential may not act for an end user",
             ));
         }
+        Ok(Err(ApiAuthError::NotAdmitted)) => {
+            return Err(error(
+                StatusCode::FORBIDDEN,
+                "You do not have access to this chat",
+            ));
+        }
         Ok(Err(ApiAuthError::Misconfigured)) => {
             return Err(error(StatusCode::FORBIDDEN, "This agent is misconfigured"));
         }
@@ -651,7 +657,8 @@ async fn get_session(state: &ChannelApiState, auth: Authorized, session_id: &str
 
 /// Body of `POST …/sessions/{id}/messages`: the `/v1/sessions/{id}/messages`
 /// body. Tags and participants remain caller-inaccessible. Work Chat accepts
-/// only publisher-curated model controls; other execution channels ignore them. `files` carries files
+/// reasoning effort and refuses a caller-selected model. Other execution
+/// channels ignore controls. `files` carries files
 /// inline or by URL, since an execution caller has no upload route.
 #[derive(Debug, Deserialize)]
 struct SendMessageBody {
@@ -708,7 +715,7 @@ async fn send_message_now(
             "Reopen this conversation before sending",
         );
     }
-    let controls = match work_chat::experience::controls(state, auth, body.controls).await {
+    let controls = match work_chat::experience::controls(auth, body.controls) {
         Ok(controls) => controls,
         Err(response) => return response,
     };

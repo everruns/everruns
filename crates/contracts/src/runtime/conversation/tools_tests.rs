@@ -192,6 +192,11 @@ fn explicit_mode_is_idempotent_and_keeps_agent_settings() {
     assert_eq!(names, ["no_reply", "send_message"]);
     assert!(first.system_prompt.ends_with(&agent.system_prompt));
     assert!(first.system_prompt.contains("private working notes"));
+    assert!(
+        first
+            .system_prompt
+            .contains("A step that only sends a message ends the turn.")
+    );
     assert_eq!(first.communication, Communication::Explicit);
     assert_eq!(
         serde_json::to_value(apply_explicit_communication(first.clone())).unwrap(),

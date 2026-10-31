@@ -161,6 +161,9 @@ const fieldChanges: Record<string, Record<string, unknown>> = {
       sessionBinding: "session_per_invocation",
     },
     chatInterface: "single_with_threads",
+    chatMembership: "invites",
+    chatMemberEmail: "ada@example.com",
+    chatInvites: "grace@example.com",
   },
 };
 it.each(Object.keys(fieldChanges) as ChannelType[])(

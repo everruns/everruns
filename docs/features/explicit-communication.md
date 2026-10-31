@@ -16,8 +16,10 @@ Agent talking:
   decide not to answer.
 
 With explicit communication the Agent separates thinking out loud from speaking.
-It can work through a problem in notes, send one complete answer, post a short
-progress update during long work, or stay silent when a message is not for it.
+It can work through a problem in notes, send one complete answer, or stay silent
+when a message is not for it. A step that only sends a message ends the turn,
+so the chat does not wait on another model call to repeat it. Tools that still
+need to run belong in that same step, or before the message.
 
 ## When to use it
 

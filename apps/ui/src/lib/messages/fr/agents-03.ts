@@ -1,5 +1,23 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  Advanced: "Avancé",
+  "Who can use this chat": "Qui peut utiliser ce chat",
+  "Open access": "Accès ouvert",
+  "Anyone can register and sign in.": "Toute personne peut créer un compte et se connecter.",
+  "Single user + invites": "Une personne et des invitations",
+  "Only one person, plus the people they invite.":
+    "Une seule personne, plus les personnes qu'elle invite.",
+  "Organization users": "Utilisateurs de l'organisation",
+  "Members of this organization can sign in.":
+    "Les membres de cette organisation peuvent se connecter.",
+  "This person": "Cette personne",
+  "They sign in with this email.": "Cette personne se connecte avec cette adresse e-mail.",
+  Invites: "Invitations",
+  "One email per line. Each person signs in with their own account.":
+    "Une adresse par ligne. Chaque personne se connecte avec son propre compte.",
+  "Enter this person's email.": "Saisissez l'adresse e-mail de cette personne.",
+  "Use email addresses, one per line, up to 50.":
+    "Indiquez des adresses e-mail, une par ligne, jusqu'à 50.",
   "Require visitors to sign in with Google. When on, every request must present a valid Google account; signed-in visitors skip the Turnstile challenge.":
     "Demander aux visiteurs de se connecter avec Google. Lorsque cette option est activée, chaque demande doit présenter un compte Google valide ; les visiteurs connectés ignorent le défi Turnstile.",
   Required: "Obligatoire",
@@ -160,8 +178,15 @@ export const messages: Readonly<Record<string, string>> = {
   "The agent's GitHub App exists but is not installed yet. Finish installing it and pick the repositories the agent may use.":
     "L'application GitHub de l'agent existe mais n'est pas encore installée. Terminez l'installation et choisissez les référentiels que l'agent peut utiliser.",
   "The caller": "L'appelant",
-  "The caller then sees the tool and its arguments, which it needs to decide.":
-    "L'appelant voit alors l'outil et ses arguments, dont il a besoin pour décider.",
+  "The person in the chat": "La personne dans le chat",
+  "They see the tool and what it would do, and approve or reject it in the chat.":
+    "La personne voit l'outil et ce qu'il ferait, puis l'approuve ou le refuse dans le chat.",
+  "They see the tool and its arguments, and approve or reject it.":
+    "La personne voit l'outil et ses arguments, puis l'approuve ou le refuse.",
+  "They decide in Everruns. The person in the chat only sees that a tool is waiting.":
+    "La décision se prend dans Everruns. La personne dans le chat voit seulement qu'un outil attend.",
+  "They decide in Everruns. The caller only sees that a tool is waiting.":
+    "La décision se prend dans Everruns. L'appelant voit seulement qu'un outil attend.",
   "The channel was saved.": "La chaîne a été enregistrée.",
   "The client ID of your app in the AgentID console. Tokens must be issued for it and last ten minutes; AgentID is a sign-in, not a long-lived API key.":
     "L'ID client de votre application dans la console AgentID. Des jetons doivent être émis pour cela et durer dix minutes ; AgentID est une connexion, pas une clé API de longue durée.",
@@ -309,7 +334,7 @@ export const messages: Readonly<Record<string, string>> = {
   "When the provider cannot answer": "Lorsque le fournisseur ne peut pas répondre",
   "When this agent wakes up on its own": "Lorsque cet agent se réveille tout seul",
   "Where it works": "Où ça marche",
-  "Who allows held-back tool calls": "Qui autorise les appels d'outils retenus",
+  "Who approves a tool before it runs": "Qui approuve un outil avant qu'il ne s'exécute",
   "Who should this server act as?": "En tant que qui ce serveur doit-il agir ?",
   "with a JSON-RPC 2.0 envelope. Only the": "avec une enveloppe JSON-RPC 2.0. Seul le",
   "With failed turns": "Avec tours ratés",
