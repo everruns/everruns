@@ -22,6 +22,15 @@
 // `updated_at` they bump), and a cached row carries both as of its load. Only
 // `get_agent_config` serves the cached row; `get_agent` and the public-id
 // lookups stay uncached so anything that shows usage reads it fresh.
+//
+// Decision: the worker ingress protection floor rides the same channel
+// (`worker_ingress_floor`). Every worker gRPC call and signed blob request
+// checks it, about 170 reads per turn of a singleton that is set once. Its
+// absence is cached too: that is safe only because the floor's trigger
+// notifies on commit and the cache is off whenever the listener is not
+// connected, so a legacy channel is refused once the notification lands
+// (knowledge/security/worker-assignment-read-scope.md). Reads on a
+// transaction (`worker_ingress_minimum_version_on`) stay uncached.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -53,6 +62,8 @@ struct Inner {
     harnesses: Cache<Uuid, HarnessRow>,
     harness_capabilities: Cache<Uuid, Vec<HarnessCapabilityRow>>,
     providers: Cache<Uuid, ProviderRow>,
+    /// The worker ingress protection floor; `None` inside is "no floor".
+    ingress_floor: Cache<(), Option<i32>>,
     /// The invalidation listener is connected and listening.
     live: AtomicBool,
     /// Bumped by every invalidation.
@@ -74,6 +85,7 @@ impl Default for ConfigRowCache {
             harnesses: cache(),
             harness_capabilities: cache(),
             providers: cache(),
+            ingress_floor: Cache::builder().max_capacity(1).time_to_live(TTL).build(),
             live: AtomicBool::new(false),
             generation: AtomicU64::new(0),
         }))
@@ -86,12 +98,16 @@ pub enum ConfigRowChange {
     Agent(Uuid),
     Harness(Uuid),
     Provider(Uuid),
+    WorkerIngressFloor,
 }
 
 impl ConfigRowChange {
-    /// `agent:<uuid>`, `harness:<uuid>` or `provider:<uuid>`; anything else is
-    /// `None`.
+    /// `agent:<uuid>`, `harness:<uuid>`, `provider:<uuid>` or
+    /// `worker_ingress_floor`; anything else is `None`.
     pub fn parse(payload: &str) -> Option<Self> {
+        if payload == "worker_ingress_floor" {
+            return Some(Self::WorkerIngressFloor);
+        }
         let (kind, id) = payload.split_once(':')?;
         let id = id.parse().ok()?;
         match kind {
@@ -130,6 +146,7 @@ impl ConfigRowCache {
                 self.0.harness_capabilities.invalidate(&id);
             }
             ConfigRowChange::Provider(id) => self.0.providers.invalidate(&id),
+            ConfigRowChange::WorkerIngressFloor => self.0.ingress_floor.invalidate_all(),
         }
     }
 
@@ -140,6 +157,7 @@ impl ConfigRowCache {
         self.0.harnesses.invalidate_all();
         self.0.harness_capabilities.invalidate_all();
         self.0.providers.invalidate_all();
+        self.0.ingress_floor.invalidate_all();
     }
 
     fn generation(&self) -> u64 {
@@ -152,13 +170,16 @@ impl ConfigRowCache {
 
     /// Keep what a read returned, unless something was invalidated since the
     /// read began: it may predate that change.
-    fn store<V: Clone + Send + Sync + 'static>(
+    fn store<K, V>(
         &self,
-        entries: &Cache<Uuid, V>,
-        id: Uuid,
+        entries: &Cache<K, V>,
+        id: K,
         generation: u64,
         value: &V,
-    ) {
+    ) where
+        K: std::hash::Hash + Eq + Send + Sync + 'static,
+        V: Clone + Send + Sync + 'static,
+    {
         if self.usable() && self.generation() == generation {
             entries.insert(id, value.clone());
         }
@@ -273,6 +294,25 @@ impl StorageBackend {
             .await?
             .unwrap_or_default())
     }
+
+    /// The worker ingress protection floor, from memory while the cache is
+    /// exact. Shadows the uncached [`Database`] read for every caller that
+    /// holds a backend; a transaction keeps reading the table.
+    ///
+    /// [`Database`]: crate::storage::Database
+    pub(crate) async fn worker_ingress_minimum_version(&self) -> Result<Option<i32>> {
+        let cache = &self.config_rows;
+        if !cache.usable() {
+            return self.db.worker_ingress_minimum_version().await;
+        }
+        if let Some(floor) = cache.0.ingress_floor.get(&()) {
+            return Ok(floor);
+        }
+        let generation = cache.generation();
+        let floor = self.db.worker_ingress_minimum_version().await?;
+        cache.store(&cache.0.ingress_floor, (), generation, &floor);
+        Ok(floor)
+    }
 }
 
 #[cfg(test)]
@@ -294,6 +334,10 @@ mod tests {
             ConfigRowChange::parse(&format!("provider:{id}")),
             Some(ConfigRowChange::Provider(id))
         );
+        assert_eq!(
+            ConfigRowChange::parse("worker_ingress_floor"),
+            Some(ConfigRowChange::WorkerIngressFloor)
+        );
         assert_eq!(ConfigRowChange::parse("agent:nope"), None);
         assert_eq!(ConfigRowChange::parse(&format!("model:{id}")), None);
     }
@@ -313,6 +357,52 @@ mod tests {
         assert!(cache.0.agent_capabilities.get(&id).is_some());
         cache.invalidate(ConfigRowChange::Agent(id));
         assert!(cache.0.agent_capabilities.get(&id).is_none());
+    }
+
+    #[tokio::test]
+    async fn the_ingress_floor_is_served_from_memory_only_while_live() {
+        let db = StorageBackend::test_database();
+        let set = |version: i32| {
+            let pool = db.pool().clone();
+            async move {
+                sqlx::query("INSERT INTO worker_ingress_protection_floor (minimum_version) VALUES ($1) ON CONFLICT (singleton) DO UPDATE SET minimum_version = EXCLUDED.minimum_version")
+                    .bind(version)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+        };
+        // Off: a floor written behind the backend's back is seen at once.
+        assert_eq!(db.worker_ingress_minimum_version().await.unwrap(), None);
+        set(1).await;
+        assert_eq!(db.worker_ingress_minimum_version().await.unwrap(), Some(1));
+
+        // Live: the value is kept until its notification clears it.
+        let cache = db.config_row_cache().clone();
+        cache.set_live(true);
+        assert_eq!(db.worker_ingress_minimum_version().await.unwrap(), Some(1));
+        set(2).await;
+        assert_eq!(db.worker_ingress_minimum_version().await.unwrap(), Some(1));
+        cache.invalidate(ConfigRowChange::WorkerIngressFloor);
+        assert_eq!(db.worker_ingress_minimum_version().await.unwrap(), Some(2));
+
+        // Losing the listener drops the copy and stops caching.
+        cache.set_live(false);
+        set(3).await;
+        assert_eq!(db.worker_ingress_minimum_version().await.unwrap(), Some(3));
+        cache.0.ingress_floor.run_pending_tasks();
+        assert_eq!(cache.0.ingress_floor.entry_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn an_absent_floor_read_that_overlaps_its_notification_is_not_kept() {
+        let cache = ConfigRowCache::default();
+        cache.set_live(true);
+        let generation = cache.generation();
+        // The floor commits while the read that saw no floor is in flight.
+        cache.invalidate(ConfigRowChange::WorkerIngressFloor);
+        cache.store(&cache.0.ingress_floor, (), generation, &None);
+        assert!(cache.0.ingress_floor.get(&()).is_none());
     }
 
     #[tokio::test]

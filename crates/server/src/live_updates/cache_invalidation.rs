@@ -1,5 +1,5 @@
-// Keeps the in-memory feature flag overrides and agent/harness configuration
-// rows exact: LISTEN for their triggers and drop what changed.
+// Keeps the in-memory feature flag overrides, agent/harness configuration
+// rows and the worker ingress floor exact: LISTEN for their triggers and drop what changed.
 //
 // Decision: the caches are live only while this loop is listening. Connecting
 // (or losing the connection) clears them, so a notification missed during a
@@ -295,6 +295,36 @@ mod tests {
             .expect("the edit notifies")
             .unwrap();
         assert_eq!(edit.payload(), format!("agent:{}", agent_id.uuid()));
+    }
+
+    // A legacy worker must be refused once the floor commits, even though
+    // every server had cached "no floor".
+    #[tokio::test]
+    async fn setting_the_ingress_floor_is_read_back() {
+        let db = StorageBackend::test_database();
+        listening(&db).await;
+        assert_eq!(db.worker_ingress_minimum_version().await.unwrap(), None);
+        assert_eq!(db.worker_ingress_minimum_version().await.unwrap(), None);
+
+        sqlx::query("INSERT INTO worker_ingress_protection_floor (minimum_version) VALUES (1)")
+            .execute(db.pool())
+            .await
+            .unwrap();
+        let seen = eventually(|| async {
+            db.worker_ingress_minimum_version().await.unwrap() == Some(1)
+        })
+        .await;
+        assert!(seen, "the new floor is read back");
+
+        sqlx::query("UPDATE worker_ingress_protection_floor SET minimum_version = 2")
+            .execute(db.pool())
+            .await
+            .unwrap();
+        let seen = eventually(|| async {
+            db.worker_ingress_minimum_version().await.unwrap() == Some(2)
+        })
+        .await;
+        assert!(seen, "the raised floor is read back");
     }
 
     fn harness_row(name: &str) -> CreateHarnessRow {

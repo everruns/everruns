@@ -365,7 +365,7 @@ now refuses broad legacy/development and selector-only authority at every
 canonical worker RPC and byte route, and the separate customer-worker listener.
 The customer protocol refuses every operation with any floor present; a
 deployment token and actor fence are insufficient verified assignment authority.
-Existing channels and reconnects recheck rather than cache an absent floor.
+Existing channels and reconnects recheck; a replica caches the floor (absent included) only while its change notifications are live.
 Opaque capability enrollment requires the
 supported floor; it is monotonic and cannot disappear with assignment expiry or
 deletion. The requirement is database-wide: mixed legacy/scoped workers cannot
