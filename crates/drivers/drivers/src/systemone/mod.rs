@@ -283,13 +283,7 @@ pub fn decode(request: &DecisionRequest, value: serde_json::Value) -> Result<Dec
 
 /// Explicit OpenRouter aliases, independent from provider selection.
 /// Unrecognized IDs remain opaque, including snapshot IDs.
-pub fn openrouter_model(model: &str) -> &str {
-    match model {
-        "jev-1.13.0" => "typesafe/jev-1.13",
-        "jev-latest" => "typesafe/jev-latest",
-        other => other,
-    }
-}
+pub use everruns_contracts::model_profile_data::openrouter_decision_model_id as openrouter_model;
 
 #[derive(Clone, Debug, Default)]
 pub struct OpenRouterDecisionDriver(SystemOneDecisionDriver);
