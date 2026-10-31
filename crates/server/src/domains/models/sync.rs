@@ -757,6 +757,7 @@ mod tests {
                     listed("typesafe/jev-1.13", None),
                     listed("liquid/d1.1", Some(d1)),
                 ],
+                Utc::now(),
             )
             .await
             .unwrap();
