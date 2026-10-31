@@ -21,3 +21,9 @@ the Agent appears on GitHub while it runs. Changing that identity no longer brea
 a source. Existing sources keep working; select **Change source** to move them to
 your or the organization's GitHub. See
 [Define agents as files](/how-to/define-agents-as-files/#sync-an-agent-continuously-from-github).
+
+From the CLI, list the GitHub accounts and repositories a source can sync through:
+
+```bash
+everruns agents source accounts list --agent-id agent_01h9
+```
