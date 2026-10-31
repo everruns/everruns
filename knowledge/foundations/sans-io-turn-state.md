@@ -135,6 +135,15 @@ directly; no prefixed alias remains.
 This is where the two representations actually converge, and it is the stage
 that pays for stage 1.
 
+An answer committed before its holder dies is completed from the journal without
+running the model or tools again. Recovery retains the saved answer identity,
+phase counters and elapsed turn duration. The answering phase counts once even
+when its completion metrics did not commit; unavailable usage remains unknown,
+rather than presenting a partial total as complete. The
+[log fold](../../crates/core/src/host/turn_resume.rs) and
+[worker recovery regression](../../crates/worker/src/actor_runtime/tests/completion_recovery.rs)
+own this boundary.
+
 ### Stage 3, introduce effects (landed)
 
 `TurnLifecycleEffect` carries transition-owned lifecycle recording. Both hosts

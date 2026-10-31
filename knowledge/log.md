@@ -6,6 +6,10 @@
 - Extended the shared inspector into Yolop's approved memory writes and selected recalls, with title-only automatic disclosure and no body-derived disclosure. Hosted memory mount integration remains separate.
 - Added Jev 1.14 to the decision catalog with explicit provider wire aliases and text-only default limits.
 
+- Close the admission/idempotency crash gap with one transaction for the claim, operation and replay response; preserve legacy in-flight claims during upgrades. See [Agent API admission retries](integrations/agent-execution-api.md#admission-retries) and [Load Testing](operations/load-testing.md).
+
+- Preserve saved answer identity and workload counters when a worker resumes between the answer and turn completion. See [Sans-IO Turn State](foundations/sans-io-turn-state.md).
+
 ## 2026-10-30
 
 * **Chat pre-merge security pins.** Carry the latest ZIP and Undici fixes into
@@ -77,6 +81,10 @@
 - Added a public searchable component gallery with production-renderer captures in both themes and A2UI source examples. See [A2UI](ui/a2ui.md).
 
 - Excluded permanently redirected announcements from the canonical docs sitemap while preserving their inbound links. See [Documentation Site](ui/documentation.md#sitemap-requirements).
+
+- Bounded Work Chat upstream setup without aborting an established SSE response at 30 seconds. See [Work Chat](integrations/work-chat.md).
+
+- Added first-class authenticated Console, Agent API and Work Chat capacity qualification with simulated models, durable delivery oracles and independent resource sampling. See [load testing](operations/load-testing.md).
 
 - Route shell and embedded-interpreter directory renames through atomic workspace metadata moves, preserving file identities and rejecting protected trees, mount crossings and destination collisions. See [File Store](runtime-resources/file-store.md).
 

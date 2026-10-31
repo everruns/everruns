@@ -24,6 +24,7 @@ which share the same cache and linker characteristics.
 Pull requests run formatting, linting, repository guards, affected workspace tests,
 and relevant UI/docs checks. The affected set includes reverse Cargo dependencies;
 server persistence, authorization, and migration changes add focused contracts.
+Idempotent admission and request-transaction changes also execute the real Agent API and Console cancellation/replay contracts.
 History and manager-context changes exercise the real REST/command revision
 contract before merge, including the first mutation's restorable baseline.
 API and command changes also exercise the production-router scope sweep;

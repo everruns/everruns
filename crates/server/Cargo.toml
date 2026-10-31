@@ -27,6 +27,15 @@ path = "src/bin/egress_proxy.rs"
 name = "export-openapi"
 path = "src/bin/export_openapi.rs"
 
+# Local benchmark fixture uses the production dependency graph, without the
+# additional features/dev-dependencies activated by a Cargo bench target.
+# Runtime images copy an explicit binary list and do not include this utility.
+[[bin]]
+name = "chat-capacity-fixture"
+path = "src/bin/chat_capacity_fixture.rs"
+test = false
+bench = false
+
 [features]
 # Experimental sandboxed Lua execution capability (knowledge/execution/lua-execution.md).
 # Off by default; `lua` compiles the mlua engine into core. Also runtime-gated

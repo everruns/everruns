@@ -153,6 +153,7 @@ pub struct ServerContext {
 pub struct ServerAppBuilder {
     config: ServerConfig,
     auth_factory: Option<AuthFactoryFn>,
+    channel_auth_verifier: Option<api::channel_auth::ChannelAuthVerifier>,
     host_composition: Option<HostComposition>,
     built_in_harnesses: Option<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
     connector_registry: Option<everruns_contracts::connector::ConnectorRegistry>,
@@ -178,6 +179,7 @@ impl ServerAppBuilder {
         Self {
             config,
             auth_factory: None,
+            channel_auth_verifier: None,
             host_composition: None,
             built_in_harnesses: None,
             connector_registry: None,
@@ -212,6 +214,19 @@ impl ServerAppBuilder {
         + 'static,
     ) -> Self {
         self.auth_factory = Some(Box::new(factory));
+        self
+    }
+
+    /// Supply a host-owned verifier for Agent API/Work Chat execution and
+    /// runtime-auth routes, for example with preloaded OIDC
+    /// discovery/keys in an offline embedding. JWT signature, audience, expiry
+    /// and channel policy checks still apply. No HTTP or environment switch
+    /// enables this override; the default uses the normal SSRF-safe fetcher.
+    pub fn channel_auth_verifier(
+        mut self,
+        verifier: api::channel_auth::ChannelAuthVerifier,
+    ) -> Self {
+        self.channel_auth_verifier = Some(verifier);
         self
     }
 
@@ -879,6 +894,7 @@ impl ServerAppBuilder {
             sse_tracker: sse_tracker.clone(),
             valkey: valkey_for_channel_rate_limits,
             auth: auth_state.clone(),
+            auth_verifier: self.channel_auth_verifier.clone(),
             frontend_url: auth_config.frontend_url.clone(),
             public_chat_enabled: feature_flags.public_chat,
             mcp_event_triggers: mcp_event_triggers.clone(),
@@ -1091,7 +1107,7 @@ impl ServerAppBuilder {
                 db: db.clone(),
                 auth: auth_state.clone(),
                 encryption: encryption.clone(),
-                verifier: api::channel_auth::ChannelAuthVerifier::new(),
+                verifier: self.channel_auth_verifier.clone().unwrap_or_default(),
             }))
             .merge(api::virtual_users::routes(api_state.clone()))
             .merge(api::organization_connections::routes(

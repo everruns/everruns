@@ -80,6 +80,10 @@ SSE framing handles split UTF-8 and CRLF delimiters, bounds partial frames and
 retained events, and advances its durable sequence before a React state update.
 Reconnects use bounded backoff; access rejection ends the stream loop. API reads
 and each stream reconnect still renew channel authority through the existing BFF.
+The BFF bounds upstream connection/header setup, then releases that deadline for
+an established successful SSE response. Browser cancellation and the backend's
+bounded stream lifecycle still close it; ordinary responses retain their request
+deadline. See [upstream regression tests](../../apps/chat-ui/src/server/upstream.test.ts).
 See [Chat recovery](../ui/chat-recovery.md) for the transport decision and
 [consumer recovery tests](../../apps/chat-ui/src/server/client-recovery.test.ts).
 

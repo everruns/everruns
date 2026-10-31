@@ -51,6 +51,8 @@ use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 
 use crate::ExecutionContext;
 use crate::engine::{ActInput, ActPlan, TurnPlan, TurnState};
+#[cfg(feature = "actor-runtime")]
+use crate::events::TurnCompletedData;
 use crate::events::{
     Event, EventContext, EventData, EventRequest, RecoveryMode, TokenUsage, ToolCompletedData,
 };
@@ -92,6 +94,8 @@ pub struct OpenTurn {
     input_message_id: MessageId,
     started_at: DateTime<Utc>,
     reasons: u32,
+    #[cfg(feature = "actor-runtime")]
+    latest_reason_completed: bool,
     tool_call_count: u32,
     /// Failed `tool.completed` calls so far: issues the turn carries on from.
     issue_count: u32,
@@ -142,6 +146,39 @@ impl OpenTurn {
     /// The token usage the turn's reasons recorded, summed.
     pub fn usage(&self) -> Option<&TokenUsage> {
         self.usage.as_ref()
+    }
+
+    /// Complete a saved answer without discarding its identity and work summary.
+    #[cfg(feature = "actor-runtime")]
+    pub(crate) fn completed_data(&self, now: DateTime<Utc>) -> TurnCompletedData {
+        // Output can commit before reason.completed. Its saved answer proves
+        // that final phase ran, but its missing usage must not become a partial
+        // total presented as the complete turn's usage.
+        let calls = self
+            .reasons
+            .saturating_add(u32::from(!self.latest_reason_completed));
+        TurnCompletedData {
+            turn_id: self.turn_id,
+            iterations: calls,
+            duration_ms: Some(
+                u64::try_from(
+                    now.signed_duration_since(self.started_at)
+                        .num_milliseconds(),
+                )
+                .unwrap_or_default(),
+            ),
+            usage: if self.latest_reason_completed {
+                self.usage.clone()
+            } else {
+                None
+            },
+            final_message_id: self.final_message_id,
+            tool_call_count: Some(self.tool_call_count),
+            llm_call_count: Some(calls),
+            issue_count: Some(self.issue_count),
+            status: Some("completed".to_string()),
+            ..Default::default()
+        }
     }
 
     /// Whether the turn's latest agent message made no tool calls and was
@@ -213,6 +250,8 @@ impl TurnLogFold {
                     input_message_id: data.input_message_id,
                     started_at: event.ts,
                     reasons: 0,
+                    #[cfg(feature = "actor-runtime")]
+                    latest_reason_completed: false,
                     tool_call_count: 0,
                     issue_count: 0,
                     usage: None,
@@ -258,12 +297,26 @@ impl TurnLogFold {
             // one (`reason.recovered`, mode restart) reads it again. A
             // finalized one completes the dead attempt's text, which read
             // only what was there at that attempt's `reason.started`.
-            EventData::ReasonStarted(_) => turn.steered_since_reason = false,
+            EventData::ReasonStarted(_) => {
+                turn.steered_since_reason = false;
+                #[cfg(feature = "actor-runtime")]
+                {
+                    turn.latest_reason_completed = false;
+                }
+            }
             EventData::ReasonRecovered(data) if matches!(data.mode, RecoveryMode::Restart) => {
                 turn.steered_since_reason = false;
+                #[cfg(feature = "actor-runtime")]
+                {
+                    turn.latest_reason_completed = false;
+                }
             }
             EventData::ReasonCompleted(data) => {
                 turn.reasons = turn.reasons.saturating_add(1);
+                #[cfg(feature = "actor-runtime")]
+                {
+                    turn.latest_reason_completed = true;
+                }
                 turn.tool_call_count = turn.tool_call_count.saturating_add(data.tool_call_count);
                 if let Some(usage) = &data.usage {
                     match &mut turn.usage {
