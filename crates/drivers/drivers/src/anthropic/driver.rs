@@ -893,7 +893,6 @@ impl std::fmt::Debug for AnthropicChatDriver {
 // ============================================================================
 // Driver Registration
 // ============================================================================
-
 /// Register the Anthropic driver with the driver registry
 ///
 /// This should be called at application startup to enable Anthropic model support.
@@ -909,24 +908,6 @@ impl std::fmt::Debug for AnthropicChatDriver {
 /// ```
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
-/// Curated model recommendations for this provider. Refresh when the vendor
-/// rotates flagships; keep every role default inside `recommended_models`.
-pub const ANTHROPIC_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
-    everruns_contracts::recommended_models::ProviderRecommendedModels {
-        provider: "anthropic",
-        recommended_models: &[
-            "claude-opus-5-5",
-            "claude-sonnet-5-5",
-            "claude-fable-5-1",
-            "claude-haiku-5-5",
-        ],
-        coding_model: "claude-opus-5-5",
-        research_model: "claude-fable-5-1",
-        chat_model: "claude-sonnet-5-5",
-        small_model: "claude-haiku-5-5",
-        decision_model: "claude-haiku-5-5",
-    };
-
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Anthropic".into(),
@@ -942,7 +923,7 @@ pub fn descriptor() -> DriverDescriptor {
         // value verbatim yields `https://api.anthropic.com/messages` and a 404.
         // Point at a proxy with an explicit `.base_url(...)` instead.
         base_url_env: None,
-        recommended_models: Some(ANTHROPIC_RECOMMENDED),
+        recommended_models: Some(super::recommended::ANTHROPIC_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Anthropic, |config| {
             let provider = everruns_contracts::Provider::new(
                 config.provider.clone(),
