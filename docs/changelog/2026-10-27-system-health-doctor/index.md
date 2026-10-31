@@ -5,7 +5,7 @@ date: 2026-10-27
 kind: feature
 significance: major
 products: [platform]
-release: "0.50.0"
+release: "0.50.1"
 surfaces: [ui, cli, api, operations]
 links:
   docs: [/sre/system-doctor/]

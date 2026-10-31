@@ -5,6 +5,7 @@ date: 2026-10-30
 kind: fix
 significance: minor
 products: [framework]
+release: "0.50.1"
 surfaces: [code]
 links:
   docs: [/features/mcp/#reading-a-servers-resources]

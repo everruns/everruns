@@ -5,6 +5,7 @@ date: 2026-10-30
 kind: feature
 significance: minor
 products: [framework, platform, yolop]
+release: "0.50.1"
 surfaces: [code, api, cli]
 links:
   docs: [/features/skills/]

@@ -5,7 +5,7 @@ date: 2026-10-26
 kind: feature
 significance: notable
 products: [framework, platform, cloud]
-release: "0.50.0"
+release: "0.50.1"
 surfaces: [ui, api, cli]
 links:
   docs: [/reference/agent-package/]

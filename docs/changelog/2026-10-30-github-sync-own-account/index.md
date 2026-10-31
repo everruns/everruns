@@ -5,6 +5,7 @@ date: 2026-10-30
 kind: improvement
 significance: notable
 products: [platform, cloud]
+release: "0.50.1"
 surfaces: [ui, api]
 links:
   docs: [/how-to/define-agents-as-files/]

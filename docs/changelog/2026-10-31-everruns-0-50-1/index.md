@@ -1,14 +1,14 @@
 ---
-title: "Everruns 0.50.0: Customer-hosted workers, health, sandbox snapshots"
+title: "Everruns 0.50.1: Customer-hosted workers, health, sandbox snapshots"
 description: "Customer-hosted agent workers, a system health doctor, a sandbox snapshot builder, agent cost estimates and Framework batch completions."
-date: 2026-10-30
+date: 2026-10-31
 kind: release
 significance: major
 products: [platform, framework, cli]
-release: "0.50.0"
+release: "0.50.1"
 ---
 
-![Everruns 0.50.0 release card with the version number and its highlights](./card@2x.png)
+![Everruns 0.50.1 release card with the version number and its highlights](./card@2x.png)
 
 ## Highlights
 
@@ -75,6 +75,15 @@ release: "0.50.0"
 - [Chat surfaces share 69 interactive UI components](/changelog/2026-10-29-shared-generative-ui/)
 - [Work Chat channel pages link to the chat](/changelog/2026-10-29-work-chat-channel-link/)
 - [Shell commands can rename workspace directories](/changelog/2026-10-29-workspace-directory-renames/)
+- [Sync Agents with GitHub through your account or your organization](/changelog/2026-10-30-github-sync-own-account/)
+- [MCP OAuth clients can use hosted metadata documents](/changelog/2026-10-30-mcp-client-metadata-negotiation/)
+- [MCP resource reads support input continuations](/changelog/2026-10-30-mcp-resource-read-continuations/)
+- [Page navigation keeps content visible while loading](/changelog/2026-10-30-navigation-loading/)
+- [Personal access tokens suggest today's date](/changelog/2026-10-30-optional-token-name/)
+- [Inspect skills and Yolop memory locally](/changelog/2026-10-30-report-only-skill-inspection/)
+- [Serve uses standard OpenAI endpoint settings](/changelog/2026-10-30-serve-standard-openai-settings/)
 - [Sessions with tool calls keep the prompt cache again](/changelog/2026-10-30-tool-results-keep-prompt-cache/)
+- [OpenRouter and TypeSafe decision models appear on the Models page](/changelog/2026-10-31-decision-model-discovery/)
+- [Jev 1.14 is available for typed decisions](/changelog/2026-10-31-jev-1-14-decisions/)
 
-See the [GitHub Release](https://github.com/everruns/everruns/releases/tag/v0.50.0) and the [0.50.0 section of CHANGELOG.md](https://github.com/everruns/everruns/blob/main/CHANGELOG.md#0500---2026-10-30).
+0.50.1 is the first published release of this cycle: 0.50.0 was prepared but never published, because its release checks found a regression. See the [GitHub Release](https://github.com/everruns/everruns/releases/tag/v0.50.1) and the [0.50.1 section of CHANGELOG.md](https://github.com/everruns/everruns/blob/main/CHANGELOG.md#0501---2026-10-31).

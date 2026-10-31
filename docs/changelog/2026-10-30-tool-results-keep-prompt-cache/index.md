@@ -5,7 +5,7 @@ date: 2026-10-30
 kind: fix
 significance: notable
 products: [platform, cloud]
-release: "0.50.0"
+release: "0.50.1"
 surfaces: [agent]
 links:
   docs: [/capabilities/prompt-caching/]

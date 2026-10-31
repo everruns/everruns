@@ -5,6 +5,7 @@ date: 2026-10-31
 kind: improvement
 significance: minor
 products: [platform, cloud, framework]
+release: "0.50.1"
 surfaces: [ui, api, code]
 links:
   docs: [/integrations/typesafe/]
