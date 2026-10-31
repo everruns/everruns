@@ -5,6 +5,7 @@ date: 2026-10-30
 kind: fix
 significance: notable
 products: [platform, cloud]
+release: "0.50.0"
 surfaces: [agent]
 links:
   docs: [/capabilities/prompt-caching/]
@@ -14,11 +15,13 @@ links:
 tool result the time it was loaded, not the time it was stored. The
 `current_time` fact placed after each tool result was then rewritten on every
 model call, so the provider's prompt cache stopped at the first tool call of
-the session. Long sessions, and scheduled agents that keep one session, re-sent
-their whole history uncached on each call. Tool results now keep their stored
-time, so each call only appends to the previous one.
+the session. Tool results now keep their stored time, so each call only
+appends to the previous one.
 
 On models that receive the current tool list, a tool revealed by tool search
 now goes at the end of the list instead of where it sorts, and OpenAI-style
 `prompt_cache_key` values no longer change when tools or instructions change
 (see [Prompt Caching](/capabilities/prompt-caching/)).
+
+Old tool outputs are now replaced by summaries eight at a time, not one per
+call, so a busy session rewrites its history once per batch.

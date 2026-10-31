@@ -1,5 +1,37 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-31
+
+- Added opt-in local skill inspection with content- and origin-bound reports, revalidated activation receipts, and explicit heuristic limits. See [Skills Registry](project/skills-registry.md#opt-in-persistent-instruction-inspection).
+- Extended the shared inspector into Yolop's approved memory writes and selected recalls, with title-only automatic disclosure and no body-derived disclosure. Hosted memory mount integration remains separate.
+- Added Jev 1.14 to the decision catalog with explicit provider wire aliases and text-only default limits.
+
+## 2026-10-30
+
+* **Navigation loading**: Keep the displayed page during route transitions and
+  show pending sidebar feedback instead of replacing static page chrome with
+  generic skeletons. See [Navigation Information Architecture](ui/information-architecture.md).
+
+- Separate configured forward proxies from provider destinations in the shared
+  HTTP transport, retaining destination validation and assigning outbound DNS
+  enforcement to the trusted proxy. See [LLM Drivers](foundations/llm-drivers.md#host-owned-transport).
+
+- Use standard OpenAI endpoint settings in [Serve](framework/serve.md), with
+  provider-scoped routing and endpoint-visible model IDs; simplify the Bashkit
+  example's first-run instructions.
+
+- Raise the Bashkit dependency floor to 0.20.2 for Wasmtime 48.0.8 security fixes without advisory exceptions. See [Bashkit requirements](execution/bashkit-requirements.md) and [Dependency Surface](project/dependency-surface.md).
+
+* **MCP resource continuations.** HTTP resource reads share tool-call input
+  handling, preserve method/URI and connection identity, isolate consent scope,
+  and bound negotiation and all continuation rounds by one deadline. See
+  [MCP Server Specification](integrations/mcp-servers.md).
+
+- Add outbound MCP client metadata-document negotiation with existing-client precedence and capability-based DCR fallback. See [Runtime MCP](integrations/runtime-mcp.md).
+
+- Added the [Serve Bashkit workspace walkthrough](framework/serve.md), checking
+  shell output, files across turns and a graceful restart, and session isolation.
+
 ## 2026-10-29
 
 - Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.

@@ -648,3 +648,39 @@ fn terra_profiles_follow_verified_api_and_openrouter_contracts() {
             .any(|entry| entry.key == "openai/gpt-6.1-terra")
     );
 }
+
+#[test]
+fn jev_1_14_is_a_text_decision_profile_on_supported_accounts() {
+    for (provider, model) in [
+        ("typesafe", "jev-1.14.0"),
+        ("openrouter", "typesafe/jev-1.14"),
+    ] {
+        assert_eq!(
+            get_model_service_kind(provider, model),
+            ServiceKind::Decisions
+        );
+        assert_eq!(
+            get_model_profile_key(provider, model).as_deref(),
+            Some("typesafe/jev-1.14.0")
+        );
+        let profile = get_model_profile(provider, model).unwrap();
+        assert_eq!(profile.name, "Jev 1.14");
+        assert_eq!(profile.release_date.as_deref(), Some("2026-10-14"));
+        assert!(!profile.attachment && !profile.reasoning && !profile.tool_call);
+        let cost = profile.cost.unwrap();
+        assert_eq!((cost.input, cost.output), (0.042, 0.0));
+        let decisions = profile.decisions.unwrap();
+        assert_eq!(decisions.primitives, ["noul", "choice", "score"]);
+        assert!(decisions.calibrated);
+        assert_eq!(decisions.state_tokens, Some(32_000));
+        assert_eq!(decisions.request_tokens, Some(64_000));
+        let entries = profile_entries_for_provider(provider);
+        assert!(entries.iter().any(|entry| entry.model_id == "jev-1.14.0"));
+        assert!(entries.iter().any(|entry| entry.model_id == "jev-1.13.0"));
+    }
+    assert!(get_model_profile("openai", "jev-1.14.0").is_none());
+    assert_eq!(
+        get_model_profile_key("openrouter", "~typesafe/jev-latest").as_deref(),
+        Some("typesafe/jev-latest")
+    );
+}

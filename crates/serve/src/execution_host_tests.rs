@@ -10,6 +10,113 @@ fn profile_app() -> crate::App {
 use crate::{app::Mode, host::NewSession, hosting::Server};
 use everruns::hosting::{MemoryHosting, SqliteHosting};
 
+/// The Bashkit example's persistence contract, without a provider credential.
+/// Only the model is scripted; Serve, Bashkit and directory storage are real.
+#[tokio::test]
+async fn bashkit_files_survive_turns_and_host_restart_but_shell_state_and_sessions_are_isolated() {
+    use serde_json::{Value, json};
+
+    fn app() -> crate::App {
+        let mut app = profile_app();
+        let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+        inner.config.sandbox.kind = crate::config::SandboxKind::Bashkit;
+        inner.agents.retain(|agent| agent.name == "tester");
+        inner.agents[0].spec = crate::Agent::builder()
+            .model("sim")
+            .customize(|builder| {
+                builder.workspace_policy(
+                    everruns::WorkspacePolicy::builder()
+                        .allow_read("/")
+                        .allow_write("/workspace/demo")
+                        .build()
+                        .unwrap(),
+                )
+            })
+            .offline(crate::sim::script([
+                crate::sim::call(
+                    "bash",
+                    json!({
+                        "commands": "printf 'variable=%s\\n' \"${DEMO_EPHEMERAL-unset}\"; \
+                            export DEMO_EPHEMERAL=only_this_call; \
+                            if test -e /workspace/demo/report.txt; then \
+                            cat /workspace/demo/report.txt; else \
+                            mkdir -p /workspace/demo && \
+                            printf 'apples\\npears\\napples\\n' > /workspace/demo/items.txt && \
+                            sort /workspace/demo/items.txt | uniq > /workspace/demo/report.txt && \
+                            echo created; fi",
+                        "output": "full"
+                    }),
+                ),
+                crate::sim::reply("done"),
+            ]))
+            .build();
+        app
+    }
+
+    async fn run(server: &Server, id: &str, expected: &str) {
+        let session = server.host.session(id).await.unwrap();
+        let before = session.events_after(0).await.unwrap().len();
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            session.send_and_wait("Inspect the workspace"),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(outcome.success);
+        let events = session.events_after(0).await.unwrap();
+        let results: Vec<Value> = events[before..]
+            .iter()
+            .map(|event| event.canonical_json())
+            .filter(|event| event["type"] == "tool.completed")
+            .cloned()
+            .collect();
+        assert_eq!(results.len(), 1, "{results:?}");
+        let data = &results[0]["data"];
+        assert_eq!(data["tool_name"], "bash");
+        assert_eq!(data["success"], true, "{data}");
+        let result: Value =
+            serde_json::from_str(data["result"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(result["exit_code"], 0, "{result}");
+        assert_eq!(result["stdout"], expected);
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let first = Server::builder(app(), Mode::Start)
+        .data_dir(dir.path())
+        .build()
+        .unwrap();
+    let id = first
+        .host
+        .create_session(NewSession::default())
+        .await
+        .unwrap();
+    run(&first, &id, "variable=unset\ncreated\n").await;
+    run(&first, &id, "variable=unset\napples\npears\n").await;
+    first
+        .engine()
+        .shutdown(std::time::Duration::from_secs(5))
+        .await;
+    drop(first);
+
+    let reopened = Server::builder(app(), Mode::Start)
+        .data_dir(dir.path())
+        .build()
+        .unwrap();
+    run(&reopened, &id, "variable=unset\napples\npears\n").await;
+    let other = reopened
+        .host
+        .create_session(NewSession::default())
+        .await
+        .unwrap();
+    assert_ne!(id, other);
+    run(&reopened, &other, "variable=unset\ncreated\n").await;
+    reopened
+        .engine()
+        .shutdown(std::time::Duration::from_secs(5))
+        .await;
+}
+
 #[tokio::test]
 async fn serve_registers_ordinary_agents_on_the_same_engine_used_for_admission() {
     let server = Server::builder(profile_app(), Mode::Eval)

@@ -2084,6 +2084,32 @@
     ]
   },
   {
+    "wire_name": "list_agent_source_accounts",
+    "path": [
+      "agents",
+      "source",
+      "accounts"
+    ],
+    "verb": "list",
+    "description": "Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/source/accounts",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which GitHub accounts and repositories can back this Agent's source",
+        "command": "everruns agents source accounts list --agent-id agent_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "connect_agent_source",
     "path": [
       "agents",
@@ -2127,6 +2153,12 @@
         "kind": "string",
         "required": false,
         "help": "Current binding generation when replacing a source; omit for an unbound Agent."
+      },
+      {
+        "field": "github_account",
+        "long": "github-account",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "mode",
@@ -2237,6 +2269,12 @@
         "help": "Branch to browse; omitted uses the repository's default branch."
       },
       {
+        "field": "github_account",
+        "long": "github-account",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "path",
         "long": "path",
         "kind": "string",
@@ -2281,6 +2319,12 @@
         "kind": "string",
         "required": true,
         "help": "Branch whose future commits the Agent follows."
+      },
+      {
+        "field": "github_account",
+        "long": "github-account",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "path",

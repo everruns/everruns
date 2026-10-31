@@ -5,6 +5,7 @@ date: 2026-10-28
 kind: breaking
 significance: notable
 products: [platform, framework]
+release: "0.50.0"
 surfaces: [operations, api, code]
 links:
   docs: [/capabilities/knowledge/]

@@ -33,7 +33,7 @@ use serve::prelude::*;
 #[agent]
 fn analyst() -> Agent {
     Agent::builder()
-        .model("anthropic/claude-sonnet-5")      // resolved by the host's model gateway
+        .model("anthropic/claude-sonnet-5")      // resolved through the host's provider settings
         .instructions(md!("instructions.md"))    // agent/instructions.md, hot-reloads in dev
         .build()
 }
@@ -74,8 +74,9 @@ compiled into the binary.
 
 ## Try it
 
-Both examples run offline. Without a model gateway they use a scripted
-simulator, so you need no keys and no network.
+The examples use real models; follow each example's credential requirements.
+The Bashkit workspace walkthrough below uses `OPENAI_API_KEY` and checks
+files across a server restart.
 
 ```sh
 cargo run -p serve-example-revenue-analyst            # dev server on :3000, live console
@@ -92,15 +93,18 @@ curl -s localhost:3000/v1/sessions/$ID/messages -H 'content-type: application/js
 curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0"   # replay, then live; resume with since_id
 ```
 
-To use a real model, set `OPENROUTER_API_KEY` (it accepts `provider/model`
-ids as they are). You can instead point `SERVE_GATEWAY_URL` and
-`SERVE_GATEWAY_KEY` at any OpenAI-compatible gateway. With the `bedrock`
+For `openai/<model>` agents, set `OPENAI_API_KEY`. Optionally set
+`OPENAI_BASE_URL` to an OpenAI-compatible Responses API endpoint; Serve sends
+`<model>` without the first `openai/` prefix. An explicit URL and key take
+precedence over OpenRouter for these agents. Otherwise, `OPENROUTER_API_KEY`
+routes `provider/model` IDs through OpenRouter unchanged. With the `bedrock`
 feature, `bedrock/<model-id>` models call Amazon Bedrock on the AWS default
 credential chain whenever `AWS_REGION` is set.
 
 | Example | Shows |
 |---|---|
 | [`examples/serve/hello`](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
+| [`examples/serve/bashkit-workspace`](https://github.com/everruns/everruns/tree/main/examples/serve/bashkit-workspace) | Bashkit shell commands, resulting files, persistence across turns and a server restart, and session isolation. Real model; includes an automated walkthrough. |
 | [`examples/serve/revenue-analyst`](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | The full layout: a tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals, and the bashkit sandbox. |
 | [`examples/serve/ag-ui`](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | The `ag-ui` feature: an agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
 | [`examples/serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | The `a2a` feature: a served `researcher`, and an `everruns` agent that delegates to it over A2A. |
@@ -202,7 +206,7 @@ what it registered.
 | Command | What it does |
 |---|---|
 | `dev` (default) | Runs the wire API with SQLite under `.serve/` and a live console of turns, tool calls and approvals. Models fall back to the simulator. Markdown prompts and skills hot-reload; for Rust changes use `cargo watch -x run`. `POST /dev/schedules/{name}` fires a schedule on demand. |
-| `start` | Production mode. Every model must route through a gateway, and every declared secret must be set. |
+| `start` | Production mode. Every model must have a provider route, and every declared secret must be set. |
 | `manifest [--out f]` | Prints the host contract as JSON. |
 | `eval [--against URL] [filter]` | Runs the evals. With `--against`, it runs them against a running deploy (a CI gate before promotion); `SERVE_CREDENTIAL` or `--credential` supplies the bearer credential a protected deploy needs. |
 | `deploy` | Prints what a host would provision from the manifest. This PoC has no cloud target. |

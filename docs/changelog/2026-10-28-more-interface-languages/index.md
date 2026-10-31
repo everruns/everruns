@@ -6,6 +6,7 @@ cloud: 2026-10-28
 kind: feature
 significance: notable
 products: [framework, platform, cloud]
+release: "0.50.0"
 surfaces: [ui, api]
 links:
   docs: [/reference/agent-package/]

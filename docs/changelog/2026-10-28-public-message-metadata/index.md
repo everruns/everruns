@@ -5,6 +5,7 @@ date: 2026-10-28
 kind: breaking
 significance: notable
 products: [platform, cloud, framework]
+release: "0.50.0"
 surfaces: [api, code]
 links:
   docs: [/features/events/#public-metadata-and-replay-state]

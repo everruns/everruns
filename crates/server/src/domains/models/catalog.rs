@@ -105,22 +105,28 @@ mod tests {
     use super::*;
     #[test]
     fn decisions_have_explicit_shared_identity_and_read_without_wire_guessing() {
-        let a = assign("typesafe", "jev-1.13.0", &[], None, None, None).unwrap();
-        let b = assign("openrouter", "typesafe/jev-1.13", &[], None, None, None).unwrap();
-        assert_eq!(key(Some(&a)), key(Some(&b)));
-        assert_eq!(service(Some(&b)), ServiceKind::Decisions);
-        assert!(profile(Some(&b)).unwrap().decisions.is_some());
-        assert!(
-            assign(
-                "openrouter",
-                "typesafe/jev-1.13",
-                &[],
-                None,
-                Some(ServiceKind::Chat),
-                None
-            )
-            .is_err()
-        );
+        for (direct, gateway) in [
+            ("jev-1.13.0", "typesafe/jev-1.13"),
+            ("jev-1.14.0", "typesafe/jev-1.14"),
+            ("jev-latest", "~typesafe/jev-latest"),
+        ] {
+            let a = assign("typesafe", direct, &[], None, None, None).unwrap();
+            let b = assign("openrouter", gateway, &[], None, None, None).unwrap();
+            assert_eq!(key(Some(&a)), key(Some(&b)));
+            assert_eq!(service(Some(&b)), ServiceKind::Decisions);
+            assert!(profile(Some(&b)).unwrap().decisions.is_some());
+            assert!(
+                assign(
+                    "openrouter",
+                    gateway,
+                    &[],
+                    None,
+                    Some(ServiceKind::Chat),
+                    None
+                )
+                .is_err()
+            );
+        }
         assert!(assign("openrouter", "x", &[], Some("unknown"), None, None).is_err());
     }
 }
