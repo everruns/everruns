@@ -6,6 +6,7 @@ import { WorkLog, workForMessages } from "./work-log";
 import { conversationMessages } from "./transcript";
 import { SharedChat } from "./shared-chat";
 import { consumeSse } from "../client/sse";
+import { presentViewer, type Viewer } from "../profile";
 import {
   recoveryKey,
   readRecovery,
@@ -183,7 +184,8 @@ function WorkChat({ config }: { config: Config }) {
   };
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null),
-    [signedIn, setSignedIn] = useState(true);
+    [signedIn, setSignedIn] = useState(true),
+    [viewer, setViewer] = useState<Viewer | null>(null);
   const [work, setWork] = useState<Work[]>([]),
     [panel, setPanel] = useState<"work" | "files" | null>(null),
     [files, setFiles] = useState<FileInfo[]>([]),
@@ -213,6 +215,23 @@ function WorkChat({ config }: { config: Config }) {
     }
     setError(text);
   }, []);
+  useEffect(() => {
+    if (!signedIn) {
+      setViewer(null);
+      return;
+    }
+    let stopped = false;
+    api<unknown>("chat/profile")
+      .then((value) => {
+        if (!stopped) setViewer(presentViewer(value));
+      })
+      .catch(() => {
+        if (!stopped) setViewer(null);
+      });
+    return () => {
+      stopped = true;
+    };
+  }, [signedIn]);
   useEffect(() => {
     const timer = setInterval(async () => {
       try {
@@ -690,7 +709,7 @@ function WorkChat({ config }: { config: Config }) {
           )}
         </nav>
         <footer>
-          <span>Work Chat</span>
+          {viewer ? <Account viewer={viewer} /> : <span>Work Chat</span>}
           {signedIn ? (
             <button
               onClick={async () => {
@@ -1277,5 +1296,37 @@ function QuestionForm({
       })}
       <button disabled={sending}>Continue</button>
     </form>
+  );
+}
+function initials(name: string) {
+  const parts = name.split(/\s+/).filter(Boolean);
+  const words = parts.length > 1 ? parts.slice(0, 2) : parts.slice(0, 1);
+  return words.map((part) => [...part][0] ?? "").join("").toUpperCase();
+}
+function Account({ viewer }: { viewer: Viewer }) {
+  const [picture, setPicture] = useState(viewer.picture);
+  useEffect(() => setPicture(viewer.picture), [viewer.picture]);
+  return (
+    <div className="account">
+      {picture ? (
+        <img
+          src={picture}
+          alt=""
+          referrerPolicy="no-referrer"
+          onError={() => setPicture(undefined)}
+        />
+      ) : (
+        <span className="avatar" aria-hidden="true">
+          {initials(viewer.name)}
+        </span>
+      )}
+      <span
+        className="account-name"
+        title={viewer.email ? `${viewer.name} ${viewer.email}` : viewer.name}
+      >
+        <strong>{viewer.name}</strong>
+        {viewer.email ? <small>{viewer.email}</small> : null}
+      </span>
+    </div>
   );
 }

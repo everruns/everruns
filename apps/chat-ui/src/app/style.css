@@ -137,6 +137,48 @@ footer {
 }
 footer button {
   border: 0;
+  flex-shrink: 0;
+}
+.account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+}
+.account img,
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  background: var(--hover);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 650;
+}
+.account-name {
+  min-width: 0;
+}
+.account-name strong,
+.account-name small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-name strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.account-name small {
+  color: var(--muted);
+  font-size: 11px;
 }
 main {
   min-width: 0;

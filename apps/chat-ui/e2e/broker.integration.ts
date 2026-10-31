@@ -103,6 +103,10 @@ async function main() {
             iss: issuer,
             aud: "broker-test",
             sub: "alice",
+            name: "Ada Lovelace",
+            email: "ada@example.com",
+            email_verified: true,
+            picture: "https://cdn.example/ada.png",
             nonce: pending.nonce,
             iat: Math.floor(Date.now() / 1000),
             exp: Math.floor(Date.now() / 1000) + 3600,
@@ -290,6 +294,11 @@ async function main() {
       await (await context.request.get(`${origin}/api/chat/recovery`)).json(),
       recovery,
     );
+    assert.deepEqual(await (await context.request.get(`${origin}/api/chat/profile`)).json(), {
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      picture: "https://cdn.example/ada.png",
+    });
 
     assert.ok(handoff);
     assert.equal((await context.request.get(handoff)).status(), 400, "handoff replay");
@@ -323,6 +332,7 @@ async function main() {
     );
     assert.equal((await context.request.get(`${origin}/api/sessions`)).status(), 401);
     assert.equal((await context.request.get(`${origin}/api/chat/recovery`)).status(), 401);
+    assert.equal((await context.request.get(`${origin}/api/chat/profile`)).status(), 401);
     assert.ok(admissions >= 2);
     let limited = 0;
     for (let attempt = 0; attempt < 6; attempt++) {

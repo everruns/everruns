@@ -618,6 +618,27 @@ test("an authorization rejection stops stream reconnection", async ({ page, requ
   await expect(page.getByText("Sign in to continue")).toHaveCount(0);
 });
 
+test("the sidebar shows the signed-in person", async ({ page, request }) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  await page.route("**/api/chat/profile", async (route) => {
+    await route.fulfill({
+      json: {
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        picture: "javascript:alert(1)",
+      },
+    });
+  });
+  await page.goto(origin);
+  const account = page.locator("aside footer .account");
+  await expect(account.getByText("Ada Lovelace")).toBeVisible();
+  await expect(account.getByText("ada@example.com")).toBeVisible();
+  await expect(account.locator(".avatar")).toHaveText("AL");
+  await expect(account.locator("img")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+  await expect(page.locator("aside footer").getByText("Work Chat", { exact: true })).toHaveCount(0);
+});
+
 test("sign-out retires an attachment read before it can start a message", async ({
   page,
   request,

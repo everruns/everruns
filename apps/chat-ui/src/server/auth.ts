@@ -2,6 +2,7 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { cookies } from "next/headers";
 import { settings, channelOf, hostOf, bootstrap } from "./config";
+import { viewerFromIdToken, type Viewer } from "../profile";
 import { random, hash, save, read, remove, updateSession, admitLogin } from "./store";
 const SESSION = "__Host-everruns_chat",
   BROWSER = "__Host-everruns_chat_flow",
@@ -22,6 +23,18 @@ type Session = {
   subject: string;
   expires: number;
 };
+/**
+ * Display profile for this host's sealed session. The ID token was verified at
+ * login and on refresh; only the name, email and https picture are returned.
+ */
+export async function viewerFor(request: Request): Promise<Viewer | null> {
+  const token = (await cookies()).get(SESSION)?.value;
+  if (!token) return null;
+  const session = await read<Session>("session", token);
+  if (!session || session.channel !== channelOf(request)) return null;
+  return viewerFromIdToken(session.identity);
+}
+
 /** Non-credential namespace for tab-local intent, renewed at each browser login. */
 export async function recoveryScope(request: Request): Promise<string | null> {
   const token = (await cookies()).get(SESSION)?.value;

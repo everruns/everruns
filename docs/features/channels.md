@@ -237,6 +237,10 @@ Publishing a channel alone does not provision hosting or DNS.
 
 ### Work Chat interface
 
+The sidebar shows who is signed in. Their name comes from the identity
+provider, with email and picture when those claims are present. A provider
+that sends no name leaves the Work Chat label in place.
+
 The hosted chat renders Markdown, OpenUI charts and all 69 standard A2UI 1.0
 components inline, using the same renderer as console chat. See
 [Generative UI](/features/generative-ui/) for forms, bindings and saved-message
