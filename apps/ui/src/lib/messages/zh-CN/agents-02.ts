@@ -285,7 +285,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Pause-based answers after a short silence. Waits for a finished thought rides through mid-sentence pauses.":
     "短暂沉默后基于暂停的回答。等待一个完整的想法穿过句子中间的停顿。",
   "People reached": "到达人数",
-  "People with access to this agent": "有权访问此智能体的人员",
   "Permanently delete the archived agent “{value0}”? Existing references will render as deleted tombstones.":
     "永久删除已存档的智能体“{value0}”？现有引用将呈现为已删除的逻辑删除。",
   "Personal account": "个人账户",

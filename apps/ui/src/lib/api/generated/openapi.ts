@@ -2121,7 +2121,7 @@ export interface paths {
     put?: never;
     /**
      * Approve tool calls
-     * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
+     * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. The person using the agent answers its approvals.
      */
     post: operations["agent_api_submit_tool_approvals"];
     delete?: never;
@@ -3196,7 +3196,7 @@ export interface paths {
     /**
      * Approve tool calls
      * @deprecated
-     * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
+     * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. The person using the agent answers its approvals.
      */
     post: operations["agent_api_submit_tool_approvals_legacy"];
     delete?: never;
@@ -23221,12 +23221,9 @@ export interface components {
      *     `pending_approvals` item, plus `answerable`.
      */
     PendingApprovalView: {
-      /**
-       * @description Whether this caller may answer it. When `false` an operator decides in
-       *     Everruns and the tool is not shown.
-       */
+      /** @description Always `true`: the person using the agent answers its approvals. */
       answerable: boolean;
-      arguments?: Record<string, unknown> | null;
+      arguments: Record<string, unknown>;
       /**
        * @description `arguments` is a truncated preview; the decision still binds to the
        *     full arguments.
@@ -23235,10 +23232,10 @@ export interface components {
       /** @description When the request counts as rejected (RFC 3339). */
       expires_at: string;
       /** @description Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`. */
-      risk?: string | null;
+      risk: string;
       /** @description The request to name in `POST …/tool-approvals`. */
       tool_call_id: string;
-      tool_name?: string | null;
+      tool_name: string;
     };
     /**
      * @description An `ask_user` question set the session waits on. Same shape as serve's
@@ -38287,15 +38284,6 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description An operator answers this agent's tool approvals */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
       /** @description Channel, session or pending request not found */
       404: {
         headers: {
@@ -41165,15 +41153,6 @@ export interface operations {
       };
       /** @description Missing or invalid agent key */
       401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description An operator answers this agent's tool approvals */
-      403: {
         headers: {
           [name: string]: unknown;
         };

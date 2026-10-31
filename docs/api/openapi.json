@@ -8357,7 +8357,7 @@
           "agent-execution"
         ],
         "summary": "Approve tool calls",
-        "description": "Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.",
+        "description": "Allow or reject tool calls the agent's approval gate held back, and resume the turn. The person using the agent answers its approvals.",
         "operationId": "agent_api_submit_tool_approvals",
         "parameters": [
           {
@@ -8412,16 +8412,6 @@
           },
           "401": {
             "description": "Missing or invalid agent key",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "An operator answers this agent's tool approvals",
             "content": {
               "application/json": {
                 "schema": {
@@ -12674,7 +12664,7 @@
           "agent-execution"
         ],
         "summary": "Approve tool calls",
-        "description": "Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.",
+        "description": "Allow or reject tool calls the agent's approval gate held back, and resume the turn. The person using the agent answers its approvals.",
         "operationId": "agent_api_submit_tool_approvals_legacy",
         "parameters": [
           {
@@ -12729,16 +12719,6 @@
           },
           "401": {
             "description": "Missing or invalid agent key",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "An operator answers this agent's tool approvals",
             "content": {
               "application/json": {
                 "schema": {
@@ -59878,18 +59858,18 @@
         "required": [
           "tool_call_id",
           "answerable",
+          "tool_name",
+          "arguments",
+          "risk",
           "expires_at"
         ],
         "properties": {
           "answerable": {
             "type": "boolean",
-            "description": "Whether this caller may answer it. When `false` an operator decides in\nEverruns and the tool is not shown."
+            "description": "Always `true`: the person using the agent answers its approvals."
           },
           "arguments": {
-            "type": [
-              "object",
-              "null"
-            ]
+            "type": "object"
           },
           "arguments_truncated": {
             "type": "boolean",
@@ -59900,10 +59880,7 @@
             "description": "When the request counts as rejected (RFC 3339)."
           },
           "risk": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": "string",
             "description": "Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`."
           },
           "tool_call_id": {
@@ -59911,10 +59888,7 @@
             "description": "The request to name in `POST …/tool-approvals`."
           },
           "tool_name": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           }
         }
       },

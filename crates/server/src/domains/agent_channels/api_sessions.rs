@@ -15,8 +15,8 @@
 //   tool arguments and results, usage and internal error text.
 // THREAT[TM-AGENTKEY-002]: caller confinement by channel id and key tag.
 // - Questions and held-back tool calls surface at every visibility, since the
-//   caller is who must answer them. A held-back call is answered by an
-//   operator unless the channel's `tool_approvals` is `caller`.
+//   caller is who must answer them. The Agent's approval gate decides which
+//   calls wait; the person using the agent answers them, on every channel.
 // THREAT[TM-AGENTKEY-003]: event visibility filter.
 // THREAT[TM-AGENTKEY-006]: who may approve a held-back tool call.
 
@@ -38,7 +38,7 @@ use uuid::Uuid;
 
 use super::ingress::{IngressChannel, IngressContext};
 use super::record::api::{
-    AgentApiChannelConfig, AgentKeyPermission, ApiErrorDetail, ApiToolApprovals, ApiVisibility,
+    AgentApiChannelConfig, AgentKeyPermission, ApiErrorDetail, ApiVisibility,
     MAX_END_USER_ID_CHARS, agent_key_public_id, hash_agent_key, is_agent_key_shaped,
 };
 use crate::domains::common::CommandError;
@@ -582,7 +582,7 @@ pub fn project_event(mut event: Value, config: &AgentApiChannelConfig) -> Option
             "success": raw["success"],
         }),
         TOOL_CALL_REQUESTED => {
-            let pending = pending_input(raw, config);
+            let pending = pending_input(raw);
             if pending.is_empty() {
                 return None;
             }
@@ -623,21 +623,17 @@ pub struct PendingQuestionView {
 pub struct PendingApprovalView {
     /// The request to name in `POST …/tool-approvals`.
     pub tool_call_id: String,
-    /// Whether this caller may answer it. When `false` an operator decides in
-    /// Everruns and the tool is not shown.
+    /// Always `true`: the person using the agent answers its approvals.
     pub answerable: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<Object>)]
-    pub arguments: Option<Value>,
+    pub tool_name: String,
+    #[schema(value_type = Object)]
+    pub arguments: Value,
     /// `arguments` is a truncated preview; the decision still binds to the
     /// full arguments.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub arguments_truncated: bool,
     /// Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub risk: Option<String>,
+    pub risk: String,
     /// When the request counts as rejected (RFC 3339).
     pub expires_at: String,
 }
@@ -657,12 +653,11 @@ impl PendingInput {
 
 /// The questions and approvals in a `tool.call_requested` payload. Every
 /// other call in the batch is the agent's own and stays hidden.
-pub fn pending_input(requested: &Value, config: &AgentApiChannelConfig) -> PendingInput {
+pub fn pending_input(requested: &Value) -> PendingInput {
     let mut pending = PendingInput::default();
     let Some(calls) = requested["tool_calls"].as_array() else {
         return pending;
     };
-    let answerable = config.tool_approvals == ApiToolApprovals::Caller;
     for call in calls {
         let (Some(id), Some(name)) = (call["id"].as_str(), call["name"].as_str()) else {
             continue;
@@ -676,15 +671,15 @@ pub fn pending_input(requested: &Value, config: &AgentApiChannelConfig) -> Pendi
         } else if let Some(request) =
             ToolApprovalRequired::from_request_call(id, name, &call["arguments"])
         {
-            // THREAT[TM-AGENTKEY-006]: a caller that may not answer does not
-            // learn which tool waits or with what arguments either.
+            // THREAT[TM-AGENTKEY-006]: the caller decides, so it sees the
+            // tool and its arguments.
             pending.pending_approvals.push(PendingApprovalView {
                 tool_call_id: id.to_string(),
-                answerable,
-                tool_name: answerable.then(|| request.tool.clone()),
-                arguments: answerable.then(|| request.arguments.clone()),
-                arguments_truncated: answerable && request.arguments_truncated,
-                risk: answerable.then(|| request.risk.clone()),
+                answerable: true,
+                tool_name: request.tool,
+                arguments: request.arguments,
+                arguments_truncated: request.arguments_truncated,
+                risk: request.risk,
                 expires_at: request.expires_at,
             });
         }
@@ -696,7 +691,6 @@ pub fn pending_input(requested: &Value, config: &AgentApiChannelConfig) -> Pendi
 pub async fn session_pending_input(
     db: &StorageBackend,
     session: &SessionRow,
-    config: &AgentApiChannelConfig,
 ) -> anyhow::Result<PendingInput> {
     if SessionStatus::from(session.status.as_str()) != SessionStatus::WaitingForToolResults {
         return Ok(PendingInput::default());
@@ -714,7 +708,7 @@ pub async fn session_pending_input(
         .await?;
     Ok(requested
         .last()
-        .map(|row| pending_input(&row.data, config))
+        .map(|row| pending_input(&row.data))
         .unwrap_or_default())
 }
 
@@ -939,21 +933,10 @@ mod tests {
             data["pending_questions"][0]["questions"][0]["question"],
             "Your name?"
         );
-        // An operator decides by default: the caller sees that a call waits,
-        // never which one.
+        // The person using the agent decides, so it sees the held-back call,
+        // never the agent's own calls in the same batch.
         let approval = &data["pending_approvals"][0];
         assert_eq!(approval["tool_call_id"], "tool_approval_call_1");
-        assert_eq!(approval["answerable"], false);
-        assert!(!projected.to_string().contains("send_email"));
-        assert!(!projected.to_string().contains("s3cr3t"));
-        assert!(!projected.to_string().contains("internal_lookup"));
-
-        let caller = AgentApiChannelConfig {
-            tool_approvals: ApiToolApprovals::Caller,
-            ..config.clone()
-        };
-        let projected = project_event(requested(), &caller).unwrap();
-        let approval = &projected["data"]["pending_approvals"][0];
         assert_eq!(approval["answerable"], true);
         assert_eq!(approval["tool_name"], "send_email");
         assert_eq!(approval["arguments"]["to"], "a@example.com");

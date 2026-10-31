@@ -189,16 +189,6 @@ export const messages: Readonly<Record<string, string>> = {
     "Der Agent fungiert nicht mehr als Everruns-App. Die Installation bleibt mit der Organisation verknüpft. GitHub-Trigger werden nicht mehr ausgelöst.",
   "The agent's GitHub App exists but is not installed yet. Finish installing it and pick the repositories the agent may use.":
     "Die GitHub-App des Agenten existiert, ist aber noch nicht installiert. Schließen Sie die Installation ab und wählen Sie die Repositorys aus, die der Agent verwenden darf.",
-  "The caller": "Der Anrufer",
-  "The person in the chat": "Die Person im Chat",
-  "They see the tool and what it would do, and approve or reject it in the chat.":
-    "Sie sehen das Werkzeug und was es tun würde, und genehmigen oder lehnen es im Chat ab.",
-  "They see the tool and its arguments, and approve or reject it.":
-    "Sie sehen das Werkzeug und seine Argumente und genehmigen oder lehnen es ab.",
-  "They decide in Everruns. The person in the chat only sees that a tool is waiting.":
-    "Sie entscheiden in Everruns. Die Person im Chat sieht nur, dass ein Werkzeug wartet.",
-  "They decide in Everruns. The caller only sees that a tool is waiting.":
-    "Sie entscheiden in Everruns. Der Aufrufer sieht nur, dass ein Werkzeug wartet.",
   "The channel was saved.": "Der Kanal wurde gespeichert.",
   "The client ID of your app in the AgentID console. Tokens must be issued for it and last ten minutes; AgentID is a sign-in, not a long-lived API key.":
     "Die Client-ID Ihrer App in der AgentID-Konsole. Dafür müssen Wertmarken ausgegeben werden, die zehn Minuten gültig sind; Bei der AgentID handelt es sich um eine Anmeldung, nicht um einen langlebigen API-Schlüssel.",
@@ -346,7 +336,6 @@ export const messages: Readonly<Record<string, string>> = {
   "When the provider cannot answer": "Wenn der Anbieter nicht antworten kann",
   "When this agent wakes up on its own": "Wenn dieser Agent von selbst aufwacht",
   "Where it works": "Wo es funktioniert",
-  "Who approves a tool before it runs": "Wer genehmigt ein Werkzeug, bevor es ausgeführt wird",
   "Who should this server act as?": "Als wen soll dieser Server fungieren?",
   "with a JSON-RPC 2.0 envelope. Only the": "mit einem JSON-RPC 2.0-Umschlag. Nur die",
   "With failed turns": "Mit fehlgeschlagenen Wendungen",

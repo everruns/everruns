@@ -293,7 +293,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Pause-based answers after a short silence. Waits for a finished thought rides through mid-sentence pauses.":
     "Відповіді на основі паузи після короткого мовчання. Чекає на завершення думки, їде через паузи в середині речення.",
   "People reached": "Люди досягли",
-  "People with access to this agent": "Люди, які мають доступ до цього агента",
   "Permanently delete the archived agent “{value0}”? Existing references will render as deleted tombstones.":
     "Назавжди видалити заархівований агент “{value0}”? Існуючі посилання відображатимуться як видалені надгробки.",
   "Personal account": "Особистий кабінет",

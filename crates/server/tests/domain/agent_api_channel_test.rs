@@ -651,7 +651,7 @@ fn approval_call() -> Value {
 }
 
 #[tokio::test]
-async fn the_caller_answers_questions_and_sees_only_that_an_approval_waits() {
+async fn the_caller_answers_questions_and_sees_the_held_back_tool() {
     let server = parked_server().await;
     let channel = api_channel(&server, json!({ "visibility": "messages" }), true).await;
     let key = create_key(&server, &channel, "k").await;
@@ -684,12 +684,13 @@ async fn the_caller_answers_questions_and_sees_only_that_an_approval_waits() {
         session["pending_questions"][0]["questions"][0]["id"],
         "target"
     );
-    // An operator decides by default: the caller sees that a call waits, not
-    // which tool or with what.
+    // The caller decides, so it sees the held-back tool. The agent's own
+    // calls in the same batch stay hidden.
     let approval = &session["pending_approvals"][0];
     assert_eq!(approval["tool_call_id"], "tool_approval_toolu_mail");
-    assert_eq!(approval["answerable"], false);
-    for hidden in ["send_email", "cfo@example.com", "s3cr3t", "internal_lookup"] {
+    assert_eq!(approval["answerable"], true);
+    assert_eq!(approval["tool_name"], "send_email");
+    for hidden in ["s3cr3t", "internal_lookup"] {
         assert!(
             !session.to_string().contains(hidden),
             "{hidden} leaked: {session}"
@@ -717,15 +718,16 @@ async fn the_caller_answers_questions_and_sees_only_that_an_approval_waits() {
     );
     assert!(!requested.to_string().contains("s3cr3t"));
 
+    // Another caller cannot approve for this one.
     call(
         &server,
         Method::POST,
         &format!("{session_path}/tool-approvals"),
-        Some(secret),
+        Some(other),
         Some(json!({ "decisions": [{ "tool_call_id": "tool_approval_toolu_mail", "decision": "allow" }] })),
     )
     .await
-    .assert_status(StatusCode::FORBIDDEN);
+    .assert_status(StatusCode::NOT_FOUND);
     // A credential never travels over the execution API.
     call(
         &server,
@@ -781,9 +783,11 @@ async fn the_caller_answers_questions_and_sees_only_that_an_approval_waits() {
 }
 
 #[tokio::test]
-async fn the_caller_approves_tools_when_the_channel_lets_it() {
+async fn the_caller_approves_tools_even_on_an_older_operator_channel() {
     let server = parked_server().await;
-    let channel = api_channel(&server, json!({ "tool_approvals": "caller" }), true).await;
+    // Older channels stored who approves. The value still loads and no longer
+    // decides anything: the person using the agent approves.
+    let channel = api_channel(&server, json!({ "tool_approvals": "operator" }), true).await;
     let key = create_key(&server, &channel, "k").await;
     let secret = key["secret"].as_str().unwrap();
     let base = format!("/v1/channels/{}", channel.channel_id);
