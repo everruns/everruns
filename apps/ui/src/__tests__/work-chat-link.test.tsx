@@ -71,17 +71,14 @@ describe("work chat link", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
-  it("shows the same link on the connect tab", async () => {
-    get.mockResolvedValue({ data: { public_url: "https://abc.chat.example" } });
+  it("does not repeat the chat link on the generic connect panel", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
+    const { container } = render(
       <QueryClientProvider client={client}>
         <ChannelUsePanel channel={channel()} />
       </QueryClientProvider>,
     );
-    expect(
-      await screen.findByRole("link", { name: "https://abc.chat.example" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Chat link" })).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
+    expect(get).not.toHaveBeenCalled();
   });
 });

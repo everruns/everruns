@@ -194,11 +194,11 @@ domain configured by your deployment. That hostname is assigned when the
 channel is created and is not the channel id. Several Work Chat channels can
 point to the same Agent.
 
-The channel page shows that address after you publish. Copy it from
-**Settings** or **Connect**, or use **Open chat page** in the header. The
-address stays the same when you change settings. A link built from the channel
-id does not open the chat. Publishing alone does not create the hostname until
-the deployment has a hosted chat domain.
+The channel page shows that address once, above the settings. Open it with
+**Open chat page** in the header. The address stays the same when you change
+settings. A link built from the channel id does not open the chat. Publishing
+alone does not create the hostname until the deployment has a hosted chat
+domain.
 
 Choose **Multiple conversations** for a conversation list, or **Single chat
 with threads** for one permanent main conversation per consumer and related

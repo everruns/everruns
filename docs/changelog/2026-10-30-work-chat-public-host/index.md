@@ -16,7 +16,7 @@ link and the channel id were the same.
 
 Each Work Chat now gets its own hostname when the channel is created. The
 address still stays the same when you change settings. A link that used the
-channel id no longer opens the chat. Copy the new address from Settings or
-Connect.
+channel id no longer opens the chat. Copy the new address from the channel
+page.
 
 See [Work Chat](/features/channels/#work-chat).

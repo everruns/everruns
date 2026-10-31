@@ -53,8 +53,7 @@ export function WorkChatHeaderLink({
   return null;
 }
 
-/// The address to send people, and a way to open it. Shared by the channel
-/// page's settings and its Connect tab.
+/// The address to send people. Shown once on the Work Chat channel page.
 export function WorkChatAddress({
   channel,
   heading = true,

@@ -72,7 +72,7 @@ import {
   type ChannelFormState,
 } from "@/components/agents/channels/channel-form";
 import { AgentKeysCard } from "@/components/agents/channels/agent-keys-card";
-import { WorkChatHeaderLink } from "@/components/agents/channels/work-chat-link";
+import { WorkChatAddress, WorkChatHeaderLink } from "@/components/agents/channels/work-chat-link";
 import { CronLabel } from "@/components/apps/cron-label";
 import {
   BackLink,
@@ -173,6 +173,8 @@ type ChannelTab = "connect" | "settings";
 
 /// The channel page. One layout reads and edits, like the agent page: Connect
 /// shows how to reach the agent through this channel, Settings holds the form.
+/// Work Chat has no separate connection, so it has no Connect tab. Its address
+/// is shown once, above the settings.
 /// Changing any setting turns the page into edit mode (Edit crumb, Editing
 /// badge, Save changes and Discard); nothing saves until Save changes.
 function AgentChannelForm({
@@ -249,6 +251,7 @@ function AgentChannelForm({
     : "Could not start the Slack install.";
   const schedule =
     channel.channel_type === "schedule" ? (channel.channel_config as ScheduleChannelConfig) : null;
+  const workChat = channel.channel_type === "work_chat";
   const [hostedUrl, setHostedUrl] = useState<string | null>(null);
   const chatLink =
     channel.channel_type === "public_chat"
@@ -466,19 +469,85 @@ function AgentChannelForm({
 
       {/* The tab row and the workspace are one surface: no gap between them. */}
       <div className="flex min-w-0 flex-col">
-        <SectionTabs
-          value={tab}
-          onValueChange={(value) => selectTab(value as ChannelTab)}
-          aria-label={ui("Channel sections")}
-          items={[
-            { value: "connect", label: ui("Connect") },
-            { value: "settings", label: editing ? ui("Settings (edited)") : ui("Settings") },
-          ]}
-          className="border-x border-t bg-background px-2"
-        />
-        <div className="grid min-w-0 border-x border-b bg-card lg:grid-cols-[minmax(0,1fr)_340px]">
+        {!workChat && (
+          <SectionTabs
+            value={tab}
+            onValueChange={(value) => selectTab(value as ChannelTab)}
+            aria-label={ui("Channel sections")}
+            items={[
+              { value: "connect", label: ui("Connect") },
+              { value: "settings", label: editing ? ui("Settings (edited)") : ui("Settings") },
+            ]}
+            className="border-x border-t bg-background px-2"
+          />
+        )}
+        <div
+          className={`grid min-w-0 border-x border-b bg-card lg:grid-cols-[minmax(0,1fr)_340px] ${workChat ? "border-t" : ""}`}
+        >
           <div className="min-w-0 lg:border-r">
-            {tab === "connect" ? (
+            {workChat ? (
+              <>
+                {!lifecycle.isLive && (
+                  <div className="p-5 pb-0">
+                    <Notice icon={<CircleAlert className="size-4" />}>
+                      <NoticeTitle>{ui("Draft")}</NoticeTitle>
+                      <NoticeDescription>
+                        {ui(
+                          "Nobody can reach the agent through this channel yet. Publish when you are ready.",
+                        )}
+                      </NoticeDescription>
+                    </Notice>
+                  </div>
+                )}
+                <div className="p-5">
+                  <WorkChatAddress channel={channel} />
+                </div>
+                {sourceOwned ? (
+                  <div className="border-t p-5">
+                    <Notice icon={<CircleAlert className="size-4" />}>
+                      <NoticeTitle>{ui("Managed in GitHub")}</NoticeTitle>
+                      <NoticeDescription>
+                        {ui(
+                          "This channel's settings come from the agent's source repository. Change them there. Publishing and keys still work here.",
+                        )}
+                      </NoticeDescription>
+                    </Notice>
+                  </div>
+                ) : (
+                  <form
+                    id="channel-edit-form"
+                    className="border-t"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (chatDraft.blocked) return;
+                      updateEndpoint.mutate(
+                        {
+                          channel_config: buildChannelConfig(formState),
+                          enabled: formState.enabled,
+                        },
+                        {
+                          onSuccess: (saved) =>
+                            setFormState(
+                              getDefaultChannelFormState(saved.channel_type, saved as AgentChannel),
+                            ),
+                        },
+                      );
+                    }}
+                  >
+                    <ChannelForm
+                      state={formState}
+                      onChange={setFormState}
+                      mode="edit"
+                      channelId={channel.id}
+                      channel={channel}
+                      slackInstallDisabled={editing}
+                      slackInstallCapability={slackInstallCapability}
+                      onSlackCapabilityChanged={onSlackCapabilityChanged}
+                    />
+                  </form>
+                )}
+              </>
+            ) : tab === "connect" ? (
               <div className="flex flex-col gap-6 p-5">
                 {!lifecycle.isLive && (
                   <Notice icon={<CircleAlert className="size-4" />}>
@@ -596,7 +665,7 @@ function AgentChannelForm({
                 </>
               )}
             </dl>
-            {tab === "connect" && canManage && !sourceOwned && (
+            {!workChat && tab === "connect" && canManage && !sourceOwned && (
               <Button
                 type="button"
                 variant="outline"
