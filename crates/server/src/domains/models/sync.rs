@@ -178,14 +178,28 @@ impl ModelSyncService {
             "Discovered models from provider API"
         );
 
-        // Sync discovered models to database (use provider's org_id)
-        let sync_result = self.sync_models_to_db(&provider_row, &discovered).await?;
+        self.record_sync(&provider_row, &discovered).await
+    }
 
-        // Update provider's last_synced_at
-        self.db
-            .update_provider_last_synced(org_id, provider_id, Utc::now())
+    /// Store a provider's model listing and stamp the provider as synced.
+    ///
+    /// Decision: one timestamp is written to every seen model's `last_seen_at`
+    /// and to the provider's `last_synced_at`. Staleness is read back as
+    /// `last_seen_at < last_synced_at`, so stamping the provider with a later
+    /// clock reading than the models (and leaving new models' `last_seen_at`
+    /// NULL) marked every listed model "No longer listed" after each sync.
+    async fn record_sync(
+        &self,
+        provider_row: &ProviderRow,
+        discovered: &[DiscoveredModel],
+    ) -> Result<SyncResult> {
+        let now = Utc::now();
+        let sync_result = self
+            .sync_models_to_db(provider_row, discovered, now)
             .await?;
-
+        self.db
+            .update_provider_last_synced(provider_row.org_id, provider_row.id.uuid(), now)
+            .await?;
         Ok(sync_result)
     }
 
@@ -226,8 +240,8 @@ impl ModelSyncService {
         &self,
         provider: &ProviderRow,
         discovered: &[DiscoveredModel],
+        now: chrono::DateTime<Utc>,
     ) -> Result<SyncResult> {
-        let now = Utc::now();
         let mut created = 0;
         let mut updated = 0;
 
@@ -323,7 +337,18 @@ impl ModelSyncService {
                     provider_metadata: Some(metadata),
                 };
 
-                self.db.create_model(provider.org_id, input).await?;
+                let row = self.db.create_model(provider.org_id, input).await?;
+                // The insert leaves `last_seen_at` NULL, which reads as stale.
+                self.db
+                    .update_model(
+                        provider.org_id,
+                        row.id.uuid(),
+                        UpdateModel {
+                            last_seen_at: Some(now),
+                            ..Default::default()
+                        },
+                    )
+                    .await?;
                 created += 1;
             }
         }
@@ -411,6 +436,77 @@ mod tests {
             }
             _ => panic!("Expected Failed variant"),
         }
+    }
+
+    #[tokio::test]
+    async fn models_the_provider_still_lists_are_not_stale_after_a_sync() {
+        use crate::domains::models::ModelService;
+        use crate::kernel_imports::{Caller, OrgRole};
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let db = Arc::new(StorageBackend::test_database());
+        let service = ModelSyncService::new(db.clone(), Arc::new(DriverRegistry::new()), None);
+        let models = ModelService::new(db.clone());
+        let caller = Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: format!("org_{DEFAULT_ORG_ID:032}"),
+            user_id: None,
+            role: OrgRole::Owner,
+            is_platform_user: false,
+            is_internal: false,
+            read_only: false,
+        };
+        let provider = db
+            .create_provider(
+                DEFAULT_ORG_ID,
+                CreateProviderRow {
+                    name: "OpenAI sync".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        let listed = |id: &str| DiscoveredModel {
+            model_id: id.to_string(),
+            display_name: None,
+            created_at: None,
+            owned_by: None,
+            capabilities: vec!["chat".to_string()],
+            discovered_profile: None,
+        };
+        let stale = |models: &[crate::domains::models::record::ModelWithProvider], id: &str| {
+            models
+                .iter()
+                .find(|model| model.model_id == id)
+                .unwrap_or_else(|| panic!("{id} is listed"))
+                .stale
+        };
+
+        service
+            .record_sync(&provider, &[listed("gpt-kept"), listed("gpt-gone")])
+            .await
+            .unwrap();
+        let after_first = models
+            .list_all_with_filters(&caller, None, true, false)
+            .await
+            .unwrap();
+        assert!(!stale(&after_first, "gpt-kept"));
+        assert!(!stale(&after_first, "gpt-gone"));
+
+        // The next sync no longer lists `gpt-gone`; only that one is stale.
+        service
+            .record_sync(&provider, &[listed("gpt-kept")])
+            .await
+            .unwrap();
+        let after_second = models
+            .list_all_with_filters(&caller, None, true, false)
+            .await
+            .unwrap();
+        assert!(!stale(&after_second, "gpt-kept"));
+        assert!(stale(&after_second, "gpt-gone"));
     }
 
     // --- resolve_api_key tests ---
