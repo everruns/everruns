@@ -7,7 +7,7 @@ name: Yank Crate
 #
 # Yank does not delete: existing Cargo.lock files that already resolved the
 # version keep working; only NEW resolutions stop selecting it. Reversible with
-# undo: true. Authenticates with the same crates.io token as Publish Crate.
+# undo: true. Uses a separate API token: trusted publishing cannot yank versions.
 
 on:
   workflow_dispatch:

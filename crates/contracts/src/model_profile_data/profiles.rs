@@ -281,6 +281,13 @@ const META_MUSE: &[&str] = &["meta", "openai", "openrouter", "openai_completions
 const MISTRAL: &[&str] = &["mistral", "openrouter", "openai_completions"];
 
 static REGISTRY: &[ModelDescriptor] = &[
+    // https://docs.typesafe.ai/models and https://openrouter.ai/typesafe/jev-1.14
+    md_service(
+        &["jev-1.14.0", "jev-1.14", "typesafe/jev-1.14"],
+        ModelVendor::TypeSafe,
+        &["typesafe", "openrouter"],
+        ServiceKind::Decisions,
+    ),
     md_service(
         &["jev-1.13.0", "jev-1.13", "typesafe/jev-1.13"],
         ModelVendor::TypeSafe,
@@ -288,7 +295,7 @@ static REGISTRY: &[ModelDescriptor] = &[
         ServiceKind::Decisions,
     ),
     md_service(
-        &["jev-latest", "typesafe/jev-latest", "~typesafe/jev-latest"],
+        &["jev-latest", "~typesafe/jev-latest", "typesafe/jev-latest"],
         ModelVendor::TypeSafe,
         &["typesafe", "openrouter"],
         ServiceKind::Decisions,
@@ -872,16 +879,22 @@ fn jev_profile_data(canonical: &str) -> Option<ModelProfile> {
     if canonical == "microsoft-decision-1" {
         return Some(microsoft_decision_profile());
     }
-    if !matches!(canonical, "jev-1.13.0" | "jev-latest") {
-        return None;
+    let mut profile = jev_profile(match canonical {
+        "jev-1.14.0" => "Jev 1.14",
+        "jev-1.13.0" => "Jev 1.13",
+        "jev-latest" => "Jev Latest",
+        _ => return None,
+    });
+    if canonical == "jev-1.14.0" {
+        profile.release_date = Some("2026-10-14".into());
     }
-    Some(jev_profile(if canonical == "jev-latest" {
-        "Jev Latest"
-    } else {
-        "Jev 1.13"
-    }))
+    Some(profile)
 }
 
+// https://docs.typesafe.ai/models: input $0.042/M, output free; default 32k
+// state + one question / 64k whole request. Keep the shared profile at these
+// defaults: the driver does not opt in to experimental long context or images.
+// Choice and Score limits: https://docs.typesafe.ai/primitives/{choice,score}.
 fn jev_profile(name: &str) -> ModelProfile {
     ModelProfile {
         name: name.into(),

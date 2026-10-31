@@ -1488,6 +1488,17 @@
                     "null"
                   ]
                 },
+                "github_account": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/SourceGitHubAccount",
+                      "description": "Development GitHub account the source reads and writes through; omitted\nprefers the caller's own GitHub, then the organization's link."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "mode": {
                   "$ref": "#/$defs/SourceMode",
                   "description": "Synchronization direction; two_way requires repository Contents write access."
@@ -1501,6 +1512,14 @@
             }
           ],
           "description": "Reviewed package location and concurrency tokens required to enable source sync."
+        },
+        "SourceGitHubAccount": {
+          "description": "Development GitHub account a source reads and writes through. Never the\nAgent's runtime GitHub identity.",
+          "enum": [
+            "personal",
+            "organization"
+          ],
+          "type": "string"
         },
         "SourceLocation": {
           "description": "Repository, branch and package path that define an Agent's GitHub source.",
@@ -10493,6 +10512,14 @@
     "description": "Browse GitHub branches and Agent package paths.",
     "input_schema": {
       "$defs": {
+        "SourceGitHubAccount": {
+          "description": "Development GitHub account a source reads and writes through. Never the\nAgent's runtime GitHub identity.",
+          "enum": [
+            "personal",
+            "organization"
+          ],
+          "type": "string"
+        },
         "SourceOptionsRequest": {
           "description": "Repository location to browse before selecting an Agent source package.",
           "properties": {
@@ -10502,6 +10529,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "github_account": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SourceGitHubAccount",
+                  "description": "Development GitHub account to read through; omitted prefers the caller's own."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "path": {
@@ -12579,6 +12617,22 @@
       "type": "object"
     },
     "name": "list_agent_scripts",
+    "read_only": true
+  },
+  {
+    "description": "Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_agent_source_accounts",
     "read_only": true
   },
   {
@@ -15982,6 +16036,14 @@
     "description": "Validate and compare a GitHub Agent package without changing the Agent.",
     "input_schema": {
       "$defs": {
+        "SourceGitHubAccount": {
+          "description": "Development GitHub account a source reads and writes through. Never the\nAgent's runtime GitHub identity.",
+          "enum": [
+            "personal",
+            "organization"
+          ],
+          "type": "string"
+        },
         "SourceLocation": {
           "description": "Repository, branch and package path that define an Agent's GitHub source.",
           "properties": {
@@ -16016,6 +16078,17 @@
           "properties": {
             "agent_id": {
               "type": "string"
+            },
+            "github_account": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SourceGitHubAccount",
+                  "description": "Development GitHub account to read through; omitted prefers the caller's own."
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [

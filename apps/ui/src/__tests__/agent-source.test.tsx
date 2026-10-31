@@ -3,12 +3,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AgentSourcePanel } from "@/components/agents/agent-source";
 import * as api from "@/lib/api/agent-source";
-import * as github from "@/lib/api/agent-github";
 
 jest.mock("@/lib/api/agent-source");
-jest.mock("@/lib/api/agent-github");
 let mockCanManage = true;
-jest.mock("@/hooks/use-policies", () => ({ usePolicies: () => ({ can: () => mockCanManage }) }));
+jest.mock("@/hooks/use-policies", () => ({
+  usePolicies: () => ({ can: () => mockCanManage }),
+}));
 jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({ currentOrg: { public_id: "org_1" }, isLoading: false }),
 }));
@@ -16,9 +16,9 @@ jest.mock("@/components/agents/agent-package-review", () => ({
   AgentPackageReview: () => <div>Package change preview</div>,
 }));
 const mocked = jest.mocked(api);
-const gh = jest.mocked(github);
 const source: api.AgentSource = {
   mode: "pull",
+  github_account: "organization",
   local_dirty: false,
   generation: "generation-1",
   repository: "acme/agents",
@@ -31,6 +31,31 @@ const source: api.AgentSource = {
   last_checked_at: "2026-10-19T12:00:00Z",
   last_synced_at: "2026-10-19T12:00:00Z",
 };
+function accounts(
+  overrides: {
+    personal?: Partial<api.AgentSourceAccounts["personal"]>;
+    organization?: Partial<api.AgentSourceAccounts["organization"]>;
+  } = {},
+): api.AgentSourceAccounts {
+  return {
+    available: true,
+    install_url: "https://github.com/apps/everruns/installations/new",
+    personal: {
+      connected: true,
+      login: "octocat",
+      repositories: [{ full_name: "acme/agents", account: "acme", private: true }],
+      error: null,
+      ...overrides.personal,
+    },
+    organization: {
+      can_connect: true,
+      accounts: [],
+      repositories: [],
+      error: null,
+      ...overrides.organization,
+    },
+  };
+}
 function Source({ disabled = false }: { disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
@@ -54,13 +79,7 @@ beforeEach(() => {
   jest.resetAllMocks();
   mockCanManage = true;
   mocked.getAgentSource.mockResolvedValue(null);
-  gh.getAgentGitHub.mockResolvedValue({
-    connected: true,
-    identity_id: "identity_1",
-  } as github.AgentGitHubStatus);
-  gh.listGitHubRepositories.mockResolvedValue([
-    { full_name: "acme/agents", private: true, html_url: "https://github.com/acme/agents" },
-  ]);
+  mocked.listAgentSourceAccounts.mockResolvedValue(accounts());
   mocked.getAgentSourceOptions.mockResolvedValue({
     default_branch: "main",
     branch: "main",
@@ -71,7 +90,12 @@ beforeEach(() => {
 it("requires a valid preview and sends the exact reviewed commit when enabling sync", async () => {
   mocked.previewAgentSource.mockResolvedValue({
     valid: true,
-    preview: { name: "support", instructions: "Help", capabilities: {}, files: {} },
+    preview: {
+      name: "support",
+      instructions: "Help",
+      capabilities: {},
+      files: {},
+    },
     commit: "a".repeat(40),
     agent_digest: "base",
     changes: [],
@@ -101,6 +125,7 @@ it("requires a valid preview and sends the exact reviewed commit when enabling s
       commit: "a".repeat(40),
       agent_digest: "base",
       mode: "pull",
+      github_account: "personal",
     }),
   );
 });
@@ -114,7 +139,7 @@ it("requires explicit two-way selection and review before enabling repository wr
   mocked.connectAgentSource.mockResolvedValue({ ...source, mode: "two_way" });
   show();
   fireEvent.click(await screen.findByRole("button", { name: "Sync from GitHub" }));
-  expect(screen.getByLabelText("Sync direction")).toHaveTextContent("Sync from GitHub");
+  expect(await screen.findByLabelText("Sync direction")).toHaveTextContent("Sync from GitHub");
   fireEvent.click(screen.getByLabelText("Sync direction"));
   fireEvent.pointerDown(await screen.findByRole("option", { name: /Sync with GitHub/ }), {
     pointerType: "mouse",
@@ -137,7 +162,11 @@ it("requires explicit two-way selection and review before enabling repository wr
   await waitFor(() =>
     expect(mocked.connectAgentSource).toHaveBeenCalledWith(
       "agent_1",
-      expect.objectContaining({ mode: "two_way", commit: "a".repeat(40), agent_digest: "base" }),
+      expect.objectContaining({
+        mode: "two_way",
+        commit: "a".repeat(40),
+        agent_digest: "base",
+      }),
     ),
   );
 });
@@ -145,6 +174,7 @@ it("requires explicit two-way selection and review before enabling repository wr
 it("shows retained local edits and a review action for a two-way conflict", async () => {
   mocked.getAgentSource.mockResolvedValue({
     ...source,
+    github_account: "personal",
     mode: "two_way",
     local_dirty: true,
     status: "conflict",
@@ -154,7 +184,7 @@ it("shows retained local edits and a review action for a two-way conflict", asyn
   expect(await screen.findByText("Conflict")).toBeInTheDocument();
   expect(screen.getByText(/Your local definition is retained/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Review GitHub version" }));
-  expect(screen.getByLabelText("Sync direction")).toHaveTextContent("Sync with GitHub");
+  expect(await screen.findByLabelText("Sync direction")).toHaveTextContent("Sync with GitHub");
   expect(screen.getByRole("button", { name: "Enable continuous sync" })).toBeDisabled();
 });
 it("invalidates a preview when the source selection changes", async () => {
@@ -182,7 +212,11 @@ it("invalidates a preview when the source selection changes", async () => {
   expect(screen.queryByText("dependencies: Missing model")).not.toBeInTheDocument();
 });
 it("shows the retained revision on failure and queues a retry", async () => {
-  mocked.getAgentSource.mockResolvedValue({ ...source, status: "error", error: "Missing model" });
+  mocked.getAgentSource.mockResolvedValue({
+    ...source,
+    status: "error",
+    error: "Missing model",
+  });
   mocked.syncAgentSource.mockResolvedValue({ ...source, status: "pending" });
   show();
   await screen.findByText(/Missing model/);
@@ -221,7 +255,10 @@ it("omits the disconnected Source card and resets a cancelled connection form", 
 it.each(["pending", "syncing"])(
   "does not submit another sync while the source is %s",
   async (status) => {
-    mocked.getAgentSource.mockResolvedValue({ ...source, status } as api.AgentSource);
+    mocked.getAgentSource.mockResolvedValue({
+      ...source,
+      status,
+    } as api.AgentSource);
     show();
     expect(await screen.findByRole("button", { name: "Sync now" })).toBeDisabled();
     expect(mocked.syncAgentSource).not.toHaveBeenCalled();
@@ -259,4 +296,102 @@ it("retains sync request failures and lets the user retry", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Sync now" }));
   await waitFor(() => expect(mocked.syncAgentSource).toHaveBeenCalledTimes(2));
   expect(screen.queryByText("Temporary sync failure")).not.toBeInTheDocument();
+});
+
+it("syncs through the person's own GitHub, never the Agent's runtime identity", async () => {
+  show();
+  fireEvent.click(await screen.findByRole("button", { name: "Sync from GitHub" }));
+  expect(await screen.findByRole("radio", { name: /My GitHub account/ })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  expect(screen.getByText("Connected as octocat")).toBeInTheDocument();
+  expect(screen.queryByText(/Integrations/)).not.toBeInTheDocument();
+});
+it("connects GitHub in a popup and stays in the dialog", async () => {
+  mocked.listAgentSourceAccounts
+    .mockResolvedValueOnce(accounts({ personal: { connected: false, repositories: [] } }))
+    .mockResolvedValue(accounts());
+  mocked.personalGitHubSignInUrl.mockReturnValue("https://api.example/sign-in?popup=true&x=1");
+  const popup = { closed: false } as Window;
+  const open = jest.spyOn(window, "open").mockReturnValue(popup);
+  show();
+  fireEvent.click(await screen.findByRole("button", { name: "Sync from GitHub" }));
+  expect(screen.queryByLabelText("Repository")).not.toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub" }));
+  expect(open).toHaveBeenCalledWith(
+    "https://api.example/sign-in?popup=true&x=1",
+    "everruns-github-connect",
+    expect.any(String),
+  );
+  expect(mocked.personalGitHubSignInUrl).toHaveBeenCalledWith("/agents/agent_1?sync=github");
+  expect(screen.getByText("Waiting for GitHub…")).toBeInTheDocument();
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      origin: window.location.origin,
+      data: {
+        type: "everruns:connection-complete",
+        provider: "github",
+        status: "success",
+      },
+    }),
+  );
+  expect(await screen.findByLabelText("Repository")).toBeInTheDocument();
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  open.mockRestore();
+});
+it("tells a member that an admin links organization GitHub", async () => {
+  mocked.listAgentSourceAccounts.mockResolvedValue(
+    accounts({
+      personal: { connected: false, repositories: [] },
+      organization: { can_connect: false },
+    }),
+  );
+  show();
+  fireEvent.click(await screen.findByRole("button", { name: "Sync from GitHub" }));
+  fireEvent.click(await screen.findByRole("radio", { name: /Organization GitHub/ }));
+  expect(screen.getByText("An organization admin connects GitHub")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Connect GitHub" })).not.toBeInTheDocument();
+});
+it("sends the chosen organization account with the reviewed source", async () => {
+  mocked.listAgentSourceAccounts.mockResolvedValue(
+    accounts({
+      organization: {
+        accounts: ["acme"],
+        repositories: [{ full_name: "acme/agents", account: "acme", private: false }],
+      },
+    }),
+  );
+  mocked.previewAgentSource.mockResolvedValue({
+    valid: true,
+    commit: "a".repeat(40),
+    agent_digest: "base",
+    changes: [],
+  });
+  mocked.connectAgentSource.mockResolvedValue(source);
+  show();
+  fireEvent.click(await screen.findByRole("button", { name: "Sync from GitHub" }));
+  fireEvent.click(await screen.findByRole("radio", { name: /Organization GitHub/ }));
+  fireEvent.click(await screen.findByLabelText("Repository"));
+  fireEvent.pointerDown(await screen.findByRole("option", { name: "acme/agents" }), {
+    pointerType: "mouse",
+    button: 0,
+  });
+  fireEvent.click(await screen.findByRole("option", { name: "acme/agents" }));
+  await waitFor(() => expect(screen.getByLabelText("Branch")).toHaveValue("main"));
+  expect(mocked.getAgentSourceOptions).toHaveBeenCalledWith(
+    "agent_1",
+    expect.objectContaining({ github_account: "organization" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Preview changes" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Enable continuous sync" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Enable continuous sync" }));
+  await waitFor(() =>
+    expect(mocked.connectAgentSource).toHaveBeenCalledWith(
+      "agent_1",
+      expect.objectContaining({ github_account: "organization" }),
+    ),
+  );
 });

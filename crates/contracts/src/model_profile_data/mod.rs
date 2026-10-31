@@ -9,6 +9,9 @@
 //! assert_eq!(profile.family, "claude-sonnet-5");
 //! ```
 
+mod decision_models;
+pub use decision_models::openrouter_decision_model_id;
+
 pub mod profiles;
 mod types;
 

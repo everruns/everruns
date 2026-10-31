@@ -241,6 +241,32 @@ impl DbConnectionResolver {
             .await
     }
 
+    /// A token through exactly `connection_id` of `owner`; see
+    /// `get_github_token_for_connection`.
+    pub(super) async fn github_token_for_connection(
+        &self,
+        org_id: i64,
+        owner: Uuid,
+        connection_id: Uuid,
+        access: &GitHubAccess,
+    ) -> Result<Option<String>> {
+        let token_scope = token_scope(access)?;
+        let Some(row) = self
+            .db
+            .get_virtual_user_connection_by_id(
+                VirtualUserId::from_uuid(owner),
+                connection_id,
+                PROVIDER,
+            )
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        self.scoped_github_token(OAuthScope::Org(org_id), row, &token_scope)
+            .await
+    }
+
     /// A token for `row` limited to `token_scope`; an empty scope gets
     /// everything the installation holds.
     pub(super) async fn scoped_github_token(

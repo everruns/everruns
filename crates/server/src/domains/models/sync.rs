@@ -117,8 +117,11 @@ impl ModelSyncService {
             .db
             .list_models_for_provider(org_id, provider_id)
             .await?;
-        seed_registry_models(&self.db, &provider_row, |id| {
-            existing.iter().any(|model| model.model_id == id)
+        seed_registry_models(&self.db, &provider_row, |id, key| {
+            existing.iter().any(|model| {
+                model.model_id == id
+                    || crate::domains::models::catalog::key(model.provider_metadata.as_ref()) == key
+            })
         })
         .await?;
         let driver = provider;
@@ -398,8 +401,12 @@ pub(crate) fn registry_decision_models(
         .into_iter()
         .filter(|entry| entry.service == everruns_contracts::ServiceKind::Decisions)
         .map(|mut entry| {
-            if provider_type == "openrouter" && entry.model_id == "jev-1.13.0" {
-                entry.model_id = "typesafe/jev-1.13".to_string();
+            if provider_type == "openrouter" {
+                entry.model_id =
+                    everruns_contracts::model_profile_data::openrouter_decision_model_id(
+                        &entry.model_id,
+                    )
+                    .to_owned();
             }
             entry
         })
@@ -407,7 +414,9 @@ pub(crate) fn registry_decision_models(
 }
 
 /// Add the registry's decision models a provider lacks, disabled, as
-/// `predefined` rows. Returns how many were added.
+/// `predefined` rows. Returns how many were added. `exists(model_id,
+/// profile_key)` matches by profile too, so a row saved under an older
+/// spelling (`jev-latest` before OpenRouter's `~typesafe/jev-latest`) counts.
 ///
 /// Runs on every sync and whenever the Models page loads, so a model added to
 /// the registry by a release shows up without waiting for the next sync.
@@ -416,11 +425,11 @@ pub(crate) fn registry_decision_models(
 pub(crate) async fn seed_registry_models(
     db: &StorageBackend,
     provider_row: &ProviderRow,
-    exists: impl Fn(&str) -> bool,
+    exists: impl Fn(&str, &str) -> bool,
 ) -> Result<usize> {
     let mut added = 0;
     for entry in registry_decision_models(&provider_row.provider_type) {
-        if exists(&entry.model_id) {
+        if exists(&entry.model_id, &entry.key) {
             continue;
         }
         let model_id = entry.model_id.clone();
@@ -678,9 +687,10 @@ mod tests {
     }
 
     /// A keyed OpenRouter provider gets the registry's Jev rows on the first
-    /// Models page load, and a sync that lists Jev Latest under OpenRouter's
-    /// own spelling adds no second row, while other vendors' decision models
-    /// arrive with their decision profile.
+    /// Models page load. A Jev Latest row saved under the older `jev-latest`
+    /// spelling stays the only one: neither the load nor a sync listing
+    /// `~typesafe/jev-latest` adds a second row. Other vendors' decision
+    /// models arrive with their decision profile.
     #[tokio::test]
     async fn openrouter_decision_models_are_seeded_on_load_and_discovered_once() {
         use crate::domains::models::ModelService;
@@ -713,6 +723,22 @@ mod tests {
             )
             .await
             .unwrap();
+        // Saved before OpenRouter's alias moved to `~typesafe/jev-latest`.
+        db.create_model(
+            DEFAULT_ORG_ID,
+            CreateModelRow {
+                provider_id: provider.id,
+                model_id: "jev-latest".into(),
+                display_name: "Jev Latest".into(),
+                capabilities: vec!["decisions".into()],
+                enabled: false,
+                is_favorite: false,
+                source: "predefined".into(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap();
         let decision_ids = |listed: &[crate::domains::models::record::ModelWithProvider]| {
             let mut ids: Vec<_> = listed
                 .iter()
@@ -727,7 +753,10 @@ mod tests {
             .list_all_with_filters(&caller, None, true, false)
             .await
             .unwrap();
-        assert_eq!(decision_ids(&loaded), ["jev-latest", "typesafe/jev-1.13"]);
+        assert_eq!(
+            decision_ids(&loaded),
+            ["jev-latest", "typesafe/jev-1.13", "typesafe/jev-1.14"]
+        );
 
         let mut d1 = everruns_contracts::model::ModelProfile::minimal("LiquidAI: d1.1");
         d1.decisions = Some(
@@ -768,7 +797,12 @@ mod tests {
             .unwrap();
         assert_eq!(
             decision_ids(&synced),
-            ["jev-latest", "liquid/d1.1", "typesafe/jev-1.13"]
+            [
+                "jev-latest",
+                "liquid/d1.1",
+                "typesafe/jev-1.13",
+                "typesafe/jev-1.14"
+            ]
         );
         let d1 = synced.iter().find(|m| m.model_id == "liquid/d1.1").unwrap();
         assert!(!d1.enabled);
