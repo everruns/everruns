@@ -101,6 +101,7 @@ async fn run_with_claim(
     atomic: bool,
     handle: impl Future<Output = Response>,
 ) -> Response {
+    // THREAT[TM-WEB-023]: accepted input must replay with its original identity.
     // Atomic message admission commits its claim, effect and replay together.
     // The try-lock preserves an immediate 409 for a live owner. Session startup
     // can perform external work and keeps the existing lease path instead.
