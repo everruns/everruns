@@ -37,6 +37,7 @@ const gatewayPort=await listen(createServer(async(request,response)=>{
   let raw="";for await(const chunk of request)raw+=chunk;
   const input=JSON.parse(raw);modelCalls++;
   assert.ok(Array.isArray(input.input),"native OpenAI Responses request expected");
+  assert.equal(input.model,"gpt-6.1-sol","Serve removes the OpenAI routing prefix");
   const done=input.input.some(item=>item.type==="function_call_output");
   response.writeHead(200,{"content-type":"text/event-stream"});
   const emit=event=>response.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -52,7 +53,7 @@ const gatewayPort=await listen(createServer(async(request,response)=>{
 const config=join(run,"wrangler.json");
 writeFileSync(join(run,"worker.js"),`export {default,SessionAuthority,ServeExecutor} from ${JSON.stringify(join(worker,"src/index.js"))};\n`);
 writeFileSync(config,JSON.stringify({name:"serve-celld-engine-test",main:"worker.js",compatibility_date:"2026-09-01",compatibility_flags:["nodejs_compat"],vars:{TENANT_ID:"test",SERVE_URL:native,AUTHORITY_TOKEN:token,EXECUTOR_TOKEN:executorToken,API_TOKEN:apiToken},durable_objects:{bindings:[{name:"SESSIONS",class_name:"SessionAuthority"}]},migrations:[{tag:"v1",new_sqlite_classes:["SessionAuthority"]}]}));
-const nativeEnv={AUTHORITY_URL:authority,TENANT_ID:"test",AUTHORITY_TOKEN:token,EXECUTOR_TOKEN:executorToken,SERVE_API_KEYS:apiToken,SERVE_GATEWAY_URL:`http://127.0.0.1:${gatewayPort}/v1`,SERVE_GATEWAY_KEY:"synthetic",RESEARCH_DELAY_MS:process.env.SERVE_TEST_TOOL_DELAY_MS??"120000",PORT:String(nativePort)};
+const nativeEnv={AUTHORITY_URL:authority,TENANT_ID:"test",AUTHORITY_TOKEN:token,EXECUTOR_TOKEN:executorToken,SERVE_API_KEYS:apiToken,OPENAI_BASE_URL:`http://127.0.0.1:${gatewayPort}/v1`,OPENAI_API_KEY:"synthetic",RESEARCH_DELAY_MS:process.env.SERVE_TEST_TOOL_DELAY_MS??"120000",PORT:String(nativePort)};
 let generation=0;
 function startNative(){
  const name=`native-${++generation}`,env={...nativeEnv,SERVE_DATA_DIR:join(run,name)};

@@ -2,7 +2,9 @@
 //!
 //! Adapters send the already encoded request and return headers plus a lazy byte
 //! stream. They do not interpret provider JSON or SSE. Native drivers use the
-//! shared, SSRF-hardened reqwest client unless a transport is injected. Isolate
+//! shared, SSRF-hardened reqwest client unless a transport is injected. Standard
+//! forward-proxy settings select a destination-validated proxy path; the trusted
+//! proxy owns DNS pinning on its outbound connection. Isolate
 //! hosts must inject one and own URL policy, DNS, redirect refusal, timeouts and
 //! cancellation (including cancelling the response reader when dropped).
 
@@ -13,6 +15,9 @@ use bytes::Bytes;
 use futures::{Stream, TryStreamExt};
 pub use http::{HeaderMap, Method, Request, StatusCode, header};
 use serde::de::DeserializeOwned;
+
+#[cfg(not(target_arch = "wasm32"))]
+mod proxy;
 
 pub type HttpRequest = Request<Vec<u8>>;
 pub type HttpBody = Pin<Box<dyn Stream<Item = Result<Bytes, HttpError>> + Send>>;
@@ -140,11 +145,7 @@ impl HttpClient {
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            HttpTransport::execute(
-                &crate::driver_helpers::shared_streaming_http_client(),
-                request,
-            )
-            .await
+            proxy::execute(request).await
         }
         #[cfg(target_arch = "wasm32")]
         {

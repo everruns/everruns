@@ -153,7 +153,18 @@ wrappers also accept host-injected HTTP. This allows wasm32 hosts to supply
 fetch without copying provider behavior. Injection is a trusted host boundary:
 the adapter sees auth and must enforce deployment endpoint/DNS policy, refuse
 redirects, bound network waits and cancel dropped requests/readers. The native
-default retains its hardened client. See the
+default retains its hardened client for direct connections. Its shared HTTP
+transport honors operator-configured forward proxies and proxy exclusions.
+Before forwarding, it validates the destination URL; it never treats a proxy
+hostname as a generally allowed destination. It does not require local DNS in
+proxy-only environments.
+The proxy owns DNS resolution and public-address enforcement on its outbound
+connection, matching the [host egress proxy contract](../../crates/core/src/host/egress_proxy.rs).
+Only trusted, policy-enforcing proxies belong in deployment configuration.
+Redirects, TLS verification and timeouts remain enforced, proxy authentication
+is confined to the proxy, and proxy failures never fall back to a direct route.
+This applies to the shared Chat Completions/Responses HTTP transport; other
+native driver clients keep their existing routing. See the
 [WASM kernel decision](../framework/wasm-kernel.md) and
 [transport contract](../../crates/contracts/src/http_transport.rs).
 

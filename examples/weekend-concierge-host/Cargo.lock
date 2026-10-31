@@ -516,6 +516,7 @@ dependencies = [
  "gloo-timers",
  "hex",
  "http",
+ "hyper-util",
  "inventory",
  "jsonschema",
  "rand 0.10.3",

@@ -59,7 +59,7 @@ serve's own.
 | `SERVE_AGENTCORE_AGENT` | The agent `/invocations` runs, default the app's default agent |
 | `SERVE_DATA_DIR`, `DATABASE_URL` | Where serve keeps its SQLite session log. Default: the runtime's session storage at `/mnt/workspace/.serve` when mounted, else a temporary directory |
 | `SERVE_WORKSPACE` | The agent's workspace. Default: `/mnt/workspace` when mounted |
-| `SERVE_GATEWAY_URL`, `SERVE_GATEWAY_KEY` | serve's model gateway. An AgentCore Gateway inference endpoint (`https://<gateway>/inference/v1`) works here, with targets named after providers (`anthropic`, `openai`) so serve's `provider/model` ids route as-is |
+| `OPENAI_API_KEY`, `OPENAI_BASE_URL` | Credential and optional OpenAI-compatible Responses API endpoint. Agent models use `openai/<endpoint-model-id>`; Serve strips only the first `openai/`, so an endpoint expecting `target/model` needs `openai/target/model` in the agent definition |
 | `AWS_REGION`, `AWS_DEFAULT_REGION` | Region for `bedrock/<model-id>` models (for example `bedrock/us.anthropic.claude-sonnet-4-6`). When set, those models call Amazon Bedrock directly with the runtime's execution role, ahead of the gateway. The role needs `bedrock:InvokeModelWithResponseStream`. Disable the default `bedrock` feature to drop the AWS SDK |
 
 AgentCore mounts session storage only when an invocation arrives, so `/ping` answers
