@@ -1,4 +1,6 @@
-//! Uncached protocol floor. Empty means the existing unprotected worker plane.
+//! Protocol floor, read from the table. Empty means the existing unprotected
+//! worker plane. `StorageBackend` serves it from memory while change
+//! notifications are live; these reads never are.
 use super::Database;
 
 impl Database {

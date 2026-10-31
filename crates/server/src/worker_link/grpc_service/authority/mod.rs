@@ -75,8 +75,10 @@ pub(super) fn check_rpc<T>(request: &Request<T>, rpc: &str) -> Result<(), Status
 const INGRESS_PROTECTION_VERSION: i32 = 1;
 
 /// A global persisted floor is necessary while legacy global RPCs and signed
-/// byte URLs have no trustworthy assignment selector. Never cache absence: a
-/// legacy channel must not survive cutover by reconnecting or changing IDs.
+/// byte URLs have no trustworthy assignment selector. Every call rechecks it:
+/// a legacy channel must not survive cutover by reconnecting or changing IDs.
+/// The check is served from memory, absence included, only while the floor's
+/// change notifications are live (`storage/backend/config_row_cache.rs`).
 pub(crate) async fn admit_ingress(
     db: &crate::storage::StorageBackend,
     authority: &WorkerAuthority,
