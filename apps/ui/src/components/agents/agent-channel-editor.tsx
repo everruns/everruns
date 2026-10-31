@@ -685,9 +685,7 @@ function AgentChannelForm({
                       ? ui(
                           "The shared pool covers everyone on this channel. The daily limit caps each person until midnight UTC.",
                         )
-                      : ui(
-                          "Caps what this channel can spend, separately from the agent's budget.",
-                        )}
+                      : ui("Caps what this channel can spend, separately from the agent's budget.")}
                   </p>
                 </div>
                 {canBudget("budget.view") && (
