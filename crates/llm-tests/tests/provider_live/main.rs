@@ -16,6 +16,7 @@
 mod agents_api_support;
 
 mod anthropic_parallel_tool_calls;
+mod decision_discovery;
 mod discovery;
 mod fireworks_chat;
 mod meta_model_api;

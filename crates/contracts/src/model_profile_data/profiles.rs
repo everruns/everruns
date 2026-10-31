@@ -288,7 +288,7 @@ static REGISTRY: &[ModelDescriptor] = &[
         ServiceKind::Decisions,
     ),
     md_service(
-        &["jev-latest", "typesafe/jev-latest"],
+        &["jev-latest", "typesafe/jev-latest", "~typesafe/jev-latest"],
         ModelVendor::TypeSafe,
         &["typesafe", "openrouter"],
         ServiceKind::Decisions,

@@ -209,6 +209,16 @@ pub trait DecisionDriver: Send + Sync {
         endpoint: &crate::runtime_provider::ProviderEndpoint,
         request: DecisionRequest,
     ) -> Result<DecisionOutcome>;
+
+    /// The decision models this account serves, when the vendor publishes a
+    /// catalog. `Ok(None)` means it publishes none, and the model-profile
+    /// registry stays the only source of decision models for the provider.
+    async fn list_models(
+        &self,
+        _endpoint: &crate::runtime_provider::ProviderEndpoint,
+    ) -> Result<Option<Vec<crate::model_discovery::DiscoveredModel>>> {
+        Ok(None)
+    }
 }
 
 /// Serve a single driver as a [`DecisionsService`].

@@ -113,41 +113,14 @@ impl ModelSyncService {
             .driver_registry
             .create_provider(&config)
             .map_err(|e| anyhow::anyhow!("Failed to compose provider: {e}"))?;
-        let decision_entries =
-            everruns_contracts::model_profile_data::profile_entries_for_provider(
-                &provider_row.provider_type,
-            )
-            .into_iter()
-            .filter(|entry| entry.service == everruns_contracts::ServiceKind::Decisions);
         let existing = self
             .db
             .list_models_for_provider(org_id, provider_id)
             .await?;
-        for entry in decision_entries {
-            let wire_id =
-                if provider_row.provider_type == "openrouter" && entry.model_id == "jev-1.13.0" {
-                    "typesafe/jev-1.13".to_string()
-                } else {
-                    entry.model_id
-                };
-            if !existing.iter().any(|model| model.model_id == wire_id) {
-                self.db
-                    .create_model(
-                        org_id,
-                        CreateModelRow {
-                            provider_id: provider_row.id,
-                            model_id: wire_id,
-                            display_name: entry.profile.name,
-                            capabilities: vec!["decisions".into()],
-                            enabled: false,
-                            is_favorite: false,
-                            source: "predefined".into(),
-                            provider_metadata: None,
-                        },
-                    )
-                    .await?;
-            }
-        }
+        seed_registry_models(&self.db, &provider_row, |id| {
+            existing.iter().any(|model| model.model_id == id)
+        })
+        .await?;
         let driver = provider;
         // Call list_models on the driver
         let discovered = match driver.list_models().await {
@@ -283,6 +256,20 @@ impl ModelSyncService {
                     Some(metadata),
                 )?;
             }
+            // A catalog can list a registry model under another spelling than
+            // the predefined row already carries (OpenRouter's
+            // `~typesafe/jev-latest` for `jev-latest`). One row per model.
+            let key = crate::domains::models::catalog::key(Some(&metadata));
+            if !key.starts_with("custom/")
+                && existing.iter().any(|row| {
+                    row.source == "predefined"
+                        && row.model_id != model.model_id
+                        && crate::domains::models::catalog::key(row.provider_metadata.as_ref())
+                            == key
+                })
+            {
+                continue;
+            }
             let mut capabilities = model.capabilities.clone();
             let tag = crate::domains::models::catalog::service(Some(&metadata)).to_string();
             if !capabilities.contains(&tag) {
@@ -347,6 +334,71 @@ impl ModelSyncService {
     fn resolve_api_key(&self, provider_row: &ProviderRow) -> Result<Option<String>> {
         resolve_provider_api_key(&self.db, self.encryption.as_deref(), provider_row)
     }
+}
+
+/// The registry's decision models for a provider type, as the model id stored
+/// for that provider. Decision vendors publish no catalog that covers pinned
+/// versions (TypeSafe lists only aliases), so the registry is what makes them
+/// available everywhere a key is set.
+pub(crate) fn registry_decision_models(
+    provider_type: &str,
+) -> Vec<everruns_contracts::model_profile_data::ModelProfileEntry> {
+    everruns_contracts::model_profile_data::profile_entries_for_provider(provider_type)
+        .into_iter()
+        .filter(|entry| entry.service == everruns_contracts::ServiceKind::Decisions)
+        .map(|mut entry| {
+            if provider_type == "openrouter" && entry.model_id == "jev-1.13.0" {
+                entry.model_id = "typesafe/jev-1.13".to_string();
+            }
+            entry
+        })
+        .collect()
+}
+
+/// Add the registry's decision models a provider lacks, disabled, as
+/// `predefined` rows. Returns how many were added.
+///
+/// Runs on every sync and whenever the Models page loads, so a model added to
+/// the registry by a release shows up without waiting for the next sync.
+/// Concurrent loads can race on the `(provider_id, model_id)` unique index;
+/// the loser's insert fails and is skipped, since the row now exists.
+pub(crate) async fn seed_registry_models(
+    db: &StorageBackend,
+    provider_row: &ProviderRow,
+    exists: impl Fn(&str) -> bool,
+) -> Result<usize> {
+    let mut added = 0;
+    for entry in registry_decision_models(&provider_row.provider_type) {
+        if exists(&entry.model_id) {
+            continue;
+        }
+        let model_id = entry.model_id.clone();
+        let created = db
+            .create_model(
+                provider_row.org_id,
+                CreateModelRow {
+                    provider_id: provider_row.id,
+                    model_id: entry.model_id,
+                    display_name: entry.profile.name,
+                    capabilities: vec!["decisions".into()],
+                    enabled: false,
+                    is_favorite: false,
+                    source: "predefined".into(),
+                    provider_metadata: None,
+                },
+            )
+            .await;
+        match created {
+            Ok(_) => added += 1,
+            Err(error) => tracing::debug!(
+                provider_id = %provider_row.id,
+                model_id,
+                %error,
+                "Registry decision model not added (likely added concurrently)"
+            ),
+        }
+    }
+    Ok(added)
 }
 
 #[cfg(test)]
@@ -501,6 +553,108 @@ mod tests {
         // No DB key -> None (fail closed, no env fallback)
         let resolved = service.resolve_api_key(&provider).unwrap();
         assert!(resolved.is_none());
+    }
+
+    /// A keyed OpenRouter provider gets the registry's Jev rows on the first
+    /// Models page load, and a sync that lists Jev Latest under OpenRouter's
+    /// own spelling adds no second row, while other vendors' decision models
+    /// arrive with their decision profile.
+    #[tokio::test]
+    async fn openrouter_decision_models_are_seeded_on_load_and_discovered_once() {
+        use crate::domains::models::ModelService;
+        use crate::kernel_imports::{Caller, OrgRole};
+        use everruns_contracts::ServiceKind;
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let db = Arc::new(StorageBackend::test_database());
+        let service = ModelSyncService::new(db.clone(), Arc::new(DriverRegistry::new()), None);
+        let models = ModelService::new(db.clone());
+        let caller = Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: format!("org_{DEFAULT_ORG_ID:032}"),
+            user_id: None,
+            role: OrgRole::Owner,
+            is_platform_user: false,
+            is_internal: false,
+            read_only: false,
+        };
+        let provider = db
+            .create_provider(
+                DEFAULT_ORG_ID,
+                CreateProviderRow {
+                    name: "OpenRouter decisions".to_string(),
+                    provider_type: "openrouter".to_string(),
+                    base_url: None,
+                    api_key_encrypted: Some(b"sealed".to_vec()),
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        let decision_ids = |listed: &[crate::domains::models::record::ModelWithProvider]| {
+            let mut ids: Vec<_> = listed
+                .iter()
+                .filter(|m| m.service == ServiceKind::Decisions)
+                .map(|m| m.model_id.clone())
+                .collect();
+            ids.sort();
+            ids
+        };
+
+        let loaded = models
+            .list_all_with_filters(&caller, None, true, false)
+            .await
+            .unwrap();
+        assert_eq!(decision_ids(&loaded), ["jev-latest", "typesafe/jev-1.13"]);
+
+        let mut d1 = everruns_contracts::model::ModelProfile::minimal("LiquidAI: d1.1");
+        d1.decisions = Some(
+            everruns_contracts::model_profile_data::DecisionModelProfile {
+                primitives: vec!["noul".into(), "choice".into(), "score".into()],
+                calibrated: true,
+                max_choice_options: Some(255),
+                max_score_levels: Some(10),
+                state_tokens: None,
+                request_tokens: None,
+            },
+        );
+        let listed =
+            |id: &str, profile: Option<everruns_contracts::model::ModelProfile>| DiscoveredModel {
+                model_id: id.to_string(),
+                display_name: None,
+                created_at: None,
+                owned_by: None,
+                capabilities: vec!["decisions".to_string()],
+                discovered_profile: profile,
+            };
+        service
+            .sync_models_to_db(
+                &provider,
+                &[
+                    listed("~typesafe/jev-latest", None),
+                    listed("typesafe/jev-1.13", None),
+                    listed("liquid/d1.1", Some(d1)),
+                ],
+            )
+            .await
+            .unwrap();
+
+        let synced = models
+            .list_all_with_filters(&caller, None, true, false)
+            .await
+            .unwrap();
+        assert_eq!(
+            decision_ids(&synced),
+            ["jev-latest", "liquid/d1.1", "typesafe/jev-1.13"]
+        );
+        let d1 = synced.iter().find(|m| m.model_id == "liquid/d1.1").unwrap();
+        assert!(!d1.enabled);
+        assert!(
+            d1.profile
+                .as_ref()
+                .and_then(|p| p.decisions.as_ref())
+                .is_some_and(|d| d.calibrated)
+        );
     }
 
     // --- sync_all multi-org tests ---
