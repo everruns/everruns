@@ -2497,6 +2497,7 @@
           }
         },
         "deprecated": true,
+        "x-superseded-by": "list_agent_channels",
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
@@ -2505,8 +2506,7 @@
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        },
-        "x-superseded-by": "list_agent_channels"
+        }
       },
       "post": {
         "tags": [
@@ -2569,6 +2569,7 @@
           }
         },
         "deprecated": true,
+        "x-superseded-by": "create_agent_channel",
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
@@ -2577,8 +2578,7 @@
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        },
-        "x-superseded-by": "create_agent_channel"
+        }
       }
     },
     "/v1/agents/{agent_id}/endpoints/{endpoint_id}": {
@@ -2632,16 +2632,16 @@
           }
         },
         "deprecated": true,
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
         },
-        "x-superseded-by": "get_agent_channel"
+        "x-superseded-by": "get_agent_channel",
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        }
       },
       "delete": {
         "tags": [
@@ -2686,16 +2686,16 @@
           }
         },
         "deprecated": true,
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        },
+        "x-superseded-by": "delete_agent_channel",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
         },
-        "x-superseded-by": "delete_agent_channel"
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        }
       },
       "patch": {
         "tags": [
@@ -2767,14 +2767,14 @@
           }
         },
         "deprecated": true,
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
+        },
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
         "x-superseded-by": "update_agent_channel"
       }
@@ -2903,14 +2903,14 @@
           }
         },
         "deprecated": true,
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
+        },
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
         "x-superseded-by": "trigger_agent_channel"
       }
@@ -2966,16 +2966,16 @@
           }
         },
         "deprecated": true,
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
         },
-        "x-superseded-by": "unpublish_agent_channel"
+        "x-superseded-by": "unpublish_agent_channel",
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        }
       }
     },
     "/v1/agents/{agent_id}/endpoints/{endpoint_id}/voice/calls": {
@@ -3027,6 +3027,7 @@
           }
         },
         "deprecated": true,
+        "x-superseded-by": "create_channel_call",
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
@@ -3035,8 +3036,7 @@
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        },
-        "x-superseded-by": "create_channel_call"
+        }
       }
     },
     "/v1/agents/{agent_id}/export": {
@@ -4369,6 +4369,45 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/source/accounts": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "List GitHub accounts for Agent source sync",
+        "description": "Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.",
+        "operationId": "list_agent_source_accounts",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSourceAccounts"
+                }
               }
             }
           }
@@ -11325,6 +11364,7 @@
           }
         },
         "deprecated": true,
+        "x-superseded-by": "invoke_a2a_channel",
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
@@ -11333,8 +11373,7 @@
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        },
-        "x-superseded-by": "invoke_a2a_channel"
+        }
       }
     },
     "/v1/e/{channel_id}/a2a/.well-known/agent-card.json": {
@@ -11375,13 +11414,13 @@
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
+        "x-superseded-by": "agent_card_channel",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        },
-        "x-superseded-by": "agent_card_channel"
+        }
       }
     },
     "/v1/e/{channel_id}/chat/config": {
@@ -11472,16 +11511,16 @@
             "AgentCredential": []
           }
         ],
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-superseded-by": "resolve_work_chat_main"
+        "x-superseded-by": "resolve_work_chat_main",
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        }
       }
     },
     "/v1/e/{channel_id}/chat/shared/{token}": {
@@ -11528,6 +11567,7 @@
         },
         "deprecated": true,
         "security": [],
+        "x-superseded-by": "read_work_chat_share",
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
@@ -11536,8 +11576,7 @@
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
-        },
-        "x-superseded-by": "read_work_chat_share"
+        }
       }
     },
     "/v1/e/{channel_id}/fcp": {
@@ -11734,16 +11773,16 @@
             "AgentCredential": []
           }
         ],
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-superseded-by": "agent_api_create_session"
+        "x-superseded-by": "agent_api_create_session",
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        }
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}": {
@@ -11825,13 +11864,13 @@
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
+        "x-superseded-by": "agent_api_get_session",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
-        },
-        "x-superseded-by": "agent_api_get_session"
+        }
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}/cancel": {
@@ -12236,13 +12275,13 @@
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
+        "x-superseded-by": "agent_api_send_message",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
-        },
-        "x-superseded-by": "agent_api_send_message"
+        }
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}/question-answers": {
@@ -12402,16 +12441,16 @@
             "AgentCredential": []
           }
         ],
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-superseded-by": "update_work_chat_conversation"
+        "x-superseded-by": "update_work_chat_conversation",
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        }
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}/share": {
@@ -12456,13 +12495,13 @@
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
+        "x-superseded-by": "share_work_chat_conversation",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
-        },
-        "x-superseded-by": "share_work_chat_conversation"
+        }
       },
       "delete": {
         "tags": [
@@ -12502,16 +12541,16 @@
             "AgentCredential": []
           }
         ],
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-superseded-by": "revoke_work_chat_share"
+        "x-superseded-by": "revoke_work_chat_share",
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        }
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}/sse": {
@@ -12617,16 +12656,16 @@
             "AgentCredential": []
           }
         ],
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-superseded-by": "agent_api_stream_events"
+        "x-superseded-by": "agent_api_stream_events",
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        }
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}/tool-approvals": {
@@ -12795,16 +12834,16 @@
             "AgentCredential": []
           }
         ],
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        },
+        "x-superseded-by": "list_work_chat_tasks",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-superseded-by": "list_work_chat_tasks"
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        }
       }
     },
     "/v1/e/{channel_id}/webhook": {
@@ -12889,16 +12928,16 @@
           }
         },
         "deprecated": true,
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
         },
-        "x-superseded-by": "invoke_webhook_channel"
+        "x-superseded-by": "invoke_webhook_channel",
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        }
       }
     },
     "/v1/e/{endpoint_id}/runtime-auth": {
@@ -12943,16 +12982,16 @@
             "AgentCredential": []
           }
         ],
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-superseded-by": "exchange"
+        "x-superseded-by": "exchange",
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        }
       }
     },
     "/v1/evals": {
@@ -20651,6 +20690,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "popup",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -25464,13 +25511,13 @@
             "description": "Internal server error"
           }
         },
+        "x-side-effect": "reversible",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "sessions-workspaces",
           "support": "preview"
-        },
-        "x-side-effect": "reversible"
+        }
       },
       "patch": {
         "tags": [
@@ -30923,13 +30970,13 @@
             "description": "Internal server error"
           }
         },
+        "x-side-effect": "irreversible",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "identity-access",
           "support": "preview"
-        },
-        "x-side-effect": "irreversible"
+        }
       },
       "patch": {
         "tags": [
@@ -35675,11 +35722,40 @@
           }
         }
       },
+      "AgentSourceAccounts": {
+        "type": "object",
+        "description": "Development GitHub accounts available to an Agent's source sync.",
+        "required": [
+          "available",
+          "personal",
+          "organization"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "The deployment has the shared Everruns GitHub App configured."
+          },
+          "install_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where a person installs the shared Everruns App on another GitHub account."
+          },
+          "organization": {
+            "$ref": "#/components/schemas/OrganizationSourceAccount"
+          },
+          "personal": {
+            "$ref": "#/components/schemas/PersonalSourceAccount"
+          }
+        }
+      },
       "AgentSourceStatus": {
         "type": "object",
         "description": "Continuous GitHub source binding, applied revision and reconciliation status.",
         "required": [
           "mode",
+          "github_account",
           "local_dirty",
           "generation",
           "repository",
@@ -35715,6 +35791,11 @@
             "format": "uuid",
             "description": "Binding generation used to detect a concurrent reconnect or disconnect.",
             "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c"
+          },
+          "github_account": {
+            "type": "string",
+            "description": "GitHub account the source reads through: personal, organization, or\nagent for a binding made before sync stopped using the Agent's identity.",
+            "example": "organization"
           },
           "last_checked_at": {
             "type": [
@@ -38839,6 +38920,17 @@
                 "description": "Current binding generation when replacing a source; omit for an unbound Agent.",
                 "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c"
               },
+              "github_account": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SourceGitHubAccount",
+                    "description": "Development GitHub account the source reads and writes through; omitted\nprefers the caller's own GitHub, then the organization's link."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "mode": {
                 "$ref": "#/components/schemas/SourceMode",
                 "description": "Synchronization direction; two_way requires repository Contents write access."
@@ -40654,7 +40746,7 @@
             "type": "number",
             "format": "double",
             "description": "Hard spending ceiling for the budget.",
-            "example": 100
+            "example": 100.0
           },
           "metadata": {
             "description": "Free-form metadata attached to this resource."
@@ -40677,7 +40769,7 @@
             ],
             "format": "double",
             "description": "Optional threshold that triggers a warning or pause before exhaustion.",
-            "example": 20
+            "example": 20.0
           },
           "subject_id": {
             "type": "string",
@@ -41653,7 +41745,7 @@
             ],
             "format": "double",
             "description": "Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.",
-            "example": 100
+            "example": 100.0
           },
           "max_amount_usd_per_request": {
             "type": [
@@ -41662,7 +41754,7 @@
             ],
             "format": "double",
             "description": "Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap.",
-            "example": 5
+            "example": 5.0
           },
           "max_amount_usd_per_turn": {
             "type": [
@@ -41671,7 +41763,7 @@
             ],
             "format": "double",
             "description": "Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.",
-            "example": 20
+            "example": 20.0
           },
           "metadata": {
             "description": "Free-form metadata attached to this policy.\nExample: `{\"owner_team\": \"ops\", \"ticket\": \"OPS-1248\"}`."
@@ -41699,7 +41791,7 @@
             ],
             "format": "double",
             "description": "Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.",
-            "example": 10
+            "example": 10.0
           },
           "subject_id": {
             "type": "string",
@@ -48076,7 +48168,7 @@
             "type": "number",
             "format": "double",
             "description": "Score value from 0.0 to 1.0.",
-            "example": 1
+            "example": 1.0
           }
         }
       },
@@ -57580,6 +57672,42 @@
           }
         }
       },
+      "OrganizationSourceAccount": {
+        "type": "object",
+        "description": "The organization's links to the shared Everruns GitHub App.",
+        "required": [
+          "can_connect",
+          "accounts",
+          "repositories"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Linked GitHub accounts."
+          },
+          "can_connect": {
+            "type": "boolean",
+            "description": "The caller may link another GitHub account (organization admins)."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why repositories could not be listed, when they could not."
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRepository"
+            },
+            "description": "Repositories reachable through the linked installations."
+          }
+        }
+      },
       "OutputMessageCompletedData": {
         "type": "object",
         "description": "Data for output.message.completed event",
@@ -59614,7 +59742,7 @@
             ],
             "format": "double",
             "description": "Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.",
-            "example": 50
+            "example": 50.0
           },
           "max_amount_usd_per_request": {
             "type": [
@@ -59632,7 +59760,7 @@
             ],
             "format": "double",
             "description": "Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.",
-            "example": 5
+            "example": 5.0
           },
           "metadata": {
             "description": "Free-form metadata attached to this policy."
@@ -59660,7 +59788,7 @@
             ],
             "format": "double",
             "description": "Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.",
-            "example": 10
+            "example": 10.0
           },
           "status": {
             "$ref": "#/components/schemas/PaymentStatus",
@@ -59775,6 +59903,42 @@
           "tool_call_id": {
             "type": "string",
             "description": "The `ask_user` call to name in `POST …/question-answers`."
+          }
+        }
+      },
+      "PersonalSourceAccount": {
+        "type": "object",
+        "description": "The caller's own GitHub sign-in.",
+        "required": [
+          "connected",
+          "repositories"
+        ],
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "description": "The caller has signed in to GitHub."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why repositories could not be listed, when they could not."
+          },
+          "login": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub login of that sign-in.",
+            "example": "octocat"
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRepository"
+            },
+            "description": "Repositories reachable through the shared App's installations the person can access."
           }
         }
       },
@@ -64131,7 +64295,7 @@
             "type": "number",
             "format": "double",
             "description": "Score value 0.0–1.0.",
-            "example": 1
+            "example": 1.0
           }
         }
       },
@@ -64395,7 +64559,7 @@
                 "type": "number",
                 "format": "double",
                 "description": "Relative weight of this scorer in the case's weighted average.",
-                "example": 1
+                "example": 1.0
               }
             }
           },
@@ -64441,7 +64605,7 @@
                 "type": "number",
                 "format": "double",
                 "description": "Relative weight of this scorer in the case's weighted average.",
-                "example": 1
+                "example": 1.0
               }
             }
           }
@@ -66800,6 +66964,14 @@
           }
         }
       },
+      "SourceGitHubAccount": {
+        "type": "string",
+        "description": "Development GitHub account a source reads and writes through. Never the\nAgent's runtime GitHub identity.",
+        "enum": [
+          "personal",
+          "organization"
+        ]
+      },
       "SourceInput": {
         "type": "object",
         "description": "A connected repository mounted beneath a non-overlapping collection path.",
@@ -66877,6 +67049,17 @@
             "description": "Branch to browse; omitted uses the repository's default branch.",
             "example": "main"
           },
+          "github_account": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SourceGitHubAccount",
+                "description": "Development GitHub account to read through; omitted prefers the caller's own."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "path": {
             "type": "string",
             "description": "Repository-relative directory to browse; empty selects the root.",
@@ -66886,6 +67069,30 @@
             "type": "string",
             "description": "GitHub repository in owner/name form.",
             "example": "acme/agents"
+          }
+        }
+      },
+      "SourceRepository": {
+        "type": "object",
+        "description": "One repository a development account can reach.",
+        "required": [
+          "full_name",
+          "account",
+          "private"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "GitHub account that owns the repository.",
+            "example": "acme"
+          },
+          "full_name": {
+            "type": "string",
+            "description": "Repository in owner/name form.",
+            "example": "acme/agents"
+          },
+          "private": {
+            "type": "boolean"
           }
         }
       },
@@ -71154,7 +71361,7 @@
             ],
             "format": "double",
             "description": "Replacement hard spending ceiling.",
-            "example": 150
+            "example": 150.0
           },
           "metadata": {
             "description": "Free-form metadata attached to this resource."

@@ -70,6 +70,7 @@ Agent definitions and their configuration.
 | [`agents source connect`](#agents-source-connect) | Apply a reviewed GitHub package and enable continuous sync. |
 | [`agents source disconnect`](#agents-source-disconnect) | Disconnect GitHub source sync and restore local editing. |
 | [`agents source get`](#agents-source-get) | Show the Agent's continuous GitHub source binding and sync status. |
+| [`agents source accounts list`](#agents-source-accounts-list) | Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. |
 | [`agents source preview`](#agents-source-preview) | Validate and compare a GitHub Agent package without changing the Agent. |
 | [`agents source sync`](#agents-source-sync) | Queue an immediate check of this Agent's GitHub source. |
 | [`agents source options get`](#agents-source-options-get) | Browse GitHub branches and Agent package paths. |
@@ -1228,6 +1229,7 @@ everruns agents source connect [OPTIONS] --agent-digest <agent_digest> --agent-i
 | `--branch <BRANCH>` | Required. Branch whose future commits the Agent follows. |
 | `--commit <COMMIT>` | Required. Exact source commit returned by preview; a changed branch requires another preview. |
 | `--expected-generation <EXPECTED_GENERATION>` | Current binding generation when replacing a source; omit for an unbound Agent. |
+| `--github-account <GITHUB_ACCOUNT>` |  |
 | `--mode <MODE>` | Source direction. One of `pull`, `two_way`. |
 | `--path <PATH>` | Repository-relative package folder or manifest; empty selects the repository root. |
 | `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
@@ -1277,6 +1279,25 @@ Example:
 everruns agents source get --agent-id agent_01h9
 ```
 
+## agents source accounts list
+
+Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.
+
+```bash
+everruns agents source accounts list [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+
+Example:
+
+```bash
+# See which GitHub accounts and repositories can back this Agent's source
+everruns agents source accounts list --agent-id agent_01h9
+```
+
 ## agents source preview
 
 Validate and compare a GitHub Agent package without changing the Agent.
@@ -1289,6 +1310,7 @@ everruns agents source preview [OPTIONS] --agent-id <agent_id> --branch <branch>
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. |
 | `--branch <BRANCH>` | Required. Branch whose future commits the Agent follows. |
+| `--github-account <GITHUB_ACCOUNT>` |  |
 | `--path <PATH>` | Repository-relative package folder or manifest; empty selects the repository root. |
 | `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
 
@@ -1330,6 +1352,7 @@ everruns agents source options get [OPTIONS] --agent-id <agent_id> --repository 
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. |
 | `--branch <BRANCH>` | Branch to browse; omitted uses the repository's default branch. |
+| `--github-account <GITHUB_ACCOUNT>` |  |
 | `--path <PATH>` | Repository-relative directory to browse; empty selects the root. |
 | `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
 
