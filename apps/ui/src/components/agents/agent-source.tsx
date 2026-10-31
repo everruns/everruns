@@ -5,14 +5,20 @@ import {
   SelectContent as SharedSelectContent,
   SelectValue as SharedSelectValue,
   SelectItem as SharedSelectItem,
+  SelectGroup as SharedSelectGroup,
+  SelectLabel as SharedSelectLabel,
 } from "@/components/ui/select";
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, RefreshCw } from "lucide-react";
-import { useAgentSource, agentSourceKey } from "@/hooks/use-agent-source";
-import { useAgentGitHub, useGitHubRepositories } from "@/hooks/use-agent-github";
+import {
+  useAgentSource,
+  useAgentSourceAccounts,
+  agentSourceKey,
+  agentSourceAccountsKey,
+} from "@/hooks/use-agent-source";
 import { usePolicies } from "@/hooks/use-policies";
 import { queryKeys } from "@/lib/query-keys";
 import {
@@ -22,11 +28,13 @@ import {
   previewAgentSource,
   syncAgentSource,
   type AgentSource,
+  type SourceGitHubAccount,
   type SourceLocation,
   type SourcePreview,
   type SourceOptions,
 } from "@/lib/api/agent-source";
 import { AgentPackageReview } from "./agent-package-review";
+import { SourceAccountPicker, defaultSourceAccount } from "./agent-source-account";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,17 +71,28 @@ export function AgentSourcePanel({
 }) {
   const ui = useUiTranslations();
   const { data: source, isLoading, error: loadError } = useAgentSource(agentId);
-  const { data: github } = useAgentGitHub(agentId);
-  const { data: repositories, error: repoError } = useGitHubRepositories(
-    github?.identity_id,
-    !!github?.connected,
-  );
   const queryClient = useQueryClient();
   const { can } = usePolicies("agents");
   const canManage = can("agent.manage") && !disabled;
+  const {
+    data: accounts,
+    isLoading: accountsLoading,
+    error: accountsError,
+  } = useAgentSourceAccounts(agentId, open && canManage);
+  const [account, setAccount] = useState<SourceGitHubAccount | null>(null);
+  // Until the person picks one, follow the default for what is connected.
+  const selectedAccount: SourceGitHubAccount = account ?? defaultSourceAccount(accounts);
+  const accountState = selectedAccount === "personal" ? accounts?.personal : accounts?.organization;
+  const repositories = accountState?.repositories ?? [];
+  const accountConnected =
+    selectedAccount === "personal"
+      ? !!accounts?.personal.connected
+      : !!accounts?.organization.accounts.length;
+  const repositoryAccounts = [...new Set(repositories.map((repo) => repo.account))];
   function setOpen(value: boolean) {
     if (!value) {
       setMode("pull");
+      setAccount(null);
       setLocation({ repository: "", branch: "", path: "" });
       setPreview(null);
       setOptions(null);
@@ -107,8 +126,12 @@ export function AgentSourcePanel({
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: agentSourceKey(agentId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.agentChannels.all(agentId) }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agents.detail(agentId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agentChannels.all(agentId),
+      }),
     ]);
   }
   function change(next: SourceLocation) {
@@ -117,9 +140,18 @@ export function AgentSourcePanel({
   }
   function start() {
     setMode(source?.mode === "two_way" ? "two_way" : "pull");
+    setAccount(
+      source?.github_account === "personal" || source?.github_account === "organization"
+        ? source.github_account
+        : null,
+    );
     setLocation(
       source
-        ? { repository: source.repository, branch: source.branch, path: source.path }
+        ? {
+            repository: source.repository,
+            branch: source.branch,
+            path: source.path,
+          }
         : { repository: "", branch: "", path: "" },
     );
     setPreview(null);
@@ -132,6 +164,7 @@ export function AgentSourcePanel({
     const result = await getAgentSourceOptions(agentId, {
       ...next,
       branch: next.branch || undefined,
+      github_account: selectedAccount,
     });
     setOptions(result);
     setLocation({ ...next, branch: result.branch });
@@ -164,7 +197,14 @@ export function AgentSourcePanel({
                   <p className="text-sm text-muted-foreground">
                     {source.mode === "two_way"
                       ? ui("Two-way sync. Edit here or in GitHub; conflicting changes pause sync.")
-                      : ui("Managed by GitHub. Edit the repository to update this Agent.")}
+                      : ui("Managed by GitHub. Edit the repository to update this Agent.")}{" "}
+                    {source.github_account === "personal"
+                      ? ui("Syncs through the GitHub account of the person who set it up.")
+                      : source.github_account === "organization"
+                        ? ui("Syncs through the organization's GitHub.")
+                        : ui(
+                            "Syncs through this Agent's runtime GitHub identity. Change source to use your or the organization's GitHub instead.",
+                          )}
                   </p>
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                     <Badge variant="outline">{sourceStatus(source)}</Badge>
@@ -246,206 +286,242 @@ export function AgentSourcePanel({
             <DialogTitle>{source ? ui("Change Agent source") : ui("Sync with GitHub")}</DialogTitle>
             <DialogDescription>
               {ui(
-                "Select a repository, branch, and package folder or manifest. Review changes before enabling continuous sync. Enabling applies the reviewed GitHub version and replaces local authored changes. Choose whether edits can also be saved from Everruns to GitHub.",
+                "Keep this Agent's definition in a GitHub repository. Choose the GitHub account to sync through, then a repository, branch, and package folder or manifest. Review changes before enabling continuous sync. Enabling applies the reviewed GitHub version and replaces local authored changes.",
               )}
             </DialogDescription>
           </DialogHeader>
-          {!github?.connected ? (
+          {accountsLoading || !accounts ? (
+            accountsError ? (
+              <p role="alert" className="break-words text-sm text-destructive">
+                {ui("Could not load GitHub accounts.")}
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">{ui("Loading GitHub accounts…")}</p>
+            )
+          ) : !accounts.available ? (
             <p className="text-sm">
-              {ui("Connect GitHub in this Agent's")}{" "}
-              <a
-                href={`/agents/${agentId}?tab=integrations#github`}
-                className="underline"
-                onClick={() => setOpen(false)}
-              >
-                {ui("Integrations")}
-              </a>{" "}
-              {ui("first.")}
+              {ui(
+                "Source sync needs the Everruns GitHub App, which is not configured on this deployment.",
+              )}
             </p>
           ) : (
             <>
-              <div className="space-y-2">
-                <Label htmlFor="source-mode">{ui("Sync direction")}</Label>
-                <SharedSelect
-                  value={String(mode)}
-                  disabled={busy}
-                  onValueChange={(selection) => {
-                    setMode(selection as "pull" | "two_way");
-                    setPreview(null);
-                  }}
-                >
-                  <SharedSelectTrigger
-                    id="source-mode"
-                    className="h-9 w-full border bg-background px-3 text-sm"
-                  >
-                    <SharedSelectValue />
-                  </SharedSelectTrigger>
-                  <SharedSelectContent>
-                    <SharedSelectItem value="pull">
-                      {ui("Sync from GitHub · read-only in Everruns")}
-                    </SharedSelectItem>
-                    <SharedSelectItem value="two_way">
-                      {ui("Sync with GitHub · edit on either side")}
-                    </SharedSelectItem>
-                  </SharedSelectContent>
-                </SharedSelect>
-                {mode === "two_way" && (
-                  <p className="text-sm text-muted-foreground">
-                    {ui(
-                      "Requires Contents write permission in the GitHub App and installation. Saved edits are committed directly to the selected branch. Branch protection still applies. File paths are preserved; manifest formatting may be normalized.",
-                    )}
-                  </p>
-                )}
-              </div>
-              {mode === "two_way" && github.app_settings_url && (
-                <a
-                  href={github.app_settings_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm underline"
-                >
-                  {ui("Open GitHub App settings")} <ExternalLink className="inline size-3" />
-                </a>
-              )}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="source-repository">{ui("Repository")}</Label>
-                  <SharedSelect
-                    value={String(location.repository)}
-                    disabled={busy}
-                    onValueChange={(selection) => {
-                      const repo = selection;
-                      setOptions(null);
-                      perform(() => browse({ repository: repo, branch: "", path: "" }));
-                    }}
-                  >
-                    <SharedSelectTrigger
-                      id="source-repository"
-                      className="h-9 w-full border bg-background px-3 text-sm"
-                    >
-                      <SharedSelectValue />
-                    </SharedSelectTrigger>
-                    <SharedSelectContent>
-                      <SharedSelectItem value="">{ui("Select a repository")}</SharedSelectItem>
-                      {repositories?.map((repo) => (
-                        <SharedSelectItem key={repo.full_name} value={String(repo.full_name)}>
-                          {repo.full_name}
-                        </SharedSelectItem>
-                      ))}
-                    </SharedSelectContent>
-                  </SharedSelect>
-                  {repoError && (
-                    <p role="alert" className="break-words text-sm text-destructive">
-                      {ui("Could not list repositories. Check the GitHub connection.")}
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="source-branch">{ui("Branch")}</Label>
-                  <Input
-                    id="source-branch"
-                    list="source-branches"
-                    value={location.branch}
-                    disabled={busy || !location.repository}
-                    onChange={(event) => {
-                      change({ ...location, branch: event.target.value, path: "" });
-                      setOptions(null);
-                    }}
-                    placeholder={ui("main")}
-                  />
-                  <datalist id="source-branches">
-                    {options?.branches.map((branch) => (
-                      <option key={branch} value={branch}>
-                        {branch}
-                      </option>
-                    ))}
-                  </datalist>
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="source-path">{ui("Package folder or manifest")}</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="source-path"
-                      value={location.path}
-                      disabled={busy || !location.repository}
-                      onChange={(event) => change({ ...location, path: event.target.value })}
-                      placeholder={ui("agents/support or agents/support/agent.toml")}
-                    />
-                    <Button
-                      variant="outline"
-                      disabled={busy || !location.repository || !location.branch}
-                      onClick={() => perform(() => browse(location))}
-                    >
-                      {ui("Browse folder")}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {ui(
-                      "Leave empty for the repository root. Folder packages include declared files and skills.",
-                    )}
-                  </p>
-                  {options && (
-                    <div className="flex flex-wrap gap-2">
-                      {location.path && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() =>
-                            perform(() =>
-                              browse({
-                                ...location,
-                                path: location.path
-                                  .replace(/\/$/, "")
-                                  .split("/")
-                                  .slice(0, -1)
-                                  .join("/"),
-                              }),
-                            )
-                          }
-                        >
-                          {ui("Parent folder")}
-                        </Button>
-                      )}
-                      {options.paths.map((path) => (
-                        <Button
-                          key={path}
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() =>
-                            path.endsWith("/")
-                              ? perform(() => browse({ ...location, path: path.slice(0, -1) }))
-                              : change({ ...location, path })
-                          }
-                        >
-                          {path}
-                        </Button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                disabled={busy || !location.repository || !location.branch}
-                onClick={() =>
-                  perform(async () => {
-                    setPreview(null);
-                    setPreview(await previewAgentSource(agentId, location));
+              <SourceAccountPicker
+                agentId={agentId}
+                accounts={accounts}
+                value={selectedAccount}
+                disabled={busy}
+                onChange={(next) => {
+                  setAccount(next);
+                  setOptions(null);
+                  change({ repository: "", branch: "", path: "" });
+                }}
+                onConnected={() =>
+                  void queryClient.invalidateQueries({
+                    queryKey: agentSourceAccountsKey(agentId),
                   })
                 }
-              >
-                {busy ? ui("Loading…") : ui("Preview changes")}
-              </Button>
-              {preview?.preview && (
-                <AgentPackageReview preview={preview.preview} changes={preview.changes} />
+              />
+              {accountConnected && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="source-mode">{ui("Sync direction")}</Label>
+                    <SharedSelect
+                      value={String(mode)}
+                      disabled={busy}
+                      onValueChange={(selection) => {
+                        setMode(selection as "pull" | "two_way");
+                        setPreview(null);
+                      }}
+                    >
+                      <SharedSelectTrigger
+                        id="source-mode"
+                        className="h-9 w-full border bg-background px-3 text-sm"
+                      >
+                        <SharedSelectValue />
+                      </SharedSelectTrigger>
+                      <SharedSelectContent>
+                        <SharedSelectItem value="pull">
+                          {ui("Sync from GitHub · read-only in Everruns")}
+                        </SharedSelectItem>
+                        <SharedSelectItem value="two_way">
+                          {ui("Sync with GitHub · edit on either side")}
+                        </SharedSelectItem>
+                      </SharedSelectContent>
+                    </SharedSelect>
+                    {mode === "two_way" && (
+                      <p className="text-sm text-muted-foreground">
+                        {ui(
+                          "Requires Contents write permission in the GitHub App and installation. Saved edits are committed directly to the selected branch. Branch protection still applies. File paths are preserved; manifest formatting may be normalized.",
+                        )}
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="source-repository">{ui("Repository")}</Label>
+                      <SharedSelect
+                        value={String(location.repository)}
+                        disabled={busy || repositories.length === 0}
+                        onValueChange={(selection) => {
+                          const repo = selection;
+                          setOptions(null);
+                          perform(() => browse({ repository: repo, branch: "", path: "" }));
+                        }}
+                      >
+                        <SharedSelectTrigger
+                          id="source-repository"
+                          className="h-9 w-full border bg-background px-3 text-sm"
+                        >
+                          <SharedSelectValue />
+                        </SharedSelectTrigger>
+                        <SharedSelectContent>
+                          <SharedSelectItem value="">{ui("Select a repository")}</SharedSelectItem>
+                          {repositoryAccounts.map((owner) => (
+                            <SharedSelectGroup key={owner}>
+                              <SharedSelectLabel>{owner}</SharedSelectLabel>
+                              {repositories
+                                .filter((repo) => repo.account === owner)
+                                .map((repo) => (
+                                  <SharedSelectItem
+                                    key={repo.full_name}
+                                    value={String(repo.full_name)}
+                                  >
+                                    {repo.full_name}
+                                  </SharedSelectItem>
+                                ))}
+                            </SharedSelectGroup>
+                          ))}
+                        </SharedSelectContent>
+                      </SharedSelect>
+                      {accountState?.error && (
+                        <p role="alert" className="break-words text-sm text-destructive">
+                          {ui("Could not list repositories. Check the GitHub connection.")}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="source-branch">{ui("Branch")}</Label>
+                      <Input
+                        id="source-branch"
+                        list="source-branches"
+                        value={location.branch}
+                        disabled={busy || !location.repository}
+                        onChange={(event) => {
+                          change({
+                            ...location,
+                            branch: event.target.value,
+                            path: "",
+                          });
+                          setOptions(null);
+                        }}
+                        placeholder={ui("main")}
+                      />
+                      <datalist id="source-branches">
+                        {options?.branches.map((branch) => (
+                          <option key={branch} value={branch}>
+                            {branch}
+                          </option>
+                        ))}
+                      </datalist>
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="source-path">{ui("Package folder or manifest")}</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="source-path"
+                          value={location.path}
+                          disabled={busy || !location.repository}
+                          onChange={(event) => change({ ...location, path: event.target.value })}
+                          placeholder={ui("agents/support or agents/support/agent.toml")}
+                        />
+                        <Button
+                          variant="outline"
+                          disabled={busy || !location.repository || !location.branch}
+                          onClick={() => perform(() => browse(location))}
+                        >
+                          {ui("Browse folder")}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {ui(
+                          "Leave empty for the repository root. Folder packages include declared files and skills.",
+                        )}
+                      </p>
+                      {options && (
+                        <div className="flex flex-wrap gap-2">
+                          {location.path && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={busy}
+                              onClick={() =>
+                                perform(() =>
+                                  browse({
+                                    ...location,
+                                    path: location.path
+                                      .replace(/\/$/, "")
+                                      .split("/")
+                                      .slice(0, -1)
+                                      .join("/"),
+                                  }),
+                                )
+                              }
+                            >
+                              {ui("Parent folder")}
+                            </Button>
+                          )}
+                          {options.paths.map((path) => (
+                            <Button
+                              key={path}
+                              size="sm"
+                              variant="outline"
+                              disabled={busy}
+                              onClick={() =>
+                                path.endsWith("/")
+                                  ? perform(() =>
+                                      browse({
+                                        ...location,
+                                        path: path.slice(0, -1),
+                                      }),
+                                    )
+                                  : change({ ...location, path })
+                              }
+                            >
+                              {path}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    disabled={busy || !location.repository || !location.branch}
+                    onClick={() =>
+                      perform(async () => {
+                        setPreview(null);
+                        setPreview(
+                          await previewAgentSource(agentId, {
+                            ...location,
+                            github_account: selectedAccount,
+                          }),
+                        );
+                      })
+                    }
+                  >
+                    {busy ? ui("Loading…") : ui("Preview changes")}
+                  </Button>
+                  {preview?.preview && (
+                    <AgentPackageReview preview={preview.preview} changes={preview.changes} />
+                  )}
+                  {preview?.diagnostics?.map((item, index) => (
+                    <p key={index} role="alert" className="break-words text-sm text-destructive">
+                      {item.path}: {item.message}
+                    </p>
+                  ))}
+                </>
               )}
-              {preview?.diagnostics?.map((item, index) => (
-                <p key={index} role="alert" className="break-words text-sm text-destructive">
-                  {item.path}: {item.message}
-                </p>
-              ))}
             </>
           )}
           {error && (
@@ -465,6 +541,7 @@ export function AgentSourcePanel({
                   await connectAgentSource(agentId, {
                     ...location,
                     mode,
+                    github_account: selectedAccount,
                     commit: preview.commit,
                     agent_digest: preview.agent_digest,
                     ...(source ? { expected_generation: source.generation } : {}),

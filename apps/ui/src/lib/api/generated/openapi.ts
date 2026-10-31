@@ -1102,6 +1102,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/source/accounts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List GitHub accounts for Agent source sync
+     * @description Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.
+     */
+    get: operations["list_agent_source_accounts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/source/options": {
     parameters: {
       query?: never;
@@ -9688,6 +9708,15 @@ export interface components {
       updated_at: string;
       work?: components["schemas"]["WorkReport"] | null;
     };
+    /** @description Development GitHub accounts available to an Agent's source sync. */
+    AgentSourceAccounts: {
+      /** @description The deployment has the shared Everruns GitHub App configured. */
+      available: boolean;
+      /** @description Where a person installs the shared Everruns App on another GitHub account. */
+      install_url?: string | null;
+      organization: components["schemas"]["OrganizationSourceAccount"];
+      personal: components["schemas"]["PersonalSourceAccount"];
+    };
     /** @description Continuous GitHub source binding, applied revision and reconciliation status. */
     AgentSourceStatus: {
       /**
@@ -9711,6 +9740,12 @@ export interface components {
        * @example 018f30c8-c970-7cb5-a8c9-9348aa71ba8c
        */
       generation: string;
+      /**
+       * @description GitHub account the source reads through: personal, organization, or
+       *     agent for a binding made before sync stopped using the Agent's identity.
+       * @example organization
+       */
+      github_account: string;
       /**
        * Format: date-time
        * @description UTC time when the source was last checked.
@@ -11401,6 +11436,7 @@ export interface components {
        * @example 018f30c8-c970-7cb5-a8c9-9348aa71ba8c
        */
       expected_generation?: string | null;
+      github_account?: components["schemas"]["SourceGitHubAccount"] | null;
       /** @description Synchronization direction; two_way requires repository Contents write access. */
       mode?: components["schemas"]["SourceMode"];
     };
@@ -21859,6 +21895,17 @@ export interface components {
        */
       web_search_defaults: components["schemas"]["WebSearchDefaults"];
     };
+    /** @description The organization's links to the shared Everruns GitHub App. */
+    OrganizationSourceAccount: {
+      /** @description Linked GitHub accounts. */
+      accounts: string[];
+      /** @description The caller may link another GitHub account (organization admins). */
+      can_connect: boolean;
+      /** @description Why repositories could not be listed, when they could not. */
+      error?: string | null;
+      /** @description Repositories reachable through the linked installations. */
+      repositories: components["schemas"]["SourceRepository"][];
+    };
     /** @description Data for output.message.completed event */
     OutputMessageCompletedData: {
       /** @description Stable error code for user-facing failures surfaced as assistant text. */
@@ -23187,6 +23234,20 @@ export interface components {
       questions: Record<string, unknown>[];
       /** @description The `ask_user` call to name in `POST …/question-answers`. */
       tool_call_id: string;
+    };
+    /** @description The caller's own GitHub sign-in. */
+    PersonalSourceAccount: {
+      /** @description The caller has signed in to GitHub. */
+      connected: boolean;
+      /** @description Why repositories could not be listed, when they could not. */
+      error?: string | null;
+      /**
+       * @description GitHub login of that sign-in.
+       * @example octocat
+       */
+      login?: string | null;
+      /** @description Repositories reachable through the shared App's installations the person can access. */
+      repositories: components["schemas"]["SourceRepository"][];
     };
     /**
      * @description Where a message's [`ExecutionPhase`] came from.
@@ -26990,6 +27051,12 @@ export interface components {
       /** @description Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result. */
       warnings?: string[];
     };
+    /**
+     * @description Development GitHub account a source reads and writes through. Never the
+     *     Agent's runtime GitHub identity.
+     * @enum {string}
+     */
+    SourceGitHubAccount: "personal" | "organization";
     /** @description A connected repository mounted beneath a non-overlapping collection path. */
     SourceInput: {
       /** @description Adapter-specific repository, revision and root-folder configuration, without credentials. */
@@ -27034,6 +27101,7 @@ export interface components {
        * @example main
        */
       branch?: string | null;
+      github_account?: components["schemas"]["SourceGitHubAccount"] | null;
       /**
        * @description Repository-relative directory to browse; empty selects the root.
        * @example agents
@@ -27044,6 +27112,20 @@ export interface components {
        * @example acme/agents
        */
       repository: string;
+    };
+    /** @description One repository a development account can reach. */
+    SourceRepository: {
+      /**
+       * @description GitHub account that owns the repository.
+       * @example acme
+       */
+      account: string;
+      /**
+       * @description Repository in owner/name form.
+       * @example acme/agents
+       */
+      full_name: string;
+      private: boolean;
     };
     /**
      * @description Speed level for models that expose a latency/price service tier.
@@ -35525,6 +35607,29 @@ export interface operations {
         };
         content: {
           "application/json": unknown;
+        };
+      };
+    };
+  };
+  list_agent_source_accounts: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSourceAccounts"];
         };
       };
     };
@@ -46081,6 +46186,7 @@ export interface operations {
     parameters: {
       query?: {
         return_to?: string;
+        popup?: boolean;
       };
       header?: never;
       path: {
