@@ -32603,6 +32603,46 @@
         }
       }
     },
+    "/v1/work-chat/hosts/{label}": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Get work chat by host",
+        "description": "Public bootstrap for the live Work Chat published at this hostname.",
+        "operationId": "get_work_chat_by_host",
+        "parameters": [
+          {
+            "name": "label",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "No live Work Chat uses this hostname"
+          }
+        },
+        "security": [],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/workspaces": {
       "get": {
         "tags": [
