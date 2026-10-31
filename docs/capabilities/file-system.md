@@ -52,6 +52,13 @@ Apply one or more exact text replacements to an existing text file. This tool is
 | `expected_hash` | string | yes | Current `content_hash` (`sha256:...`) |
 | `edits` | array | yes | One or more `{ old_text, new_text }` replacements matched against the original file. Use a single-element array for one replacement. |
 
+If `old_text` has no exact match, the error identifies the failed edit and may show
+up to three similar lines with line numbers. These are recovery hints only: read
+the file again and copy the exact text before retrying. The hint search is bounded
+and may omit distant or long lines. A substantial, unique whole-line `new_text`
+match may suggest that this edit was already applied, but does not establish its
+intended location or completion of other edits. Failed batches write nothing.
+
 Legacy top-level `old_text`/`new_text` are still accepted for backward compatibility, they are folded into `edits[]`, but new callers should always use `edits[]`.
 
 ### `list_directory`
