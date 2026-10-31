@@ -136,18 +136,19 @@ version choice and keep their guards:
 - A published crate depending on a **private or registry-restricted** workspace
   package. This is [#3656](https://github.com/everruns/everruns/pull/3656), and
   `sync-publish-pin-versions.py` rejects it.
-- A **new crate name** the registry token cannot publish, which fails mid-cascade
+- A **new crate name** without registry publishing access, which fails mid-cascade
   and leaves a partial set. This is
   [#3648](https://github.com/everruns/everruns/pull/3648), and a bigger publish
-  set makes it costlier, not cheaper. Confirm a new package name is publishable
-  with the current `CARGO_REGISTRY_TOKEN` **before** merging the change that adds
-  it; until then keep it `publish = false`. The publish set is listed in
+  set makes it costlier, not cheaper. Bootstrap the first version with an owner
+  token and configure its trusted publisher **before** merging the change that
+  adds it; until then keep it `publish = false`. The publish set is listed in
   `.github/crates-publish-set.txt`, and `scripts/release-preflight.py` fails when
   a package drops `publish = false` without joining that list, so a new name is
   always a reviewed edit. It also fails when a never-published name is held by
   another crates.io owner, or when one release would create more names than the
-  crates.io new-crate burst (5) allows. It cannot see the token's scopes, so it
-  prints the new names for the person merging to confirm.
+  crates.io new-crate burst (5) allows. It cannot verify bootstrap credentials or
+  trusted-publisher settings, so it prints the new names for the person merging
+  to confirm.
 - A crate **joining the publish set between releases**. Crate Release plans by
   crates.io presence, so a crate flipped off `publish = false` mid-cycle looks
   unpublished at the current platform version and is dispatched at once. It
@@ -311,6 +312,30 @@ within a bounded deadline; mismatched artifacts halt the cascade.
 from Cargo metadata, and publishes only that package. Publishing cannot be
 completed from a sandbox whose egress policy blocks tag pushes — the CI workflow
 is the supported path.
+
+### crates.io trusted publishing
+
+The publishing workflow uses GitHub OIDC instead of a stored registry token.
+Each publish job obtains a masked, short-lived token only after the package has
+been verified without registry credentials. The pinned official authentication
+action revokes the token when the job finishes; only the upload step receives it.
+Token issuance alone does not prove a crate was published: retain the existing
+registry verification and record the first successful OIDC release separately.
+
+Before enabling the workflow, configure every published crate on crates.io to
+trust this repository, the publishing workflow filename, and the `release`
+environment. The workflow is [`publish-crates.yml`](../../.github/workflows/publish-crates.yml).
+The GitHub `release` environment must allow only the `main` branch: the
+controller dispatches from main while the job separately validates the requested
+package tag and exact source commit. Configure the entire reviewed
+[publish set](../../.github/crates-publish-set.txt) before merging the cutover.
+
+A new crate needs its first version published by an owner with a suitably scoped
+API token before crates.io permits a trusted publisher. Complete that bootstrap
+and configure trust before adding a new name to automated publication. Trusted
+publishing cannot yank versions. Preserve any token needed for separate yank or
+bootstrap operations; remove obsolete publishing credentials only after a real
+OIDC publication succeeds and their other consumers have been checked.
 
 ### Migration Handling
 
