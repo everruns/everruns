@@ -14,6 +14,8 @@
 
 - Resolve MCP tenant-isolation test commands by exact name and execute the MCP endpoint contracts in focused PR validation. See [CI Build Time](project/ci-build-time.md).
 
+- Add the captioned Cloudflare chat recording to its walkthrough and example README. See [Product Video Knowledge](docs/product-videos.md).
+
 ## 2026-10-30
 
 * **Chat pre-merge security pins.** Carry the latest ZIP and Undici fixes into

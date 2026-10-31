@@ -65,3 +65,12 @@ The [Sandbox Templates guide](../../docs/features/sandbox-templates.md#build-a-r
 and [snapshot-builder changelog](../../docs/changelog/2026-10-29-sandbox-snapshot-builder/index.md)
 embed the public YouTube video alongside the feature instructions and screenshot.
 Keep the narrated video binary outside Git.
+
+The [Cloudflare durable-chat walkthrough](https://everruns-durable-chat-video.everruns.workers.dev/)
+is a 55-second public recording with English captions and synthesized Sarah
+narration. It shows real Muse replies, shared participation, a committed fork,
+cited history search and a reminder completed before clients reopened. Chat and
+reminder scenes use separate fresh rooms, and provider/timer waits are shortened.
+The example README and Framework walkthrough link or embed the recording.
+This recording is hosted as static Cloudflare assets; it has not been uploaded to
+YouTube because authenticated channel access was unavailable during production.
