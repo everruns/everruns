@@ -177,6 +177,7 @@ pub struct OpenResponsesProtocolChatDriver {
     native_prompt_cache_options: bool,
     background_mode: bool,
     required_completion: bool,
+    plaintext_reasoning_provider: Option<&'static str>,
     websocket: websocket::WebSocketPolicy,
     inline_tool_changes: tool_changes::InlineToolChangeHosts,
 }
@@ -200,9 +201,17 @@ impl OpenResponsesProtocolChatDriver {
             native_prompt_cache_options: false,
             background_mode: false,
             required_completion: false,
+            plaintext_reasoning_provider: None,
             websocket: Default::default(),
             inline_tool_changes: Default::default(),
         }
+    }
+
+    /// Preserve and replay plaintext reasoning for an endpoint that explicitly
+    /// exposes it. OpenAI's default encrypted-only handling remains unchanged.
+    pub fn with_plaintext_reasoning(mut self, provider: &'static str) -> Self {
+        self.plaintext_reasoning_provider = Some(provider);
+        self
     }
 
     /// Reject truncated streams and gateway-only terminal frames.
@@ -1195,6 +1204,15 @@ impl OpenResponsesProtocolChatDriver {
         supports_phases: bool,
         inline: Option<tool_changes::InlineToolChanges>,
     ) -> (Option<String>, Vec<ResponsesInputItem>) {
+        Self::build_input_with_reasoning(messages, supports_phases, inline, None)
+    }
+
+    fn build_input_with_reasoning(
+        messages: &[Message],
+        supports_phases: bool,
+        inline: Option<tool_changes::InlineToolChanges>,
+        plaintext_provider: Option<&str>,
+    ) -> (Option<String>, Vec<ResponsesInputItem>) {
         // Accumulate all system messages into `instructions`. Multiple system
         // messages legitimately occur in one request — the agent system prompt
         // plus, e.g., infinity context's hidden-history notice or compaction's
@@ -1231,6 +1249,19 @@ impl OpenResponsesProtocolChatDriver {
                 // encrypted content, are dropped rather than reconstructed —
                 // a synthesized id is not one the API can resolve.
                 for item in &msg.reasoning {
+                    if let Some(provider) = plaintext_provider {
+                        if item.provider == provider
+                            && let Some(id) = &item.item_id
+                            && let Some(crate::reasoning::ReasoningText::Plain { text }) =
+                                &item.text
+                        {
+                            input_items.push(ResponsesInputItem::ProviderItem(json!({
+                                "type": "reasoning", "id": id, "summary": [],
+                                "content": [{"type": "reasoning_text", "text": text}],
+                            })));
+                        }
+                        continue;
+                    }
                     // Reasoning replay tokens are provider-specific. Never send
                     // another provider's artifact to the Responses API.
                     if item.provider != "openai" {

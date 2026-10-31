@@ -192,6 +192,10 @@ required-features = ["codex"]
 workspace = true
 
 [[test]]
+name = "mistral_responses_wire"
+required-features = ["mistral"]
+
+[[test]]
 name = "non_streaming_wire"
 required-features = ["openai", "anthropic", "gemini"]
 

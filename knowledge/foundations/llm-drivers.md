@@ -687,6 +687,17 @@ for anything else, so its profile offers exactly those two (`none`, the API defa
 sent). `/v1/models` lists every alias as its own entry repeating the canonical `name`;
 discovery keeps the `id == name` entry, chat models only, minus scheduled retirements.
 
+Mistral Responses is an explicit typed per-call selection owned by the Mistral driver, using the
+shared Responses driver with stateless full-history replay and required terminal
+completion. This preserves the existing Chat Completions default and its native
+JSON transport. The request extension removes OpenAI-only fields and flattens
+file inputs, selecting `file_url` for HTTPS and `file_data` for data URLs.
+Plaintext reasoning is opt-in on the shared protocol, tagged `mistral`, and only
+replayed to that provider; OpenAI retains its encrypted-only default. Existing
+reasoning retention and public-projection rules apply (TM-LLM-034). Wire tests in
+`crates/drivers/drivers/tests/mistral_responses_wire.rs` cover request and stream
+contracts without paid provider calls. See [public configuration and limitations](../../docs/providers/mistral.md#responses-api-preview).
+
 ## Gateway Drivers (`everruns_drivers::{cloudflare, vercel}`)
 
 Cloudflare AI Gateway and Vercel AI Gateway front many upstream vendors behind one
