@@ -81,6 +81,7 @@ async fn assert_embedding_attribution(managed: bool, query: bool) {
         credential_schema: CredentialFormSchema::empty(),
         base_url_env: None,
         oauth: None,
+        recommended_models: None,
         chat: None,
         provider: None,
         embeddings: Some(Arc::new(|_| Box::new(BilledEmbeddings))),
