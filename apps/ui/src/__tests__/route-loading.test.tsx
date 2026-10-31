@@ -1,13 +1,15 @@
 import { render, screen } from "@testing-library/react";
-import MainLoading from "@/app/(main)/loading";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import SessionLoading from "@/app/(main)/sessions/[sessionId]/loading";
 
 describe("route loading boundaries", () => {
-  it.each([
-    ["main", MainLoading],
-    ["session", SessionLoading],
-  ])("keeps the %s placeholder inside the content area", (_name, Loading) => {
-    render(<Loading />);
+  it("preserves the current page during navigation instead of replacing static chrome", () => {
+    expect(existsSync(join(process.cwd(), "src/app/(main)/loading.tsx"))).toBe(false);
+  });
+
+  it("keeps the session placeholder inside the content area", () => {
+    render(<SessionLoading />);
 
     const status = screen.getByRole("status");
     expect(status).toHaveAttribute("aria-busy", "true");

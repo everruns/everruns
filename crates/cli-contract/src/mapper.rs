@@ -79,6 +79,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Continuous GitHub source sync, status, and local editing ownership.",
     ),
     (
+        "agents source accounts",
+        "GitHub accounts and repositories Agent source sync can read through.",
+    ),
+    (
         "agents source options",
         "GitHub branches and package paths available for Agent source sync.",
     ),

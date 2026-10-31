@@ -28,8 +28,20 @@ no JSON to parse out of a paragraph.
 ## Use an existing OpenRouter account
 
 In **Models**, add or enable a **Decisions** model under your OpenRouter provider. Choose the
-**Jev 1.13** profile and the provider's model ID `typesafe/jev-1.13`. The same saved OpenRouter
-credential serves both chat and decisions. Direct TypeSafe uses `jev-1.13.0`.
+**Jev 1.14** profile and the provider's model ID `typesafe/jev-1.14`. The same saved OpenRouter
+credential serves both chat and decisions. Direct TypeSafe uses `jev-1.14.0`.
+Sync the provider to discover the new profile, or add it manually. Jev 1.13 remains
+available for existing integrations. The rolling `jev-latest` alias maps to
+`~typesafe/jev-latest` on OpenRouter.
+
+Everruns supports text **Noul**, **Choice**, and **Score** decisions. The shared
+profile retains TypeSafe's default limits: 32,000 tokens for state plus any one
+question and 64,000 for the whole request. [TypeSafe's model reference](https://docs.typesafe.ai/models)
+lists input at $0.042 per million tokens and free output. OpenRouter advertises
+[a larger context](https://openrouter.ai/docs/guides/community/jev), but the
+shared profile does not promise that limit on direct TypeSafe. Experimental
+image inputs, Box questions, and direct long-context headers are not enabled by
+this integration.
 
 ## Use an existing OpenAI account
 
@@ -108,7 +120,7 @@ And gets back numbers, not a review:
 
 ```json
 {
-  "model": "jev-1.13.0",
+  "model": "jev-1.14.0",
   "answers": {
     "is_funny": { "type": "noul", "probability_yes": 0.43 },
     "humor": {

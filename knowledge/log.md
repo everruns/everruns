@@ -4,12 +4,17 @@
 
 - Added opt-in local skill inspection with content- and origin-bound reports, revalidated activation receipts, and explicit heuristic limits. See [Skills Registry](project/skills-registry.md#opt-in-persistent-instruction-inspection).
 - Extended the shared inspector into Yolop's approved memory writes and selected recalls, with title-only automatic disclosure and no body-derived disclosure. Hosted memory mount integration remains separate.
+- Added Jev 1.14 to the decision catalog with explicit provider wire aliases and text-only default limits.
 
 - Close the admission/idempotency crash gap with one transaction for the claim, operation and replay response; preserve legacy in-flight claims during upgrades. See [Agent API admission retries](integrations/agent-execution-api.md#admission-retries) and [Load Testing](operations/load-testing.md).
 
 - Preserve saved answer identity and workload counters when a worker resumes between the answer and turn completion. See [Sans-IO Turn State](foundations/sans-io-turn-state.md).
 
 ## 2026-10-30
+
+* **Navigation loading**: Keep the displayed page during route transitions and
+  show pending sidebar feedback instead of replacing static page chrome with
+  generic skeletons. See [Navigation Information Architecture](ui/information-architecture.md).
 
 - Raise the Bashkit dependency floor to 0.20.2 for Wasmtime 48.0.8 security fixes without advisory exceptions. See [Bashkit requirements](execution/bashkit-requirements.md) and [Dependency Surface](project/dependency-surface.md).
 

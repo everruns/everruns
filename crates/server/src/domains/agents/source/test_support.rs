@@ -1,6 +1,6 @@
 use super::*;
 use crate::github_apps::{GitHubAppApi, GitHubAppContext, GitHubEndpoints};
-use crate::storage::{CreateVirtualUserConnectionRow, StorageBackend};
+use crate::storage::StorageBackend;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use everruns_core::{DEFAULT_ORG_ID, connection_services::UserConnectionResolver};
 use std::sync::Arc;
@@ -38,6 +38,15 @@ impl UserConnectionResolver for Tokens {
         ));
         Ok(Some("source-test-token".into()))
     }
+    async fn get_github_token_for_connection(
+        &self,
+        org: i64,
+        owner: Uuid,
+        _: Uuid,
+        access: &everruns_contracts::runtime::GitHubAccess,
+    ) -> crate::kernel_imports::Result<Option<String>> {
+        self.get_github_token_for_owner(org, owner, access).await
+    }
 }
 pub(crate) async fn setup() -> (Ctx, MockServer, String) {
     let db = Arc::new(StorageBackend::test_database());
@@ -63,7 +72,9 @@ pub(crate) async fn setup() -> (Ctx, MockServer, String) {
         .await
         .unwrap()
         .unwrap();
-    let (identity, _) = crate::domains::virtual_users::lifecycle::ensure_identity_for_agent(
+    // The Agent has a runtime identity with no GitHub at all: source sync reads
+    // through the organization's link to the shared App, never the Agent's identity.
+    crate::domains::virtual_users::lifecycle::ensure_identity_for_agent(
         &ctx.db,
         DEFAULT_ORG_ID,
         &row,
@@ -71,16 +82,15 @@ pub(crate) async fn setup() -> (Ctx, MockServer, String) {
     .await
     .unwrap();
     ctx.db
-        .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
-            virtual_user_id: identity,
+        .create_organization_connection(crate::storage::CreateOrganizationConnectionRow {
+            org_id: DEFAULT_ORG_ID,
+            name: "acme".into(),
             provider: "github".into(),
-            connection_type: crate::github_apps::GITHUB_APP_CONNECTION_TYPE.into(),
-            provider_user_id: None,
-            provider_username: Some("acme".into()),
+            connection_type: Some(crate::github_apps::EVERRUNS_APP_CONNECTION_TYPE.into()),
             access_token_encrypted: None,
-            refresh_token_encrypted: None,
+            provider_user_id: Some("1".into()),
+            provider_username: Some("acme".into()),
             scopes: Some("contents:read".into()),
-            expires_at: None,
             installation_id: Some(42),
             provider_metadata: None,
         })
@@ -174,6 +184,7 @@ pub(crate) async fn connect(ctx: &Ctx, id: &str) -> AgentSourceStatus {
     let preview = PreviewAgentSource {
         agent_id: id.into(),
         req: location(),
+        github_account: None,
     }
     .run(ctx)
     .await
@@ -184,6 +195,7 @@ pub(crate) async fn connect(ctx: &Ctx, id: &str) -> AgentSourceStatus {
         req: ConnectSourceRequest {
             mode: SourceMode::Pull,
             location: location(),
+            github_account: None,
             commit: preview["commit"].as_str().unwrap().into(),
             agent_digest: preview["agent_digest"].as_str().unwrap().into(),
             expected_generation: None,

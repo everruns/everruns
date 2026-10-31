@@ -182,9 +182,21 @@ or resolved credentials. Diff requires
 
 ## Sync an Agent continuously from GitHub
 
-Open an existing Agent and select **More actions → Sync with GitHub**. Connect the
-Agent's GitHub App in **Integrations** first, or choose an organization-linked
-Everruns App installation there. Select an accessible repository, its branch,
+Open an existing Agent and select **More actions → Sync with GitHub**. Choose the
+GitHub account to sync through:
+
+- **My GitHub account** uses your own GitHub sign-in. Two-way commits carry your
+  name. The source pauses if you disconnect GitHub or leave the organization.
+- **Organization GitHub** uses the Everruns App an organization admin linked for
+  the repository's account. Commits come from the App's bot and keep working when
+  people leave. Only admins link accounts.
+
+Either one connects in a popup without leaving the Agent page. Sync never uses the
+Agent's own GitHub identity from **Integrations**: that identity is how the Agent
+appears on GitHub while it runs. Sources set up before this choice keep using the
+Agent's identity until you select **Change source**.
+
+Select an accessible repository, its branch,
 and a package folder or standalone manifest. Leave the path empty for a package
 at the repository root. Use **Browse folder** to navigate, then **Preview changes**
 to review the same validation and changes as an import. Select **Enable continuous
@@ -226,7 +238,7 @@ stay read-only until you change the sync direction and review the source again.
 In two-way mode, saved edits are queued and committed directly to the selected
 branch. Branch protection still applies: a branch that requires pull requests will
 reject direct updates, retain local edits and show an error. Use a branch that
-permits the Agent's App to commit. The Source panel shows queued edits and conflicts.
+permits the chosen account to commit. The Source panel shows queued edits and conflicts.
 If both sides change the package, neither version is overwritten automatically.
 **Review GitHub version** previews the incoming version; enabling sync after review
 replaces local authored changes. Export first if you want to save both versions,
@@ -243,6 +255,9 @@ GitHub write already in flight may still complete.
 
 The API exposes `GET`, `PUT` and `DELETE /v1/agents/{agent_id}/source`, plus
 `POST .../source/options`, `POST .../source/preview` and `POST .../source/sync`.
+`GET .../source/accounts` lists the GitHub accounts sync can use and their
+repositories. Options, preview and connect take `github_account` (`personal` or
+`organization`); omitted, your own GitHub answers first, then the organization's.
 Preview takes `repository`, `branch` and `path`; connecting supplies the returned
 `commit` and `agent_digest` alongside that selection. Set `mode` to `two_way` for
 write-back; omitted `mode` defaults to `pull`. Changing an existing source

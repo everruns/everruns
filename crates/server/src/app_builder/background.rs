@@ -245,6 +245,11 @@ pub(super) fn spawn_dev_task_worker(
 }
 
 /// Periodic provider model discovery. `MODEL_SYNC_INTERVAL_HOURS=0` disables it.
+///
+/// Decision: check hourly (first check shortly after start) and sync only the
+/// providers whose `last_synced_at` is older than the interval. A plain
+/// 24-hour timer restarted with every process, so servers redeployed more
+/// than once a day never synced at all.
 pub(super) fn spawn_model_sync(
     supervisor: &mut TaskSupervisor,
     db: Arc<StorageBackend>,
@@ -266,7 +271,8 @@ pub(super) fn spawn_model_sync(
         driver_registry,
         encryption,
     ));
-    let sync_interval = Duration::from_secs(sync_interval_hours * 3600);
+    let max_age = chrono::Duration::hours(sync_interval_hours as i64);
+    let check_every = Duration::from_secs(3600);
 
     supervisor.spawn(
         "model_sync",
@@ -274,8 +280,10 @@ pub(super) fn spawn_model_sync(
         move || {
             let sync_service = sync_service.clone();
             async move {
-                let mut interval = tokio::time::interval(sync_interval);
-                interval.tick().await;
+                let mut interval = tokio::time::interval_at(
+                    tokio::time::Instant::now() + Duration::from_secs(60),
+                    check_every,
+                );
 
                 tracing::info!(
                     interval_hours = sync_interval_hours,
@@ -284,8 +292,7 @@ pub(super) fn spawn_model_sync(
 
                 loop {
                     interval.tick().await;
-                    tracing::info!("Starting scheduled model sync for all providers");
-                    match sync_service.sync_all().await {
+                    match sync_service.sync_due(max_age).await {
                         Ok(results) => {
                             for (provider_id, result) in results {
                                 log_sync_result(provider_id, result);

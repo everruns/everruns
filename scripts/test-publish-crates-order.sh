@@ -54,7 +54,9 @@ require("workspace package version" not in workflow.lower(), "workflow must not 
 require("publish-crates" not in release and "publish-crate" not in release, "product releases must not dispatch library publishing")
 require("run-name: Publish " in workflow, "publish workflow must expose correlated inputs in its run name")
 require("correlation:" in workflow, "publish workflow must require a correlation input")
-require('--ref "$TAG"' in crate_release, "crate controller must dispatch from the trusted package tag")
+require('--ref main' in crate_release, "crate controller must dispatch from main for OIDC")
+require('if [ "$TAG_SHA" != "$EXPECTED_SHA" ]' in workflow, "publish must verify the exact release source")
+require('checkout --detach "$TRUSTED_SHA"' in workflow, "publish must build the verified tag source")
 require(
     "scripts/select_publish_run.py" in crate_release,
     "crate controller must select the uniquely correlated publish run",
@@ -265,7 +267,8 @@ intended = {
     "databaseId": 42,
     "displayTitle": selector.expected_title(package, tag, sha, correlation),
     "event": "workflow_dispatch",
-    "headSha": sha,
+    "headBranch": "main",
+    "headSha": "b" * 40,
 }
 runs = [
     {
@@ -277,6 +280,7 @@ runs = [
             f"manual-{sha}",
         ),
         "event": "workflow_dispatch",
+        "headBranch": "main",
         "headSha": sha,
     },
     intended,
@@ -288,6 +292,10 @@ require(
 require(
     selector.select_run(runs, package, tag, "b" * 40, correlation) is None,
     "publish-run selection must reject the wrong release SHA",
+)
+require(
+    selector.select_run([{**intended, "headBranch": tag}], package, tag, sha, correlation) is None,
+    "publish-run selection must reject a tag-based workflow despite matching release inputs",
 )
 
 # The release plan must not dispatch a never-published crate at a platform

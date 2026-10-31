@@ -23,19 +23,20 @@ Verify that Jev reuses a saved provider account, remains separate from chat mode
 
 | Field | Value |
 | --- | --- |
-| Profile | Jev 1.13 |
+| Profile | Jev 1.14 |
 | Content | The sky is blue on a clear day. |
 | Primitives | Noul, choice, score |
 
 ## Steps
 
-1. In Models, select Decisions and enable Jev 1.13 for the existing OpenRouter account. Inspect its profile and select it as the default decision model.
-2. Inspect chat model selectors; Jev must be absent. Attempt to use its saved ID as an agent chat default through the API; expect rejection.
-3. Add Jev Decisions to an agent and select that exact saved model in its capability settings.
-4. Run a session asking for one evaluation with all three primitives.
-5. Inspect the decision generation event and usage ledger: saved account, model profile, actual serving snapshot, token usage, and cost must be recorded.
-6. Disable the saved model. Reopen its selector; the old selection must remain visible with repair guidance. Execute again; the call must fail without falling back to another account.
-7. Repeat the model reference from another organization; expect rejection.
+1. In Models, select Decisions and enable Jev 1.14 for the existing OpenRouter account. Inspect its profile and select it as the default decision model.
+2. Add a model manually with the Jev 1.14 profile. Verify OpenRouter fills `typesafe/jev-1.14` and direct TypeSafe fills `jev-1.14.0`; Jev 1.13 remains selectable.
+3. Inspect chat model selectors; Jev must be absent. Attempt to use its saved ID as an agent chat default through the API; expect rejection.
+4. Add Jev Decisions to an agent and select that exact saved model in its capability settings.
+5. Run a session asking for one evaluation with all three primitives.
+6. Inspect the decision generation event and usage ledger: saved account, model profile, actual serving snapshot, token usage, and cost must be recorded.
+7. Disable the saved model. Reopen its selector; the old selection must remain visible with repair guidance. Execute again; the call must fail without falling back to another account.
+8. Repeat the model reference from another organization; expect rejection.
 
 ## Expected Result
 

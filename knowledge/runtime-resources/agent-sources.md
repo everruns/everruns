@@ -26,9 +26,17 @@ Lifecycle cleanup takes the Agent lock before Slack install locks; unnamed local
 channels do not hold the Agent row while waiting for credential edits.
 Publication, credentials and omitted destination channel bindings remain local.
 
-The source binding stays outside package export. It captures the Agent's GitHub
-connection, installation and stable repository identity. A removed or replaced connection fails
-closed rather than silently substituting another identity. Repository access is
+The source binding stays outside package export. Sync is an authoring connection,
+separate from the Agent's runtime GitHub identity on its Integrations tab: changing or
+removing that identity never touches the source. The person setting up sync chooses the
+account it reads and writes through: their own GitHub sign-in (two-way commits carry their
+name; the source pauses if they disconnect or leave the organization), or the organization's
+link to the shared Everruns App for the repository's account (commits come from the App's bot
+and survive people leaving; only admins link accounts). Both connect in a popup from the Sync
+dialog, which lists the repositories each account reaches. Bindings made before this split
+keep the Agent's identity until they are reconnected. The binding captures the chosen
+connection, its installation when it has one, and stable repository identity. A removed or
+replaced connection fails closed rather than silently substituting another identity. Repository access is
 scoped to contents read for pull mode, and contents write only for explicitly
 selected two-way mode. Existing GitHub Apps need the owner to grant and accept
 write access; creating an App does not silently broaden its permissions. For a human-configured source, reconciliation rechecks
