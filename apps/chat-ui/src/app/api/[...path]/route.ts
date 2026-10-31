@@ -1,5 +1,6 @@
 import { channelOf, settings, safeMutation, bootstrap } from "../../../server/config";
 import { tokenFor, recoveryScope } from "../../../server/auth";
+import { liveStream, proxyHeaders } from "../../../server/proxy";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const allowed =
@@ -83,17 +84,17 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
       method: request.method,
       headers,
       body,
-      signal: AbortSignal.any([request.signal, AbortSignal.timeout(30000)]),
+      // The live stream must outlive this proxy. Closing it here resets the
+      // browser connection; other calls still fail closed after 30 seconds.
+      signal: liveStream(path)
+        ? request.signal
+        : AbortSignal.any([request.signal, AbortSignal.timeout(30000)]),
       redirect: "error",
       cache: "no-store",
     });
     return new Response(upstream.body, {
       status: upstream.status,
-      headers: {
-        "Content-Type": upstream.headers.get("content-type") ?? "application/json",
-        "Cache-Control": "no-store",
-        "X-Accel-Buffering": "no",
-      },
+      headers: proxyHeaders(path, upstream.headers.get("content-type")),
     });
   } catch {
     return new Response("Chat temporarily unavailable", { status: 503 });

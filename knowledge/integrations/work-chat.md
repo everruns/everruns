@@ -78,6 +78,9 @@ keep memory-only behavior and show the storage warning.
 
 SSE framing handles split UTF-8 and CRLF delimiters, bounds partial frames and
 retained events, and advances its durable sequence before a React state update.
+The host does not apply its short upstream deadline to that stream: aborting a
+live response resets the browser connection, and on HTTP/3 the reset is reported
+as a network error. The conversation service cycles the stream itself.
 Reconnects use bounded backoff; access rejection ends the stream loop. API reads
 and each stream reconnect still renew channel authority through the existing BFF.
 See [Chat recovery](../ui/chat-recovery.md) for the transport decision and

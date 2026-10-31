@@ -5,7 +5,7 @@ import { FilePreview, downloadFile } from "./file-preview";
 import { WorkLog, workForMessages } from "./work-log";
 import { conversationMessages } from "./transcript";
 import { SharedChat } from "./shared-chat";
-import { consumeSse } from "../client/sse";
+import { consumeSse, streamFailure } from "../client/sse";
 import { presentViewer, type Viewer } from "../profile";
 import {
   recoveryKey,
@@ -372,7 +372,7 @@ function WorkChat({ config }: { config: Config }) {
             }
           });
         } catch (error) {
-          report(error);
+          report(streamFailure(error));
         }
         if (!stopped)
           await new Promise<void>((resolve) => {
