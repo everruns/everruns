@@ -5,7 +5,7 @@
 - Added opt-in local skill inspection with content- and origin-bound reports, revalidated activation receipts, and explicit heuristic limits. See [Skills Registry](project/skills-registry.md#opt-in-persistent-instruction-inspection).
 - Extended the shared inspector into Yolop's approved memory writes and selected recalls, with title-only automatic disclosure and no body-derived disclosure. Hosted memory mount integration remains separate.
 
-- Record the admission/idempotency crash boundary exposed by authenticated recovery benchmarks; failed recovery remains a failed result. See [Load Testing](operations/load-testing.md).
+- Close the admission/idempotency crash gap with one transaction for the claim, operation and replay response; preserve legacy in-flight claims during upgrades. See [Agent API admission retries](integrations/agent-execution-api.md#admission-retries) and [Load Testing](operations/load-testing.md).
 
 - Preserve saved answer identity and workload counters when a worker resumes between the answer and turn completion. See [Sans-IO Turn State](foundations/sans-io-turn-state.md).
 

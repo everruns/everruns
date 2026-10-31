@@ -259,3 +259,84 @@ async fn a_channel_origin_reaches_only_that_channel() {
             .await
     );
 }
+
+/// Wait for this fixture's request to reach the table lock, rather than relying
+/// on a sleep that might cancel it before it ever claimed its idempotency key.
+pub(crate) async fn wait_for_relation_waiter(pool: &sqlx::PgPool, relation: &str) {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let waiting: bool = sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'relation' \
+                 AND relation = to_regclass($1) AND NOT granted \
+                 AND database = (SELECT oid FROM pg_database WHERE datname = current_database()))",
+            )
+            .bind(relation)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+            if waiting {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the request did not reach the blocked admission");
+}
+
+#[tokio::test]
+async fn an_aborted_admission_retries_without_waiting_for_the_claim_lease() {
+    let server = std::sync::Arc::new(TestServer::in_memory().await);
+    let channel = api_channel(&server, json!({}), true).await;
+    let key = create_key(&server, &channel, "Backend").await;
+    let secret = key["secret"].as_str().unwrap().to_string();
+    let path = format!("/v1/channels/{}/sessions", channel.channel_id);
+    let body = json!({"title": "One accepted session"});
+    let mut blocker = server.pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE sessions IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    let original = tokio::spawn({
+        let server = server.clone();
+        let secret = secret.clone();
+        let path = path.clone();
+        let body = body.clone();
+        async move { post(&server, &path, &secret, Some("crashed-create"), body).await }
+    });
+    wait_for_relation_waiter(&server.pool, "sessions").await;
+    original.abort();
+    assert!(matches!(original.await, Err(error) if error.is_cancelled()));
+    blocker.rollback().await.unwrap();
+
+    let first = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let response = post(
+                &server,
+                &path,
+                &secret,
+                Some("crashed-create"),
+                body.clone(),
+            )
+            .await;
+            if response.status() != StatusCode::CONFLICT {
+                break response;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("a cancelled admission left a committed claim")
+    .assert_status(StatusCode::CREATED);
+    let replay = post(&server, &path, &secret, Some("crashed-create"), body)
+        .await
+        .assert_status(StatusCode::CREATED);
+    assert!(replayed(&replay));
+    assert_eq!(first.json_value()["id"], replay.json_value()["id"]);
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM sessions WHERE title = $1")
+        .bind("One accepted session")
+        .fetch_one(&server.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "the retry admitted exactly one session");
+}

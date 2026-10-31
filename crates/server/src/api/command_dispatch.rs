@@ -327,101 +327,123 @@ pub async fn execute_command(
         key,
     };
     let fingerprint = request_fingerprint(&name, &request.params);
-    let now = chrono::Utc::now();
-    let claim = state
-        .db
-        .claim_command_idempotency_key(&ClaimIdempotencyKey {
-            scope: scope.clone(),
-            command: name.clone(),
-            fingerprint: fingerprint.clone(),
-            locked_until: now + IDEMPOTENCY_LOCK_TTL,
-            expires_at: now + IDEMPOTENCY_KEY_TTL,
-        })
-        .await
-        .map_err(CommandError::internal)?;
-    match claim {
-        IdempotencyClaim::Existing(stored) if stored.fingerprint != fingerprint => {
-            Err(CommandError::unprocessable(format!(
-                "Idempotency-Key was already used for a different request ({}); \
-                 use a new key for a new request",
-                stored.command
-            ))
-            .with_code("idempotency_key_reused")
-            .into())
-        }
-        IdempotencyClaim::Existing(stored) => match stored.response {
-            Some(sealed) => {
-                let mut response = Json(open_response(&state, &sealed)?).into_response();
-                response
-                    .headers_mut()
-                    .insert(IDEMPOTENT_REPLAYED_HEADER, HeaderValue::from_static("true"));
-                Ok(response)
+    let transactional = desc.is_some_and(|desc| (desc.transactional)());
+    let attempt = Box::pin(async {
+        let now = chrono::Utc::now();
+        let claim = state
+            .db
+            .claim_command_idempotency_key(&ClaimIdempotencyKey {
+                scope: scope.clone(),
+                command: name.clone(),
+                fingerprint: fingerprint.clone(),
+                locked_until: now + IDEMPOTENCY_LOCK_TTL,
+                expires_at: now + IDEMPOTENCY_KEY_TTL,
+            })
+            .await
+            .map_err(CommandError::internal)?;
+        match claim {
+            IdempotencyClaim::Existing(stored) if stored.fingerprint != fingerprint => {
+                Err(CommandError::unprocessable(format!(
+                    "Idempotency-Key was already used for a different request ({}); \
+                     use a new key for a new request",
+                    stored.command
+                ))
+                .with_code("idempotency_key_reused")
+                .into())
             }
-            None => Err(CommandError::conflict(
-                "A request with this Idempotency-Key is still running; retry later",
-            )
-            .with_code("idempotency_key_in_progress")
-            .into()),
-        },
-        IdempotencyClaim::Claimed => {
-            let transactional = desc.is_some_and(|desc| (desc.transactional)());
-            // Boxed so the command's deep future is not held inline twice.
-            let attempt = Box::pin(async {
-                let response = run(
-                    &org,
-                    &state,
-                    name,
-                    request,
-                    current_hash,
-                    Some(scope.key.clone()),
+            IdempotencyClaim::Existing(stored) => match stored.response {
+                Some(sealed) => {
+                    let mut response = Json(open_response(&state, &sealed)?).into_response();
+                    response
+                        .headers_mut()
+                        .insert(IDEMPOTENT_REPLAYED_HEADER, HeaderValue::from_static("true"));
+                    Ok(response)
+                }
+                None => Err(CommandError::conflict(
+                    "A request with this Idempotency-Key is still running; retry later",
                 )
-                .await?;
-                let stored = match seal_response(&state, &response) {
-                    Ok(sealed) => {
-                        state
-                            .db
-                            .complete_command_idempotency_key(&scope, &sealed)
-                            .await
+                .with_code("idempotency_key_in_progress")
+                .into()),
+            },
+            IdempotencyClaim::Claimed => {
+                // Boxed so the command's deep future is not held inline twice.
+                let attempt = Box::pin(async {
+                    let response = run(
+                        &org,
+                        &state,
+                        name,
+                        request,
+                        current_hash,
+                        Some(scope.key.clone()),
+                    )
+                    .await?;
+                    let stored = match seal_response(&state, &response) {
+                        Ok(sealed) => {
+                            state
+                                .db
+                                .complete_command_idempotency_key(&scope, &sealed)
+                                .await
+                        }
+                        Err(err) => Err(err),
+                    };
+                    if let Err(err) = stored {
+                        if transactional {
+                            // Inside the command's transaction: the change and the
+                            // response a retry replays commit together, or neither.
+                            return Err(CommandError::internal(
+                                err.context("failed to store the idempotent command response"),
+                            )
+                            .into());
+                        }
+                        // The command already committed: failing to remember it
+                        // must not turn its success into an error.
+                        tracing::warn!(error = %err, "failed to store idempotent command response");
                     }
-                    Err(err) => Err(err),
-                };
-                if let Err(err) = stored {
-                    if transactional {
-                        // Inside the command's transaction: the change and the
-                        // response a retry replays commit together, or neither.
-                        return Err(CommandError::internal(
-                            err.context("failed to store the idempotent command response"),
-                        )
-                        .into());
+                    Ok(response)
+                });
+                let result = attempt.await;
+                match result {
+                    Ok(response) => Ok(Json(response).into_response()),
+                    Err(err) => {
+                        // Transactional claims roll back with the operation. A
+                        // nontransactional command still owns a committed lease.
+                        if !transactional
+                            && let Err(release) =
+                                state.db.release_command_idempotency_key(&scope).await
+                        {
+                            tracing::warn!(error = %release, "failed to release idempotency key");
+                        }
+                        Err(err)
                     }
-                    // The command already committed: failing to remember it
-                    // must not turn its success into an error.
-                    tracing::warn!(error = %err, "failed to store idempotent command response");
-                }
-                Ok(response)
-            });
-            // The claim above committed on its own, so a concurrent retry sees
-            // it in flight; the completion commits with the command.
-            let result = if transactional {
-                crate::storage::transaction::scope(&state.db, attempt, |err| {
-                    CommandError::internal(err).into()
-                })
-                .await
-            } else {
-                attempt.await
-            };
-            match result {
-                Ok(response) => Ok(Json(response).into_response()),
-                Err(err) => {
-                    // After the rollback: forget the in-flight claim so the
-                    // client can retry.
-                    if let Err(release) = state.db.release_command_idempotency_key(&scope).await {
-                        tracing::warn!(error = %release, "failed to release idempotency key");
-                    }
-                    Err(err)
                 }
             }
         }
+    });
+    if transactional {
+        // The claim, mutation and replay response are one commit. A try-lock
+        // gives live contenders 409; a crashed owner leaves no stranded claim.
+        crate::storage::transaction::scope(
+            &state.db,
+            Box::pin(async {
+                if !state
+                    .db
+                    .try_lock_command_idempotency(&scope)
+                    .await
+                    .map_err(CommandError::internal)?
+                {
+                    return Err(CommandError::conflict(
+                        "A request with this Idempotency-Key is still running; retry later",
+                    )
+                    .with_code("idempotency_key_in_progress")
+                    .into());
+                }
+                attempt.await
+            }),
+            |err| CommandError::internal(err).into(),
+        )
+        .await
+    } else {
+        attempt.await
     }
 }
 

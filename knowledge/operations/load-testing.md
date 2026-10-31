@@ -94,13 +94,12 @@ A successful tiny simulator fallback must not silently reduce the offered load.
 Requested fault injections must execute during measurement and recover their
 streams; an unexecuted reconnect or restart cannot pass as recovery evidence.
 
-Crash recovery must preserve the admission result as well as the running turn.
-The current [Agent API idempotency wrapper](../../crates/server/src/api/agent_api_idempotency.rs)
-claims a key separately from storing its result. A process killed in that gap can
-leave an in-flight claim until its lease expires; retries may exceed the recovery
-budget even when the input was saved. Report this as failed admission recovery.
-Shortening or clearing claims is unsafe without proving that replay cannot admit
-a duplicate; recovery requires a durable link between the claim and the operation.
+Recovery qualification includes admission, not only running turns. The
+[Agent API retry contract](../integrations/agent-execution-api.md#admission-retries)
+and [transactional commands](../execution/command-tree.md) tie the claim and
+replay response to the operation's commit. Legacy pending claims can still outlive
+the recovery budget during an upgrade; preserve that failure in the report rather
+than clearing claims or changing the gate.
 
 Keep SSE for the three current chat surfaces. Offline drafts, durable command
 identities and replay cursors provide recovery independently of transport choice.

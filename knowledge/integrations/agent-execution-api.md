@@ -114,6 +114,21 @@ All paths are relative to the agent base URL. JSON shapes are the server's exist
 | POST | `/sessions/{id}/files` | Upload inputs (images and files), bounded by the channel. |
 | DELETE | `/sessions/{id}` | Caller-side delete (archive). |
 
+### Admission retries
+
+Keyed session creation and message admission commit their claim, database changes
+and replay response together. A live contender is refused without waiting for the
+owner; a cancelled or crashed transaction leaves no accepted operation or stranded
+claim. A committed retry returns the same response. A different request under a
+completed key remains invalid. Caller and tenant confinement are unchanged.
+
+Already-committed in-flight claims from older servers retain their lease during a
+rolling upgrade: they might still own an accepted operation. Nontransactional
+commands likewise retain their lease contract. The implementation is
+[Agent API idempotency](../../crates/server/src/api/agent_api_idempotency.rs), using
+the same request transaction and scoped lock as
+[transactional commands](../execution/command-tree.md).
+
 ### Task style (deferred)
 
 Decided 2026-10-09: no task or run API in this design. A thin "one turn" wrapper (an earlier draft's `/runs`) would only shorten the session loop and still need the session routes for questions, approvals and steering. The next step is a separate design for a **durable task API**: a long-lived unit of work that can be steered, talked with, paused on input, and followed to a result. It will likely build on [Session Tasks](../runtime-resources/session-tasks.md) and the A2A task mapping. Until then, scripts use the session routes; the SDK can offer a convenience helper over them (send a message, wait for the turn to finish, return the reply) without a new wire route.
