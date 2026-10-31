@@ -310,20 +310,18 @@ mod tests {
             .execute(db.pool())
             .await
             .unwrap();
-        let seen = eventually(|| async {
-            db.worker_ingress_minimum_version().await.unwrap() == Some(1)
-        })
-        .await;
+        let seen =
+            eventually(|| async { db.worker_ingress_minimum_version().await.unwrap() == Some(1) })
+                .await;
         assert!(seen, "the new floor is read back");
 
         sqlx::query("UPDATE worker_ingress_protection_floor SET minimum_version = 2")
             .execute(db.pool())
             .await
             .unwrap();
-        let seen = eventually(|| async {
-            db.worker_ingress_minimum_version().await.unwrap() == Some(2)
-        })
-        .await;
+        let seen =
+            eventually(|| async { db.worker_ingress_minimum_version().await.unwrap() == Some(2) })
+                .await;
         assert!(seen, "the raised floor is read back");
     }
 

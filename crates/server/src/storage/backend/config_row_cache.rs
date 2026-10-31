@@ -170,13 +170,8 @@ impl ConfigRowCache {
 
     /// Keep what a read returned, unless something was invalidated since the
     /// read began: it may predate that change.
-    fn store<K, V>(
-        &self,
-        entries: &Cache<K, V>,
-        id: K,
-        generation: u64,
-        value: &V,
-    ) where
+    fn store<K, V>(&self, entries: &Cache<K, V>, id: K, generation: u64, value: &V)
+    where
         K: std::hash::Hash + Eq + Send + Sync + 'static,
         V: Clone + Send + Sync + 'static,
     {
