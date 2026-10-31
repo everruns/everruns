@@ -70,9 +70,9 @@ Agent definitions and their configuration.
 | [`agents source connect`](#agents-source-connect) | Apply a reviewed GitHub package and enable continuous sync. |
 | [`agents source disconnect`](#agents-source-disconnect) | Disconnect GitHub source sync and restore local editing. |
 | [`agents source get`](#agents-source-get) | Show the Agent's continuous GitHub source binding and sync status. |
-| [`agents source accounts list`](#agents-source-accounts-list) | Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. |
 | [`agents source preview`](#agents-source-preview) | Validate and compare a GitHub Agent package without changing the Agent. |
 | [`agents source sync`](#agents-source-sync) | Queue an immediate check of this Agent's GitHub source. |
+| [`agents source accounts list`](#agents-source-accounts-list) | Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. |
 | [`agents source options get`](#agents-source-options-get) | Browse GitHub branches and Agent package paths. |
 | [`agents triggers create`](#agents-triggers-create) | Create a schedule or webhook trigger for an agent. |
 | [`agents triggers delete`](#agents-triggers-delete) | Archive an agent trigger and remove its durable schedule. |
@@ -1279,25 +1279,6 @@ Example:
 everruns agents source get --agent-id agent_01h9
 ```
 
-## agents source accounts list
-
-Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.
-
-```bash
-everruns agents source accounts list [OPTIONS] --agent-id <agent_id>
-```
-
-| Flag | Description |
-|---|---|
-| `--agent-id <AGENT_ID>` | Required. |
-
-Example:
-
-```bash
-# See which GitHub accounts and repositories can back this Agent's source
-everruns agents source accounts list --agent-id agent_01h9
-```
-
 ## agents source preview
 
 Validate and compare a GitHub Agent package without changing the Agent.
@@ -1338,6 +1319,25 @@ Example:
 ```bash
 # Check the source now after pushing a repository change
 everruns agents source sync --agent-id agent_01h9 --reason "Apply the latest repository change"
+```
+
+## agents source accounts list
+
+Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.
+
+```bash
+everruns agents source accounts list [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+
+Example:
+
+```bash
+# See which GitHub accounts and repositories can back this Agent's source
+everruns agents source accounts list --agent-id agent_01h9
 ```
 
 ## agents source options get

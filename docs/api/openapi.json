@@ -2497,7 +2497,6 @@
           }
         },
         "deprecated": true,
-        "x-superseded-by": "list_agent_channels",
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
@@ -2506,7 +2505,8 @@
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        }
+        },
+        "x-superseded-by": "list_agent_channels"
       },
       "post": {
         "tags": [
@@ -2569,7 +2569,6 @@
           }
         },
         "deprecated": true,
-        "x-superseded-by": "create_agent_channel",
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
@@ -2578,7 +2577,8 @@
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        }
+        },
+        "x-superseded-by": "create_agent_channel"
       }
     },
     "/v1/agents/{agent_id}/endpoints/{endpoint_id}": {
@@ -2632,16 +2632,16 @@
           }
         },
         "deprecated": true,
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
         },
-        "x-superseded-by": "get_agent_channel",
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        }
+        "x-superseded-by": "get_agent_channel"
       },
       "delete": {
         "tags": [
@@ -2686,16 +2686,16 @@
           }
         },
         "deprecated": true,
-        "x-superseded-by": "delete_agent_channel",
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
         },
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        }
+        "x-superseded-by": "delete_agent_channel"
       },
       "patch": {
         "tags": [
@@ -2767,14 +2767,14 @@
           }
         },
         "deprecated": true,
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        },
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
         "x-superseded-by": "update_agent_channel"
       }
@@ -2903,14 +2903,14 @@
           }
         },
         "deprecated": true,
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        },
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
         "x-superseded-by": "trigger_agent_channel"
       }
@@ -2966,16 +2966,16 @@
           }
         },
         "deprecated": true,
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
         },
-        "x-superseded-by": "unpublish_agent_channel",
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        }
+        "x-superseded-by": "unpublish_agent_channel"
       }
     },
     "/v1/agents/{agent_id}/endpoints/{endpoint_id}/voice/calls": {
@@ -3027,7 +3027,6 @@
           }
         },
         "deprecated": true,
-        "x-superseded-by": "create_channel_call",
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
@@ -3036,7 +3035,8 @@
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        }
+        },
+        "x-superseded-by": "create_channel_call"
       }
     },
     "/v1/agents/{agent_id}/export": {
@@ -11364,7 +11364,6 @@
           }
         },
         "deprecated": true,
-        "x-superseded-by": "invoke_a2a_channel",
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
@@ -11373,7 +11372,8 @@
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        }
+        },
+        "x-superseded-by": "invoke_a2a_channel"
       }
     },
     "/v1/e/{channel_id}/a2a/.well-known/agent-card.json": {
@@ -11414,13 +11414,13 @@
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
-        "x-superseded-by": "agent_card_channel",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        }
+        },
+        "x-superseded-by": "agent_card_channel"
       }
     },
     "/v1/e/{channel_id}/chat/config": {
@@ -11511,16 +11511,16 @@
             "AgentCredential": []
           }
         ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-superseded-by": "resolve_work_chat_main",
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        }
+        "x-superseded-by": "resolve_work_chat_main"
       }
     },
     "/v1/e/{channel_id}/chat/shared/{token}": {
@@ -11567,7 +11567,6 @@
         },
         "deprecated": true,
         "security": [],
-        "x-superseded-by": "read_work_chat_share",
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
@@ -11576,7 +11575,8 @@
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
-        }
+        },
+        "x-superseded-by": "read_work_chat_share"
       }
     },
     "/v1/e/{channel_id}/fcp": {
@@ -11773,16 +11773,16 @@
             "AgentCredential": []
           }
         ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-superseded-by": "agent_api_create_session",
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        }
+        "x-superseded-by": "agent_api_create_session"
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}": {
@@ -11864,13 +11864,13 @@
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
-        "x-superseded-by": "agent_api_get_session",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
-        }
+        },
+        "x-superseded-by": "agent_api_get_session"
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}/cancel": {
@@ -12275,13 +12275,13 @@
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
-        "x-superseded-by": "agent_api_send_message",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
-        }
+        },
+        "x-superseded-by": "agent_api_send_message"
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}/question-answers": {
@@ -12441,16 +12441,16 @@
             "AgentCredential": []
           }
         ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-superseded-by": "update_work_chat_conversation",
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        }
+        "x-superseded-by": "update_work_chat_conversation"
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}/share": {
@@ -12495,13 +12495,13 @@
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
-        "x-superseded-by": "share_work_chat_conversation",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
-        }
+        },
+        "x-superseded-by": "share_work_chat_conversation"
       },
       "delete": {
         "tags": [
@@ -12541,16 +12541,16 @@
             "AgentCredential": []
           }
         ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-superseded-by": "revoke_work_chat_share",
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        }
+        "x-superseded-by": "revoke_work_chat_share"
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}/sse": {
@@ -12656,16 +12656,16 @@
             "AgentCredential": []
           }
         ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-superseded-by": "agent_api_stream_events",
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        }
+        "x-superseded-by": "agent_api_stream_events"
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}/tool-approvals": {
@@ -12834,16 +12834,16 @@
             "AgentCredential": []
           }
         ],
-        "x-superseded-by": "list_work_chat_tasks",
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        }
+        "x-superseded-by": "list_work_chat_tasks"
       }
     },
     "/v1/e/{channel_id}/webhook": {
@@ -12928,16 +12928,16 @@
           }
         },
         "deprecated": true,
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
         },
-        "x-superseded-by": "invoke_webhook_channel",
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        }
+        "x-superseded-by": "invoke_webhook_channel"
       }
     },
     "/v1/e/{endpoint_id}/runtime-auth": {
@@ -12982,16 +12982,16 @@
             "AgentCredential": []
           }
         ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
-        "x-superseded-by": "exchange",
-        "x-deprecation": {
-          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
-        }
+        "x-superseded-by": "exchange"
       }
     },
     "/v1/evals": {
@@ -25511,13 +25511,13 @@
             "description": "Internal server error"
           }
         },
-        "x-side-effect": "reversible",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "sessions-workspaces",
           "support": "preview"
-        }
+        },
+        "x-side-effect": "reversible"
       },
       "patch": {
         "tags": [
@@ -30970,13 +30970,13 @@
             "description": "Internal server error"
           }
         },
-        "x-side-effect": "irreversible",
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "identity-access",
           "support": "preview"
-        }
+        },
+        "x-side-effect": "irreversible"
       },
       "patch": {
         "tags": [
@@ -40746,7 +40746,7 @@
             "type": "number",
             "format": "double",
             "description": "Hard spending ceiling for the budget.",
-            "example": 100.0
+            "example": 100
           },
           "metadata": {
             "description": "Free-form metadata attached to this resource."
@@ -40769,7 +40769,7 @@
             ],
             "format": "double",
             "description": "Optional threshold that triggers a warning or pause before exhaustion.",
-            "example": 20.0
+            "example": 20
           },
           "subject_id": {
             "type": "string",
@@ -41745,7 +41745,7 @@
             ],
             "format": "double",
             "description": "Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.",
-            "example": 100.0
+            "example": 100
           },
           "max_amount_usd_per_request": {
             "type": [
@@ -41754,7 +41754,7 @@
             ],
             "format": "double",
             "description": "Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap.",
-            "example": 5.0
+            "example": 5
           },
           "max_amount_usd_per_turn": {
             "type": [
@@ -41763,7 +41763,7 @@
             ],
             "format": "double",
             "description": "Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.",
-            "example": 20.0
+            "example": 20
           },
           "metadata": {
             "description": "Free-form metadata attached to this policy.\nExample: `{\"owner_team\": \"ops\", \"ticket\": \"OPS-1248\"}`."
@@ -41791,7 +41791,7 @@
             ],
             "format": "double",
             "description": "Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.",
-            "example": 10.0
+            "example": 10
           },
           "subject_id": {
             "type": "string",
@@ -48168,7 +48168,7 @@
             "type": "number",
             "format": "double",
             "description": "Score value from 0.0 to 1.0.",
-            "example": 1.0
+            "example": 1
           }
         }
       },
@@ -59742,7 +59742,7 @@
             ],
             "format": "double",
             "description": "Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.",
-            "example": 50.0
+            "example": 50
           },
           "max_amount_usd_per_request": {
             "type": [
@@ -59760,7 +59760,7 @@
             ],
             "format": "double",
             "description": "Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.",
-            "example": 5.0
+            "example": 5
           },
           "metadata": {
             "description": "Free-form metadata attached to this policy."
@@ -59788,7 +59788,7 @@
             ],
             "format": "double",
             "description": "Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.",
-            "example": 10.0
+            "example": 10
           },
           "status": {
             "$ref": "#/components/schemas/PaymentStatus",
@@ -64295,7 +64295,7 @@
             "type": "number",
             "format": "double",
             "description": "Score value 0.0–1.0.",
-            "example": 1.0
+            "example": 1
           }
         }
       },
@@ -64559,7 +64559,7 @@
                 "type": "number",
                 "format": "double",
                 "description": "Relative weight of this scorer in the case's weighted average.",
-                "example": 1.0
+                "example": 1
               }
             }
           },
@@ -64605,7 +64605,7 @@
                 "type": "number",
                 "format": "double",
                 "description": "Relative weight of this scorer in the case's weighted average.",
-                "example": 1.0
+                "example": 1
               }
             }
           }
@@ -71361,7 +71361,7 @@
             ],
             "format": "double",
             "description": "Replacement hard spending ceiling.",
-            "example": 150.0
+            "example": 150
           },
           "metadata": {
             "description": "Free-form metadata attached to this resource."
