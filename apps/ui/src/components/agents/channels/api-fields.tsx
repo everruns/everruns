@@ -203,7 +203,7 @@ export function ApiFields({
           </div>
         )}
         <div className="space-y-2">
-          <Label htmlFor={`${id}_tool_approvals`}>{ui("Who allows held-back tool calls")}</Label>
+          <Label htmlFor={`${id}_tool_approvals`}>{ui("Who approves a tool before it runs")}</Label>
           <Select
             value={value.toolApprovals}
             onValueChange={(next) => set("toolApprovals", next as ApiToolApprovals)}
@@ -213,11 +213,21 @@ export function ApiFields({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="operator">{ui("People with access to this agent")}</SelectItem>
-              <SelectItem value="caller">{ui("The caller")}</SelectItem>
+              <SelectItem value="caller">
+                {hosted ? ui("The person in the chat") : ui("The caller")}
+              </SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            {ui("The caller then sees the tool and its arguments, which it needs to decide.")}
+            {ui(
+              value.toolApprovals === "caller"
+                ? hosted
+                  ? "They see the tool and what it would do, and approve or reject it in the chat."
+                  : "They see the tool and its arguments, and approve or reject it."
+                : hosted
+                  ? "They decide in Everruns. The person in the chat only sees that a tool is waiting."
+                  : "They decide in Everruns. The caller only sees that a tool is waiting.",
+            )}
           </p>
         </div>
         {!hosted && (

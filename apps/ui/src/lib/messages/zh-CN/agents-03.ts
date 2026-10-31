@@ -156,8 +156,15 @@ export const messages: Readonly<Record<string, string>> = {
   "The agent's GitHub App exists but is not installed yet. Finish installing it and pick the repositories the agent may use.":
     "智能体的 GitHub 应用程序存在，但尚未安装。完成安装并选择智能体可能使用的存储库。",
   "The caller": "来电者",
-  "The caller then sees the tool and its arguments, which it needs to decide.":
-    "然后调用者会看到该工具及其需要决定的参数。",
+  "The person in the chat": "聊天中的人",
+  "They see the tool and what it would do, and approve or reject it in the chat.":
+    "他们会看到工具以及它将要做什么，并在聊天中批准或拒绝。",
+  "They see the tool and its arguments, and approve or reject it.":
+    "他们会看到工具及其参数，并批准或拒绝。",
+  "They decide in Everruns. The person in the chat only sees that a tool is waiting.":
+    "他们在 Everruns 中决定。聊天中的人只看到有一个工具在等待。",
+  "They decide in Everruns. The caller only sees that a tool is waiting.":
+    "他们在 Everruns 中决定。调用方只看到有一个工具在等待。",
   "The channel was saved.": "频道已保存。",
   "The client ID of your app in the AgentID console. Tokens must be issued for it and last ten minutes; AgentID is a sign-in, not a long-lived API key.":
     "AgentID 控制台中您的应用程序的客户端 ID。必须为其发行代币并持续十分钟； AgentID 是登录信息，而不是长期存在的 API 密钥。",
@@ -295,7 +302,7 @@ export const messages: Readonly<Record<string, string>> = {
   "When the provider cannot answer": "当提供者无法应答时",
   "When this agent wakes up on its own": "当该智能体自行唤醒时",
   "Where it works": "工作地点",
-  "Who allows held-back tool calls": "谁允许保留工具调用",
+  "Who approves a tool before it runs": "谁在工具运行前批准它",
   "Who should this server act as?": "这个服务器应该扮演谁的角色？",
   "with a JSON-RPC 2.0 envelope. Only the": "带有 JSON-RPC 2.0 信封。只有",
   "With failed turns": "转弯失败",

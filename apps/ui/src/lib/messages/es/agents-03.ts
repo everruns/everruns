@@ -159,8 +159,15 @@ export const messages: Readonly<Record<string, string>> = {
   "The agent's GitHub App exists but is not installed yet. Finish installing it and pick the repositories the agent may use.":
     "La aplicación GitHub del agente existe pero aún no está instalada. Termine de instalarlo y elija los repositorios que el agente puede usar.",
   "The caller": "La persona que llama",
-  "The caller then sees the tool and its arguments, which it needs to decide.":
-    "La persona que llama ve la herramienta y sus argumentos, que debe decidir.",
+  "The person in the chat": "La persona en el chat",
+  "They see the tool and what it would do, and approve or reject it in the chat.":
+    "Ven la herramienta y lo que haría, y la aprueban o la rechazan en el chat.",
+  "They see the tool and its arguments, and approve or reject it.":
+    "Ven la herramienta y sus argumentos, y la aprueban o la rechazan.",
+  "They decide in Everruns. The person in the chat only sees that a tool is waiting.":
+    "Deciden en Everruns. La persona en el chat solo ve que una herramienta está en espera.",
+  "They decide in Everruns. The caller only sees that a tool is waiting.":
+    "Deciden en Everruns. Quien llama solo ve que una herramienta está en espera.",
   "The channel was saved.": "El canal fue guardado.",
   "The client ID of your app in the AgentID console. Tokens must be issued for it and last ten minutes; AgentID is a sign-in, not a long-lived API key.":
     "El ID de cliente de su aplicación en la consola AgentID. Para ello se deben emitir fichas y tienen una duración de diez minutos; AgentID es una clave API de inicio de sesión, no de larga duración.",
@@ -308,7 +315,7 @@ export const messages: Readonly<Record<string, string>> = {
   "When the provider cannot answer": "Cuando el proveedor no puede contestar",
   "When this agent wakes up on its own": "Cuando este agente se despierta solo",
   "Where it works": "Dónde funciona",
-  "Who allows held-back tool calls": "¿Quién permite llamadas de herramientas retenidas?",
+  "Who approves a tool before it runs": "Quién aprueba una herramienta antes de que se ejecute",
   "Who should this server act as?": "¿Quién debería actuar como este servidor?",
   "with a JSON-RPC 2.0 envelope. Only the": "con un sobre JSON-RPC 2.0. Sólo el",
   "With failed turns": "Con giros fallidos",
