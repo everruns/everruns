@@ -94,6 +94,14 @@ A successful tiny simulator fallback must not silently reduce the offered load.
 Requested fault injections must execute during measurement and recover their
 streams; an unexecuted reconnect or restart cannot pass as recovery evidence.
 
+Crash recovery must preserve the admission result as well as the running turn.
+The current [Agent API idempotency wrapper](../../crates/server/src/api/agent_api_idempotency.rs)
+claims a key separately from storing its result. A process killed in that gap can
+leave an in-flight claim until its lease expires; retries may exceed the recovery
+budget even when the input was saved. Report this as failed admission recovery.
+Shortening or clearing claims is unsafe without proving that replay cannot admit
+a duplicate; recovery requires a durable link between the claim and the operation.
+
 Keep SSE for the three current chat surfaces. Offline drafts, durable command
 identities and replay cursors provide recovery independently of transport choice.
 A WebSocket proposal must demonstrate a bidirectional requirement or a controlled

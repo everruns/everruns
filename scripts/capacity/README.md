@@ -111,6 +111,12 @@ Requested reconnects must restore every stream, and a requested server restart
 must actually occur inside the measured phase; an early-ending case cannot
 silently skip its faults and pass.
 
+A server crash can leave an Agent API idempotency claim in progress after its
+request stops. The current ten-minute lease exceeds the fifteen-second recovery
+budget; resulting HTTP 409 failures remain failures. Do not clear keys, shorten
+the lease or extend the gate to manufacture a pass: a saved input and its replay
+response must be recovered together to prevent duplicate admission.
+
 The benchmark refuses known production hosts and requires an explicit isolated
 target and enabled `llmsim` models for every tenant before sending messages.
 The local coordinator strips provider credentials, uses fresh databases and

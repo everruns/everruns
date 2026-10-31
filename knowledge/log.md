@@ -1,9 +1,19 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-31
+
+- Record the admission/idempotency crash boundary exposed by authenticated recovery benchmarks; failed recovery remains a failed result. See [Load Testing](operations/load-testing.md).
+
 ## 2026-10-30
 
 - Preserve saved answer identity and workload counters when a worker resumes between the answer and turn completion. See [Sans-IO Turn State](foundations/sans-io-turn-state.md).
 
+- Refresh Bashkit to consume the patched Wasmtime runtime without advisory exceptions. See [Bashkit requirements](execution/bashkit-requirements.md).
+
+* **MCP resource continuations.** HTTP resource reads share tool-call input
+  handling, preserve method/URI and connection identity, isolate consent scope,
+  and bound negotiation and all continuation rounds by one deadline. See
+  [MCP Server Specification](integrations/mcp-servers.md).
 ## 2026-10-29
 
 - Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.
