@@ -429,6 +429,10 @@ pub const OPENROUTER_GPT6_LUNA: ProviderModelConfig = ProviderModelConfig::new(
 // A fourth de-listing no longer reds `main`: `is_model_unavailable` skips the
 // cell and the coverage report lists it as unverified, so the next churn shows
 // up as missing coverage to repoint rather than as a broken build.
+//
+// Paused 2026-10-31: the Fireworks account is suspended (spending limit), so
+// the `agent_run_basic` cases are removed until billing is restored.
+#[allow(dead_code)]
 pub const FIREWORKS_KIMI_K3: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Fireworks,
     "accounts/fireworks/models/kimi-k3",
