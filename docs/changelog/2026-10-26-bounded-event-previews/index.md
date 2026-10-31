@@ -5,7 +5,7 @@ date: 2026-10-26
 kind: fix
 significance: minor
 products: [platform, cloud]
-release: "0.50.0"
+release: "0.50.1"
 surfaces: [ui]
 links:
   docs: [/features/events/]

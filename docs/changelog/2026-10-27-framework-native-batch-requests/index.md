@@ -5,7 +5,7 @@ date: 2026-10-27
 kind: feature
 significance: notable
 products: [framework]
-release: "0.50.0"
+release: "0.50.1"
 surfaces: [code]
 links:
   docs: [/framework/batch-model-requests/]

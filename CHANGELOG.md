@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.50.0] - 2026-10-30
+## [0.50.1] - 2026-10-31
 
-Changelog: https://everruns.com/docs/changelog/2026-10-30-everruns-0-50-0/
+Changelog: https://everruns.com/docs/changelog/2026-10-31-everruns-0-50-1/
+
+0.50.0 was prepared but never published: its release checks found a regression. 0.50.1 is the first published release of this cycle and carries everything listed here.
 
 ### Highlights
 
@@ -29,6 +31,28 @@ Changelog: https://everruns.com/docs/changelog/2026-10-30-everruns-0-50-0/
 
 ### What's Changed
 
+- fix(mcp): keep canonical operations in bounded discover results ([#5114](https://github.com/everruns/everruns/pull/5114)) by [@chaliy](https://github.com/chaliy)
+- perf(chat): add capacity benchmarks and fix crash recovery ([#5046](https://github.com/everruns/everruns/pull/5046)) by [@chaliy](https://github.com/chaliy)
+- ci: allow cold builds to finish full validation ([#5111](https://github.com/everruns/everruns/pull/5111)) by [@chaliy](https://github.com/chaliy)
+- docs(changelog): describe Yolop failure evidence fixes ([#5110](https://github.com/everruns/everruns/pull/5110)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): make personal access token names optional ([#5102](https://github.com/everruns/everruns/pull/5102)) by [@chaliy](https://github.com/chaliy)
+- fix(serve): support standard OpenAI settings and forward proxies ([#5087](https://github.com/everruns/everruns/pull/5087)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): pause Fireworks live tests while the account is suspended ([#5108](https://github.com/everruns/everruns/pull/5108)) by [@chaliy](https://github.com/chaliy)
+- feat(bench): local stress bench with per-turn costs and settings sweeps ([#5107](https://github.com/everruns/everruns/pull/5107)) by [@chaliy](https://github.com/chaliy)
+- feat(models): discover decision models from OpenRouter and TypeSafe ([#5103](https://github.com/everruns/everruns/pull/5103)) by [@chaliy](https://github.com/chaliy)
+- fix(deps): patch critical zip, undici, qs, fast-uri vulnerabilities ([#5105](https://github.com/everruns/everruns/pull/5105)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): sync agent source through personal or org GitHub ([#5099](https://github.com/everruns/everruns/pull/5099)) by [@chaliy](https://github.com/chaliy)
+- fix(release): dispatch crate OIDC publishing from main ([#5104](https://github.com/everruns/everruns/pull/5104)) by [@chaliy](https://github.com/chaliy)
+- feat(models): support Jev 1.14 typed decisions ([#5096](https://github.com/everruns/everruns/pull/5096)) by [@chaliy](https://github.com/chaliy)
+- ci(release): use crates.io trusted publishing ([#5097](https://github.com/everruns/everruns/pull/5097)) by [@chaliy](https://github.com/chaliy)
+- docs(changelog): describe Yolop ACP settings update fix ([#5101](https://github.com/everruns/everruns/pull/5101)) by [@chaliy](https://github.com/chaliy)
+- test(evals): expect batched masking in the ATIF dataset export test ([#5098](https://github.com/everruns/everruns/pull/5098)) by [@chaliy](https://github.com/chaliy)
+- fix(server): repair model sync (false "No longer listed", no auto refresh) ([#5095](https://github.com/everruns/everruns/pull/5095)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): preserve page content during navigation ([#5100](https://github.com/everruns/everruns/pull/5100)) by [@chaliy](https://github.com/chaliy)
+- feat(skills): add opt-in report-only artifact inspection ([#5086](https://github.com/everruns/everruns/pull/5086)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): negotiate OAuth client metadata documents ([#5085](https://github.com/everruns/everruns/pull/5085)) by [@chaliy](https://github.com/chaliy)
+- fix(history): ignore derived model fields in snapshots and diffs ([#5094](https://github.com/everruns/everruns/pull/5094)) by [@chaliy](https://github.com/chaliy)
+- test(codex): wiremock coverage for list_models OAuth bearer ([#5090](https://github.com/everruns/everruns/pull/5090)) by [@chaliy](https://github.com/chaliy)
 - fix(compaction): mask old tool results in batches to keep the prompt cache ([#5089](https://github.com/everruns/everruns/pull/5089)) by [@chaliy](https://github.com/chaliy)
 - fix(mcp): handle resource read input continuations ([#5084](https://github.com/everruns/everruns/pull/5084)) by [@chaliy](https://github.com/chaliy)
 - chore(deps): bump bashkit from 0.20.1 to 0.20.2 ([#5091](https://github.com/everruns/everruns/pull/5091)) by [@chaliy](https://github.com/chaliy)
@@ -179,7 +203,7 @@ Changelog: https://everruns.com/docs/changelog/2026-10-30-everruns-0-50-0/
 
 ### Crate Releases
 
-All published crates ship at the platform version 0.50.0. No crates were retired or absorbed this cycle.
+All published crates ship at the platform version 0.50.1. No crates were retired or absorbed this cycle.
 
 ## [0.49.0] - 2026-10-26
 

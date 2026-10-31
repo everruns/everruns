@@ -5,7 +5,7 @@ date: 2026-10-29
 kind: improvement
 significance: notable
 products: [platform, cloud]
-release: "0.50.0"
+release: "0.50.1"
 surfaces: [operations, api]
 links:
   docs: [/sre/environment-variables/]

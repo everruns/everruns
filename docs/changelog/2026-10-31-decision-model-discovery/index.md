@@ -5,6 +5,7 @@ date: 2026-10-31
 kind: improvement
 significance: notable
 products: [platform, cloud]
+release: "0.50.1"
 surfaces: [ui, api]
 links:
   docs: [/framework/models-and-providers/]

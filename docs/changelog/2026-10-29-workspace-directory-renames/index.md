@@ -5,7 +5,7 @@ date: 2026-10-29
 kind: fix
 significance: notable
 products: [platform, framework, cloud]
-release: "0.50.0"
+release: "0.50.1"
 cloud: 2026-10-30
 surfaces: [agent, code]
 links:
