@@ -69,19 +69,22 @@ Enable the `mistral` feature of `everruns-drivers`.
 
 The existing Mistral provider can opt into Mistral's stateless
 [Responses API](https://docs.mistral.ai/studio/conversations/responses) per call.
-Chat Completions remains the default. In Framework code, set the driver option
-on `LlmCallConfig` (or your runtime agent's `driver_options`):
+Chat Completions remains the default. In Framework code, select the API with
+the typed Mistral extension on `LlmCallConfig` or `LlmCallConfigBuilder`:
 
 ```rust
 use everruns_contracts::LlmCallConfig;
-use everruns_drivers::mistral::MISTRAL_RESPONSES_OPTION;
+use everruns_drivers::mistral::{MistralApi, MistralConfigExt};
 
-let mut config = LlmCallConfig::new("mistral-large-4");
-config.driver_options.insert(MISTRAL_RESPONSES_OPTION.into(), true.into());
+let config = LlmCallConfig::new("mistral-large-4")
+    .with_mistral_api(MistralApi::Responses);
 ```
 
 Use the same provider, API key, and `/v1` base URL. The option sends requests to
-`/v1/responses`; removing it or setting it to `false` restores Chat Completions.
+`/v1/responses`; `MistralApi::ChatCompletions` restores Chat Completions.
+The typed extension stores the selection in `driver_options` internally.
+Existing callers setting `mistral/responses` to a boolean remain supported,
+including hosts setting the option on a runtime agent.
 This is a Framework driver option; there is no separate hosted provider type or
 UI protocol selector.
 

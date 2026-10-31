@@ -1210,7 +1210,6 @@ impl OpenResponsesProtocolChatDriver {
     /// The transcript conversion, plus each recorded tool change rendered after
     /// the input it took effect at, before the next assistant output, when
     /// `inline` is set.
-    #[cfg(test)]
     fn build_input_with_changes(
         messages: &[Message],
         supports_phases: bool,

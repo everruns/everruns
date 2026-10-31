@@ -24,8 +24,10 @@
 // context window. Every alias is listed as its own entry carrying the same
 // canonical `name`, so only the canonical entry is kept.
 
+mod options;
 mod responses;
 
+pub use options::{MistralApi, MistralConfigExt};
 pub use responses::MISTRAL_RESPONSES_OPTION;
 
 use async_trait::async_trait;
