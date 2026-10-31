@@ -261,8 +261,20 @@ other than the one its release tag names, the plan holds back every crate still
 at that version, previously published ones included. A version is published from
 one tree, never finished from a later one. Before v0.34.2 only never-published
 crates were held back, and runs triggered by later pushes to `main` finished
-0.34.1 from three different commits. When the fix has to change source, cut the
-next patch version instead (v0.34.0 was finished by v0.34.1, v0.34.1 by v0.34.2).
+0.34.1 from three different commits. When the fix has to change source, the
+version is lost and only the next patch version can finish it (v0.34.0 was
+finished by v0.34.1, v0.34.1 by v0.34.2).
+
+**Spending tags to repair a release is a hard blocker.** An agent never creates,
+deletes or re-creates release tags, and never cuts another version, to get past
+a failed release. It stops and reports the failure, what it would cost (which
+tags or version numbers), and the options, and waits for the user's explicit
+decision. A pre-approval to "release" or "ship" does not cover it. 0.50.0 was
+lost this way: its crate tags were created at two commits that each failed the
+full-CI gate, so 0.50.1 had to finish it. Prevent it instead: before merging the
+release PR, run full CI on its head (`ci.yml` `workflow_dispatch` with
+`full=true`) and merge only when it is green, so the gate that runs after the
+tags exist has nothing new to find.
 
 **Every crate tag is created up front, in one atomic push.** GitHub refuses a
 `GITHUB_TOKEN` push of a ref whose tree has different workflow files from the
