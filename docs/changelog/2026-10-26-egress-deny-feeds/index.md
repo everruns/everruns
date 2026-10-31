@@ -5,6 +5,7 @@ date: 2026-10-26
 kind: improvement
 significance: minor
 products: [platform]
+release: "0.50.0"
 surfaces: [operations]
 links:
   docs: [/sre/environment-variables/]

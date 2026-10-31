@@ -8,12 +8,15 @@
 
 - Preserve saved answer identity and workload counters when a worker resumes between the answer and turn completion. See [Sans-IO Turn State](foundations/sans-io-turn-state.md).
 
-- Refresh Bashkit to consume the patched Wasmtime runtime without advisory exceptions. See [Bashkit requirements](execution/bashkit-requirements.md).
+- Raise the Bashkit dependency floor to 0.20.2 for Wasmtime 48.0.8 security fixes without advisory exceptions. See [Bashkit requirements](execution/bashkit-requirements.md) and [Dependency Surface](project/dependency-surface.md).
 
 * **MCP resource continuations.** HTTP resource reads share tool-call input
   handling, preserve method/URI and connection identity, isolate consent scope,
   and bound negotiation and all continuation rounds by one deadline. See
   [MCP Server Specification](integrations/mcp-servers.md).
+
+- Add outbound MCP client metadata-document negotiation with existing-client precedence and capability-based DCR fallback. See [Runtime MCP](integrations/runtime-mcp.md).
+
 ## 2026-10-29
 
 - Split the public generative UI gallery into eight Reference category pages, with a short overview, cross-links, and redirects for the original gallery URL.

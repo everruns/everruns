@@ -168,6 +168,10 @@ pub struct AuthorizationServerMetadata {
     /// Dynamic client registration endpoint, when the server offers one.
     #[serde(default)]
     pub registration_endpoint: Option<String>,
+    /// Whether the issuer accepts an HTTPS Client ID Metadata Document URL.
+    /// Absence is not support; never infer support from an endpoint URL.
+    #[serde(default)]
+    pub client_id_metadata_document_supported: bool,
     /// Scopes the server advertises.
     #[serde(default)]
     pub scopes_supported: Vec<String>,
@@ -176,14 +180,52 @@ pub struct AuthorizationServerMetadata {
     pub code_challenge_methods_supported: Vec<String>,
 }
 
-/// A client registered dynamically (RFC 7591), or configured by hand.
+/// A configured, dynamically registered, or public metadata-document client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisteredClient {
-    /// Issued client identifier.
+    /// Issued client identifier, or the exact metadata-document URL for CIMD.
     pub client_id: String,
     /// Issued secret, for confidential clients only.
     #[serde(default)]
     pub client_secret: Option<String>,
+}
+
+/// Validate a host-owned Client ID Metadata Document URL without fetching it.
+///
+/// The authorization server resolves the document. The host must publish matching
+/// `client_id`, `client_name`, and `redirect_uris` metadata, with token endpoint
+/// authentication `none` for this public-client flow. Keep the original string:
+/// the document's identifier is compared exactly, without URL normalization.
+pub fn validate_client_metadata_url(client_id: &str) -> Result<()> {
+    let invalid = || OAuthError::Malformed {
+        what: "client metadata URL",
+        message:
+            "expected an HTTPS URL with a non-root path, no userinfo, fragment, or dot segments"
+                .to_string(),
+    };
+    let parsed = Url::parse(client_id).map_err(|_| invalid())?;
+    // Url normalizes dot segments, backslashes, and some whitespace. Check the
+    // original spelling too, so validation cannot change the client identity.
+    let (_, authority_and_path) = client_id.split_once("://").ok_or_else(invalid)?;
+    let (authority, path_and_query) = authority_and_path.split_once('/').ok_or_else(invalid)?;
+    let raw_path = path_and_query.split(['?', '#']).next().unwrap_or_default();
+    let has_dot_segment = raw_path.split('/').any(|segment| {
+        let dots = segment.to_ascii_lowercase().replace("%2e", ".");
+        dots == "." || dots == ".."
+    });
+    if parsed.scheme() != "https"
+        || parsed.host_str().is_none()
+        || parsed.path() == "/"
+        || authority.contains('@')
+        || parsed.fragment().is_some()
+        || has_dot_segment
+        || client_id
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || c == '\\')
+    {
+        return Err(invalid());
+    }
+    Ok(())
 }
 
 /// Request body for dynamic client registration.
@@ -675,6 +717,71 @@ mod tests {
     use crate::egress::{EgressError, EgressResponse, EgressResult};
     use async_trait::async_trait;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn client_metadata_capability_requires_a_boolean() {
+        for (field, expected) in [(None, false), (Some(false), false), (Some(true), true)] {
+            let mut value = serde_json::json!({
+                "issuer": "https://auth.example",
+                "authorization_endpoint": "https://auth.example/authorize",
+                "token_endpoint": "https://auth.example/token"
+            });
+            if let Some(field) = field {
+                value["client_id_metadata_document_supported"] = field.into();
+            }
+            let metadata: AuthorizationServerMetadata =
+                serde_json::from_value(value.clone()).unwrap();
+            assert_eq!(metadata.client_id_metadata_document_supported, expected);
+            for invalid in [
+                serde_json::json!("true"),
+                serde_json::json!(1),
+                serde_json::Value::Null,
+            ] {
+                value["client_id_metadata_document_supported"] = invalid;
+                assert!(
+                    serde_json::from_value::<AuthorizationServerMetadata>(value.clone()).is_err()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn client_metadata_url_obeys_cimd_identifier_rules() {
+        for valid in [
+            "https://client.example/oauth.json",
+            "https://client.example:8443/oauth/client.json",
+            // Queries are discouraged, but not forbidden by the draft.
+            "https://client.example/oauth.json?version=1",
+        ] {
+            validate_client_metadata_url(valid).unwrap();
+        }
+        for invalid in [
+            "",
+            "client.json",
+            "http://client.example/client.json",
+            "http://127.0.0.1/client.json",
+            "https://client.example",
+            "https://client.example/",
+            "https://client.example/#fragment",
+            "https://client.example/client.json#fragment",
+            "https://user@client.example/client.json",
+            "https://user:pass@client.example/client.json",
+            "https://@client.example/client.json",
+            "https://client.example/./client.json",
+            "https://client.example/a/../client.json",
+            "https://client.example/%2e/client.json",
+            "https://client.example/.%2E/client.json",
+            "https://client.example/%2e%2E/client.json",
+            " https://client.example/client.json",
+            "https://client.example/cli\nent.json",
+            "https://client.example/a\\client.json",
+        ] {
+            assert!(
+                validate_client_metadata_url(invalid).is_err(),
+                "accepted {invalid:?}"
+            );
+        }
+    }
 
     /// Egress double: answers by URL, records what was sent. Tests exercise
     /// the whole client without a socket, which is the payoff of routing OAuth

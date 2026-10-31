@@ -26,3 +26,9 @@ yolop mcp login linear
 ```
 
 See [MCP servers](https://github.com/everruns/yolop#mcp-servers), [#661](https://github.com/everruns/yolop/pull/661) and [#677](https://github.com/everruns/yolop/pull/677).
+
+## Update 2026-10-30
+
+Distributors can now supply a hosted client identity for
+[metadata-document negotiation](/changelog/2026-10-30-mcp-client-metadata-negotiation/),
+with dynamic registration retained as a fallback.
