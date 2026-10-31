@@ -79,6 +79,7 @@ async fn work_chat_multi_chat_needs_no_coordination_and_rejects_unauthenticated_
         .json();
     assert_eq!(bootstrap["interface_mode"], "multi_chat");
     assert_eq!(bootstrap["features"]["threads"], false);
+    assert!(bootstrap["logo"].is_null(), "no avatar yet");
     call(
         &server,
         Method::POST,
@@ -92,6 +93,28 @@ async fn work_chat_multi_chat_needs_no_coordination_and_rejects_unauthenticated_
         bootstrap.get("execution").is_none(),
         "No provider secrets in public bootstrap"
     );
+}
+
+#[tokio::test]
+async fn work_chat_config_uses_the_agent_avatar() {
+    let server = TestServer::in_memory().await;
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    publish(&server, &channel).await.assert_success();
+    server
+        .put(
+            &format!("/v1/agents/{}/avatar/preset", channel.agent_id),
+            json!({"preset_id": "familiars-patch"}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    let bootstrap: Value = server
+        .get(&format!("/v1/channels/{}/chat/config", channel.channel_id))
+        .await
+        .assert_success()
+        .json();
+    let logo = bootstrap["logo"].as_str().expect("agent avatar");
+    assert!(logo.starts_with("/v1/avatars/avatar_"), "{logo}");
+    assert!(logo.ends_with("/circle-64.png"), "{logo}");
 }
 
 #[tokio::test]

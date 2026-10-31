@@ -20,6 +20,7 @@ import {
 type Config = {
   name: string;
   description?: string;
+  logo?: string;
   interface_mode: "single_with_threads" | "multi_chat";
   features: { threads: boolean; files: boolean };
   models?: Array<{ id: string; name: string }>;
@@ -242,6 +243,7 @@ function WorkChat({ config }: { config: Config }) {
           next.interface_mode !== config.interface_mode ||
           next.name !== config.name ||
           next.description !== config.description ||
+          next.logo !== config.logo ||
           next.features.files !== config.features.files ||
           next.features.threads !== config.features.threads ||
           JSON.stringify(next.models) !== JSON.stringify(config.models)
@@ -620,7 +622,8 @@ function WorkChat({ config }: { config: Config }) {
     >
       <aside className={sidebar ? "sidebar open" : "sidebar"}>
         <div className="brand">
-          ◉ <span>{config.name}</span>
+          <AgentLogo src={config.logo} variant="brand" />
+          <span>{config.name}</span>
         </div>
         {config.interface_mode === "multi_chat" ? (
           <button className="primary" onClick={create}>
@@ -838,7 +841,7 @@ function WorkChat({ config }: { config: Config }) {
         <section className="conversation" aria-label="Conversation">
           {!messages.length && (
             <div className="welcome">
-              <div className="mark">◉</div>
+              <AgentLogo src={config.logo} variant="welcome" />
               <h1>{config.name}</h1>
               <p>
                 {config.description || "Bring a question, a task, or something you want to build."}
@@ -1296,6 +1299,23 @@ function QuestionForm({
       })}
       <button disabled={sending}>Continue</button>
     </form>
+  );
+}
+function AgentLogo({ src, variant }: { src?: string; variant: "brand" | "welcome" }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed)
+    return (
+      <span className={variant === "brand" ? "brand-mark" : "mark"} aria-hidden="true">
+        ◉
+      </span>
+    );
+  return (
+    <img
+      className={variant === "brand" ? "brand-logo" : "mark-logo"}
+      src={src}
+      alt=""
+      onError={() => setFailed(true)}
+    />
   );
 }
 function initials(name: string) {

@@ -43,6 +43,20 @@ pub(super) fn routes() -> Router<ChannelApiState> {
     router.merge(experience::routes())
 }
 
+/// This channel's agent avatar, as a public circle preset, or nothing.
+async fn agent_logo(
+    state: &ChannelApiState,
+    context: &crate::domains::agent_channels::ingress::IngressContext,
+) -> Option<String> {
+    let agent = state
+        .db
+        .get_agent(context.org_id, context.agent_id?)
+        .await
+        .ok()??;
+    let avatar = crate::domains::agents::record::AgentAvatar::from_uuid(agent.avatar_id?);
+    Some(avatar.path(crate::domains::agents::avatar::AvatarShape::Circle, 64))
+}
+
 fn public_url(channel: &str) -> Option<String> {
     let domain = std::env::var("CHAT_DOMAIN").ok()?;
     if domain.is_empty()
@@ -105,7 +119,9 @@ pub(crate) async fn get_work_chat_config(
         let features = validate_agent(&state, &context, &channel).await?;
         Ok(Json(json!({"channel_id":channel.public_id,"name":context.name,"description":context.description,
             "experience":"work_chat","interface_mode":cfg.interface_mode,"features":features,
-            "org_members":cfg.execution.org_members,"models":experience::models(&state, context.org_id, &cfg).await?,"public_url":public_url(&channel.public_id.to_string())})).into_response())
+            "org_members":cfg.execution.org_members,"models":experience::models(&state, context.org_id, &cfg).await?,
+            "logo":agent_logo(&state, &context).await,
+            "public_url":public_url(&channel.public_id.to_string())})).into_response())
     }.await;
     result.unwrap_or_else(|response| response)
 }

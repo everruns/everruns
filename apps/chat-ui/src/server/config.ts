@@ -48,11 +48,22 @@ export function safeMutation(request: Request) {
   const origin = request.headers.get("origin");
   return origin === `https://${hostOf(request)}`;
 }
+const AGENT_LOGO = /^\/v1\/avatars\/(avatar_[0-9a-f]{32})\/circle-64\.png$/;
+
+/** Same-origin path for this channel's agent avatar. Anything else is dropped. */
+export function chatLogo(value: unknown): string | undefined {
+  if (typeof value !== "string") return;
+  const id = value.match(AGENT_LOGO)?.[1];
+  return id ? `/api/chat/logo/${id}` : undefined;
+}
+
 export async function bootstrap(channel: string) {
   const response = await fetch(`${settings().upstream}/v1/channels/${channel}/chat/config`, {
     cache: "no-store",
     signal: AbortSignal.timeout(10000),
   });
   if (!response.ok) throw new Error("Chat unavailable");
-  return response.json();
+  const config = await response.json();
+  if (config && typeof config === "object") config.logo = chatLogo(config.logo);
+  return config;
 }

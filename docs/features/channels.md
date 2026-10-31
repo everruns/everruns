@@ -239,7 +239,9 @@ Publishing a channel alone does not provision hosting or DNS.
 
 The sidebar shows who is signed in. Their name comes from the identity
 provider, with email and picture when those claims are present. A provider
-that sends no name leaves the Work Chat label in place.
+that sends no name leaves the Work Chat label in place. The sidebar and the
+empty conversation use the Agent's avatar. An Agent with no avatar keeps the
+round mark.
 
 The hosted chat renders Markdown, OpenUI charts and all 69 standard A2UI 1.0
 components inline, using the same renderer as console chat. See

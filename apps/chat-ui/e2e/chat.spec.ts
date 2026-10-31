@@ -49,14 +49,16 @@ test.beforeEach(async ({ page }) => {
     const url = new URL(route.request().url()),
       path = url.pathname;
     let data: unknown = {};
-    if (path === "/api/chat/config") {
+    if (path === "/api/chat/config" || path.startsWith("/api/chat/logo/")) {
       await route.continue();
       return;
     }
     if (path.endsWith("/sse")) {
       await route.fulfill({
         contentType: "text/event-stream",
-        body: events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+        body: path.includes("/session_new/")
+          ? ""
+          : events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
       });
       return;
     }
@@ -112,11 +114,30 @@ test("multi-chat renders transcript, workspace and a new conversation", async ({
   await expect(
     page.getByRole("heading", { name: "A focused launch, with room to learn" }),
   ).toBeVisible();
+  const logo = page.locator(".brand-logo");
+  await expect(logo).toHaveAttribute(
+    "src",
+    "/api/chat/logo/avatar_01933b5a000070008000000000000001",
+  );
+  await expect(logo).toHaveJSProperty("complete", true);
+  await expect(logo).not.toHaveJSProperty("naturalWidth", 0);
+  expect(
+    (
+      await request.get(`${origin}/api/chat/logo/avatar_00000000000000000000000000000000`)
+    ).status(),
+  ).toBe(404);
   await page.getByRole("button", { name: "Workspace", exact: true }).first().click();
   await expect(page.getByRole("button", { name: "▤ launch-brief.md" })).toBeVisible();
   await page.screenshot({ path: "../../work/work-chat-multi.png", fullPage: true });
   await page.getByRole("button", { name: "New conversation" }).click();
   await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+  const welcome = page.locator(".mark-logo");
+  await expect(welcome).toHaveAttribute(
+    "src",
+    "/api/chat/logo/avatar_01933b5a000070008000000000000001",
+  );
+  await expect(welcome).toHaveJSProperty("complete", true);
+  await expect(welcome).not.toHaveJSProperty("naturalWidth", 0);
 });
 test("single chat keeps a main conversation and exposes agent threads", async ({
   page,
