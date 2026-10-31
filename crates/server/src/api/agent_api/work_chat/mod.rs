@@ -98,6 +98,7 @@ async fn work_chat_bootstrap(state: &ChannelApiState, id: &str) -> ApiResponse<R
         "description": context.description,
         "experience": "work_chat",
         "interface_mode": cfg.interface_mode,
+        "membership": cfg.membership,
         "features": features,
         "org_members": cfg.execution.org_members,
         "logo": agent_logo(state, &context).await,

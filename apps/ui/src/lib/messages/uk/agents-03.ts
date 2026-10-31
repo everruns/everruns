@@ -1,6 +1,21 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 export const messages: Readonly<Record<string, string>> = {
   Advanced: "Додатково",
+  "Who can use this chat": "Хто може користуватися цим чатом",
+  "Open access": "Відкритий доступ",
+  "Anyone can register and sign in.": "Будь-хто може зареєструватися і ввійти.",
+  "Single user + invites": "Один користувач і запрошення",
+  "Only one person, plus the people they invite.": "Лише одна особа і люди, яких вона запрошує.",
+  "Organization users": "Користувачі організації",
+  "Members of this organization can sign in.": "Увійти можуть учасники цієї організації.",
+  "This person": "Ця особа",
+  "They sign in with this email.": "Ця особа входить із цією адресою електронної пошти.",
+  Invites: "Запрошення",
+  "One email per line. Each person signs in with their own account.":
+    "Одна адреса на рядок. Кожна особа входить зі свого облікового запису.",
+  "Enter this person's email.": "Введіть адресу електронної пошти цієї особи.",
+  "Use email addresses, one per line, up to 50.":
+    "Укажіть адреси електронної пошти, по одній на рядок, не більше ніж 50.",
   "Require visitors to sign in with Google. When on, every request must present a valid Google account; signed-in visitors skip the Turnstile challenge.":
     "Вимагати від відвідувачів входити в обліковий запис Google. Коли ввімкнено, кожен запит має містити дійсний обліковий запис Google; відвідувачі, які ввійшли в систему, пропускають завдання Турнікет.",
   Required: "Обов’язково",

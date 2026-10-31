@@ -1,6 +1,20 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
   Advanced: "高级",
+  "Who can use this chat": "谁可以使用此聊天",
+  "Open access": "开放访问",
+  "Anyone can register and sign in.": "任何人都可以注册并登录。",
+  "Single user + invites": "单个用户和邀请",
+  "Only one person, plus the people they invite.": "仅限一个人，以及其邀请的人。",
+  "Organization users": "组织用户",
+  "Members of this organization can sign in.": "本组织的成员可以登录。",
+  "This person": "此人",
+  "They sign in with this email.": "此人使用此电子邮件登录。",
+  Invites: "邀请",
+  "One email per line. Each person signs in with their own account.":
+    "每行一个电子邮件。每个人使用自己的帐户登录。",
+  "Enter this person's email.": "输入此人的电子邮件。",
+  "Use email addresses, one per line, up to 50.": "请输入电子邮件地址，每行一个，最多 50 个。",
   "Require visitors to sign in with Google. When on, every request must present a valid Google account; signed-in visitors skip the Turnstile challenge.":
     "要求访问者使用 Google 登录。启用后，每个请求都必须提供有效的 Google 帐户；已登录的访客可跳过十字转门挑战。",
   Required: "必填",

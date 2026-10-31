@@ -78,6 +78,7 @@ async fn work_chat_multi_chat_needs_no_coordination_and_rejects_unauthenticated_
         .assert_success()
         .json();
     assert_eq!(bootstrap["interface_mode"], "multi_chat");
+    assert_eq!(bootstrap["membership"], "open");
     assert!(bootstrap.get("models").is_none());
     assert_eq!(bootstrap["features"]["threads"], false);
     assert!(bootstrap["logo"].is_null(), "no avatar yet");
@@ -1073,4 +1074,161 @@ async fn work_chat_message_submission_fits_worker_thread_stack() {
             }).unwrap().join().unwrap()
     }).await.unwrap();
     response.assert_status(StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn work_chat_membership_chooses_who_can_sign_in() {
+    use everruns_server::domains::agent_channels::record::work_chat::WorkChatConfig;
+    use everruns_server::domains::agent_channels::work_chat::identity_admitted;
+    use everruns_server::storage::CreateUserRow;
+    let server = TestServer::in_memory().await;
+    let channel = setup(&server, json!([]), "multi_chat").await;
+    let url = format!(
+        "/v1/agents/{}/channels/{}",
+        channel.agent_id, channel.channel_id
+    );
+    let missing = server
+        .patch(
+            &url,
+            json!({"channel_config":{"interface_mode":"multi_chat","membership":"invites","execution":{"visibility":"full"}}}),
+        )
+        .await;
+    let missing = missing.assert_status(StatusCode::BAD_REQUEST);
+    assert!(missing.text().contains("email"), "{}", missing.text());
+    server
+        .patch(
+            &url,
+            json!({"channel_config":{"interface_mode":"multi_chat","membership":"external_oidc","execution":{"visibility":"full"}}}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    server
+        .patch(
+            &url,
+            json!({"channel_config":{
+                "interface_mode":"multi_chat",
+                "membership":"invites",
+                "member_email":"Owner@Example.com",
+                "invites":["A@Example.com","a@example.com","owner@example.com"],
+                "execution":{"visibility":"full"}
+            }}),
+        )
+        .await
+        .assert_success();
+    let saved: Value = server.get(&url).await.assert_success().json();
+    assert_eq!(saved["channel_config"]["membership"], "invites");
+    assert_eq!(saved["channel_config"]["member_email"], "owner@example.com");
+    assert_eq!(saved["channel_config"]["invites"], json!(["a@example.com"]));
+    server
+        .patch(
+            &url,
+            json!({"channel_config":{"interface_mode":"multi_chat","membership":"org_users","member_email":"Owner@Example.com","invites":["a@example.com"],"execution":{"visibility":"full"}}}),
+        )
+        .await
+        .assert_success();
+    let saved: Value = server.get(&url).await.assert_success().json();
+    assert_eq!(saved["channel_config"]["membership"], "org_users");
+    assert!(saved["channel_config"].get("member_email").is_none());
+    assert!(saved["channel_config"].get("invites").is_none());
+
+    async fn person(
+        server: &TestServer,
+        email: &str,
+        verified: bool,
+        external_id: Option<&str>,
+        member: bool,
+    ) {
+        let id = server
+            .db
+            .create_user(CreateUserRow {
+                email: email.to_string(),
+                name: email.to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: verified,
+                auth_provider: None,
+                auth_provider_id: None,
+                external_id: external_id.map(str::to_string),
+            })
+            .await
+            .unwrap()
+            .id;
+        if member {
+            server
+                .db
+                .ensure_membership(id, everruns_core::DEFAULT_ORG_ID, "member")
+                .await
+                .unwrap();
+        }
+    }
+    person(&server, "member@example.com", true, None, true).await;
+    person(&server, "outsider@example.com", true, None, false).await;
+    person(&server, "unverified@example.com", false, None, true).await;
+    person(
+        &server,
+        "linked@example.com",
+        false,
+        Some("idp-subject"),
+        true,
+    )
+    .await;
+    let org: WorkChatConfig = serde_json::from_value(json!({"membership":"org_users"})).unwrap();
+    let invites: WorkChatConfig = serde_json::from_value(json!({
+        "membership":"invites",
+        "member_email":"owner@example.com",
+        "invites":["a@example.com"]
+    }))
+    .unwrap();
+    let open = WorkChatConfig::default();
+    async fn admit(
+        server: &TestServer,
+        config: &WorkChatConfig,
+        subject: &str,
+        email: Option<&str>,
+    ) -> bool {
+        identity_admitted(
+            &server.db,
+            everruns_core::DEFAULT_ORG_ID,
+            config,
+            subject,
+            email,
+        )
+        .await
+        .unwrap()
+    }
+    assert!(admit(&server, &open, "anyone", None).await);
+    assert!(admit(&server, &org, "no-such-subject", Some("member@example.com")).await);
+    assert!(admit(&server, &org, "idp-subject", None).await);
+    assert!(
+        !admit(
+            &server,
+            &org,
+            "no-such-subject",
+            Some("outsider@example.com")
+        )
+        .await
+    );
+    assert!(
+        !admit(
+            &server,
+            &org,
+            "no-such-subject",
+            Some("unverified@example.com")
+        )
+        .await
+    );
+    assert!(!admit(&server, &org, "no-such-subject", None).await);
+    assert!(
+        admit(
+            &server,
+            &invites,
+            "owner-subject",
+            Some("Owner@Example.com")
+        )
+        .await
+    );
+    assert!(admit(&server, &invites, "guest", Some("a@example.com")).await);
+    assert!(!admit(&server, &invites, "guest", Some("member@example.com")).await);
+    assert!(!admit(&server, &invites, "guest", None).await);
 }

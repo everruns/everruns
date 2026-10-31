@@ -317,21 +317,23 @@ export function ApiFields({
           </div>
         )}
       </div>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <Label htmlFor={`${id}_org_members`}>{ui("Organization members")}</Label>
-          <p className="text-xs text-muted-foreground">
-            {ui(
-              "Members may call this agent with their own personal access token, using their own connections.",
-            )}
-          </p>
+      {!hosted && (
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <Label htmlFor={`${id}_org_members`}>{ui("Organization members")}</Label>
+            <p className="text-xs text-muted-foreground">
+              {ui(
+                "Members may call this agent with their own personal access token, using their own connections.",
+              )}
+            </p>
+          </div>
+          <Switch
+            id={`${id}_org_members`}
+            checked={value.orgMembers}
+            onCheckedChange={(checked) => set("orgMembers", checked)}
+          />
         </div>
-        <Switch
-          id={`${id}_org_members`}
-          checked={value.orgMembers}
-          onCheckedChange={(checked) => set("orgMembers", checked)}
-        />
-      </div>
+      )}
       {hosted && (
         <FoldedSettings summary={ui("Advanced")}>
           <div className="grid gap-4 md:grid-cols-2">{limitFields}</div>

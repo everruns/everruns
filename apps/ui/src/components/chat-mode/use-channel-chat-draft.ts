@@ -67,6 +67,9 @@ const schemas = {
     ...common,
     api: apiMetadata,
     chatInterface: z.enum(["single_with_threads", "multi_chat"]),
+    chatMembership: z.enum(["open", "invites", "org_users"]),
+    chatMemberEmail: draftText,
+    chatInvites: draftText,
   }),
 };
 

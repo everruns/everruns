@@ -212,6 +212,7 @@ coordination capability does not qualify.
   "channel_type": "work_chat",
   "channel_config": {
     "interface_mode": "multi_chat",
+    "membership": "open",
     "execution": {
       "visibility": "full",
       "errors": "public"
@@ -220,10 +221,16 @@ coordination capability does not qualify.
 }
 ```
 
-Consumers are separate from console members. Configure channel identity methods
-and optional organization-member access through the existing
-[Agent API authentication](/features/agent-api/) settings. The browser host uses
-its deployment's OIDC provider and host-only sessions. It shows streamed replies,
+Choose who can sign in. **Open access** admits anyone who can register and sign
+in with the deployment's identity provider. On Everruns Cloud that is an
+[Everruns ID](https://id.everruns.com). **Single user + invites** admits one
+email address plus the people you list. **Organization users** admits current
+members of this organization. Someone who is not included is turned away at
+sign-in. A publisher-chosen provider, such as an external OpenID Connect
+issuer, is not a membership mode yet.
+
+Consumers are separate from console members. The browser host uses its
+deployment's identity provider and host-only sessions. It shows streamed replies,
 work activity, threads, questions and permitted approvals. Workspace tools enable
 file browsing and editing; read-only files remain protected. Provider reasoning,
 debug records and private runtime mounts are excluded.

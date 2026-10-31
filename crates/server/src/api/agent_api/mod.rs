@@ -184,6 +184,12 @@ async fn authorize(
                 "This credential may not act for an end user",
             ));
         }
+        Ok(Err(ApiAuthError::NotAdmitted)) => {
+            return Err(error(
+                StatusCode::FORBIDDEN,
+                "You do not have access to this chat",
+            ));
+        }
         Ok(Err(ApiAuthError::Misconfigured)) => {
             return Err(error(StatusCode::FORBIDDEN, "This agent is misconfigured"));
         }

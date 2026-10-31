@@ -19,9 +19,14 @@ and configuration mutations use that same contract; invalidating a live channel
 rolls back the mutation. Runtime rechecks protect against deployment changes.
 
 Consumers are virtual users, not console members. Channel-bound runtime tokens
-reach consumer session and self-service routes only. Organization membership is
-an optional execution auth method. Identity providers remain extensible through
-the existing channel verifier and execution configuration.
+reach consumer session and self-service routes only. Who may sign in is the
+channel membership: open (anyone the deployment identity provider accepts),
+invites (one verified email plus invited emails), or organization users
+(a current member, matched by external id or by a verified email on a verified
+account). An unverified email is not an identity. The deployment provider is
+configured, not hardcoded. A publisher-chosen provider is a later membership
+variant. Personal access tokens for organization members stay an execution
+auth method on API channels.
 
 Sessions, workspaces, tasks, questions and approvals use existing services.
 The channel introduces no retention policy. One main conversation is bound per

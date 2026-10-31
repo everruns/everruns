@@ -1,6 +1,22 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
   Advanced: "Avanzado",
+  "Who can use this chat": "Quién puede usar este chat",
+  "Open access": "Acceso abierto",
+  "Anyone can register and sign in.": "Cualquier persona puede registrarse e iniciar sesión.",
+  "Single user + invites": "Una persona e invitaciones",
+  "Only one person, plus the people they invite.": "Solo una persona, más las personas que invite.",
+  "Organization users": "Usuarios de la organización",
+  "Members of this organization can sign in.":
+    "Los miembros de esta organización pueden iniciar sesión.",
+  "This person": "Esta persona",
+  "They sign in with this email.": "Inicia sesión con este correo.",
+  Invites: "Invitaciones",
+  "One email per line. Each person signs in with their own account.":
+    "Un correo por línea. Cada persona inicia sesión con su propia cuenta.",
+  "Enter this person's email.": "Introduzca el correo de esta persona.",
+  "Use email addresses, one per line, up to 50.":
+    "Use direcciones de correo, una por línea, hasta 50.",
   "Require visitors to sign in with Google. When on, every request must present a valid Google account; signed-in visitors skip the Turnstile challenge.":
     "Requerir que los visitantes inicien sesión con Google. Cuando está activado, cada solicitud debe presentar una cuenta de Google válida; los visitantes registrados se saltan el desafío Turnstile.",
   Required: "Requerido",
