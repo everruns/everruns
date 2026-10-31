@@ -104,8 +104,7 @@ impl MessageRetriever for DbMessageRetriever {
         session_id: SessionId,
         message_id: MessageId,
     ) -> Result<Option<RuntimeMessage>> {
-        let messages = self.load(session_id).await?;
-        Ok(messages.into_iter().find(|m| m.id == message_id))
+        retrieve_message(&self.db, session_id, message_id).await
     }
 
     async fn load(&self, session_id: SessionId) -> Result<Vec<RuntimeMessage>> {
@@ -114,7 +113,7 @@ impl MessageRetriever for DbMessageRetriever {
         let mut messages = Vec::with_capacity(events.len());
 
         for event_row in events {
-            match event_to_message(&event_row.data, &event_row.event_type) {
+            match row_to_message(&event_row) {
                 Ok(message) => messages.push(message),
                 Err(e) => {
                     tracing::warn!("Failed to parse message from event {}: {}", event_row.id, e);
@@ -157,7 +156,7 @@ impl MessageRetriever for DbMessageRetriever {
         // Convert events to messages
         let mut messages = Vec::with_capacity(events.len());
         for event_row in events {
-            match event_to_message(&event_row.data, &event_row.event_type) {
+            match row_to_message(&event_row) {
                 Ok(message) => messages.push(message),
                 Err(e) => {
                     tracing::warn!("Failed to parse message from event {}: {}", event_row.id, e);
@@ -211,6 +210,43 @@ impl MessageRetriever for DbMessageRetriever {
 // ============================================================================
 // Event Parsing
 // ============================================================================
+
+/// Shared by the runtime retriever and both worker transports. Turn startup
+/// asks for one input; loading history here copies and parses the whole window
+/// and cannot find inputs outside that window.
+pub(crate) async fn retrieve_message(
+    db: &StorageBackend,
+    session_id: SessionId,
+    message_id: MessageId,
+) -> Result<Option<RuntimeMessage>> {
+    use futures::TryStreamExt;
+
+    let mut events = db.message_events_by_id(session_id, message_id);
+    while let Some(event) = events.try_next().await.store_err()? {
+        match event_to_message(&event.data, &event.event_type) {
+            Ok(message) if message.id == message_id => return Ok(Some(message)),
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!(event_id = %event.id, error = %e, "Failed to parse message from event");
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Convert a stored message event row to a RuntimeMessage.
+///
+/// Tool results carry no stored timestamp of their own, so they take the
+/// event's. A load-time `now()` would re-render every `<facts>` block that
+/// follows a tool result on each request and lose the provider prompt cache
+/// from the first tool call on.
+fn row_to_message(row: &crate::storage::EventRow) -> std::result::Result<RuntimeMessage, String> {
+    let mut message = event_to_message(&row.data, &row.event_type)?;
+    if message.role == RuntimeMessageRole::ToolResult {
+        message.created_at = row.ts;
+    }
+    Ok(message)
+}
 
 /// Convert stored event data to a RuntimeMessage
 ///
@@ -343,6 +379,269 @@ pub fn create_db_message_retriever(db: Arc<StorageBackend>) -> DbMessageRetrieve
 // ============================================================================
 // Tests
 // ============================================================================
+
+#[cfg(test)]
+mod lookup_tests {
+    //! Single-message retrieval must not depend on the conversation window.
+
+    use super::*;
+    use crate::storage::CreateEventRow;
+
+    fn assert_message(actual: Option<RuntimeMessage>, expected: &RuntimeMessage) {
+        assert_eq!(
+            serde_json::to_value(actual.unwrap()).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+    }
+
+    async fn store(
+        db: &StorageBackend,
+        session_id: SessionId,
+        event_type: &str,
+        data: serde_json::Value,
+    ) {
+        db.create_event(CreateEventRow {
+            session_id,
+            event_type: event_type.into(),
+            ts: Utc::now(),
+            context: serde_json::json!({}),
+            data,
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    async fn history(db: &StorageBackend, session_id: SessionId, count: usize) {
+        // Bulk fixture: real event rows and triggers, without thousands of client
+        // round trips. Distinct message ids and a 1 KiB payload model long chats.
+        let data = serde_json::to_value(InputMessageData::new(RuntimeMessage::user(
+            "x".repeat(1024),
+        )))
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO events (session_id, sequence, event_type, ts, context, data) \
+             SELECT $1, allocate_event_sequence($1), 'input.message', NOW(), '{}', \
+                    jsonb_set($3, '{message,id}', to_jsonb('message_' || replace(gen_random_uuid()::text, '-', ''))) \
+             FROM generate_series(1, $2)",
+        )
+        .bind(session_id.uuid())
+        .bind(count as i32)
+        .bind(data)
+        .execute(db.database().pool())
+        .await
+        .unwrap();
+    }
+
+    /// Loading history twice must give the model the same transcript: a tool
+    /// result keeps the time it was stored, not the time it was loaded.
+    #[tokio::test]
+    async fn loaded_tool_results_keep_their_stored_time() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = db.create_test_session().await;
+        let stored_at = Utc::now() - chrono::Duration::hours(1);
+        db.create_event(CreateEventRow {
+            session_id: session,
+            event_type: "tool.completed".into(),
+            ts: stored_at,
+            context: serde_json::json!({}),
+            data: serde_json::json!({
+                "tool_call_id": "call_1", "tool_name": "test",
+                "success": true, "status": "success",
+                "result": [{"type": "text", "text": "result"}]
+            }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+        let retriever = DbMessageRetriever::new(db.clone());
+        let loaded = retriever.load(session).await.unwrap();
+        let filtered = retriever
+            .load_filtered(MessageQuery::new(session))
+            .await
+            .unwrap();
+        for message in [&loaded[0], &filtered[0]] {
+            assert_eq!(message.role, RuntimeMessageRole::ToolResult);
+            // Postgres keeps microseconds.
+            assert_eq!(
+                message.created_at.timestamp_micros(),
+                stored_at.timestamp_micros()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn get_finds_messages_older_than_the_history_window() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = db.create_test_session().await;
+        let retriever = DbMessageRetriever::new(db.clone());
+        let first = retriever
+            .add(session.uuid(), InputMessage::user("original task"))
+            .await
+            .unwrap();
+        history(
+            &db,
+            session,
+            crate::storage::repository::MESSAGE_SAFETY_LIMIT,
+        )
+        .await;
+
+        assert!(
+            retriever
+                .load(session)
+                .await
+                .unwrap()
+                .iter()
+                .all(|m| m.id != first.id)
+        );
+        assert_message(retriever.get(session, first.id).await.unwrap(), &first);
+    }
+
+    #[tokio::test]
+    async fn get_preserves_message_formats_and_session_isolation() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = db.create_test_session().await;
+        let other_session = db.create_test_session().await;
+        let retriever = DbMessageRetriever::new(db.clone());
+
+        for legacy in [false, true] {
+            for agent in [false, true] {
+                let message = if agent {
+                    RuntimeMessage::assistant("answer")
+                } else {
+                    RuntimeMessage::user("question")
+                };
+                let event = if agent {
+                    Event::new(
+                        session,
+                        EventContext::empty(),
+                        OutputMessageCompletedData::new(message.clone()),
+                    )
+                } else {
+                    Event::new(
+                        session,
+                        EventContext::empty(),
+                        InputMessageData::new(message.clone()),
+                    )
+                };
+                let data = if legacy {
+                    serde_json::to_value(&event).unwrap()
+                } else {
+                    serde_json::to_value(&event.data).unwrap()
+                };
+                store(
+                    &db,
+                    session,
+                    if agent {
+                        "output.message.completed"
+                    } else {
+                        "input.message"
+                    },
+                    data,
+                )
+                .await;
+                assert_message(retriever.get(session, message.id).await.unwrap(), &message);
+                assert!(
+                    retriever
+                        .get(other_session, message.id)
+                        .await
+                        .unwrap()
+                        .is_none()
+                );
+            }
+        }
+        assert!(
+            retriever
+                .get(session, MessageId::new())
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        let malformed_id = MessageId::new();
+        store(
+            &db,
+            session,
+            "input.message",
+            serde_json::json!({"message": {"id": malformed_id}}),
+        )
+        .await;
+        assert!(
+            retriever
+                .get(session, malformed_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        // The old loader skipped malformed rows. A duplicate id must not hide a
+        // later valid message, and the first valid occurrence still wins.
+        let mut valid = RuntimeMessage::user("recovered input");
+        valid.id = malformed_id;
+        store(
+            &db,
+            session,
+            "input.message",
+            serde_json::to_value(InputMessageData::new(valid.clone())).unwrap(),
+        )
+        .await;
+        assert_message(retriever.get(session, malformed_id).await.unwrap(), &valid);
+        let mut duplicate = valid.clone();
+        duplicate.content = vec![ContentPart::text("later duplicate")];
+        store(
+            &db,
+            session,
+            "input.message",
+            serde_json::to_value(InputMessageData::new(duplicate)).unwrap(),
+        )
+        .await;
+        assert_message(retriever.get(session, malformed_id).await.unwrap(), &valid);
+    }
+
+    #[tokio::test]
+    async fn input_lookup_excludes_assistant_messages_and_other_sessions() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = db.create_test_session().await;
+        let other_session = db.create_test_session().await;
+        let retriever = DbMessageRetriever::new(db.clone());
+        let input = retriever
+            .add(session.uuid(), InputMessage::user("input"))
+            .await
+            .unwrap();
+        let output = RuntimeMessage::assistant("output");
+        store(
+            &db,
+            session,
+            "output.message.completed",
+            serde_json::to_value(OutputMessageCompletedData::new(output.clone())).unwrap(),
+        )
+        .await;
+
+        let found = db
+            .find_input_message_event(session, input.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_message(
+            Some(event_to_message(&found.data, &found.event_type).unwrap()),
+            &input,
+        );
+        assert!(
+            db.find_input_message_event(session, output.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            db.find_input_message_event(other_session, input.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+}
 
 #[cfg(test)]
 mod tests {

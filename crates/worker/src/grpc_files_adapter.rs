@@ -84,6 +84,21 @@ impl GrpcAdapter {
 
 #[async_trait]
 impl SessionFileSystem for GrpcAdapter {
+    async fn rename_directory(&self, session: SessionId, from: &str, to: &str) -> Result<()> {
+        match self
+            .files_command(
+                session,
+                "move_workspace_file",
+                json!({
+                    "session_id": session.to_string(), "src_path": from, "dst_path": to,
+                }),
+            )
+            .await?
+        {
+            Ok(_) => Ok(()),
+            Err(error) => Err(command_failure("rename directory", error)),
+        }
+    }
     fn session_scoped_path(&self, path: &str) -> bool {
         everruns_contracts::knowledge::is_mount(path)
     }

@@ -1460,6 +1460,11 @@
             "example": "pk_live_...",
             "type": "string"
           },
+          "v2DashboardUrl": {
+            "description": "Base URL of the new Daytona dashboard. The dashboard links to it, with the selected organization id appended, from its \"Switch to the new Daytona\" entry point when that is enabled for the organization. Absent when the deployment does not advertise one.",
+            "example": "https://app.daytona.com",
+            "type": "string"
+          },
           "version": {
             "description": "Daytona version",
             "example": "0.0.1",
@@ -4085,6 +4090,11 @@
             "description": "Whether to block all network access for the sandbox",
             "example": false,
             "type": "boolean"
+          },
+          "networkPolicyError": {
+            "description": "Outcome of the runner's most recent network policy change: why the network settings fields (what was requested) are not what the runner enforces. Absent when the latest change was applied; a new request leaves it as it is until its own outcome is known.",
+            "example": "persist updated proxy policy binding: operation not permitted",
+            "type": "string"
           },
           "organizationId": {
             "description": "The organization ID of the sandbox",

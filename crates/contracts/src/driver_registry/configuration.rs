@@ -119,6 +119,10 @@ pub struct CacheDiagnosticsConfig {
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
 pub struct LlmCallConfig {
+    /// Prefer a native, whole-response provider request when incremental output
+    /// has no consumer. Best effort: drivers retain streaming for protocols or
+    /// request features that require it (background recovery, long decode).
+    pub prefer_non_streaming: bool,
     /// Durable Astra baseline and effective effort; absent for other modes.
     pub reasoning_state: Option<crate::reasoning_updates::ReasoningState>,
     pub model: String,

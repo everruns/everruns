@@ -245,7 +245,13 @@ class Policy(unittest.TestCase):
                 self.assertIn('mcp_acts_as_grpc_test::', focused.risk_filters([path]))
 
     def test_selected_server_artifacts_run_with_filters_and_cargo_context(self):
-        selection = dict(packages=['everruns-server'], risk_targets=['router'], risk_filters=['picked::'])
+        server = dict(id='server', name='everruns-server',
+                      manifest_path='/repo/crates/server/Cargo.toml', dependencies=[],
+                      targets=[{'kind': ['lib']}])
+        selection = focused.select({'packages': [server], 'workspace_members': ['server']},
+                                   ['crates/server/tests/domain/db_pool_isolation_test.rs'],
+                                   Path('/repo'))['include'][0]
+        selection['risk_targets'] = ['router']
         commands = list(focused.commands(selection))
         self.assertEqual(len(commands), 1)
         self.assertIn('--no-run', commands[0])
@@ -269,7 +275,7 @@ fn cargo_context() {
             for target in ['contracts', 'router']:
                 (root/f'tests/{target}.rs').write_text(fixture)
             (root/'tests/domain.rs').write_text('''
-mod picked {
+mod db_pool_isolation_test {
     #[test]
     fn selected() { assert!(std::env::var("FAIL_SELECTED").is_err(), "selected failure"); }
 }

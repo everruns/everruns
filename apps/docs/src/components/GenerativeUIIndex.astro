@@ -1,0 +1,41 @@
+---
+import samples from "../../../ui/generative-ui/tests/standard-samples.json";
+import { galleryCategories, GALLERY_ROOT } from "../../generative-ui-catalog.mjs";
+import { withBase } from "../../site.config.mjs";
+---
+<div class="gallery-index">
+  {galleryCategories.map(({ group, slug, description }) => {
+    const examples = samples.filter((sample) => sample.group === group);
+    const components = [...new Set(examples.flatMap((sample) => sample.covers))];
+    const indices = samples.flatMap((sample, index) => sample.group === group ? [index] : []);
+    return <a data-examples={indices.join(",")} href={withBase(`${GALLERY_ROOT}/${slug}/`)}>
+      <h2>{group}</h2>
+      <p>{description}</p>
+      <p class="count">{examples.length} examples · {components.length} components</p>
+      <p class="components">{components.join(" · ")}</p>
+    </a>;
+  })}
+</div>
+<script>
+  // Old gallery bookmarks retain their fixture anchors after the permanent redirect.
+  const forwardExample = () => {
+    const index = location.hash.match(/^#example-(\d+)$/)?.[1];
+    if (!index) return;
+    const target = [...document.querySelectorAll<HTMLAnchorElement>(".gallery-index a")]
+      .find((link) => link.dataset.examples?.split(",").includes(index));
+    if (target) location.replace(`${target.href}${location.hash}`);
+  };
+  forwardExample();
+  addEventListener("hashchange", forwardExample);
+</script>
+<style>
+  .gallery-index { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-block: 1.5rem; }
+  .gallery-index a { display: block; padding: 1.25rem; border: 1px solid var(--sl-color-gray-5); border-radius: 6px; text-decoration: none; color: var(--sl-color-text); }
+  .gallery-index a:hover { border-color: var(--sl-color-text-accent); background: var(--sl-color-gray-6); }
+  .gallery-index a:focus-visible { outline: 2px solid var(--sl-color-text-accent); outline-offset: 3px; }
+  .gallery-index h2 { margin: 0 0 .5rem; font-size: 1.1rem; }
+  .gallery-index p { margin: .5rem 0 0; font-size: .875rem; }
+  .gallery-index .count { font-weight: 600; }
+  .gallery-index .components { color: var(--sl-color-gray-2); font-size: .75rem; overflow-wrap: anywhere; }
+  @media (max-width: 560px) { .gallery-index { grid-template-columns: 1fr; } }
+</style>

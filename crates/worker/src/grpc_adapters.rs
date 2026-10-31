@@ -83,9 +83,8 @@ pub struct GrpcClient {
 impl GrpcClient {
     /// Set session status (started, active, idle).
     ///
-    /// Acknowledgement only (EVE-882): the wire response still carries the
-    /// stored record for older workers, but status mutation exposes no
-    /// session record to the caller.
+    /// Acknowledgement only (EVE-882): the response carries no session
+    /// record.
     pub async fn set_session_status(
         &self,
         org_id: i64,
@@ -678,46 +677,6 @@ impl GrpcOrgAdapter {
             Err(error) if error.kind == 3 => Ok(None),
             Err(error) => Err(grpc_command_error_to_error(error)),
         }
-    }
-
-    async fn latest_terminal_turn_status(&self, session_id: SessionId) -> Result<Option<String>> {
-        const TURN_COMPLETED: &str = "turn.completed";
-        const TURN_FAILED: &str = "turn.failed";
-        const TURN_CANCELLED: &str = "turn.cancelled";
-        const TURN_SEALED: &str = "turn.sealed";
-
-        let response: serde_json::Value = self
-            .execute_platform_command(
-                "list_events",
-                serde_json::json!({
-                    "session_id": session_id.to_string(),
-                    "types": [TURN_COMPLETED, TURN_FAILED, TURN_CANCELLED, TURN_SEALED],
-                    "limit": 1,
-                    "order_desc": true,
-                }),
-            )
-            .await?;
-
-        let Some(event_type) = response
-            .get("data")
-            .and_then(|data| data.as_array())
-            .and_then(|events| events.first())
-            .and_then(|event| event.get("type"))
-            .and_then(|event_type| event_type.as_str())
-        else {
-            return Ok(None);
-        };
-
-        let status = match event_type {
-            TURN_COMPLETED => Some("completed"),
-            TURN_FAILED => Some("failed"),
-            TURN_CANCELLED => Some("cancelled"),
-            // A sealed turn is terminal but distinct from a failure: surface it
-            // as "sealed" so the parent agent can decide what to do next.
-            TURN_SEALED => Some("sealed"),
-            _ => None,
-        };
-        Ok(status.map(str::to_string))
     }
 }
 

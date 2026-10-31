@@ -38,11 +38,11 @@ cargo run -p everruns --features openai --example github_monitor -- --live OWNER
 
 ## Provider-native batches
 
-These examples use `ANTHROPIC_API_KEY` and the real Anthropic Message Batches API; they can incur charges and take up to 24 hours.
+These examples call real native provider batch APIs and can incur charges. Set `BATCH_PROVIDER=anthropic|openai|gemini|mistral|groq|fireworks`, enable its Cargo feature and configure its API key. Fireworks also requires `FIREWORKS_ACCOUNT_ID` and `FIREWORKS_ARTIFACT_ORIGIN`. Job duration and cancellation support vary by provider.
 
 | Example | What it demonstrates | Run |
 |---|---|---|
 | [`batch_classification.rs`](batch_classification.rs) | Submit, persist intent and ticket, resume, collect validated classifications or cancel | `cargo run -p everruns --features anthropic --example batch_classification -- submit /tmp/reviews-001` |
-| [`batch_eval.rs`](batch_eval.rs) | Batch three eval cases, poll and score answers by ID | `cargo run -p everruns --features anthropic --example batch_eval` |
+| [`batch_eval.rs`](batch_eval.rs) | Submit typed message lists, poll and score three eval cases by ID | `cargo run -p everruns --features anthropic --example batch_eval` |
 
 See [Batch Model Requests](https://everruns.com/docs/framework/batch-model-requests/) for recovery, tenant isolation, provider and hosting limitations.

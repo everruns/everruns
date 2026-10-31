@@ -150,6 +150,8 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     // signature, runtime token) after the channel is found, so a placeholder
     // channel is a 404 first. A PAT counts there only as an org member
     // (`agent_api_auth::org_member`), restricted to `*` in rollout step 3.
+    // Work Chat mutations also have valid-channel read-PAT denial coverage in
+    // `work_chat_org_members_require_full_scope_on_both_url_spellings`.
     ("POST", "/v1/apps/{}/a2a/{}", INGRESS),
     ("POST", "/v1/apps/{}/fcp", INGRESS),
     ("POST", "/v1/apps/{}/webhooks/{}", INGRESS),
@@ -158,6 +160,9 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     ("POST", "/v1/channels/{}/chat/main", INGRESS),
     ("POST", "/v1/channels/{}/sessions/{}/files", INGRESS),
     ("DELETE", "/v1/channels/{}/sessions/{}/files", INGRESS),
+    ("POST", "/v1/channels/{}/sessions/{}/settings", INGRESS),
+    ("POST", "/v1/channels/{}/sessions/{}/share", INGRESS),
+    ("DELETE", "/v1/channels/{}/sessions/{}/share", INGRESS),
     ("POST", "/v1/channels/{}/runtime-auth", INGRESS),
     ("POST", "/v1/channels/{}/sessions", INGRESS),
     ("POST", "/v1/channels/{}/sessions/{}/cancel", INGRESS),
@@ -178,6 +183,9 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     ("POST", "/v1/e/{}/chat/main", INGRESS),
     ("POST", "/v1/e/{}/sessions/{}/files", INGRESS),
     ("DELETE", "/v1/e/{}/sessions/{}/files", INGRESS),
+    ("POST", "/v1/e/{}/sessions/{}/settings", INGRESS),
+    ("POST", "/v1/e/{}/sessions/{}/share", INGRESS),
+    ("DELETE", "/v1/e/{}/sessions/{}/share", INGRESS),
     ("POST", "/v1/e/{}/runtime-auth", INGRESS),
     ("POST", "/v1/e/{}/sessions", INGRESS),
     ("POST", "/v1/e/{}/sessions/{}/cancel", INGRESS),

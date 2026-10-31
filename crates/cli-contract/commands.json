@@ -773,6 +773,44 @@
     ]
   },
   {
+    "wire_name": "plan_agent_costs",
+    "path": [
+      "agents"
+    ],
+    "verb": "cost-plan",
+    "description": "Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.",
+    "method": "POST",
+    "http_path": "/v1/agents/cost-plan",
+    "args": [
+      {
+        "field": "agent",
+        "long": "agent",
+        "kind": "json",
+        "required": true,
+        "help": "Request to preview the final agent shape with capabilities applied"
+      },
+      {
+        "field": "guidance",
+        "long": "guidance",
+        "kind": "string",
+        "required": false,
+        "help": "Optional description of the workload to plan."
+      },
+      {
+        "field": "locale",
+        "long": "locale",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Suggest task workloads for a draft without running or saving it",
+        "command": "everruns agents cost-plan --agent '{\"system_prompt\":\"Draft short customer replies\"}'"
+      }
+    ]
+  },
+  {
     "wire_name": "create_agent",
     "path": [
       "agents"
@@ -1318,6 +1356,58 @@
       {
         "intent": "Stop an agent answering on its exposed surfaces without deleting it",
         "command": "everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'"
+      }
+    ]
+  },
+  {
+    "wire_name": "disable_external_agent",
+    "path": [
+      "agents",
+      "external-worker"
+    ],
+    "verb": "disable",
+    "description": "Revoke external execution; queued sessions stay bound without native fallback.",
+    "method": "DELETE",
+    "http_path": "/v1/agents/{agent_id}/external-worker",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent public ID or name; the HTTP route supplies this value."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Revoke external execution while retaining queued work",
+        "command": "everruns agents external-worker disable --agent-id agent_01h9 --reason 'Pause external execution'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_external_agent",
+    "path": [
+      "agents",
+      "external-worker"
+    ],
+    "verb": "get",
+    "description": "Get an Agent's external execution endpoint.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/external-worker",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent public ID or name; the HTTP route supplies this value."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect an Agent's external runtime without credentials",
+        "command": "everruns agents external-worker get --agent-id agent_01h9"
       }
     ]
   },
@@ -10849,6 +10939,209 @@
       {
         "intent": "Clarify a template label while preserving the current sandbox specification",
         "command": "everruns sandbox-template-metadata update --id sbxtpl_01h9 --display-name 'Northstar review sandbox' --reason 'Clarify the template purpose'"
+      }
+    ]
+  },
+  {
+    "wire_name": "apply_sandbox_template_build",
+    "path": [
+      "sandbox-templates",
+      "builds"
+    ],
+    "verb": "apply",
+    "description": "Atomically apply a ready snapshot to its unchanged source template. Existing Agent and Session pins do not move.",
+    "method": "POST",
+    "http_path": "/v1/sandbox-template-builds/{id}/apply",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'sbxbuild' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Apply a Sandbox Template build",
+        "command": "everruns sandbox-templates builds apply --id sbxbuild_01933b5a000070008000000000000001"
+      }
+    ]
+  },
+  {
+    "wire_name": "cancel_sandbox_template_build",
+    "path": [
+      "sandbox-templates",
+      "builds"
+    ],
+    "verb": "cancel",
+    "description": "Cancel queued or running build work and clean up its disposable resources.",
+    "method": "POST",
+    "http_path": "/v1/sandbox-template-builds/{id}/cancel",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'sbxbuild' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Cancel a Sandbox Template build",
+        "command": "everruns sandbox-templates builds cancel --id sbxbuild_01933b5a000070008000000000000001"
+      }
+    ]
+  },
+  {
+    "wire_name": "discard_sandbox_template_build",
+    "path": [
+      "sandbox-templates",
+      "builds"
+    ],
+    "verb": "discard",
+    "description": "Remove an unused build artifact. Applied artifacts remain pinned and cannot be discarded.",
+    "method": "POST",
+    "http_path": "/v1/sandbox-template-builds/{id}/discard",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'sbxbuild' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Discard a Sandbox Template build",
+        "command": "everruns sandbox-templates builds discard --id sbxbuild_01933b5a000070008000000000000001"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_sandbox_template_build",
+    "path": [
+      "sandbox-templates",
+      "builds"
+    ],
+    "verb": "get",
+    "description": "Inspect a build attempt in the authenticated organization.",
+    "method": "GET",
+    "http_path": "/v1/sandbox-template-builds/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'sbxbuild' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Get a Sandbox Template build",
+        "command": "everruns sandbox-templates builds get --id sbxbuild_01933b5a000070008000000000000001"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_sandbox_template_builds",
+    "path": [
+      "sandbox-templates",
+      "builds"
+    ],
+    "verb": "list",
+    "description": "List twenty build attempts at an optional offset, bounded logs, and captured software notes.",
+    "method": "GET",
+    "http_path": "/v1/sandbox-templates/{id}/builds",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'sbxtpl' prefix"
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "List a Sandbox Template build",
+        "command": "everruns sandbox-templates builds list --id sbxtpl_01933b5a000070008000000000000001"
+      }
+    ]
+  },
+  {
+    "wire_name": "start_sandbox_template_build",
+    "path": [
+      "sandbox-templates",
+      "builds"
+    ],
+    "verb": "start",
+    "description": "Run an install script in fresh isolated compute and bake a reusable provider snapshot. Does not revise the template.",
+    "method": "POST",
+    "http_path": "/v1/sandbox-templates/{id}/builds",
+    "args": [
+      {
+        "field": "build_network",
+        "long": "build-network",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'sbxtpl' prefix"
+      },
+      {
+        "field": "install_script",
+        "long": "install-script",
+        "kind": "string",
+        "required": true,
+        "help": "POSIX shell install script, 1–32768 UTF-8 bytes."
+      },
+      {
+        "field": "metadata_path",
+        "long": "metadata-path",
+        "kind": "string",
+        "required": false,
+        "help": "Optional bounded, author-supplied Markdown captured from the builder."
+      },
+      {
+        "field": "source_revision_id",
+        "long": "source-revision-id",
+        "kind": "string",
+        "required": true,
+        "help": "Source revision to guard against concurrent template edits."
+      },
+      {
+        "field": "timeout_seconds",
+        "long": "timeout-seconds",
+        "kind": "integer",
+        "required": false,
+        "help": "Total build deadline, including installation and fresh verification, in seconds."
+      },
+      {
+        "field": "verification_command",
+        "long": "verification-command",
+        "kind": "string",
+        "required": false,
+        "help": "Optional check run after installation and again in fresh snapshot compute."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Start a Sandbox Template build",
+        "command": "everruns sandbox-templates builds start --id sbxtpl_01933b5a000070008000000000000001 --source-revision-id sbxtplrev_01933b5a000070008000000000000001 --install-script 'echo ready'"
       }
     ]
   },

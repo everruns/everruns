@@ -2,9 +2,11 @@
 title: French, German, Spanish, Chinese and British English
 description: Choose more interface languages, follow browser preferences and use regional formatting while keeping agent names portable across file formats.
 date: 2026-10-28
+cloud: 2026-10-28
 kind: feature
 significance: notable
 products: [framework, platform, cloud]
+release: "0.50.0"
 surfaces: [ui, api]
 links:
   docs: [/reference/agent-package/]

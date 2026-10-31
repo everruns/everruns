@@ -22,7 +22,6 @@ mod serve;
 use crate::api::sse::{SseConnectionLimits, SseConnectionTracker};
 use crate::auth::{self, AuthBackend};
 use crate::background::supervised_task::TaskSupervisor;
-use crate::live_updates::event_delivery::EventDelivery;
 use crate::live_updates::pg_listener_config::resolve_pg_listener_database_url;
 use crate::openapi::ApiDoc;
 use crate::server::{ServerConfig, build_router_with_prefix};
@@ -550,7 +549,7 @@ impl ServerAppBuilder {
         let event_delivery = if self.config.dev_mode {
             crate::live_updates::event_delivery::EventDelivery::in_memory()
         } else {
-            crate::live_updates::event_delivery::EventDelivery::from_env().await
+            crate::live_updates::event_delivery::EventDelivery::from_env(db.clone()).await
         };
         let resolve_listener_database_url = || {
             database_url
@@ -576,25 +575,6 @@ impl ServerAppBuilder {
 
         let sse_tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits::from_env()));
 
-        let event_broadcaster = if matches!(event_delivery, EventDelivery::Nats(_)) {
-            tracing::info!(
-                "Skipping legacy PostgreSQL event listener; NATS event delivery is active"
-            );
-            None
-        } else if let Some(database_url) = resolve_listener_database_url()?.as_ref() {
-            let broadcaster =
-                crate::live_updates::event_notifications::EventNotificationBroadcaster::new(
-                    database_url.clone(),
-                )
-                .await;
-            tracing::info!("Event notification broadcaster initialized for push-based SSE");
-            Some(Arc::new(broadcaster))
-        } else {
-            tracing::info!(
-                "Event notification broadcaster not available (DEV_MODE), SSE will use polling"
-            );
-            None
-        };
         let notification_broadcaster = if let Some(database_url) =
             resolve_listener_database_url()?.as_ref()
         {
@@ -649,7 +629,8 @@ impl ServerAppBuilder {
             db.clone(),
             sessions_state.session_service.clone(),
             auth_state.clone(),
-        );
+        )
+        .with_encryption(encryption.clone());
         let session_sandbox_state = session_sandbox_service.as_ref().map(|sandbox_service| {
             api::session_sandbox::AppState::new(
                 db.clone(),
@@ -682,7 +663,6 @@ impl ServerAppBuilder {
             ),
             event_service: event_service.clone(),
             sse_tracker: sse_tracker.clone(),
-            event_broadcaster,
             auth: auth_state.clone(),
         };
         let notifications_state = api::notifications::AppState {
@@ -962,7 +942,7 @@ impl ServerAppBuilder {
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
         );
-        let agent_triggers_state = api::agent_triggers::AppState::new(
+        let mut agent_triggers_state = api::agent_triggers::AppState::new(
             db.clone(),
             encryption.clone(),
             scheduler_store.clone(),
@@ -973,6 +953,7 @@ impl ServerAppBuilder {
         )
         .with_mcp_event_triggers(mcp_event_triggers.clone())
         .with_channels(channel_recovery.clone());
+        agent_triggers_state.external_egress = Some(host_composition.egress_service());
         let schedules_state = api::schedules::routes(
             api::schedules::ScheduleAppState::new(
                 db.clone(),
@@ -1083,10 +1064,7 @@ impl ServerAppBuilder {
             &mcp_endpoint_state,
         );
 
-        let health_state = health::HealthState {
-            auth_mode: format!("{:?}", auth_config.mode),
-            db: db.clone(),
-        };
+        let health_state = health::HealthState::new(&auth_config, &db, &event_delivery);
 
         let feature_flags_state = api::feature_flags::AppState {
             flags: feature_flags.clone(),
@@ -1124,6 +1102,7 @@ impl ServerAppBuilder {
             ))
             .merge(api::apps::routes(apps_state))
             .merge(api::agent_channels::routes(agent_triggers_state.clone()))
+            .merge(api::external_agents::routes(agent_triggers_state.clone()))
             .merge(api::agent_triggers::routes(agent_triggers_state))
             // Evals routes are conditionally merged below based on feature flag.
             .merge(api::harness_examples::routes(harness_examples_state))
@@ -1354,6 +1333,15 @@ impl ServerAppBuilder {
             utility_llm_service: host_composition.utility_llm_service(),
             error_reporter: error_reporter.clone(),
         };
+
+        background::spawn_custom_worker_server(&mut supervisor, db.clone(), event_service.clone())?;
+        background::spawn_external_workers(
+            &mut supervisor,
+            db.clone(),
+            event_service.clone(),
+            encryption.clone(),
+            host_composition.egress_service(),
+        )?;
 
         let worker_link = background::WorkerLinkDeps {
             db: db.clone(),

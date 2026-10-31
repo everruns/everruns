@@ -73,6 +73,16 @@ and doc comments. The trait owns ordinary file operations, canonical path
 presentation, and explicit host opt-in to writable Memory scopes and atomic
 create-only artifacts. Unsupported Memory operations fail closed.
 
+Directory rename is an optional, atomic store operation for materialized trees.
+The server-backed store preserves file identities and blob references while
+moving path metadata. Destinations must be absent, including implicit trees.
+Roots, moves into the source, readonly descendants, protected parents and mount
+crossings are rejected. The mount resolver permits the two primary workspace
+aliases but prevents relocating a nested mount. Decorators and other backends
+that do not explicitly support this guarantee reject it by default; recursive
+copy-and-delete is not a safe fallback. The remote worker uses the ordinary
+workspace move command and its session authorization.
+
 In-process worker hosts may supply the complete port through
 `WorkerAdapters::session_file_system`. `WorkerRuntimeHost` prefers it to the
 org-scoped remote command adapter. The direct server supplies `WorkspaceFileService`

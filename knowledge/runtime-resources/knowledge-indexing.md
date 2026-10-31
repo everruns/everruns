@@ -29,7 +29,7 @@ chunk text nor binary originals. Turbopuffer supports lexical and hybrid modes,
 including organization-owned encrypted credential references with no fallback
 when a selected credential is invalid.
 
-[Implementation](../../crates/server/src/domains/knowledge/indexing.rs) skips
+[Implementation](../../crates/server/src/domains/knowledge/indexing/mod.rs) skips
 unchanged Git blobs, retains immutable versions and caches embeddings by model
 profile and passage hash. Domain writes use the current cancel-safe transaction boundary, including
 composed-command rollback. Configuration rebuilds retain the published generation
@@ -47,6 +47,30 @@ work. Catalog qualification uses a synthetic million-file corpus (the weekly
 `knowledge_catalog` bench, with a per-page time budget); streaming and
 extraction budgets are tested independently of embedding costs. Configuring a collection for another model/account advances its generation;
 provider model edits outside that workflow do not automatically enqueue rebuilds.
+
+## Usage attribution and host metering
+
+Embedding usage retains the serving provider's account ID and managed flag for
+both background ingestion and session queries. Background calls write the usage
+ledger directly; queries use the existing generation-event listener. BYOK must
+remain distinguishable from host-managed inference, including when a query
+matches no documents. The embedding cache does not generate another inference
+usage record on a cache hit.
+
+The embeddings response preserves an optional provider response ID through both
+usage paths. Hosts can use the serving endpoint's identity to avoid billing an
+already-settled gateway operation a second time during provider migration.
+
+Deployment-owned Turbopuffer operations retain provider-reported resource
+receipts through the optional backend usage recorder. Immutable upsert batches
+have repeatable receipt identities; separate actual queries retain separate
+identities even when they return no results. Organization-owned indexer accounts
+do not install that recorder. Cleanup writes are excluded. The receipt journal
+contains resource quantities and provenance, never source content or credentials;
+it survives collection removal so a host can finish accounting already completed
+work. Monetary rates, credit deduction and hosted admission policy belong to the
+embedding host, not OSS. See [index usage](../../crates/server/src/domains/knowledge/usage.rs)
+and [backend receipts](../../crates/turbopuffer/src/lib.rs).
 
 ## Storage ownership
 
@@ -103,9 +127,10 @@ Backups need both catalog and content manifests; search indexes can be rebuilt.
 ## Incremental work and publication
 
 Incremental means avoiding unchanged work at each stage, not merely storing a
-hash. Current [sync](../../crates/server/src/domains/knowledge_indexes/source_sync/mod.rs)
+hash. The legacy [Knowledge Indexes sync](../../crates/server/src/domains/knowledge_indexes/source_sync/mod.rs)
 re-embeds all documents, allocates new IDs, commits replacement SQL rows and then
-deletes/recreates the active vector namespace. That is the behavior to replace.
+deletes/recreates the active vector namespace. This is the legacy implementation;
+unified Knowledge uses the incremental pipeline described in Status and boundaries.
 
 1. **Discover changes.** Enumerate source pages or consume a provider delta
    token. Record stable provider IDs, revisions, paths, metadata/ACL changes and

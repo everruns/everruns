@@ -1,4 +1,5 @@
 "use client";
+import { Slider } from "@/components/ui/slider";
 
 // Avatar picker for the Branding sheet: drop or choose an image, crop it to a
 // square, then upload. Saves immediately rather than with the page draft: it
@@ -274,8 +275,7 @@ function AvatarCropDialog({
         </div>
         <div className="flex items-center gap-3">
           <Minus className="size-4 text-muted-foreground" aria-hidden />
-          <input
-            type="range"
+          <Slider
             min={1}
             max={5}
             step={0.01}

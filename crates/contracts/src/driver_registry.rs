@@ -273,6 +273,10 @@ pub trait ChatDriver: Send + Sync {
 /// Implement ChatDriver for `Box<dyn ChatDriver>` to allow dynamic dispatch
 #[async_trait]
 impl ChatDriver for Box<dyn ChatDriver> {
+    fn batch_driver(&self) -> Option<&dyn crate::batch::BatchDriver> {
+        (**self).batch_driver()
+    }
+
     fn native_async_driver(
         &self,
         model: &str,
@@ -401,6 +405,26 @@ pub struct LlmResponse {
     pub reasoning: Vec<crate::reasoning::ReasoningContentPart>,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub metadata: LlmCompletionMetadata,
+}
+
+impl LlmResponse {
+    /// Expose a native whole response through the common runtime event reader.
+    pub fn into_stream(self) -> LlmResponseStream {
+        let mut events = Vec::new();
+        if !self.text.is_empty() {
+            events.push(Ok(LlmStreamEvent::TextDelta(self.text)));
+        }
+        events.extend(
+            self.reasoning
+                .into_iter()
+                .map(|part| Ok(LlmStreamEvent::ReasoningItem(part))),
+        );
+        if let Some(calls) = self.tool_calls.filter(|calls| !calls.is_empty()) {
+            events.push(Ok(LlmStreamEvent::ToolCalls(calls)));
+        }
+        events.push(Ok(LlmStreamEvent::Done(Box::new(self.metadata))));
+        Box::pin(futures::stream::iter(events))
+    }
 }
 
 // `LlmCallConfigBuilder` lives in `llm_call_config_builder.rs`.
@@ -641,6 +665,9 @@ pub struct EmbedResponse {
     /// that do not return a cost — direct OpenAI does not, same as the chat
     /// path (EVE-894).
     pub actual_cost_usd: Option<f64>,
+    /// Serving endpoint's response identity, when provided. Hosts use this to
+    /// distinguish gateway-billed work from directly billed model calls.
+    pub response_id: Option<String>,
 }
 
 /// Error returned by [`EmbeddingsDriver::embed`].

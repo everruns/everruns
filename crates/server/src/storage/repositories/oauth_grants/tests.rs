@@ -45,6 +45,7 @@ async fn refresh_token(db: &StorageBackend, client_id: &str, user_id: Uuid, gran
         scope: "mcp".to_string(),
         expires_at: Utc::now() + Duration::days(30),
         grant_id,
+        family_id: None,
     })
     .await
     .expect("create refresh token");

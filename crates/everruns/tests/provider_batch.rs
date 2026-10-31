@@ -5,8 +5,8 @@
 use std::time::Duration;
 
 use everruns::{
-    Model,
-    batch::{Batch, BatchError, BatchItemError, BatchStatus, BatchTicket},
+    LlmCallConfig, Model,
+    batch::{Batch, BatchError, BatchItemError, BatchRequest, BatchStatus, BatchTicket},
     providers::anthropic::Anthropic,
 };
 use serde_json::{Value, json};
@@ -569,4 +569,192 @@ async fn reconciled_jobs_recover_a_ticket_without_resubmission() {
             .is_err()
     );
     assert_eq!(server.received_requests().await.unwrap().len(), count);
+}
+
+fn message_request(id: &str, text: &str) -> BatchRequest {
+    use everruns::llm::{Message, MessageRole};
+    let mut config = LlmCallConfig::new("claude-sonnet-5");
+    config.max_tokens = Some(64);
+    BatchRequest {
+        id: id.into(),
+        messages: vec![
+            Message::text(MessageRole::System, "Classify the text."),
+            Message::text(MessageRole::User, text),
+        ],
+        config,
+    }
+}
+
+#[tokio::test]
+async fn message_lists_submit_and_collect_through_the_same_client() {
+    let server = MockServer::builder().start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages/batches"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(job("in_progress")))
+        .mount(&server)
+        .await;
+    state(&server, "ended").await;
+    results(
+        &server,
+        vec![success("second", "two"), success("first", "one")],
+    )
+    .await;
+    let batch = client(&server, "tenant-a/account-a");
+    let ticket = batch
+        .submit_requests(vec![
+            message_request("first", "Delivery arrived early."),
+            message_request("second", "The replacement does not turn on."),
+        ])
+        .await
+        .unwrap();
+    let saved = serde_json::to_vec(&ticket).unwrap();
+    let ticket: BatchTicket = serde_json::from_slice(&saved).unwrap();
+    let collected = batch.collect(&ticket).await.unwrap();
+    assert_eq!(collected[0].id, "first");
+    assert_eq!(collected[0].result.as_ref().unwrap().text, "one");
+    assert_eq!(collected[1].id, "second");
+    let calls = server.received_requests().await.unwrap();
+    let body: Value = serde_json::from_slice(&calls[0].body).unwrap();
+    assert_eq!(body["requests"][0]["params"]["model"], "claude-sonnet-5");
+    assert_eq!(body["requests"][0]["params"]["max_tokens"], 64);
+    assert_eq!(
+        body["requests"][0]["params"]["system"],
+        "Classify the text."
+    );
+    assert_eq!(
+        body["requests"][0]["params"]["messages"][0]["content"][0]["text"],
+        "Delivery arrived early."
+    );
+    assert_eq!(
+        body["requests"][1]["params"]["messages"][0]["content"][0]["text"],
+        "The replacement does not turn on."
+    );
+}
+
+#[tokio::test]
+async fn message_list_validation_rejects_the_whole_batch_before_io() {
+    let server = MockServer::builder().start().await;
+    let batch = client(&server, "tenant-a/account-a");
+    let mut no_messages = message_request("empty", "text");
+    no_messages.messages.clear();
+    for requests in [
+        vec![],
+        vec![
+            message_request("duplicate", "one"),
+            message_request("duplicate", "two"),
+        ],
+        vec![
+            message_request("ok", "one"),
+            message_request("../invalid", "two"),
+        ],
+        vec![message_request("ok", "one"), no_messages],
+    ] {
+        assert!(matches!(
+            batch.submit_requests(requests).await,
+            Err(BatchError::InvalidRequest(_))
+        ));
+    }
+    let mut per_request_auth = message_request("auth", "text");
+    per_request_auth
+        .config
+        .extra_headers
+        .push(("x-api-key".into(), "other-account-key".into()));
+    assert!(matches!(
+        batch.submit_requests(vec![per_request_auth]).await,
+        Err(BatchError::InvalidRequest(_))
+    ));
+    let buffered = batch.request("buffered", request()).unwrap();
+    assert!(matches!(
+        buffered
+            .submit_requests(vec![message_request("explicit", "two")])
+            .await,
+        Err(BatchError::InvalidRequest(_))
+    ));
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn message_list_submission_preserves_multipart_messages() {
+    use everruns::{
+        LlmContentPart,
+        llm::{Message, MessageRole},
+    };
+    let server = MockServer::builder().start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages/batches"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(job("in_progress")))
+        .mount(&server)
+        .await;
+    let mut item = message_request("image", "unused");
+    let messages: Vec<everruns::llm::Message> = vec![Message::parts(
+        MessageRole::User,
+        vec![
+            LlmContentPart::text("Describe this image."),
+            LlmContentPart::Image {
+                url: "data:image/png;base64,aW1n".into(),
+            },
+        ],
+    )];
+    item.messages = messages;
+    client(&server, "tenant-a/account-a")
+        .submit_requests(vec![item])
+        .await
+        .unwrap();
+    let calls = server.received_requests().await.unwrap();
+    let body: Value = serde_json::from_slice(&calls[0].body).unwrap();
+    let content = &body["requests"][0]["params"]["messages"][0]["content"];
+    assert_eq!(content[0]["text"], "Describe this image.");
+    assert_eq!(
+        content[1],
+        json!({"type":"image", "source":{"type":"base64", "media_type":"image/png", "data":"aW1n"}})
+    );
+}
+
+#[tokio::test]
+async fn message_list_submission_keeps_uncertain_creations_non_retryable() {
+    let server = MockServer::builder().start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages/batches"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+    let error = client(&server, "tenant-a/account-a")
+        .submit_requests(vec![message_request("first", "text")])
+        .await
+        .unwrap_err();
+    assert_eq!(error, BatchError::SubmissionUncertain);
+    assert!(!error.retryable());
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn message_lists_accept_converted_core_conversations() {
+    use everruns_core::{RuntimeMessage, llm_conversions::llm_message_from_message};
+    let server = MockServer::builder().start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages/batches"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(job("in_progress")))
+        .mount(&server)
+        .await;
+    let conversation = [
+        RuntimeMessage::system("Existing core instructions."),
+        RuntimeMessage::user("Existing core user input."),
+    ];
+    let mut item = message_request("core", "unused");
+    item.messages = conversation.iter().map(llm_message_from_message).collect();
+    client(&server, "tenant-a/account-a")
+        .submit_requests(vec![item])
+        .await
+        .unwrap();
+    let calls = server.received_requests().await.unwrap();
+    let body: Value = serde_json::from_slice(&calls[0].body).unwrap();
+    assert_eq!(
+        body["requests"][0]["params"]["system"],
+        "Existing core instructions."
+    );
+    assert_eq!(body["requests"][0]["params"]["messages"][0]["role"], "user");
+    assert_eq!(
+        body["requests"][0]["params"]["messages"][0]["content"][0]["text"],
+        "Existing core user input."
+    );
 }

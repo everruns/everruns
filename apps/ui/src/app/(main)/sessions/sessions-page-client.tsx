@@ -1,4 +1,5 @@
 "use client";
+import { Pagination } from "@/components/ui/pagination";
 
 import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
 
@@ -22,7 +23,7 @@ import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 import { SessionIcon } from "@/components/icons/facet-icons";
 import { useCallback, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Activity, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { Activity, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
@@ -400,31 +401,11 @@ export default function SessionsPageClient() {
           {Math.min(offset + SESSIONS_PAGE_SIZE, total)} {ui("of")} {total}{" "}
           {pluralize(total, "run", undefined, displayLocale)}
         </span>
-        {totalPages > 1 && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={filters.page === 0}
-              onClick={() => applyFilters({ ...filters, page: filters.page - 1 })}
-            >
-              <ChevronLeft className="size-4" />
-              {ui("Previous")}
-            </Button>
-            <span>
-              {ui("Page")} {filters.page + 1} {ui("of")} {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={filters.page >= totalPages - 1}
-              onClick={() => applyFilters({ ...filters, page: filters.page + 1 })}
-            >
-              {ui("Next")}
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
-        )}
+        <Pagination
+          page={filters.page}
+          totalPages={totalPages}
+          onPageChange={(page) => applyFilters({ ...filters, page })}
+        />
       </PageFooter>
     </PageContainer>
   );

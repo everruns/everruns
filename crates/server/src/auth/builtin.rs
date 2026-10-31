@@ -196,7 +196,7 @@ impl BuiltinAuthBackend {
             .await
             .map_err(|e| {
                 tracing::error!("Failed to fetch personal access token: {}", e);
-                AuthError::unauthorized("Failed to validate personal access token")
+                AuthError::unavailable("Failed to validate personal access token")
             })?
             .ok_or_else(|| AuthError::unauthorized("Invalid personal access token"))?;
 
@@ -234,7 +234,7 @@ impl BuiltinAuthBackend {
             .await
             .map_err(|e| {
                 tracing::error!("Failed to fetch user for personal access token: {}", e);
-                AuthError::unauthorized("Failed to validate personal access token")
+                AuthError::unavailable("Failed to validate personal access token")
             })?
             .ok_or_else(|| AuthError::unauthorized("User not found for personal access token"))?;
 
@@ -247,7 +247,7 @@ impl BuiltinAuthBackend {
             .await
             .map_err(|e| {
                 tracing::error!("Failed to fetch orgs for personal access token user: {}", e);
-                AuthError::unauthorized("Failed to validate personal access token")
+                AuthError::unavailable("Failed to validate personal access token")
             })?;
 
         let organizations: Vec<OrgMembership> = user_orgs
@@ -295,7 +295,7 @@ impl BuiltinAuthBackend {
         // with previously issued JWTs until token expiry.
         let user = self.db.get_user(user_id).await.map_err(|e| {
             tracing::error!("Failed to fetch JWT user: {}", e);
-            AuthError::unauthorized("Failed to validate token user")
+            AuthError::unavailable("Failed to validate token user")
         })?;
         let Some(user) = user else {
             tracing::warn!(user_id = %user_id, "JWT subject user not found");
@@ -469,7 +469,7 @@ pub(super) async fn fetch_user_organizations(
 ) -> Result<Vec<OrgMembership>, AuthError> {
     let org_rows = db.list_user_organizations(user_id).await.map_err(|e| {
         tracing::error!("Failed to fetch user organizations: {}", e);
-        AuthError::unauthorized("Failed to fetch organizations")
+        AuthError::unavailable("Failed to fetch organizations")
     })?;
 
     Ok(org_rows
@@ -605,6 +605,43 @@ mod tests {
                 second.name, "Renamed User",
                 "validate must re-read user state from DB on every call"
             );
+        }
+
+        #[tokio::test]
+        async fn storage_failure_is_unavailable_not_unauthorized() {
+            use axum::http::StatusCode;
+            use axum::response::IntoResponse;
+
+            // A pool that can never connect stands in for a pool timeout or a
+            // database restart: the credential may be fine, so the client must
+            // be told to retry (503), not that its token is wrong (401).
+            let pool = sqlx::postgres::PgPoolOptions::new()
+                .acquire_timeout(std::time::Duration::from_millis(200))
+                .connect_lazy("postgres://unused@127.0.0.1:1/unused")
+                .unwrap();
+            let db = Arc::new(StorageBackend::from_database(
+                crate::storage::Database::new(pool),
+            ));
+            let backend = BuiltinAuthBackend::new(
+                AuthConfig::default(),
+                db,
+                Arc::new(crate::platform::oss_host_composition()),
+            );
+            let token = crate::auth::personal_access_token::generate_personal_access_token();
+
+            let error = backend
+                .validate_personal_access_token(&token.token)
+                .await
+                .expect_err("unreachable storage must fail");
+            assert_eq!(error.status, StatusCode::SERVICE_UNAVAILABLE);
+
+            let error = fetch_user_organizations(&backend.db, Uuid::new_v4())
+                .await
+                .expect_err("unreachable storage must fail");
+            assert_eq!(error.status, StatusCode::SERVICE_UNAVAILABLE);
+
+            let response = error.into_response();
+            assert_eq!(response.headers()["retry-after"], "1");
         }
 
         #[tokio::test]

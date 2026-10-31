@@ -29,7 +29,11 @@
 //! assert!(registry.has_driver(&everruns_contracts::DriverId::Fireworks));
 //! ```
 
+#[cfg(not(target_arch = "wasm32"))]
+mod batch;
 mod driver;
+#[cfg(not(target_arch = "wasm32"))]
+pub use batch::FireworksBatchConfig;
 
 pub use driver::{
     FIREWORKS_DEFAULT_API_URL, FireworksChatDriver, descriptor, from_env, is_fireworks_api_url,

@@ -75,7 +75,7 @@ pub fn provider(
 /// Mistral AI chat driver (OpenAI-compatible Chat Completions).
 #[derive(Clone)]
 pub struct MistralChatDriver {
-    inner: OpenAIProtocolChatDriver,
+    pub(crate) inner: OpenAIProtocolChatDriver,
     responses: everruns_contracts::OpenResponsesProtocolChatDriver,
 }
 
@@ -94,7 +94,7 @@ impl MistralChatDriver {
 /// `config` with a reasoning grade the model does not offer snapped to the
 /// highest grade it does. Unprofiled models pass through untouched: there is
 /// nothing to check the grade against.
-fn supported_effort(config: &LlmCallConfig) -> std::borrow::Cow<'_, LlmCallConfig> {
+pub(crate) fn supported_effort(config: &LlmCallConfig) -> std::borrow::Cow<'_, LlmCallConfig> {
     let Some(requested) = config.reasoning_effort.filter(|e| e.requests_reasoning()) else {
         return std::borrow::Cow::Borrowed(config);
     };
@@ -121,6 +121,11 @@ impl Default for MistralChatDriver {
 
 #[async_trait]
 impl ChatDriver for MistralChatDriver {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn batch_driver(&self) -> Option<&dyn everruns_contracts::batch::BatchDriver> {
+        Some(self)
+    }
+
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,

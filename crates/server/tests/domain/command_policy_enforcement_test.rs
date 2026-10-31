@@ -775,6 +775,7 @@ const ALLOWED_PUBLIC: &[&str] = &[
 /// Each has a matching `built_in_agent_rejects_*` test.
 const BUILT_IN_GUARDED_AGENT_COMMANDS: &[&str] = &[
     "connect_agent_source",
+    "register_external_agent",
     "delete_agent",
     "destroy_agent",
     "update_agent",
@@ -790,6 +791,9 @@ const BUILT_IN_GUARDED_AGENT_COMMANDS: &[&str] = &[
 /// agent's own definition is guarded; one that only creates something new, or
 /// attaches an org's own binding around the agent, is not.
 const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
+    // Revokes only an external routing binding, never the protected definition.
+    // Cleanup must remain available for built-in or archived agents.
+    "disable_external_agent",
     // Removes only the source binding and retains the current definition.
     "disconnect_agent_source",
     // Only reschedules an existing binding. Connecting a built-in is rejected,
@@ -830,6 +834,9 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     "analyze_agent",
     // Returns a revised draft from the utility LLM; creates nothing.
     "draft_agent",
+    // Suggests workloads from a draft and spends utility budget; never runs
+    // or changes an agent, including a built-in definition.
+    "plan_agent_costs",
     // --- Operational state on the agents row (EVE-1007) ----------------------
     // Unlike the bindings above these do write the `agents` row, so they are
     // exempted on a narrower ground: `exposures_suspended` is deployment state,
@@ -941,6 +948,55 @@ async fn built_in_agent_rejects_source_connect() {
     )
     .await
     .expect("an empty binding can be disconnected");
+    let retained = ctx
+        .db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id.to_string())
+        .await
+        .expect("reload agent")
+        .expect("agent remains");
+    assert!(retained.is_built_in);
+    assert_eq!(retained.system_prompt, row.system_prompt);
+}
+
+#[tokio::test]
+async fn built_in_agent_rejects_external_registration_but_allows_revocation() {
+    use everruns_server::domains::external_agents::{DisableExternalAgent, RegisterExternalAgent};
+
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(DefaultPermissionResolver),
+    );
+    let agent_id = seed_agent(&ctx, "external-built-in").await;
+    let row = ctx
+        .db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id.to_string())
+        .await
+        .expect("load agent")
+        .expect("agent exists");
+    ctx.db
+        .mark_agent_built_in(DEFAULT_ORG_ID, row.id)
+        .await
+        .expect("mark built-in");
+
+    // This must be rejected by the command guard even with no egress client,
+    // encryption service or installation opt-in configured.
+    let err = RegisterExternalAgent {
+        agent_id: agent_id.to_string(),
+        endpoint_url: "https://agent.example/".into(),
+        endpoint_secret: "synthetic-endpoint-secret-of-sufficient-length".into(),
+    }
+    .run(&ctx)
+    .await
+    .expect_err("built-in execution must remain protected");
+    assert!(err.message().contains("built-in agent"), "{err:?}");
+    assert!(!matches!(err.kind, CommandErrorKind::Forbidden(_)));
+
+    DisableExternalAgent {
+        agent_id: agent_id.to_string(),
+    }
+    .run(&ctx)
+    .await
+    .expect("revocation leaves the definition intact");
     let retained = ctx
         .db
         .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id.to_string())

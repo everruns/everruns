@@ -11,6 +11,8 @@ use crate::{LlmCallConfig, LlmResponse, ProviderEndpoint, driver_registry::Messa
 pub enum BatchError {
     #[error("provider does not support native batches")]
     Unsupported,
+    #[error("provider batch operation is unsupported: {0}")]
+    UnsupportedOperation(&'static str),
     #[error("invalid batch request: {0}")]
     InvalidRequest(&'static str),
     #[error("ticket does not belong to this batch client")]
@@ -19,6 +21,8 @@ pub enum BatchError {
     InvalidTicket,
     #[error("batch is still processing")]
     NotReady,
+    #[error("provider batch ended without item results: {reason:?}")]
+    JobFailed { reason: BatchItemError },
     #[error("invalid provider batch response: {0}")]
     Protocol(&'static str),
     #[error("provider batch HTTP error ({status})")]
@@ -90,7 +94,8 @@ pub struct BatchResult {
 ///
 /// Implementations must not retry creation after an ambiguous response, must
 /// validate remote IDs before constructing URLs, and must bound response reads.
-/// `max_bytes` applies to each HTTP response; `timeout` bounds each operation.
+/// `max_bytes` applies to each HTTP response; `timeout` bounds each HTTP request
+/// within an operation (for example uploading a file then creating a job).
 /// Poll, collect and cancel are repeatable with the same provider job ID.
 #[async_trait]
 pub trait BatchDriver: Send + Sync {
@@ -120,6 +125,21 @@ pub trait BatchDriver: Send + Sync {
         timeout: std::time::Duration,
         max_bytes: usize,
     ) -> Result<Vec<BatchResult>, BatchError>;
+
+    /// Collect against the original request IDs. Providers whose cancellation
+    /// omits unprocessed items can report those IDs as cancelled or expired,
+    /// while preserving successes. Never infer request identity from position.
+    /// The default retains compatibility with drivers returning every item.
+    async fn collect_for_requests(
+        &self,
+        endpoint: &ProviderEndpoint,
+        job_id: &str,
+        _request_ids: &[String],
+        timeout: std::time::Duration,
+        max_bytes: usize,
+    ) -> Result<Vec<BatchResult>, BatchError> {
+        self.collect(endpoint, job_id, timeout, max_bytes).await
+    }
 
     async fn cancel(
         &self,

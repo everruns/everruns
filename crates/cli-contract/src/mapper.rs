@@ -51,6 +51,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Pause or resume all of an agent's live channels at once.",
     ),
     (
+        "agents external-worker",
+        "Inspect or disable a customer-hosted agent runtime.",
+    ),
+    (
         "agents failures",
         "Sessions with failed turns, including recovered sessions.",
     ),
@@ -279,6 +283,14 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "sandbox-template-metadata",
         "Sandbox Template names and descriptions, without execution settings.",
+    ),
+    (
+        "sandbox-templates",
+        "Reusable sandbox configurations and their provider snapshots.",
+    ),
+    (
+        "sandbox-templates builds",
+        "Install scripts, snapshot verification, and new template revisions.",
     ),
     (
         "sandbox-targets",

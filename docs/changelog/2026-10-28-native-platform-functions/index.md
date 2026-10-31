@@ -5,6 +5,7 @@ date: 2026-10-28
 kind: improvement
 significance: notable
 products: [platform, cloud]
+release: "0.50.0"
 surfaces: [agent]
 links:
   docs: [/capabilities/platform/]

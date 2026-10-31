@@ -14,6 +14,7 @@ pub mod sources;
 #[cfg(test)]
 mod tests;
 pub mod types;
+mod usage;
 pub mod worker;
 use crate::domains::common::{CommandError, Ctx};
 use everruns_core::{Permission, Policy, Rule};

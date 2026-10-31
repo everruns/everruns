@@ -51,11 +51,12 @@ bedrock-default-credentials = ["bedrock", "dep:aws-config", "dep:aws-credential-
 chatgpt = ["dep:tokio", "dep:tracing", "dep:futures", "dep:anyhow", "dep:rand", "dep:sha2", "dep:base64", "dep:jsonwebtoken"]
 codex = ["chatgpt"]
 cloudflare = []
-fireworks = []
+fireworks = ["dep:tokio", "dep:uuid"]
+groq = ["dep:tokio"]
 gemini = ["dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
 mai = ["dep:tokio", "dep:tracing"]
 meta = []
-mistral = []
+mistral = ["dep:tokio"]
 openai = ["dep:futures", "dep:tokio", "dep:tracing", "dep:tokio-tungstenite", "dep:base64", "reqwest/multipart", "everruns-contracts/responses-websocket"]
 openrouter = ["dep:tokio", "dep:tracing"]
 typesafe = ["dep:tokio", "dep:tracing"]
@@ -69,6 +70,7 @@ async-trait.workspace = true
 # so the value stays untyped and each reader interprets its own.
 serde.workspace = true
 serde_json.workspace = true
+uuid = { workspace = true, optional = true }
 thiserror.workspace = true
 
 # Date/time (model `created` timestamps)
@@ -103,7 +105,7 @@ aws-credential-types = { version = "1", optional = true }
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-contracts (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off.
-everruns-contracts = { path = "../../contracts", version = "0.49.0", default-features = false, features = ["http"] }
+everruns-contracts = { path = "../../contracts", version = "0.50.0", default-features = false, features = ["http"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { workspace = true, optional = true }
@@ -182,9 +184,22 @@ required-features = ["openai"]
 name = "chatgpt_wire"
 required-features = ["chatgpt", "codex"]
 
+[[test]]
+name = "codex_builder_wire"
+required-features = ["codex"]
+
 [lints]
 workspace = true
 
 [[test]]
 name = "mistral_responses_wire"
 required-features = ["mistral"]
+
+[[test]]
+name = "non_streaming_wire"
+required-features = ["openai", "anthropic", "gemini"]
+
+[[bench]]
+name = "native_transport"
+harness = false
+required-features = ["openai"]

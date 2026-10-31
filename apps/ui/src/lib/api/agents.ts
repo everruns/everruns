@@ -3,7 +3,12 @@
 
 import { api, getApiBaseUrl, throwApiError } from "./client";
 import type { AgentAvatar } from "./agent-types";
-import type { AvatarPreset, AvatarPresetSelection, Communication } from "./schema-types";
+import type {
+  AgentCostPlan,
+  AvatarPreset,
+  AvatarPresetSelection,
+  Communication,
+} from "./schema-types";
 import { createCrudApi } from "./crud";
 import { withOrgHeader } from "./active-org";
 import type {
@@ -333,4 +338,13 @@ export function avatarPresetUrl(
   shape: "square" | "circle" = "square",
 ): string {
   return `${getApiBaseUrl()}/v1/avatar-presets/${encodeURIComponent(preset.id)}/${shape}-256.png`;
+}
+
+export type { AgentCostPlan, CostPlanTask as AgentCostPlanTask } from "./schema-types";
+export async function planAgentCosts(
+  agent: PreviewAgentRequest,
+  guidance: string,
+  locale: string,
+): Promise<AgentCostPlan> {
+  return (await api.post<AgentCostPlan>("/v1/agents/cost-plan", { agent, guidance, locale })).data;
 }

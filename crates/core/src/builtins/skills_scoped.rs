@@ -47,6 +47,9 @@ use serde_json::{Value, json};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
+use super::artifact_inspection::{
+    self, ArtifactInspection, ArtifactKind, ArtifactProvenance, inspect_artifact,
+};
 use super::skills::SKILLS_CAPABILITY_ID;
 
 /// Default VFS root for the workspace scope.
@@ -68,6 +71,25 @@ const SKILL_ACTIVATION_KIND: &str = "skill_activation";
 
 fn skill_activation_resource_id(name: &str) -> String {
     format!("{SKILL_ACTIVATION_KIND}:{name}")
+}
+
+fn inspect_skill(
+    content: &str,
+    session_id: SessionId,
+    scope: &SkillScope,
+    name: &str,
+    version: Option<&str>,
+) -> ArtifactInspection {
+    inspect_artifact(
+        content,
+        ArtifactProvenance {
+            kind: ArtifactKind::Skill,
+            namespace: session_id.to_string(),
+            scope: scope.label.clone(),
+            path: scope.skill_md_vfs(name),
+        },
+        version,
+    )
 }
 
 fn truncate_description(s: &str, max_chars: usize) -> String {
@@ -201,18 +223,58 @@ bundled with the agent). Use `list_skills` to see what's available and `activate
 /// the session `SessionFileSystem`.
 pub struct ScopedSkillsCapability {
     config: Arc<SkillsConfig>,
+    report_only_inspection: bool,
 }
 
 impl ScopedSkillsCapability {
     pub fn new(config: SkillsConfig) -> Self {
         Self {
             config: Arc::new(config),
+            report_only_inspection: false,
+        }
+    }
+
+    /// Opt into local heuristic reporting without changing execution policy.
+    pub fn with_report_only_inspection(mut self) -> Self {
+        self.report_only_inspection = true;
+        self
+    }
+
+    fn configured(&self, config: &Value) -> Self {
+        Self {
+            config: self.config.clone(),
+            report_only_inspection: config
+                .get("report_only_inspection")
+                .and_then(Value::as_bool)
+                .unwrap_or(self.report_only_inspection),
         }
     }
 }
 
 #[async_trait]
 impl Capability for ScopedSkillsCapability {
+    fn config_schema(&self) -> Option<Value> {
+        Some(artifact_inspection::config_schema())
+    }
+
+    fn validate_config(&self, config: &Value) -> Result<(), String> {
+        artifact_inspection::validate_config(config)
+    }
+
+    fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
+        self.configured(config).tools()
+    }
+
+    async fn system_prompt_contribution_with_config(
+        &self,
+        ctx: &SystemPromptContext,
+        config: &Value,
+    ) -> Option<String> {
+        self.configured(config)
+            .system_prompt_contribution(ctx)
+            .await
+    }
+
     fn localizations(&self) -> Vec<crate::capabilities::CapabilityLocalization> {
         vec![crate::capabilities::CapabilityLocalization::text(
             "uk",
@@ -259,6 +321,7 @@ impl Capability for ScopedSkillsCapability {
                 file_store.as_ref(),
                 ctx.session_id,
                 Some(MAX_SKILLS_SCAN_PER_SCOPE),
+                self.report_only_inspection,
             )
             .await;
             let visible: Vec<&DiscoveredSkill> = discovered
@@ -279,6 +342,12 @@ impl Capability for ScopedSkillsCapability {
                         "- **{}** [{}]: {}{}\n",
                         skill.name, skill.scope_label, desc, invocable
                     ));
+                    if let Some(report) = &skill.inspection {
+                        prompt.push_str(&format!(
+                            "  Inspection: {} heuristic findings{}; use list_skills for the version-bound report. This is not a safety verdict.\n",
+                            report.findings.len(), if report.truncated { " (incomplete scan)" } else { "" },
+                        ));
+                    }
                 }
                 if visible.len() > MAX_SKILLS_IN_PROMPT {
                     prompt.push_str(&format!(
@@ -300,9 +369,11 @@ impl Capability for ScopedSkillsCapability {
         let mut tools: Vec<Box<dyn Tool>> = vec![
             Box::new(ListSkillsTool {
                 config: self.config.clone(),
+                report_only_inspection: self.report_only_inspection,
             }),
             Box::new(ActivateSkillTool {
                 config: self.config.clone(),
+                report_only_inspection: self.report_only_inspection,
             }),
         ];
         if self.config.manage_tools {
@@ -382,6 +453,7 @@ impl Capability for ScopedSkillsCapability {
 
 /// One discovered skill after parsing its `SKILL.md`.
 struct DiscoveredSkill {
+    inspection: Option<ArtifactInspection>,
     scope_label: String,
     scope_index: usize,
     dir_name: String,
@@ -404,6 +476,7 @@ async fn discover_skills(
     fs: &dyn SessionFileSystem,
     session_id: SessionId,
     scan_limit: Option<usize>,
+    report_only_inspection: bool,
 ) -> Vec<DiscoveredSkill> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
@@ -426,8 +499,9 @@ async fn discover_skills(
                 Ok(Some(file)) => file.content.unwrap_or_default(),
                 _ => continue,
             };
-            let discovered = match parse_skill_md(&content) {
+            let mut discovered = match parse_skill_md(&content) {
                 Ok(parsed) => DiscoveredSkill {
+                    inspection: None,
                     scope_label: scope.label.clone(),
                     scope_index,
                     dir_name: entry.name.clone(),
@@ -439,6 +513,7 @@ async fn discover_skills(
                     error: None,
                 },
                 Err(errors) => DiscoveredSkill {
+                    inspection: None,
                     scope_label: scope.label.clone(),
                     scope_index,
                     name: entry.name.clone(),
@@ -450,6 +525,18 @@ async fn discover_skills(
                     dir_name: entry.name.clone(),
                 },
             };
+            if report_only_inspection {
+                discovered.inspection = Some(inspect_skill(
+                    &content,
+                    session_id,
+                    scope,
+                    &entry.name,
+                    discovered
+                        .error
+                        .is_none()
+                        .then_some(discovered.version.as_str()),
+                ));
+            }
             out.push(discovered);
         }
     }
@@ -482,6 +569,7 @@ fn list_skills_schema() -> Value {
 
 struct ListSkillsTool {
     config: Arc<SkillsConfig>,
+    report_only_inspection: bool,
 }
 
 #[async_trait]
@@ -544,13 +632,20 @@ impl Tool for ListSkillsTool {
         };
         // `list_skills` is uncapped (scan_limit = None); the per-scope scan cap
         // applies only to system-prompt building.
-        let discovered = discover_skills(&self.config, fs.as_ref(), ctx.session_id, None).await;
+        let discovered = discover_skills(
+            &self.config,
+            fs.as_ref(),
+            ctx.session_id,
+            None,
+            self.report_only_inspection,
+        )
+        .await;
         let skills: Vec<Value> = discovered
             .into_iter()
             .map(|s| {
                 let scope = &self.config.scopes[s.scope_index];
                 let display = self.config.resolver.display_dir(scope, &s.dir_name);
-                match s.error {
+                let mut result = match s.error {
                     Some(error) => json!({
                         "name": s.dir_name,
                         "scope": s.scope_label,
@@ -566,7 +661,11 @@ impl Tool for ListSkillsTool {
                         "disable_model_invocation": s.disable_model_invocation,
                         "path": format!("{display}/SKILL.md"),
                     }),
+                };
+                if let Some(report) = s.inspection {
+                    result["inspection"] = json!(report);
                 }
+                result
             })
             .collect();
         ToolExecutionResult::success(json!({ "count": skills.len(), "skills": skills }))
@@ -590,6 +689,7 @@ fn activate_skill_schema() -> Value {
 
 struct ActivateSkillTool {
     config: Arc<SkillsConfig>,
+    report_only_inspection: bool,
 }
 
 #[async_trait]
@@ -660,18 +760,25 @@ impl Tool for ActivateSkillTool {
             return ToolExecutionResult::tool_error(msg);
         }
 
+        // Keep inspected receipts separate from the legacy name-only cache so
+        // disabling inspection cannot replay a report through another tool.
+        let resource_id = if self.report_only_inspection {
+            format!("{SKILL_ACTIVATION_KIND}:inspected:{name}")
+        } else {
+            skill_activation_resource_id(name)
+        };
+
         // Idempotence (EVE-337): re-activating the same skill within a session
         // re-emits the cached result with `already_active: true`.
-        if let Some(registry) = &ctx.session_resource_registry {
-            let resource_id = skill_activation_resource_id(name);
-            if let Ok(Some(entry)) = registry.get(ctx.session_id, &resource_id).await
-                && entry.status == crate::builtins::session_resource::SessionResourceStatus::Active
-                && entry.kind == SKILL_ACTIVATION_KIND
-                && let Value::Object(mut map) = entry.metadata
-            {
-                map.insert("already_active".to_string(), Value::Bool(true));
-                return ToolExecutionResult::success(Value::Object(map));
-            }
+        if !self.report_only_inspection
+            && let Some(registry) = &ctx.session_resource_registry
+            && let Ok(Some(entry)) = registry.get(ctx.session_id, &resource_id).await
+            && entry.status == crate::builtins::session_resource::SessionResourceStatus::Active
+            && entry.kind == SKILL_ACTIVATION_KIND
+            && let Value::Object(mut map) = entry.metadata
+        {
+            map.insert("already_active".to_string(), Value::Bool(true));
+            return ToolExecutionResult::success(Value::Object(map));
         }
 
         let Some(fs) = &ctx.file_store else {
@@ -709,6 +816,15 @@ impl Tool for ActivateSkillTool {
                     "description": parsed.description,
                     "instructions": instructions,
                 });
+                if self.report_only_inspection {
+                    result["inspection"] = json!(inspect_skill(
+                        &content,
+                        ctx.session_id,
+                        scope,
+                        name,
+                        Some(&parsed.version)
+                    ));
+                }
                 if parsed.context == SkillContext::Fork {
                     result["context"] = json!("fork");
                     result["agent"] = json!(parsed.agent.as_deref().unwrap_or("general-purpose"));
@@ -718,9 +834,22 @@ impl Tool for ActivateSkillTool {
                 }
 
                 if let Some(registry) = &ctx.session_resource_registry {
+                    // Re-read before reusing an inspected activation. Equality
+                    // covers origin, raw bytes, ruleset and substituted arguments;
+                    // a name-only cache must never confer a stale review.
+                    if self.report_only_inspection
+                        && let Ok(Some(entry)) = registry.get(ctx.session_id, &resource_id).await
+                        && entry.kind == SKILL_ACTIVATION_KIND
+                        && entry.status
+                            == crate::builtins::session_resource::SessionResourceStatus::Active
+                        && entry.metadata == result
+                    {
+                        result["already_active"] = json!(true);
+                        return ToolExecutionResult::success(result);
+                    }
                     let entry = crate::builtins::session_resource::RegisterSessionResource {
                         session_id: ctx.session_id,
-                        resource_id: skill_activation_resource_id(name),
+                        resource_id,
                         kind: SKILL_ACTIVATION_KIND.to_string(),
                         display_name: format!("skill:{name}"),
                         status: crate::builtins::session_resource::SessionResourceStatus::Active,

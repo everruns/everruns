@@ -1,3 +1,6 @@
+import { messages as sandboxBuilds } from "./fr/sandbox-builds";
+import { messages as agentCost } from "./fr/agent-cost";
+import { messages as sharedControls } from "./fr/shared-controls";
 import { messages as tracing } from "./fr/tracing";
 import { messages as catalog0 } from "./fr/agents-01";
 import { messages as catalog1 } from "./fr/agents-02";
@@ -20,8 +23,11 @@ import { messages as catalog17 } from "./fr/operations-03";
 import { messages as catalog18 } from "./fr/settings-01";
 import { messages as catalog19 } from "./fr/settings-02";
 import { messages as catalog20 } from "./fr/semantic";
+import { messages as externalWorker } from "./fr/external-worker";
 export const messages: Readonly<Record<string, string>> = Object.assign(
   Object.create(null),
+  sandboxBuilds,
+  externalWorker,
   catalog0,
   catalog1,
   catalog2,
@@ -44,4 +50,6 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   catalog19,
   catalog20,
   tracing,
+  sharedControls,
+  agentCost,
 );

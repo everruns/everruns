@@ -12,7 +12,7 @@ tags:
 # Browser Use
 
 Status: neutral tool and native Claude adapter implemented, behind the
-`browserless_browser_use` flag.
+`browserless` flag (agents pick it via the `browser_use` capability).
 Capability `browser_use`, contract in
 [`crates/contracts/src/runtime/browser_use.rs`](../../crates/contracts/src/runtime/browser_use.rs),
 Browserless backend in

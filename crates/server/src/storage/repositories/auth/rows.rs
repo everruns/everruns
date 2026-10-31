@@ -154,6 +154,33 @@ pub struct OAuthRefreshTokenRow {
     /// The approval this token belongs to (`oauth_grants`). `None` only for a
     /// token minted before grants existed or by a pre-grant replica.
     pub grant_id: Option<Uuid>,
+    /// When this token was exchanged for its successor. A rotated token is kept
+    /// so a replay can be told apart from an unknown token.
+    pub rotated_at: Option<DateTime<Utc>>,
+    /// Whether the one replay allowed inside the reuse grace window was used.
+    pub grace_used: bool,
+    /// The rotation chain this token belongs to. `None` for a chain's first
+    /// token, whose own `id` then names the family.
+    pub family_id: Option<Uuid>,
+}
+
+impl OAuthRefreshTokenRow {
+    /// The rotation chain this token belongs to; its successor carries it.
+    pub fn family(&self) -> Uuid {
+        self.family_id.unwrap_or(self.id)
+    }
+}
+
+/// What presenting an MCP OAuth refresh token resolved to.
+#[derive(Debug, Clone)]
+pub enum OAuthRefreshUse {
+    /// Issue the successor: a first use, or the one replay inside the grace
+    /// window.
+    Mint(OAuthRefreshTokenRow),
+    /// Unknown, expired, or a further replay inside the window. Nothing revoked.
+    Refused,
+    /// A rotated token replayed after the window: its whole family was deleted.
+    ReuseDetected,
 }
 
 /// Input for creating an OAuth refresh token
@@ -166,4 +193,6 @@ pub struct CreateOAuthRefreshTokenRow {
     pub scope: String,
     pub expires_at: DateTime<Utc>,
     pub grant_id: Uuid,
+    /// The rotation chain: `None` starts a new one.
+    pub family_id: Option<Uuid>,
 }

@@ -26,6 +26,41 @@ use super::RouteAccess::{self, Never, PerCommand, Read, Write};
 /// `(method, path, class)` for hand-written routes in the OpenAPI document,
 /// sorted by path.
 pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
+    ("GET", "/v1/channels/{channel_id}/chat/shared/{token}", Read),
+    (
+        "POST",
+        "/v1/channels/{channel_id}/sessions/{session_id}/settings",
+        Write,
+    ),
+    (
+        "POST",
+        "/v1/channels/{channel_id}/sessions/{session_id}/share",
+        Never,
+    ),
+    (
+        "DELETE",
+        "/v1/channels/{channel_id}/sessions/{session_id}/share",
+        Never,
+    ),
+    ("GET", "/v1/e/{channel_id}/chat/shared/{token}", Read),
+    (
+        "POST",
+        "/v1/e/{channel_id}/sessions/{session_id}/settings",
+        Write,
+    ),
+    (
+        "POST",
+        "/v1/e/{channel_id}/sessions/{session_id}/share",
+        Never,
+    ),
+    (
+        "DELETE",
+        "/v1/e/{channel_id}/sessions/{session_id}/share",
+        Never,
+    ),
+    ("GET", "/v1/agents/{agent_id}/external-worker", Read),
+    ("POST", "/v1/agents/{agent_id}/external-worker", Never),
+    ("DELETE", "/v1/agents/{agent_id}/external-worker", Never),
     ("GET", "/v1/channels/{channel_id}/chat/config", Read),
     ("POST", "/v1/channels/{channel_id}/chat/main", Write),
     (

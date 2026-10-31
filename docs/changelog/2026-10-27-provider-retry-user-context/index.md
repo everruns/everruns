@@ -2,9 +2,11 @@
 title: Provider retries preserve the initiating user
 description: Short provider retries preserve verified user and responder context, allowing interrupted personal MCP setup to continue without an extra chat message.
 date: 2026-10-27
+cloud: 2026-10-28
 kind: fix
 significance: notable
 products: [platform, cloud]
+release: "0.50.0"
 surfaces: [agent, operations]
 links:
   docs: [/capabilities/user-mcp-servers/]

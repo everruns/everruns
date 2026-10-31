@@ -29,7 +29,7 @@ The [Platform Chat](/built-ins/harnesses/platform-chat/) harness includes it.
 | Provider | With `strategy: auto` (default) | With `strategy: explicit` |
 |---|---|---|
 | Anthropic | `cache_control` breakpoints on the system prompt, the last tool definition, and the two most recent stable conversation messages, four in total | Breakpoints on the system prompt and the last tool definition only, so the conversation is never written to cache |
-| OpenAI | A `prompt_cache_key` derived from the session (or agent, harness, or organization), model, instructions, and tools. On models whose profile supports cache options, also `prompt_cache_options` with mode `implicit` and a 30 minute TTL | `prompt_cache_key`, and on supporting models `prompt_cache_options` with mode `explicit`: the instructions move into a developer message marked as the cache breakpoint, so only that prefix is written to cache |
+| OpenAI | A `prompt_cache_key` derived from the session (or agent, harness, or organization) and model, so a tool or instructions change keeps the session on the same cache. On models whose profile supports cache options, also `prompt_cache_options` with mode `implicit` and a 30 minute TTL | `prompt_cache_key`, and on supporting models `prompt_cache_options` with mode `explicit`: the instructions move into a developer message marked as the cache breakpoint, so only that prefix is written to cache |
 | Gemini | The provider's default behavior, such as implicit caching on supported models | Same as `auto` |
 | Bedrock (Claude, Nova) | `cachePoint` blocks after the system prompt, after the tool definitions (Claude only; Nova does not cache tools), and on the two most recent messages | `cachePoint` blocks after the system prompt and tools only |
 | OpenRouter, Claude models | A top-level `cache_control`, which turns on Anthropic's automatic caching through OpenRouter. Other OpenRouter models keep their vendor's implicit caching | Nothing extra: automatic caching cannot exclude the conversation |
@@ -61,8 +61,9 @@ costs one cache write.
 Instructions a capability adds when it is switched on mid-session travel the
 same way on those models: the request keeps the first system prompt and sends
 the new instructions in the conversation.
-Other models and endpoints receive the current tool list, which costs one cache
-write per change. A tool that goes away there (a capability switched off, for
+Other models and endpoints receive the current tool list. Tools already sent
+keep their places and a revealed tool goes at the end, so a change costs a
+cache write only from that point on. A tool that goes away there (a capability switched off, for
 example) stays in the list while the cache is warm and nothing else changes,
 and a call to it is refused; it leaves with the next change, or once the
 session has been idle longer than the cache retention.

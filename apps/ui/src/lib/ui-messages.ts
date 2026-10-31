@@ -1,3 +1,7 @@
+import { messages as sandboxBuilds } from "./messages/uk/sandbox-builds";
+import { messages as externalWorker } from "./messages/uk/external-worker";
+import { messages as agentCost } from "./messages/uk/agent-cost";
+import { messages as sharedControls } from "./messages/uk/shared-controls";
 import { messages as tracing } from "./messages/uk/tracing";
 import { messages as zh } from "./messages/zh-CN";
 import { messages as es } from "./messages/es";
@@ -28,6 +32,7 @@ import { messages as catalog18 } from "./messages/uk/settings-02";
 
 export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   Object.create(null) as Record<string, string>,
+  sandboxBuilds,
   catalog0,
   catalog1,
   catalog2,
@@ -49,6 +54,9 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   catalog18,
   catalog19,
   tracing,
+  sharedControls,
+  agentCost,
+  externalWorker,
 );
 
 /** Product catalogs use null-prototype maps so hostile lookup keys fall back safely. */

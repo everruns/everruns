@@ -96,7 +96,7 @@ cron = "0.17"
 inventory.workspace = true
 everruns-server-macros = { path = "../server-macros" }
 libc = "0.2"
-postgresql_embedded = { version = "0.21", default-features = false, features = ["tokio", "zonky", "tls-rustls-aws-lc-rs"] }
+postgresql_embedded = { version = "0.22", default-features = false, features = ["tokio", "zonky", "tls-rustls-aws-lc-rs"] }
 moka.workspace = true
 zip = { version = "9", default-features = false, features = ["deflate"] }
 urlencoding = "2"
@@ -116,8 +116,8 @@ aws-lc-rs = "1"
 
 # `default-features = false` drops bashkit's default `ring`; the rest of its
 # default set is restored explicitly so only the crypto backend changes (EVE-924).
-bashkit = { version = "0.20.1", default-features = false, features = ["jq", "tzdata", "aws-lc-rs"] }
-bashkit-scripted-tool = { version = "0.20.1", default-features = false, features = ["jq", "python"] }
+bashkit = { version = "0.20.2", default-features = false, features = ["jq", "tzdata", "aws-lc-rs"] }
+bashkit-scripted-tool = { version = "0.20.2", default-features = false, features = ["jq", "python"] }
 
 everruns-contracts = { workspace = true, default-features = false, features = ["http", "sqlx"] }
 # sqlx Postgres encode/decode for TypedId lives on everruns-contracts (EVE-888).
@@ -157,7 +157,7 @@ everruns-sdk.workspace = true
 everruns-test-support = { path = "../test-support", default-features = false }
 # Template tests check the `github` capability enforces template settings.
 wiremock = "0.6"
-jsonschema = { version = "0.58.1", default-features = false }
+jsonschema = { version = "0.60.1", default-features = false }
 flate2.workspace = true
 tar.workspace = true
 # Mints ES256 personal-agent keys for the PACT tests (already linked via rustls).
@@ -178,4 +178,9 @@ harness = false
 # (`benches/knowledge_catalog.rs`). Run weekly by `durable-bench.yml`.
 [[bench]]
 name = "knowledge_catalog"
+harness = false
+
+# Single-message retrieval scaling; isolated database, explicit benchmark runs.
+[[bench]]
+name = "message_lookup"
 harness = false

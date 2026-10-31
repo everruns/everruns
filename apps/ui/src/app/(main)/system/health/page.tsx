@@ -6,6 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { CopyButton } from "@/components/ui/copy-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePageTitle, useRefreshSystemDoctor, useSystemDoctor } from "@/hooks";
+import { usePolicies } from "@/hooks/use-policies";
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 import type { CheckStatus, DoctorCheck, DoctorReport } from "@/lib/api/types";
 import { formatDistanceToNow } from "@/lib/formatting";
 import {
@@ -141,6 +143,33 @@ export default function SystemHealthPage() {
   const ui = useUiTranslations();
   usePageTitle(ui("Health"), ui("System"));
   const { data: report, isLoading, error } = useSystemDoctor();
+  const policy = usePolicies("durable");
+  // Both policies require platform-user access; a tenant owner is insufficient.
+  const allowed = !policy.isLoading && !policy.error && policy.can("durable.view");
+  useChatPageRows(
+    "Installation health",
+    report
+      ? [
+          {
+            status: report.status,
+            grade: report.grade,
+            version: report.version,
+            checked_at: report.checked_at,
+          },
+        ]
+      : [],
+    { enabled: allowed, loading: isLoading, error: !!error },
+  );
+  useChatPageRows(
+    "Installation checks",
+    (report?.checks ?? []).map((check) => ({
+      id: check.id,
+      area: check.area,
+      title: check.title,
+      status: check.status,
+    })),
+    { enabled: allowed, loading: isLoading, error: !!error },
+  );
 
   if (isLoading) {
     return (

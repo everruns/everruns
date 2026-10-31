@@ -121,6 +121,7 @@ pub(crate) fn make_tool(
 /// Minimal `LlmCallConfig` for wire tests.
 pub(crate) fn auth_test_config() -> LlmCallConfig {
     LlmCallConfig {
+        prefer_non_streaming: false,
         tool_baseline: None,
         system_prompt_baseline: None,
         speed: None,

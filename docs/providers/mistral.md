@@ -111,3 +111,10 @@ The existing Mistral feature flag and model discovery behavior are unchanged.
 - [Mistral API docs](https://docs.mistral.ai/)
 - [`everruns-drivers` on crates.io](https://crates.io/crates/everruns-drivers), feature `mistral`
 - [Migrate between providers](/how-to/migrate-providers/)
+
+## Native Framework batches
+
+Enable the `mistral` Cargo feature of `everruns` for direct offline model
+requests through [Batch Model Requests](/framework/batch-model-requests/). Mistral uses native inline jobs with resumable tickets and explicit cancellation.
+
+The API is on `main`; published `0.49.0` does not include it. Use the guide’s Git dependency until a release includes this API.

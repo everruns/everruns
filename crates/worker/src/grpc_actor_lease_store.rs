@@ -252,6 +252,39 @@ impl SessionActorStore for GrpcActorLeaseStore {
         })
     }
 
+    async fn hand_off_actor(
+        &self,
+        session_id: SessionId,
+        holder: &str,
+        fence: u64,
+        consumed_inbox_seq: i64,
+    ) -> Result<Option<ActorRelease>> {
+        let response = match self
+            .client
+            .inner
+            .client()
+            .hand_off_actor(proto::ReleaseActorRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                holder: holder.to_string(),
+                fence: fence_to_wire(fence)?,
+                consumed_inbox_seq,
+            })
+            .await
+        {
+            Ok(response) => response.into_inner(),
+            // A server from before hand-off: the lease expires instead.
+            Err(status) if status.code() == tonic::Code::Unimplemented => return Ok(None),
+            Err(status) => return Err(grpc_status_to_error(status)),
+        };
+        Ok(Some(if response.released {
+            ActorRelease::Released {
+                still_runnable: true,
+            }
+        } else {
+            ActorRelease::LeaseLost
+        }))
+    }
+
     async fn read_actor_journal(
         &self,
         session_id: SessionId,

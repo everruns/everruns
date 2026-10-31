@@ -40,7 +40,7 @@ turn. Raw audio is never stored; transcripts are kept like chat messages.
 1. Open the Agent and select the **Integrations** tab.
 2. Select **Add channel** and choose **Voice**.
 3. Pick a voice and, optionally, a greeting, a language hint and a speaking
-   style, then select **Save channel**.
+   style, then select **Create channel**.
 4. Select **Talk to this channel** to test it from the browser.
 
 Over the API, create it like any channel:

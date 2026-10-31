@@ -11,7 +11,11 @@ overrides:
   brace-expansion@1: 1.1.21
   brace-expansion@2: 2.1.7
   dompurify: 3.4.17
-  fast-uri: 3.1.8
+  fast-uri: 3.1.9
+  body-parser: 2.4.0
+  # CopilotKit uses the stable Map/Marker/Popup API; force the sanitizer fix
+  # across its optional map peer as well as the shared renderer dependency.
+  maplibre-gl: 6.4.1
   js-yaml: 4.3.2
   mermaid: 11.16.1
   nanoid: 3.3.18
@@ -27,6 +31,30 @@ onlyBuiltDependencies:
   - unrs-resolver
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
+# The explicitly selected compiler migration is pinned, including native binaries.
+minimumReleaseAgeExclude:
+  # Exact security fixes for the shared renderer dependency graph.
+  - "maplibre-gl@6.4.1"
+  - "body-parser@2.4.0"
+  - "fast-uri@3.1.9"
+  # A2UI 1.0 standard catalog selected for shared chat rendering.
+  - "@copilotkit/a2ui-renderer@1.83.0"
+  - "@copilotkit/core@1.83.0"
+  - "@copilotkit/learning@1.83.0"
+  - "@copilotkit/mcp-apps-renderer@1.83.0"
+  - "@copilotkit/react-core@1.83.0"
+  - "@copilotkit/runtime-client-gql@1.83.0"
+  - "@copilotkit/shared@1.83.0"
+  - "@copilotkit/web-components@1.83.0"
+  - "@copilotkit/web-inspector@1.83.0"
+  - 'tsrs@0.20.1-ts7.1.0-beta'
+  - '@tsrs/win32-x64@0.20.1-ts7.1.0-beta'
+  - '@tsrs/darwin-x64@0.20.1-ts7.1.0-beta'
+  - '@tsrs/darwin-arm64@0.20.1-ts7.1.0-beta'
+  - '@tsrs/linux-x64-gnu@0.20.1-ts7.1.0-beta'
+  - '@tsrs/linux-x64-musl@0.20.1-ts7.1.0-beta'
+  - '@tsrs/linux-arm64-gnu@0.20.1-ts7.1.0-beta'
+  - '@tsrs/linux-arm64-musl@0.20.1-ts7.1.0-beta'
 # Security fixes for GHSA advisories remain pinned to exact patched versions via
 # the overrides above: postcss 8.5.23 (GHSA-r28c-9q8g-f849), sharp 0.35.5
 # (GHSA-wq5f-xc86-pv6w, superseding the 0.35.4 pin for GHSA-rgj7-g3m4-5g8c — libheif GHSA-g89c-p67h-r497 and GHSA-2jg2-4ch7-h545,
@@ -35,17 +63,11 @@ minimumReleaseAgeStrict: true
 # maxTotalMergeKeys does not bound CPU for empty merge sources, so 4.3.1, pinned
 # here for CVE-2026-59870, is still inside the advisory; transitive dev-dep via
 # jest).
-# fast-uri 3.1.8 supersedes the 3.1.6 pin (GHSA-v2hh-gcrm-f6hx — host
-# confusion via literal IPv6 — plus GHSA-5jgf-p345-68v8, GHSA-jqff-g426-hqxp,
-# GHSA-f65p-4m7j-42xc and GHSA-fph4-wmhf-6fwf). Three further advisories landed
-# against 3.1.6, all reached transitively through @rjsf/utils:
-# GHSA-58mr-gqgx-xq4g (host confusion via an unclosed bracket in the URI
-# authority), GHSA-qw65-cvwx-89v3 (authority injection via an unvalidated port
-# in serialize), and GHSA-hrr3-gc8f-f4qj (inconsistent host case normalization
-# via percent-encoded octets). 3.1.8 is the only patched 3.x release for all
-# seven. Staying on the 3.x line keeps the
-# override inside the range its dependents declare; 4.x is outside every
-# advisory but is a major bump this pin does not need to take.
+# fast-uri 3.1.9 fixes the 3.1.8 scheme/host normalization advisories while
+# remaining on the declared 3.x line. body-parser 2.4.0 fixes compressed-body
+# trailing-byte DoS in the optional MCP renderer's server dependency graph.
+# maplibre-gl 6.4.1 fixes the DOM.sanitize NamedNodeMap-removal XSS bypass;
+# the shared renderer's Map/Marker/Popup API is verified in browser tests.
 # brace-expansion 1.1.21 / 2.1.7 (GHSA-q2hr-2g5m-vwhr
 # — quadratic-time expansion of the `{a},b}` rewrite causing CPU DoS,
 # transitive dev-dep via jest/openapi-typescript),

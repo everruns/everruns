@@ -18,6 +18,7 @@ agents check-rules delete	--context-revision --reason --rule-id!
 agents check-rules list	--context-revision --reason
 agents check-rules upsert	--category --context-revision --enabled! --kind! --match-mode --message --pattern --reason --rubric --rule-id! --severity
 agents copy	--context-revision --id --reason <id>
+agents cost-plan	--agent! --context-revision --guidance --locale --reason
 agents create	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --reason --tag/-t... --writable
 agents credentials create	--agent-id --auth --context-revision --description --env-name --header-name --label! --mcp-server-name --parameter-name --reason --tool-name --url
 agents delete	--context-revision --id --reason <id>
@@ -29,6 +30,8 @@ agents examples list	--context-revision --reason
 agents export	--format --out <agent>!
 agents exposures resume	--agent --context-revision --reason <agent_id>
 agents exposures suspend	--agent --context-revision --reason <agent_id>
+agents external-worker disable	--agent-id! --context-revision --reason
+agents external-worker get	--agent-id! --context-revision --reason
 agents failures list	--after --agent --before --context-revision --limit --offset --reason <agent_id>
 agents get	--context-revision --id --reason <id>
 agents github connect	--agent-id! --context-revision --owner-org --reason --return-to
@@ -277,6 +280,12 @@ resources grants revoke	--context-revision --grant-id! --id! --reason
 sandbox-targets list	--context-revision --reason
 sandbox-template-metadata get	--context-revision --id! --reason
 sandbox-template-metadata update	--context-revision --description --display-name --id! --reason
+sandbox-templates builds apply	--context-revision --id! --reason
+sandbox-templates builds cancel	--context-revision --id! --reason
+sandbox-templates builds discard	--context-revision --id! --reason
+sandbox-templates builds get	--context-revision --id! --reason
+sandbox-templates builds list	--context-revision --id! --offset --reason
+sandbox-templates builds start	--build-network --context-revision --id! --install-script! --metadata-path --reason --source-revision-id! --timeout-seconds --verification-command
 sandboxes get	--context-revision --id --reason <id>
 sandboxes list	--agent-id --context-revision --include-in-process --limit --needs-attention --offset --provider --reason --sandbox-template-id --search --state
 sandboxes stats get	--agent-id --context-revision --include-in-process --needs-attention --provider --reason --sandbox-template-id --search --state

@@ -126,6 +126,7 @@ async fn nats_subscription_does_not_retry_an_uncertain_create_timeout() {
     let publisher = NatsEventDelivery {
         jetstream: async_nats::jetstream::new(client.clone()),
         client,
+        stream_max_bytes: DEFAULT_NATS_EVENT_STREAM_MAX_BYTES,
     };
     publisher.ensure_stream().await.unwrap();
     proxy.drop_responses.store(true, Ordering::SeqCst);
@@ -294,7 +295,6 @@ async fn nats_sse_reconnect_filters_spoofed_payloads_and_delivers_completion() {
     }));
     let response = session_event_sse(SessionEventStream {
         event_service: service.clone(),
-        event_broadcaster: None,
         session_id: session.uuid(),
         since_id: None,
         after_sequence: None,

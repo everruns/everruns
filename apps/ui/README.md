@@ -16,6 +16,13 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Type checking
+
+`pnpm run typecheck` generates Next.js route types and runs the pinned Rust
+TypeScript compiler, `tsrs`. `pnpm run build` runs that check before compiling;
+use the package script so production builds retain the type-check gate.
+TypeScript remains installed for tooling that uses its JavaScript API.
+
 ## Design system
 
 The Slate design system is documented in [`DESIGN.md`](./DESIGN.md), an agent- and

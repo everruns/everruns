@@ -17,6 +17,7 @@ pub(super) async fn run(doctor: &SystemDoctor, replicas: &Replicas) -> Findings 
         valkey_check(env.valkey_url.as_deref(), servers)
     );
     let nats_check = disagreement(nats_check, &replicas.live, "NATS", |row| row.details.nats);
+    let nats_check = event_delivery(nats_check, &replicas.live);
     let valkey_check = disagreement(valkey_check, &replicas.live, "Valkey", |row| {
         row.details.valkey
     });
@@ -37,18 +38,17 @@ pub(crate) async fn nats_check(url: Option<&str>, servers: usize) -> DoctorCheck
         if servers > 1 {
             return check
                 .warning(format!(
-                    "Not used, and {servers} servers run: live updates and task wake-ups go \
-                     through PostgreSQL."
+                    "Not used, and {servers} servers run: more than one server needs NATS."
                 ))
                 .why(
-                    "Each server polls the database for what the others did, which adds load \
-                     and makes chat updates arrive late.",
+                    "Without NATS each server polls the database for live chat updates (with \
+                     EXPECTED_INSTANCES above 1), which adds load and makes them arrive late.",
                 )
                 .fix("Run NATS and set NATS_URL on every server and worker.");
         }
         return check.info(
-            "Not used: live updates and task wake-ups go through PostgreSQL. Fine for one \
-             server; set NATS_URL when you run more than one, or when updates feel slow.",
+            "Not used: live chat updates stay inside this server and task wake-ups go through \
+             PostgreSQL. Fine for one server; more than one server needs NATS.",
         );
     };
     match tokio::time::timeout(PROBE_TIMEOUT, nats::probe(url)).await {
@@ -106,6 +106,56 @@ fn unreachable_valkey(check: DoctorCheck, reason: &str) -> DoctorCheck {
         ))
         .why("Rate limits that depend on it, such as sign-in attempts, stop working as intended.")
         .fix("Check that Valkey is running and that VALKEY_URL is right.")
+}
+
+/// Rate how running servers deliver live session events
+/// (`EventDelivery`), as each reports it in its heartbeat:
+/// - with several servers, one on in-memory delivery streams chat only to its
+///   own clients, so their clients miss what the others wrote: a problem;
+/// - one polling PostgreSQL (NATS unreachable at its start, or several servers
+///   without NATS) keeps clients current but late and costly: a warning.
+pub(crate) fn event_delivery(check: DoctorCheck, live: &[InstanceRow]) -> DoctorCheck {
+    let on = |backend: &str| -> Vec<String> {
+        live.iter()
+            .filter(|row| row.details.event_delivery.as_deref() == Some(backend))
+            .map(InstanceRow::label)
+            .collect()
+    };
+    let isolated = on("in_memory");
+    if live.len() > 1
+        && !isolated.is_empty()
+        && check.status < crate::domains::system::doctor::CheckStatus::Problem
+    {
+        return check
+            .problem(format!(
+                "{} servers run, and live chat on {} only reaches its own clients.",
+                live.len(),
+                isolated.join(", ")
+            ))
+            .why(
+                "In-memory delivery serves one server. Clients connected there miss every \
+                 update written through another server, including streamed replies.",
+            )
+            .fix(
+                "Run NATS and set NATS_URL on every server; without NATS set \
+                 EXPECTED_INSTANCES to the number of servers so they poll the database.",
+            );
+    }
+    let polling = on("polling");
+    if polling.is_empty() || check.status >= crate::domains::system::doctor::CheckStatus::Warning {
+        return check;
+    }
+    check
+        .warning(format!(
+            "Live chat updates are polled from PostgreSQL on {}.",
+            polling.join(", ")
+        ))
+        .why(
+            "NATS was unreachable when they started, or more than one server runs without it. \
+             Every client stays up to date, but updates arrive later and each open chat adds \
+             database load.",
+        )
+        .fix("Make NATS reachable with NATS_URL set on every server, then restart those servers.")
 }
 
 /// Turn a healthy or unused `check` into a warning when running servers

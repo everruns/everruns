@@ -110,6 +110,13 @@ impl TurnLimits {
         self
     }
 
+    /// Whether enforcing these limits needs incremental provider events.
+    /// A whole-response request can still enforce the total deadline and
+    /// validate terminal status; first-event and text-byte limits need a stream.
+    pub fn needs_incremental_events(&self) -> bool {
+        self.first_event.is_some() || self.max_response_bytes.is_some()
+    }
+
     /// Whether any bound is set.
     pub fn is_unbounded(&self) -> bool {
         *self == TurnLimits::default()

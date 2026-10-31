@@ -2,9 +2,11 @@
 title: Route agent traces to your own destinations
 description: Connect multiple Braintrust projects and OTLP collectors, share organization defaults, and override trace routing for individual agents.
 date: 2026-10-28
+cloud: 2026-10-28
 kind: feature
 significance: notable
 products: [platform, cloud]
+release: "0.50.0"
 surfaces: [ui, api, cli]
 links:
   docs: [/observability/destinations/]

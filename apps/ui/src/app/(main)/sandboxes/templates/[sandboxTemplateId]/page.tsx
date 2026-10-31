@@ -10,12 +10,19 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Archive, Loader2 } from "lucide-react";
 import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
+import { SandboxTemplateBuildPanel } from "@/components/sandboxes/sandbox-template-build-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PageBreadcrumb, PageContainer, PageMain, PageMasthead } from "@/components/layout";
+import {
+  PageBreadcrumb,
+  PageContainer,
+  PageMain,
+  PageMasthead,
+  SectionTabs,
+} from "@/components/layout";
 import {
   useArchiveSandboxTemplate,
   usePageTitle,
@@ -46,12 +53,17 @@ function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
   const archive = useArchiveSandboxTemplate();
   const [displayName, setDisplayName] = useState(template.display_name);
   const [description, setDescription] = useState(template.description || "");
+  const [tab, setTab] = useState("configuration");
   const [configuration, setConfiguration] = useState<SandboxPolicy | null>(() => ({
     mode: "fixed",
     default: template.name,
     templates: { [template.name]: template.current_revision.spec },
   }));
   const spec = configuration?.templates?.[configuration.default];
+  const dirty =
+    displayName !== template.display_name ||
+    description !== (template.description ?? "") ||
+    JSON.stringify(spec) !== JSON.stringify(template.current_revision.spec);
   const chatDraft = useTextPageFormDraft({
     fields: ["display_name", "description"],
     values: { display_name: displayName, description },
@@ -98,77 +110,95 @@ function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
           value2: template.is_managed ? " · managed" : "",
         })}
       />
+      {!template.is_managed ? (
+        <SectionTabs
+          value={tab}
+          onValueChange={setTab}
+          aria-label={ui("Sandbox Template sections")}
+          items={[
+            { value: "configuration", label: ui("Configuration") },
+            { value: "build", label: ui("Build snapshot") },
+          ]}
+        />
+      ) : null}
       <PageMain className="max-w-3xl space-y-5">
-        {chatDraft.notice}
-        <Card>
-          <CardHeader>
-            <CardTitle>{ui("Configuration")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="display-name">{ui("Display name")}</Label>
-              <Input
-                id="display-name"
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-                disabled={template.is_managed}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">{ui("Description")}</Label>
-              <Textarea
-                id="description"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                disabled={template.is_managed}
-              />
-            </div>
-            <SandboxPolicyEditor
-              value={configuration}
-              onChange={setConfiguration}
-              disabled={template.is_managed}
-              definitionMode
-            />
-          </CardContent>
-        </Card>
         {!template.is_managed ? (
-          <div className="flex gap-2">
-            <Button variant="accent" onClick={save} disabled={!spec || revise.isPending}>
-              {revise.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
-              {ui("Save new revision")}
-            </Button>
-            {chatDraft.blocked && (
+          <div hidden={tab !== "build"}>
+            <SandboxTemplateBuildPanel template={template} dirty={dirty} />
+          </div>
+        ) : null}
+        <div hidden={tab !== "configuration"} className="space-y-5">
+          {chatDraft.notice}
+          <Card>
+            <CardHeader>
+              <CardTitle>{ui("Configuration")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="display-name">{ui("Display name")}</Label>
+                <Input
+                  id="display-name"
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  disabled={template.is_managed}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="description">{ui("Description")}</Label>
+                <Textarea
+                  id="description"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  disabled={template.is_managed}
+                />
+              </div>
+              <SandboxPolicyEditor
+                value={configuration}
+                onChange={setConfiguration}
+                disabled={template.is_managed}
+                definitionMode
+              />
+            </CardContent>
+          </Card>
+          {!template.is_managed ? (
+            <div className="flex gap-2">
+              <Button variant="accent" onClick={save} disabled={!spec || revise.isPending}>
+                {revise.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
+                {ui("Save new revision")}
+              </Button>
+              {chatDraft.blocked && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDisplayName(template.display_name);
+                    setDescription(template.description ?? "");
+                    setConfiguration({
+                      mode: "fixed",
+                      default: template.name,
+                      templates: { [template.name]: template.current_revision.spec },
+                    });
+                  }}
+                >
+                  {ui("Discard")}
+                </Button>
+              )}
               <Button
                 variant="outline"
-                onClick={() => {
-                  setDisplayName(template.display_name);
-                  setDescription(template.description ?? "");
-                  setConfiguration({
-                    mode: "fixed",
-                    default: template.name,
-                    templates: { [template.name]: template.current_revision.spec },
-                  });
+                onClick={async () => {
+                  await archive.mutateAsync(template.id);
+                  router.push("/sandboxes/templates");
                 }}
               >
-                {ui("Discard")}
+                <Archive className="size-4" />
+                {ui("Archive")}
               </Button>
-            )}
-            <Button
-              variant="outline"
-              onClick={async () => {
-                await archive.mutateAsync(template.id);
-                router.push("/sandboxes/templates");
-              }}
-            >
-              <Archive className="size-4" />
-              {ui("Archive")}
-            </Button>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {ui("Managed Sandbox Templates are versioned by the platform and cannot be edited.")}
-          </p>
-        )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {ui("Managed Sandbox Templates are versioned by the platform and cannot be edited.")}
+            </p>
+          )}
+        </div>
       </PageMain>
     </PageContainer>
   );

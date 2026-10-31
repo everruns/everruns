@@ -311,6 +311,14 @@ pub(crate) fn project_terminal(events: &[Event]) -> Option<Turn> {
                     said.push(message);
                 }
             }
+            EventData::ConversationMessage(data) if !data.text.trim().is_empty() => {
+                // Explicit replies are conversation events; completed private notes
+                // cannot stand in for the messages the agent actually delivered.
+                said.push(everruns_core::conversation::SaidMessage {
+                    text: data.text.clone(),
+                    with_tool_calls: false,
+                });
+            }
             EventData::ReasonStarted(_) => turn.iterations += 1,
             EventData::ToolCompleted(_) => turn.tool_calls += 1,
             EventData::TurnCompleted(data) => {

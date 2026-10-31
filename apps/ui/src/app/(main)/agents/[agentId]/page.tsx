@@ -4,6 +4,7 @@ import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/lo
 
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
+import { ExternalWorker } from "@/components/agents/external-worker";
 import { AgentSourcePanel } from "@/components/agents/agent-source";
 import { useAgentSource } from "@/hooks/use-agent-source";
 import { exportAgentPackage } from "@/lib/api/agents";
@@ -82,6 +83,7 @@ import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { AgentChecks, applyByteSpanReplacement } from "@/components/agents/agent-checks";
 import { agentFilesSectionVisible } from "@/components/agents/agent-files-visibility";
 import { AgentConfigColumn, type AgentMoreRow } from "@/components/agents/agent-config-column";
+import { AgentCostEstimate } from "@/components/agents/agent-cost-estimate";
 import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
 import { useAgentChannels } from "@/hooks/use-agent-channels";
 import { useAgentTriggers } from "@/hooks/use-agent-triggers";
@@ -707,8 +709,33 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                   <ManagerNotesHint entityRef={agent.id} kind="agent" enabled={canManage} />
                 ) : undefined
               }
-              actions={actions}
+              actions={
+                <>
+                  <AgentCostEstimate
+                    modelId={draft.fields.default_model_id}
+                    maxOutputTokens={draft.fields.max_output_tokens}
+                    previewRequest={{
+                      system_prompt: draft.fields.system_prompt,
+                      harness_id:
+                        draft.fields.harness_id || agent.effective_harness?.id || undefined,
+                      capabilities: draft.capabilities,
+                      initial_files: draft.files,
+                      tools: agent.tools ?? [],
+                      mcpServers: agent.mcpServers,
+                    }}
+                  />
+                  {actions}
+                </>
+              }
             />
+
+            {!editing && !builtIn && (
+              <ExternalWorker
+                key={agent.id}
+                agentId={agent.id}
+                disabled={!can("agent.dangerous")}
+              />
+            )}
 
             {!editing && !builtIn && (
               <AgentSourcePanel

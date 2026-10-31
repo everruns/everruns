@@ -514,6 +514,7 @@ pub fn declared(name: &str) -> Change {
         "delete_agent_check_rule" => on(K::CheckRule, Deleted, Param("rule_id")),
         "analyze_agent"
         | "draft_agent"
+        | "plan_agent_costs"
         | "preview_agent"
         | "diff_agent_package"
         | "validate_agent_package" => {
@@ -647,6 +648,14 @@ pub fn declared(name: &str) -> Change {
         // Organization.
         "update_org" => on(K::Organization, Updated, Param("org")),
         "update_sandbox_template_metadata" => on(K::SandboxTemplate, Updated, Param("id")),
+        "start_sandbox_template_build"
+        | "cancel_sandbox_template_build"
+        | "discard_sandbox_template_build" => {
+            Change::Exempt("build attempts and provider artifact cleanup are operational state")
+        }
+        "apply_sandbox_template_build" => Change::Exempt(
+            "records its resolved parent template through RestChange with the original caller and context",
+        ),
         "update_tracing_destination_metadata" => on(K::TracingDestination, Updated, Param("id")),
         "update_tracing_policy" => on(K::TracingPolicy, Updated, Param("id")),
         "update_organization_account_name" => on(K::OrganizationAccount, Updated, Param("id")),
@@ -739,6 +748,9 @@ pub fn declared(name: &str) -> Change {
         "worker_create_session_schedule" | "worker_cancel_session_schedule" => {
             Change::Exempt("the agent's own schedules are the session's working state")
         }
+        "register_external_agent" | "disable_external_agent" => Change::Exempt(
+            "external execution credentials are not authored Agent configuration; sanitized management audit records the change",
+        ),
         "worker_register_session_resource"
         | "worker_update_session_resource_status"
         | "worker_deregister_session_resource" => {

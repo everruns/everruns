@@ -4,6 +4,21 @@
 type ActivityListener = (pending: number) => void;
 const listeners = new Map<string, Set<ActivityListener>>();
 const pendingActions = new Map<string, number>();
+const changeListeners = new Set<(org: string, sessionId: string) => void>();
+
+/** Hints only. Consumers refetch their authorized list; no transcript is broadcast. */
+export function notifySessionChange(org: string, sessionId: string): void {
+  for (const listener of changeListeners) listener(org, sessionId);
+}
+
+export function subscribeSessionChanges(
+  listener: (org: string, sessionId: string) => void,
+): () => void {
+  changeListeners.add(listener);
+  return () => {
+    changeListeners.delete(listener);
+  };
+}
 
 export function subscribeSessionActivity(
   sessionId: string,

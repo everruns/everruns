@@ -119,6 +119,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/cost-plan": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Plan agent cost workloads
+     * @description Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.
+     */
+    post: operations["plan_agent_costs"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/diff": {
     parameters: {
       query?: never;
@@ -795,6 +815,32 @@ export interface paths {
     /** Take every endpoint offline */
     post: operations["suspend_agent_exposures"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/external-worker": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read an Agent's external execution status */
+    get: operations["get_external_agent"];
+    put?: never;
+    /**
+     * Connect or rotate an external HTTPS worker
+     * @description Requires dangerous-settings permission and installation enablement. Stop
+     *     active turns first. The preinstalled secret is encrypted and never returned.
+     */
+    post: operations["register_external_agent"];
+    /**
+     * Disable external worker execution
+     * @description Revocation never falls back to the built-in runtime.
+     */
+    delete: operations["disable_external_agent"];
     options?: never;
     head?: never;
     patch?: never;
@@ -1783,6 +1829,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}/chat/shared/{token}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read work chat share */
+    get: operations["read_work_chat_share"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/fcp": {
     parameters: {
       query?: never;
@@ -1967,6 +2030,41 @@ export interface paths {
      */
     post: operations["agent_api_answer_questions"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Update work chat conversation */
+    post: operations["update_work_chat_conversation"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/share": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Share work chat conversation */
+    post: operations["share_work_chat_conversation"];
+    /** Revoke work chat share */
+    delete: operations["revoke_work_chat_share"];
     options?: never;
     head?: never;
     patch?: never;
@@ -2824,6 +2922,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/e/{channel_id}/chat/shared/{token}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read work chat share legacy
+     * @deprecated
+     */
+    get: operations["read_work_chat_share_legacy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/e/{channel_id}/fcp": {
     parameters: {
       query?: never;
@@ -2976,6 +3094,50 @@ export interface paths {
      */
     post: operations["agent_api_answer_questions_legacy"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Update work chat conversation legacy
+     * @deprecated
+     */
+    post: operations["update_work_chat_conversation_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/share": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Share work chat conversation legacy
+     * @deprecated
+     */
+    post: operations["share_work_chat_conversation_legacy"];
+    /**
+     * Revoke work chat share legacy
+     * @deprecated
+     */
+    delete: operations["revoke_work_chat_share_legacy"];
     options?: never;
     head?: never;
     patch?: never;
@@ -5894,6 +6056,86 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sandbox-template-builds/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Sandbox Template build
+     * @description Inspect a build attempt in the authenticated organization.
+     */
+    get: operations["get_sandbox_template_build"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-builds/{id}/apply": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Save built snapshot as new revision
+     * @description Atomically apply a ready snapshot to its unchanged source template. Existing Agent and Session pins do not move.
+     */
+    post: operations["apply_sandbox_template_build"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-builds/{id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Cancel Sandbox Template build
+     * @description Cancel queued or running build work and clean up its disposable resources.
+     */
+    post: operations["cancel_sandbox_template_build"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-builds/{id}/discard": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Discard unused build artifact
+     * @description Remove an unused build artifact. Applied artifacts remain pinned and cannot be discarded.
+     */
+    post: operations["discard_sandbox_template_build"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sandbox-template-metadata/{id}": {
     parameters: {
       query?: never;
@@ -5936,6 +6178,30 @@ export interface paths {
      * @description Create a reusable Sandbox Template and its first immutable revision.
      */
     post: operations["create_sandbox_template"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-templates/{id}/builds": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Sandbox Template builds
+     * @description List twenty build attempts at an optional offset, bounded logs, and captured software notes.
+     */
+    get: operations["list_sandbox_template_builds"];
+    put?: never;
+    /**
+     * Build a Sandbox Template snapshot
+     * @description Run an install script in fresh isolated compute and bake a reusable provider snapshot. Does not revise the template.
+     */
+    post: operations["start_sandbox_template_build"];
     delete?: never;
     options?: never;
     head?: never;
@@ -8857,6 +9123,11 @@ export interface components {
       id: string;
       status: components["schemas"]["ChannelStatus"];
     };
+    /** @description Three representative workload hypotheses; prices and usage frequency are set separately. */
+    AgentCostPlan: {
+      /** @description Exactly three suggested tasks that users can edit before projecting costs. */
+      tasks: components["schemas"]["CostPlanTask"][];
+    };
     /**
      * @description Metadata for a write-only credential bound to one agent: either an MCP
      *     tool parameter or an HTTP API the agent's shell calls.
@@ -9388,6 +9659,7 @@ export interface components {
      *     or costs, which are management's.
      */
     AgentSessionView: {
+      archived: boolean;
       /** Format: date-time */
       created_at: string;
       /** @example session_01933b5a000070008000000000000001 */
@@ -9405,6 +9677,7 @@ export interface components {
        *     them; a list leaves them out.
        */
       pending_questions?: components["schemas"]["PendingQuestionView"][] | null;
+      pinned: boolean;
       /**
        * @description `started`, `active`, `idle`, `waitingforinput` or `failed`.
        * @example idle
@@ -11716,6 +11989,35 @@ export interface components {
        * @example templates/runbook.md
        */
       src_path: string;
+    };
+    /** @description One illustrative task and its editable token and model-call assumptions. */
+    CostPlanTask: {
+      /** @description Expected steps and the main uncertainty behind the workload estimate. */
+      assumption: string;
+      /**
+       * Format: int32
+       * @description Model calls per task, including follow-ups after tools; between 1 and 100.
+       */
+      calls: number;
+      /** @description Example user request that this task represents. */
+      description: string;
+      /**
+       * Format: int32
+       * @description Initial user-input tokens, excluding system instructions and tool schemas.
+       */
+      message_tokens: number;
+      /** @description Short name of the representative task. */
+      name: string;
+      /**
+       * Format: int32
+       * @description Output tokens per model call, including reasoning and tool arguments.
+       */
+      output_tokens: number;
+      /**
+       * Format: int32
+       * @description New tool-result tokens added at each step of the task.
+       */
+      tool_result_tokens: number;
     };
     /**
      * @description A pricing tier that activates above a context token threshold.
@@ -14839,6 +15141,23 @@ export interface components {
       } | null;
       /** @description Source channel identifier (e.g. "slack", "discord") */
       source: string;
+    };
+    /** @description Public status of a customer-hosted HTTPS runtime; credentials are never exposed. */
+    ExternalAgent: {
+      /** @description Whether this binding can lease new work. Disabled bindings retain routing. */
+      enabled: boolean;
+      /**
+       * @description Verified public HTTPS URL that receives signed invocation requests.
+       * @example https://sales.example.workers.dev/
+       */
+      endpoint_url: string;
+      /** @description Sanitized dispatch error, cleared after a successful invocation or registration. */
+      last_error?: string | null;
+      /**
+       * Format: date-time
+       * @description Time of the latest invocation attempt, if any.
+       */
+      last_invoked_at?: string | null;
     };
     /**
      * @description Result status reported alongside externally computed scores.
@@ -23492,6 +23811,18 @@ export interface components {
        */
       redact_content?: boolean;
     };
+    /** @description Register a predeployed HTTPS endpoint after a signed ownership challenge. */
+    RegisterExternalAgent: {
+      /** @description Agent public ID or name; the HTTP route supplies this value. */
+      agent_id?: string;
+      /** @description Preinstall this random, 32+ character secret in the endpoint. Never a user PAT. */
+      endpoint_secret: string;
+      /**
+       * @description Verified public HTTPS URL that receives signed invocation requests.
+       * @example https://sales.example.workers.dev/
+       */
+      endpoint_url: string;
+    };
     /** @description A display-name change that preserves the connected account credential. */
     RenameOrganizationConnectionRequest: {
       name: string;
@@ -24133,6 +24464,85 @@ export interface components {
       commands?: string[];
     };
     /**
+     * @description Reference data resolved by the server from an applied artifact in this tenant.
+     *     Software notes remain untrusted author content, never runtime policy.
+     */
+    SandboxBuildProvenance: {
+      /**
+       * @description Applied build resolved from the exact tenant, provider account, and snapshot.
+       * @example sbxbuild_01933b5a000070008000000000000001
+       */
+      build_id: string;
+      /**
+       * Format: date-time
+       * @description Time the originating build attempt was accepted.
+       * @example 2026-10-29T00:01:00Z
+       */
+      built_at: string;
+      /**
+       * @description Exact immutable provider snapshot selected by the Session.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
+      snapshot_id: string;
+      /**
+       * @description Author-supplied reference notes, never trusted instructions or policy.
+       * @example # Installed tools
+       *     - HTTPie 3.2.4
+       */
+      software_notes?: string | null;
+      /**
+       * @description Optional check that passed after installation and in fresh snapshot compute.
+       * @example /home/daytona/.venvs/devtools/bin/http --version
+       */
+      verification_command?: string | null;
+    };
+    /**
+     * @description Inputs for a single isolated installation and reusable filesystem snapshot.
+     *     Build compute receives no workload credentials or private Session state.
+     */
+    SandboxBuildRequest: {
+      build_network?: components["schemas"]["SandboxNetworkPolicy"] | null;
+      /**
+       * @description POSIX shell install script, 1–32768 UTF-8 bytes. Keep secrets out of it.
+       * @example python -m venv /home/daytona/.venvs/devtools
+       *     /home/daytona/.venvs/devtools/bin/pip install httpie==3.2.4
+       */
+      install_script: string;
+      /**
+       * @description Optional bounded, author-supplied Markdown captured from the builder.
+       * @example /home/daytona/.everruns/sandbox.md
+       */
+      metadata_path?: string | null;
+      /**
+       * @description Source revision to guard against concurrent template edits.
+       * @example sbxtplrev_01933b5a000070008000000000000001
+       */
+      source_revision_id: string;
+      /**
+       * Format: int64
+       * @description Total build deadline, including installation and fresh verification, in seconds.
+       * @example 600
+       */
+      timeout_seconds?: number;
+      /**
+       * @description Optional check run after installation and again in fresh snapshot compute.
+       * @example /home/daytona/.venvs/devtools/bin/http --version
+       */
+      verification_command?: string | null;
+    };
+    /**
+     * @description Durable build lifecycle. Ready artifacts can be applied only after cleanup completes.
+     * @enum {string}
+     */
+    SandboxBuildStatus:
+      | "queued"
+      | "running"
+      | "ready"
+      | "failed"
+      | "cancelled"
+      | "applied"
+      | "discarded";
+    /**
      * @description What the Sandbox target can actually do.
      *
      *     Read this before assuming a shell behaves like Linux. Bashkit reports
@@ -24589,6 +24999,103 @@ export interface components {
        * @description Timestamp of the most recent definition or revision change.
        */
       updated_at: string;
+    };
+    /**
+     * @description Tenant-scoped build attempt, retained inputs, bounded output, and provider artifact.
+     *     Management credentials are stored separately and never appear in this record.
+     */
+    SandboxTemplateBuild: {
+      /**
+       * @description Immutable template revision created by applying this artifact, if applied.
+       * @example sbxtplrev_01933b5a000070008000000000000002
+       */
+      applied_revision_id?: string | null;
+      /**
+       * @description Disposable installation compute identifier or its persisted submission name.
+       * @example 550e8400-e29b-41d4-a716-446655440001
+       */
+      builder_id?: string | null;
+      /**
+       * @description Whether cancellation was accepted; stale worker saves cannot erase this request.
+       * @example false
+       */
+      cancel_requested: boolean;
+      /**
+       * @description Whether provider resources still require confirmed cleanup or reconciliation.
+       * @example false
+       */
+      cleanup_pending: boolean;
+      /**
+       * Format: date-time
+       * @description Time this build attempt was accepted.
+       * @example 2026-10-29T00:00:00Z
+       */
+      created_at: string;
+      /**
+       * @description Bounded failure explanation, absent when no failure has been recorded.
+       * @example Command failed with exit code 23
+       */
+      error?: string | null;
+      /**
+       * @description Unique build attempt identifier.
+       * @example sbxbuild_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * @description UTF-8 execution-output tail, bounded to 32 KiB.
+       * @example HTTPie 3.2.4
+       *     Verification passed
+       */
+      logs: string;
+      /** @description Original immutable installation and verification inputs. */
+      request: components["schemas"]["SandboxBuildRequest"];
+      /**
+       * @description Parent template whose immutable source revision supplied the build configuration.
+       * @example sbxtpl_01933b5a000070008000000000000001
+       */
+      sandbox_template_id: string;
+      /**
+       * @description Provider snapshot identifier, present once the artifact has been resolved.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
+      snapshot_id?: string | null;
+      /**
+       * @description Deterministic provider artifact name used to reconcile uncertain submissions.
+       * @example everruns-build-01933b5a000070008000000000000001
+       */
+      snapshot_name: string;
+      /**
+       * Format: date-time
+       * @description Submission time used when reconciling a snapshot response lost in transport.
+       * @example 2026-10-29T00:00:00Z
+       */
+      snapshot_requested_at?: string | null;
+      /**
+       * @description Up to 16 KiB of author-supplied Markdown, presented as untrusted reference data.
+       * @example # Installed tools
+       *     - HTTPie 3.2.4
+       */
+      software_notes?: string | null;
+      /** @description Exact source spec; no runtime credentials or workspace are attached. */
+      source_spec: components["schemas"]["SandboxTemplateSpec"];
+      /** @description Persisted lifecycle state; inspect cleanup_pending before applying a Ready build. */
+      status: components["schemas"]["SandboxBuildStatus"];
+      /**
+       * @description Current execution or cleanup step.
+       * @example installing
+       */
+      step: string;
+      /**
+       * Format: date-time
+       * @description Time of the last persisted build update.
+       * @example 2026-10-29T00:01:00Z
+       */
+      updated_at: string;
+      /**
+       * @description Disposable fresh-snapshot verification compute identifier or submission name.
+       * @example 550e8400-e29b-41d4-a716-446655440002
+       */
+      verification_sandbox_id?: string | null;
     };
     /** @description Editable template metadata; omitted fields retain their current values. */
     SandboxTemplateMetadataRequest: {
@@ -26075,6 +26582,7 @@ export interface components {
     SessionSandboxCredentialSource: "none" | "session_user" | "agent" | "organization";
     /** @description The primary Sandbox a Session is running in. */
     SessionSandboxResponse: {
+      build?: components["schemas"]["SandboxBuildProvenance"] | null;
       capabilities: components["schemas"]["SandboxCapabilities"];
       containment: components["schemas"]["SandboxContainment"];
       /** @description Most recent checkpoint used to recover this logical Sandbox. */
@@ -26359,6 +26867,11 @@ export interface components {
     /** @description Set or clear the person's risk label for one tool. */
     SetUserMcpToolLabelRequest: {
       label?: components["schemas"]["McpToolLabel"] | null;
+    };
+    Settings: {
+      archived?: boolean | null;
+      pinned?: boolean | null;
+      title?: string | null;
     };
     /**
      * @description How many times a tool call may safely be executed given the same inputs.
@@ -32496,6 +33009,26 @@ export interface operations {
       };
     };
   };
+  plan_agent_costs: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentCostPlan"];
+        };
+      };
+    };
+  };
   diff_agent_package: {
     parameters: {
       query?: {
@@ -34242,6 +34775,71 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  get_external_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExternalAgent"] | null;
+        };
+      };
+    };
+  };
+  register_external_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RegisterExternalAgent"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExternalAgent"];
+        };
+      };
+    };
+  };
+  disable_external_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -36654,6 +37252,36 @@ export interface operations {
       };
     };
   };
+  read_work_chat_share: {
+    parameters: {
+      query?: {
+        before?: number;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        token: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Read-only transcript page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   message_channel: {
     parameters: {
       query?: never;
@@ -36795,6 +37423,7 @@ export interface operations {
         limit?: number | null;
         /** @description `next_page_token` of the previous page. */
         page_token?: string | null;
+        include_archived?: boolean;
       };
       header?: never;
       path: {
@@ -37340,6 +37969,94 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  update_work_chat_conversation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Settings"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  share_work_chat_conversation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revocable link token */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_work_chat_share: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -39576,6 +40293,36 @@ export interface operations {
       };
     };
   };
+  read_work_chat_share_legacy: {
+    parameters: {
+      query?: {
+        before?: number;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        token: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Read-only transcript page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   message_endpoint: {
     parameters: {
       query?: never;
@@ -40107,6 +40854,94 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  update_work_chat_conversation_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Settings"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  share_work_chat_conversation_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revocable link token */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_work_chat_share_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -47608,6 +48443,98 @@ export interface operations {
       };
     };
   };
+  get_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
+        };
+      };
+    };
+  };
+  apply_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplate"];
+        };
+      };
+    };
+  };
+  cancel_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
+        };
+      };
+    };
+  };
+  discard_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
+        };
+      };
+    };
+  };
   get_sandbox_template_metadata: {
     parameters: {
       query?: never;
@@ -47696,6 +48623,56 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SandboxTemplate"];
+        };
+      };
+    };
+  };
+  list_sandbox_template_builds: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"][];
+        };
+      };
+    };
+  };
+  start_sandbox_template_build: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SandboxBuildRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplateBuild"];
         };
       };
     };

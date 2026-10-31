@@ -21,8 +21,11 @@ use std::time::Duration;
 use tonic::transport::channel::Change;
 use tonic::transport::{Channel, Endpoint};
 
-/// How often the host is resolved again for added or removed replicas.
-pub const RESOLVE_INTERVAL: Duration = Duration::from_secs(30);
+/// How often the host is resolved again for added or removed replicas. Kept
+/// well inside a draining server's linger plus grace (`crate::shutdown` in
+/// everruns-server, about 25 s), so workers move off a replica before its
+/// gRPC listener stops.
+pub const RESOLVE_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Every address `host:port` resolves to, sorted, or none when it does not
 /// resolve.

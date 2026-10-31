@@ -360,6 +360,7 @@ impl EmbeddingsDriver for DeterministicEmbeddingsDriver {
             })
             .collect();
         Ok(EmbedResponse {
+            response_id: None,
             embeddings,
             usage_tokens: Some(0),
             actual_cost_usd: None,

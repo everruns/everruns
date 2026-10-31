@@ -213,7 +213,7 @@
         "session_storage"
       ],
       "docs_slug": "browser-use",
-      "feature_flag": "browserless_browser_use",
+      "feature_flag": "browserless",
       "features": [
         "leased_resources"
       ],
@@ -391,7 +391,7 @@
         "session_storage"
       ],
       "docs_slug": "computer-use",
-      "feature_flag": "browserless_computer_use",
+      "feature_flag": "browserless",
       "features": [
         "leased_resources"
       ],

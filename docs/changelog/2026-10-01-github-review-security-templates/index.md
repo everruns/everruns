@@ -7,7 +7,6 @@ significance: notable
 products: [platform, cloud]
 surfaces: [ui]
 release: "0.34.0"
-visual: "Agents page examples with the PR Reviewer and Security Scanner templates showing the guided setup badge, and the setup page after Connect GitHub; crop to the template cards and the setup panel."
 links:
   docs: [/how-to/set-up-review-and-security-agents/]
   prs: [everruns/everruns#3980]
@@ -17,6 +16,8 @@ Two guided templates build on the per-agent GitHub App. The PR reviewer reviews
 pull requests and posts deduplicated inline comments. The weekly security
 scanner files fingerprinted issues, so a repeat finding updates the same issue,
 and it can open draft fix pull requests, which is off by default.
+
+![PR Reviewer and Security Scanner example agents marked guided setup](./github-templates@2x.png)
 
 The templates add GitHub review, issue upsert and pull request tools, enforced
 by the GitHub capability's configuration, and a guided setup page.

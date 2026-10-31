@@ -366,6 +366,16 @@ impl RuntimeProvider {
             .ok_or_else(|| self.unsupported_service("chat"))
     }
 
+    /// Whether this provider's driver implements native offline batches.
+    /// This is a local capability query, not a check of account permissions,
+    /// model eligibility or a custom endpoint's API compatibility.
+    pub fn supports_batch(&self) -> bool {
+        self.driver
+            .as_ref()
+            .and_then(|driver| driver.batch_driver())
+            .is_some()
+    }
+
     fn unsupported_service(&self, service: &str) -> crate::error::AgentLoopError {
         crate::error::AgentLoopError::Configuration(format!(
             "Provider '{}' does not implement the {service} service",
@@ -536,7 +546,7 @@ impl RuntimeProvider {
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponse> {
         self.check_response_format(config)?;
-        if !config.limits.is_unbounded() {
+        if config.limits.needs_incremental_events() {
             // Native JSON responses cannot enforce a byte cap before buffering
             // the body. Route bounded calls through the streaming collector so
             // every advertised limit is applied while bytes are arriving.
@@ -547,10 +557,14 @@ impl RuntimeProvider {
                     .into_response(),
             );
         }
-        self.driver()?
-            .chat_completion_non_streaming(&self.endpoint, messages, config)
-            .await
-            .map_err(|error| error.with_provider(self.id.as_str()))
+        let (response, _) = crate::turn_collector::connect_within(
+            &config.limits,
+            self.driver()?
+                .chat_completion_non_streaming(&self.endpoint, messages, config),
+        )
+        .await
+        .map_err(|error| error.with_provider(self.id.as_str()))?;
+        Ok(response)
     }
 
     pub async fn list_models(
@@ -654,6 +668,10 @@ impl crate::driver_registry::EmbeddingsDriver for ProviderBoundEmbeddingsDriver 
 
 #[async_trait]
 impl ChatDriver for ProviderBoundDriver {
+    // No batch hook: this legacy adapter hides its bound endpoint from the
+    // caller. Exposing it would fingerprint the caller's unrelated endpoint in
+    // persisted tickets. Batch clients must retain the RuntimeProvider instead.
+
     fn native_async_driver(
         &self,
         model: &str,
@@ -987,6 +1005,8 @@ mod tests {
             _config: &crate::LlmCallConfig,
         ) -> Result<crate::LlmResponse> {
             self.native_called.store(true, Ordering::SeqCst);
+            tokio::time::sleep(self.connect_delay).await;
+            tokio::time::sleep(self.event_delay).await;
             Ok(crate::LlmResponse {
                 text: self.response.clone(),
                 reasoning: vec![],
@@ -1058,7 +1078,7 @@ mod tests {
             .expect_err("the call must time out");
 
         assert!(error.to_string().contains("did not finish"));
-        assert!(!native_called.load(Ordering::SeqCst));
+        assert!(native_called.load(Ordering::SeqCst));
     }
 
     #[tokio::test]
@@ -1083,7 +1103,7 @@ mod tests {
             .expect_err("the body must time out");
 
         assert!(error.to_string().contains("did not finish"));
-        assert!(!native_called.load(Ordering::SeqCst));
+        assert!(native_called.load(Ordering::SeqCst));
     }
 
     #[tokio::test]

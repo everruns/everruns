@@ -10,6 +10,7 @@ import remarkStripRustHiddenLines from "./plugins/remark-strip-rust-hidden-lines
 import remarkMermaidDiagrams from "./plugins/remark-mermaid-diagrams.mjs";
 import rehypeBaseLinks from "./plugins/rehype-base-links.ts";
 import { BASE, SITE, withBase } from "./site.config.mjs";
+import { GALLERY_ROOT, LEGACY_GALLERY_ROOT, galleryCategories } from "./generative-ui-catalog.mjs";
 import perPageMarkdown from "./integrations/per-page-markdown.mjs";
 import sitemapEnhance from "./integrations/sitemap-enhance.mjs";
 import changelogMedia from "./integrations/changelog-media.mjs";
@@ -60,6 +61,7 @@ export default defineConfig({
   },
   // Astro adds the base to redirect sources but not to their destinations.
   redirects: Object.fromEntries(Object.entries({
+    [`${LEGACY_GALLERY_ROOT}/`]: `${GALLERY_ROOT}/`,
     // virtual_bash capability renamed to bashkit_shell
     "/capabilities/virtual-bash/": "/capabilities/bashkit-shell/",
     // generic-tool-search page renamed to tool-search
@@ -260,6 +262,7 @@ export default defineConfig({
         ],
       },
       components: {
+        Head: "./src/components/Head.astro",
         Header: "./src/components/Header.astro",
         Search: "./src/components/Search.astro",
         Footer: "./src/components/Footer.astro",
@@ -382,6 +385,7 @@ export default defineConfig({
                   items: [
                     { label: "Overview", slug: "framework/examples" },
                     { label: "Support Agent", slug: "framework/examples/support-agent" },
+                    { label: "Custom Data Agent Worker", slug: "framework/examples/custom-data-agent" },
                     { label: "Everruns Support Agent", slug: "framework/examples/everruns-support-agent" },
                     { label: "Coding Review Agent", slug: "framework/examples/coding-review-agent" },
                     { label: "Research Agent", slug: "framework/examples/research-agent" },
@@ -444,6 +448,8 @@ export default defineConfig({
                     { label: "Environment Variables", slug: "sre/environment-variables" },
                     { label: "Admin Container", slug: "sre/admin-container" },
                     { label: "System Doctor", slug: "sre/system-doctor" },
+                    { label: "Custom Agent Workers", slug: "how-to/custom-agent-workers" },
+                    { label: "Cloudflare Agent", slug: "how-to/cloudflare-agent" },
                     { label: "Request Signing", slug: "sre/request-signing" },
                     {
                       label: "Runbooks",
@@ -459,6 +465,14 @@ export default defineConfig({
               icon: "information",
               id: "reference",
               items: [
+                {
+                  label: "Generative UI",
+                  collapsed: true,
+                  items: [
+                    { label: "Overview", slug: GALLERY_ROOT.slice(1) },
+                    ...galleryCategories.map(({ group, slug }) => ({ label: group, slug: `${GALLERY_ROOT.slice(1)}/${slug}` })),
+                  ],
+                },
                 { label: "Event Reference", slug: "event-reference" },
                 { label: "ID Schema", slug: "advanced/id-schema" },
                 {
@@ -632,6 +646,10 @@ export default defineConfig({
                   items: [
                     { label: "Overview", slug: "integrations" },
                     { label: "Messaging", items: [{ label: "Slack", slug: "integrations/slack" }] },
+                    {
+                      label: "Agent protocols",
+                      items: [{ label: "AG-UI", slug: "integrations/ag-ui" }],
+                    },
                     {
                       label: "Sandboxes & execution",
                       items: [
@@ -814,8 +832,8 @@ export default defineConfig({
             {
               label: "Reference",
               description:
-                "the event protocol and every CLI command with its flags; REST endpoints live in the OpenAPI schema",
-              paths: ["event-reference", "reference/cli/**"],
+                "interactive generative UI components, the event protocol and CLI commands; REST endpoints live in the OpenAPI schema",
+              paths: ["event-reference", "reference/cli/**", "reference/generative-ui/**"],
             },
             {
               label: "Design system",

@@ -57,7 +57,7 @@ If your deployment has a Slack manager app (see [Slack Manager App](/sre/environ
 4. Select **Slack**.
 5. If your organization has connected more than one Slack workspace, choose one.
 6. Choose the session strategy. Leave the Slack credentials empty.
-7. Select **Save channel**.
+7. Select **Create channel**.
 
 Everruns opens the channel editor after it saves the channel.
 

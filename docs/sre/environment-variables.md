@@ -19,7 +19,7 @@ a working default; each row links to the section that documents it.
 | [`PUBLIC_APP_URL`](#public_app_url), [`AUTH_LOGIN_ORIGIN`](#auth_login_origin), [`API_PREFIX`](#api_prefix), [`CORS_ALLOWED_ORIGINS`](#cors_allowed_origins), [`HTTP_ADDR`](#http_addr) | API | No | `http://localhost:9300`, same-origin login, `/api`, CORS off, `0.0.0.0:9000`. |
 | [`DATABASE_UNPOOLED_URL`](#database_unpooled_url), [`DATABASE_POOL_MAX`](#other-server-variables), [`DATABASE_POOL_MIN`](#other-server-variables) | API | No | Listeners reuse `DATABASE_URL`; pool of 5 to 50 connections. |
 | [`VALKEY_URL`](#valkey_url) | API | No | Rate limits are per instance. |
-| [`NATS_URL`](#nats_url) | API and workers | No | PostgreSQL `NOTIFY` and in-memory broadcast. |
+| [`NATS_URL`](#nats_url) | API and workers | With more than one control-plane instance | PostgreSQL `NOTIFY` and in-memory broadcast (one instance only). |
 | [`STORAGE_*`](#object-storage-s3-compatible-blob-backend) | API | No | File and image bytes stay in PostgreSQL. |
 | [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_REQUEST_TIMEOUT_SECS`](#worker_grpc_request_timeout_secs), [`WORKER_ACTOR_STALL_TIMEOUT_SECS`](#worker_actor_stall_timeout_secs), [`WORKER_TOOL_DETACH_AFTER_SECS`](#worker_tool_detach_after_secs), [`MAX_DETACHED_TOOL_CALLS`](#max_detached_tool_calls), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`; 120 s per worker call; a stalled session is let go after 5 minutes; a tool call running past 30 s frees its turn's slot. |
 | [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Models > Providers. |
@@ -28,7 +28,7 @@ a working default; each row links to the section that documents it.
 | [`EVERRUNS_EGRESS_*`](#outbound-egress) | API and workers | No | Tenant traffic may reach any public host, directly from the deployment's address. |
 | [`EGRESS_PROXY_*`](#tenant-egress-proxy) | `everruns-egress-proxy` | Only when running the proxy | No proxy. |
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
-| [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits. |
+| [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration), [`SERVER_SHUTDOWN_*`](#server-shutdown) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits, a 5 s linger and 20 s drain on shutdown. |
 | [`OTEL_*`](#opentelemetry-configuration), [`EVERRUNS_TRACE_CONVENTIONS`](#everruns_trace_conventions), [`BRAINTRUST_*`](#braintrust-integration) | API and workers | No | Tracing and Braintrust export are off. |
 
 
@@ -263,6 +263,29 @@ HTTP_ADDR=0.0.0.0:9000
 - `ADDR` is supported as a legacy alias
 - Container images already default to `0.0.0.0:9000`; most deployments do not need to set this
 
+## Server shutdown
+
+How a stopping server drains, so a rolling restart does not cut running work.
+On SIGTERM it keeps serving for `SERVER_SHUTDOWN_DELAY_SECS` while load
+balancers stop routing to it, then stops accepting, ends event streams with a
+`disconnecting` event (reason `shutdown`) so clients reconnect to another
+replica, and lets in-flight requests finish for up to
+`SERVER_SHUTDOWN_GRACE_SECS`. The worker connection closes last, after at most
+5 more seconds.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SERVER_SHUTDOWN_DELAY_SECS` | `5` | Seconds to keep serving after SIGTERM before draining starts |
+| `SERVER_SHUTDOWN_GRACE_SECS` | `20` | Seconds in-flight requests get to finish once draining |
+
+**Notes:**
+- Keep delay + grace + 5 seconds under the orchestrator's kill timeout
+  (Kubernetes `terminationGracePeriodSeconds`, default 30; Compose
+  `stop_grace_period`)
+- Workers drain separately: `WORKER_SHUTDOWN_GRACE_SECS` bounds how long a
+  stopping worker waits, and running turns are handed to another worker at
+  their next step
+
 ## VALKEY_URL
 
 Connection URL for Valkey (Redis-compatible) used for distributed rate limiting across control-plane instances.
@@ -389,7 +412,7 @@ Connection URL for NATS with JetStream, used for push-based event delivery and t
 
 | Property | Value |
 |----------|-------|
-| **Required** | No |
+| **Required** | With more than one control-plane instance |
 | **Default** | Not set (uses PG NOTIFY for task notifications, in-memory broadcast for SSE event delivery) |
 
 **Example:**
@@ -406,14 +429,13 @@ NATS_URL=nats://control:s3cret@nats:4222
 ```
 
 **Notes:**
-- When not set, the system behaves exactly as before, all events persist to PG, SSE polls PG, task notifications use PG NOTIFY. Zero behavioral change.
+- When not set, all events persist to PG, task notifications use PG NOTIFY, and live session events are pushed inside the one process. That covers a single control-plane instance only: with `EXPECTED_INSTANCES` above 1 and no `NATS_URL`, each instance polls PostgreSQL for live events instead and reports `degraded` in `/health`.
 - When set, enables two features:
   - **Ephemeral event delivery**: delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL and flow only through NATS JetStream. SSE streams subscribe to NATS instead of polling PG.
   - **Task notifications**: `task.available.{activity_type}` subjects replace PG NOTIFY for push-based worker notification. Lower latency (~1ms vs ~30ms), supports multi-instance deployments.
-- When NATS event delivery is active, the server skips the legacy PostgreSQL event listener used only for SSE wakeups.
 - NATS JetStream must be enabled on the server (`--jetstream` flag)
 - Credentials embedded in the URL (`nats://user:password@host`) are sent as user/password auth. Reserved characters in the password (`/`, `@`, `:`, `%`) are accepted as-is, so a generated secret can be pasted unmodified; percent-encoded passwords are decoded and also work
-- Fail-graceful: if NATS connection fails at startup, falls back to PG NOTIFY + in-memory delivery with a warning that includes the connection error
+- If the NATS connection fails at startup, the server logs the connection error, uses PG NOTIFY for task notifications, and polls PostgreSQL for live session events so other instances' events still reach its clients. `/health` reports `status: degraded` with `event_delivery: polling`, and the system doctor warns.
 - Only used by control-plane (server); workers communicate via gRPC and don't need NATS access
 - Default port: 4222 (or `<PORT_PREFIX>22` with `PORT_PREFIX`, for example `27122` for prefix `271`)
 - `just start-all` automatically starts NATS and exports `NATS_URL` if `nats-server` is installed
@@ -619,7 +641,7 @@ The UI makes all REST API requests (including SSE) to `/api/*` paths. The backen
 | `DATABASE_POOL_MAX` | `50` | Maximum PostgreSQL connections in the request pool. |
 | `DATABASE_POOL_MIN` | `5` | Minimum PostgreSQL connections kept open. |
 | `SECRETS_ENCRYPTION_KEY_PREVIOUS` | Unset | Previous encryption key, kept during key rotation so existing values still decrypt. See [Encryption key rotation](/sre/runbooks/encryption-key-rotation/). |
-| `EXPECTED_INSTANCES` | `1` | Number of control-plane instances behind the load balancer. Divides the global and per-org SSE connection limits across instances. Per-session limits are not divided. |
+| `EXPECTED_INSTANCES` | `1` | Number of control-plane instances behind the load balancer. Divides the global and per-org SSE connection limits across instances. Per-session limits are not divided. Above 1 without `NATS_URL`, live session events are polled from PostgreSQL (degraded). |
 
 ## SSE Streaming Configuration
 
@@ -835,8 +857,10 @@ WORKER_GRPC_TLS_CA_CERT=/etc/everruns/grpc-ca.pem
 
 **Notes:**
 - Server: when set, requires workers to present valid client certificates signed by this CA (mutual TLS)
-- Worker: when set, verifies the server's certificate against this CA and switches to `https://` transport
+- Worker: when nonempty, both the durable/task client and the turn client (including raw blob fetches) verify the server's certificate against this CA and use `https://`. TLS keeps the original hostname instead of the plaintext replica balancer. Verification failures do not fall back to plaintext.
 - For full mTLS, set on both server and worker alongside their respective cert/key pairs
+- The turn client's connection and TLS handshake are bounded by `WORKER_GRPC_REQUEST_TIMEOUT_SECS`. Unreadable TLS files fail startup; invalid certificates or mismatched identities refuse the connection.
+- On upgrade, check that the configured CA, expected server name and optional client identity work for turn RPCs as well as task RPCs: older workers applied these settings only to the durable/task client. Unset or empty worker CA configuration retains plaintext transport.
 
 ### WORKER_GRPC_TLS_DOMAIN
 
@@ -1055,3 +1079,26 @@ For setup instructions and configuration details, see the [Braintrust Integratio
 | `BRAINTRUST_TOOL_ARGS_MODE` | No | `redacted` | Tool argument export mode: `full`, `redacted`, `none` |
 | `BRAINTRUST_TOOL_RESULTS_MODE` | No | `summary` | Tool result export mode: `full`, `summary`, `redacted`, `none` |
 | `BRAINTRUST_DEBUG_PAYLOADS` | No | `false` | Print full outbound Braintrust payload JSON to local debug logs |
+
+### EXTERNAL_AGENTS_ENABLED
+
+Set to `true` to enable self-service customer-hosted HTTPS Agent registration and
+request-driven execution. Default: disabled. Requires configured encryption and
+outbound HTTPS through the host egress service. The Agent's dangerous-settings
+permission gates registration, rotation and disable. Customer endpoints receive
+no CP user or fleet credentials. See [Cloudflare agents](/how-to/cloudflare-agent/)
+for the deployment, protocol, limits and smoke test.
+
+### CUSTOM_WORKER_GRPC_BIND_ADDR
+
+**Component:** Control plane. **Default:** unset (listener disabled).
+
+Enables the restricted customer-worker gRPC listener, separate from the trusted
+fleet service. Loopback development example: `127.0.0.1:28704`. Non-loopback
+binds require server TLS; see [Custom agent workers](/how-to/custom-agent-workers/)
+for provisioning, process-specific TLS settings, ingress and revocation.
+
+Customer binaries receive their own deployment token, never the internal fleet
+token. The reference data-agent worker uses `CUSTOM_WORKER_URL`,
+`CUSTOM_WORKER_TOKEN`, `DATA_AGENT_DATABASE` and `OPENAI_API_KEY`; HTTPS additionally
+uses `CUSTOM_WORKER_CA_CERT`. These are application settings, not CP secrets.

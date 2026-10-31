@@ -213,7 +213,10 @@ export function SandboxDetailDrawer({
   const { data: detail, isLoading, error } = useSandbox(sandboxId);
   return (
     <Drawer open={sandboxId !== null} onOpenChange={(open) => !open && onClose()}>
-      <DrawerContent className="gap-0 overflow-y-auto p-0 sm:max-w-lg">
+      <DrawerContent
+        chatProtected="Sandbox execution controls"
+        className="gap-0 overflow-y-auto p-0 sm:max-w-lg"
+      >
         <DrawerHeader className="border-b p-5 pr-12">
           <DrawerTitle>{detail ? sandboxTitle(detail) : ui("Sandbox")}</DrawerTitle>
           <DrawerDescription className="font-mono text-xs">{sandboxId}</DrawerDescription>

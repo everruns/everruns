@@ -17,18 +17,25 @@ use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+mod polling;
+pub use polling::PollingEventDelivery;
+
 /// Event delivery backend for real-time SSE push.
 ///
 /// Follows the same enum dispatch pattern as `StorageBackend`.
 /// - `InMemory`: dev mode, single process, no external deps
 /// - `Nats`: production, multi-instance, NATS JetStream
+/// - `Polling`: several servers without a reachable NATS (degraded)
 #[derive(Clone)]
 pub enum EventDelivery {
     /// In-process broadcast channels, partitioned by session_id.
-    /// Works for single-instance deployments and dev mode.
+    /// Works for single-instance deployments and dev mode only: a client sees
+    /// only what its own process published.
     InMemory(Arc<InMemoryEventDelivery>),
     /// NATS JetStream for multi-instance production deployments.
     Nats(Arc<NatsEventDelivery>),
+    /// Subscribers poll the event log in PostgreSQL (see `polling`).
+    Polling(Arc<PollingEventDelivery>),
 }
 
 impl EventDelivery {
@@ -44,11 +51,35 @@ impl EventDelivery {
         match self {
             Self::InMemory(_) => "in_memory",
             Self::Nats(_) => "nats",
+            Self::Polling(_) => "polling",
         }
     }
 
-    /// Create from environment. Uses NATS if `NATS_URL` is set, otherwise in-memory.
-    pub async fn from_env() -> Self {
+    /// Whether live delivery runs below what this deployment asked for: NATS
+    /// is configured but unreachable, or several servers run without it.
+    pub fn is_degraded(&self) -> bool {
+        matches!(self, Self::Polling(_))
+    }
+
+    /// Create from environment.
+    ///
+    /// - `NATS_URL` set and reachable: NATS.
+    /// - `NATS_URL` set but unreachable: PostgreSQL polling. Decision: degrade
+    ///   rather than refuse to start, so a NATS outage does not keep servers
+    ///   down; in-memory delivery here would silently split live updates
+    ///   between servers.
+    /// - No `NATS_URL` and `EXPECTED_INSTANCES` above 1: PostgreSQL polling,
+    ///   for the same reason.
+    /// - Otherwise (one server): in-memory.
+    pub async fn from_env(db: Arc<crate::storage::StorageBackend>) -> Self {
+        let delivery = Self::select_from_env(db).await;
+        // Heartbeats carry it, so the system doctor sees every server's choice.
+        let _ = ACTIVE_BACKEND.set(delivery.backend_name());
+        delivery
+    }
+
+    async fn select_from_env(db: Arc<crate::storage::StorageBackend>) -> Self {
+        let polling = |db| Self::Polling(Arc::new(PollingEventDelivery::new(db)));
         match std::env::var("NATS_URL") {
             Ok(url) => match NatsEventDelivery::connect(&url).await {
                 Ok(nats) => {
@@ -61,16 +92,23 @@ impl EventDelivery {
                 Err(e) => {
                     warn!(
                         error = %crate::live_updates::nats::error_chain(&e),
-                        "Failed to connect to NATS — falling back to in-memory event delivery. \
-                         SSE will only work within this process instance."
+                        "Failed to connect to NATS, so live session events are polled from \
+                         PostgreSQL (degraded) until this server restarts."
                     );
-                    Self::InMemory(Arc::new(InMemoryEventDelivery::new()))
+                    polling(db)
                 }
             },
+            Err(_) if expected_instances() > 1 => {
+                warn!(
+                    "NATS_URL not set and EXPECTED_INSTANCES > 1, so live session events are \
+                     polled from PostgreSQL (degraded). More than one server needs NATS."
+                );
+                polling(db)
+            }
             Err(_) => {
                 info!(
-                    "NATS_URL not set — using in-memory event delivery. \
-                     Set NATS_URL for multi-instance SSE support."
+                    "NATS_URL not set: in-memory event delivery, which serves one server only. \
+                     More than one server needs NATS."
                 );
                 Self::InMemory(Arc::new(InMemoryEventDelivery::new()))
             }
@@ -87,6 +125,8 @@ impl EventDelivery {
         match self {
             Self::InMemory(inner) => inner.publish(event),
             Self::Nats(inner) => inner.publish(event).await,
+            // Subscribers read the stored event from PostgreSQL.
+            Self::Polling(_) => Ok(()),
         }
     }
 
@@ -96,6 +136,7 @@ impl EventDelivery {
         match self {
             Self::InMemory(inner) => Ok(inner.subscribe(session_id)),
             Self::Nats(inner) => inner.subscribe(session_id).await,
+            Self::Polling(inner) => inner.subscribe(session_id).await,
         }
     }
 }
@@ -109,12 +150,14 @@ impl EventDelivery {
 pub enum EventSubscription {
     InMemory(broadcast::Receiver<Event>),
     Nats(Box<async_nats::jetstream::consumer::pull::Stream>),
+    Polling(Box<polling::PollingSubscription>),
 }
 
 impl EventSubscription {
     /// Receive the next event. Returns None if the subscription is closed.
     pub async fn recv(&mut self) -> Option<Event> {
         match self {
+            Self::Polling(subscription) => subscription.recv().await,
             Self::InMemory(rx) => loop {
                 match rx.recv().await {
                     Ok(event) => return Some(event),
@@ -154,6 +197,22 @@ impl EventSubscription {
             },
         }
     }
+}
+
+static ACTIVE_BACKEND: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+/// The backend this server chose at startup (`EventDelivery::from_env`), if
+/// it did.
+pub fn active_backend() -> Option<&'static str> {
+    ACTIVE_BACKEND.get().copied()
+}
+
+/// `EXPECTED_INSTANCES`: how many servers the operator runs (default 1).
+pub(crate) fn expected_instances() -> usize {
+    std::env::var("EXPECTED_INSTANCES")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(1)
 }
 
 // ============================================================
@@ -208,6 +267,18 @@ impl InMemoryEventDelivery {
 const NATS_STREAM_NAME: &str = "EVENTS";
 /// Subject prefix for session events: events.<session_id>
 const NATS_SUBJECT_PREFIX: &str = "events";
+const DEFAULT_NATS_EVENT_STREAM_MAX_BYTES: i64 = 1_073_741_824;
+
+fn parse_nats_event_stream_max_bytes(value: Option<&str>) -> Result<i64> {
+    let Some(value) = value else {
+        return Ok(DEFAULT_NATS_EVENT_STREAM_MAX_BYTES);
+    };
+    let bytes: i64 = value
+        .parse()
+        .context("NATS_EVENT_STREAM_MAX_BYTES must be a positive integer")?;
+    anyhow::ensure!(bytes > 0, "NATS_EVENT_STREAM_MAX_BYTES must be positive");
+    Ok(bytes)
+}
 
 /// NATS JetStream event delivery.
 /// Each session gets a subject: `events.<session_id>`.
@@ -215,17 +286,34 @@ const NATS_SUBJECT_PREFIX: &str = "events";
 pub struct NatsEventDelivery {
     client: async_nats::Client,
     jetstream: async_nats::jetstream::Context,
+    stream_max_bytes: i64,
 }
 
 impl NatsEventDelivery {
     pub async fn connect(url: &str) -> Result<Self> {
+        let value = match std::env::var("NATS_EVENT_STREAM_MAX_BYTES") {
+            Ok(value) => Some(value),
+            Err(std::env::VarError::NotPresent) => None,
+            Err(error) => {
+                return Err(error).context("NATS_EVENT_STREAM_MAX_BYTES is not valid Unicode");
+            }
+        };
+        let stream_max_bytes = parse_nats_event_stream_max_bytes(value.as_deref())?;
+        Self::connect_with_stream_max_bytes(url, stream_max_bytes).await
+    }
+
+    async fn connect_with_stream_max_bytes(url: &str, stream_max_bytes: i64) -> Result<Self> {
         let client = crate::live_updates::nats::connect(url)
             .await
             .context("Failed to connect to NATS")?;
 
         let jetstream = async_nats::jetstream::new(client.clone());
 
-        let delivery = Self { client, jetstream };
+        let delivery = Self {
+            client,
+            jetstream,
+            stream_max_bytes,
+        };
         delivery.ensure_stream().await?;
         info!("NATS JetStream stream '{}' ready", NATS_STREAM_NAME);
         Ok(delivery)
@@ -242,7 +330,7 @@ impl NatsEventDelivery {
             storage: async_nats::jetstream::stream::StorageType::Memory,
             num_replicas: 1,
             discard: async_nats::jetstream::stream::DiscardPolicy::Old,
-            max_bytes: 1_073_741_824, // 1 GB max
+            max_bytes: self.stream_max_bytes,
             ..Default::default()
         };
 
@@ -435,6 +523,24 @@ mod tests {
             metadata: None,
             tags: None,
             sequence: None,
+        }
+    }
+
+    #[test]
+    fn nats_stream_budget_accepts_only_positive_byte_counts() {
+        assert_eq!(
+            parse_nats_event_stream_max_bytes(None).unwrap(),
+            DEFAULT_NATS_EVENT_STREAM_MAX_BYTES
+        );
+        assert_eq!(
+            parse_nats_event_stream_max_bytes(Some("536870912")).unwrap(),
+            536_870_912
+        );
+        for invalid in ["", "0", "-1", "1MiB", "9223372036854775808"] {
+            assert!(
+                parse_nats_event_stream_max_bytes(Some(invalid)).is_err(),
+                "{invalid}"
+            );
         }
     }
 
@@ -741,6 +847,67 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[tokio::test]
+    async fn nats_stream_budget_does_not_rewrite_an_existing_stream() {
+        let broker = TestNatsServer::start().await;
+        let original = NatsEventDelivery::connect_with_stream_max_bytes(&broker.url(), 32_768)
+            .await
+            .unwrap();
+        let next = NatsEventDelivery::connect_with_stream_max_bytes(&broker.url(), 16_384)
+            .await
+            .unwrap();
+        let stream = next.jetstream.get_stream(NATS_STREAM_NAME).await.unwrap();
+        assert_eq!(stream.cached_info().config.max_bytes, 32_768);
+        original.shutdown().await;
+        next.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn bounded_nats_stream_evicts_old_messages_and_recovers_after_restart() {
+        let mut broker = TestNatsServer::start().await;
+        let publisher = NatsEventDelivery::connect_with_stream_max_bytes(&broker.url(), 16_384)
+            .await
+            .unwrap();
+        let session = Uuid::new_v4();
+        for _ in 0..50 {
+            let mut event = make_test_event(session);
+            if let EventData::OutputMessageDelta(delta) = &mut event.data {
+                delta.accumulated = "x".repeat(1_024);
+            }
+            publisher.publish(&event).await.unwrap();
+        }
+        let info = publisher
+            .jetstream
+            .get_stream(NATS_STREAM_NAME)
+            .await
+            .unwrap()
+            .cached_info()
+            .clone();
+        assert_eq!(info.config.max_bytes, 16_384);
+        assert!(info.state.bytes <= 16_384);
+        assert!(
+            info.state.first_sequence > 1,
+            "old messages should be evicted"
+        );
+        let mut subscriber = publisher.subscribe(session).await.unwrap();
+        let event = make_test_event(session);
+        publisher.publish(&event).await.unwrap();
+        let received = tokio::time::timeout(std::time::Duration::from_secs(5), subscriber.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(received.id, event.id);
+        broker.restart(&publisher).await;
+        publisher.publish(&make_test_event(session)).await.unwrap();
+        let recovered = publisher
+            .jetstream
+            .get_stream(NATS_STREAM_NAME)
+            .await
+            .unwrap();
+        assert_eq!(recovered.cached_info().config.max_bytes, 16_384);
+        publisher.shutdown().await;
     }
 
     #[tokio::test]

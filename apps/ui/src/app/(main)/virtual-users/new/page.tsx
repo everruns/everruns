@@ -1,4 +1,11 @@
 "use client";
+import {
+  Select as SharedSelect,
+  SelectTrigger as SharedSelectTrigger,
+  SelectContent as SharedSelectContent,
+  SelectValue as SharedSelectValue,
+  SelectItem as SharedSelectItem,
+} from "@/components/ui/select";
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
@@ -121,15 +128,21 @@ export default function NewVirtualUserPage() {
               <CardContent className="space-y-6">
                 <div className="space-y-2">
                   <Label htmlFor="usage">{ui("Usage")}</Label>
-                  <select
-                    id="usage"
-                    className="h-10 w-full border bg-background px-3 text-sm"
-                    value={usage}
-                    onChange={(e) => setUsage(e.target.value as "end_user" | "service")}
+                  <SharedSelect
+                    value={String(usage)}
+                    onValueChange={(selection) => setUsage(selection as "end_user" | "service")}
                   >
-                    <option value="end_user">{ui("End user")}</option>
-                    <option value="service">{ui("Service")}</option>
-                  </select>
+                    <SharedSelectTrigger
+                      id="usage"
+                      className="h-10 w-full border bg-background px-3 text-sm"
+                    >
+                      <SharedSelectValue />
+                    </SharedSelectTrigger>
+                    <SharedSelectContent>
+                      <SharedSelectItem value="end_user">{ui("End user")}</SharedSelectItem>
+                      <SharedSelectItem value="service">{ui("Service")}</SharedSelectItem>
+                    </SharedSelectContent>
+                  </SharedSelect>
                   <p className="text-xs text-muted-foreground">
                     {ui("Usage is fixed when the account is created.")}
                   </p>

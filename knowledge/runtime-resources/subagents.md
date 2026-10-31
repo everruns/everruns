@@ -335,3 +335,11 @@ subagent-specific mechanism. Remaining candidates:
 | Max iterations config | Per-subagent iteration limit (separate from session default) |
 | Parallel spawn | Spawn multiple subagents in a single tool call |
 | Steering messages | Completion notifications injected mid-turn into parent context |
+
+## Completed output by default
+
+Child sessions default to completed assistant output and thinking, while task
+progress messages and lifecycle notifications retain their delivery semantics.
+Session/message `output_streaming` hints can opt into live diagnostics. Parent
+completion waits subscribe to lifecycle notifications at the authorized server
+edge and reconcile durable state after loss; see [durable execution](../operations/durable-execution-engine.md).

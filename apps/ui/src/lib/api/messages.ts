@@ -12,7 +12,7 @@ import type { Message, CreateMessageRequest, ListResponse, Controls } from "./ty
  */
 export type SendDelivery = "started" | "steered" | "resumed" | "duplicate";
 export type CreatedMessage = Message & { delivery?: SendDelivery };
-/** `client_message_id` is a client-minted UUID that makes the send idempotent. */
+/** UI sends use this UUID as the atomic command idempotency key. */
 export type CreateMessageBody = CreateMessageRequest & { client_message_id?: string };
 
 export async function createMessage(
@@ -21,6 +21,19 @@ export async function createMessage(
   options?: RequestOptions,
 ): Promise<CreatedMessage> {
   return withSessionActivity(sessionId, async () => {
+    if (request.client_message_id) {
+      // The legacy REST handler only looks up recent messages before insertion.
+      // Commands atomically admit concurrent retries under one retained key.
+      const response = await api.post<{ output: CreatedMessage }>(
+        "/v1/commands/create_message",
+        { params: { session_id: sessionId, ...request } },
+        {
+          ...options,
+          headers: { ...options?.headers, "Idempotency-Key": request.client_message_id },
+        },
+      );
+      return response.data.output;
+    }
     const response = await api.post<CreatedMessage>(
       `/v1/sessions/${sessionId}/messages`,
       request,

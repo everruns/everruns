@@ -296,6 +296,8 @@ jobs:
             # libraries/assets they exercise. Workflow-specific harnesses under
             # .github/scripts stay owned by their dedicated jobs.
             shell:
+              - 'examples/cloudflare-data-agent/**'
+              - 'docs/how-to/cloudflare-agent.md'
               - '.github/scripts/ci/**'
               - 'scripts/run-shell-tests.sh'
               - 'scripts/docker-release-source.py'
@@ -1432,7 +1434,8 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.mode != 'pr' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
-    timeout-minutes: 40
+    # Cold server compilation must leave time for the full persistence suite.
+    timeout-minutes: ${{ matrix.shard == 'server' && 60 || 40 }}
 
     # Sharded: 8 sequential test steps were ~26 min on one runner with a
     # warm cache. Three legs split by suite; each leg gets its own
@@ -2819,7 +2822,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm test
-          pnpm exec tsc --noEmit
+          pnpm typecheck
           pnpm build
           pnpm exec playwright install --with-deps chromium
           pnpm e2e

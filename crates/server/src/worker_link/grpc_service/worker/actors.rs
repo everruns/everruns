@@ -161,17 +161,50 @@ impl WorkerServiceImpl {
         }))
     }
 
+    pub(crate) async fn handle_hand_off_actor(
+        &self,
+        request: Request<proto::ReleaseActorRequest>,
+    ) -> Result<Response<proto::ReleaseActorResponse>, Status> {
+        let req = request.into_inner();
+        require_holder(&req.holder)?;
+        let session_id = SessionId::from_uuid(parse_uuid(req.session_id.as_ref())?);
+        let released = self
+            .db
+            .hand_off_session_actor(session_id, &req.holder, req.fence, req.consumed_inbox_seq)
+            .await
+            .map_err(|e| internal_status("Failed to hand off actor", e))?;
+        Ok(Response::new(proto::ReleaseActorResponse {
+            released: released.is_some(),
+            still_runnable: released.is_some(),
+        }))
+    }
+
     pub(crate) async fn handle_read_actor_journal(
         &self,
         request: Request<proto::ReadActorJournalRequest>,
     ) -> Result<Response<proto::ReadActorJournalResponse>, Status> {
+        let authority = super::super::authority::resolve(request.extensions())?.clone();
         let req = request.into_inner();
         let session_id = SessionId::from_uuid(parse_uuid(req.session_id.as_ref())?);
-        let journal = self
-            .db
-            .read_session_actor_journal(session_id, req.after_sequence, i64::from(req.limit))
-            .await
-            .map_err(|e| internal_status("Failed to read actor journal", e))?;
+        let limit = i64::from(req.limit);
+        let journal = match authority {
+            super::super::authority::WorkerAuthority::ActorJournal(scope) => {
+                scope
+                    .read_journal(&self.db, session_id, req.after_sequence, limit)
+                    .await?
+            }
+            super::super::authority::WorkerAuthority::VerifiedJournal(scope) => {
+                scope
+                    .read_journal(&self.db, session_id, req.after_sequence, limit)
+                    .await?
+            }
+            super::super::authority::WorkerAuthority::LegacyWorker
+            | super::super::authority::WorkerAuthority::Development => self
+                .db
+                .read_session_actor_journal(session_id, req.after_sequence, limit)
+                .await
+                .map_err(|e| internal_status("Failed to read actor journal", e))?,
+        };
         let mut events: Vec<proto::Event> = journal
             .events
             .into_iter()

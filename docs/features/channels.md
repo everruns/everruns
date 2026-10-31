@@ -42,7 +42,7 @@ authentication and membership in the file's organization.
 
 1. Open the Agent and select the **Integrations** tab.
 2. Select **Add channel** and choose the channel type.
-3. Configure the type-specific fields and select **Save channel**.
+3. Configure the type-specific fields and select **Create channel**.
 4. Select **Publish** to make the channel live.
 
 The same operations are available over the API under `/v1/agents/{agent_id}/channels`, with `publish` and `unpublish` actions per channel. Every channel runs the Agent's current configuration.
@@ -193,6 +193,11 @@ own consumer sign-in. Each channel has a stable, unique hostname on the hosted
 content domain configured by your deployment. Several Work Chat channels can
 point to the same Agent.
 
+The channel page shows that address after you publish. Copy it from
+**Settings** or **Connect**, or use **Open chat page** in the header. The
+address stays the same when you change settings. Publishing alone does not
+create the hostname until the deployment has a hosted chat domain.
+
 Choose **Multiple conversations** for a conversation list, or **Single chat
 with threads** for one permanent main conversation per consumer and related
 work threads. Single mode requires coordinator thread tools on the effective
@@ -229,3 +234,28 @@ Self-hosters deploy the optional standalone browser app separately from the
 console. Follow its [deployment instructions](https://github.com/everruns/everruns/tree/main/apps/chat-ui)
 for the content domain, TLS, OIDC broker and least-privilege credential storage.
 Publishing a channel alone does not provision hosting or DNS.
+
+### Work Chat interface
+
+The hosted chat renders Markdown, OpenUI charts and all 69 standard A2UI 1.0
+components inline, using the same renderer as console chat. See
+[Generative UI](/features/generative-ui/) for forms, bindings and saved-message
+compatibility.
+Enable the corresponding capabilities on the Agent when it should produce those
+formats. Replies include expandable work logs, and background task cards open
+their delegated conversation.
+
+Consumers can search, pin, rename and archive independent conversations. Archived
+conversations retain their history and can be reopened. A channel owner can choose
+which models appear in the composer's model selector; leaving the list empty
+uses the Agent default. Reasoning effort and existing spending controls apply.
+
+Attach up to three files totaling 4 MB through the composer, paste or drag-and-drop.
+The Workspace panel previews Markdown, images, CSV tables and text, supports
+revision-checked editing, and downloads both text and binary files. HTML/SVG
+previews display in a sandbox without scripts or external network access.
+
+**Conversation actions → Share read-only link** publishes that conversation's
+messages and widgets, including future messages, to anyone holding the link.
+Files, approvals and execution controls remain private. **Revoke public links** removes access; creating another
+link replaces the earlier one. Channel unpublication also removes public access.

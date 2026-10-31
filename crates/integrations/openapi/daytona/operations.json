@@ -13,7 +13,10 @@
       "getVolume",
       "getVolumeByName",
       "getAllSnapshots",
-      "updateNetworkSettings"
+      "updateNetworkSettings",
+      "createSandboxSnapshot",
+      "getSnapshot",
+      "removeSnapshot"
     ],
     "toolbox": [
       "CreateSession",

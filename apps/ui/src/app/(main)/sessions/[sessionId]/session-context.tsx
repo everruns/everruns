@@ -18,6 +18,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { isChatThread } from "@/lib/chat-threads";
 import { useOrg } from "@/providers/org-provider";
+import { AuthContext } from "@/providers/auth-provider";
+import { chatRecoveryKey } from "@/lib/chat-recovery";
 import { useLocale } from "@/providers/locale-provider";
 import type {
   Agent,
@@ -153,6 +155,7 @@ export function SessionProvider({
 }: SessionProviderProps) {
   const pathname = usePathname();
   const { currentOrg } = useOrg();
+  const auth = useContext(AuthContext);
   const webmcp = useWebMcp();
   const { locale } = useLocale();
   const org = currentOrg?.public_id;
@@ -223,6 +226,7 @@ export function SessionProvider({
   );
   const chatSends = useChatSends({
     sessionId,
+    storageKey: auth?.user?.id && org ? chatRecoveryKey(auth.user.id, org, sessionId) : undefined,
     events,
     send: sendChat,
     cancel: cancelTurnRequest,
