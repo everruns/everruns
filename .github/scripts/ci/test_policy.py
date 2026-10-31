@@ -178,6 +178,30 @@ class Policy(unittest.TestCase):
         self.assertIn('service_mcp_oauth_lifecycle_test::', focused.risk_filters(['crates/server/tests/test_harness.rs']))
         self.assertIn('db_pool_isolation_test::', focused.risk_filters(['crates/server/tests/test_harness/database.rs']))
 
+    def test_admission_changes_run_the_http_cancellation_and_replay_contracts(self):
+        paths = [
+            'crates/server/src/api/agent_api_idempotency.rs',
+            'crates/server/src/api/command_dispatch.rs',
+            'crates/server/src/storage/transaction.rs',
+            'crates/server/src/storage/repositories/command_idempotency.rs',
+            'crates/server/tests/domain/agent_api_retry_cors_test.rs',
+            'crates/server/tests/domain/command_dispatch_test.rs',
+            '.github/scripts/ci/focused.py',
+        ]
+        server = dict(id='server', name='everruns-server',
+                      manifest_path='/repo/crates/server/Cargo.toml',
+                      dependencies=[], targets=[{'kind': ['lib']}])
+        for path in paths:
+            with self.subTest(path=path):
+                selection = focused.select(
+                    {'packages': [server], 'workspace_members': ['server']},
+                    [path], Path('/repo'))['include'][0]
+                self.assertIn('agent_api_retry_cors_test::', selection['risk_filters'])
+                self.assertIn('command_dispatch_test::', selection['risk_filters'])
+                command = next(focused.commands(selection))
+                self.assertIn('domain', command)
+                self.assertIn('--lib', command)
+
     def test_history_changes_cover_rest_and_command_revision_contracts(self):
         for path in ['crates/server/src/domains/change_history/mod.rs',
                      'crates/server/src/domains/change_history/snapshot.rs',

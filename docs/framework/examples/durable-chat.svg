@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 420" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Multiplayer chat inside Cloudflare Durable Objects</title>
+  <desc id="desc">Shared browsers use public room routes. A ChatRoom Durable Object owns presence, the conversation directory, reminders and an outbox. Stable admissions reach one ChatSession Durable Object per conversation or search child. Each session runs the shared Everruns Engine with its own journal, epoch and alarm, and calls OpenRouter through the shared driver and fetch. Alarms continue work when browsers disconnect.</desc>
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 15px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 12px; fill: #404040; }
+    .header-text { font-size: 10px; fill: #404040; letter-spacing: 0.06em; }
+    .arrow-label { font-size: 11px; fill: #0A1636; font-weight: 500; }
+  </style>
+  <rect width="800" height="420" fill="#FFFFFF"/>
+
+  <text x="102" y="43" text-anchor="middle" class="header-text">SHARED ROOM</text>
+  <rect x="24" y="60" width="155" height="110" fill="#F5F5F5" stroke="#0A0A0A"/>
+  <text x="102" y="97" text-anchor="middle" class="label">Browsers</text>
+  <text x="102" y="123" text-anchor="middle" class="sublabel">Alice + Bob</text>
+  <text x="102" y="146" text-anchor="middle" class="sublabel">Live room snapshots</text>
+
+  <text x="390" y="43" text-anchor="middle" class="header-text">APPLICATION SERVICES</text>
+  <rect x="280" y="60" width="220" height="110" fill="#F5F5F5" stroke="#0A0A0A"/>
+  <text x="390" y="97" text-anchor="middle" class="label">ChatRoom DO</text>
+  <text x="390" y="123" text-anchor="middle" class="sublabel">Directory + presence</text>
+  <text x="390" y="146" text-anchor="middle" class="sublabel">Outbox + reminders + alarm</text>
+
+  <text x="678" y="43" text-anchor="middle" class="header-text">ONE PER CONVERSATION / CHILD</text>
+  <rect x="580" y="60" width="195" height="110" fill="#F5F5F5" stroke="#0A0A0A"/>
+  <text x="678" y="97" text-anchor="middle" class="label">ChatSession DO</text>
+  <text x="678" y="123" text-anchor="middle" class="sublabel">Engine + ObjectHosting</text>
+  <text x="678" y="146" text-anchor="middle" class="sublabel">Journal + epoch + alarm</text>
+
+  <line x1="179" y1="110" x2="270" y2="110" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="270,105 280,110 270,115" fill="#0A1636"/>
+  <text x="229" y="91" text-anchor="middle" class="arrow-label">Room routes</text>
+
+  <line x1="500" y1="110" x2="570" y2="110" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="570,105 580,110 570,115" fill="#0A1636"/>
+  <text x="540" y="91" text-anchor="middle" class="arrow-label">Admit</text>
+  <line x1="580" y1="145" x2="510" y2="145" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="510,140 500,145 510,150" fill="#0A1636"/>
+  <text x="540" y="165" text-anchor="middle" class="arrow-label">Tools</text>
+
+  <line x1="678" y1="170" x2="678" y2="290" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="673,290 678,300 683,290" fill="#0A1636"/>
+  <text x="695" y="221" class="arrow-label">Shared driver</text>
+  <text x="695" y="240" class="arrow-label">+ host fetch</text>
+  <rect x="580" y="300" width="195" height="90" fill="#F5F5F5" stroke="#0A0A0A"/>
+  <text x="678" y="331" text-anchor="middle" class="label">OpenRouter</text>
+  <text x="678" y="356" text-anchor="middle" class="sublabel">Muse Spark 1.3</text>
+  <text x="678" y="375" text-anchor="middle" class="sublabel">Contributor</text>
+
+  <rect x="24" y="270" width="476" height="120" fill="#FFFFFF" stroke="#404040" stroke-dasharray="4 3"/>
+  <text x="44" y="301" class="label">Close the browsers. The work stays durable.</text>
+  <text x="44" y="328" class="sublabel">Room alarms deliver reminders. Session alarms recover execution.</text>
+  <text x="44" y="352" class="sublabel">Each history-search child is another independent session DO.</text>
+  <text x="44" y="376" class="sublabel">Reconnect to read committed history.</text>
+</svg>

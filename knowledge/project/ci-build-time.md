@@ -24,6 +24,7 @@ which share the same cache and linker characteristics.
 Pull requests run formatting, linting, repository guards, affected workspace tests,
 and relevant UI/docs checks. The affected set includes reverse Cargo dependencies;
 server persistence, authorization, and migration changes add focused contracts.
+Idempotent admission and request-transaction changes also execute the real Agent API and Console cancellation/replay contracts.
 History and manager-context changes exercise the real REST/command revision
 contract before merge, including the first mutation's restorable baseline.
 API and command changes also exercise the production-router scope sweep;
@@ -200,10 +201,20 @@ durable 9.1m to 2-3m.
   plus 3,812 passing unit tests and 66 passing contracts exhausted its forty-minute
   budget before persistence validation completed
   ([run](https://github.com/everruns/everruns/actions/runs/40816428430)).
-  That shard now has a bounded sixty-minute budget; other shards keep forty minutes.
+  The domain shard also exhausted forty minutes after a 4m33s release build and
+  27m35s test compilation left too little time for serial execution
+  ([full run](https://github.com/everruns/everruns/actions/runs/41169505295/attempts/1)).
+  Both server and domain therefore have bounded sixty-minute budgets; durable
+  keeps forty minutes. The domain run also reported a failing MCP test before
+  cancellation; more compilation headroom does not resolve or waive that failure.
   Test selection, cache keys, compile memory limits, profiles and execution
   concurrency are unchanged. This margin is not evidence
   of a warm-cache latency improvement or a guarantee that a cache remains resident.
+- **Docs notebooks share the site job's budget.** In the same full run, notebook
+  execution took 15m40s and the site finished building and checking links just
+  as the twenty-minute job expired. Release-card checks never ran. The docs job
+  allows thirty minutes for notebook compilation, the site and those final checks;
+  successful site output alone is not complete validation.
 - **Benchmark optimization and concurrency separately.** The manual
   [pilot](../../.github/workflows/ci-test-archive.yml) compares CI binary optimization
   on a pinned runner image using empty targets followed by dependency-only warm

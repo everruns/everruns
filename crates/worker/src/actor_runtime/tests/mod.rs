@@ -6,6 +6,7 @@
 //! running out. Another worker on the same index then resumes from the log.
 
 mod cancels;
+mod completion_recovery;
 mod detached;
 mod resolutions;
 mod stalls;
