@@ -28,12 +28,12 @@ recovery; this does not provide an offline model or application shell.
 
 ![Hosted Work Chat offers Retry and Discard for a recovered send](./recovery@2x.png)
 
-## Update 2026-10-29
+## Update 2026-10-31
+
+These fixes follow 0.50.0.
 
 Hosted Work Chat streams stay open past 30 seconds. Connection timeouts cover
 setup; leaving the conversation closes the stream.
-
-## Update 2026-10-30
 
 Worker recovery reuses the saved answer and preserves its reference and work
 counters.
