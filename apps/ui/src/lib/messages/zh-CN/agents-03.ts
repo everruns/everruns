@@ -1,6 +1,16 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
   Advanced: "高级",
+  Spending: "支出",
+  "The shared pool covers everyone on this channel. The daily limit caps each person until midnight UTC.":
+    "共享额度覆盖此频道上的所有人。每日限额在 UTC 午夜前限制每个人。",
+  "Caps what this channel can spend, separately from the agent's budget.":
+    "限制此频道的支出，与智能体的预算分开。",
+  "Shared pool": "共享额度",
+  "Each person, per day (USD)": "每人每天（美元）",
+  "No daily cap": "无每日上限",
+  "A person who reaches this cannot start new work until the next UTC day.":
+    "达到该金额的人在下一个 UTC 日之前无法开始新的工作。",
   "Who can use this chat": "谁可以使用此聊天",
   "Open access": "开放访问",
   "Anyone can register and sign in.": "任何人都可以注册并登录。",

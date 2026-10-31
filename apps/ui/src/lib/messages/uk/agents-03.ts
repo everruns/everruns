@@ -1,6 +1,16 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 export const messages: Readonly<Record<string, string>> = {
   Advanced: "Додатково",
+  Spending: "Витрати",
+  "The shared pool covers everyone on this channel. The daily limit caps each person until midnight UTC.":
+    "Спільний пул охоплює всіх на цьому каналі. Добовий ліміт обмежує кожну особу до півночі UTC.",
+  "Caps what this channel can spend, separately from the agent's budget.":
+    "Обмежує витрати цього каналу окремо від бюджету агента.",
+  "Shared pool": "Спільний пул",
+  "Each person, per day (USD)": "Кожна особа, на день (USD)",
+  "No daily cap": "Без добового ліміту",
+  "A person who reaches this cannot start new work until the next UTC day.":
+    "Особа, яка досягла цієї суми, не може почати нову роботу до наступного дня UTC.",
   "Who can use this chat": "Хто може користуватися цим чатом",
   "Open access": "Відкритий доступ",
   "Anyone can register and sign in.": "Будь-хто може зареєструватися і ввійти.",
