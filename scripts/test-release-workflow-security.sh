@@ -47,6 +47,9 @@ assert "secrets.CARGO_REGISTRY_TOKEN" not in publish
 assert "CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}" in steps
 assert steps.index("Build package artifact") < steps.index("rust-lang/crates-io-auth-action@") < steps.index("Publish package")
 assert "CARGO_REGISTRY_TOKEN" not in steps.split("- name: Authenticate to crates.io", 1)[0]
+controller = Path(".github/workflows/crate-release.yml").read_text()
+assert 'gh workflow run publish-crates.yml --ref main' in controller
+assert '--json databaseId,displayTitle,event,headBranch' in controller
 
 if errors:
     raise SystemExit("\n".join(errors))

@@ -329,6 +329,9 @@ The GitHub `release` environment must allow only the `main` branch: the
 controller dispatches from main while the job separately validates the requested
 package tag and exact source commit. Configure the entire reviewed
 [publish set](../../.github/crates-publish-set.txt) before merging the cutover.
+The controller correlates the main-branch workflow by its requested package,
+tag, source commit and unique dispatch token. The workflow's own commit may be
+newer than the release source; it is not the package provenance anchor.
 
 A new crate needs its first version published by an owner with a suitably scoped
 API token before crates.io permits a trusted publisher. Complete that bootstrap
