@@ -8,6 +8,15 @@
 
 ## 2026-10-30
 
+* **Chat pre-merge security pins.** Carry the latest ZIP and Undici fixes into
+  the example's independent lockfiles while retaining its qualified Worker
+  toolchain. See [The isolate host](framework/wasm-kernel.md).
+
+* **Chat dependency advisory coverage.** Refresh the example's separately pinned
+  TLS verifier/root data and record that standalone lockfiles need their own
+  RustSec pass, independently of the workspace lock. See
+  [The isolate host](framework/wasm-kernel.md).
+
 * **Navigation loading**: Keep the displayed page during route transitions and
   show pending sidebar feedback instead of replacing static page chrome with
   generic skeletons. See [Navigation Information Architecture](ui/information-architecture.md).
@@ -19,6 +28,16 @@
 - Use standard OpenAI endpoint settings in [Serve](framework/serve.md), with
   provider-scoped routing and endpoint-visible model IDs; simplify the Bashkit
   example's first-run instructions.
+* **Chat tutorial visuals.** Add real Cloudflare demo screenshots for shared
+  conversation, forks and cited history search, plus desktop/mobile architecture
+  diagrams and the reminder wakeup flow. Share the curated assets between
+  the walkthrough and example README. See [The isolate host](framework/wasm-kernel.md).
+
+* **Chat rebase qualification.** Adopt Framework 0.50 dependencies and the
+  maintained isolate build's minification/debug-section stripping. Add an
+  optional workerd upgrade mode that creates old-Engine journals and switches
+  artifacts during interrupted child recovery. See
+  [The isolate host](framework/wasm-kernel.md).
 
 - Raise the Bashkit dependency floor to 0.20.2 for Wasmtime 48.0.8 security fixes without advisory exceptions. See [Bashkit requirements](execution/bashkit-requirements.md) and [Dependency Surface](project/dependency-surface.md).
 
@@ -133,6 +152,12 @@
 
 ## 2026-10-26
 
+* **Binding-only chat internals.** Remove the example-only internal bearer
+  secret and trust native DO bindings, with workerd coverage that the public
+  gateway rejects internal tool/session routes and forged credentials. Shared
+  HTTP authority authentication stays enabled. See
+  [The isolate host](framework/wasm-kernel.md).
+
 - Added persistent Ukrainian interface selection and generic agent/harness display
   localization, including the portable agent-file contract and revision restore.
 
@@ -154,6 +179,11 @@
   [Change history](execution/change-reasons-and-manager-context.md). Shared review commands also carry worked CLI examples and synchronized terminal/evaluation catalogs.
 
 ## 2026-10-25
+
+* **Public chat demo access.** Remove the shared browser key and cookie gate;
+  keep internal authority authentication and clarify that its secret is
+  application-generated, not a Cloudflare API credential. See
+  [The isolate host](framework/wasm-kernel.md).
 
 - Added opt-in two-way Agent source synchronization with durable conditional GitHub commits, conflict retention, source-path preservation and explicit direction changes. See [Agent sources](runtime-resources/agent-sources.md).
 
@@ -241,6 +271,15 @@
 
 ## 2026-10-23
 
+* **Chat adopts retained Engine registrations.** Rebase the Cloudflare demo on
+  current Framework, keep immutable Agent identity across compatible runtime
+  upgrades, retain the verified earlier live/review keys, and show compatibility
+  suspensions. Preserve the historical model for pre-pinning memberships when
+  the new-session default changes. Reuse command exports from one Engine Wasm
+  instead of uploading
+  a second reducer. Correct the obsolete Workers compressed-size restriction.
+  See [The isolate host](framework/wasm-kernel.md).
+
 * **Chat mode trust boundaries:** Record browser-owned draft bindings, guarded
   inverses, and bounded untrusted page context in the [threat model](security/threat-model.md).
 * **Knowledge shipping qualification.** Session-scoped mounts preserve attachment
@@ -311,6 +350,13 @@
   unsaved Agent drafts, with atomic version-checked patches, separate draft
   markers, guarded local Undo, and retry-safe result delivery. Save and Discard
   retain their existing persistence contract. See [Chat mode](ui/chat-mode.md).
+
+* **Chat adopts the public hosting SPI and transactional commands.** Build the
+  authority-side Rust reducer alongside the Engine module and exercise the full
+  chat bundle in dedicated CI. Pin each session's model across host configuration
+  changes and restart. Clarify that the single-build demo cannot upgrade
+  existing Framework sessions without retained-build routing or migration. See
+  [The isolate host](framework/wasm-kernel.md).
 
 * **Large MCP catalogs implemented.** Everruns now paginates and bounds
   per-server plus aggregate session discovery, caches complete catalogs within
@@ -489,6 +535,8 @@
   callback chains after approval and require a browser check with a second
   callback hop. See [MCP](integrations/mcp.md).
 
+* **Framework-hosted multiplayer chat.** Replace the demo's custom runner and protocol driver with Engine/ObjectHosting and shared OpenRouter execution. Room services retain durable delivery intents, stable tool ownership and a legacy-history migration. See [The isolate host](framework/wasm-kernel.md). The durable architecture publication hold remains in force.
+
 ## 2026-10-17
 
 * **Automatic session titles and Small model.** Add opt-in naming outside the turn path, sparse persistent admission, explicit-title priority, and an independent organization small-model selection. See [Session titles](runtime-resources/session-titles.md).
@@ -522,6 +570,8 @@
   The announcement publication hold remains in force.
 
 ## 2026-10-16
+
+- Added a standalone Cloudflare multiplayer chat host with no celld runtime or sibling-example dependency; recorded its atomic room state, execution-keyed search children, and alarm delivery boundary, explicit OpenRouter credentials, and deployer access responsibilities in [the isolate decision](framework/wasm-kernel.md) and [threat model](security/threat-model.md).
 
 * **Platform operating skills.** Share product, CLI, and agent-authoring skills
   through the Platform capability; publish the general and CLI guides alongside

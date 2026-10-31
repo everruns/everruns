@@ -2043,6 +2043,7 @@ A `poppy` channel serves the Personal Agent Protocol (draft 0.1) at `/v1/channel
 | Enable TLS/HTTPS | TM-AUTH-005, TM-LLM-006 | All production traffic must use HTTPS |
 | Database TLS | TM-API-001 | Use `sslmode=require` in `DATABASE_URL` for production; no code-level enforcement |
 | Secure env vars | TM-AUTH-002, TM-CRYPTO-001 | Never commit secrets to source control |
+| Protect standalone chat demos | TM-AUTH-002, TM-LLM-006, TM-DOS-002 | The [Cloudflare chat example](../../examples/cloudflare-durable-chat/README.md) has optional shared access, not platform identity or tenant authorization. Deployers must configure access and budget controls; model and privileged authority credentials stay in separate Worker secrets, and only trusted operators configure the provider endpoint. The public room gateway does not expose the shared authority API; membership scopes each session bridge, retains its model across host-default changes, and dictionary lookups treat client keys as data. |
 | Configure CORS | TM-API-007, TM-WEB-007 | Set explicit allowed origins in production |
 | Network isolation | TM-DURABLE-002 | Keep gRPC port 9001 on private network; set `WORKER_GRPC_AUTH_TOKEN`; configure mTLS via `WORKER_GRPC_TLS_*` for production |
 | Evaluate Braintrust | TM-OBS-001 | Assess data classification before enabling |
