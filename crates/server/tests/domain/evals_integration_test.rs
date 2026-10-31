@@ -1093,9 +1093,10 @@ async fn test_dataset_export_atif_uses_model_view_not_raw_log() {
     use everruns_server::domains::evals::dataset::DatasetFormat;
 
     let server = TestServer::in_memory().await;
-    // Five tool iterations: default cost-control masking keeps the two most
-    // recent tool results and masks the three oldest.
-    let (eval_id, run_id, session_id) = seed_run_with_tool_iterations(&server, 5).await;
+    // Ten tool iterations: default cost-control masking keeps the two most
+    // recent tool results and masks the eight before them as one batch
+    // (`mask_batch_results` defaults to 8).
+    let (eval_id, run_id, session_id) = seed_run_with_tool_iterations(&server, 10).await;
     let service = EvalService::new(server.db.clone());
     let caller = Caller::internal(TEST_ORG_ID);
 
@@ -1123,15 +1124,15 @@ async fn test_dataset_export_atif_uses_model_view_not_raw_log() {
     assert_eq!(done.status, EvalDatasetStatus::Completed);
     let dataset_body = done.body.expect("completed dataset has body");
 
-    // Model view: the three oldest tool results are masked out; the two most
+    // Model view: the eight oldest tool results are masked out; the two most
     // recent survive.
-    for i in 0..3 {
+    for i in 0..8 {
         assert!(
             !dataset_body.contains(&format!("BULKY_RESULT_{i}")),
             "masked tool result {i} must be absent from the ATIF dataset row",
         );
     }
-    for i in 3..5 {
+    for i in 8..10 {
         assert!(
             dataset_body.contains(&format!("BULKY_RESULT_{i}")),
             "recent tool result {i} must be present in the ATIF dataset row",
@@ -1145,7 +1146,7 @@ async fn test_dataset_export_atif_uses_model_view_not_raw_log() {
         .await
         .assert_status(StatusCode::OK);
     let raw_body = raw.text();
-    for i in 0..5 {
+    for i in 0..10 {
         assert!(
             raw_body.contains(&format!("BULKY_RESULT_{i}")),
             "raw session export must carry every tool result (missing {i})",
