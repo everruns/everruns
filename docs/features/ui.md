@@ -259,7 +259,7 @@ Manage personal access tokens for programmatic access. Tokens are tied to your
 user account (not an organization) and inherit access to every organization
 available to your account:
 
-- Create new personal access tokens, choosing their access
+- Create new personal access tokens, choosing their access and expiration. The name is optional and last in the dialog. It starts as "Personal token" plus today's date, for example `Personal token (Oct 30, 2026)`. Leave it blank to keep that name.
 - View existing tokens (values hidden) and each token's access
 - Revoke tokens
 

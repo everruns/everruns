@@ -3,7 +3,7 @@ import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { TokenIcon } from "@/components/icons/facet-icons";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -93,6 +93,27 @@ const TOKEN_SCOPES: { value: TokenScope; slug: string; label: string; descriptio
 
 const DEFAULT_TOKEN_SCOPE: TokenScope = "*";
 
+// Name is optional and last in the dialog: access and expiration are the
+// decision. A blank field keeps this suggestion so the list is never unnamed.
+// The date is the viewer's local calendar day, so "today" matches the date they see.
+export function defaultPersonalAccessTokenName(
+  date: Date,
+  locale: string,
+  translate: (message: string, values?: Record<string, unknown>) => string = (message, values) =>
+    values
+      ? message.replace(/\{(\w+)\}/g, (token, key: string) =>
+          key in values ? String(values[key]) : token,
+        )
+      : message,
+): string {
+  const formatted = date.toLocaleDateString(locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  return translate("Personal token ({date})", { date: formatted });
+}
+
 // A stored scope list as one label. The server only mints ["*"] or ["read"];
 // anything else authenticates but is allowed nothing.
 function scopeLabel(scopes: string[] | undefined): string {
@@ -163,11 +184,27 @@ function CreatePersonalAccessTokenDialog({
   onTokenCreated: (token: string) => void;
 }) {
   const ui = useUiTranslations();
+  const { displayLocale } = useLocale();
   const [name, setName] = useState("");
+  const [suggestedName, setSuggestedName] = useState("");
   const [scope, setScope] = useState<TokenScope>(DEFAULT_TOKEN_SCOPE);
   const [expiryPreset, setExpiryPreset] = useState<TokenExpiryValue>(DEFAULT_TOKEN_EXPIRY);
   const [customDays, setCustomDays] = useState("");
   const [neverExpires, setNeverExpires] = useState(false);
+  const wasOpen = useRef(false);
+
+  useLayoutEffect(() => {
+    const opening = open && !wasOpen.current;
+    wasOpen.current = open;
+    if (!opening) return;
+    const suggested = defaultPersonalAccessTokenName(new Date(), displayLocale, ui);
+    setSuggestedName(suggested);
+    setName(suggested);
+    setScope(DEFAULT_TOKEN_SCOPE);
+    setExpiryPreset(DEFAULT_TOKEN_EXPIRY);
+    setCustomDays("");
+    setNeverExpires(false);
+  }, [open, displayLocale, ui]);
 
   const createToken = useCreatePersonalAccessToken();
   const expiresInDays = neverExpires
@@ -185,13 +222,14 @@ function CreatePersonalAccessTokenDialog({
     priority: 30,
     enabled: open,
     baseline: "new",
-    dirty: !!name,
+    dirty: name.trim() !== suggestedName,
     writable: !createToken.isPending,
     apply: (values) => setName(values.name),
   });
 
   const resetForm = () => {
     setName("");
+    setSuggestedName("");
     setScope(DEFAULT_TOKEN_SCOPE);
     setExpiryPreset(DEFAULT_TOKEN_EXPIRY);
     setCustomDays("");
@@ -207,9 +245,10 @@ function CreatePersonalAccessTokenDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (chat.blocked || !expiryValid) return;
+    const submittedName = name.trim() || suggestedName;
+    if (chat.blocked || !expiryValid || !submittedName) return;
     const data: CreatePersonalAccessTokenRequest = {
-      name,
+      name: submittedName,
       scopes: [scope],
       expires_in_days: expiresInDays,
     };
@@ -231,16 +270,6 @@ function CreatePersonalAccessTokenDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {chat.notice}
-          <div className="space-y-2">
-            <Label htmlFor="token-name">{ui("Name")}</Label>
-            <Input
-              id="token-name"
-              value={name}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-              placeholder={ui("My personal access token")}
-              required
-            />
-          </div>
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">{ui("Access")}</legend>
             {TOKEN_SCOPES.map((option) => (
@@ -338,11 +367,26 @@ function CreatePersonalAccessTokenDialog({
               </Label>
             </div>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="token-name">
+              {ui("Name")}{" "}
+              <span className="font-normal text-muted-foreground">{ui("(optional)")}</span>
+            </Label>
+            <Input
+              id="token-name"
+              value={name}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
+              placeholder={suggestedName}
+            />
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               {ui("Cancel")}
             </Button>
-            <Button type="submit" disabled={createToken.isPending || !name || !expiryValid}>
+            <Button
+              type="submit"
+              disabled={createToken.isPending || !expiryValid || !(name.trim() || suggestedName)}
+            >
               {createToken.isPending ? ui("Creating...") : ui("Create token")}
             </Button>
           </DialogFooter>
