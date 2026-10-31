@@ -6,16 +6,14 @@ kind: improvement
 significance: notable
 products: [platform]
 release: "0.50.0"
-surfaces: [ui]
+surfaces: [ui, api]
 links:
   docs: [/built-ins/harnesses/platform-chat/, /features/agent-api/]
 ---
 
-Chat restores unsent text and unacknowledged messages when you return to a
-conversation in the same browser tab. Restored messages offer **Retry** and
-**Discard**. Retry preserves the original send; discarding a local copy does
-not cancel work the server already accepted. Storage failures leave text
-editable and explain how to preserve it.
+Chat restores unsent text and pending messages in the same tab. **Retry**
+preserves the send; **Discard** leaves accepted work running. Storage failures
+keep text editable.
 
 [Platform Chat](/built-ins/harnesses/platform-chat/) shares live session
 subscriptions with task views and reconnects after network return. Hosted
@@ -23,8 +21,19 @@ Work Chat also preserves uncertain sends across reloads and stops stream
 retries when access is rejected. Its retries use the
 [Agent API's idempotency contract](/features/agent-api/).
 
-Recovery stays scoped to the account or browser login and conversation.
-Logout clears it. Closing the tab or clearing site data can remove local
-recovery; this does not provide an offline model or application shell.
+Recovery is scoped to the login and conversation. Logout clears it. Closing
+the tab or clearing site data can remove recovery. This provides no offline
+model or application shell.
 
 ![Hosted Work Chat offers Retry and Discard for a recovered send](./recovery@2x.png)
+
+## Update 2026-10-31
+
+These fixes follow 0.50.0.
+
+Hosted Work Chat streams stay open past 30 seconds. Connection timeouts cover
+setup; leaving the conversation closes the stream.
+
+Worker recovery preserves the saved answer and work counters. New keyed
+message admissions commit with their replay response, so retries recover after server
+restarts.

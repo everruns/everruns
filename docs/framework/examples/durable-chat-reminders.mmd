@@ -1,0 +1,7 @@
+flowchart TB
+  accTitle: A reminder continues after browsers disconnect
+  accDescr: The browser asks the agent for a reminder. The schedule tool persists the instruction, deadline and alarm in the room. Browsers may close. The room alarm admits the reminder with a stable message ID. The session alarm runs Engine and commits a reply. A reconnecting browser reads committed history.
+  Ask[Ask the agent for a reminder] --> Store[ChatRoom stores the schedule and alarm]
+  Store -->|Browsers may disconnect| Due[Room alarm admits a reminder with a stable message ID]
+  Due --> Run[Session alarm runs Engine and commits the reply]
+  Run --> Reconnect[Browser reconnects and reads committed history]

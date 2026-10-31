@@ -91,7 +91,12 @@ the same request again and get the first response back (marked
 scoped to the caller, bound to the request (the same key with other params is
 refused, not replayed), and kept only for a success, so a failed command can
 be retried as usual. Read-only commands ignore it. The rules and the
-in-flight lease live in `crates/server/src/api/command_dispatch.rs`.
+implementation live in [`command_dispatch.rs`](../../crates/server/src/api/command_dispatch.rs).
+For transactional commands, the claim, mutation and stored response share one
+commit; cancellation rolls all three back. Console message admissions use this
+request transaction too, although they record no entity change. A scoped transaction lock rejects live
+contenders without blocking a pool connection. Nontransactional operations and
+pending claims written by older servers keep their existing lease contract.
 
 `ScriptedTool` hosts used to rewrite the tree spelling into flat names at
 statement boundaries before the interpreter ran, because its `ToolDef`

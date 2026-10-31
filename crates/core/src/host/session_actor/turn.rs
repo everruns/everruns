@@ -510,13 +510,18 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         if turn.is_answered() {
             let drive = self.open_drive(&setup, org_id, &turn).await?;
             let lifecycle = RuntimeSessionLifecycle::new(setup.clone(), org_id, session_id);
+            let completion = turn.completed_data(chrono::Utc::now());
+            let iterations = completion.iterations;
+            let usage = completion.usage.clone();
             lifecycle
-                .turn_completed(
+                .emit_turn_completed(turn.input_message_id(), completion)
+                .await?;
+            lifecycle
+                .emit_session_idled(
                     turn.turn_id(),
                     turn.input_message_id(),
-                    turn.reasons(),
-                    turn.usage().cloned(),
-                    None,
+                    Some(iterations),
+                    usage,
                 )
                 .await?;
             lifecycle

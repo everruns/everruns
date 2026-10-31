@@ -62,6 +62,17 @@ def risk_filters(paths):
         # History/context writes must retain their baseline and revision guards
         # across the real REST and command adapters, not just unit fixtures.
         filters.add('change_history_test::')
+    if any(p in (
+            'crates/server/src/api/agent_api_idempotency.rs',
+            'crates/server/src/api/command_dispatch.rs',
+            'crates/server/src/storage/transaction.rs',
+            'crates/server/src/storage/repositories/command_idempotency.rs',
+            'crates/server/tests/domain/agent_api_retry_cors_test.rs',
+            'crates/server/tests/domain/command_dispatch_test.rs',
+            '.github/scripts/ci/focused.py') for p in paths):
+        # Admission, effect and replay must survive cancellation together on
+        # the actual Agent API and Console command adapters.
+        filters.update(['agent_api_retry_cors_test::', 'command_dispatch_test::'])
     if any(p.startswith('crates/server/src/domains/knowledge/')
            or p in ('crates/server/src/api/knowledge.rs',
                     'crates/server/src/api/agent_api/work_chat.rs',

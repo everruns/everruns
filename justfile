@@ -272,3 +272,9 @@ chaos *args:
     python3 scripts/chaos/run.py \
         --server-bin "${CARGO_TARGET_DIR:-target}/release/everruns-server" \
         --worker-bin "${CARGO_TARGET_DIR:-target}/release/everruns-worker" {{args}}
+
+# Authenticated Chat / Agent API / Work Chat capacity bench; simulated models only.
+# Default is a small smoke. Full run: just bench-chat-capacity --qualification
+[no-cd]
+bench-chat-capacity *args:
+    cd scripts && "${CAPACITY_PYTHON:-python3}" -m capacity.local {{args}}
