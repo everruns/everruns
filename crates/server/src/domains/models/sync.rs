@@ -203,8 +203,27 @@ impl ModelSyncService {
         Ok(sync_result)
     }
 
-    /// Sync all providers across all orgs (called by background job)
+    /// Sync all providers across all orgs.
     pub async fn sync_all(&self) -> Result<Vec<(ProviderId, SyncResult)>> {
+        self.sync_providers(None).await
+    }
+
+    /// Sync providers not synced within `max_age` (called by the background
+    /// job). The age comes from `last_synced_at`, so the schedule survives
+    /// restarts: an in-process timer alone never fired on servers redeployed
+    /// more often than the interval.
+    pub async fn sync_due(
+        &self,
+        max_age: chrono::Duration,
+    ) -> Result<Vec<(ProviderId, SyncResult)>> {
+        self.sync_providers(Some(max_age)).await
+    }
+
+    async fn sync_providers(
+        &self,
+        max_age: Option<chrono::Duration>,
+    ) -> Result<Vec<(ProviderId, SyncResult)>> {
+        let due_before = max_age.map(|age| Utc::now() - age);
         let orgs = self.db.list_organizations().await?;
         let mut results = Vec::new();
 
@@ -220,6 +239,13 @@ impl ModelSyncService {
                         org_id = provider.org_id,
                         "Skipping model sync: no API key configured for provider"
                     );
+                    continue;
+                }
+                if let Some(due_before) = due_before
+                    && provider
+                        .last_synced_at
+                        .is_some_and(|synced| synced > due_before)
+                {
                     continue;
                 }
                 let result = self
@@ -723,6 +749,63 @@ mod tests {
         // we don't have real API endpoints, but the providers are enumerated)
         let results = service.sync_all().await.unwrap();
         assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn sync_due_skips_providers_synced_within_max_age() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let db = Arc::new(StorageBackend::test_database());
+        let encryption = Arc::new(
+            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
+                .unwrap(),
+        );
+        let service = ModelSyncService::new(
+            db.clone(),
+            Arc::new(DriverRegistry::new()),
+            Some(encryption.clone()),
+        );
+        let mut providers = Vec::new();
+        for name in ["Fresh", "Old", "Never"] {
+            providers.push(
+                db.create_provider(
+                    DEFAULT_ORG_ID,
+                    CreateProviderRow {
+                        name: name.to_string(),
+                        provider_type: "openai".to_string(),
+                        base_url: None,
+                        api_key_encrypted: Some(encryption.encrypt_string("sk-test").unwrap()),
+                        settings: None,
+                    },
+                )
+                .await
+                .unwrap(),
+            );
+        }
+        let now = Utc::now();
+        db.update_provider_last_synced(DEFAULT_ORG_ID, providers[0].id.uuid(), now)
+            .await
+            .unwrap();
+        db.update_provider_last_synced(
+            DEFAULT_ORG_ID,
+            providers[1].id.uuid(),
+            now - chrono::Duration::hours(25),
+        )
+        .await
+        .unwrap();
+
+        // Each attempted sync fails (no real endpoint); only which providers
+        // were attempted matters here.
+        let attempted: Vec<_> = service
+            .sync_due(chrono::Duration::hours(24))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert!(!attempted.contains(&providers[0].id));
+        assert!(attempted.contains(&providers[1].id));
+        assert!(attempted.contains(&providers[2].id));
     }
 
     // =========================================================================
