@@ -1093,9 +1093,8 @@ async fn test_dataset_export_atif_uses_model_view_not_raw_log() {
     use everruns_server::domains::evals::dataset::DatasetFormat;
 
     let server = TestServer::in_memory().await;
-    // Ten tool iterations: default cost-control masking keeps the two most
-    // recent tool results and masks the eight before them as one batch
-    // (`mask_batch_results` defaults to 8).
+    // Ten tool iterations: default masking keeps the two most recent tool
+    // results and masks the eight before them as one batch (batch size 8).
     let (eval_id, run_id, session_id) = seed_run_with_tool_iterations(&server, 10).await;
     let service = EvalService::new(server.db.clone());
     let caller = Caller::internal(TEST_ORG_ID);
