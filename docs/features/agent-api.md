@@ -446,11 +446,12 @@ When the Agent asks a question with [`ask_user`](/capabilities/ask-user/), or it
 - Keys belong to the caller, so two applications or two end users never collide on one key.
 - Only a success is remembered. A failed request frees its key, so you can fix the request and retry with the same key.
 
-A keyed admission and its replay response commit together. If the server stops
+A keyed message admission and its replay response commit together. If the server stops
 before that commit, neither is accepted; retry the same key after reconnecting.
 If the commit succeeded but its response was lost, the retry returns that response.
-Pending claims written by older servers retain their original lease during an
-upgrade, so they can continue returning `409` until that lease expires.
+Session creation can run external startup work and retains its lease contract.
+Pending claims written by older servers also retain their original lease during
+an upgrade, so they can continue returning `409` until that lease expires.
 
 ## Errors and status codes
 

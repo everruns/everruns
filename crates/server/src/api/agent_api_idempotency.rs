@@ -80,34 +80,37 @@ pub(crate) async fn run_once(
         request.operation,
         &serde_json::json!({ "target": request.target, "body": body }),
     );
-    run_keyed(
+    run_with_claim(
         &state.db,
         state.encryption.as_ref(),
         scope,
         request.operation,
         fingerprint,
+        request.operation == "agent_api.send_message",
         handle,
     )
     .await
 }
 
-async fn run_keyed(
+async fn run_with_claim(
     db: &StorageBackend,
     encryption: Option<&Arc<EncryptionService>>,
     scope: IdempotencyKeyScope,
     operation: &str,
     fingerprint: String,
+    atomic: bool,
     handle: impl Future<Output = Response>,
 ) -> Response {
-    // The claim is part of admission, not a separately committed lease. A
-    // process dying before its reply leaves either the operation and replay
-    // together, or neither. The try-lock preserves an immediate 409 while
-    // another request is alive, without blocking a pool slot on its lock.
+    // Atomic message admission commits its claim, effect and replay together.
+    // The try-lock preserves an immediate 409 for a live owner. Session startup
+    // can perform external work and keeps the existing lease path instead.
+    let mut owned = false;
     let attempt = async {
-        if !db
-            .try_lock_command_idempotency(&scope)
-            .await
-            .map_err(|err| failure(CommandError::internal(err)))?
+        if atomic
+            && !db
+                .try_lock_command_idempotency(&scope)
+                .await
+                .map_err(|err| failure(CommandError::internal(err)))?
         {
             return Err(in_progress());
         }
@@ -142,6 +145,7 @@ async fn run_keyed(
             };
         }
 
+        owned = true;
         let response = handle.await;
         if !response.status().is_success() {
             return Err(response);
@@ -161,18 +165,36 @@ async fn run_keyed(
                 .map(str::to_string),
             body: serde_json::from_slice(&bytes).unwrap_or(Value::Null),
         };
-        let sealed =
-            seal_replay(encryption, &reply).map_err(|err| failure(CommandError::internal(err)))?;
-        db.complete_command_idempotency_key(&scope, &sealed)
-            .await
-            .map_err(|err| failure(CommandError::internal(err)))?;
+        let stored = match seal_replay(encryption, &reply) {
+            Ok(sealed) => db.complete_command_idempotency_key(&scope, &sealed).await,
+            Err(error) => Err(error),
+        };
+        if let Err(error) = stored {
+            if atomic {
+                return Err(failure(CommandError::internal(error)));
+            }
+            // Session creation can perform external startup work. Its legacy
+            // success cannot be undone merely because replay storage failed.
+            tracing::warn!(error = %error, "failed to store idempotent agent API response");
+        }
         Ok(Response::from_parts(parts, axum::body::Body::from(bytes)))
     };
-    crate::storage::transaction::scope(db, Box::pin(attempt), |err| {
-        failure(CommandError::internal(err))
-    })
-    .await
-    .unwrap_or_else(|response| response)
+    let result = if atomic {
+        crate::storage::transaction::scope(db, Box::pin(attempt), |err| {
+            failure(CommandError::internal(err))
+        })
+        .await
+    } else {
+        attempt.await
+    };
+    if !atomic
+        && owned
+        && result.is_err()
+        && let Err(error) = db.release_command_idempotency_key(&scope).await
+    {
+        tracing::warn!(error = %error, "failed to release idempotency key");
+    }
+    result.unwrap_or_else(|response| response)
 }
 
 fn in_progress() -> Response {
@@ -207,6 +229,17 @@ mod tests {
     use serde_json::json;
     use tokio::sync::Notify;
     use tokio::time::{Duration, timeout};
+
+    async fn run_keyed(
+        db: &StorageBackend,
+        encryption: Option<&Arc<EncryptionService>>,
+        scope: IdempotencyKeyScope,
+        operation: &str,
+        fingerprint: String,
+        handle: impl Future<Output = Response>,
+    ) -> Response {
+        run_with_claim(db, encryption, scope, operation, fingerprint, true, handle).await
+    }
 
     async fn fixture() -> (Arc<StorageBackend>, IdempotencyKeyScope) {
         let db = Arc::new(StorageBackend::test_database());
@@ -467,13 +500,35 @@ mod tests {
         let response = run_keyed(
             &db,
             None,
-            scope,
+            scope.clone(),
             "agent_api.test",
             "same-request".into(),
             async { panic!("a legacy owner might still be accepting this input") },
         )
         .await;
         assert_eq!(response.status(), StatusCode::CONFLICT);
+        let different = run_with_claim(
+            &db,
+            None,
+            scope.clone(),
+            "agent_api.test",
+            "different-request".into(),
+            false,
+            async { panic!("another request's pending claim cannot be reused") },
+        )
+        .await;
+        assert_eq!(different.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let retained = db
+            .claim_command_idempotency_key(&ClaimIdempotencyKey {
+                scope,
+                command: "agent_api.test".into(),
+                fingerprint: "same-request".into(),
+                locked_until: now + IDEMPOTENCY_LOCK_TTL,
+                expires_at: now + IDEMPOTENCY_KEY_TTL,
+            })
+            .await
+            .unwrap();
+        assert!(matches!(retained, IdempotencyClaim::Existing(_)));
     }
     #[tokio::test]
     async fn a_lock_cannot_escape_to_an_implicit_or_different_transaction() {
@@ -630,5 +685,35 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+    #[tokio::test]
+    async fn external_startup_keeps_the_nontransactional_contract() {
+        let (db, scope) = fixture().await;
+        let response = run_with_claim(
+            &db,
+            None,
+            scope.clone(),
+            "agent_api.create_session",
+            "same-request".into(),
+            false,
+            async {
+                assert!(!crate::storage::transaction::in_transaction());
+                effect(&db, &scope).await
+            },
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(name(&db, &scope).await, "after");
+        let replay = run_with_claim(
+            &db,
+            None,
+            scope,
+            "agent_api.create_session",
+            "same-request".into(),
+            false,
+            async { panic!("session startup must still replay a completed operation") },
+        )
+        .await;
+        assert_eq!(replay.headers()[IDEMPOTENT_REPLAYED_HEADER], "true");
     }
 }

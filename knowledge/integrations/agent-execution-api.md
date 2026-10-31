@@ -116,15 +116,15 @@ All paths are relative to the agent base URL. JSON shapes are the server's exist
 
 ### Admission retries
 
-Keyed session creation and message admission commit their claim, database changes
+Keyed message admissions commit their claim, database changes
 and replay response together. A live contender is refused without waiting for the
 owner; a cancelled or crashed transaction leaves no accepted operation or stranded
 claim. A committed retry returns the same response. A different request under a
 completed key remains invalid. Caller and tenant confinement are unchanged.
 
 Already-committed in-flight claims from older servers retain their lease during a
-rolling upgrade: they might still own an accepted operation. Nontransactional
-commands likewise retain their lease contract. The implementation is
+rolling upgrade: they might still own an accepted operation. Session creation can run external startup work and retains its lease contract,
+as do nontransactional commands. The implementation is
 [Agent API idempotency](../../crates/server/src/api/agent_api_idempotency.rs), using
 the same request transaction and scoped lock as
 [transactional commands](../execution/command-tree.md).

@@ -111,7 +111,8 @@ Requested reconnects must restore every stream, and a requested server restart
 must actually occur inside the measured phase; an early-ending case cannot
 silently skip its faults and pass.
 
-New keyed Agent API admissions and transactional Console commands commit with
+New keyed Agent API messages, Console message admissions and transactional
+commands commit with
 their replay response, so a crash rolls back an unfinished claim. A pending claim
 written by an older server can still retain its ten-minute lease during an upgrade;
 resulting HTTP 409 failures remain failures. Do not clear keys, shorten the lease

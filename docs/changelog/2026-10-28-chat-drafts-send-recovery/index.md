@@ -35,5 +35,5 @@ Hosted Work Chat streams stay open past 30 seconds. Connection timeouts cover
 setup; leaving the conversation closes the stream.
 
 Worker recovery preserves the saved answer and work counters. New keyed
-admissions commit with their replay response, so retries recover after server
+message admissions commit with their replay response, so retries recover after server
 restarts.

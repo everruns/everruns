@@ -327,7 +327,10 @@ pub async fn execute_command(
         key,
     };
     let fingerprint = request_fingerprint(&name, &request.params);
-    let transactional = desc.is_some_and(|desc| (desc.transactional)());
+    // Conversation intake records no entity change, but its input and actor
+    // mark still join this request transaction. Keep other external/long-running
+    // nontransactional commands on their existing lease contract.
+    let transactional = desc.is_some_and(|desc| (desc.transactional)()) || name == "create_message";
     let attempt = Box::pin(async {
         let now = chrono::Utc::now();
         let claim = state

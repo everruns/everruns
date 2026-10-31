@@ -290,8 +290,21 @@ async fn an_aborted_admission_retries_without_waiting_for_the_claim_lease() {
     let channel = api_channel(&server, json!({}), true).await;
     let key = create_key(&server, &channel, "Backend").await;
     let secret = key["secret"].as_str().unwrap().to_string();
-    let path = format!("/v1/channels/{}/sessions", channel.channel_id);
-    let body = json!({"title": "One accepted session"});
+    let base = format!("/v1/channels/{}", channel.channel_id);
+    let session = post(
+        &server,
+        &format!("{base}/sessions"),
+        &secret,
+        None,
+        json!({}),
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json_value();
+    let session_id: everruns_contracts::typed_id::SessionId =
+        session["id"].as_str().unwrap().parse().unwrap();
+    let path = format!("{base}/sessions/{session_id}/messages");
+    let body = text_message("One accepted input");
     let mut blocker = server.pool.begin().await.unwrap();
     sqlx::query("LOCK TABLE sessions IN ACCESS EXCLUSIVE MODE")
         .execute(&mut *blocker)
@@ -333,10 +346,12 @@ async fn an_aborted_admission_retries_without_waiting_for_the_claim_lease() {
         .assert_status(StatusCode::CREATED);
     assert!(replayed(&replay));
     assert_eq!(first.json_value()["id"], replay.json_value()["id"]);
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM sessions WHERE title = $1")
-        .bind("One accepted session")
-        .fetch_one(&server.pool)
-        .await
-        .unwrap();
-    assert_eq!(count, 1, "the retry admitted exactly one session");
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM events WHERE session_id = $1 AND event_type = 'input.message'",
+    )
+    .bind(session_id.uuid())
+    .fetch_one(&server.pool)
+    .await
+    .unwrap();
+    assert_eq!(count, 1, "the retry admitted exactly one input");
 }
