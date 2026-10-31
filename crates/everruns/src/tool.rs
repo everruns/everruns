@@ -255,6 +255,15 @@ impl ToolCallContext {
         self.inner.turn_id.clone()
     }
 
+    /// Stable execution identity for deduplicating an external tool effect.
+    ///
+    /// Includes the assistant tool-call message identity, so provider call IDs
+    /// reused within a turn do not alias distinct operations. Absent outside
+    /// an engine-managed tool invocation.
+    pub fn idempotency_key(&self) -> Option<&str> {
+        self.inner.context.idempotency_key.as_deref()
+    }
+
     /// The model-assigned id of this tool call.
     ///
     /// Empty only when the tool is invoked outside an engine turn.
@@ -834,21 +843,29 @@ mod tests {
                     "call": ctx.tool_call_id(),
                     "tool": ctx.tool_name(),
                     "turn": ctx.turn_id(),
+                    "execution": ctx.idempotency_key(),
                 }))
             },
         );
         let session_id = crate::SessionId::new();
         let mut context = everruns_core::tool_context::ToolContext::new(session_id);
         context.tool_call_id = Some("call_7".to_string());
+        context.idempotency_key = Some("message-a:call_7".into());
         match tool.execute_with_context(json!({}), &context).await {
             ToolExecutionResult::Success(value) => {
                 assert_eq!(value["session"], json!(session_id.to_string()));
                 assert_eq!(value["call"], json!("call_7"));
                 assert_eq!(value["tool"], json!("whoami"));
                 assert_eq!(value["turn"], Value::Null);
+                assert_eq!(value["execution"], "message-a:call_7");
             }
             other => panic!("expected success, got {other:?}"),
         }
+        // Reused provider call IDs must retain distinct execution identities.
+        context.idempotency_key = Some("message-b:call_7".into());
+        let second = ToolCallContext::from_core("whoami", &context);
+        assert_eq!(second.tool_call_id(), "call_7");
+        assert_eq!(second.idempotency_key(), Some("message-b:call_7"));
         // Progress outside a turn (no emitter) is a silent no-op.
         let detached = ToolCallContext::from_core("whoami", &context);
         detached.progress("ignored").await;

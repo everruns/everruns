@@ -654,3 +654,114 @@ async fn idempotency_claim_rules_hold_in_memory() {
 async fn idempotency_claim_rules_hold_on_postgres() {
     claim_rules_hold(TestServer::new().await).await;
 }
+
+#[tokio::test]
+async fn an_aborted_transactional_command_does_not_strand_its_claim() {
+    let server = std::sync::Arc::new(TestServer::in_memory().await);
+    let name = unique("aborted-command");
+    let key = unique("abort-key");
+    let body = json!({"params": {"name": name, "system_prompt": "Test"}});
+    let mut blocker = server.pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE agents IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    let original = tokio::spawn({
+        let server = server.clone();
+        let key = key.clone();
+        let body = body.clone();
+        async move { post_with_key(&server, "/v1/commands/create_agent", &key, body).await }
+    });
+    crate::agent_api_retry_cors_test::wait_for_relation_waiter(&server.pool, "agents").await;
+    original.abort();
+    assert!(matches!(original.await, Err(error) if error.is_cancelled()));
+    blocker.rollback().await.unwrap();
+
+    let first = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let response =
+                post_with_key(&server, "/v1/commands/create_agent", &key, body.clone()).await;
+            if response.status() != StatusCode::CONFLICT {
+                break response;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("a cancelled command left a committed claim")
+    .assert_status(StatusCode::OK);
+    let replay = post_with_key(&server, "/v1/commands/create_agent", &key, body)
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(
+        first.json_value()["output"]["id"],
+        replay.json_value()["output"]["id"]
+    );
+    assert_eq!(replay.headers()["idempotent-replayed"], "true");
+    assert_eq!(agents_named(&server, &name).await, 1);
+}
+
+#[tokio::test]
+async fn an_aborted_console_message_admission_retries_once() {
+    let server = std::sync::Arc::new(TestServer::in_memory().await);
+    let session = server
+        .post(
+            "/v1/sessions",
+            json!({"harness_id": server.seed_base_harness_id}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    let session_id: everruns_contracts::typed_id::SessionId =
+        session["id"].as_str().unwrap().parse().unwrap();
+    let key = uuid::Uuid::new_v4().to_string();
+    let body = json!({"params": {
+        "session_id": session_id,
+        "client_message_id": key,
+        "message": {"role": "user", "content": [{"type": "text", "text": "one console input"}]}
+    }});
+    let mut blocker = server.pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE sessions IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    let original = tokio::spawn({
+        let server = server.clone();
+        let key = key.clone();
+        let body = body.clone();
+        async move { post_with_key(&server, "/v1/commands/create_message", &key, body).await }
+    });
+    crate::agent_api_retry_cors_test::wait_for_relation_waiter(&server.pool, "sessions").await;
+    original.abort();
+    assert!(matches!(original.await, Err(error) if error.is_cancelled()));
+    blocker.rollback().await.unwrap();
+    let first = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let response =
+                post_with_key(&server, "/v1/commands/create_message", &key, body.clone()).await;
+            if response.status() != StatusCode::CONFLICT {
+                break response;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("a cancelled console send left a committed claim")
+    .assert_status(StatusCode::OK);
+    let replay = post_with_key(&server, "/v1/commands/create_message", &key, body)
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(
+        first.json_value()["output"]["id"],
+        replay.json_value()["output"]["id"]
+    );
+    assert_eq!(replay.headers()["idempotent-replayed"], "true");
+    let inputs: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM events WHERE session_id = $1 AND event_type = 'input.message'",
+    )
+    .bind(session_id.uuid())
+    .fetch_one(&server.pool)
+    .await
+    .unwrap();
+    assert_eq!(inputs, 1);
+}

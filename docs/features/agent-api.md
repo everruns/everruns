@@ -441,10 +441,17 @@ When the Agent asks a question with [`ask_user`](/capabilities/ask-user/), or it
 
 `POST /sessions` and `POST /sessions/{session_id}/messages` accept an `Idempotency-Key` header of 1 to 255 printable ASCII characters. A retry with the same key and the same request within 24 hours returns the first response with `Idempotent-Replayed: true` instead of starting a second session or sending the message twice.
 
-- The same key on a different request answers `422` with `idempotency_key_reused`.
+- Reusing a completed key for a different request answers `422` with `idempotency_key_reused`.
 - A retry while the first request is still running answers `409` with `idempotency_key_in_progress`.
 - Keys belong to the caller, so two applications or two end users never collide on one key.
 - Only a success is remembered. A failed request frees its key, so you can fix the request and retry with the same key.
+
+A keyed message admission and its replay response commit together. If the server stops
+before that commit, neither is accepted; retry the same key after reconnecting.
+If the commit succeeded but its response was lost, the retry returns that response.
+Session creation can run external startup work and retains its lease contract.
+Pending claims written by older servers also retain their original lease during
+an upgrade, so they can continue returning `409` until that lease expires.
 
 ## Errors and status codes
 
