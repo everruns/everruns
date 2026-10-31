@@ -79,6 +79,10 @@ class Turns(unittest.TestCase):
         self.assertEqual((a["pickup"], a["turn"], a["calls"], a["overhead"], a["ok"]), (200, 1000, 2, 600, True))
         self.assertEqual((b["pickup"], b["overhead"], b["ok"]), (100, 300, False))
 
+    def test_warm_up_turns_are_left_out(self):
+        a, b = metrics.turns(self.ROWS)
+        self.assertEqual(metrics.measured([a, b], 5000), [b])
+
     def test_summary_reports_overhead_per_model_call(self):
         s = metrics.turn_summary(metrics.turns(self.ROWS))
         self.assertEqual((s["turns"], s["failed_turns"], s["model_calls_per_turn"]), (2, 1, 1.5))
