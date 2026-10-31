@@ -291,6 +291,32 @@ impl ModelService {
                     "Failed to list llm providers for stale detection"
                 );
             })?;
+        // Registry decision models normally arrive with a sync. Adding the
+        // missing ones here makes a model a release adds to the registry show
+        // up on the next page load instead of after the next daily sync.
+        let mut seeded = 0;
+        for provider in providers.iter().filter(|p| p.api_key_set) {
+            let provider_id = provider.id;
+            seeded += crate::domains::models::sync::seed_registry_models(
+                &self.db,
+                provider,
+                |id, key| {
+                    rows.iter().any(|row| {
+                        row.provider_id == provider_id
+                            && (row.model_id == id
+                                || crate::domains::models::catalog::key(
+                                    row.provider_metadata.as_ref(),
+                                ) == key)
+                    })
+                },
+            )
+            .await?;
+        }
+        if seeded > 0 {
+            rows = self.db.list_all_models(caller.org_id).await?;
+            Self::order_personal_catalog(&mut rows);
+            self.invalidate_resolver_cache(caller.org_id).await;
+        }
         let provider_sync_times: std::collections::HashMap<
             Uuid,
             Option<chrono::DateTime<chrono::Utc>>,
