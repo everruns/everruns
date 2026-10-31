@@ -24,7 +24,7 @@ use serve::prelude::*;
 #[agent]
 fn analyst() -> Agent {
     Agent::builder()
-        .model("anthropic/claude-sonnet-5")    // resolved by the host's model gateway
+        .model("anthropic/claude-sonnet-5")    // resolved through the host's provider settings
         .instructions(md!("instructions.md"))  // agent/instructions.md, hot-reloads in dev
         .build()
 }
@@ -80,8 +80,11 @@ curl -s localhost:3000/v1/sessions/$ID/messages -H 'content-type: application/js
 curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0"
 ```
 
-To use a real model, set `OPENROUTER_API_KEY`, or point `SERVE_GATEWAY_URL`
-and `SERVE_GATEWAY_KEY` at any OpenAI-compatible gateway. With serve's
+For `openai/<model>` agents, set `OPENAI_API_KEY`. Optional `OPENAI_BASE_URL`
+selects an OpenAI-compatible Responses API endpoint; Serve removes the first
+`openai/` prefix before sending the model ID. This explicit URL/key pair takes
+precedence over OpenRouter for these agents. Otherwise, `OPENROUTER_API_KEY`
+routes `provider/model` IDs through OpenRouter unchanged. With serve's
 `bedrock` feature, `bedrock/<model-id>` models (for example
 `bedrock/us.anthropic.claude-sonnet-4-6`) call Amazon Bedrock on the AWS
 default credential chain whenever `AWS_REGION` is set.
@@ -148,7 +151,7 @@ knows what it registered.
 | Command | What it does |
 | --- | --- |
 | `dev` (default) | Serves the API with local SQLite under `.serve/` and a live console. Models fall back to the simulator, and Markdown prompts and skills hot-reload. |
-| `start` | Production mode. Every model must route through a gateway, and every declared secret must be set. With `--store s3://bucket/prefix` (or `SERVE_STORE`) the data lives in a bucket; see [Keep the data in a bucket](#keep-the-data-in-a-bucket). |
+| `start` | Production mode. Every model must have a provider route, and every declared secret must be set. With `--store s3://bucket/prefix` (or `SERVE_STORE`) the data lives in a bucket; see [Keep the data in a bucket](#keep-the-data-in-a-bucket). |
 | `manifest` | Prints the host contract as JSON: agents, models, tool schemas, skills, channels, cron entries, secrets, sandbox, evals and a build id. |
 | `eval [--against URL]` | Runs the evals in-process, or against a running deployment as a gate before promotion. Against an app that requires a credential, set `SERVE_CREDENTIAL` (or pass `--credential`) and every request carries it as a bearer token. |
 | `deploy` | Prints what a host would provision from the manifest. The one supported deployment target is [Amazon Bedrock AgentCore](/framework/serve-agentcore/). |

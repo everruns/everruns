@@ -4,9 +4,7 @@ use serve::prelude::*;
 #[agent]
 fn assistant() -> Agent {
     Agent::builder()
-        // Resolved by the model gateway: SERVE_GATEWAY_URL on AgentCore (for
-        // example an AgentCore Gateway inference endpoint), or
-        // `OPENAI_API_KEY` locally.
+        // OPENAI_API_KEY, with optional OPENAI_BASE_URL for a compatible endpoint.
         .model("openai/gpt-6.1-sol")
         .instructions(md!("instructions.md"))
         .build()

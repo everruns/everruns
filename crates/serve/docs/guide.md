@@ -58,12 +58,15 @@ fn analyst() -> Agent {
 }
 ```
 
-- **Model strings** are `provider/model`, and the host's gateway resolves them.
-  Locally, the resolution order is `SERVE_GATEWAY_URL`, then
-  `OPENROUTER_API_KEY`, then `OPENAI_API_KEY` (for `openai/…` models only).
+- **Model strings** are `provider/model`, and the host resolves their provider.
+  For `openai/…`, an explicit `OPENAI_BASE_URL` and `OPENAI_API_KEY` pair selects
+  a compatible Responses API endpoint. Serve strips only the first `openai/`
+  prefix; an endpoint-specific model such as `openai/vendor/model` is sent as
+  `vendor/model`. Otherwise, `OPENROUTER_API_KEY` routes model IDs unchanged,
+  followed by `OPENAI_API_KEY` for direct OpenAI models.
   `bedrock/<model-id>` (for example `bedrock/us.anthropic.claude-sonnet-4-6`,
   a Bedrock model id or inference profile) goes straight to Amazon Bedrock,
-  ahead of the gateway, when `AWS_REGION` or `AWS_DEFAULT_REGION` is set and
+  ahead of the API-key routes, when `AWS_REGION` or `AWS_DEFAULT_REGION` is set and
   serve is built with its `bedrock` feature (on by default in
   `everruns-serve-agentcore`). Credentials come from the AWS default chain:
   an IAM role (AgentCore or ECS task role, instance profile), SSO or a profile,

@@ -1,8 +1,31 @@
 # Bashkit workspace (Serve, experimental)
 
-A small [Serve](../../../crates/serve) app that uses Bashkit's `bash` tool
-to create a file, turn it into a report, and read the report after restarting
-the server. A second session checks that the first session's files are absent.
+A small [Serve](../../../crates/serve) app that creates a report with Bashkit
+and reads it again after restarting the server.
+
+## Try it
+
+You need Rust, Python 3.10+, and `OPENAI_API_KEY` set in your environment
+with access to `gpt-6-luna`. From the repository root:
+
+```sh
+cargo build -p serve-example-bashkit-workspace
+python3 examples/serve/bashkit-workspace/demo.py target/debug/bashkit-workspace
+```
+
+The script starts and stops Serve for you. It makes four real model turns
+(normal provider charges apply), creates a report containing `apples` and
+`pears`, and checks that it survives a restart. A successful run ends with:
+
+```text
+PASS: files survive turns and restart; sessions are isolated; shell variables reset.
+```
+
+It prints a temporary directory containing the resulting files and logs.
+Your existing Serve data is untouched. If you use `CARGO_TARGET_DIR`, pass
+that directory's binary path instead.
+
+## How Bashkit is configured
 
 Select the runtime in `serve.toml`:
 
@@ -31,26 +54,13 @@ shell execution in the agent. Bashkit implements shell commands in process;
 it does not provide every program installed on your machine. Shell HTTP is
 disabled by default.
 
-## Run the walkthrough
+## Verification details
 
-Prerequisites: the repository's Rust toolchain, Python 3.10+, and an
-`OPENAI_API_KEY` with access to `gpt-6-luna`. Set the credential in your
-environment using your usual secret manager. Never put it in `serve.toml`,
-which is embedded in the binary. These commands run from the repository root:
-
-```sh
-cargo build -p serve-example-bashkit-workspace
-python3 examples/serve/bashkit-workspace/demo.py target/debug/bashkit-workspace
-```
-
-If you use `CARGO_TARGET_DIR`, pass that directory's binary path instead.
-The script runs **four real model turns**, with provider token charges; the
-number of model requests and cost depend on model behavior. It has no
-simulator fallback: it launches `start`, which requires a model route.
-`SERVE_GATEWAY_URL` (plus `SERVE_GATEWAY_KEY`) or `OPENROUTER_API_KEY` takes
-precedence over `OPENAI_API_KEY`; that route must support `openai/gpt-6-luna`.
-Compilation and `cargo run -p serve-example-bashkit-workspace -- manifest`
-do not call a model.
+The script launches `start`, which requires a real model route. For other
+provider configurations, see [Serve](../../../crates/serve/README.md#try-it).
+Keep provider credentials in your environment, not in `serve.toml`, which
+is embedded in the binary. Building the example or running its `manifest`
+command does not call a model.
 
 `demo.py` starts Serve on an unused port, sets a fresh API bearer key, and
 uses only local HTTP for the client. The CLI listens on all interfaces;
@@ -73,34 +83,15 @@ not just the model's final response:
    command to the **original session ID** and checks the result again.
 4. A new session executes a shell check proving neither file exists there.
 
-The report is:
-
-```text
-apples
-pears
-```
-
-The final line is `PASS: files survive turns and restart; sessions are
-isolated; shell variables reset.` The printed temporary directory contains
+The printed temporary directory contains
 `server.log`, one JSON event trace per turn, and `data/` with Serve's stores
 and session workspaces. The script prints the actual host path of
 `report.txt`; `/workspace/demo/report.txt` is its **agent-visible** path,
 not an absolute path in your checkout. Inspect the files, then delete only
 that printed temporary directory when finished.
 
-## Run interactively
-
-```sh
-export SERVE_DATA_DIR="$(mktemp -d)"
-export SERVE_API_KEYS="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
-cargo run -p serve-example-bashkit-workspace -- start --port 3000
-```
-
-Use the [Serve session API](../../../crates/serve/docs/wire-api.md) from another
-terminal with the same bearer key: create a session with
-`POST /v1/sessions`, send text with `POST /v1/sessions/{id}/messages`, and
-read `GET /v1/sessions/{id}/events`. `demo.py` is a complete standard-library
-client showing these request bodies, event polling and error checks.
+For a custom client, see the [Serve session API](../../../crates/serve/docs/wire-api.md).
+`demo.py` shows the request bodies, event polling and error checks.
 
 ## Persistence boundaries
 

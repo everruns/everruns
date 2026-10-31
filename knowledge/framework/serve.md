@@ -92,9 +92,14 @@ runtime.
   client resumes with the server's cursors: `since_id` (an event id) or
   `after_sequence` (a durable sequence). Both address the engine's canonical
   log, which survives restarts with dense sequences.
-- **Apps name models; hosts own keys.** `provider/model` strings resolve
-  through a gateway. Without one, `dev` and evals fall back to per-agent
-  simulator scripts, so examples and evals run offline and deterministically.
+- **Apps name models; hosts own keys.** Model routing uses the standard provider
+  environment settings; OpenAI endpoint overrides apply only to OpenAI-routed
+  models and preserve the provider-visible model ID after removing its routing
+  prefix. Explicit endpoints do not capture other providers' credentials or
+  silently reroute their models. See the [routing implementation](../../crates/serve/src/gateway.rs)
+  and [configuration guide](../../crates/serve/docs/guide.md).
+  Without a real route, `dev` and evals can use per-agent simulator scripts;
+  `start` fails. Examples use real models, with scripted models confined to tests.
 - **Approvals and questions are the runtime's.** Coherent Engine profiles persist
   pending calls and resolve them with exact-turn, deduplicated authority commands.
   Batch validation precedes every write; omitted approval decisions deny and
