@@ -14,8 +14,8 @@ highlights:
   - title: System health
     description: One report checks every part of a self-hosted install.
     source: "#4971"
-  - title: Snapshot builder
-    description: Daytona snapshots built from install scripts and verified.
+  - title: Sandbox snapshot builder
+    description: Sandbox snapshots built from install scripts on Daytona and verified.
     source: "#5040"
   - title: Cost estimates
     description: Per-task and monthly model spend from an agent's configuration.
