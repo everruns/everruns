@@ -374,7 +374,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
     if atom.native_async.is_none()
         && let Some(result) = super::transcript::ended_by_no_reply_result(&assembled)
     {
-        tracing::info!(%session_id, turn_id = %context.turn_id, "no_reply ended the turn");
+        tracing::info!(%session_id, turn_id = %context.turn_id, "the sent reply ended the turn");
         return CallOutcome {
             disclosure,
             error_context,

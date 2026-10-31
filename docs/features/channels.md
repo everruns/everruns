@@ -243,6 +243,9 @@ that sends no name leaves the Work Chat label in place. The sidebar and the
 empty conversation use the Agent's avatar. An Agent with no avatar keeps the
 round mark.
 
+A message the Agent sends is the reply. It is rendered as Markdown, and it is
+not listed again as work. Other tool steps stay in the work log.
+
 The hosted chat renders Markdown, OpenUI charts and all 69 standard A2UI 1.0
 components inline, using the same renderer as console chat. See
 [Generative UI](/features/generative-ui/) for forms, bindings and saved-message

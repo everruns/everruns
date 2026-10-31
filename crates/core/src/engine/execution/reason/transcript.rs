@@ -62,16 +62,36 @@ pub(super) fn order_native_results(messages: Vec<RuntimeMessage>) -> Vec<Runtime
     ordered
 }
 
-/// Whether the model already ended this turn with `no_reply`: its latest
-/// message called nothing but `no_reply`, every call succeeded, and only those
+/// Whether the latest agent step already settled the conversation: every call
+/// is `send_message` or `no_reply`, every call succeeded, and only those
 /// results came after. A steering message or task wake after them means
 /// someone spoke again, so the model is asked as usual.
 ///
 /// The tool promises to end the turn, but a tool result always feeds another
 /// generation. Some models answer that generation with yet another
 /// `no_reply`, or with filler sent through `send_message`, instead of
-/// stopping, which kept one Slack turn spinning for over a minute.
+/// stopping, which kept one Slack turn spinning for over a minute. A step
+/// that only delivered a message has the same shape: the person already has
+/// the text, and the follow-up generation only repeats it.
+#[cfg(test)]
 pub(super) fn ended_by_no_reply(messages: &[RuntimeMessage]) -> bool {
+    ended_by_tools(messages, |name| {
+        name == crate::conversation::NO_REPLY_TOOL_NAME
+    })
+}
+
+pub(super) fn ended_by_communication(messages: &[RuntimeMessage]) -> bool {
+    ended_by_tools(messages, |name| {
+        matches!(
+            name,
+            crate::conversation::NO_REPLY_TOOL_NAME
+                | crate::conversation::SEND_MESSAGE_TOOL_NAME
+                | "channel_post_message"
+        )
+    })
+}
+
+fn ended_by_tools(messages: &[RuntimeMessage], tool: impl Fn(&str) -> bool) -> bool {
     let Some(index) = messages
         .iter()
         .rposition(|message| message.role == RuntimeMessageRole::Agent)
@@ -81,9 +101,7 @@ pub(super) fn ended_by_no_reply(messages: &[RuntimeMessage]) -> bool {
     let calls = messages[index].tool_calls();
     let after = &messages[index + 1..];
     !calls.is_empty()
-        && calls
-            .iter()
-            .all(|call| call.name == crate::conversation::NO_REPLY_TOOL_NAME)
+        && calls.iter().all(|call| tool(&call.name))
         && after.iter().all(|message| {
             message.role == RuntimeMessageRole::ToolResult
                 && message
@@ -97,13 +115,14 @@ pub(super) fn ended_by_no_reply(messages: &[RuntimeMessage]) -> bool {
         })
 }
 
-/// The finished reason step for an explicit agent whose turn `no_reply`
-/// already ended (see [`ended_by_no_reply`]); `None` asks the model as usual.
+/// The finished reason step for an explicit agent whose latest step already
+/// delivered or declined (see [`ended_by_communication`]); `None` asks the
+/// model as usual.
 pub(super) fn ended_by_no_reply_result(
     assembled: &crate::engine::runtime_context::AssembledTurnContext,
 ) -> Option<super::ReasonResult> {
     let agent = &assembled.runtime_agent;
-    if !agent.communication.is_explicit() || !ended_by_no_reply(&assembled.messages) {
+    if !agent.communication.is_explicit() || !ended_by_communication(&assembled.messages) {
         return None;
     }
     Some(super::ReasonResult {
@@ -337,11 +356,12 @@ mod native_tests {
     fn other_tools_or_failures_keep_the_turn_going() {
         let mixed = vec![
             RuntimeMessage::user("hi"),
-            agent_calling(&["send_message", "no_reply"]),
+            agent_calling(&["send_message", "read_file"]),
             ok("call_0"),
             ok("call_1"),
         ];
         assert!(!ended_by_no_reply(&mixed));
+        assert!(!ended_by_communication(&mixed));
 
         let failed = vec![
             RuntimeMessage::user("hi"),
@@ -354,5 +374,32 @@ mod native_tests {
         assert!(!ended_by_no_reply(&pending));
 
         assert!(!ended_by_no_reply(&[RuntimeMessage::user("hi")]));
+    }
+
+    #[test]
+    fn send_message_ends_the_turn_and_other_tools_do_not() {
+        let sent = vec![
+            RuntimeMessage::user("what is this?"),
+            agent_calling(&["send_message"]),
+            ok("call_0"),
+        ];
+        assert!(!ended_by_no_reply(&sent));
+        assert!(ended_by_communication(&sent));
+
+        let both = vec![
+            RuntimeMessage::user("hi"),
+            agent_calling(&["send_message", "no_reply"]),
+            ok("call_0"),
+            ok("call_1"),
+        ];
+        assert!(ended_by_communication(&both));
+
+        let continued = vec![
+            RuntimeMessage::user("look this up"),
+            agent_calling(&["send_message", "read_file"]),
+            ok("call_0"),
+            ok("call_1"),
+        ];
+        assert!(!ended_by_communication(&continued));
     }
 }

@@ -31,8 +31,9 @@ const SYSTEM_PROMPT: &str = r#"# How you talk
 People do not see what you write as an assistant. That text is your private working notes: think, plan and keep track there.
 
 To say something to the person, call `send_message`. Everything they see from you comes through it.
-- Send a message when you have something worth saying: an answer, a question, a short progress update during longer work, or a result. Write it complete, in Markdown, for the person reading it.
+- Send a message when you have something worth saying: an answer, a question, or a result. Write it complete, in Markdown, for the person reading it.
 - Do not narrate tool calls or repeat yourself. One clear message beats several small ones.
+- A step that only sends a message ends the turn. The person already has it. If you still have tools to run, call them before the message or in the same step.
 - A successful result means the message was delivered. Do not send the same content again.
 - If sending fails, read the error. An uncertain failure may already have been delivered, so do not blindly resend.
 - When a message needs no answer from you (an acknowledgement, people talking among themselves), call `no_reply` instead of sending something empty."#;
@@ -131,7 +132,7 @@ impl Tool for SendMessageTool {
     }
 
     fn description(&self) -> &str {
-        "Send a message to the person you are talking with. This is the only way they see anything from you; your assistant text is private notes. Use it for answers, questions, results and meaningful progress updates. Write the complete message in Markdown. The runtime picks the destination: the conversation this turn came from. Success means it was delivered."
+        "Send a message to the person you are talking with. This is the only way they see anything from you; your assistant text is private notes. Use it for answers, questions and results. Write the complete message in Markdown. The runtime picks the destination: the conversation this turn came from. Success means it was delivered. If this is the only tool in the step, the turn ends after delivery."
     }
 
     fn parameters_schema(&self) -> Value {

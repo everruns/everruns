@@ -25,6 +25,43 @@ test("completed messages replace streamed deltas and keep tool results out of th
     ["Make a report", "Final report"],
   );
 });
+test("a sent message is the reply and its tool call is not work", () => {
+  const events: ChatEvent[] = [
+    {
+      type: "input.message",
+      data: { message: { id: "u", role: "user", content: [{ type: "text", text: "What is this?" }] } },
+    },
+    {
+      type: "tool.started",
+      data: {
+        tool_call: { id: "send", name: "send_message" },
+        narration: "Sending message: It's the **About** panel.",
+      },
+    },
+    {
+      type: "tool.started",
+      data: { tool_call: { id: "read", name: "read_file" }, narration: "Reading the page" },
+    },
+    {
+      type: "conversation.message",
+      data: { message_id: "sent", text: "It's the **About** panel for Bashkit." },
+    },
+    { type: "tool.completed", data: { tool_call_id: "send", tool_name: "send_message" } },
+  ];
+  assert.deepEqual(
+    conversationMessages(events).map((message) => [message.role, message.text]),
+    [
+      ["user", "What is this?"],
+      ["assistant", "It's the **About** panel for Bashkit."],
+    ],
+  );
+  const { logs, pending } = workForMessages(events);
+  assert.deepEqual(
+    logs.get("sent")?.map((event) => (event.data.tool_call as { name: string }).name),
+    ["read_file"],
+  );
+  assert.equal(pending.length, 1);
+});
 test("each reply receives the work from its own user turn", () => {
   const events: ChatEvent[] = [
     { type: "input.message", data: { message: { id: "u1" } } },

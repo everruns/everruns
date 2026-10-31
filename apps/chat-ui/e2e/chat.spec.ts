@@ -198,6 +198,64 @@ test("untrusted assistant Markdown cannot execute HTML", async ({ page, request 
   ).toBeUndefined();
 });
 
+test("a sent message is the reply, not a work-log preview", async ({ page, request }) => {
+  await request.get("http://127.0.0.1:9141/mode/multi_chat");
+  const events = [
+    {
+      id: "evt_user",
+      sequence: 1,
+      type: "input.message",
+      data: {
+        message: {
+          id: "message_user",
+          role: "user",
+          content: [{ type: "text", text: "What do we see here?" }],
+        },
+      },
+    },
+    {
+      id: "evt_send",
+      sequence: 2,
+      type: "tool.started",
+      data: {
+        tool_call: { id: "call_send", name: "send_message" },
+        display_name: "Send message",
+        narration:
+          "Sending message: It's the GitHub **About** panel for **Bashkit** (`bashkit.sh`).",
+      },
+    },
+    {
+      id: "evt_reply",
+      sequence: 3,
+      type: "conversation.message",
+      data: {
+        message_id: "message_reply",
+        text: "It's the GitHub **About** panel for **Bashkit** (`bashkit.sh`), described as a shell toolkit.",
+      },
+    },
+    {
+      id: "evt_done",
+      sequence: 4,
+      type: "tool.completed",
+      data: { tool_call_id: "call_send", tool_name: "send_message", display_name: "Send message" },
+    },
+    { id: "evt_turn", sequence: 5, type: "turn.completed", data: { turn_id: "turn_1" } },
+  ];
+  await page.route("**/api/sessions/*/sse**", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+    }),
+  );
+  await page.goto(origin);
+  const reply = page.locator(".message.assistant");
+  await expect(reply).toContainText("It's the GitHub About panel for Bashkit");
+  await expect(reply).toContainText("bashkit.sh");
+  await expect(reply).not.toContainText("**");
+  await expect(reply).not.toContainText("Sending message");
+  await expect(page.locator(".activity")).toHaveCount(0);
+});
+
 test("file editor preserves the revision and explains concurrent changes", async ({
   page,
   request,

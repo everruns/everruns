@@ -6,17 +6,35 @@ export type ChatEvent = {
   type: string;
   data: Record<string, unknown>;
 };
+const COMMUNICATION = new Set(["send_message", "channel_post_message", "no_reply"]);
+
+function toolName(event: ChatEvent) {
+  const call = event.data.tool_call as { name?: string } | undefined;
+  return String(event.data.tool_name ?? call?.name ?? "");
+}
+
+function replyId(event: ChatEvent) {
+  if (event.type === "conversation.message") {
+    return typeof event.data.message_id === "string" ? event.data.message_id : undefined;
+  }
+  if (!event.type.startsWith("output.message.")) return;
+  const message = event.data.message as { id?: string } | undefined;
+  const id = message?.id ?? event.data.message_id ?? event.data.id;
+  return typeof id === "string" ? id : undefined;
+}
+
 export function workForMessages(events: ChatEvent[]) {
   const logs = new Map<string, ChatEvent[]>();
   let current: ChatEvent[] = [];
   for (const event of events) {
     if (event.type === "input.message") current = [];
-    if (event.type === "tool.started" || event.type === "tool.completed") current.push(event);
-    if (event.type.startsWith("output.message.")) {
-      const message = event.data.message as { id?: string } | undefined;
-      const id = message?.id ?? event.data.message_id ?? event.data.id;
-      if (typeof id === "string") logs.set(id, [...current]);
-    }
+    if (
+      (event.type === "tool.started" || event.type === "tool.completed") &&
+      !COMMUNICATION.has(toolName(event))
+    )
+      current.push(event);
+    const id = replyId(event);
+    if (id) logs.set(id, [...current]);
   }
   return { logs, pending: current };
 }

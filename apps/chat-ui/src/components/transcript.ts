@@ -7,6 +7,11 @@ export type ChatEvent = {
 };
 export type Message = { id: string; role: string; text: string };
 function messageOf(event: ChatEvent): Message | null {
+  if (event.type === "conversation.message") {
+    const text = typeof event.data.text === "string" ? event.data.text : "";
+    const id = event.data.message_id;
+    return text.trim() && typeof id === "string" ? { id, role: "assistant", text } : null;
+  }
   if (!["input.message", "output.message.completed"].includes(event.type)) return null;
   const data = event.data as {
     message?: { id?: string; role?: string; content?: Array<{ type: string; text?: string }> };

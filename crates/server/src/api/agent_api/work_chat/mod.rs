@@ -468,12 +468,40 @@ pub(crate) async fn delete_work_chat_file(
     result.unwrap_or_else(|response| response)
 }
 
+/// `send_message` and `no_reply` are the reply, not a work step. Their narration
+/// is the message body, which the transcript shows on its own.
+fn communication_tool(event: &Value) -> bool {
+    let data = &event["data"];
+    let name = data["tool_call"]["name"]
+        .as_str()
+        .or_else(|| data["tool_name"].as_str())
+        .unwrap_or("");
+    matches!(name, "send_message" | "channel_post_message" | "no_reply")
+}
+
 /// Work Chat projects the canonical stream rather than exposing debug events.
 pub(super) fn project(
     event: Value,
     config: &crate::domains::agent_channels::record::api::AgentApiChannelConfig,
 ) -> Option<Value> {
     let kind = event["type"].as_str()?;
+    if kind == "conversation.message" {
+        let text = event["data"]["text"].as_str()?;
+        if text.trim().is_empty() {
+            return None;
+        }
+        return Some(json!({
+            "id": event["id"],
+            "type": kind,
+            "ts": event["ts"],
+            "session_id": event["session_id"],
+            "sequence": event["sequence"],
+            "data": { "message_id": event["data"]["message_id"], "text": text }
+        }));
+    }
+    if matches!(kind, "tool.started" | "tool.completed") && communication_tool(&event) {
+        return None;
+    }
     if !matches!(
         kind,
         "input.message"
@@ -555,5 +583,76 @@ mod tests {
         ] {
             assert!(project(json!({"type":kind,"data":{"secret":"hidden"}}), &config).is_none());
         }
+    }
+
+    #[test]
+    fn a_sent_message_is_the_reply_and_not_a_work_step() {
+        use crate::domains::agent_channels::record::api::{AgentApiChannelConfig, ApiVisibility};
+        let config = AgentApiChannelConfig {
+            visibility: ApiVisibility::Full,
+            ..Default::default()
+        };
+        let sent = project(
+            json!({
+                "id": "evt_sent",
+                "type": "conversation.message",
+                "ts": "2026-10-30T00:00:00Z",
+                "session_id": "session_1",
+                "sequence": 3,
+                "data": {
+                    "message_id": "message_1",
+                    "text": "It's the **About** panel.",
+                    "tool_call_id": "call_1",
+                    "delivery": {"platform": "slack", "channel": "C1", "message_ref": "1.2"}
+                }
+            }),
+            &config,
+        )
+        .expect("sent message");
+        assert_eq!(sent["data"]["text"], "It's the **About** panel.");
+        assert!(sent["data"].get("tool_call_id").is_none());
+        assert!(sent["data"].get("delivery").is_none());
+        assert!(
+            project(
+                json!({"type":"conversation.message","data":{"text":"  "}}),
+                &config
+            )
+            .is_none()
+        );
+        for event in [
+            json!({
+                "type": "tool.started",
+                "data": {
+                    "tool_call": {"id": "call_1", "name": "send_message"},
+                    "narration": "Sending message: secret preview"
+                }
+            }),
+            json!({
+                "type": "tool.completed",
+                "data": {"tool_call_id": "call_1", "tool_name": "no_reply", "success": true}
+            }),
+            json!({
+                "type": "tool.started",
+                "data": {"tool_call": {"id": "call_9", "name": "channel_post_message"}}
+            }),
+        ] {
+            assert!(project(event, &config).is_none());
+        }
+        let read = project(
+            json!({
+                "id": "evt_tool",
+                "type": "tool.started",
+                "ts": "2026-10-30T00:00:00Z",
+                "session_id": "session_1",
+                "sequence": 2,
+                "data": {
+                    "tool_call": {"id": "call_2", "name": "read_file"},
+                    "narration": "Reading report.md"
+                }
+            }),
+            &config,
+        )
+        .expect("real tool");
+        assert_eq!(read["data"]["narration"], "Reading report.md");
     }
 }
