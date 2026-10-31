@@ -36,8 +36,13 @@ Long dialogs scroll, keeping Save reachable.
 Channel drafts become editable after selecting a type; returning to the chooser expires them.
 Cost-planner drafts update estimates locally and support Undo.
 
+## Update 2026-10-31
+
+Saved changes collapse into a small bar at the bottom of the page. **Review** opens
+Before/After with per-field **Undo**; after **Undo all** the bar confirms and fades.
+
 ![A fresh subchat opens one conversation](./subchat@2x.png)
 
 ![Review the live draft before Save](./settings-draft@2x.png)
 
-![Saved changes retain Before/After and Undo](./saved-review@2x.png)
+![Saved changes fold into a bar with Review and Undo](./saved-review@2x.png)

@@ -53,6 +53,12 @@ const devPages = [
     icon: MessageSquare,
   },
   {
+    title: "Saved Changes",
+    description: "Bottom bar after a save: review, per-field undo, undone and changed-again states",
+    href: "/dev/saved-changes",
+    icon: Blocks,
+  },
+  {
     title: "Tool Outputs",
     description: "Standalone, grouped, and narrated tool transcript components",
     href: "/dev/tool-activity",
