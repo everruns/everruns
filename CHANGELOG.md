@@ -31,6 +31,8 @@ Changelog: https://everruns.com/docs/changelog/2026-10-31-everruns-0-50-1/
 
 ### What's Changed
 
+- test(mcp): make tenant isolation independent of search ranking ([#5117](https://github.com/everruns/everruns/pull/5117)) by [@chaliy](https://github.com/chaliy)
+- feat(chat): Work Chat shows the reply, the person, and the Agent ([#5093](https://github.com/everruns/everruns/pull/5093)) by [@chaliy](https://github.com/chaliy)
 - test(drivers): isolate native response wire fixtures ([#5116](https://github.com/everruns/everruns/pull/5116)) by [@chaliy](https://github.com/chaliy)
 - fix(mcp): keep canonical operations in bounded discover results ([#5114](https://github.com/everruns/everruns/pull/5114)) by [@chaliy](https://github.com/chaliy)
 - perf(chat): add capacity benchmarks and fix crash recovery ([#5046](https://github.com/everruns/everruns/pull/5046)) by [@chaliy](https://github.com/chaliy)
