@@ -185,16 +185,6 @@ export const messages: Readonly<Record<string, string>> = {
     "Агент припиняє діяти як програма Everruns. Установка залишається пов’язаною з організацією. Тригери GitHub перестануть запускатися.",
   "The agent's GitHub App exists but is not installed yet. Finish installing it and pick the repositories the agent may use.":
     "Додаток GitHub агента існує, але ще не встановлено. Завершіть установку та виберіть сховища, які агент може використовувати.",
-  "The caller": "Абонент",
-  "The person in the chat": "Людина в чаті",
-  "They see the tool and what it would do, and approve or reject it in the chat.":
-    "Вони бачать інструмент і що він зробить, і схвалюють або відхиляють його в чаті.",
-  "They see the tool and its arguments, and approve or reject it.":
-    "Вони бачать інструмент і його аргументи, і схвалюють або відхиляють його.",
-  "They decide in Everruns. The person in the chat only sees that a tool is waiting.":
-    "Вони вирішують в Everruns. Людина в чаті бачить лише те, що інструмент очікує.",
-  "They decide in Everruns. The caller only sees that a tool is waiting.":
-    "Вони вирішують в Everruns. Викликач бачить лише те, що інструмент очікує.",
   "The channel was saved.": "Канал збережено.",
   "The client ID of your app in the AgentID console. Tokens must be issued for it and last ten minutes; AgentID is a sign-in, not a long-lived API key.":
     "Ідентифікатор клієнта вашої програми в консолі AgentID. Для нього повинні бути видані токени і тривати десять хвилин; AgentID — це вхід, а не довгостроковий ключ API.",
@@ -338,7 +328,6 @@ export const messages: Readonly<Record<string, string>> = {
   "When the provider cannot answer": "Коли провайдер не може відповісти",
   "When this agent wakes up on its own": "Коли цей агент прокидається сам",
   "Where it works": "Де це працює",
-  "Who approves a tool before it runs": "Хто схвалює інструмент перед запуском",
   "Who should this server act as?": "Кого повинен виконувати цей сервер?",
   "with a JSON-RPC 2.0 envelope. Only the": "з конвертом JSON-RPC 2.0. Тільки",
   "With failed turns": "З невдалими ходами",

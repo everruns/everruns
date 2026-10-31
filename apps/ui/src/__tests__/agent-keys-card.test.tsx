@@ -128,7 +128,6 @@ describe("api channel form", () => {
         session_binding: "session_per_invocation",
         visibility: "full",
         errors: "detailed",
-        tool_approvals: "caller",
         tool_activity_text: "Looking it up",
         rate_limit_per_minute: 60,
       },

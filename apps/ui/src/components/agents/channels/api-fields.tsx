@@ -29,14 +29,12 @@ import { FoldedSettings } from "./form-section";
 export type ApiSessionBinding = "per_user" | "session_per_invocation";
 export type ApiVisibility = "messages" | "activity" | "full";
 export type ApiErrorDetail = "public" | "detailed";
-export type ApiToolApprovals = "operator" | "caller";
 
 export interface ApiChannelConfig {
   session_binding?: ApiSessionBinding;
   visibility?: ApiVisibility;
   errors?: ApiErrorDetail;
   tool_activity_text?: string;
-  tool_approvals?: ApiToolApprovals;
   rate_limit_per_minute?: number;
   auth_methods?: unknown[];
   cors_origins?: string[];
@@ -49,7 +47,6 @@ export interface ApiFormState {
   visibility: ApiVisibility;
   errors: ApiErrorDetail;
   toolActivityText: string;
-  toolApprovals: ApiToolApprovals;
   /** Kept as text so the input can be edited freely; parsed on save. */
   rateLimitPerMinute: string;
   /** One origin per line. */
@@ -71,7 +68,6 @@ export function apiFormStateFromConfig(config?: ApiChannelConfig): ApiFormState 
     visibility: config?.visibility ?? "activity",
     errors: config?.errors ?? "public",
     toolActivityText: config?.tool_activity_text ?? "",
-    toolApprovals: config?.tool_approvals ?? "operator",
     rateLimitPerMinute:
       config?.rate_limit_per_minute != null ? String(config.rate_limit_per_minute) : "",
     corsOrigins: (config?.cors_origins ?? []).join("\n"),
@@ -132,7 +128,6 @@ export function buildApiChannelConfig(state: ApiFormState): ApiChannelConfig {
     session_binding: state.sessionBinding,
     visibility: state.visibility,
     errors: state.errors,
-    tool_approvals: state.toolApprovals,
     ...(activityText ? { tool_activity_text: activityText } : {}),
     ...(rateLimit ? { rate_limit_per_minute: rateLimit } : {}),
     ...(spendLimit ? { daily_spend_limit_usd: spendLimit } : {}),
@@ -255,34 +250,6 @@ export function ApiFields({
             </p>
           </div>
         )}
-        <div className="space-y-2">
-          <Label htmlFor={`${id}_tool_approvals`}>{ui("Who approves a tool before it runs")}</Label>
-          <Select
-            value={value.toolApprovals}
-            onValueChange={(next) => set("toolApprovals", next as ApiToolApprovals)}
-          >
-            <SelectTrigger id={`${id}_tool_approvals`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="operator">{ui("People with access to this agent")}</SelectItem>
-              <SelectItem value="caller">
-                {hosted ? ui("The person in the chat") : ui("The caller")}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            {ui(
-              value.toolApprovals === "caller"
-                ? hosted
-                  ? "They see the tool and what it would do, and approve or reject it in the chat."
-                  : "They see the tool and its arguments, and approve or reject it."
-                : hosted
-                  ? "They decide in Everruns. The person in the chat only sees that a tool is waiting."
-                  : "They decide in Everruns. The caller only sees that a tool is waiting.",
-            )}
-          </p>
-        </div>
         {!hosted && (
           <div className="space-y-2">
             <Label htmlFor={`${id}_session_binding`}>{ui("Sessions")}</Label>

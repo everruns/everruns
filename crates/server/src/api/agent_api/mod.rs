@@ -55,9 +55,7 @@ use crate::domains::agent_channels::api_sessions::{
     visible_event_types,
 };
 use crate::domains::agent_channels::record::ChannelType;
-use crate::domains::agent_channels::record::api::{
-    AgentApiChannelConfig, ApiToolApprovals, ApiVisibility,
-};
+use crate::domains::agent_channels::record::api::{AgentApiChannelConfig, ApiVisibility};
 use crate::domains::events::work::turn_work_report;
 use crate::domains::messages::intake::receive_files;
 use crate::domains::messages::types::InputMessage;
@@ -639,7 +637,7 @@ async fn get_session(state: &ChannelApiState, auth: Authorized, session_id: &str
         Ok(session) => session,
         Err(response) => return response,
     };
-    let pending = match session_pending_input(&state.db, &session, &auth.caller.config).await {
+    let pending = match session_pending_input(&state.db, &session).await {
         Ok(pending) => pending,
         Err(err) => return internal_error(err),
     };
@@ -1028,7 +1026,7 @@ pub async fn agent_api_answer_questions(
 
 #[utoipa::path(
     description = "Allow or reject tool calls the agent's approval gate held back, and resume \
-        the turn. Only on channels whose `tool_approvals` is `caller`.",
+        the turn. The person using the agent answers its approvals.",
     post,
     path = "/v1/channels/{channel_id}/sessions/{session_id}/tool-approvals",
     params(
@@ -1040,7 +1038,6 @@ pub async fn agent_api_answer_questions(
         (status = 200, description = "Decisions recorded and turn resumed", body = SubmitToolApprovalsResponse),
         (status = 400, description = "Invalid decisions", body = ErrorResponse),
         (status = 401, description = "Missing or invalid agent key", body = ErrorResponse),
-        (status = 403, description = "An operator answers this agent's tool approvals", body = ErrorResponse),
         (status = 404, description = "Channel, session or pending request not found", body = ErrorResponse),
         (status = 409, description = "Not waiting, expired, or already answered", body = ErrorResponse)
     ),
@@ -1065,14 +1062,9 @@ pub async fn agent_api_submit_tool_approvals(
         Ok(session) => session,
         Err(response) => return response,
     };
-    // THREAT[TM-AGENTKEY-006]: a held-back action is the caller's to allow
-    // only when the owner said so.
-    if auth.caller.config.tool_approvals != ApiToolApprovals::Caller {
-        return error(
-            StatusCode::FORBIDDEN,
-            "An operator answers this agent's tool approvals",
-        );
-    }
+    // THREAT[TM-AGENTKEY-006]: the caller answers only its own session's
+    // pending requests, through the same validation and single-claim resume
+    // as `/v1`.
     let pending = match pending_tool_approvals(&state.db, session.id).await {
         Ok(pending) => pending,
         Err(err) => return internal_error(err),

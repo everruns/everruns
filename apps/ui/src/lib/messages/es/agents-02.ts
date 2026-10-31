@@ -294,7 +294,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Pause-based answers after a short silence. Waits for a finished thought rides through mid-sentence pauses.":
     "Respuestas basadas en pausas después de un breve silencio. La espera por un pensamiento terminado pasa por pausas a mitad de frase.",
   "People reached": "Personas alcanzadas",
-  "People with access to this agent": "Personas con acceso a este agente",
   "Permanently delete the archived agent “{value0}”? Existing references will render as deleted tombstones.":
     "¿Eliminar permanentemente el agente archivado “{value0}”? Las referencias existentes se representarán como lápidas eliminadas.",
   "Personal account": "Cuenta personal",
