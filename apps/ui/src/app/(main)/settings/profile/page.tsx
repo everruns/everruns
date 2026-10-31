@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 
 import { useEffect, useState } from "react";
@@ -11,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/providers/auth-provider";
 import { useUpdateProfile } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
+import { LanguageSettings } from "@/components/settings/language-settings";
 import { Save, User } from "lucide-react";
 
 function getInitials(name: string): string {
@@ -23,7 +25,8 @@ function getInitials(name: string): string {
 }
 
 export default function ProfilePage() {
-  usePageTitle("Account", "Settings");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Account"), ui("Settings"));
   const { user } = useAuth();
   const updateProfile = useUpdateProfile();
 
@@ -35,7 +38,7 @@ export default function ProfilePage() {
     values: { name },
     entityId: user?.id,
     entityType: "profile",
-    label: "Account",
+    label: ui("Account"),
     baseline: user?.name ?? "",
     dirty: hasChanges,
     writable: !!user && !updateProfile.isPending,
@@ -66,10 +69,13 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-8">
+      <LanguageSettings />
       <section>
         <div className="mb-6">
-          <h2 className="text-xl font-semibold">Account</h2>
-          <p className="text-sm text-muted-foreground">Your Everruns sign-in name and email.</p>
+          <h2 className="text-xl font-semibold">{ui("Account")}</h2>
+          <p className="text-sm text-muted-foreground">
+            {ui("Your Everruns sign-in name and email.")}
+          </p>
         </div>
 
         {chatDraft.notice}
@@ -84,7 +90,7 @@ export default function ProfilePage() {
               </AvatarFallback>
             </Avatar>
             <div>
-              <h3 className="font-medium">{displayName || user?.email || "User"}</h3>
+              <h3 className="font-medium">{displayName || user?.email || ui("User")}</h3>
               <p className="text-sm text-muted-foreground">{user?.email}</p>
             </div>
           </div>
@@ -92,14 +98,14 @@ export default function ProfilePage() {
           <div className="space-y-6 max-w-md">
             {/* Full Name */}
             <div className="space-y-2">
-              <Label htmlFor="full-name">Full Name</Label>
+              <Label htmlFor="full-name">{ui("Full Name")}</Label>
               <div className="flex gap-2">
                 <Input
                   id="full-name"
                   value={name}
                   onChange={handleNameChange}
                   onKeyDown={handleKeyDown}
-                  placeholder="Enter your full name"
+                  placeholder={ui("Enter your full name")}
                   className="flex-1"
                 />
                 <Button
@@ -109,29 +115,29 @@ export default function ProfilePage() {
                   }
                 >
                   <Save className="h-4 w-4 mr-2" />
-                  {updateProfile.isPending ? "Saving..." : "Save"}
+                  {updateProfile.isPending ? ui("Saving...") : ui("Save")}
                 </Button>
                 {hasChanges && chatDraft.adopted && (
                   <Button variant="outline" onClick={() => setName(undefined)}>
-                    Discard
+                    {ui("Discard")}
                   </Button>
                 )}
               </div>
               {updateProfile.isError && (
                 <p className="text-sm text-destructive">
-                  Failed to update: {updateProfile.error.message}
+                  {ui("Failed to update:")} {updateProfile.error.message}
                 </p>
               )}
               {updateProfile.isSuccess && !hasChanges && (
-                <p className="text-sm text-success">Saved successfully</p>
+                <p className="text-sm text-success">{ui("Saved successfully")}</p>
               )}
             </div>
 
             {/* Email (read-only) */}
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{ui("Email")}</Label>
               <Input id="email" value={user?.email || ""} readOnly className="bg-muted" />
-              <p className="text-xs text-muted-foreground">Email cannot be changed.</p>
+              <p className="text-xs text-muted-foreground">{ui("Email cannot be changed.")}</p>
             </div>
           </div>
         </Card>

@@ -889,9 +889,16 @@ impl RuntimeMessage {
         (!joined.is_empty()).then_some(joined)
     }
 
-    /// Replace every reasoning part with its publishable projection, dropping
-    /// opaque provider replay state. Used at API boundaries.
+    /// Project reviewed public metadata and content, dropping runtime metadata
+    /// and opaque provider replay state. Storage/replay must use the original.
     pub fn into_public(mut self) -> Self {
+        self.metadata = self.metadata.take().and_then(|metadata| {
+            let value = serde_json::Value::Object(metadata.into_iter().collect());
+            let serde_json::Value::Object(public) = crate::public_metadata::message(&value) else {
+                unreachable!()
+            };
+            (!public.is_empty()).then(|| public.into_iter().collect())
+        });
         self.content
             .retain(|part| !matches!(part, ContentPart::ProviderOpaque(_)));
         for part in &mut self.content {

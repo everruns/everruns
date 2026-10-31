@@ -1,3 +1,4 @@
+use super::doctor::DoctorReport;
 use super::queries as q;
 use super::types::HealthCheckResponse;
 use crate::domains::common::*;
@@ -23,6 +24,34 @@ impl Command for HealthCheck {
             status: "ok",
             version: q::version(),
         })
+    }
+}
+
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
+pub struct RunSystemDoctor {
+    /// Run every check now instead of returning the report from the last
+    /// minute. Refreshes closer than five seconds apart share one run.
+    #[serde(default)]
+    pub refresh: Option<bool>,
+}
+
+#[command(
+    name = "run_system_doctor",
+    category = "system",
+    description = "Check whether the whole install is set up right and working: database, workers, keys, messaging, storage, monitoring.",
+    method = "GET",
+    path = "/v1/system/doctor",
+    policy = super::SYSTEM_VIEW,
+    cli = CliRoute::new(&["system"], "doctor").with_examples(&[CliExample::new("Check every part of the install and list what needs fixing", "everruns system doctor --refresh true",)]),
+)]
+impl Command for RunSystemDoctor {
+    type Output = DoctorReport;
+
+    async fn execute(self, ctx: &Ctx) -> Result<DoctorReport, CommandError> {
+        let doctor = ctx.system_doctor.as_ref().ok_or_else(|| {
+            CommandError::unavailable("The system doctor is not available on this surface")
+        })?;
+        Ok(doctor.report(self.refresh.unwrap_or(false)).await)
     }
 }
 

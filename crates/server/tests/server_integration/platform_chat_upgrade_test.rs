@@ -30,6 +30,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
         .create_harness(
             org_id,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "platform-chat".into(),
                 display_name: Some("Platform Chat".into()),
                 icon: None,
@@ -71,6 +72,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
         .create_harness(
             org_id,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "platform-chat-v2".to_string(),
                 display_name: Some("Platform Chat v2".to_string()),
                 icon: canonical.icon.clone(),
@@ -133,6 +135,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
         .create_agent(
             org_id,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "preview-agent".to_string(),
                 display_name: None,
@@ -202,6 +205,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
         .create_harness(
             org_id,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "child-operator".to_string(),
                 display_name: None,
                 icon: None,
@@ -296,8 +300,10 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
     let caps = db.get_agent_capabilities(managed.id.uuid()).await.unwrap();
     assert!(
         caps.iter()
-            .any(|cap| cap.capability_id == "platform" && cap.config == json!({"surface":"shell"}))
+            .any(|cap| cap.capability_id == "platform" && cap.config == json!({"surface":"native"}))
     );
+    assert!(caps.iter().any(|cap| cap.capability_id == "tool_search"
+        && cap.config == json!({"bounded":true,"threshold":1})));
     assert!(
         db.get_harness_by_name(org_id, "platform-chat-v2")
             .await

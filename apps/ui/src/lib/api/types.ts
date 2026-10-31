@@ -1,3 +1,4 @@
+export type {} from "./resource-localization-types";
 export * from "./schema-types";
 export * from "./legacy-api-types";
 export * from "./provider-driver-types";

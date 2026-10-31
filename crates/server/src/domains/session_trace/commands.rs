@@ -172,12 +172,20 @@ fn payload(value: Value, full: bool) -> TracePayload {
 }
 
 fn event_ref(row: crate::storage::TraceEventRefRow) -> TraceEventRef {
+    // Inline previews are an API response too, even when they fit below the
+    // payload-size cutoff. Unknown/malformed event payloads fail closed.
+    let data = row.data.and_then(|data| {
+        let data = everruns_core::events::deserialize_event_data(&row.event_type, data);
+        (!data.is_unsupported())
+            .then(|| serde_json::to_value(data.into_public()).ok())
+            .flatten()
+    });
     TraceEventRef {
         id: EventId::from_uuid(row.id).to_string(),
         sequence: row.sequence,
         event_type: row.event_type,
         ts: row.ts,
-        data: row.data,
+        data,
         size_bytes: row.size_bytes,
     }
 }
@@ -1207,6 +1215,35 @@ impl Command for ListSessionTraceTurnEvents {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn message_and_inline_event_previews_hide_runtime_metadata() {
+        let mut message = everruns_core::RuntimeMessage::assistant("answer");
+        message.metadata = Some(
+            serde_json::from_value(
+                json!({"model":"test", "tool_changes":{"system_prompt":"CANARY"}}),
+            )
+            .unwrap(),
+        );
+        let stored = serde_json::to_value(&message).unwrap();
+        assert!(
+            !public_message(&stored)
+                .unwrap()
+                .to_string()
+                .contains("CANARY")
+        );
+        let row = crate::storage::TraceEventRefRow {
+            id: Uuid::now_v7(),
+            sequence: 1,
+            event_type: "output.message.completed".into(),
+            ts: chrono::Utc::now(),
+            data: Some(json!({"message":stored})),
+            size_bytes: 512,
+        };
+        let public = event_ref(row).data.unwrap();
+        assert!(!public.to_string().contains("CANARY"));
+        assert_eq!(public["message"]["metadata"]["model"], "test");
+    }
 
     #[test]
     fn small_payloads_inline_and_large_ones_are_cut() {

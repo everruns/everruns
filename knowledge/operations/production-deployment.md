@@ -83,7 +83,7 @@ only a definitive missing-stream rejection, once, and never deletes a stream or
 rewrites an existing subject policy. Continuing errors require inspection of the
 broker and subject configuration; they must not be hidden by an API restart or by
 writing token deltas to PostgreSQL. Real-broker regressions live in
-[`event_delivery.rs`](../../crates/server/src/live_updates/event_delivery.rs).
+[`event_delivery`](../../crates/server/src/live_updates/event_delivery/mod.rs).
 
 ### PostgreSQL Listener Connectivity
 
@@ -193,6 +193,23 @@ For production operations, use the runbooks rather than this spec:
 - durable mode setup: [`docs/sre/runbooks/durable-mode-setup.md`](../../docs/sre/runbooks/durable-mode-setup.md)
 - encryption key rotation: [`docs/sre/runbooks/encryption-key-rotation.md`](../../docs/sre/runbooks/encryption-key-rotation.md)
 - admin tasks and migrations: [`docs/sre/admin-container.md`](../../docs/sre/admin-container.md)
+
+### Rolling restarts
+
+A rolling deploy must not cut running work. On SIGTERM the server keeps
+serving for `SERVER_SHUTDOWN_DELAY_SECS` (default 5) while proxies drop it,
+then stops accepting, ends SSE streams with a `disconnecting` event (reason
+`shutdown`) so clients resume on another replica, and lets in-flight requests
+finish for up to `SERVER_SHUTDOWN_GRACE_SECS` (default 20). Its worker gRPC
+listener stops last, after at most 5 s more. Workers re-resolve the server
+replica list every 10 s. Workers hand running turns off between steps
+([worker drain](durable-execution-engine.md#worker-drain-and-shutdown)).
+Set the orchestrator's kill timeout above the sum: for the server above
+delay + grace + 5 s, for workers above `WORKER_SHUTDOWN_GRACE_SECS`. Design
+and the incident behind it: [`shutdown.rs`](../../crates/server/src/shutdown.rs).
+
+A database outage during authentication answers 503 with `Retry-After`, not
+401, so clients retry instead of discarding valid credentials.
 
 Release and rollout references:
 - [`knowledge/project/release-process.md`](../project/release-process.md)

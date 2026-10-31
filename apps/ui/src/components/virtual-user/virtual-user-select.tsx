@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { useVirtualUser, useVirtualUsers } from "@/hooks/use-virtual-users";
@@ -28,6 +29,7 @@ export function VirtualUserSelect({
   className,
   usage,
 }: VirtualUserSelectProps) {
+  const ui = useUiTranslations();
   const [search, setSearch] = useState("");
   const {
     isLoading,
@@ -94,7 +96,7 @@ export function VirtualUserSelect({
             disabled={isFetchingNextPage}
             onClick={() => fetchNextPage()}
           >
-            {isFetchingNextPage ? "Loading…" : "Load more virtual users"}
+            {isFetchingNextPage ? ui("Loading…") : ui("Load more virtual users")}
           </Button>
         ) : undefined
       }

@@ -10,6 +10,7 @@ import type { WorkReport } from "@/lib/api/types";
 jest.mock("@/providers/locale-provider", () => {
   const { formatMessage } = jest.requireActual("@/lib/i18n");
   return {
+    ...jest.requireActual("@/providers/locale-provider"),
     useLocale: () => ({
       locale: "en",
       t: (key: string, values?: Record<string, string | number>) =>

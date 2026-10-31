@@ -19,6 +19,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Building2, Check, Loader2, LogIn, Users } from "lucide-react";
@@ -72,6 +73,7 @@ export function ZeroOrgOnboarding({
   useCreateOrg = useCreateOrganization,
   suggestedName,
 }: ZeroOrgOnboardingProps = {}) {
+  const ui = useUiTranslations();
   const router = useRouter();
   const { setCurrentOrg } = useOrg();
   const createOrg = useCreateOrg();
@@ -118,24 +120,31 @@ export function ZeroOrgOnboarding({
         currentIndex={arc.stepIndex(0)}
         stepLabel={arc.stepLabel(0)}
         brand={{
-          eyebrow: `Step ${arc.stepIndex(0) + 1} / ${arc.steps.length}`,
+          eyebrow: ui("Step {current} / {total}", {
+            current: arc.stepIndex(0) + 1,
+            total: arc.steps.length,
+          }),
           headline: "Your workspace for agents, harnesses, and durable runs.",
           // "What you'll get" checklist — fills in on later steps.
           features: [
-            { label: "Durable execution engine" },
-            { label: "Agent harnesses & capabilities" },
-            { label: "Session traces & evals" },
+            { label: ui("Durable execution engine") },
+            { label: ui("Agent harnesses & capabilities") },
+            { label: ui("Session traces & evals") },
           ],
         }}
       >
         <div className="max-w-[420px]">
           <h1 className="text-[28px] font-semibold tracking-[-0.02em]">
-            {hasPendingInvitations ? "Join your team" : "Create your organisation"}
+            {hasPendingInvitations ? ui("Join your team") : ui("Create your organisation")}
           </h1>
           <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
             {hasPendingInvitations
-              ? "You have been invited to an existing organisation. Join it now, or create a separate workspace."
-              : "An organisation is your team’s shared workspace. Agents, harnesses, sessions, and settings all live here."}
+              ? ui(
+                  "You have been invited to an existing organisation. Join it now, or create a separate workspace.",
+                )
+              : ui(
+                  "An organisation is your team’s shared workspace. Agents, harnesses, sessions, and settings all live here.",
+                )}
           </p>
 
           <div className="mt-7">
@@ -155,7 +164,7 @@ export function ZeroOrgOnboarding({
                 {hasPendingInvitations && (
                   <section aria-labelledby="pending-invitations-heading" className="space-y-3">
                     <h2 id="pending-invitations-heading" className="text-sm font-semibold">
-                      Pending invitations
+                      {ui("Pending invitations")}
                     </h2>
                     {invitations.map((invitation) => {
                       const isJoining =
@@ -174,7 +183,7 @@ export function ZeroOrgOnboarding({
                                 {invitation.org_name}
                               </div>
                               <div className="text-xs capitalize text-muted-foreground">
-                                {invitation.role} role
+                                {invitation.role} {ui("role")}
                               </div>
                             </div>
                           </div>
@@ -189,14 +198,14 @@ export function ZeroOrgOnboarding({
                             ) : (
                               <LogIn className="mr-2 h-4 w-4" />
                             )}
-                            {isJoining ? "Joining..." : "Join"}
+                            {isJoining ? ui("Joining...") : ui("Join")}
                           </Button>
                         </div>
                       );
                     })}
                     {acceptInvitation.isError && (
                       <p role="alert" className="text-sm text-destructive">
-                        Failed to join organisation. Please try again.
+                        {ui("Failed to join organisation. Please try again.")}
                       </p>
                     )}
                   </section>
@@ -204,7 +213,7 @@ export function ZeroOrgOnboarding({
 
                 {pendingInvitations.isError && (
                   <p role="alert" className="text-sm text-destructive">
-                    Invitations could not be loaded. You can still create an organisation.
+                    {ui("Invitations could not be loaded. You can still create an organisation.")}
                   </p>
                 )}
 
@@ -212,7 +221,7 @@ export function ZeroOrgOnboarding({
                   <div className="flex items-center gap-3" aria-hidden="true">
                     <div className="h-px flex-1 bg-border" />
                     <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Or create a new organisation
+                      {ui("Or create a new organisation")}
                     </span>
                     <div className="h-px flex-1 bg-border" />
                   </div>
@@ -220,18 +229,18 @@ export function ZeroOrgOnboarding({
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="onboarding-org-name">Organisation name</Label>
+                    <Label htmlFor="onboarding-org-name">{ui("Organisation name")}</Label>
                     <Input
                       id="onboarding-org-name"
                       value={name}
                       onChange={(event) => setName(event.target.value)}
-                      placeholder="Acme Inc."
+                      placeholder={ui("Acme Inc.")}
                       required
                     />
                     {showAutoFill && (
                       <span className="inline-flex items-center gap-1.5 border border-accent/40 bg-accent/[0.12] px-2 py-1 font-mono text-[11px] text-accent-foreground">
                         <Check className="icon-sharp h-3 w-3" strokeWidth={2.5} />
-                        Auto-filled from {suggestedName}
+                        {ui("Auto-filled from")} {suggestedName}
                       </span>
                     )}
                   </div>
@@ -242,9 +251,9 @@ export function ZeroOrgOnboarding({
                       <Users className="icon-sharp h-3 w-3" strokeWidth={2.5} />
                     </span>
                     <div>
-                      <div className="text-[13px] font-medium">Invite teammates later</div>
+                      <div className="text-[13px] font-medium">{ui("Invite teammates later")}</div>
                       <div className="text-xs text-muted-foreground">
-                        You can add people anytime from Settings.
+                        {ui("You can add people anytime from Settings.")}
                       </div>
                     </div>
                   </div>
@@ -253,7 +262,7 @@ export function ZeroOrgOnboarding({
                     // Generic copy only — server error strings are not for
                     // rendering (TM-AUTH-019 discipline applies UI-wide).
                     <p role="alert" className="text-sm text-destructive">
-                      Failed to create organisation. Please try again.
+                      {ui("Failed to create organisation. Please try again.")}
                     </p>
                   )}
                   <Button
@@ -261,7 +270,7 @@ export function ZeroOrgOnboarding({
                     className="w-full"
                     disabled={createOrg.isPending || !name.trim()}
                   >
-                    {createOrg.isPending ? "Creating..." : "Create organisation"}
+                    {createOrg.isPending ? ui("Creating...") : ui("Create organisation")}
                     {!createOrg.isPending && <ArrowRight className="ml-2 h-4 w-4" />}
                   </Button>
                 </form>

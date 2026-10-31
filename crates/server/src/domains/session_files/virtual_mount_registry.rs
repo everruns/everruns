@@ -119,6 +119,15 @@ impl VirtualMountRegistry {
             .any(|m| strip_mount_prefix(path, &m.mount_path).is_some())
     }
 
+    /// Whether moving this subtree would relocate a virtual mount.
+    pub fn contains_mount(&self, session_id: Uuid, path: &str) -> bool {
+        self.mounts.read().get(&session_id).is_some_and(|mounts| {
+            mounts
+                .iter()
+                .any(|mount| strip_mount_prefix(&mount.mount_path, path).is_some())
+        })
+    }
+
     /// Search virtual files for grep matches.
     ///
     /// `max_file_bytes` caps per-file scan cost (TM-DOS-008); files larger than

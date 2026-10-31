@@ -257,6 +257,7 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/agents/{agent_id}/stats", get(get_agent_stats))
         .command::<crate::domains::agents::DestroyAgent>()
         .command::<crate::domains::agents::DraftAgent>()
+        .command::<crate::domains::agents::cost_plan::PlanAgentCosts>()
         .route("/v1/agents/{agent_id}/export", get(export_agent))
         .route("/v1/agents/{agent_id}/copy", post(copy_agent))
         .route(
@@ -608,6 +609,7 @@ pub async fn upsert_agent(
                 .map_err(crate::domains::common::classify_anyhow)?
                 .ok_or_else(|| crate::domains::common::CommandError::not_found("Agent"))?;
                 let update_req = UpdateAgentRequest {
+                    localizations: Some(req.localizations.clone()),
                     service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 
                     name: Some(req.name),

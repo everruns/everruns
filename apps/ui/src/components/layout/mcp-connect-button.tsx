@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState, type ReactNode } from "react";
 import { ArrowRight, Check, Copy, ExternalLink, SquareTerminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import { useAuth } from "@/providers/auth-provider";
 const McpIcon = capabilityIconMap.mcp;
 
 function CopySnippetButton({ value }: { value: string }) {
+  const ui = useUiTranslations();
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState(false);
 
@@ -39,11 +41,11 @@ function CopySnippetButton({ value }: { value: string }) {
     <>
       <Button type="button" onClick={handleCopy} variant="default" size="lg" className="w-full">
         {copied ? <Check /> : <Copy />}
-        {copied ? "Copied" : "Copy setup prompt"}
+        {copied ? ui("Copied") : ui("Copy setup prompt")}
       </Button>
       {error && (
         <p role="status" className="mt-2 text-xs text-destructive">
-          Could not copy. Select and copy the text above.
+          {ui("Could not copy. Select and copy the text above.")}
         </p>
       )}
     </>
@@ -51,6 +53,7 @@ function CopySnippetButton({ value }: { value: string }) {
 }
 
 function McpConnectDialogContent() {
+  const ui = useUiTranslations();
   const { requiresAuth } = useAuth();
   const mcpUrl = typeof window !== "undefined" ? `${window.location.origin}/mcp` : "/mcp";
   const prompt = codingAgentSetupPrompt(mcpUrl, requiresAuth);
@@ -58,8 +61,10 @@ function McpConnectDialogContent() {
   return (
     <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
       <DialogHeader className="text-left">
-        <DialogTitle>Connect your coding agent</DialogTitle>
-        <DialogDescription>Copy this prompt and paste it into your coding agent.</DialogDescription>
+        <DialogTitle>{ui("Connect your coding agent")}</DialogTitle>
+        <DialogDescription>
+          {ui("Copy this prompt and paste it into your coding agent.")}
+        </DialogDescription>
       </DialogHeader>
 
       <CodingAgentIcons />
@@ -77,7 +82,7 @@ function McpConnectDialogContent() {
         rel="noopener noreferrer"
         className="mx-auto inline-flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
       >
-        Manual setup <ExternalLink className="size-3" />
+        {ui("Manual setup")} <ExternalLink className="size-3" />
       </a>
     </DialogContent>
   );
@@ -98,6 +103,7 @@ export function McpConnectDialog({
 }
 
 export function McpConnectButton() {
+  const ui = useUiTranslations();
   const [open, setOpen] = useState(false);
 
   return (
@@ -106,12 +112,12 @@ export function McpConnectButton() {
         <TooltipTrigger asChild>
           <DialogTrigger
             className="relative inline-flex h-9 w-9 items-center justify-center border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-background hover:text-foreground"
-            aria-label="Connect your coding agent"
+            aria-label={ui("Connect your coding agent")}
           >
             <McpIcon className="h-4 w-4" />
           </DialogTrigger>
         </TooltipTrigger>
-        <TooltipContent>Connect your coding agent</TooltipContent>
+        <TooltipContent>{ui("Connect your coding agent")}</TooltipContent>
       </Tooltip>
 
       <McpConnectDialogContent />
@@ -120,6 +126,7 @@ export function McpConnectButton() {
 }
 
 export function McpConnectMenuItem({ onSelect }: { onSelect: () => void }) {
+  const ui = useUiTranslations();
   return (
     <DropdownMenuItem
       onClick={() => {
@@ -128,7 +135,7 @@ export function McpConnectMenuItem({ onSelect }: { onSelect: () => void }) {
       }}
     >
       <McpIcon className="icon-sharp mr-2 h-4 w-4" />
-      Connect your coding agent
+      {ui("Connect your coding agent")}
     </DropdownMenuItem>
   );
 }
@@ -141,6 +148,7 @@ export function CodingAgentConnectAction({
   className?: string;
   children?: ReactNode;
 }) {
+  const ui = useUiTranslations();
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -155,7 +163,7 @@ export function CodingAgentConnectAction({
         {children ?? (
           <>
             <SquareTerminal className="size-4" />
-            Connect your coding agent
+            {ui("Connect your coding agent")}
             <ArrowRight className="size-4" />
           </>
         )}

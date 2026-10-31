@@ -2,6 +2,7 @@
  * Shared utilities for tool-call card components
  */
 
+import { getImageUrl } from "@/lib/api/images";
 import type { ContentPart } from "@/lib/api/types";
 import { isToolCallPart, isToolResultPart } from "@/lib/api/types";
 
@@ -196,6 +197,18 @@ export function buildImageSrc(part: {
   return null;
 }
 
+/**
+ * `<img src>` for a tool result's image part: an inline image (see
+ * {@link buildImageSrc}) or a stored one. The server moves tool screenshots
+ * into the image store and leaves an `image_file` reference, served by the
+ * org-scoped images API.
+ */
+export function resultImageSrc(part: ContentPart): string | null {
+  if (isImagePart(part)) return buildImageSrc(part);
+  if (part.type === "image_file") return getImageUrl(encodeURIComponent(part.image_id));
+  return null;
+}
+
 // A screenshot strip, not a gallery: computer use returns one frame per call,
 // and anything past this is better read in the full result.
 const MAX_RESULT_IMAGES = 4;
@@ -203,14 +216,12 @@ const MAX_RESULT_IMAGES = 4;
 /**
  * Image sources from a tool result's native image parts (computer-use
  * screenshots, rendered pages), safe to put in an `<img src>`: raster
- * `data:` URLs or http(s) URLs only, per {@link buildImageSrc}.
+ * `data:` URLs, http(s) URLs, or this app's images API, per
+ * {@link resultImageSrc}.
  */
 export function extractResultImages(result: ContentPart[] | undefined): string[] {
   if (!result || result.length === 0) return [];
-  return result
-    .filter(isImagePart)
-    .flatMap((part) => buildImageSrc(part) ?? [])
-    .slice(0, MAX_RESULT_IMAGES);
+  return result.flatMap((part) => resultImageSrc(part) ?? []).slice(0, MAX_RESULT_IMAGES);
 }
 
 /**

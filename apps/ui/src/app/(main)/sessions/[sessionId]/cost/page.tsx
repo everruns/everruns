@@ -8,6 +8,12 @@
 // Every number here is derived from the event stream or from read endpoints;
 // nothing on this page can change the session.
 
+import {
+  useLocale as useDisplayLocale,
+  useLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { HarnessDomainIcon } from "@/components/icons/facet-icons";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { useMemo } from "react";
@@ -65,6 +71,8 @@ function DefinitionRow({
 }
 
 export default function CostPage() {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const { sessionId, session, agent, agentId, llmModel, liveUsage, events } = useSessionContext();
   const { data: report, isLoading: reportLoading } = useSessionContextReport(sessionId);
   const { data: harness } = useHarness(session?.harness_id ?? "");
@@ -100,7 +108,7 @@ export default function CostPage() {
     <div className="flex-1 space-y-8 overflow-y-auto p-6">
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat
-          label="Prompt tokens"
+          label={ui("Prompt tokens")}
           value={liveUsage ? formatTokens(liveUsage.input_tokens) : "—"}
           hint={
             liveUsage?.cache_read_tokens
@@ -109,39 +117,39 @@ export default function CostPage() {
           }
         />
         <Stat
-          label="Completion tokens"
+          label={ui("Completion tokens")}
           value={liveUsage ? formatTokens(liveUsage.output_tokens) : "—"}
         />
         <Stat
-          label="Failed turns"
+          label={ui("Failed turns")}
           value={String(failedTurns)}
           hint={failedGenerations > 0 ? `${failedGenerations} model calls errored` : undefined}
         />
-        <Stat label="Tool failures" value={String(toolFailures)} />
+        <Stat label={ui("Tool failures")} value={String(toolFailures)} />
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Definition</h2>
+        <h2 className="text-sm font-medium text-muted-foreground">{ui("Definition")}</h2>
         <div className="rounded-lg border border-border bg-card px-4">
-          <DefinitionRow icon={AgentIcon} label="Agent">
+          <DefinitionRow icon={AgentIcon} label={ui("Agent")}>
             {agentId ? (
               <Link href={`/agents/${agentId}`} className="hover:underline">
-                {getDisplayName(agent)}
+                {getDisplayName(agent, displayLocale)}
               </Link>
             ) : (
-              <span className="text-muted-foreground">None</span>
+              <span className="text-muted-foreground">{ui("None")}</span>
             )}
             {session?.agent_revision != null && (
               <span className="ml-2 font-mono text-xs text-muted-foreground">
-                revision {session.agent_revision}
+                {ui("revision")} {session.agent_revision}
               </span>
             )}
           </DefinitionRow>
 
-          <DefinitionRow icon={HarnessDomainIcon} label="Harness">
+          <DefinitionRow icon={HarnessDomainIcon} label={ui("Harness")}>
             {harness ? (
               <Link href={`/harnesses/${harness.id}`} className="hover:underline">
-                {getDisplayName(harness)}
+                {getDisplayName(harness, displayLocale)}
               </Link>
             ) : (
               <EntityIdentity value={session?.harness_id ?? ""}>
@@ -150,7 +158,7 @@ export default function CostPage() {
             )}
           </DefinitionRow>
 
-          <DefinitionRow icon={Sparkles} label="Model">
+          <DefinitionRow icon={Sparkles} label={ui("Model")}>
             {llmModel ? (
               <>
                 {llmModel.display_name}
@@ -159,24 +167,26 @@ export default function CostPage() {
                 </span>
               </>
             ) : (
-              <span className="text-muted-foreground">Resolved per turn</span>
+              <span className="text-muted-foreground">{ui("Resolved per turn")}</span>
             )}
           </DefinitionRow>
 
-          <DefinitionRow icon={Fingerprint} label="Identity">
+          <DefinitionRow icon={Fingerprint} label={ui("Identity")}>
             {session?.virtual_user_id ? (
               <Link href={`/virtual-users/${session.virtual_user_id}`} className="hover:underline">
-                {identity ? getDisplayName(identity) : session.virtual_user_id}
+                {identity ? getDisplayName(identity, displayLocale) : session.virtual_user_id}
               </Link>
             ) : (
               <span className="text-muted-foreground">
-                {session?.owner ? `${session.owner.kind} principal` : "Interactive user"}
+                {session?.owner
+                  ? ui("{value0} principal", { value0: session.owner.kind })
+                  : ui("Interactive user")}
               </span>
             )}
           </DefinitionRow>
 
           {session?.forked_from_session_id ? (
-            <DefinitionRow icon={RefreshCcw} label="Forked from">
+            <DefinitionRow icon={RefreshCcw} label={ui("Forked from")}>
               <Link
                 href={`/sessions/${session.forked_from_session_id}/trace`}
                 className="font-mono text-xs hover:underline"
@@ -185,7 +195,8 @@ export default function CostPage() {
               </Link>
               {session.forked_from_sequence != null ? (
                 <span className="ml-2 text-xs text-muted-foreground">
-                  at #{session.forked_from_sequence}
+                  {ui("at #")}
+                  {session.forked_from_sequence}
                 </span>
               ) : null}
             </DefinitionRow>
@@ -196,7 +207,7 @@ export default function CostPage() {
       <section className="space-y-3">
         <div className="flex items-center gap-2">
           <Zap className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-medium text-muted-foreground">Context</h2>
+          <h2 className="text-sm font-medium text-muted-foreground">{ui("Context")}</h2>
         </div>
 
         {reportLoading ? (
@@ -204,10 +215,14 @@ export default function CostPage() {
         ) : report && report.sections.length > 0 ? (
           <div className="rounded-lg border bg-card p-5">
             <div className="mb-2 flex items-center justify-between text-sm">
-              <span>{windowTokens ? `${Math.round(percent)}% full` : "Estimated usage"}</span>
+              <span>
+                {windowTokens
+                  ? ui("{value0}% full", { value0: Math.round(percent) })
+                  : ui("Estimated usage")}
+              </span>
               <span className="tabular-nums text-muted-foreground">
                 {formatTokens(total)}
-                {windowTokens ? ` / ${formatTokens(windowTokens)}` : ""}
+                {windowTokens ? ui(" / {value0}", { value0: formatTokens(windowTokens) }) : ""}
               </span>
             </div>
             <div className="mb-6 flex h-2 overflow-hidden rounded-full bg-muted">
@@ -216,7 +231,10 @@ export default function CostPage() {
                   key={section.key}
                   className={SECTION_COLORS[section.key] ?? "bg-muted-foreground"}
                   style={{ width: `${total > 0 ? (section.tokens / total) * 100 : 0}%` }}
-                  title={`${section.label}: ${section.tokens.toLocaleString()} tokens`}
+                  title={ui("{value0}: {value1} tokens", {
+                    value0: section.label,
+                    value1: section.tokens.toLocaleString(displayLocale),
+                  })}
                 />
               ))}
             </div>
@@ -229,10 +247,12 @@ export default function CostPage() {
                       className={`h-3 w-3 rounded-sm ${SECTION_COLORS[section.key] ?? "bg-muted-foreground"}`}
                     />
                     <span>{section.label}</span>
-                    <span className="text-xs text-muted-foreground">{section.items} items</span>
+                    <span className="text-xs text-muted-foreground">
+                      {section.items} {ui("items")}
+                    </span>
                   </div>
                   <span className="tabular-nums text-muted-foreground">
-                    {section.tokens.toLocaleString()}
+                    {section.tokens.toLocaleString(displayLocale)}
                   </span>
                 </div>
               ))}
@@ -241,8 +261,10 @@ export default function CostPage() {
             {contributions.length > 0 ? (
               <div className="mt-6 border-t pt-5">
                 <div className="mb-3 flex items-center justify-between gap-3 text-sm">
-                  <span className="font-medium">Source breakdown</span>
-                  <span className="text-xs text-muted-foreground">% of current context</span>
+                  <span className="font-medium">{ui("Source breakdown")}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {ui("% of current context")}
+                  </span>
                 </div>
                 <div className="space-y-2">
                   {contributions.map((contribution) => {
@@ -267,7 +289,9 @@ export default function CostPage() {
                         </div>
                         <div className="text-right tabular-nums text-muted-foreground">
                           <div>{contributionPercent}%</div>
-                          <div className="text-xs">{contribution.tokens.toLocaleString()}</div>
+                          <div className="text-xs">
+                            {contribution.tokens.toLocaleString(displayLocale)}
+                          </div>
                         </div>
                       </div>
                     );
@@ -278,7 +302,7 @@ export default function CostPage() {
           </div>
         ) : (
           <div className="rounded-lg border bg-card p-8 text-sm text-muted-foreground">
-            No context report is available until the session makes an LLM call.
+            {ui("No context report is available until the session makes an LLM call.")}
           </div>
         )}
       </section>

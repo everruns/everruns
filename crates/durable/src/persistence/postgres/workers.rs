@@ -1,6 +1,9 @@
 //! Implementation of [`crate::WorkerRegistry`].
 
 use super::*;
+use crate::persistence::store::{
+    WORKER_META_DRAINING_SINCE, WORKER_META_SELF_CHECKED_AT, WORKER_META_SELF_CHECKS,
+};
 
 #[async_trait]
 impl WorkerRegistry for PostgresWorkflowEventStore {
@@ -13,9 +16,10 @@ impl WorkerRegistry for PostgresWorkflowEventStore {
             r#"
             INSERT INTO durable_workers (
                 id, worker_group, activity_types, max_concurrency, current_load,
-                status, started_at, last_heartbeat_at, accepting_tasks, hostname, metadata
+                status, started_at, last_heartbeat_at, accepting_tasks, hostname, version,
+                metadata
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             ON CONFLICT (id) DO UPDATE SET
                 worker_group = EXCLUDED.worker_group,
                 activity_types = EXCLUDED.activity_types,
@@ -23,7 +27,11 @@ impl WorkerRegistry for PostgresWorkflowEventStore {
                 current_load = EXCLUDED.current_load,
                 status = EXCLUDED.status,
                 last_heartbeat_at = EXCLUDED.last_heartbeat_at,
-                accepting_tasks = EXCLUDED.accepting_tasks
+                accepting_tasks = EXCLUDED.accepting_tasks,
+                hostname = EXCLUDED.hostname,
+                version = EXCLUDED.version,
+                -- A re-registered worker starts fresh: no drain, no old report.
+                metadata = EXCLUDED.metadata
             "#,
         )
         .bind(&worker.id)
@@ -35,8 +43,9 @@ impl WorkerRegistry for PostgresWorkflowEventStore {
         .bind(worker.started_at)
         .bind(worker.last_heartbeat_at)
         .bind(worker.accepting_tasks)
-        .bind::<Option<String>>(None) // hostname
-        .bind::<Option<serde_json::Value>>(None) // metadata
+        .bind(&worker.hostname)
+        .bind(&worker.version)
+        .bind(&worker.metadata)
         .execute(&self.pool)
         .await
         .map_err(|e| {
@@ -240,12 +249,17 @@ impl WorkerRegistry for PostgresWorkflowEventStore {
         sqlx::query(
             r#"
             UPDATE durable_workers
-            SET status = 'draining',
+            SET metadata = CASE
+                    WHEN status = 'draining' THEN metadata
+                    ELSE COALESCE(metadata, '{}'::jsonb) || jsonb_build_object($2::text, NOW())
+                END,
+                status = 'draining',
                 accepting_tasks = false
             WHERE id = $1
             "#,
         )
         .bind(worker_id)
+        .bind(WORKER_META_DRAINING_SINCE)
         .execute(&self.pool)
         .await
         .map_err(|e| {
@@ -263,11 +277,13 @@ impl WorkerRegistry for PostgresWorkflowEventStore {
             r#"
             UPDATE durable_workers
             SET status = 'active',
-                accepting_tasks = true
+                accepting_tasks = true,
+                metadata = metadata - $2::text
             WHERE id = $1 AND status = 'draining'
             "#,
         )
         .bind(worker_id)
+        .bind(WORKER_META_DRAINING_SINCE)
         .execute(&self.pool)
         .await
         .map_err(|e| {
@@ -276,6 +292,33 @@ impl WorkerRegistry for PostgresWorkflowEventStore {
         })?;
 
         debug!(worker_id, "resumed worker");
+        Ok(())
+    }
+
+    #[instrument(skip(self, checks))]
+    async fn record_worker_checks(
+        &self,
+        worker_id: &str,
+        checks: serde_json::Value,
+    ) -> Result<(), StoreError> {
+        sqlx::query(
+            r#"
+            UPDATE durable_workers
+            SET metadata = COALESCE(metadata, '{}'::jsonb)
+                || jsonb_build_object($2::text, $3::jsonb, $4::text, NOW())
+            WHERE id = $1
+            "#,
+        )
+        .bind(worker_id)
+        .bind(WORKER_META_SELF_CHECKS)
+        .bind(checks)
+        .bind(WORKER_META_SELF_CHECKED_AT)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to record worker checks");
+            StoreError::Database(e.to_string())
+        })?;
         Ok(())
     }
 }

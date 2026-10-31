@@ -59,8 +59,8 @@ impl Database {
     pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
             sql!(r#"
-            INSERT INTO agents (org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status, communication, max_output_tokens)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'active', $21, $22)
+            INSERT INTO agents (org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status, communication, max_output_tokens, localizations)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'active', $21, $22, $23)
             RETURNING {AgentRow}
             "#),
         )
@@ -86,6 +86,7 @@ impl Database {
         .bind(input.is_built_in)
         .bind(input.communication.as_str())
         .bind(input.max_output_tokens)
+        .bind(sqlx::types::Json(&input.localizations))
         .fetch_one(&self.pool)
         .await?;
 
@@ -102,11 +103,12 @@ impl Database {
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             sql!(r#"
-            INSERT INTO agents (id, org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status, communication, max_output_tokens)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'active', $22, $23)
+            INSERT INTO agents (id, org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status, communication, max_output_tokens, localizations)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'active', $22, $23, $24)
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 display_name = EXCLUDED.display_name,
+                localizations = EXCLUDED.localizations,
                 description = EXCLUDED.description,
                 intro_markdown = EXCLUDED.intro_markdown,
                 short_description = EXCLUDED.short_description,
@@ -127,6 +129,7 @@ impl Database {
             WHERE
                 agents.name IS DISTINCT FROM EXCLUDED.name
                 OR agents.display_name IS DISTINCT FROM EXCLUDED.display_name
+                OR agents.localizations IS DISTINCT FROM EXCLUDED.localizations
                 OR agents.description IS DISTINCT FROM EXCLUDED.description
                 OR agents.intro_markdown IS DISTINCT FROM EXCLUDED.intro_markdown
                 OR agents.short_description IS DISTINCT FROM EXCLUDED.short_description
@@ -169,6 +172,7 @@ impl Database {
         .bind(input.is_built_in)
         .bind(input.communication.as_str())
         .bind(input.max_output_tokens)
+        .bind(sqlx::types::Json(&input.localizations))
         .fetch_optional(&self.pool)
         .await?;
 
@@ -270,7 +274,7 @@ impl Database {
     ) -> Result<(Vec<AgentRow>, u32)> {
         let (search_sql, patterns) = build_search_sql(
             search,
-            "LOWER(COALESCE(display_name, name) || ' ' || name || ' ' || COALESCE(description, ''))",
+            "LOWER(COALESCE(display_name, name) || ' ' || name || ' ' || COALESCE(description, '') || ' ' || localizations::text)",
             2,
         );
         let status_sql = if include_archived {
@@ -295,7 +299,7 @@ impl Database {
         let limit_idx = param_idx + 1;
         let offset_idx = param_idx + 2;
         let sql = format!(
-            r#"SELECT id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, forked_from_agent_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, max_output_tokens, communication, environments, avatar_id,
+            r#"SELECT id, public_id, org_id, name, display_name, localizations, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, forked_from_agent_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, max_output_tokens, communication, environments, avatar_id,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
                 FROM agents
                 WHERE org_id = $1{status_sql}{search_sql}
@@ -403,6 +407,7 @@ impl Database {
                 environments = CASE WHEN $31 THEN $32 ELSE environments END,
                 communication = COALESCE($33, communication),
                 max_output_tokens = CASE WHEN $34 THEN $35 ELSE max_output_tokens END,
+                localizations = COALESCE($36, localizations),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
             RETURNING {AgentRow}
@@ -443,6 +448,7 @@ impl Database {
         .bind(input.communication.map(|c| c.as_str()))
         .bind(input.max_output_tokens.is_some())
         .bind(input.max_output_tokens.flatten())
+        .bind(input.localizations.as_ref().map(sqlx::types::Json))
         .fetch_optional(&self.pool)
         .await?;
 

@@ -511,12 +511,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn set_session_status(&self, org_id: i64, session_id: Uuid, status: &str) -> Result<()> {
         let id = SessionId::from_uuid(session_id);
-        let update = UpdateSession {
-            status: Some(status.to_string()),
-            ..Default::default()
-        };
         self.db
-            .update_session(org_id, id, update)
+            .set_session_status(org_id, id, status)
             .await
             .inspect_err(|e| tracing::error!("Failed to update session status: {e}"))
             .map_err(|_| store_error("Failed to update session status"))?;
@@ -563,8 +559,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         session_id: Uuid,
         message_id: Uuid,
     ) -> Result<Option<RuntimeMessage>> {
-        let messages = self.load_messages(session_id).await?;
-        Ok(messages.into_iter().find(|m| m.id == message_id))
+        message_projection::get_message(&self.db, session_id, message_id).await
     }
 
     async fn load_messages(&self, session_id: Uuid) -> Result<Vec<RuntimeMessage>> {

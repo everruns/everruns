@@ -8,9 +8,10 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{SessionId, TurnId};
 use everruns_worker::actor_lease_store::{
-    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor, SessionActorStore,
+    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, DetachedCallKey, LeasedActor,
+    SessionActorStore,
 };
 
 use super::store_error;
@@ -59,6 +60,76 @@ impl ActorLeaseStore for DirectActorLeaseStore {
             })
             .collect()
     }
+
+    async fn detach_tool_call(
+        &self,
+        call: &DetachedCallKey,
+        turn_id: TurnId,
+        holder: &str,
+        fence: u64,
+        ttl: Duration,
+    ) -> Result<bool> {
+        self.db
+            .detach_tool_call(
+                call.session_id,
+                &call.tool_call_id,
+                turn_id.uuid(),
+                holder,
+                fence_to_db(fence)?,
+                ttl,
+            )
+            .await
+            .map_err(|e| store_error(format!("Failed to detach tool call: {e}")))
+    }
+
+    async fn renew_detached_tool_calls(
+        &self,
+        holder: &str,
+        ttl: Duration,
+        calls: &[DetachedCallKey],
+    ) -> Result<Vec<DetachedCallKey>> {
+        let live = self
+            .db
+            .renew_detached_tool_calls(holder, ttl, &call_pairs(calls))
+            .await
+            .map_err(|e| store_error(format!("Failed to renew detached tool calls: {e}")))?;
+        Ok(live
+            .into_iter()
+            .map(|(session_id, tool_call_id)| DetachedCallKey {
+                session_id,
+                tool_call_id,
+            })
+            .collect())
+    }
+
+    async fn complete_detached_tool_call(
+        &self,
+        call: &DetachedCallKey,
+        holder: &str,
+    ) -> Result<Option<bool>> {
+        self.db
+            .complete_detached_tool_call(call.session_id, &call.tool_call_id, holder)
+            .await
+            .map_err(|e| store_error(format!("Failed to complete detached tool call: {e}")))
+    }
+
+    async fn expire_detached_tool_calls(
+        &self,
+        holder: &str,
+        calls: &[DetachedCallKey],
+    ) -> Result<()> {
+        self.db
+            .expire_detached_tool_calls(holder, &call_pairs(calls))
+            .await
+            .map_err(|e| store_error(format!("Failed to expire detached tool calls: {e}")))
+    }
+}
+
+fn call_pairs(calls: &[DetachedCallKey]) -> Vec<(SessionId, String)> {
+    calls
+        .iter()
+        .map(|call| (call.session_id, call.tool_call_id.clone()))
+        .collect()
 }
 
 #[async_trait]
@@ -116,6 +187,28 @@ impl SessionActorStore for DirectActorLeaseStore {
         )
     }
 
+    async fn hand_off_actor(
+        &self,
+        session_id: SessionId,
+        holder: &str,
+        fence: u64,
+        consumed_inbox_seq: i64,
+    ) -> Result<Option<ActorRelease>> {
+        Ok(Some(
+            match self
+                .db
+                .hand_off_session_actor(session_id, holder, fence_to_db(fence)?, consumed_inbox_seq)
+                .await
+                .map_err(|e| store_error(format!("Failed to hand off actor: {e}")))?
+            {
+                Some(_) => ActorRelease::Released {
+                    still_runnable: true,
+                },
+                None => ActorRelease::LeaseLost,
+            },
+        ))
+    }
+
     async fn read_actor_journal(
         &self,
         session_id: SessionId,
@@ -153,6 +246,7 @@ impl super::DirectWorkerAdapters {
                 crate::services::ActorAppendFence {
                     holder: &fence.holder,
                     fence: fence.fence_i64(),
+                    detached_tool_call: fence.detached_tool_call_id.as_deref(),
                 },
             )
             .await

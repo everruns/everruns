@@ -152,6 +152,21 @@ pub fn llm_message_from_message_with_attachments(
                     }
                 }
             }
+            // A tool's own image (a screenshot) the server moved out of the
+            // event into the image store. It reaches the model exactly as the
+            // inline image did: same bytes, no attachment label, so the prompt
+            // and its cache are unchanged by where the bytes live.
+            ContentPart::ImageFile(img_file) if role == MessageRole::Tool => {
+                if let Some(resolved) = resolved_images.get(&img_file.image_id.uuid()) {
+                    parts.push(LlmContentPart::Image {
+                        url: resolved.to_data_url(),
+                    });
+                } else {
+                    parts.push(LlmContentPart::Text {
+                        text: format!("[Image not found: {}]", img_file.image_id),
+                    });
+                }
+            }
             ContentPart::ImageFile(img_file) => {
                 // A label with the attachment's stable session path goes
                 // before the bytes, so the model can reopen the image after
@@ -316,10 +331,37 @@ pub fn llm_call_config_builder_from_agent(runtime_agent: &RuntimeAgent) -> LlmCa
 mod tests {
     use super::*;
     use crate::driver_registry::{LlmContentPart, MessageContent, MessageRole};
-    use crate::message::{TextContentPart, ToolCallContentPart};
+    use crate::message::{ImageFileContentPart, TextContentPart, ToolCallContentPart};
     use everruns_contracts::ProviderOpaqueContent;
     use everruns_contracts::model::ReasoningEffort;
     use serde_json::json;
+
+    /// A screenshot stored as `image_file` reaches the model exactly as the
+    /// inline screenshot did: same data URL, no attachment label.
+    #[test]
+    fn tool_result_image_file_converts_like_the_inline_image() {
+        let image_id = everruns_contracts::typed_id::ImageId::new();
+        let inline = RuntimeMessage::tool_result_with_images(
+            "call_1",
+            Some(json!("captured")),
+            vec![everruns_contracts::tool_types::ToolResultImage {
+                base64: "aGk=".into(),
+                media_type: "image/png".into(),
+            }],
+        );
+        let mut stored = RuntimeMessage::tool_result("call_1", Some(json!("captured")), None);
+        stored
+            .content
+            .push(ContentPart::ImageFile(ImageFileContentPart::new(image_id)));
+        let resolved = HashMap::from([(image_id.uuid(), ResolvedImage::new("aGk=", "image/png"))]);
+
+        let from_inline = llm_message_from_message_with_images(&inline, &HashMap::new());
+        let from_stored = llm_message_from_message_with_images(&stored, &resolved);
+        assert_eq!(format!("{from_inline:?}"), format!("{from_stored:?}"));
+
+        let missing = llm_message_from_message_with_images(&stored, &HashMap::new());
+        assert!(format!("{missing:?}").contains("Image not found"));
+    }
 
     #[test]
     fn test_resolved_parallel_tool_calls_gating() {

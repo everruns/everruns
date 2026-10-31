@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { Suspense } from "react";
 import AgentPage from "@/app/(main)/agents/[agentId]/page";
+import { LocaleProvider } from "@/providers/locale-provider";
 import type { Agent, Session } from "@/lib/api/types";
 import type { ChatModeState } from "@/components/chat-mode/chat-mode-context";
 import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
@@ -29,6 +30,10 @@ jest.mock("@/hooks/use-agent-source", () => ({
     isError: !!mockSourceError,
   }),
 }));
+jest.mock("@/components/agents/external-worker", () => ({
+  ExternalWorker: () => <div>external execution settings</div>,
+}));
+
 jest.mock("@/components/agents/agent-source", () => ({
   AgentSourcePanel: ({ open }: { open: boolean }) => (
     <div>Agent source{open && <div role="dialog">Source setup</div>}</div>
@@ -273,6 +278,10 @@ async function renderPage() {
   });
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function save() {
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
@@ -306,6 +315,32 @@ beforeEach(() => {
 });
 
 describe("AgentPage layout", () => {
+  it("keeps Localization and max output tokens together in the Ukrainian More menu", async () => {
+    localStorage.setItem("everruns.ui-language", "uk");
+    const params = Promise.resolve({ agentId: "agent-1" });
+    try {
+      await act(async () => {
+        render(
+          <LocaleProvider>
+            <Suspense fallback={null}>
+              <AgentPage params={params} />
+            </Suspense>
+          </LocaleProvider>,
+        );
+        await params;
+      });
+      const more = within(screen.getByRole("navigation", { name: "Більше налаштувань" }));
+      expect(more.getByRole("button", { name: /Локалізація/ })).toBeInTheDocument();
+      fireEvent.click(more.getByRole("button", { name: /Максимум вихідних токенів/ }));
+      expect(
+        await screen.findByRole("spinbutton", { name: "Максимум вихідних токенів" }),
+      ).toHaveAttribute("placeholder", "Типово для постачальника");
+    } finally {
+      cleanup();
+      localStorage.removeItem("everruns.ui-language");
+    }
+  });
+
   it("shows one tab row with the session count and no MCP or Credentials tabs", async () => {
     await renderPage();
 
@@ -356,6 +391,10 @@ describe("AgentPage layout", () => {
     expect(more.queryByRole("button", { name: /Files/ })).not.toBeInTheDocument();
     expect(more.getByRole("button", { name: /Network access\s*Inherited/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Sandbox\s*None/ })).toBeInTheDocument();
+    expect(
+      more.getByRole("button", { name: /Max output tokens\s*Provider default/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Max output tokens")).not.toBeInTheDocument();
     expect(more.getByRole("button", { name: /Health check\s*Not run/ })).toBeInTheDocument();
     // Status badge in view mode, Test in Playground is the primary action.
     expect(screen.getByText("active")).toBeInTheDocument();
@@ -645,13 +684,24 @@ describe("AgentPage edit mode", () => {
   it("sends a max output tokens ceiling and clears it back to the provider default", async () => {
     await renderPage();
     expect(
-      screen.getByText("Lower this if the provider says it can only afford fewer tokens."),
-    ).toBeInTheDocument();
+      screen.queryByText("Lower this if the provider says it can only afford fewer tokens."),
+    ).not.toBeInTheDocument();
 
-    const field = screen.getByLabelText("Max output tokens");
+    fireEvent.click(screen.getByRole("button", { name: /Max output tokens\s*Provider default/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Max output tokens" });
+    expect(
+      within(dialog).getByText("Lower this if the provider says it can only afford fewer tokens."),
+    ).toBeInTheDocument();
+    const field = within(dialog).getByRole("spinbutton", { name: "Max output tokens" });
     expect(field).toHaveAttribute("placeholder", "Provider default");
     fireEvent.change(field, { target: { value: "4096" } });
     expect(screen.getByText("Editing")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+    expect(
+      screen.getByRole("button", {
+        name: new RegExp(`Max output tokens\\s*${escapeRegExp((4096).toLocaleString())}`),
+      }),
+    ).toBeInTheDocument();
     await save();
     expect(mockUpdate.mock.calls[0][0].request.max_output_tokens).toBe(4096);
 
@@ -662,20 +712,37 @@ describe("AgentPage edit mode", () => {
     });
     cleanup();
     await renderPage();
-    expect(screen.getByLabelText("Max output tokens")).toHaveValue(2048);
-    fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "" } });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: new RegExp(`Max output tokens\\s*${escapeRegExp((2048).toLocaleString())}`),
+      }),
+    );
+    const reopened = await screen.findByRole("dialog", { name: "Max output tokens" });
+    const saved = within(reopened).getByRole("spinbutton", { name: "Max output tokens" });
+    expect(saved).toHaveValue(2048);
+    fireEvent.change(saved, { target: { value: "" } });
+    fireEvent.click(within(reopened).getByRole("button", { name: "Done" }));
     await save();
     expect(mockUpdate.mock.calls[0][0].request.max_output_tokens).toBeNull();
   });
 
   it("rejects a zero max output tokens ceiling instead of saving", async () => {
     await renderPage();
-    fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: /Max output tokens/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Max output tokens" });
+    fireEvent.change(within(dialog).getByRole("spinbutton", { name: "Max output tokens" }), {
+      target: { value: "0" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
     await save();
 
     expect(mockUpdate).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Max output tokens")).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText("Enter a whole number of at least 1")).toBeInTheDocument();
+    const invalid = await screen.findByRole("dialog", { name: "Max output tokens" });
+    expect(within(invalid).getByRole("spinbutton", { name: "Max output tokens" })).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(within(invalid).getByText("Enter a whole number of at least 1")).toBeInTheDocument();
   });
 
   it("feeds unsaved prompt text to the checks and applies their fixes", async () => {

@@ -68,6 +68,13 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
     assert_eq!(history[0]["action"], "updated");
     assert_eq!(history[0]["reason"], "a home for support");
     assert_eq!(history[0]["surface"], "commands");
+    // Session-owned workspaces have no creation entry. Their first mutation
+    // preserves the original state as a baseline before recording the update.
+    assert_eq!(history.as_array().unwrap().len(), 2);
+    assert_eq!(history[0]["revision"], 2);
+    assert_eq!(history[1]["action"], "baseline");
+    assert_eq!(history[1]["revision"], 1);
+    assert_eq!(history[1]["command"], "entity_baseline");
 
     // Context: write, append, refuse a stale write.
     // REST: the reason travels percent-encoded in a header.
@@ -163,7 +170,8 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
             "updated",
             "context_updated",
             "context_updated",
-            "updated"
+            "updated",
+            "baseline"
         ]
     );
     assert_eq!(history[1]["reason"], "rename as agreed");

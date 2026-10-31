@@ -68,6 +68,42 @@
         "always"
       ]
     },
+    "EntityLocalization": {
+      "type": "object",
+      "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Localized description (1–2000 characters when set).",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Localized display name (1–255 characters when set).",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      },
+      "additionalProperties": false
+    },
+    "EntityLocalizations": {
+      "type": "object",
+      "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+      "additionalProperties": {
+        "$ref": "#/definitions/EntityLocalization"
+      },
+      "propertyNames": {
+        "type": "string"
+      },
+      "maxProperties": 64
+    },
     "File": {
       "oneOf": [
         {
@@ -220,6 +256,10 @@
             "null"
           ],
           "description": "Optional Markdown introduction shown before the conversation starts."
+        },
+        "localizations": {
+          "$ref": "#/definitions/EntityLocalizations",
+          "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
         },
         "max_iterations": {
           "type": [
@@ -699,6 +739,13 @@
       "type": "object",
       "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
       "properties": {
+        "capability_description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets."
+        },
         "capability_id": {
           "type": [
             "string",

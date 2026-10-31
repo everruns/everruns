@@ -7,6 +7,7 @@
 // the channel's runtime credential: it expires in minutes and a new sign-in
 // renews it. See knowledge/integrations/agentid.md.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState } from "react";
 
 const ERRORS: Record<string, string> = {
@@ -86,12 +87,13 @@ export function useAgentIdSession(appId: string): {
 }
 
 export function AgentIdSignInButton({ appId }: { appId: string }) {
+  const ui = useUiTranslations();
   return (
     <a
       href={agentIdLoginUrl(appId)}
       className="flex w-full items-center justify-center rounded border border-input bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
     >
-      Continue with AgentID
+      {ui("Continue with AgentID")}
     </a>
   );
 }

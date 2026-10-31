@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -61,6 +62,7 @@ export function KnowledgeIndexConfigEditor({
   onChange,
   disabled,
 }: KnowledgeIndexConfigEditorProps) {
+  const ui = useUiTranslations();
   const selected = readIndexes(config);
   const topK = readTopK(config);
   const { data: indexes, isLoading, error } = useKnowledgeIndexes({ includeArchived: false });
@@ -97,17 +99,21 @@ export function KnowledgeIndexConfigEditor({
   return (
     <div className="space-y-3 pt-2">
       <div className="space-y-1">
-        <Label className="text-xs font-normal text-muted-foreground">Knowledge Indexes</Label>
+        <Label className="text-xs font-normal text-muted-foreground">
+          {ui("Knowledge Indexes")}
+        </Label>
         <p className="text-xs text-muted-foreground">
-          Select the indexes this capability can search.
+          {ui("Select the indexes this capability can search.")}
         </p>
       </div>
 
-      {error && <p className="text-xs text-destructive">Failed to load knowledge indexes.</p>}
+      {error && (
+        <p className="text-xs text-destructive">{ui("Failed to load knowledge indexes.")}</p>
+      )}
 
       {!isLoading && activeIndexes.length === 0 && selected.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          No active knowledge indexes in this org. Create one first to bind it.
+          {ui("No active knowledge indexes in this org. Create one first to bind it.")}
         </p>
       )}
 
@@ -156,7 +162,9 @@ export function KnowledgeIndexConfigEditor({
               />
               <span className="min-w-0 flex-1">
                 <span className="block font-mono text-xs">{id}</span>
-                <span className="block text-xs text-destructive">Unavailable or archived</span>
+                <span className="block text-xs text-destructive">
+                  {ui("Unavailable or archived")}
+                </span>
               </span>
             </div>
           ))}
@@ -165,7 +173,7 @@ export function KnowledgeIndexConfigEditor({
 
       <div className="w-32 space-y-1">
         <Label htmlFor="kidx-top-k" className="text-xs font-normal text-muted-foreground">
-          Top K
+          {ui("Top K")}
         </Label>
         <Input
           id="kidx-top-k"
@@ -183,7 +191,9 @@ export function KnowledgeIndexConfigEditor({
 
       {/* Surface any malformed configured IDs (defensive; server validates). */}
       {selected.some((id) => !INDEX_ID_PATTERN.test(id)) && (
-        <p className="text-xs text-destructive">One or more bound index IDs are malformed.</p>
+        <p className="text-xs text-destructive">
+          {ui("One or more bound index IDs are malformed.")}
+        </p>
       )}
     </div>
   );

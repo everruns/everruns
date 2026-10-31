@@ -1,11 +1,11 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { Shield } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Capability } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import { localizedCapabilityName } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
 
 /** The same read-only capability presentation for saved agents and import candidates. */
 export function AgentCapabilityList({
@@ -15,10 +15,11 @@ export function AgentCapabilityList({
   references: string[];
   capabilities: Capability[];
 }) {
+  const ui = useUiTranslations();
   const { locale } = useLocale();
   const capabilityById = new Map(capabilities.map((cap) => [cap.id, cap]));
   return references.length ? (
-    <ol className="flex flex-wrap gap-1" aria-label="Enabled capabilities">
+    <ol className="flex flex-wrap gap-1" aria-label={ui("Enabled capabilities")}>
       {references.map((reference) => {
         const cap = capabilityById.get(reference);
         return (
@@ -33,7 +34,7 @@ export function AgentCapabilityList({
             {cap?.is_guardrail && (
               <Badge variant="outline" className="h-4 gap-0.5 px-1 py-0">
                 <Shield />
-                Guardrail
+                {ui("Guardrail")}
               </Badge>
             )}
           </li>
@@ -41,6 +42,6 @@ export function AgentCapabilityList({
       })}
     </ol>
   ) : (
-    <p className="text-[13px] text-muted-foreground">No capabilities enabled.</p>
+    <p className="text-[13px] text-muted-foreground">{ui("No capabilities enabled.")}</p>
   );
 }

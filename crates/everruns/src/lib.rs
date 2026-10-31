@@ -116,6 +116,9 @@ mod history;
 mod hooks;
 /// Stability: stable — no breaking change without a major bump; see [`stability`].
 pub mod llm;
+
+/// Stability: alpha — provider-native offline model requests.
+pub mod batch;
 mod mcp;
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod models;
@@ -308,6 +311,9 @@ pub mod providers;
     feature = "anthropic",
     feature = "bedrock",
     feature = "gemini",
+    feature = "mistral",
+    feature = "groq",
+    feature = "fireworks",
     feature = "openai",
     feature = "openrouter"
 ))]
@@ -316,8 +322,14 @@ pub use everruns_drivers as drivers;
 pub use providers::anthropic::{Anthropic, AnthropicError};
 #[cfg(feature = "bedrock")]
 pub use providers::bedrock::Bedrock;
+#[cfg(feature = "fireworks")]
+pub use providers::fireworks::Fireworks;
 #[cfg(feature = "gemini")]
 pub use providers::gemini::{Gemini, GeminiError};
+#[cfg(feature = "groq")]
+pub use providers::groq::{Groq, GroqError};
+#[cfg(feature = "mistral")]
+pub use providers::mistral::{Mistral, MistralError};
 #[cfg(feature = "openai")]
 pub use providers::openai::{OpenAI, OpenAIError};
 #[cfg(feature = "openrouter")]

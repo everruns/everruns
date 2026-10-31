@@ -1,0 +1,19 @@
+# Mira host config for the prompt cache growth study. Picked up by the `mira`
+# CLI when run from this directory.
+
+# `mira run` with no --bin/--launcher uses this. NOTE: top-level keys must
+# appear before the first [section] header, or TOML nests them under it.
+default_launcher = "prompt_cache_growth"
+
+[results]
+dir = "./results"
+
+[environment]
+enabled = true
+
+[launchers.prompt_cache_growth]
+bin = "prompt_cache_growth"
+
+# Two short cases: `mira run --preset smoke`.
+[presets.smoke]
+tag = "smoke"

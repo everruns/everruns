@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { z } from "zod";
 import { usePageSettingsDraft } from "@/components/chat-mode/use-page-settings-draft";
 
@@ -92,6 +93,7 @@ export function DefaultsTab({
   providers: Provider[];
   canManage: boolean;
 }) {
+  const ui = useUiTranslations();
   const { data: org } = useOrganization();
   const updateOrg = useUpdateOrganization();
   const decisionDefault = useDecisionDefault();
@@ -111,7 +113,7 @@ export function DefaultsTab({
     schema: defaultsSchema,
     entityType: "model_defaults",
     entityId: org?.id,
-    label: "Model defaults",
+    label: ui("Model defaults"),
     formId: "organization_defaults",
     enabled: !!org,
     writable: canManage && !!org && !updateOrg.isPending,
@@ -145,7 +147,7 @@ export function DefaultsTab({
     values: { decision_model_id: decisionDefault.data?.id ?? "" },
     entityType: "model_defaults",
     entityId: org?.id,
-    label: "Decision model",
+    label: ui("Decision model"),
     formId: "decision_model",
     enabled: !!org,
     writable: canManage && !decisionDefault.setDefault.isPending,
@@ -247,15 +249,17 @@ export function DefaultsTab({
         </p>
       )}
       {!canManage && (
-        <p className="text-sm text-muted-foreground">Only organization admins change defaults.</p>
+        <p className="text-sm text-muted-foreground">
+          {ui("Only organization admins change defaults.")}
+        </p>
       )}
       <DefaultSection
-        title="Chat"
-        description="Chat models for conversations and lightweight work."
+        title={ui("Chat")}
+        description={ui("Chat models for conversations and lightweight work.")}
       >
         <DefaultRow
-          label="Default model"
-          description="Used when no model is set on the agent or session."
+          label={ui("Default model")}
+          description={ui("Used when no model is set on the agent or session.")}
           problem={modelDefaultProblem(currentModelId, models)}
         >
           <Combobox
@@ -272,8 +276,8 @@ export function DefaultsTab({
           />
         </DefaultRow>
         <DefaultRow
-          label="Small model"
-          description="Shared model for lightweight work, including automatic session titles."
+          label={ui("Small model")}
+          description={ui("Shared model for lightweight work, including automatic session titles.")}
           problem={modelDefaultProblem(currentSmallModelId, models)}
         >
           <Combobox
@@ -284,19 +288,23 @@ export function DefaultsTab({
                 ? settings.setValues({ ...settings.values, small_model_id: value })
                 : void run(() => updateOrg.mutateAsync({ small_model_id: value || null }))
             }
-            placeholder="Not set · titles use session model"
+            placeholder={ui("Not set · titles use session model")}
             searchPlaceholder="Search chat models…"
             disabled={busy}
           />
         </DefaultRow>
       </DefaultSection>
       <DefaultSection
-        title="Decisions"
-        description="Yes-or-no checks: the Jev capability, guardrails and the Slack relevance check."
+        title={ui("Decisions")}
+        description={ui(
+          "Yes-or-no checks: the Jev capability, guardrails and the Slack relevance check.",
+        )}
       >
         <DefaultRow
-          label="Default decision model"
-          description="Used by the Jev capability when no model is bound. Calibrated models only."
+          label={ui("Default decision model")}
+          description={ui(
+            "Used by the Jev capability when no model is bound. Calibrated models only.",
+          )}
           problem={
             decisionDefault.data ? modelDefaultProblem(decisionDefault.data.id, models) : null
           }
@@ -309,14 +317,14 @@ export function DefaultsTab({
                 ? decisions.setValues({ decision_model_id: value })
                 : void run(() => decisionDefault.setDefault.mutateAsync(value || null))
             }
-            placeholder="No default"
+            placeholder={ui("No default")}
             searchPlaceholder="Search decision models…"
             disabled={!canManage || decisionDefault.setDefault.isPending || decisions.pending}
           />
         </DefaultRow>
         <DefaultRow
-          label="System decisions"
-          description="Who answers guardrail jev checks and the Slack relevance check."
+          label={ui("System decisions")}
+          description={ui("Who answers guardrail jev checks and the Slack relevance check.")}
           problem={
             systemDecisions === "organization" && !decisionId
               ? "No decision model is set, so these checks get no answer: guardrails let messages through and Slack stays silent."
@@ -342,23 +350,27 @@ export function DefaultsTab({
             }
             disabled={busy}
           >
-            <SelectTrigger aria-label="System decisions" className="w-full">
+            <SelectTrigger aria-label={ui("System decisions")} className="w-full">
               <SelectValue>
                 {systemDecisions === "organization"
-                  ? "This organization's decision model"
-                  : "Deployment default"}
+                  ? ui("This organization's decision model")
+                  : ui("Deployment default")}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="deployment">Deployment default</SelectItem>
-              <SelectItem value="organization">This organization&apos;s decision model</SelectItem>
+              <SelectItem value="deployment">{ui("Deployment default")}</SelectItem>
+              <SelectItem value="organization">
+                {ui("This organization's decision model")}
+              </SelectItem>
             </SelectContent>
           </Select>
         </DefaultRow>
       </DefaultSection>
       <DefaultSection
-        title="Other services"
-        description="Each defaults to a provider. A provider whose driver lacks the service is rejected when it runs."
+        title={ui("Other services")}
+        description={ui(
+          "Each defaults to a provider. A provider whose driver lacks the service is rejected when it runs.",
+        )}
       >
         {PROVIDER_SERVICES.map((service) => (
           <DefaultRow
@@ -384,7 +396,7 @@ export function DefaultsTab({
                 setServiceDraft(next);
                 void run(() => updateOrg.mutateAsync({ default_provider_per_service: next }));
               }}
-              placeholder="No default"
+              placeholder={ui("No default")}
               searchPlaceholder="Search providers…"
               disabled={busy}
             />

@@ -6,6 +6,7 @@
 // answered, every attempt and each provider's verbatim response, whatever the
 // model was told. See knowledge/integrations/web-search.md (Details view).
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Download, ExternalLink, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +68,7 @@ export function WebSearchRow({
   /** The tool.completed payload, for the drawer's Event tab. */
   event?: unknown;
 }) {
+  const ui = useUiTranslations();
   const [expanded, setExpanded] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const summary = summarizeWebSearch(details, durationMs);
@@ -97,12 +99,16 @@ export function WebSearchRow({
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
         >
           <span className="shrink-0 text-muted-foreground">
-            {summary.failed ? "Search failed" : "Searched"}
+            {summary.failed ? ui("Search failed") : ui("Searched")}
           </span>
-          <span className="min-w-0 truncate font-medium">&quot;{summary.query}&quot;</span>
+          <span className="min-w-0 truncate font-medium">
+            {ui('"')}
+            {summary.query}
+            {ui('"')}
+          </span>
           {!summary.failed && (
             <Badge variant="outline" className="shrink-0 text-muted-foreground">
-              {summary.resultCount} {summary.resultCount === 1 ? "result" : "results"}
+              {summary.resultCount} {summary.resultCount === 1 ? ui("result") : ui("results")}
             </Badge>
           )}
         </button>
@@ -129,7 +135,7 @@ export function WebSearchRow({
           variant="ghost"
           size="icon-sm"
           className="size-6 shrink-0"
-          aria-label={expanded ? "Hide results" : "Show results"}
+          aria-label={expanded ? ui("Hide results") : ui("Show results")}
           onClick={() => setExpanded((current) => !current)}
         >
           {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
@@ -139,7 +145,9 @@ export function WebSearchRow({
       {expanded && (
         <div className="border-t px-3 py-2">
           {details.answer && (
-            <p className="mb-2 text-xs text-muted-foreground">Answer: {details.answer}</p>
+            <p className="mb-2 text-xs text-muted-foreground">
+              {ui("Answer:")} {details.answer}
+            </p>
           )}
           {shown.length > 0 ? (
             <ul className="space-y-1">
@@ -161,18 +169,24 @@ export function WebSearchRow({
             </ul>
           ) : (
             <p className="text-xs text-muted-foreground">
-              {summary.failed ? `No provider answered: ${summary.failureReason}` : "No results."}
+              {summary.failed
+                ? ui("No provider answered: {value0}", { value0: summary.failureReason })
+                : ui("No results.")}
             </p>
           )}
           <div className="mt-2 flex items-center gap-3 text-xs">
-            {more > 0 && <span className="text-muted-foreground">+ {more} more</span>}
+            {more > 0 && (
+              <span className="text-muted-foreground">
+                + {more} {ui("more")}
+              </span>
+            )}
             <Button
               variant="link"
               size="sm"
               className="h-auto p-0 text-xs"
               onClick={() => setDrawerOpen(true)}
             >
-              Details and raw response
+              {ui("Details and raw response")}
             </Button>
           </div>
         </div>
@@ -203,6 +217,7 @@ export function WebSearchDrawer({
   durationMs?: number | null;
   event?: unknown;
 }) {
+  const ui = useUiTranslations();
   const [tab, setTab] = useState("details");
   const summary = summarizeWebSearch(details, durationMs);
   return (
@@ -211,15 +226,21 @@ export function WebSearchDrawer({
         <DrawerHeader>
           <DrawerTitle className="flex items-start gap-2 pr-6 leading-snug">
             <Search className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <span>Searched &quot;{details.query}&quot;</span>
+            <span>
+              {ui('Searched "')}
+              {details.query}
+              {ui('"')}
+            </span>
           </DrawerTitle>
-          <DrawerDescription>{formatSearchDuration(summary.durationMs)} total</DrawerDescription>
+          <DrawerDescription>
+            {formatSearchDuration(summary.durationMs)} {ui("total")}
+          </DrawerDescription>
         </DrawerHeader>
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
-            <TabsTrigger value="details">Details</TabsTrigger>
-            <TabsTrigger value="raw">Raw</TabsTrigger>
-            {event !== undefined && <TabsTrigger value="event">Event</TabsTrigger>}
+            <TabsTrigger value="details">{ui("Details")}</TabsTrigger>
+            <TabsTrigger value="raw">{ui("Raw")}</TabsTrigger>
+            {event !== undefined && <TabsTrigger value="event">{ui("Event")}</TabsTrigger>}
           </TabsList>
           <TabsContent value="details">
             <SearchDetailsView details={details} durationMs={durationMs} />
@@ -261,6 +282,7 @@ export function SearchDetailsView({
   details: WebSearchDetails;
   durationMs?: number | null;
 }) {
+  const ui = useUiTranslations();
   const summary = summarizeWebSearch(details, durationMs);
   const facts: [string, string][] = [
     ["Answered by", summary.providerLabel ?? "Nobody"],
@@ -279,16 +301,16 @@ export function SearchDetailsView({
         ))}
       </dl>
 
-      <SectionTitle>Attempts</SectionTitle>
-      <ul className="border" aria-label="Attempts">
+      <SectionTitle>{ui("Attempts")}</SectionTitle>
+      <ul className="border" aria-label={ui("Attempts")}>
         {details.attempts.map((attempt, index) => (
           <AttemptRow key={`${attempt.provider}-${index}`} attempt={attempt} />
         ))}
       </ul>
 
-      <SectionTitle>Results</SectionTitle>
+      <SectionTitle>{ui("Results")}</SectionTitle>
       {details.results.length === 0 ? (
-        <p className="text-muted-foreground">No results.</p>
+        <p className="text-muted-foreground">{ui("No results.")}</p>
       ) : (
         <ul className="border">
           {details.results.map((result) => (
@@ -363,6 +385,7 @@ function download(name: string, text: string) {
 }
 
 export function SearchRawView({ details }: { details: WebSearchDetails }) {
+  const ui = useUiTranslations();
   const withExchanges = details.attempts;
   const answered = withExchanges.findIndex((attempt) => attempt.ok);
   const [selected, setSelected] = useState(answered >= 0 ? answered : withExchanges.length - 1);
@@ -372,12 +395,12 @@ export function SearchRawView({ details }: { details: WebSearchDetails }) {
   const bodies = exchanges.map((exchange) => exchange.body ?? exchange.error ?? "");
 
   if (withExchanges.length === 0) {
-    return <p className="text-sm text-muted-foreground">No provider was asked.</p>;
+    return <p className="text-sm text-muted-foreground">{ui("No provider was asked.")}</p>;
   }
 
   return (
     <div className="space-y-3 text-sm">
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Attempt">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={ui("Attempt")}>
         {withExchanges.map((candidate, index) => (
           <button
             key={`${candidate.provider}-${index}`}
@@ -403,8 +426,8 @@ export function SearchRawView({ details }: { details: WebSearchDetails }) {
       {exchanges.length === 0 ? (
         <p className="text-muted-foreground">
           {attempt?.message
-            ? `Nothing was sent: ${attempt.message}.`
-            : "This provider kept no raw response."}
+            ? ui("Nothing was sent: {value0}.", { value0: attempt.message })
+            : ui("This provider kept no raw response.")}
         </p>
       ) : (
         exchanges.map((exchange, index) => {
@@ -414,7 +437,7 @@ export function SearchRawView({ details }: { details: WebSearchDetails }) {
           return (
             <div key={`${exchange.url}-${index}`} className="space-y-2">
               <div>
-                <div className="mb-1 text-xs text-muted-foreground">Request</div>
+                <div className="mb-1 text-xs text-muted-foreground">{ui("Request")}</div>
                 <pre className="overflow-x-auto bg-muted/60 p-2 font-mono text-xs break-all whitespace-pre-wrap">
                   {exchange.method} {exchange.url}
                 </pre>
@@ -422,17 +445,17 @@ export function SearchRawView({ details }: { details: WebSearchDetails }) {
               <div>
                 <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
                   <span>
-                    Response · {exchange.status ?? "no status"} · {formatBytes(size)}
+                    {ui("Response ·")} {exchange.status ?? ui("no status")} · {formatBytes(size)}
                     {exchange.truncated && " (cut when stored)"}
                     {cut && ` (showing first ${formatBytes(RAW_PREVIEW_BYTES)})`}
                   </span>
                   <span className="ml-auto flex items-center gap-2">
-                    <CopyButton value={body} label="Copy response" />
+                    <CopyButton value={body} label={ui("Copy response")} />
                     <Button
                       variant="ghost"
                       size="icon-sm"
                       className="size-6"
-                      aria-label="Download response"
+                      aria-label={ui("Download response")}
                       onClick={() =>
                         download(`${attempt?.provider ?? "search"}-response.txt`, body)
                       }
@@ -442,7 +465,9 @@ export function SearchRawView({ details }: { details: WebSearchDetails }) {
                   </span>
                 </div>
                 <pre className="max-h-[50vh] overflow-auto bg-muted/60 p-2 font-mono text-xs break-all whitespace-pre-wrap">
-                  {cut ? `${body.slice(0, RAW_PREVIEW_BYTES)}\n…` : body || "(empty)"}
+                  {cut
+                    ? ui("{value0}\n…", { value0: body.slice(0, RAW_PREVIEW_BYTES) })
+                    : body || ui("(empty)")}
                 </pre>
                 {cut && (
                   <Button
@@ -451,7 +476,7 @@ export function SearchRawView({ details }: { details: WebSearchDetails }) {
                     className="h-auto p-0 text-xs"
                     onClick={() => setShowAll(true)}
                   >
-                    Show all
+                    {ui("Show all")}
                   </Button>
                 )}
               </div>

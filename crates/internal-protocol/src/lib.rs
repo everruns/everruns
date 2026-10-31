@@ -11,6 +11,7 @@
 // Decision: Use google.protobuf.Value/Struct for JSON values instead of strings
 // Decision: Proto is transport layer, Rust schemas remain source of truth
 
+pub mod blob_wire;
 mod capability_wire;
 pub use capability_wire::encode_configs as encode_capability_configs;
 mod credential_fingerprint;
@@ -28,9 +29,9 @@ pub mod proto {
 
 pub use credential_fingerprint::credential_fingerprint;
 pub use json_wire::{
-    json_array_to_proto_list, json_object_to_proto_struct, json_to_proto_list,
-    json_to_proto_struct, json_to_proto_value, proto_list_to_json, proto_struct_to_json,
-    proto_value_to_json,
+    SEND_JSON_BYTES, decode_optional_json, encode_json_bytes, json_array_to_proto_list,
+    json_object_to_proto_struct, json_to_proto_list, json_to_proto_struct, json_to_proto_value,
+    proto_list_to_json, proto_struct_to_json, proto_value_to_json,
 };
 pub use proto::worker_service_client::WorkerServiceClient;
 pub use proto::worker_service_server::{WorkerService, WorkerServiceServer};
@@ -45,6 +46,11 @@ pub use proto::worker_service_server::{WorkerService, WorkerServiceServer};
 /// sessions large: production sessions reached 18-21 MiB and every turn failed
 /// at the old 16 MiB cap. Both ends must use the same value.
 pub const MAX_GRPC_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
+
+/// The worker/control-plane contract version, sent at registration. Bump it
+/// when a change needs workers and servers upgraded together; the system
+/// doctor flags workers that speak an older one.
+pub const WORKER_PROTOCOL_VERSION: u32 = 1;
 
 pub const CHECKPOINT_ENCRYPTION_NOT_CONFIGURED: &str = "checkpoint encryption is not configured";
 // ============================================================================
@@ -263,34 +269,25 @@ pub fn proto_message_to_schema(
         .map(proto_timestamp_to_datetime)
         .ok_or(ConversionError::MissingField("created_at"))?;
 
-    // Convert prost ListValue to Vec<ContentPart>
-    let content_json = value
-        .content
-        .as_ref()
-        .map(proto_list_to_json)
-        .unwrap_or_else(|| serde_json::Value::Array(vec![]));
-    let content: Vec<everruns_core::ContentPart> = serde_json::from_value(content_json)?;
-
-    // Convert prost Struct to Controls
-    let controls: Option<everruns_core::Controls> = value
-        .controls
-        .as_ref()
-        .map(|s| serde_json::from_value(proto_struct_to_json(s)))
-        .transpose()?;
-
-    // Convert prost Struct to metadata
-    let metadata: Option<std::collections::HashMap<String, serde_json::Value>> = value
-        .metadata
-        .as_ref()
-        .map(|s| serde_json::from_value(proto_struct_to_json(s)))
-        .transpose()?;
-
-    // Convert prost Struct to ExternalActor
-    let external_actor: Option<everruns_core::ExternalActor> = value
-        .external_actor
-        .as_ref()
-        .map(|s| serde_json::from_value(proto_struct_to_json(s)))
-        .transpose()?;
+    // JSON fields arrive as `*_json` bytes or, from an older sender, as Structs.
+    let content: Vec<everruns_core::ContentPart> = if !value.content_json.is_empty() {
+        serde_json::from_slice(&value.content_json)?
+    } else {
+        let content_json = value
+            .content
+            .as_ref()
+            .map(proto_list_to_json)
+            .unwrap_or_else(|| serde_json::Value::Array(vec![]));
+        serde_json::from_value(content_json)?
+    };
+    let controls: Option<everruns_core::Controls> =
+        decode_optional_json(value.controls_json.as_deref(), value.controls.as_ref())?;
+    let metadata: Option<std::collections::HashMap<String, serde_json::Value>> =
+        decode_optional_json(value.metadata_json.as_deref(), value.metadata.as_ref())?;
+    let external_actor: Option<everruns_core::ExternalActor> = decode_optional_json(
+        value.external_actor_json.as_deref(),
+        value.external_actor.as_ref(),
+    )?;
 
     let role = parse_message_role(&value.role);
 
@@ -317,6 +314,38 @@ pub fn proto_message_to_schema(
 
 /// Convert schemas Message to proto Message
 pub fn schema_message_to_proto(value: &everruns_core::RuntimeMessage) -> proto::Message {
+    message_to_proto_with(value, SEND_JSON_BYTES)
+}
+
+fn message_to_proto_with(
+    value: &everruns_core::RuntimeMessage,
+    json_bytes: bool,
+) -> proto::Message {
+    let mut message = proto::Message {
+        id: Some(uuid_to_proto_uuid(value.id.uuid())),
+        role: value.role.to_string(),
+        created_at: Some(datetime_to_proto_timestamp(value.created_at)),
+        phase: value.phase.map(|phase| phase.as_provider_str().to_string()),
+        phase_source: value.phase_source.map(|source| source.as_str().to_string()),
+        ..Default::default()
+    };
+    if json_bytes {
+        message.content_json = encode_json_bytes("content", &value.content);
+        message.controls_json = value
+            .controls
+            .as_ref()
+            .map(|c| encode_json_bytes("controls", c));
+        message.metadata_json = value
+            .metadata
+            .as_ref()
+            .map(|m| encode_json_bytes("metadata", m));
+        message.external_actor_json = value
+            .external_actor
+            .as_ref()
+            .map(|ea| encode_json_bytes("external_actor", ea));
+        return message;
+    }
+
     // EVE-652: serializing a message field previously fell back to an empty
     // value silently — for `content` that means dropping the entire message
     // payload (text/images/tool calls). Keep the empty fallback (infallible
@@ -355,17 +384,61 @@ pub fn schema_message_to_proto(value: &everruns_core::RuntimeMessage) -> proto::
         json_to_proto_struct(&serialize_field("external_actor", serde_json::to_value(ea)))
     });
 
-    proto::Message {
-        id: Some(uuid_to_proto_uuid(value.id.uuid())),
-        role: value.role.to_string(),
-        content,
-        controls,
-        metadata,
-        created_at: Some(datetime_to_proto_timestamp(value.created_at)),
-        external_actor,
-        phase: value.phase.map(|phase| phase.as_provider_str().to_string()),
-        phase_source: value.phase_source.map(|source| source.as_str().to_string()),
+    message.content = content;
+    message.controls = controls;
+    message.metadata = metadata;
+    message.external_actor = external_actor;
+    message
+}
+
+/// Event `data`/`metadata` in whichever wire form the sender chose.
+struct EventPayload {
+    data: Option<prost_types::Struct>,
+    metadata: Option<prost_types::Struct>,
+    data_json: Vec<u8>,
+    metadata_json: Option<Vec<u8>>,
+}
+
+fn encode_event_payload(
+    data: &everruns_core::EventData,
+    metadata: Option<&serde_json::Value>,
+    json_bytes: bool,
+) -> EventPayload {
+    if !json_bytes {
+        return EventPayload {
+            data: Some(json_to_proto_struct(&serialize_event_data(data))),
+            metadata: metadata.map(json_to_proto_struct),
+            data_json: Vec::new(),
+            metadata_json: None,
+        };
     }
+    // `EventData` serializes untagged, i.e. as the inner payload, which is what
+    // `serialize_event_data` produces arm by arm. `Unsupported` is the one
+    // variant whose payload is a field rather than the variant itself.
+    let data_json = match data {
+        everruns_core::EventData::Unsupported { data, .. } => encode_json_bytes("data", data),
+        data => encode_json_bytes("data", data),
+    };
+    EventPayload {
+        data: None,
+        metadata: None,
+        data_json,
+        metadata_json: metadata.map(|m| encode_json_bytes("metadata", m)),
+    }
+}
+
+fn decode_event_payload(
+    event_type: &str,
+    (data_json, data): (&[u8], Option<&prost_types::Struct>),
+    (metadata_json, metadata): (Option<&[u8]>, Option<&prost_types::Struct>),
+) -> Result<(everruns_core::EventData, Option<serde_json::Value>), ConversionError> {
+    let data = if !data_json.is_empty() {
+        serde_json::from_slice(data_json)?
+    } else {
+        proto_struct_to_json(data.ok_or(ConversionError::MissingField("data"))?)
+    };
+    let metadata = decode_optional_json(metadata_json, metadata)?;
+    Ok((deserialize_event_data(event_type, data), metadata))
 }
 
 /// Convert proto Event to schemas Event
@@ -416,16 +489,11 @@ pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event
         parent_span_id: proto_context.parent_span_id.clone(),
     };
 
-    // Convert Struct data to EventData based on event_type
-    let data_struct = value
-        .data
-        .as_ref()
-        .ok_or(ConversionError::MissingField("data"))?;
-    let data_json = proto_struct_to_json(data_struct);
-    let data = deserialize_event_data(&value.event_type, data_json);
-
-    // Convert optional metadata from prost Struct
-    let metadata: Option<serde_json::Value> = value.metadata.as_ref().map(proto_struct_to_json);
+    let (data, metadata) = decode_event_payload(
+        &value.event_type,
+        (&value.data_json, value.data.as_ref()),
+        (value.metadata_json.as_deref(), value.metadata.as_ref()),
+    )?;
 
     Ok(everruns_core::Event {
         id: EventId::from_uuid(id),
@@ -446,9 +514,7 @@ pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event
 
 /// Convert schemas Event to proto Event
 pub fn schema_event_to_proto(value: &everruns_core::Event) -> proto::Event {
-    // Serialize EventData to JSON, then convert to Struct
-    let data_json = serialize_event_data(&value.data);
-    let data_struct = json_to_proto_struct(&data_json);
+    let payload = encode_event_payload(&value.data, value.metadata.as_ref(), SEND_JSON_BYTES);
 
     proto::Event {
         id: Some(uuid_to_proto_uuid(value.id.uuid())),
@@ -476,8 +542,10 @@ pub fn schema_event_to_proto(value: &everruns_core::Event) -> proto::Event {
             span_id: value.context.span_id.clone(),
             parent_span_id: value.context.parent_span_id.clone(),
         }),
-        data: Some(data_struct),
-        metadata: value.metadata.as_ref().map(json_to_proto_struct),
+        data: payload.data,
+        metadata: payload.metadata,
+        data_json: payload.data_json,
+        metadata_json: payload.metadata_json,
         tags: value.tags.clone().unwrap_or_default(),
         sequence: value.sequence.unwrap_or(0),
     }
@@ -528,16 +596,11 @@ pub fn proto_event_request_to_schema(
         parent_span_id: proto_context.parent_span_id.clone(),
     };
 
-    // Convert Struct data to EventData based on event_type
-    let data_struct = value
-        .data
-        .as_ref()
-        .ok_or(ConversionError::MissingField("data"))?;
-    let data_json = proto_struct_to_json(data_struct);
-    let data = deserialize_event_data(&value.event_type, data_json);
-
-    // Convert optional metadata from prost Struct
-    let metadata: Option<serde_json::Value> = value.metadata.as_ref().map(proto_struct_to_json);
+    let (data, metadata) = decode_event_payload(
+        &value.event_type,
+        (&value.data_json, value.data.as_ref()),
+        (value.metadata_json.as_deref(), value.metadata.as_ref()),
+    )?;
 
     Ok(everruns_core::EventRequest {
         event_type: value.event_type,
@@ -556,9 +619,7 @@ pub fn proto_event_request_to_schema(
 
 /// Convert schemas EventRequest to proto EventRequest
 pub fn schema_event_request_to_proto(value: &everruns_core::EventRequest) -> proto::EventRequest {
-    // Serialize EventData to JSON, then convert to Struct
-    let data_json = serialize_event_data(&value.data);
-    let data_struct = json_to_proto_struct(&data_json);
+    let payload = encode_event_payload(&value.data, value.metadata.as_ref(), SEND_JSON_BYTES);
 
     proto::EventRequest {
         event_type: value.event_type.clone(),
@@ -585,8 +646,10 @@ pub fn schema_event_request_to_proto(value: &everruns_core::EventRequest) -> pro
             span_id: value.context.span_id.clone(),
             parent_span_id: value.context.parent_span_id.clone(),
         }),
-        data: Some(data_struct),
-        metadata: value.metadata.as_ref().map(json_to_proto_struct),
+        data: payload.data,
+        metadata: payload.metadata,
+        data_json: payload.data_json,
+        metadata_json: payload.metadata_json,
         tags: value.tags.clone().unwrap_or_default(),
     }
 }

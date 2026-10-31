@@ -1,5 +1,7 @@
 "use client";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 // Sandboxes tab: every Sandbox in the organization, across providers and
@@ -36,7 +38,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 import { SandboxDetailDrawer } from "@/components/sandboxes/sandbox-detail-drawer";
 import { providerLabel } from "@/components/sandboxes/sandbox-display";
 import { SandboxFleetSummary } from "@/components/sandboxes/sandbox-fleet-summary";
@@ -54,7 +55,8 @@ const WINDOWS = { "24h": 24 * 3_600_000, "7d": 7 * 86_400_000 } as const;
 type WindowKey = keyof typeof WINDOWS;
 
 export function SandboxFleetTab() {
-  usePageTitle("Sandboxes");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Sandboxes"));
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -169,11 +171,13 @@ export function SandboxFleetTab() {
     return (
       <EmptyState
         icon={<SandboxIcon />}
-        title="No Sandboxes yet"
-        description="A Session gets a Sandbox when its Agent or harness uses a Sandbox Template with a provider such as Daytona or Modal. Sandboxes appear here once a Session starts one. In-process sandboxes are not listed."
+        title={ui("No Sandboxes yet")}
+        description={ui(
+          "A Session gets a Sandbox when its Agent or harness uses a Sandbox Template with a provider such as Daytona or Modal. Sandboxes appear here once a Session starts one. In-process sandboxes are not listed.",
+        )}
         action={
           <Link href="/sandboxes/templates" className={buttonVariants({ variant: "outline" })}>
-            Set up a Sandbox Template
+            {ui("Set up a Sandbox Template")}
           </Link>
         }
       />
@@ -194,49 +198,33 @@ export function SandboxFleetTab() {
 
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div role="radiogroup" aria-label="View" className="inline-flex border">
-            {(
-              [
-                ["table", "Table", Rows3],
-                ["timeline", "Timeline", ChartGantt],
-              ] as const
-            ).map(([value, label, Icon]) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={view === value}
-                onClick={() => update({ view: value === "timeline" ? "timeline" : null })}
-                className={cn(
-                  "inline-flex h-9 items-center gap-1.5 px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                  view === value
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon className="icon-sharp size-3.5" />
-                {label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label={ui("View")}
+            value={view}
+            onValueChange={(value) => update({ view: value === "timeline" ? "timeline" : null })}
+            options={[
+              { value: "table", label: ui("Table"), icon: <Rows3 className="size-4" /> },
+              { value: "timeline", label: ui("Timeline"), icon: <ChartGantt className="size-4" /> },
+            ]}
+          />
           <SearchInput
             value={search}
             onChange={(event) => {
               setSearch(event.target.value);
               setPage(0);
             }}
-            placeholder="Search sessions, agents, provider ids"
+            placeholder={ui("Search sessions, agents, provider ids")}
             className="min-w-64 flex-1"
           />
           <Select
             value={provider}
             onValueChange={(value) => update({ provider: value === "all" ? null : String(value) })}
           >
-            <SelectTrigger className="w-44" aria-label="Filter by provider">
+            <SelectTrigger className="w-44" aria-label={ui("Filter by provider")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All providers</SelectItem>
+              <SelectItem value="all">{ui("All providers")}</SelectItem>
               {providers.map((id) => (
                 <SelectItem key={id} value={id}>
                   {providerLabel(id)}
@@ -249,12 +237,12 @@ export function SandboxFleetTab() {
               value={windowKey}
               onValueChange={(value) => update({ window: value === "7d" ? "7d" : null })}
             >
-              <SelectTrigger className="w-36" aria-label="Time window">
+              <SelectTrigger className="w-36" aria-label={ui("Time window")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="24h">Last 24 hours</SelectItem>
-                <SelectItem value="7d">Last 7 days</SelectItem>
+                <SelectItem value="24h">{ui("Last 24 hours")}</SelectItem>
+                <SelectItem value="7d">{ui("Last 7 days")}</SelectItem>
               </SelectContent>
             </Select>
           ) : null}
@@ -270,19 +258,21 @@ export function SandboxFleetTab() {
           ) : fleet.error ? (
             <EmptyState
               icon={<SandboxIcon />}
-              title="Sandboxes could not be loaded"
+              title={ui("Sandboxes could not be loaded")}
               description={fleet.error instanceof Error ? fleet.error.message : undefined}
             />
           ) : items.length === 0 ? (
             <EmptyState
               icon={<SandboxIcon />}
               title={
-                needsAttention ? "Nothing needs attention" : "No Sandboxes match these filters"
+                needsAttention
+                  ? ui("Nothing needs attention")
+                  : ui("No Sandboxes match these filters")
               }
               description={
                 needsAttention
-                  ? "No Sandbox is lost, failed, idle while running, or stuck in cleanup."
-                  : "Try another state, provider or search."
+                  ? ui("No Sandbox is lost, failed, idle while running, or stuck in cleanup.")
+                  : ui("Try another state, provider or search.")
               }
             />
           ) : (
@@ -291,7 +281,8 @@ export function SandboxFleetTab() {
               {total > PAGE_SIZE ? (
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span className="tabular-nums">
-                    {page * PAGE_SIZE + 1} to {Math.min(total, (page + 1) * PAGE_SIZE)} of {total}
+                    {page * PAGE_SIZE + 1} {ui("to")} {Math.min(total, (page + 1) * PAGE_SIZE)}{" "}
+                    {ui("of")} {total}
                   </span>
                   <div className="flex gap-2">
                     <Button
@@ -300,7 +291,7 @@ export function SandboxFleetTab() {
                       disabled={page === 0}
                       onClick={() => setPage((p) => p - 1)}
                     >
-                      Previous
+                      {ui("Previous")}
                     </Button>
                     <Button
                       size="sm"
@@ -308,7 +299,7 @@ export function SandboxFleetTab() {
                       disabled={(page + 1) * PAGE_SIZE >= total}
                       onClick={() => setPage((p) => p + 1)}
                     >
-                      Next
+                      {ui("Next")}
                     </Button>
                   </div>
                 </div>
@@ -320,14 +311,14 @@ export function SandboxFleetTab() {
         ) : timeline.error ? (
           <EmptyState
             icon={<SandboxIcon />}
-            title="The timeline could not be loaded"
+            title={ui("The timeline could not be loaded")}
             description={timeline.error instanceof Error ? timeline.error.message : undefined}
           />
         ) : !timeline.data || timeline.data.lanes.length === 0 ? (
           <EmptyState
             icon={<SandboxIcon />}
-            title="No Sandbox ran in this window"
-            description="Pick a longer window or clear the filters."
+            title={ui("No Sandbox ran in this window")}
+            description={ui("Pick a longer window or clear the filters.")}
           />
         ) : (
           <SandboxTimelineChart timeline={timeline.data} onSelect={select} />

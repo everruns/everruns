@@ -13,7 +13,10 @@
 //   to the agent.
 // See knowledge/execution/change-reasons-and-manager-context.md (UI).
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useState } from "react";
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 import { NotebookPen, Pencil } from "lucide-react";
 import { ChangeReasonField } from "@/components/entity-actions/change-reason-field";
 import { entityKindLabel, type EntityKind } from "@/components/entity-actions/entity-kinds";
@@ -59,6 +62,8 @@ export function ManagerNotesSheet({
   open,
   onOpenChange,
 }: ManagerNotesSheetProps) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const notes = useManagerContext(entityRef, open);
   const save = useSetManagerContext(entityRef);
   // While editing: the text and the revision the edit started from.
@@ -68,6 +73,20 @@ export function ManagerNotesSheet({
   const content = notes.data?.content ?? "";
   const bytes = draft ? new TextEncoder().encode(draft.content).length : 0;
   const conflict = isManagerContextConflict(save.error);
+  const chatDraft = useTextPageFormDraft({
+    fields: ["content"],
+    values: { content: draft?.content ?? content },
+    entityId: entityRef,
+    entityType: "manager_notes",
+    formId: "manager_notes",
+    label: "Manager notes",
+    priority: 30,
+    enabled: open && !notes.isLoading && !notes.error,
+    baseline: String(notes.data?.revision ?? 0),
+    dirty: !!draft && draft.content !== content,
+    writable: !!draft && !save.isPending && !conflict,
+    apply: (next) => setDraft((previous) => previous && { ...previous, content: next.content }),
+  });
 
   const startEdit = () => {
     save.reset();
@@ -79,7 +98,7 @@ export function ManagerNotesSheet({
     setReason("");
   };
   const submit = async () => {
-    if (!draft) return;
+    if (!draft || chatDraft.blocked || save.isPending || bytes > MAX_NOTES_BYTES) return;
     try {
       await save.mutateAsync({
         content: draft.content,
@@ -107,10 +126,10 @@ export function ManagerNotesSheet({
     >
       <DrawerContent className="gap-0 overflow-y-auto p-0 sm:max-w-2xl">
         <DrawerHeader className="border-b p-5 pr-12">
-          <DrawerTitle>Manager notes</DrawerTitle>
+          <DrawerTitle>{ui("Manager notes")}</DrawerTitle>
           <DrawerDescription>
-            What the managers of {entityName} should know before changing it. Only managers see
-            these notes.
+            {ui("What the managers of")} {entityName}{" "}
+            {ui("should know before changing it. Only managers see these notes.")}
           </DrawerDescription>
         </DrawerHeader>
         <div className="flex-1 space-y-4 p-5">
@@ -118,7 +137,7 @@ export function ManagerNotesSheet({
             <Skeleton className="h-40 w-full" />
           ) : notes.error ? (
             <p role="alert" className="text-sm text-destructive">
-              Could not load manager notes: {notes.error.message}
+              {ui("Could not load manager notes:")} {notes.error.message}
             </p>
           ) : draft ? (
             <form
@@ -128,48 +147,55 @@ export function ManagerNotesSheet({
                 void submit();
               }}
             >
+              {chatDraft.notice}
               <Textarea
-                aria-label="Manager notes"
+                aria-label={ui("Manager notes")}
                 value={draft.content}
                 onChange={(event) => setDraft({ ...draft, content: event.target.value })}
                 className="min-h-64 font-mono text-sm"
-                placeholder={`Requirements, rationale and ownership of this ${label}. Markdown.`}
+                placeholder={ui(
+                  "Requirements, rationale and ownership of this {value0}. Markdown.",
+                  { value0: label },
+                )}
               />
               {bytes > MAX_NOTES_BYTES && (
                 <p className="text-xs text-destructive">
-                  {Math.ceil(bytes / 1024)} KiB; notes are limited to 16 KiB.
+                  {Math.ceil(bytes / 1024)} {ui("KiB; notes are limited to 16 KiB.")}
                 </p>
               )}
               <ChangeReasonField value={reason} onChange={setReason} />
               {conflict ? (
                 <Notice variant="warning" role="alert">
-                  <NoticeTitle>Someone else changed these notes</NoticeTitle>
+                  <NoticeTitle>{ui("Someone else changed these notes")}</NoticeTitle>
                   <NoticeDescription className="space-y-2">
                     <span className="block">
-                      They were saved again after you started editing. Copy anything you want to
-                      keep, then reload the latest notes and edit again.
+                      {ui(
+                        "They were saved again after you started editing. Copy anything you want to keep, then reload the latest notes and edit again.",
+                      )}
                     </span>
                     <Button type="button" size="sm" variant="outline" onClick={reloadLatest}>
-                      Reload latest notes
+                      {ui("Reload latest notes")}
                     </Button>
                   </NoticeDescription>
                 </Notice>
               ) : (
                 save.error && (
                   <p role="alert" className="text-sm text-destructive">
-                    Could not save: {save.error.message}
+                    {ui("Could not save:")} {save.error.message}
                   </p>
                 )
               )}
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={cancelEdit}>
-                  Cancel
+                  {ui("Cancel")}
                 </Button>
                 <Button
                   type="submit"
-                  disabled={save.isPending || conflict || bytes > MAX_NOTES_BYTES}
+                  disabled={
+                    save.isPending || conflict || chatDraft.blocked || bytes > MAX_NOTES_BYTES
+                  }
                 >
-                  {save.isPending ? "Saving..." : "Save notes"}
+                  {save.isPending ? ui("Saving...") : ui("Save notes")}
                 </Button>
               </div>
             </form>
@@ -178,17 +204,20 @@ export function ManagerNotesSheet({
               <MarkdownDisplay content={content} />
               {notes.data?.updated_at && (
                 <p className="text-xs text-muted-foreground">
-                  Updated {formatRelativeTime(notes.data.updated_at)}
+                  {ui("Updated")} {formatRelativeTime(notes.data.updated_at, displayLocale)}
                 </p>
               )}
             </>
           ) : (
             <div className="space-y-2 py-6 text-center">
               <NotebookPen className="mx-auto size-5 text-muted-foreground" />
-              <p className="text-sm font-medium">No manager notes yet</p>
+              <p className="text-sm font-medium">{ui("No manager notes yet")}</p>
               <p className="mx-auto max-w-sm text-sm text-muted-foreground">
-                Notes are for the people who manage this {label}: what it must keep doing, why it is
-                set up this way, and who owns it. The {label} itself never sees them.
+                {ui("Notes are for the people who manage this")} {label}
+                {ui(
+                  ": what it must keep doing, why it is set up this way, and who owns it. The",
+                )}{" "}
+                {label} {ui("itself never sees them.")}
               </p>
             </div>
           )}
@@ -197,7 +226,7 @@ export function ManagerNotesSheet({
           <DrawerFooter className="border-t p-4">
             <Button variant="outline" onClick={startEdit}>
               <Pencil className="size-4" />
-              {content.trim() ? "Edit" : "Add notes"}
+              {content.trim() ? ui("Edit") : ui("Add notes")}
             </Button>
           </DrawerFooter>
         )}

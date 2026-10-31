@@ -17,5 +17,8 @@
     "esbuild": "0.28.2",
     "miniflare": "5.20261012.1-beta",
     "wrangler": "4.151.1"
+  },
+  "overrides": {
+    "undici": "7.30.1"
   }
 }

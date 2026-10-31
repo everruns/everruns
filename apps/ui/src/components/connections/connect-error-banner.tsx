@@ -1,10 +1,12 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { AlertTriangle, X } from "lucide-react";
 import { useConnectErrorFromUrl } from "@/lib/connect-error";
 
 /** Shows a failed OAuth connect the server returned this page with. */
 export function ConnectErrorBanner() {
+  const ui = useUiTranslations();
   const [message, dismiss] = useConnectErrorFromUrl();
   if (!message) return null;
   return (
@@ -14,7 +16,7 @@ export function ConnectErrorBanner() {
     >
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
       <span className="flex-1">{message}</span>
-      <button type="button" aria-label="Dismiss" onClick={dismiss} className="shrink-0">
+      <button type="button" aria-label={ui("Dismiss")} onClick={dismiss} className="shrink-0">
         <X className="h-4 w-4" />
       </button>
     </div>

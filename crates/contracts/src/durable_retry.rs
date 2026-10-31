@@ -1,6 +1,7 @@
 //! Host-owned checkpoints for provider recovery. A parked retry is control
 //! flow, never a failed turn or a suspended language-runtime stack.
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
+use crate::llm_error::LlmError;
 use crate::llm_retry::{LlmRetryConfig, RetryMetadata};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,12 @@ pub struct RetryCheckpoint {
     pub wake_at_ms: i64,
     pub total_wait_ms: u64,
     pub policy: LlmRetryConfig,
+    /// Sanitized summary of the provider failure the latest retry answers
+    /// ([`crate::retry_failure::retained`]), so a window that expires after
+    /// executor loss still names its cause (EVE-1318). Absent from
+    /// checkpoints written before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_failure: Option<String>,
 }
 
 /// The session authority supplies time, fenced persistence and a durable wake.
@@ -58,7 +65,8 @@ pub fn is_parked(error: &AgentLoopError) -> bool {
     matches!(error, AgentLoopError::Internal(inner) if inner.is::<Parked>())
 }
 
-fn parked() -> AgentLoopError {
+/// The error a step returns when it parked its turn until a durable wakeup.
+pub fn parked() -> AgentLoopError {
     AgentLoopError::Internal(Parked.into())
 }
 
@@ -139,17 +147,56 @@ fn metadata(checkpoint: &RetryCheckpoint) -> RetryMetadata {
     }
 }
 
+/// The terminal error once the recovery window closes. It names the budget
+/// and keeps the last classified provider failure (kind, status and safe
+/// identifiers, never provider text), so a shared-pool 429, an outage and a
+/// network timeout stay distinguishable after an attempt that never answered.
+///
+/// Elapsed time is the restored recovery time plus this instance's clock
+/// since `started`; `cause` is a [`crate::retry_failure::retained`] summary.
+pub fn budget_exhausted(
+    retry: &RetryMetadata,
+    started: Option<crate::rt::Instant>,
+    cause: Option<&str>,
+) -> AgentLoopError {
+    let elapsed = retry
+        .total_retry_elapsed
+        .saturating_add(started.map_or(Duration::ZERO, |started| started.elapsed()));
+    let mut message = format!(
+        "provider retry time budget exhausted after {} retries over {:.1}s",
+        retry.attempts,
+        elapsed.as_secs_f64()
+    );
+    let mut error = LlmError::new(LlmErrorKind::Unavailable, String::new());
+    if let Some(failure) = cause {
+        message.push_str("; last provider failure: ");
+        message.push_str(failure);
+        error.kind = crate::retry_failure::exhausted_kind(failure);
+    }
+    message.push_str("; the turn is safe to resume");
+    error.message = message;
+    AgentLoopError::Llm(error).with_retry_metadata(retry)
+}
+
+/// What [`restore`] hands the streaming loop: policy, metadata, this
+/// instance's clock origin and the retained cause. The cause travels beside
+/// [`RetryMetadata`] rather than in it: a field there grows every future that
+/// holds metadata, which the size-budgeted Engine Worker Wasm cannot afford.
+pub type Restored = (
+    LlmRetryConfig,
+    RetryMetadata,
+    Option<crate::rt::Instant>,
+    Option<String>,
+);
+
 /// Restore the generation's count and wall time into the existing bounded
 /// streaming loop. In-flight attempts remain bounded after process loss too.
-pub async fn restore(
-    operation: &str,
-    fallback: &LlmRetryConfig,
-) -> Result<(LlmRetryConfig, RetryMetadata, Option<crate::rt::Instant>)> {
+pub async fn restore(operation: &str, fallback: &LlmRetryConfig) -> Result<Restored> {
     let Ok(host) = HOST.try_with(Arc::clone) else {
-        return Ok((fallback.clone(), RetryMetadata::default(), None));
+        return Ok((fallback.clone(), RetryMetadata::default(), None, None));
     };
     let Some(checkpoint) = host.load(operation).await? else {
-        return Ok((fallback.clone(), RetryMetadata::default(), None));
+        return Ok((fallback.clone(), RetryMetadata::default(), None, None));
     };
     let now = host.now_ms().await?;
     let mut policy = checkpoint.policy.clone();
@@ -160,7 +207,12 @@ pub async fn restore(
     let mut restored = metadata(&checkpoint);
     restored.total_retry_elapsed =
         Duration::from_millis(now.saturating_sub(checkpoint.started_at_ms).max(0) as u64);
-    Ok((policy, restored, Some(crate::rt::Instant::now())))
+    Ok((
+        policy,
+        restored,
+        Some(crate::rt::Instant::now()),
+        checkpoint.last_failure,
+    ))
 }
 
 /// Before any provider I/O, re-arm early wakes or surface an exhausted budget
@@ -179,13 +231,11 @@ pub async fn prepare(operation: &str) -> Result<Option<AgentLoopError>> {
     }
     let now = host.now_ms().await?;
     if now >= checkpoint.expires_at_ms {
-        return Ok(Some(
-            AgentLoopError::llm_kind(
-                LlmErrorKind::Unavailable,
-                "provider recovery time budget exhausted",
-            )
-            .with_retry_metadata(&metadata(&checkpoint)),
-        ));
+        let mut retry = metadata(&checkpoint);
+        retry.total_retry_elapsed =
+            Duration::from_millis(now.saturating_sub(checkpoint.started_at_ms).max(0) as u64);
+        let cause = checkpoint.last_failure.as_deref();
+        return Ok(Some(budget_exhausted(&retry, None, cause)));
     }
     if now < checkpoint.wake_at_ms {
         host.schedule(checkpoint.wake_at_ms).await?;
@@ -240,6 +290,7 @@ async fn retain_retry(
         wake_at_ms: now,
         total_wait_ms: 0,
         policy: config.clone(),
+        last_failure: None,
     });
     if state.version != 1 {
         return Err(AgentLoopError::config(
@@ -263,6 +314,9 @@ async fn retain_retry(
         return Ok(error.with_retry_metadata(&metadata(&state)));
     }
     state.attempts += 1;
+    if let Some(failure) = crate::retry_failure::retained(&error) {
+        state.last_failure = Some(failure);
+    }
     state.total_wait_ms = state.total_wait_ms.saturating_add(wait_ms);
     state.wake_at_ms = now.saturating_add(i64::try_from(wait_ms).unwrap_or(i64::MAX));
     boundary.await?;
@@ -396,6 +450,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_expired_window_names_the_classified_failure_it_retained() {
+        let host = Arc::new(Host::default());
+        let refused =
+            AgentLoopError::llm_http(429, r#"{"error":{"code":"rate_limit_exceeded"}}"#, "429");
+        scope(host.clone(), async {
+            assert!(is_parked(&retry("turn/1", &policy(), refused).await));
+        })
+        .await;
+        host.now.store(30_001, Ordering::SeqCst);
+        scope(host, async {
+            let exhausted = prepare("turn/1").await.unwrap().unwrap();
+            assert_eq!(exhausted.llm_error_kind(), Some(LlmErrorKind::RateLimited));
+            assert_eq!(
+                exhausted.to_string(),
+                "LLM error: provider retry time budget exhausted after 1 retries over 30.0s; \
+                 last provider failure: rate_limited (HTTP 429, code rate_limit_exceeded); \
+                 the turn is safe to resume"
+            );
+        })
+        .await;
+    }
+
+    #[test]
+    fn checkpoints_written_before_the_retained_failure_still_load() {
+        let stored = serde_json::to_value(RetryCheckpoint {
+            version: 1,
+            attempts: 1,
+            started_at_ms: 0,
+            expires_at_ms: 1,
+            wake_at_ms: 1,
+            total_wait_ms: 1,
+            policy: policy(),
+            last_failure: None,
+        })
+        .unwrap();
+        assert!(stored.get("last_failure").is_none());
+        let old: RetryCheckpoint = serde_json::from_value(stored).unwrap();
+        assert!(old.last_failure.is_none());
+    }
+
+    #[tokio::test]
     async fn restored_attempts_use_the_authority_remaining_budget_on_a_new_clock() {
         let host = Arc::new(Host::default());
         scope(host.clone(), async {
@@ -404,7 +499,7 @@ mod tests {
         .await;
         host.now.store(12_500, Ordering::SeqCst);
         scope(host, async {
-            let (config, metadata, started) = restore("turn/1", &policy()).await.unwrap();
+            let (config, metadata, started, _) = restore("turn/1", &policy()).await.unwrap();
             assert_eq!(config.max_retry_elapsed, Duration::from_millis(17_500));
             assert_eq!(metadata.total_retry_elapsed, Duration::from_millis(12_500));
             assert_eq!(metadata.attempts, 1);

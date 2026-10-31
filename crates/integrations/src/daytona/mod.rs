@@ -515,6 +515,18 @@ impl Tool for SandboxFleetTool {
 
 #[async_trait::async_trait]
 impl Capability for SandboxFleetCapability {
+    fn localizations(
+        &self,
+    ) -> Vec<everruns_contracts::runtime::capabilities::CapabilityLocalization> {
+        vec![
+            everruns_contracts::runtime::capabilities::CapabilityLocalization::text(
+                "uk",
+                "Парк пісочниць",
+                "Створює та керує кількома явно вказаними пісочницями без зміни основної пісочниці сесії.",
+            ),
+        ]
+    }
+
     fn id(&self) -> &str {
         "sandbox_fleet"
     }

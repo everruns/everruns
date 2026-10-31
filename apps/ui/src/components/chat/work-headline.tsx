@@ -5,10 +5,11 @@
  */
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import type { ReactNode } from "react";
 import { useLiveWorkReport } from "@/hooks/use-turn-work-report";
 import { workReportStatus } from "@/components/chat/work-report-parts";
-import { useLocale } from "@/providers/locale-provider";
+
 import { cn } from "@/lib/utils";
 
 export function WorkHeadline({
@@ -22,6 +23,7 @@ export function WorkHeadline({
   fallback: ReactNode;
   className?: string;
 }) {
+  const ui = useUiTranslations();
   const { t } = useLocale();
   const report = useLiveWorkReport(sessionId, live);
   const headline = report ? workReportStatus(report, t) : undefined;
@@ -34,7 +36,13 @@ export function WorkHeadline({
       title={headline}
     >
       {plan && plan.total > 0 && report?.state === "working"
-        ? `${t("work_plan_step", { current: Math.min(plan.done + 1, plan.total), total: plan.total })} · ${headline}`
+        ? ui("{value0} · {value1}", {
+            value0: t("work_plan_step", {
+              current: Math.min(plan.done + 1, plan.total),
+              total: plan.total,
+            }),
+            value1: headline,
+          })
         : headline}
     </span>
   );

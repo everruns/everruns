@@ -33,16 +33,17 @@ use everruns_contracts::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId
 // agent, harness and session records belong to the server; the transport shape
 // stays compatible with workers from the preceding release.
 use everruns_internal_protocol::proto;
-use everruns_internal_protocol::{
-    json_to_proto_list, json_to_proto_struct, proto_list_to_json, proto_struct_to_json,
-};
+use everruns_internal_protocol::{json_to_proto_list, json_to_proto_struct, proto_struct_to_json};
 use std::sync::Arc;
 use uuid::Uuid;
 
+mod blob_fetch;
 mod checkpoint_availability;
 mod compaction_checkpoints;
 mod connect;
 mod event_batch;
+mod history_cache;
+mod load_messages;
 mod shared_client;
 use checkpoint_availability::CheckpointAvailability;
 pub use connect::DEFAULT_GRPC_REQUEST_TIMEOUT;
@@ -68,51 +69,22 @@ fn grpc_command_error_to_error(error: proto::CommandError) -> AgentLoopError {
     }
 }
 
-/// Fetch image binary from a presigned URL and return as base64-encoded ResolvedImage.
-///
-/// Used when the control plane returns presigned URLs instead of inline base64 data,
-/// keeping gRPC messages small while still providing base64 data to LLM providers.
-async fn fetch_image_from_url(url: &str, media_type: &str) -> Result<ResolvedImage> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|e| AgentLoopError::store(format!("Failed to build HTTP client: {e}")))?;
-
-    let response = client.get(url).send().await.map_err(|e| {
-        AgentLoopError::store(format!("Failed to fetch image from presigned URL: {e}"))
-    })?;
-
-    if !response.status().is_success() {
-        return Err(AgentLoopError::store(format!(
-            "Presigned image fetch returned status {}",
-            response.status()
-        )));
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| AgentLoopError::store(format!("Failed to read image response body: {e}")))?;
-
-    use base64::Engine;
-    let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    Ok(ResolvedImage::new(base64_data, media_type))
-}
-
 /// gRPC client wrapper for worker operations
 #[derive(Clone)]
 pub struct GrpcClient {
     pub(crate) inner: SharedClient,
     checkpoints: Arc<CheckpointAvailability>,
+    /// GETs image and file bytes from signed paths on the same channel.
+    blobs: blob_fetch::BlobFetcher,
+    /// Session histories this worker already read (`history_cache`).
+    history: Arc<history_cache::HistoryCache>,
 }
 
 impl GrpcClient {
     /// Set session status (started, active, idle).
     ///
-    /// Acknowledgement only (EVE-882): the wire response still carries the
-    /// stored record for older workers, but status mutation exposes no
-    /// session record to the caller.
+    /// Acknowledgement only (EVE-882): the response carries no session
+    /// record.
     pub async fn set_session_status(
         &self,
         org_id: i64,
@@ -161,31 +133,26 @@ impl GrpcClient {
         proto_session_to_session(proto_session)
     }
 
+    /// Store a generated image. The bytes go up over HTTP, not gRPC.
     pub async fn create_image_artifact(
         &self,
         org_id: i64,
         input: CreateStoredImage,
     ) -> Result<StoredImageInfo> {
-        let request = proto::CreateImageArtifactRequest {
-            org_id,
+        let head = everruns_internal_protocol::blob_wire::ImageUploadHead {
             filename: input.filename,
             content_type: input.content_type,
-            data: input.data,
-            metadata: Some(json_to_proto_struct(&input.metadata)),
+            metadata: input.metadata,
         };
-
-        let mut client = self.inner.client();
-        let response = client
-            .create_image_artifact(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        let proto_image = response
-            .into_inner()
-            .image
-            .ok_or_else(|| grpc_missing_field("No image in response"))?;
-
-        proto_stored_image_info_to_schema(proto_image)
+        let stored = self.blobs.upload_image(org_id, &head, &input.data).await?;
+        Ok(StoredImageInfo {
+            id: stored.id.into(),
+            filename: stored.filename,
+            content_type: stored.content_type,
+            size_bytes: stored.size_bytes,
+            metadata: stored.metadata,
+            created_at: stored.created_at,
+        })
     }
 
     pub async fn get_image_artifact(
@@ -204,11 +171,18 @@ impl GrpcClient {
             .await
             .map_err(grpc_status_to_error)?;
 
-        response
-            .into_inner()
-            .image
-            .map(proto_stored_image_to_schema)
-            .transpose()
+        let response = response.into_inner();
+        let Some(info) = response.info else {
+            return Ok(None);
+        };
+        let data = self
+            .blobs
+            .fetch(&response.url, blob_fetch::MAX_BLOB_BYTES)
+            .await?;
+        Ok(Some(StoredImage {
+            info: proto_stored_image_info_to_schema(info)?,
+            data,
+        }))
     }
 
     pub async fn get_default_provider_credentials(
@@ -704,46 +678,6 @@ impl GrpcOrgAdapter {
             Err(error) => Err(grpc_command_error_to_error(error)),
         }
     }
-
-    async fn latest_terminal_turn_status(&self, session_id: SessionId) -> Result<Option<String>> {
-        const TURN_COMPLETED: &str = "turn.completed";
-        const TURN_FAILED: &str = "turn.failed";
-        const TURN_CANCELLED: &str = "turn.cancelled";
-        const TURN_SEALED: &str = "turn.sealed";
-
-        let response: serde_json::Value = self
-            .execute_platform_command(
-                "list_events",
-                serde_json::json!({
-                    "session_id": session_id.to_string(),
-                    "types": [TURN_COMPLETED, TURN_FAILED, TURN_CANCELLED, TURN_SEALED],
-                    "limit": 1,
-                    "order_desc": true,
-                }),
-            )
-            .await?;
-
-        let Some(event_type) = response
-            .get("data")
-            .and_then(|data| data.as_array())
-            .and_then(|events| events.first())
-            .and_then(|event| event.get("type"))
-            .and_then(|event_type| event_type.as_str())
-        else {
-            return Ok(None);
-        };
-
-        let status = match event_type {
-            TURN_COMPLETED => Some("completed"),
-            TURN_FAILED => Some("failed"),
-            TURN_CANCELLED => Some("cancelled"),
-            // A sealed turn is terminal but distinct from a failure: surface it
-            // as "sealed" so the parent agent can decide what to do next.
-            TURN_SEALED => Some("sealed"),
-            _ => None,
-        };
-        Ok(status.map(str::to_string))
-    }
 }
 
 /// Budget checker that carries org_id and optional agent_id (captured at
@@ -884,16 +818,6 @@ fn proto_stored_image_info_to_schema(
             .map(proto_struct_to_json)
             .unwrap_or_else(|| serde_json::json!({})),
         created_at: proto_timestamp_or_now(proto_info.created_at.as_ref()),
-    })
-}
-
-fn proto_stored_image_to_schema(proto_image: proto::StoredImage) -> Result<StoredImage> {
-    let info = proto_image
-        .info
-        .ok_or_else(|| grpc_missing_field("No image info in response"))?;
-    Ok(StoredImage {
-        info: proto_stored_image_info_to_schema(info)?,
-        data: proto_image.data,
     })
 }
 
@@ -1063,105 +987,9 @@ impl MessageRetriever for GrpcAdapter {
     }
 }
 
-impl GrpcAdapter {
-    async fn load_with_message_limit(
-        &self,
-        session_id: SessionId,
-        message_limit: Option<i32>,
-        after_sequence: Option<i64>,
-    ) -> Result<(Vec<RuntimeMessage>, usize, Option<i64>)> {
-        let mut client = self.client.inner.client();
-
-        let request = proto::LoadMessagesRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-            message_limit,
-            after_sequence,
-        };
-
-        let response = client
-            .load_messages(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        let response = response.into_inner();
-        let total_count = if response.total_count > 0 {
-            response.total_count as usize
-        } else {
-            response.messages.len()
-        };
-
-        let messages = response
-            .messages
-            .into_iter()
-            .map(proto_message_to_message)
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok((messages, total_count, response.source_sequence))
-    }
-}
-
 fn proto_message_to_message(proto_msg: proto::Message) -> Result<RuntimeMessage> {
-    let id = proto_uuid_to_uuid(proto_msg.id.as_ref())?;
-
-    // Convert prost ListValue to Vec<ContentPart>
-    let content_json = proto_msg
-        .content
-        .as_ref()
-        .map(proto_list_to_json)
-        .unwrap_or_else(|| serde_json::Value::Array(vec![]));
-    let content: Vec<crate::core::ContentPart> = serde_json::from_value(content_json)
-        .map_err(|e| AgentLoopError::store(format!("Failed to parse message content: {}", e)))?;
-
-    // Convert prost Struct to Controls
-    let controls: Option<crate::core::Controls> = proto_msg
-        .controls
-        .as_ref()
-        .map(|s| serde_json::from_value(proto_struct_to_json(s)))
-        .transpose()
-        .map_err(|e| AgentLoopError::store(format!("Failed to parse message controls: {}", e)))?;
-
-    // Convert prost Struct to metadata
-    let metadata: Option<std::collections::HashMap<String, serde_json::Value>> = proto_msg
-        .metadata
-        .as_ref()
-        .map(|s| serde_json::from_value(proto_struct_to_json(s)))
-        .transpose()
-        .map_err(|e| AgentLoopError::store(format!("Failed to parse message metadata: {}", e)))?;
-
-    let role = match proto_msg.role.to_lowercase().as_str() {
-        "system" => crate::core::RuntimeMessageRole::System,
-        "user" => crate::core::RuntimeMessageRole::User,
-        // Map both "assistant" (legacy) and "agent" to Agent role
-        "assistant" | "agent" => crate::core::RuntimeMessageRole::Agent,
-        "tool_result" => crate::core::RuntimeMessageRole::ToolResult,
-        _ => crate::core::RuntimeMessageRole::User,
-    };
-
-    Ok(RuntimeMessage {
-        id: id.into(),
-        role,
-        content,
-        // Reasoning rides along inside `content` as ordered reasoning parts.
-        phase: proto_msg
-            .phase
-            .as_deref()
-            .and_then(everruns_contracts::ExecutionPhase::from_provider_str),
-        phase_source: proto_msg
-            .phase_source
-            .as_deref()
-            .and_then(everruns_contracts::PhaseSource::from_str_opt),
-        controls,
-        metadata,
-        external_actor: {
-            use everruns_internal_protocol::proto_struct_to_json;
-            proto_msg
-                .external_actor
-                .as_ref()
-                .map(|s| serde_json::from_value(proto_struct_to_json(s)))
-                .transpose()
-                .unwrap_or(None)
-        },
-        created_at: proto_timestamp_or_now(proto_msg.created_at.as_ref()),
-    })
+    everruns_internal_protocol::proto_message_to_schema(proto_msg)
+        .map_err(|e| AgentLoopError::store(format!("Failed to parse message: {}", e)))
 }
 
 // ============================================================================
@@ -1734,12 +1562,21 @@ pub async fn load_turn_context_for_execution(
 use crate::core::{file_services::FileResolver, image_services::ImageResolver};
 use std::collections::HashMap;
 
+/// Model-ready image: providers take base64, so encode once the bytes arrive.
+fn resolved_image(bytes: &[u8], media_type: String) -> ResolvedImage {
+    use base64::Engine;
+    ResolvedImage::new(
+        base64::engine::general_purpose::STANDARD.encode(bytes),
+        media_type,
+    )
+}
+
 impl GrpcOrgAdapter {
     /// Resolve multiple images in a batch (more efficient)
     ///
     /// Returns a HashMap mapping image_id to ResolvedImage for all found images.
     /// Missing images are silently skipped.
-    /// When the server returns presigned URLs, images are fetched via HTTP.
+    /// The server answers with signed links; the bytes are fetched over HTTP.
     pub async fn resolve_images_batch(
         &self,
         image_ids: &[Uuid],
@@ -1760,26 +1597,31 @@ impl GrpcOrgAdapter {
             .await
             .map_err(grpc_status_to_error)?;
 
-        let mut result = HashMap::new();
-        for (id_str, data) in response.into_inner().images {
-            if let Ok(id) = Uuid::parse_str(&id_str) {
-                let resolved = if !data.url.is_empty() {
-                    fetch_image_from_url(&data.url, &data.media_type).await?
-                } else {
-                    ResolvedImage::new(data.base64, data.media_type)
-                };
-                result.insert(id, resolved);
-            }
-        }
-
-        Ok(result)
+        let links = response
+            .into_inner()
+            .images
+            .into_iter()
+            .filter_map(|(id_str, data)| {
+                let id = Uuid::parse_str(&id_str).ok()?;
+                Some(((id, data.media_type), data.url))
+            })
+            .collect();
+        let fetched = self
+            .client
+            .blobs
+            .fetch_all(links, blob_fetch::MAX_BLOB_BYTES)
+            .await?;
+        Ok(fetched
+            .into_iter()
+            .map(|((id, media_type), bytes)| (id, resolved_image(&bytes, media_type)))
+            .collect())
     }
 
     /// Resolve multiple files in a batch (more efficient)
     ///
     /// Returns a HashMap mapping file_id to ResolvedFile for all found files.
-    /// Missing files are silently skipped. Files are always returned inline
-    /// as base64 (no presigned-URL variant, unlike images).
+    /// Missing files are silently skipped. The server answers with signed
+    /// links; the bytes are fetched over HTTP.
     pub async fn resolve_files_batch(
         &self,
         file_ids: &[Uuid],
@@ -1800,37 +1642,41 @@ impl GrpcOrgAdapter {
             .await
             .map_err(grpc_status_to_error)?;
 
-        let mut result = HashMap::new();
-        for (id_str, data) in response.into_inner().files {
-            if let Ok(id) = Uuid::parse_str(&id_str) {
-                result.insert(
-                    id,
-                    ResolvedFile {
-                        base64: data.base64,
-                        media_type: data.media_type,
-                        filename: if data.filename.is_empty() {
-                            None
-                        } else {
-                            Some(data.filename)
-                        },
-                    },
-                );
-            }
-        }
-
-        Ok(result)
+        let links = response
+            .into_inner()
+            .files
+            .into_iter()
+            .filter_map(|(id_str, data)| {
+                let id = Uuid::parse_str(&id_str).ok()?;
+                let filename = Some(data.filename).filter(|name| !name.is_empty());
+                Some(((id, data.media_type, filename), data.url))
+            })
+            .collect();
+        let fetched = self
+            .client
+            .blobs
+            .fetch_all(links, blob_fetch::MAX_BLOB_BYTES)
+            .await?;
+        use base64::Engine;
+        Ok(fetched
+            .into_iter()
+            .map(|((id, media_type, filename), bytes)| {
+                let file = ResolvedFile {
+                    base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
+                    media_type,
+                    filename,
+                };
+                (id, file)
+            })
+            .collect())
     }
 }
 
 #[async_trait]
 impl ImageResolver for GrpcOrgAdapter {
-    /// Resolve a single image by ID
-    ///
-    /// Returns the base64-encoded image data and media type, or None if not found.
-    /// When the server returns a presigned URL, the image is fetched via HTTP.
+    /// The server answers with a signed link; the bytes are fetched over HTTP.
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
         let mut client = self.client.inner.client();
-
         let request = proto::ResolveImageRequest {
             image_id: Some(uuid_to_proto(image_id)),
             org_id: self.org_id,
@@ -1840,19 +1686,20 @@ impl ImageResolver for GrpcOrgAdapter {
             .resolve_image(request)
             .await
             .map_err(grpc_status_to_error)?;
-
         let inner = response.into_inner();
-
         if !inner.found {
             return Ok(None);
         }
+        let bytes = self
+            .client
+            .blobs
+            .fetch(&inner.url, blob_fetch::MAX_BLOB_BYTES)
+            .await?;
+        Ok(Some(resolved_image(&bytes, inner.media_type)))
+    }
 
-        if !inner.url.is_empty() {
-            let resolved = fetch_image_from_url(&inner.url, &inner.media_type).await?;
-            Ok(Some(resolved))
-        } else {
-            Ok(Some(ResolvedImage::new(inner.base64, inner.media_type)))
-        }
+    async fn resolve_images(&self, image_ids: &[Uuid]) -> Result<HashMap<Uuid, ResolvedImage>> {
+        self.resolve_images_batch(image_ids).await
     }
 }
 

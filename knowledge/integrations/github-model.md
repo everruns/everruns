@@ -142,7 +142,7 @@ person's rights and by which tools the agent has.
 | `github` capability tools | Configured per agent: `service` for bots, `user` for personal agents | Derived from the enabled tools: read tools ask read, `submit_github_pull_request_review` asks `pull_requests: write`, `create_github_pull_request` asks `contents: write` |
 | GitHub MCP server | The attachment's `acts as`, unchanged | Read-only toolsets ask read permissions; others the App's full set |
 | Sandbox repositories | `service` for triggered runs, `user` for chats started by a person | `contents: read` for listed repositories, `contents: write` only when the template allows pushing |
-| Repository sync (memory, knowledge, agents) | `service`, on the org's service virtual user | `contents: read`; writes go through a pull request with `contents: write, pull_requests: write` |
+| Repository sync (memory, knowledge, agents) | `service`, on the org's service virtual user; an Agent source may instead use the configuring person's own sign-in ([agent sources](../runtime-resources/agent-sources.md)), never the Agent's runtime identity | `contents: read`; Agent source two-way sync writes `contents: write` directly to the branch |
 | Triggers and channel replies | `service` | Inbound needs no token; replies use the channel's write permissions |
 
 ### 4. Inbound: listening and talking

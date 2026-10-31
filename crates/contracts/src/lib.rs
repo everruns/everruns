@@ -41,6 +41,8 @@ pub use serde;
 pub use serde_json;
 
 pub mod background_call;
+/// Provider-native offline model request contracts.
+pub mod batch;
 pub mod compact;
 pub mod credential_provider;
 pub mod credential_schema;
@@ -87,8 +89,10 @@ pub mod provider;
 pub mod provider_info;
 pub mod provider_limit;
 mod provider_managed;
+pub mod public_metadata;
 pub mod reasoning;
 pub mod recommended_models;
+pub mod retry_failure;
 pub mod rt;
 pub mod runtime_provider;
 pub mod secret_scrub;

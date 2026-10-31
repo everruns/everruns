@@ -143,7 +143,7 @@ fn a_cancellation_field_nobody_promoted_stays_off_the_reviewed_surface() {
 }
 
 #[tokio::test]
-async fn envelope_is_complete_while_data_stays_reviewed() {
+async fn envelope_preserves_identifiers_and_reviews_metadata_and_data() {
     let session_id = SessionId::new();
     let turn_id = TurnId::new();
     let bus = bus(session_id);
@@ -151,7 +151,10 @@ async fn envelope_is_complete_while_data_stays_reviewed() {
     let mut stream = bus.subscribe();
 
     let request = turn_started(session_id, turn_id)
-        .with_metadata(json!({"provider": "simulated"}))
+        .with_metadata(json!({
+            "provider": "simulated",
+            "initiator": {"type": "user", "user_id": "u1"}
+        }))
         .with_tags(vec!["terminal".to_string()]);
     let canonical = emitter.emit(request).await.expect("event emits");
     let observed = stream
@@ -177,7 +180,7 @@ async fn envelope_is_complete_while_data_stays_reviewed() {
     );
     assert_eq!(observed.canonical_json()["data"]["input_content"], "hello");
 
-    // Envelope fields stay complete on the reviewed form; only `data` differs.
+    // Identifiers and tags stay complete; metadata carries reviewed provenance.
     assert_eq!(observed.event_type(), "turn.started");
     assert_eq!(
         observed.turn_id.as_deref(),
@@ -186,7 +189,14 @@ async fn envelope_is_complete_while_data_stays_reviewed() {
     assert_eq!(observed.as_json()["sequence"], 1);
     assert_eq!(observed.sequence(), Some(1));
     assert!(!observed.timestamp().is_empty());
-    assert_eq!(observed.as_json()["metadata"]["provider"], "simulated");
+    assert_eq!(
+        observed.as_json()["metadata"],
+        json!({"initiator": {"type": "user", "user_id": "u1"}})
+    );
+    assert_eq!(
+        observed.canonical_json()["metadata"]["provider"],
+        "simulated"
+    );
     assert_eq!(observed.as_json()["tags"], json!(["terminal"]));
 }
 
@@ -626,4 +636,18 @@ async fn reasoning_delta_omits_the_repeated_accumulated_prefix() {
     assert!(event.data().get("accumulated").is_none());
     assert!(event.as_json()["data"].get("accumulated").is_none());
     assert!(event.canonical_json()["data"].get("accumulated").is_none());
+}
+
+#[test]
+fn reviewed_envelope_filters_metadata_but_canonical_keeps_replay() {
+    let event = everruns_core::Event::new(
+        SessionId::new(),
+        everruns_core::EventContext::empty(),
+        everruns_core::events::InputMessageData::new(everruns_core::RuntimeMessage::user("hi")),
+    )
+    .with_metadata(json!({"initiator":{"type":"user","user_id":"u1"},"authority":"CANARY"}));
+    let view = SessionEvent::from_core_event(&event);
+    assert!(!view.as_json().to_string().contains("CANARY"));
+    assert_eq!(view.as_json()["metadata"]["initiator"]["user_id"], "u1");
+    assert!(view.canonical_json().to_string().contains("CANARY"));
 }

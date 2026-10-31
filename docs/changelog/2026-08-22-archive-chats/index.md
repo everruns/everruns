@@ -7,13 +7,14 @@ significance: notable
 products: [platform, cloud]
 surfaces: [ui, api]
 release: "0.21.0"
-visual: "Chats list at /chats with the Show archived filter on and one archived thread; crop to the filter and rows"
 links:
   docs: [/features/ui/]
   prs: [everruns/everruns#3265]
 ---
 
 Archive a chat when you are done with it. The session and transcript stay intact and reachable by URL; the thread just leaves the list.
+
+![All chats with the Show archived filter on, listing one archived chat](./show-archived-chats@2x.png)
 
 **In the UI:** use the archive control on a row in **Chats**, and the **Show archived** filter to list archived threads. The sidebar's **All chats** link stays visible even when no threads are listed.
 

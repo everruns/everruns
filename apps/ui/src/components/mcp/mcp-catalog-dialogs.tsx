@@ -3,6 +3,8 @@
 // Create, edit, key, header and archive dialogs for the org MCP catalog
 // (Settings > Organization > MCP catalog).
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
 import { useEffect, useState } from "react";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
@@ -66,6 +68,7 @@ export function AddMcpServerDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [url, setUrl] = useState("");
@@ -85,7 +88,7 @@ export function AddMcpServerDialog({
     schema: mcpMetadataDraftSchema,
     entityType: "mcp_server",
     entityId: undefined,
-    label: "MCP server",
+    label: ui("MCP server"),
     priority: 30,
     enabled: open && isPublicDraftLocation(url),
     values: {
@@ -206,16 +209,17 @@ export function AddMcpServerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add MCP Server</DialogTitle>
+          <DialogTitle>{ui("Add MCP Server")}</DialogTitle>
           <DialogDescription>
-            Configure a new MCP server connection. Currently only HTTP (Streamable HTTP) servers are
-            supported.
+            {ui(
+              "Configure a new MCP server connection. Currently only HTTP (Streamable HTTP) servers are supported.",
+            )}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {chat.notice}
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">{ui("Name")}</Label>
             <Input
               id="name"
               value={name}
@@ -224,13 +228,13 @@ export function AddMcpServerDialog({
                 setFieldErrors((prev) => ({ ...prev, name: undefined }));
               }}
               aria-invalid={!!fieldErrors.name}
-              placeholder="atlassian-mcp-server"
+              placeholder={ui("atlassian-mcp-server")}
               required
             />
             {fieldErrors.name && <p className="text-xs text-destructive">{fieldErrors.name}</p>}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="description">Description (optional)</Label>
+            <Label htmlFor="description">{ui("Description (optional)")}</Label>
             <Textarea
               id="description"
               value={description}
@@ -239,7 +243,7 @@ export function AddMcpServerDialog({
                 setFieldErrors((prev) => ({ ...prev, description: undefined }));
               }}
               aria-invalid={!!fieldErrors.description}
-              placeholder="Atlassian MCP Server for Jira and Confluence"
+              placeholder={ui("Atlassian MCP Server for Jira and Confluence")}
               rows={2}
             />
             {fieldErrors.description && (
@@ -247,7 +251,7 @@ export function AddMcpServerDialog({
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="url">URL</Label>
+            <Label htmlFor="url">{ui("URL")}</Label>
             <Input
               id="url"
               value={url}
@@ -262,7 +266,7 @@ export function AddMcpServerDialog({
             {fieldErrors.url && <p className="text-xs text-destructive">{fieldErrors.url}</p>}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="auth-mode">Authentication</Label>
+            <Label htmlFor="auth-mode">{ui("Authentication")}</Label>
             <Select
               value={authMode}
               onValueChange={(value) => {
@@ -278,14 +282,14 @@ export function AddMcpServerDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                <SelectItem value="api_key">API Key</SelectItem>
-                <SelectItem value="oauth">OAuth per user</SelectItem>
+                <SelectItem value="none">{ui("None")}</SelectItem>
+                <SelectItem value="api_key">{ui("API Key")}</SelectItem>
+                <SelectItem value="oauth">{ui("OAuth per user")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="protocol-mode">Protocol compatibility</Label>
+            <Label htmlFor="protocol-mode">{ui("Protocol compatibility")}</Label>
             <Select
               value={protocolMode}
               onValueChange={(value) => setProtocolMode(value as McpProtocolMode)}
@@ -294,15 +298,16 @@ export function AddMcpServerDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="auto">Auto (negotiate)</SelectItem>
-                <SelectItem value="2026-07-28">2026-07-28 (stateless)</SelectItem>
-                <SelectItem value="2025-06-18">2025-06-18 (stateful)</SelectItem>
-                <SelectItem value="2025-03-26">2025-03-26 (stateful)</SelectItem>
+                <SelectItem value="auto">{ui("Auto (negotiate)")}</SelectItem>
+                <SelectItem value="2026-07-28">{ui("2026-07-28 (stateless)")}</SelectItem>
+                <SelectItem value="2025-06-18">{ui("2025-06-18 (stateful)")}</SelectItem>
+                <SelectItem value="2025-03-26">{ui("2025-03-26 (stateful)")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Auto probes the server and adapts across every protocol era. Pin a version only to
-              work around a server that mis-signals its era.
+              {ui(
+                "Auto probes the server and adapts across every protocol era. Pin a version only to work around a server that mis-signals its era.",
+              )}
             </p>
           </div>
           <ElicitationPolicyField
@@ -326,7 +331,7 @@ export function AddMcpServerDialog({
           />
           {authMode === "api_key" && (
             <div className="space-y-2">
-              <Label htmlFor="api-key">API Key</Label>
+              <Label htmlFor="api-key">{ui("API Key")}</Label>
               <Input
                 id="api-key"
                 type="password"
@@ -336,7 +341,7 @@ export function AddMcpServerDialog({
                   setFieldErrors((prev) => ({ ...prev, api_key: undefined }));
                 }}
                 aria-invalid={!!fieldErrors.api_key}
-                placeholder="your-api-key"
+                placeholder={ui("your-api-key")}
                 required
               />
               {fieldErrors.api_key && (
@@ -346,7 +351,7 @@ export function AddMcpServerDialog({
           )}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Custom Headers (optional)</Label>
+              <Label>{ui("Custom Headers (optional)")}</Label>
               <Button
                 type="button"
                 variant="ghost"
@@ -355,7 +360,7 @@ export function AddMcpServerDialog({
                 onClick={() => setHeaders((prev) => [...prev, { key: "", value: "" }])}
               >
                 <Plus className="h-3 w-3 mr-1" />
-                Add header
+                {ui("Add header")}
               </Button>
             </div>
             {headers.length > 0 && (
@@ -363,7 +368,7 @@ export function AddMcpServerDialog({
                 {headers.map((header, index) => (
                   <div key={index} className="flex items-center gap-2">
                     <Input
-                      placeholder="Name"
+                      placeholder={ui("Name")}
                       value={header.key}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         setHeaders((prev) =>
@@ -374,7 +379,7 @@ export function AddMcpServerDialog({
                       className="flex-1"
                     />
                     <Input
-                      placeholder="Value"
+                      placeholder={ui("Value")}
                       value={header.value}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         setHeaders((prev) =>
@@ -405,7 +410,7 @@ export function AddMcpServerDialog({
           )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button
               type="submit"
@@ -417,7 +422,7 @@ export function AddMcpServerDialog({
                 (authMode === "api_key" && !apiKey)
               }
             >
-              {createServer.isPending ? "Creating..." : "Create Server"}
+              {createServer.isPending ? ui("Creating...") : ui("Create Server")}
             </Button>
           </DialogFooter>
         </form>
@@ -443,6 +448,7 @@ export function EditMcpServerDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [url, setUrl] = useState("");
@@ -495,7 +501,7 @@ export function EditMcpServerDialog({
     schema: mcpMetadataDraftSchema,
     entityType: "mcp_server",
     entityId: server?.id,
-    label: "MCP server",
+    label: ui("MCP server"),
     priority: 30,
     enabled: open && isPublicDraftLocation(url),
     values: {
@@ -628,10 +634,11 @@ export function EditMcpServerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit MCP Server</DialogTitle>
+          <DialogTitle>{ui("Edit MCP Server")}</DialogTitle>
           <DialogDescription>
-            Update the name, description, URL, protocol compatibility, and elicitation for this MCP
-            server.
+            {ui(
+              "Update the name, description, URL, protocol compatibility, and elicitation for this MCP server.",
+            )}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -645,11 +652,11 @@ export function EditMcpServerDialog({
                 chat.clear();
               }}
             >
-              Discard metadata changes
+              {ui("Discard metadata changes")}
             </Button>
           )}
           <div className="space-y-2">
-            <Label htmlFor="edit-name">Name</Label>
+            <Label htmlFor="edit-name">{ui("Name")}</Label>
             <Input
               id="edit-name"
               value={name}
@@ -658,13 +665,13 @@ export function EditMcpServerDialog({
                 setFieldErrors((prev) => ({ ...prev, name: undefined }));
               }}
               aria-invalid={!!fieldErrors.name}
-              placeholder="atlassian-mcp-server"
+              placeholder={ui("atlassian-mcp-server")}
               required
             />
             {fieldErrors.name && <p className="text-xs text-destructive">{fieldErrors.name}</p>}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="edit-description">Description (optional)</Label>
+            <Label htmlFor="edit-description">{ui("Description (optional)")}</Label>
             <Textarea
               id="edit-description"
               value={description}
@@ -673,7 +680,7 @@ export function EditMcpServerDialog({
                 setFieldErrors((prev) => ({ ...prev, description: undefined }));
               }}
               aria-invalid={!!fieldErrors.description}
-              placeholder="Atlassian MCP Server for Jira and Confluence"
+              placeholder={ui("Atlassian MCP Server for Jira and Confluence")}
               rows={2}
             />
             {fieldErrors.description && (
@@ -681,7 +688,7 @@ export function EditMcpServerDialog({
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="edit-url">URL</Label>
+            <Label htmlFor="edit-url">{ui("URL")}</Label>
             <Input
               id="edit-url"
               value={url}
@@ -697,7 +704,7 @@ export function EditMcpServerDialog({
           </div>
           {needsFreshApiKey && (
             <div className="space-y-2">
-              <Label htmlFor="edit-api-key">API Key</Label>
+              <Label htmlFor="edit-api-key">{ui("API Key")}</Label>
               <Input
                 id="edit-api-key"
                 type="password"
@@ -710,7 +717,9 @@ export function EditMcpServerDialog({
                 autoComplete="off"
               />
               <p className="text-xs text-muted-foreground">
-                The stored key stays with the original origin. Enter the key for the new URL.
+                {ui(
+                  "The stored key stays with the original origin. Enter the key for the new URL.",
+                )}
               </p>
               {fieldErrors.api_key && (
                 <p className="text-xs text-destructive">{fieldErrors.api_key}</p>
@@ -719,12 +728,13 @@ export function EditMcpServerDialog({
           )}
           {clearsHeaders && (
             <p className="text-xs text-muted-foreground">
-              Custom headers stay with the original origin and will be removed. Re-add them after
-              saving if the new server needs them.
+              {ui(
+                "Custom headers stay with the original origin and will be removed. Re-add them after saving if the new server needs them.",
+              )}
             </p>
           )}
           <div className="space-y-2">
-            <Label htmlFor="edit-protocol-mode">Protocol compatibility</Label>
+            <Label htmlFor="edit-protocol-mode">{ui("Protocol compatibility")}</Label>
             <Select
               value={protocolMode}
               onValueChange={(value) => setProtocolMode(value as McpProtocolMode)}
@@ -733,10 +743,10 @@ export function EditMcpServerDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="auto">Auto (negotiate)</SelectItem>
-                <SelectItem value="2026-07-28">2026-07-28 (stateless)</SelectItem>
-                <SelectItem value="2025-06-18">2025-06-18 (stateful)</SelectItem>
-                <SelectItem value="2025-03-26">2025-03-26 (stateful)</SelectItem>
+                <SelectItem value="auto">{ui("Auto (negotiate)")}</SelectItem>
+                <SelectItem value="2026-07-28">{ui("2026-07-28 (stateless)")}</SelectItem>
+                <SelectItem value="2025-06-18">{ui("2025-06-18 (stateful)")}</SelectItem>
+                <SelectItem value="2025-03-26">{ui("2025-03-26 (stateful)")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -760,21 +770,24 @@ export function EditMcpServerDialog({
             onChange={setServiceConnection}
           />
           <p className="text-xs text-muted-foreground">
-            Authentication ({server?.auth_mode ?? "none"}) is managed separately. Use the Set Key
-            action to update an API key.
+            {ui("Authentication (")}
+            {server?.auth_mode ?? ui("none")}
+            {ui(") is managed separately. Use the Set Key action to update an API key.")}
           </p>
           {updateServer.error && (
-            <p className="text-sm text-destructive">Error: {updateServer.error.message}</p>
+            <p className="text-sm text-destructive">
+              {ui("Error:")} {updateServer.error.message}
+            </p>
           )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button
               type="submit"
               disabled={chat.blocked || updateServer.isPending || !name || !url}
             >
-              {updateServer.isPending ? "Saving..." : "Save"}
+              {updateServer.isPending ? ui("Saving...") : ui("Save")}
             </Button>
           </DialogFooter>
         </form>
@@ -792,6 +805,7 @@ export function SetApiKeyDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const [apiKey, setApiKey] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const updateServer = useUpdateMcpServer(server?.id || "");
@@ -822,16 +836,18 @@ export function SetApiKeyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent chatProtected="MCP credentials">
         <DialogHeader>
-          <DialogTitle>{server?.api_key_set ? "Update" : "Set"} API Key</DialogTitle>
+          <DialogTitle>
+            {server?.api_key_set ? ui("Update") : ui("Set")} {ui("API Key")}
+          </DialogTitle>
           <DialogDescription>
             {server?.api_key_set
-              ? "Enter a new API key to replace the existing one."
-              : "Enter the API key for this MCP server."}
+              ? ui("Enter a new API key to replace the existing one.")
+              : ui("Enter the API key for this MCP server.")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="new-api-key">API Key</Label>
+            <Label htmlFor="new-api-key">{ui("API Key")}</Label>
             <Input
               id="new-api-key"
               type="password"
@@ -841,7 +857,7 @@ export function SetApiKeyDialog({
                 setFieldErrors((prev) => ({ ...prev, api_key: undefined }));
               }}
               aria-invalid={!!fieldErrors.api_key}
-              placeholder="your-api-key"
+              placeholder={ui("your-api-key")}
               required
             />
             {fieldErrors.api_key && (
@@ -850,10 +866,10 @@ export function SetApiKeyDialog({
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button type="submit" disabled={updateServer.isPending || !apiKey}>
-              {updateServer.isPending ? "Saving..." : "Save API Key"}
+              {updateServer.isPending ? ui("Saving...") : ui("Save API Key")}
             </Button>
           </DialogFooter>
         </form>
@@ -871,6 +887,7 @@ export function ManageHeadersDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const [rows, setRows] = useState<Array<{ key: string; value: string; existing: boolean }>>([]);
   const [headerErrors, setHeaderErrors] = useState<string | null>(null);
   const updateServer = useUpdateMcpServer(server?.id ?? "");
@@ -928,16 +945,17 @@ export function ManageHeadersDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent chatProtected="MCP headers">
         <DialogHeader>
-          <DialogTitle>Custom Headers</DialogTitle>
+          <DialogTitle>{ui("Custom Headers")}</DialogTitle>
           <DialogDescription>
-            Header values are write-only and not shown. Enter a value to keep or update a header;
-            leave it blank or remove the row to delete it. Saving replaces all headers.
+            {ui(
+              "Header values are write-only and not shown. Enter a value to keep or update a header; leave it blank or remove the row to delete it. Saving replaces all headers.",
+            )}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Headers</span>
+              <span className="text-sm font-medium">{ui("Headers")}</span>
               <Button
                 type="button"
                 variant="ghost"
@@ -948,7 +966,7 @@ export function ManageHeadersDialog({
                 }
               >
                 <Plus className="h-3 w-3 mr-1" />
-                Add header
+                {ui("Add header")}
               </Button>
             </div>
             {rows.length > 0 && (
@@ -956,7 +974,7 @@ export function ManageHeadersDialog({
                 {rows.map((row, index) => (
                   <div key={index} className="flex items-center gap-2">
                     <Input
-                      placeholder="Name"
+                      placeholder={ui("Name")}
                       value={row.key}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         setRows((prev) =>
@@ -967,7 +985,7 @@ export function ManageHeadersDialog({
                       className="flex-1"
                     />
                     <Input
-                      placeholder={row.existing ? "stored" : "Value"}
+                      placeholder={row.existing ? ui("stored") : ui("Value")}
                       value={row.value}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         setRows((prev) =>
@@ -981,7 +999,7 @@ export function ManageHeadersDialog({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      aria-label="Remove header"
+                      aria-label={ui("Remove header")}
                       className="h-9 w-9 p-0 shrink-0"
                       onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))}
                     >
@@ -995,10 +1013,10 @@ export function ManageHeadersDialog({
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button type="submit" disabled={updateServer.isPending || !isDirty}>
-              {updateServer.isPending ? "Saving..." : "Save Headers"}
+              {updateServer.isPending ? ui("Saving...") : ui("Save Headers")}
             </Button>
           </DialogFooter>
         </form>
@@ -1016,6 +1034,8 @@ export function ArchiveConfirmDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const archiveServer = useDeleteMcpServer();
   const usage = useMcpServerUsage(open ? server?.id : undefined);
 
@@ -1029,27 +1049,29 @@ export function ArchiveConfirmDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Archive MCP Server</DialogTitle>
+          <DialogTitle>{ui("Archive MCP Server")}</DialogTitle>
           <DialogDescription>
-            Are you sure you want to archive the MCP server{" "}
-            <span className="font-medium">{server?.name}</span>? Archived servers will no longer be
-            available to agents.
+            {ui("Are you sure you want to archive the MCP server")}{" "}
+            <span className="font-medium">{server?.name}</span>
+            {ui("? Archived servers will no longer be available to agents.")}
           </DialogDescription>
         </DialogHeader>
-        {usage.isLoading && <p className="text-sm text-muted-foreground">Checking agent usage…</p>}
+        {usage.isLoading && (
+          <p className="text-sm text-muted-foreground">{ui("Checking agent usage…")}</p>
+        )}
         {usage.error && (
           <p className="text-sm text-destructive">
-            Agent usage could not be loaded. Archiving is blocked until the impact is known.
+            {ui("Agent usage could not be loaded. Archiving is blocked until the impact is known.")}
           </p>
         )}
         {usage.data && usage.data.total_count === 0 && (
-          <p className="text-sm text-muted-foreground">No active agents use this preset.</p>
+          <p className="text-sm text-muted-foreground">{ui("No active agents use this preset.")}</p>
         )}
         {usage.data && usage.data.total_count > 0 && (
           <div className="space-y-2 text-sm">
             <p>
-              This preset is used by {usage.data.total_count}{" "}
-              {pluralize(usage.data.total_count, "active agent")}:
+              {ui("This preset is used by")} {usage.data.total_count}{" "}
+              {pluralize(usage.data.total_count, "active agent", undefined, displayLocale)}:
             </p>
             <ul className="list-disc space-y-1 pl-5">
               {usage.data.agent_names.map((name) => (
@@ -1058,20 +1080,20 @@ export function ArchiveConfirmDialog({
             </ul>
             {usage.data.truncated && (
               <p className="text-muted-foreground">
-                Only the first {usage.data.agent_names.length} agents are shown.
+                {ui("Only the first")} {usage.data.agent_names.length} {ui("agents are shown.")}
               </p>
             )}
           </div>
         )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {ui("Cancel")}
           </Button>
           <Button
             onClick={handleArchive}
             disabled={archiveServer.isPending || usage.isLoading || !!usage.error}
           >
-            {archiveServer.isPending ? "Archiving..." : "Archive"}
+            {archiveServer.isPending ? ui("Archiving...") : ui("Archive")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -61,8 +61,9 @@ authoring is the activity that brings the user to the page.
 | **Quality** | Evaluation, observation, and reporting. |
 
 Settings sits below the groups and is not one of them: it configures the workspace rather
-than being a thing the user works on. Durable Execution and Dev keep their existing
-policy and dev-mode gating and stay out of the five groups for the same reason.
+than being a thing the user works on. System (Health first, then the durable execution
+pages; formerly "Durable Execution") and Dev keep their existing policy and dev-mode
+gating and stay out of the five groups for the same reason.
 
 ## The hard cases, worked
 
@@ -212,6 +213,15 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   and moving a route between groups needs no page-level change. The group is a label, not a
   link, there is no group index page to point at, and inventing one would add a hop nobody
   wants. Pages outside a labelled section (Chats, Settings) take no prefix.
+
+## Navigation loading
+
+Page navigation keeps the current content visible until the destination is ready.
+Do not put a generic loading boundary at the main route group: it replaces known
+titles, breadcrumbs and controls with skeletons, making even cached pages feel
+slow. Sidebar links show pending feedback while the selected item continues to
+identify the displayed page. Data loading boundaries belong inside persistent
+layouts, such as the session header, or around page data alone.
 
 ## Dismissed options
 

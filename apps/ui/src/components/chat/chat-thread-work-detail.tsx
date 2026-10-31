@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { TaskCard } from "@/components/session/task-detail";
 import { useCancelSessionTask, useSendTaskMessage } from "@/hooks/use-session-tasks";
@@ -9,6 +10,7 @@ import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { isTerminalTaskState, type SessionTask } from "@/lib/api/types";
 
 export function ChatThreadWorkDetail({ task }: { task: SessionTask }) {
+  const ui = useUiTranslations();
   const [message, setMessage] = useState("");
   const send = useSendTaskMessage(task.session_id);
   const cancel = useCancelSessionTask(task.session_id);
@@ -26,7 +28,7 @@ export function ChatThreadWorkDetail({ task }: { task: SessionTask }) {
       />
       {task.links?.child_session_id && (
         <LinkButton href={`/sessions/${task.links.child_session_id}/trace`} variant="outline">
-          Open session
+          {ui("Open session")}
         </LinkButton>
       )}
       {(send.error || cancel.error) && (
@@ -53,7 +55,7 @@ export function ChatThreadWorkDetail({ task }: { task: SessionTask }) {
           }}
         >
           <label htmlFor="thread-work-message" className="text-sm font-medium">
-            {task.input_request ? "Answer the request" : "Message this work"}
+            {task.input_request ? ui("Answer the request") : ui("Message this work")}
           </label>
           <Textarea
             id="thread-work-message"
@@ -61,7 +63,7 @@ export function ChatThreadWorkDetail({ task }: { task: SessionTask }) {
             onChange={(e) => setMessage(e.target.value)}
           />
           <Button type="submit" disabled={!message.trim() || send.isPending}>
-            Send
+            {ui("Send")}
           </Button>
         </form>
       )}
@@ -71,7 +73,7 @@ export function ChatThreadWorkDetail({ task }: { task: SessionTask }) {
           disabled={cancel.isPending || !!task.cancel_requested_at}
           onClick={() => cancel.mutate(task.id)}
         >
-          {task.cancel_requested_at ? "Stopping…" : "Stop work"}
+          {task.cancel_requested_at ? ui("Stopping…") : ui("Stop work")}
         </Button>
       )}
     </div>

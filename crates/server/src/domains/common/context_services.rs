@@ -184,6 +184,14 @@ impl Ctx {
         self
     }
 
+    pub fn with_system_doctor(
+        mut self,
+        doctor: Option<Arc<crate::domains::system::doctor::SystemDoctor>>,
+    ) -> Self {
+        self.system_doctor = doctor;
+        self
+    }
+
     pub fn with_fallback_harness_name(mut self, name: Option<String>) -> Self {
         self.fallback_harness_name = name;
         self

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useOrganization } from "@/hooks/use-organizations";
@@ -17,6 +18,7 @@ import type { Controls } from "@/lib/api/types";
 import { PLATFORM_CHAT_AGENT_NAME, CHAT_THREAD_TAG } from "@/lib/chat-threads";
 
 export function ChatDraft({ threadMode = false }: { threadMode?: boolean }) {
+  const ui = useUiTranslations();
   const router = useRouter();
   const { data: agent, error } = useAgent(PLATFORM_CHAT_AGENT_NAME);
   const { data: models = [] } = useModels();
@@ -67,9 +69,11 @@ export function ChatDraft({ threadMode = false }: { threadMode?: boolean }) {
     <SessionProvider sessionId="" draftAgent={agent} draftModel={draftModel}>
       <div className="flex h-full flex-col bg-background bg-brand-dots">
         <div className="border-b border-border/70 bg-background/70 px-6 py-3">
-          <h1 className="text-base font-semibold">{threadMode ? "New thread" : "New subchat"}</h1>
+          <h1 className="text-base font-semibold">
+            {threadMode ? ui("New thread") : ui("New subchat")}
+          </h1>
           <p className="text-xs text-muted-foreground">
-            A fresh conversation to manage your Everruns organization.
+            {ui("A fresh conversation to manage your Everruns organization.")}
           </p>
         </div>
         <ChatPanel

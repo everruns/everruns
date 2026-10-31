@@ -162,6 +162,17 @@ that names that path, the file name, the verified media type and the size.
   that cannot read PDFs gets the provider's error. The shell sees
   `/attachments` like any other path. Giving an agent without file tools a
   `read_file` limited to `/attachments` is left until a surface needs it.
+- **Tool screenshots are stored as images.** When a `tool.completed` event is
+  written, each inline raster image in its result (browser and desktop
+  screenshots, `read_file` images) becomes an image row of the session's org,
+  and the event keeps an `image_file` reference instead of the base64
+  ([`tool_images.rs`](../../crates/server/src/services/event/tool_images.rs)).
+  History stays small however many screenshots a session takes, and the
+  worker fetches the bytes over the signed byte path only for the turns that
+  send them. In a tool result, `image_file` converts back to the identical
+  inline image with no attachment label, so the model sees what it saw
+  before. PDFs and SVGs stay inline; a store failure keeps the image inline.
+  Events written before this change still carry base64.
 
 ### 1b. Zip attachments open as folders
 

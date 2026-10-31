@@ -1,10 +1,12 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api/client";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo } from "react";
 import { CodeBlock, type CodeBlockSample } from "@/components/ui/code-block";
-import type { AgentChannel, ChannelType } from "@/lib/api/types";
+import type { AgentChannel, ChannelType, PublicChatChannelConfig } from "@/lib/api/types";
+import { CopyButton } from "@/components/ui/copy-button";
+import { publicChatUrl } from "@/components/agents/channels/channel-summary";
+import { WorkChatAddress } from "@/components/agents/channels/work-chat-link";
 
 /// The channel-scoped ingress path for each transport (EVE-1000). These are
 /// addressed by the channel's own public id, which is why the snippet here can
@@ -61,6 +63,7 @@ function describe(kind: ChannelType): string {
 /// an agent reachable through Slack and a webhook has two. Here there is
 /// exactly one, so the snippet is the real thing.
 export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; agentId?: string }) {
+  const ui = useUiTranslations();
   const path = ingressPath(channel.channel_type, channel.id, agentId);
 
   const samples = useMemo<CodeBlockSample[]>(() => {
@@ -71,48 +74,49 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
     const url = `${origin}/api${path}`;
 
     if (channel.channel_type === "fcp" || channel.channel_type === "ag_ui") {
-      return [{ label: "URL", language: "text", code: url }];
+      return [{ label: ui("URL"), language: "text", code: url }];
     }
     if (channel.channel_type === "slack") {
-      return [{ label: "Request URL", language: "text", code: url }];
+      return [{ label: ui("Request URL"), language: "text", code: url }];
     }
     if (channel.channel_type === "api") {
       return [
         {
-          label: "curl",
+          label: ui("curl"),
           language: "bash",
           code: `# Start a session; the response carries its id\ncurl -X POST '${url}/sessions' \\\n  -H 'authorization: Bearer <agent_key>' \\\n  -H 'content-type: application/json' \\\n  -d '{}'\n\n# Send a message, then follow ${url}/sessions/<session_id>/sse\ncurl -X POST '${url}/sessions/<session_id>/messages' \\\n  -H 'authorization: Bearer <agent_key>' \\\n  -H 'content-type: application/json' \\\n  -d '{"message": {"role": "user", "content": [{"type": "text", "text": "hello"}]}}'`,
         },
-        { label: "URL", language: "text", code: url },
+        { label: ui("URL"), language: "text", code: url },
       ];
     }
     if (channel.channel_type === "voice") {
       return [
         {
-          label: "curl",
+          label: ui("curl"),
           language: "bash",
           code: `curl -X POST '${url}' \\\n  -H 'authorization: Bearer <api_key>' \\\n  -H 'content-type: application/json' \\\n  -d '{"sdp": "<WebRTC SDP offer>"}'`,
         },
-        { label: "URL", language: "text", code: url },
+        { label: ui("URL"), language: "text", code: url },
       ];
     }
     return [
       {
-        label: "curl",
+        label: ui("curl"),
         language: "bash",
         code: `curl -X POST '${url}' \\\n  -H 'content-type: application/json' \\\n  -d '{"message": "hello"}'`,
       },
-      { label: "URL", language: "text", code: url },
+      { label: ui("URL"), language: "text", code: url },
     ];
-  }, [channel.channel_type, path]);
+  }, [channel.channel_type, path, ui]);
 
-  if (channel.channel_type === "work_chat") return <WorkChatUsePanel channel={channel} />;
+  if (channel.channel_type === "work_chat") return <WorkChatAddress channel={channel} />;
+  if (channel.channel_type === "public_chat") return <PublicChatUsePanel channel={channel} />;
   if (!path) {
     return (
       <div>
-        <p className="text-xs font-medium text-muted-foreground">Use it</p>
+        <p className="text-xs font-medium text-muted-foreground">{ui("Use it")}</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          This channel fires on its own, so there is no inbound URL to call.
+          {ui("This channel fires on its own, so there is no inbound URL to call.")}
         </p>
       </div>
     );
@@ -121,7 +125,7 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
   return (
     <div className="flex flex-col gap-2">
       <div>
-        <p className="text-xs font-medium text-muted-foreground">Use it</p>
+        <p className="text-xs font-medium text-muted-foreground">{ui("Use it")}</p>
         <p className="mt-1 text-sm text-muted-foreground">{describe(channel.channel_type)}</p>
       </div>
       <CodeBlock samples={samples} />
@@ -129,29 +133,57 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
   );
 }
 
-function WorkChatUsePanel({ channel }: { channel: AgentChannel }) {
-  const hosted = useQuery({
-    queryKey: ["hosted-chat-url", channel.id],
-    enabled: channel.channel_type === "work_chat" && channel.status === "live",
-    queryFn: async () =>
-      (await api.get<{ public_url?: string }>(`/v1/channels/${channel.id}/chat/config`)).data,
-  });
-  const url = hosted.data?.public_url;
+/// A Public Chat is reached through its hosted page, not an API address, so
+/// what to hand out is the page link, plus a preview of what visitors see.
+function PublicChatUsePanel({ channel }: { channel: AgentChannel }) {
+  const ui = useUiTranslations();
+  const url = publicChatUrl(channel.id);
+  const branding = (channel.channel_config as PublicChatChannelConfig).branding;
+  const title = branding?.display_name?.trim() || ui("Chat");
+  // Only a plain hex color reaches the inline style; anything else falls back.
+  const color = /^#[0-9a-f]{3,8}$/i.test(branding?.primary_color ?? "")
+    ? branding?.primary_color
+    : undefined;
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-xs font-medium text-muted-foreground">Use it</p>
-      {url ? (
-        <>
-          <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm underline">
-            Open Work Chat
-          </a>
-          <CodeBlock samples={[{ label: "URL", language: "text", code: url }]} />
-        </>
-      ) : (
+    <div className="flex flex-col gap-6">
+      <section className="flex flex-col gap-2">
+        <h3 className="text-sm font-semibold">{ui("Chat link")}</h3>
         <p className="text-sm text-muted-foreground">
-          Publish this channel and configure your deployment’s hosted chat domain to open Work Chat.
+          {ui(
+            "Send this link to the people who should chat. It stays the same when you change settings.",
+          )}
         </p>
-      )}
+        <div className="flex min-w-0 gap-2">
+          <code className="flex h-8 min-w-0 flex-1 items-center overflow-x-auto border bg-muted/40 px-3 font-mono text-[13px] whitespace-nowrap">
+            {url}
+          </code>
+          <CopyButton value={url} label={ui("Copy link")} className="my-0 size-8 border" />
+        </div>
+      </section>
+      <section className="flex flex-col gap-2">
+        <h3 className="text-sm font-semibold">{ui("What visitors see")}</h3>
+        <p className="text-sm text-muted-foreground">
+          {ui(
+            "A preview from the settings. Change the name, color or welcome message under Settings.",
+          )}
+        </p>
+        <div className="max-w-md border bg-background" aria-hidden="true">
+          <div
+            className="bg-primary px-3.5 py-2.5 text-sm font-semibold text-primary-foreground"
+            style={color ? { backgroundColor: color } : undefined}
+          >
+            {title}
+          </div>
+          <p className="min-h-20 px-3.5 py-3 text-sm">
+            {branding?.welcome_message?.trim() || (
+              <span className="text-muted-foreground">{ui("No welcome message")}</span>
+            )}
+          </p>
+          <div className="mx-3.5 mb-3.5 border px-3 py-1.5 text-sm text-muted-foreground">
+            {ui("Message {value0}", { value0: title })}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

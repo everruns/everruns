@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -14,10 +14,12 @@ use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::SessionId;
 
 use crate::actor_lease_store::{
-    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor, SessionActorStore,
+    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, DetachedCallKey, LeasedActor,
+    SessionActorStore,
 };
 use crate::core::TURN_STARTED;
 use crate::host::InProcessRuntime;
+use everruns_contracts::typed_id::TurnId;
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct Row {
@@ -64,6 +66,13 @@ pub(super) struct MemoryActors {
     failing_renews: AtomicUsize,
     /// Journal reads still to fail with a store error (a pool timeout).
     failing_reads: AtomicUsize,
+    /// Fail every journal read of more than one event the way an oversized
+    /// gRPC reply does (a tail too large to transfer).
+    oversized_reads: AtomicBool,
+    /// Leases handed back mid-turn by a draining holder.
+    hand_offs: AtomicUsize,
+    /// Detached tool call records: holder and expiry.
+    detached: Mutex<HashMap<DetachedCallKey, (String, Instant)>>,
 }
 
 impl MemoryActors {
@@ -75,7 +84,24 @@ impl MemoryActors {
             renews: AtomicUsize::new(0),
             failing_renews: AtomicUsize::new(0),
             failing_reads: AtomicUsize::new(0),
+            hand_offs: AtomicUsize::new(0),
+            oversized_reads: AtomicBool::new(false),
+            detached: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// The tool call ids of `session_id`'s detached records.
+    pub(super) fn detached(&self, session_id: SessionId) -> Vec<String> {
+        let mut ids: Vec<_> = self
+            .detached
+            .lock()
+            .unwrap()
+            .keys()
+            .filter(|key| key.session_id == session_id)
+            .map(|key| key.tool_call_id.clone())
+            .collect();
+        ids.sort();
+        ids
     }
 
     fn next_in_line(&self) -> u64 {
@@ -92,6 +118,16 @@ impl MemoryActors {
     /// Fail the next `count` journal reads with a store error.
     pub(super) fn fail_reads(&self, count: usize) {
         self.failing_reads.store(count, Ordering::SeqCst);
+    }
+
+    /// Fail every journal read of more than one event from now on.
+    pub(super) fn oversize_reads(&self) {
+        self.oversized_reads.store(true, Ordering::SeqCst);
+    }
+
+    /// Leases handed back mid-turn.
+    pub(super) fn hand_offs(&self) -> usize {
+        self.hand_offs.load(Ordering::SeqCst)
     }
 
     /// Renews that reached the index, by any holder.
@@ -145,6 +181,10 @@ impl MemoryActors {
     }
 
     pub(super) fn cancel(&self, session_id: SessionId) -> Cancel {
+        self.detached
+            .lock()
+            .unwrap()
+            .retain(|key, _| key.session_id != session_id);
         let mut rows = self.rows.lock().unwrap();
         let Some(row) = rows
             .get_mut(&session_id)
@@ -198,10 +238,33 @@ impl ActorLeaseStore for MemoryActors {
         ttl: Duration,
         _max_leased_per_org: Option<u32>,
     ) -> Result<Vec<LeasedActor>> {
+        // Expired detached records make their actors runnable; live ones keep
+        // their actors from being leased.
+        let expired: Vec<SessionId> = {
+            let mut detached = self.detached.lock().unwrap();
+            let now = Instant::now();
+            let expired = detached
+                .iter()
+                .filter(|(_, (_, expires))| *expires <= now)
+                .map(|(key, _)| key.session_id)
+                .collect();
+            detached.retain(|_, (_, expires)| *expires > now);
+            expired
+        };
+        for session_id in expired {
+            self.mark_resumable(session_id, 0).await;
+        }
+        let busy: Vec<SessionId> = self
+            .detached
+            .lock()
+            .unwrap()
+            .keys()
+            .map(|key| key.session_id)
+            .collect();
         let mut rows = self.rows.lock().unwrap();
         let mut candidates: Vec<(u64, SessionId)> = rows
             .iter()
-            .filter(|(_, row)| row.runnable.is_some() && !row.leased())
+            .filter(|(id, row)| row.runnable.is_some() && !row.leased() && !busy.contains(id))
             .map(|(id, row)| (row.runnable.unwrap_or_default(), *id))
             .collect();
         candidates.sort_by_key(|(order, _)| *order);
@@ -225,6 +288,88 @@ impl ActorLeaseStore for MemoryActors {
             });
         }
         Ok(leased)
+    }
+
+    async fn detach_tool_call(
+        &self,
+        call: &DetachedCallKey,
+        _turn_id: TurnId,
+        holder: &str,
+        fence: u64,
+        ttl: Duration,
+    ) -> Result<bool> {
+        let held = self
+            .rows
+            .lock()
+            .unwrap()
+            .get(&call.session_id)
+            .is_some_and(|row| {
+                row.leased() && row.holder.as_deref() == Some(holder) && row.fence == fence
+            });
+        if held {
+            self.detached
+                .lock()
+                .unwrap()
+                .insert(call.clone(), (holder.to_string(), Instant::now() + ttl));
+        }
+        Ok(held)
+    }
+
+    async fn renew_detached_tool_calls(
+        &self,
+        holder: &str,
+        ttl: Duration,
+        calls: &[DetachedCallKey],
+    ) -> Result<Vec<DetachedCallKey>> {
+        let mut detached = self.detached.lock().unwrap();
+        let now = Instant::now();
+        Ok(calls
+            .iter()
+            .filter(|call| match detached.get_mut(*call) {
+                Some((owner, expires)) if owner == holder && *expires > now => {
+                    *expires = now + ttl;
+                    true
+                }
+                _ => false,
+            })
+            .cloned()
+            .collect())
+    }
+
+    async fn complete_detached_tool_call(
+        &self,
+        call: &DetachedCallKey,
+        holder: &str,
+    ) -> Result<Option<bool>> {
+        let last = {
+            let mut detached = self.detached.lock().unwrap();
+            match detached.get(call) {
+                Some((owner, expires)) if owner == holder && *expires > Instant::now() => {}
+                _ => return Ok(None),
+            }
+            detached.remove(call);
+            !detached.keys().any(|key| key.session_id == call.session_id)
+        };
+        if last {
+            self.mark_resumable(call.session_id, 0).await;
+        }
+        Ok(Some(last))
+    }
+
+    async fn expire_detached_tool_calls(
+        &self,
+        holder: &str,
+        calls: &[DetachedCallKey],
+    ) -> Result<()> {
+        let mut detached = self.detached.lock().unwrap();
+        for call in calls {
+            if let Some((owner, expires)) = detached.get_mut(call)
+                && owner == holder
+            {
+                *expires = Instant::now();
+            }
+        }
+        Ok(())
     }
 }
 
@@ -295,6 +440,32 @@ impl SessionActorStore for MemoryActors {
         })
     }
 
+    async fn hand_off_actor(
+        &self,
+        session_id: SessionId,
+        holder: &str,
+        fence: u64,
+        consumed_inbox_seq: i64,
+    ) -> Result<Option<ActorRelease>> {
+        let order = self.next_in_line();
+        let mut rows = self.rows.lock().unwrap();
+        let Some(row) = rows
+            .get_mut(&session_id)
+            .filter(|row| row.holder.as_deref() == Some(holder) && row.fence == fence)
+        else {
+            return Ok(Some(ActorRelease::LeaseLost));
+        };
+        row.holder = None;
+        row.expires = None;
+        row.consumed_seq = row.consumed_seq.max(consumed_inbox_seq);
+        row.attempts = 0;
+        row.runnable.get_or_insert(order);
+        self.hand_offs.fetch_add(1, Ordering::SeqCst);
+        Ok(Some(ActorRelease::Released {
+            still_runnable: true,
+        }))
+    }
+
     async fn read_actor_journal(
         &self,
         _session_id: SessionId,
@@ -310,6 +481,11 @@ impl SessionActorStore for MemoryActors {
         {
             return Err(AgentLoopError::store(
                 "Failed to read actor journal: pool timed out while waiting for an open connection",
+            ));
+        }
+        if limit != 1 && self.oversized_reads.load(Ordering::SeqCst) {
+            return Err(AgentLoopError::config(
+                "Message exceeds the gRPC size cap: encoded message length too large",
             ));
         }
         let events = self.runtime.events().await?;

@@ -1,0 +1,117 @@
+---
+import samples from "../../../ui/generative-ui/tests/standard-samples.json";
+import { networkExamples } from "../../../ui/generative-ui/tests/gallery-examples.json";
+import { withBase } from "../../site.config.mjs";
+
+interface Props { group: string; }
+const { group } = Astro.props;
+// Keep original fixture indices: preview URLs and surface IDs are stable across pages.
+const entries = samples.map((sample, index) => ({ sample, index })).filter(({ sample }) => sample.group === group);
+if (!entries.length) throw new Error(`Unknown gallery category: ${group}`);
+const components = [...new Set(entries.flatMap(({ sample }) => sample.covers))].sort();
+---
+
+<generative-ui-gallery>
+  <div class="gallery-controls" data-llms-ignore>
+    <label for="gallery-search">Find a component</label>
+    <!-- Enable search only once its filtering handler is installed. -->
+    <input id="gallery-search" type="search" placeholder="Search this category" disabled />
+    <p class="gallery-count" role="status" aria-live="polite">{entries.length} examples · {components.length} components</p>
+  </div>
+  <p class="gallery-empty" hidden>No examples match. Try another component name or category.</p>
+  <div class="gallery-cards">
+    {entries.map(({ sample, index }) => {
+      const operation = {
+        version: "v1.0",
+        createSurface: {
+          surfaceId: `example-${index}`,
+          catalogId: "copilotkit/standard@1",
+          ...(sample.data ? { dataModel: sample.data } : {}),
+          components: sample.components,
+        },
+      };
+      return (
+        <article class="gallery-card" data-covers={sample.covers.join(",")} data-search={`${sample.title} ${sample.covers.join(" ")}`.toLowerCase()}>
+          <header>
+            <span class="gallery-category">{sample.group}</span>
+            <h2 id={`example-${index}`}>{sample.title}</h2>
+            <p class="gallery-components">{sample.covers.map((name) => <code>{name}</code>)}</p>
+          </header>
+          <div class="gallery-live" data-llms-ignore data-preview={withBase(`/previews/generative-ui/?example=${index}`)}>
+            {networkExamples.includes(index) ? (
+              <button class="gallery-load" type="button">Load interactive example (external maps or media)</button>
+            ) : (
+              <iframe src={withBase(`/previews/generative-ui/?example=${index}`)} title={`${sample.title} interactive example`} loading="lazy" referrerpolicy="no-referrer" />
+            )}
+          </div>
+          <details>
+            <summary>A2UI example</summary>
+            <p>Put this operation inside an <code>a2ui</code> Markdown fence. Try the controls above. Actions appear locally in the preview; in an editable chat they become messages.</p>
+            <pre tabindex="0"><code>{JSON.stringify(operation, null, 2)}</code></pre>
+          </details>
+        </article>
+      );
+    })}
+  </div>
+</generative-ui-gallery>
+
+<script>
+  class GenerativeUIGallery extends HTMLElement {
+    connectedCallback() {
+      for (const button of this.querySelectorAll<HTMLButtonElement>(".gallery-load")) {
+        button.addEventListener("click", () => {
+          const preview = button.parentElement!;
+          const frame = document.createElement("iframe");
+          frame.src = preview.dataset.preview!;
+          frame.title = `${preview.closest("article")!.querySelector("h2")!.textContent} interactive example`;
+          frame.referrerPolicy = "no-referrer";
+          preview.replaceChildren(frame);
+        }, { once: true });
+      }
+      const search = this.querySelector<HTMLInputElement>("input")!;
+      const cards = [...this.querySelectorAll<HTMLElement>("article")];
+      const count = this.querySelector<HTMLElement>("[role=status]")!;
+      const empty = this.querySelector<HTMLElement>(".gallery-empty")!;
+      const filter = () => {
+        const query = search.value.trim().toLowerCase();
+        let visible = 0;
+        for (const card of cards) {
+          card.hidden = !((card.dataset.search ?? "").includes(query));
+          if (!card.hidden) visible++;
+        }
+        count.textContent = `${visible} of ${cards.length} examples`;
+        empty.hidden = visible > 0;
+      };
+      search.addEventListener("input", filter);
+      if (search.value) filter();
+      search.disabled = false;
+    }
+  }
+  if (!customElements.get("generative-ui-gallery")) customElements.define("generative-ui-gallery", GenerativeUIGallery);
+</script>
+
+<style>
+  generative-ui-gallery { display: block; }
+  .gallery-controls { display: grid; grid-template-columns: 1fr; gap: .5rem 1rem; padding: 1rem; background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-gray-5); }
+  .gallery-controls > * { margin: 0; }
+  .gallery-controls label { font-weight: 600; font-size: .875rem; }
+  .gallery-controls input { width: 100%; min-width: 0; border: 1px solid var(--sl-color-gray-4); padding: .65rem; color: var(--sl-color-text); background: var(--sl-color-bg); border-radius: 4px; font: inherit; }
+  .gallery-controls :focus-visible, summary:focus-visible, .gallery-load:focus-visible { outline: 2px solid var(--sl-color-text-accent); outline-offset: 3px; }
+  .gallery-count { grid-column: 1 / -1; margin: .25rem 0 0; font-size: .85rem; color: var(--sl-color-gray-2); }
+  .gallery-cards { display: grid; gap: 1.5rem; margin-top: 1.5rem; }
+  .gallery-card { min-width: 0; border: 1px solid var(--sl-color-gray-5); border-radius: 8px; overflow: hidden; }
+  .gallery-card[hidden], .gallery-empty[hidden] { display: none; }
+  header { padding: 1rem 1.25rem; }
+  .gallery-category { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--sl-color-gray-2); }
+  .gallery-card header h2 { margin: .35rem 0 .75rem; font-size: 1.15rem; line-height: 1.4; scroll-margin-top: 100px; }
+  .gallery-components { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0; }
+  .gallery-components code { font-size: .75rem; }
+  .gallery-live { border-block: 1px solid var(--sl-color-gray-5); background: var(--sl-color-bg); }
+  .gallery-live iframe { display: block; width: 100%; height: 260px; border: 0; margin: 0; }
+  .gallery-load { display: block; margin: 1.25rem; padding: .6rem 1rem; border: 1px solid var(--sl-color-gray-4); background: var(--sl-color-gray-6); color: var(--sl-color-text); border-radius: 4px; cursor: pointer; font: inherit; font-size: .875rem; }
+  details { padding: .85rem 1.25rem; margin: 0; border: 0; }
+  summary { cursor: pointer; font-size: .875rem; font-weight: 600; }
+  details p { font-size: .875rem; }
+  pre { max-height: 24rem; overflow: auto; padding: 1rem; background: var(--sl-color-gray-6); font-size: .75rem; line-height: 1.6; }
+  pre code { background: none; padding: 0; }
+</style>

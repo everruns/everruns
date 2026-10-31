@@ -18,6 +18,7 @@
 //   onboarding surfaces render without the sidebar that ensures it everywhere
 //   else.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -124,7 +125,8 @@ function getProviderName(providerType: SetupProviderType): string {
 }
 
 export default function OrgSetupPage() {
-  usePageTitle("Org Setup");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Org Setup"));
   const { orgId } = useParams<{ orgId: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -304,7 +306,7 @@ export default function OrgSetupPage() {
     },
     entityType: "organization_setup",
     entityId: orgId,
-    label: "Organization setup",
+    label: ui("Organization setup"),
   });
   const busy = verifying || createProvider.isPending;
 
@@ -340,15 +342,15 @@ export default function OrgSetupPage() {
               <Building2 className="h-6 w-6 text-primary" />
             </div>
             <h1 className="text-xl font-semibold">
-              {is404 ? "Organization not found" : "Failed to load organization"}
+              {is404 ? ui("Organization not found") : ui("Failed to load organization")}
             </h1>
             {!is404 && (
               <p role="alert" className="text-sm text-muted-foreground">
-                Something went wrong loading this organisation. Please retry.
+                {ui("Something went wrong loading this organisation. Please retry.")}
               </p>
             )}
             <Button variant="outline" onClick={() => router.push("/chats")}>
-              Go to dashboard
+              {ui("Go to dashboard")}
             </Button>
           </div>
         </Card>
@@ -369,9 +371,9 @@ export default function OrgSetupPage() {
             headline:
               "Deploy your first agent and keep it running through restarts, deploys, and outages.",
             features: [
-              { label: "Durable execution engine", done: true },
-              { label: "Agent harnesses & capabilities", done: true },
-              { label: "Session traces & evals", done: true },
+              { label: ui("Durable execution engine"), done: true },
+              { label: ui("Agent harnesses & capabilities"), done: true },
+              { label: ui("Session traces & evals"), done: true },
             ],
           }}
         >
@@ -379,19 +381,23 @@ export default function OrgSetupPage() {
             <div className="mb-6 flex h-12 w-12 items-center justify-center border border-accent/40 bg-accent/[0.12] text-accent-foreground">
               <Check className="icon-sharp h-6 w-6" strokeWidth={2.2} />
             </div>
-            <h1 className="text-[28px] font-semibold tracking-[-0.02em]">You&rsquo;re all set.</h1>
+            <h1 className="text-[28px] font-semibold tracking-[-0.02em]">
+              {ui("You’re all set.")}
+            </h1>
             <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
               {providerConnected ? (
                 <>
-                  {org?.name ?? "Your workspace"} is provisioned and connected to a model provider.
-                  Deploy your first agent and keep it running &mdash; through restarts, deploys, and
-                  outages.
+                  {org?.name ?? ui("Your workspace")}{" "}
+                  {ui(
+                    "is provisioned and connected to a model provider. Deploy your first agent and keep it running — through restarts, deploys, and outages.",
+                  )}
                 </>
               ) : (
                 <>
-                  {org?.name ?? "Your workspace"} is ready. Add a model provider to run agents,
-                  including Platform Chat. You can connect your coding agent for setup and
-                  management now.
+                  {org?.name ?? ui("Your workspace")}{" "}
+                  {ui(
+                    "is ready. Add a model provider to run agents, including Platform Chat. You can connect your coding agent for setup and management now.",
+                  )}
                 </>
               )}
             </p>
@@ -416,12 +422,12 @@ export default function OrgSetupPage() {
               </span>
               <span className="flex-1">
                 <span className="block text-[15px] font-semibold">
-                  {providerConnected ? "Open Platform Chat" : "Add a model provider"}
+                  {providerConnected ? ui("Open Platform Chat") : ui("Add a model provider")}
                 </span>
                 <span className="block text-xs text-primary-foreground/60">
                   {providerConnected
-                    ? "Ask it to create your first agent, or just start talking"
-                    : "Connect a provider to start running agents"}
+                    ? ui("Ask it to create your first agent, or just start talking")
+                    : ui("Connect a provider to start running agents")}
                 </span>
               </span>
               <ArrowRight className="icon-sharp h-[18px] w-[18px] text-accent" strokeWidth={2} />
@@ -430,9 +436,11 @@ export default function OrgSetupPage() {
             <CodingAgentConnectAction className="mt-3 flex w-full items-center gap-3.5 border px-5 py-4 text-left text-foreground transition-colors hover:bg-muted focus-visible:outline-ring">
               <SquareTerminal className="size-5 shrink-0 text-muted-foreground" />
               <span className="flex-1">
-                <span className="block text-sm font-semibold">Connect your coding agent</span>
+                <span className="block text-sm font-semibold">
+                  {ui("Connect your coding agent")}
+                </span>
                 <span className="block text-xs text-muted-foreground">
-                  Use Everruns from Claude Code, Codex, Cursor, or Gemini CLI
+                  {ui("Use Everruns from Claude Code, Codex, Cursor, or Gemini CLI")}
                 </span>
               </span>
               <ArrowRight className="size-4 shrink-0" />
@@ -447,7 +455,7 @@ export default function OrgSetupPage() {
                   className="icon-sharp h-[18px] w-[18px] text-muted-foreground"
                   strokeWidth={1.8}
                 />
-                <span className="text-[13px] font-medium">Create an agent</span>
+                <span className="text-[13px] font-medium">{ui("Create an agent")}</span>
               </Link>
               <Link
                 href="/agents/examples"
@@ -457,7 +465,7 @@ export default function OrgSetupPage() {
                   className="icon-sharp h-[18px] w-[18px] text-muted-foreground"
                   strokeWidth={1.8}
                 />
-                <span className="text-[13px] font-medium">Browse templates</span>
+                <span className="text-[13px] font-medium">{ui("Browse templates")}</span>
               </Link>
               <Link
                 href="/settings/members"
@@ -467,7 +475,7 @@ export default function OrgSetupPage() {
                   className="icon-sharp h-[18px] w-[18px] text-muted-foreground"
                   strokeWidth={1.8}
                 />
-                <span className="text-[13px] font-medium">Invite your team</span>
+                <span className="text-[13px] font-medium">{ui("Invite your team")}</span>
               </Link>
               <a
                 href={DOCS_URL}
@@ -479,7 +487,7 @@ export default function OrgSetupPage() {
                   className="icon-sharp h-[18px] w-[18px] text-muted-foreground"
                   strokeWidth={1.8}
                 />
-                <span className="text-[13px] font-medium">Read the docs</span>
+                <span className="text-[13px] font-medium">{ui("Read the docs")}</span>
               </a>
             </div>
           </div>
@@ -496,19 +504,24 @@ export default function OrgSetupPage() {
         currentIndex={arc.stepIndex(1)}
         stepLabel={arc.stepLabel(1)}
         brand={{
-          eyebrow: `Step ${arc.stepIndex(1) + 1} / ${arc.steps.length}`,
+          eyebrow: ui("Step {current} / {total}", {
+            current: arc.stepIndex(1) + 1,
+            total: arc.steps.length,
+          }),
           headline: "Bring your own model. Keys encrypted at rest.",
           features: [
-            { label: "Durable execution engine", done: true },
-            { label: "Agent harnesses & capabilities", done: true },
-            { label: "Session traces & evals" },
+            { label: ui("Durable execution engine"), done: true },
+            { label: ui("Agent harnesses & capabilities"), done: true },
+            { label: ui("Session traces & evals") },
           ],
         }}
       >
         <div className="w-full max-w-[460px]">
-          <h1 className="text-[22px] font-semibold tracking-[-0.02em]">Setting up {org?.name}</h1>
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em]">
+            {ui("Setting up")} {org?.name}
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            We&rsquo;re provisioning your durable workspace. One last thing to finish.
+            {ui("We’re provisioning your durable workspace. One last thing to finish.")}
           </p>
 
           <div className="mt-6 space-y-4">
@@ -587,7 +600,7 @@ export default function OrgSetupPage() {
             {hasProvider ? (
               /* Provider already configured — go straight to the Done step */
               <Button className="w-full" onClick={() => void finishOnboarding()}>
-                Continue
+                {ui("Continue")}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
@@ -637,7 +650,7 @@ export default function OrgSetupPage() {
                       the whole catalog. Informational only: the full picker
                       lives in Models → Providers after setup. */}
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Also supported</span>
+                    <span className="text-xs text-muted-foreground">{ui("Also supported")}</span>
                     {MORE_PROVIDERS.map((name) => (
                       <span
                         key={name}
@@ -647,7 +660,7 @@ export default function OrgSetupPage() {
                       </span>
                     ))}
                     <span className="text-xs text-muted-foreground">
-                      + {MORE_PROVIDERS_EXTRA} more in Settings after setup
+                      + {MORE_PROVIDERS_EXTRA} {ui("more in Settings after setup")}
                     </span>
                   </div>
                 </div>
@@ -655,7 +668,7 @@ export default function OrgSetupPage() {
                 {/* API Key input */}
                 <div>
                   <label htmlFor="setup-api-key" className="text-sm font-semibold">
-                    API Key
+                    {ui("API Key")}
                   </label>
                   <Input
                     id="setup-api-key"
@@ -666,10 +679,12 @@ export default function OrgSetupPage() {
                       setApiKey(e.target.value);
                       setProviderError(null);
                     }}
-                    placeholder={`Enter your ${getProviderName(selectedProvider)} API key`}
+                    placeholder={ui("Enter your {value0} API key", {
+                      value0: getProviderName(selectedProvider),
+                    })}
                   />
                   <p className="mt-1.5 text-xs text-muted-foreground">
-                    Your API key will be stored securely and encrypted
+                    {ui("Your API key will be stored securely and encrypted")}
                   </p>
                   {providerError && (
                     <p role="alert" className="mt-1.5 text-xs text-destructive">
@@ -686,14 +701,14 @@ export default function OrgSetupPage() {
                     disabled={busy}
                     className="text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
                   >
-                    Skip for now
+                    {ui("Skip for now")}
                   </button>
                   <Button onClick={handleContinue} disabled={busy}>
                     {verifying
-                      ? "Checking key..."
+                      ? ui("Checking key...")
                       : createProvider.isPending
-                        ? "Discovering models..."
-                        : "Finish setup"}
+                        ? ui("Discovering models...")
+                        : ui("Finish setup")}
                     {!busy && <ArrowRight className="ml-2 h-4 w-4" />}
                   </Button>
                 </div>

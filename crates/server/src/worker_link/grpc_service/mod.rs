@@ -6,6 +6,9 @@
 // Decision: Remaining top-level services are cross-cutting infra helpers only
 // Decision: Split into submodules for maintainability (EVE-101).
 
+pub mod assignment_scope;
+pub mod authority;
+pub mod journal_capability;
 mod worker;
 // The one wire shape of a command failure, shared with the in-process worker.
 pub(crate) use worker::support::command_error_to_proto;
@@ -31,7 +34,6 @@ use crate::live_updates::task_notifications::TaskBroadcaster;
 use crate::records::wire::{schema_agent_to_proto, schema_harness_to_proto};
 use crate::services::{CapabilityService, EventService, ProviderResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
-use base64::Engine;
 use everruns_core::host::HostComposition;
 use everruns_core::permissions::PermissionResolver;
 use everruns_durable::{
@@ -66,8 +68,6 @@ use everruns_internal_protocol::proto::{
     CommitExecResponse,
     CompleteDurableTaskRequest,
     CompleteDurableTaskResponse,
-    CreateImageArtifactRequest,
-    CreateImageArtifactResponse,
     DeregisterDurableWorkerRequest,
     DeregisterDurableWorkerResponse,
     DrainDurableWorkerRequest,
@@ -137,6 +137,8 @@ use everruns_internal_protocol::proto::{
     RecordCircuitBreakerSuccessResponse,
     RegisterDurableWorkerRequest,
     RegisterDurableWorkerResponse,
+    ReportDurableWorkerChecksRequest,
+    ReportDurableWorkerChecksResponse,
     ResolveFilesRequest,
     ResolveFilesResponse,
     ResolveImageRequest,
@@ -164,7 +166,7 @@ use everruns_internal_protocol::{
 };
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio_stream::wrappers::ReceiverStream;
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use tonic::{Request, Response, Status, Streaming};
 
 /// Read the gRPC auth token from the environment. When set, all gRPC
@@ -250,13 +252,16 @@ pub fn grpc_server_tls_from_env_result() -> anyhow::Result<Option<tonic::transpo
 }
 
 /// Tonic interceptor that validates bearer token on every gRPC request.
-/// If `expected_token` is `None`, all requests are allowed (dev mode).
+/// Establishes explicit legacy authority after successful authentication, or
+/// development authority when `expected_token` is `None`. Refuses existing
+/// authority rather than promoting a scoped assertion through reauthentication.
 ///
 /// THREAT[TM-AUTHZ-002]: This bearer token is the ONLY thing guarding the
 /// worker control-plane boundary. It is a single shared secret with no
 /// per-org scoping, so any client that presents it is fully trusted: every
-/// worker RPC builds `Caller::internal(req.org_id)` from the client-supplied
-/// `org_id`, which bypasses all policy checks. A single valid token can
+/// command RPC can build `Caller::internal(req.org_id)` from client-supplied
+/// `org_id`, bypassing policy checks; dedicated RPCs also use caller selectors.
+/// A single valid token can
 /// therefore act on any org. The worker boundary MUST never be reachable from
 /// untrusted networks. The token is compared in constant time below to avoid
 /// leaking it via a timing side-channel.
@@ -272,9 +277,13 @@ impl GrpcAuthInterceptor {
 }
 
 impl tonic::service::Interceptor for GrpcAuthInterceptor {
-    fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
+    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
+        authority::ensure_unset(request.extensions())?;
         let Some(ref expected) = self.expected_token else {
-            return Ok(request); // No auth configured
+            request
+                .extensions_mut()
+                .insert(authority::WorkerAuthority::Development);
+            return Ok(request);
         };
 
         let token = request
@@ -287,12 +296,42 @@ impl tonic::service::Interceptor for GrpcAuthInterceptor {
             // Constant-time compare: the worker token is a shared secret, so a
             // short-circuiting `==` would leak it byte-by-byte via timing.
             Some(t) if crate::security::constant_time_eq(t.as_bytes(), expected.as_bytes()) => {
+                request
+                    .extensions_mut()
+                    .insert(authority::WorkerAuthority::LegacyWorker);
                 Ok(request)
             }
-            Some(_) => Err(Status::unauthenticated("Invalid gRPC auth token")),
-            None => Err(Status::unauthenticated("Missing gRPC auth token")),
+            Some(_) => {
+                note_rejected_worker();
+                Err(Status::unauthenticated("Invalid gRPC auth token"))
+            }
+            None => {
+                note_rejected_worker();
+                Err(Status::unauthenticated("Missing gRPC auth token"))
+            }
         }
     }
+}
+
+/// Worker calls this process refused for a missing or wrong token, and when
+/// the last one was. Until now only the worker's own log showed a token
+/// mismatch; the system doctor reads these.
+static REJECTED_WORKER_CALLS: AtomicU64 = AtomicU64::new(0);
+static LAST_REJECTED_WORKER_CALL: AtomicI64 = AtomicI64::new(0);
+
+fn note_rejected_worker() {
+    REJECTED_WORKER_CALLS.fetch_add(1, Ordering::Relaxed);
+    LAST_REJECTED_WORKER_CALL.store(chrono::Utc::now().timestamp(), Ordering::Relaxed);
+}
+
+/// How many worker calls this process refused since it started, and when it
+/// last refused one.
+pub(crate) fn rejected_worker_calls() -> (u64, Option<chrono::DateTime<chrono::Utc>>) {
+    let last = match LAST_REJECTED_WORKER_CALL.load(Ordering::Relaxed) {
+        0 => None,
+        at => chrono::DateTime::from_timestamp(at, 0),
+    };
+    (REJECTED_WORKER_CALLS.load(Ordering::Relaxed), last)
 }
 
 /// gRPC service implementation for worker communication
@@ -322,11 +361,9 @@ pub struct WorkerServiceImpl {
     /// Lazy connection token resolver (decrypts stored tokens / mints GitHub App tokens)
     connection_resolver:
         Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
-    /// Base URL for generating presigned image URLs (e.g., "http://127.0.0.1:9000")
-    /// When set, image resolution returns presigned URLs instead of base64 data.
-    api_base_url: Option<String>,
-    /// Signing secret for presigned URLs (WORKER_GRPC_AUTH_TOKEN)
-    presign_secret: Option<String>,
+    /// Signs the paths workers GET image and file bytes from. Set by
+    /// [`Self::into_routes`], which also serves those paths.
+    blob_links: Option<crate::api::internal_blobs::BlobLinkSigner>,
     /// Budget service for check_budget tool
     budget_service: Arc<crate::domains::budgets::BudgetService>,
     /// Central org rate limiter for gRPC-backed outbound tool calls.
@@ -456,13 +493,6 @@ impl WorkerServiceImpl {
                 db.database().clone(),
             )));
 
-        // Presigned URL support: when API_BASE_URL is set, image resolution
-        // returns presigned HTTP URLs instead of base64 data over gRPC.
-        let api_base_url = std::env::var("API_BASE_URL").ok().filter(|s| !s.is_empty());
-        let presign_secret = std::env::var("WORKER_GRPC_AUTH_TOKEN")
-            .ok()
-            .filter(|s| !s.is_empty());
-
         let budget_service = Arc::new(crate::domains::budgets::BudgetService::new(db.clone()));
 
         Self {
@@ -480,8 +510,7 @@ impl WorkerServiceImpl {
             sqldb_store,
             runner,
             connection_resolver,
-            api_base_url,
-            presign_secret,
+            blob_links: None,
             budget_service,
             org_rate_limiter: None,
             slack_provisioner: None,
@@ -552,16 +581,19 @@ impl WorkerServiceImpl {
         self.provider_services = services;
     }
 
-    /// Generate a presigned URL for an image, or None if presigned URLs are not configured.
-    fn presigned_image_url(&self, image_id: uuid::Uuid, org_id: i64) -> Option<String> {
-        match (&self.api_base_url, &self.presign_secret) {
-            (Some(base_url), Some(secret)) => {
-                Some(crate::api::internal_images::generate_presigned_url(
-                    base_url, image_id, org_id, secret,
-                ))
-            }
-            _ => None,
-        }
+    /// Signed path to an image or file attachment's bytes on this endpoint.
+    fn blob_url(
+        &self,
+        kind: crate::api::internal_blobs::BlobKind,
+        id: uuid::Uuid,
+        org_id: i64,
+    ) -> Result<String, Status> {
+        self.blob_links
+            .as_ref()
+            .map(|signer| signer.path(kind, id, org_id))
+            .ok_or_else(|| {
+                Status::failed_precondition("this endpoint does not serve worker byte paths")
+            })
     }
 
     fn domain_ctx_for_caller(&self, caller: everruns_core::Caller) -> crate::domains::common::Ctx {
@@ -696,6 +728,23 @@ impl WorkerServiceImpl {
             .max_encoding_message_size(everruns_internal_protocol::MAX_GRPC_MESSAGE_SIZE)
     }
 
+    /// The whole worker endpoint: this gRPC service plus the signed paths
+    /// workers GET image and file bytes from (`api::internal_blobs`). One
+    /// secret keys both the paths this service hands out and the route that
+    /// checks them, so they can never disagree.
+    pub fn into_routes(mut self, signing_secret: String) -> tonic::service::Routes {
+        let db = self.db.clone();
+        self.blob_links = Some(crate::api::internal_blobs::BlobLinkSigner::new(
+            signing_secret.clone(),
+        ));
+        tonic::service::Routes::new(self.into_server())
+            .into_axum_router()
+            .merge(crate::api::internal_blobs::routes(
+                crate::api::internal_blobs::AppState { db, signing_secret },
+            ))
+            .into()
+    }
+
     /// Convert ResolvedModel to proto ResolvedModel
     fn resolved_model_to_proto(resolved: crate::services::ResolvedModel) -> proto::ResolvedModel {
         proto::ResolvedModel {
@@ -717,23 +766,6 @@ impl WorkerServiceImpl {
                 &row.metadata,
             )),
             created_at: Some(ip_datetime_to_proto_timestamp(row.created_at)),
-        }
-    }
-
-    fn image_row_to_proto(row: crate::storage::ImageRow) -> proto::StoredImage {
-        proto::StoredImage {
-            info: Some(Self::image_info_row_to_proto(
-                crate::storage::ImageInfoRow {
-                    id: row.id,
-                    org_id: row.org_id,
-                    filename: row.filename,
-                    content_type: row.content_type,
-                    size_bytes: row.size_bytes,
-                    metadata: row.metadata,
-                    created_at: row.created_at,
-                },
-            )),
-            data: row.data,
         }
     }
 
@@ -859,43 +891,7 @@ fn json_value_to_proto(value: serde_json::Value) -> prost_types::Value {
 
 /// Convert a domain `RuntimeMessage` to a proto `Message`.
 fn message_to_proto(message: &everruns_core::RuntimeMessage) -> proto::Message {
-    use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
-
-    let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
-    let content = Some(everruns_internal_protocol::json_to_proto_list(
-        &content_json_val,
-    ));
-
-    let controls = message.controls.as_ref().map(|c| {
-        let json = serde_json::to_value(c).unwrap_or_default();
-        everruns_internal_protocol::json_to_proto_struct(&json)
-    });
-
-    let metadata = message.metadata.as_ref().map(|m| {
-        let json = serde_json::to_value(m).unwrap_or_default();
-        everruns_internal_protocol::json_to_proto_struct(&json)
-    });
-
-    let external_actor = message.external_actor.as_ref().map(|ea| {
-        let json = serde_json::to_value(ea).unwrap_or_default();
-        everruns_internal_protocol::json_to_proto_struct(&json)
-    });
-
-    proto::Message {
-        id: Some(uuid_to_proto_uuid(message.id.uuid())),
-        role: message.role.to_string(),
-        content,
-        controls,
-        metadata,
-        created_at: Some(datetime_to_proto_timestamp(message.created_at)),
-        phase: message
-            .phase
-            .map(|phase| phase.as_provider_str().to_string()),
-        phase_source: message
-            .phase_source
-            .map(|source| source.as_str().to_string()),
-        external_actor,
-    }
+    everruns_internal_protocol::schema_message_to_proto(message)
 }
 
 /// Extract a RuntimeMessage from an Event's data field
@@ -909,9 +905,17 @@ pub(crate) fn event_to_message(
     match &event.data {
         EventData::InputMessage(d) => Some(d.message.clone()),
         EventData::OutputMessageCompleted(d) => Some(d.message.clone()),
-        EventData::ToolCompleted(d) => Some(
-            crate::storage::runtime::message::tool_completed_to_message(d.clone()),
-        ),
+        // Same identity and timestamp as the in-process projection
+        // (`direct_worker_adapters::message_projection`). A load-time `now()`
+        // re-renders the `<facts>` block after every tool result on each
+        // request, which breaks the provider prompt cache.
+        EventData::ToolCompleted(d) => {
+            let mut message =
+                crate::storage::runtime::message::tool_completed_to_message(d.clone());
+            message.id = everruns_contracts::typed_id::MessageId::from_uuid(event.id.uuid());
+            message.created_at = event.ts;
+            Some(message)
+        }
         _ => None,
     }
 }

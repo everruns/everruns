@@ -9,6 +9,8 @@
 // controls. A recording cannot be steered, so they land here as inert rows —
 // scheduled work is background work.
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -39,6 +41,7 @@ import { useSessionContext } from "../session-context";
 // ============================================
 
 function TasksSection({ sessionId }: { sessionId: string }) {
+  const ui = useUiTranslations();
   const { data: tasks, isLoading, error } = useSessionTasks(sessionId);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
 
@@ -59,7 +62,7 @@ function TasksSection({ sessionId }: { sessionId: string }) {
     return (
       <div className="flex items-center gap-2 text-destructive">
         <AlertCircle className="h-5 w-5" />
-        <span>{error instanceof Error ? error.message : "Failed to load tasks"}</span>
+        <span>{error instanceof Error ? error.message : ui("Failed to load tasks")}</span>
       </div>
     );
   }
@@ -68,9 +71,11 @@ function TasksSection({ sessionId }: { sessionId: string }) {
     return (
       <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-card py-12 text-muted-foreground">
         <Waypoints className="mb-4 h-10 w-10 opacity-50" />
-        <p className="font-medium">No work yet</p>
+        <p className="font-medium">{ui("No work yet")}</p>
         <p className="mt-1 text-sm">
-          Subagents, handoffs, background tools and monitors this session started appear here.
+          {ui(
+            "Subagents, handoffs, background tools and monitors this session started appear here.",
+          )}
         </p>
       </div>
     );
@@ -95,7 +100,7 @@ function TasksSection({ sessionId }: { sessionId: string }) {
           <TaskCard task={selected} sessionId={selected.session_id} />
         ) : (
           <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
-            Select a task to see its detail.
+            {ui("Select a task to see its detail.")}
           </div>
         )}
       </div>
@@ -138,6 +143,8 @@ function statusIcon(status: string) {
 }
 
 function ResourceCard({ resource }: { resource: SessionResourceEntry }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const statusText =
     typeof resource.metadata?.status_text === "string" ? resource.metadata.status_text : null;
   const summary = typeof resource.metadata?.summary === "string" ? resource.metadata.summary : null;
@@ -176,12 +183,34 @@ function ResourceCard({ resource }: { resource: SessionResourceEntry }) {
       </CardHeader>
       <CardContent className="space-y-2 text-sm text-muted-foreground">
         <div className="grid gap-1">
-          <div>Registered: {formatRelativeTime(resource.created_at)}</div>
-          {statusText ? <div>Status: {statusText}</div> : null}
-          {progressLine ? <div>Progress: {progressLine}</div> : null}
-          {summary ? <div className="text-foreground">Summary: {summary}</div> : null}
-          {logPath ? <div className="truncate">Log: {logPath}</div> : null}
-          {resultPath ? <div className="truncate">Result: {resultPath}</div> : null}
+          <div>
+            {ui("Registered:")} {formatRelativeTime(resource.created_at, displayLocale)}
+          </div>
+          {statusText ? (
+            <div>
+              {ui("Status:")} {statusText}
+            </div>
+          ) : null}
+          {progressLine ? (
+            <div>
+              {ui("Progress:")} {progressLine}
+            </div>
+          ) : null}
+          {summary ? (
+            <div className="text-foreground">
+              {ui("Summary:")} {summary}
+            </div>
+          ) : null}
+          {logPath ? (
+            <div className="truncate">
+              {ui("Log:")} {logPath}
+            </div>
+          ) : null}
+          {resultPath ? (
+            <div className="truncate">
+              {ui("Result:")} {resultPath}
+            </div>
+          ) : null}
         </div>
         {outputTail ? (
           <pre className="overflow-x-auto whitespace-pre-wrap rounded border border-border/70 bg-card px-3 py-2 text-xs text-foreground">
@@ -194,6 +223,7 @@ function ResourceCard({ resource }: { resource: SessionResourceEntry }) {
 }
 
 function ResourcesSection({ sessionId }: { sessionId: string }) {
+  const ui = useUiTranslations();
   const { data: resources, isLoading, error } = useSessionResources(sessionId);
 
   if (isLoading) return <Skeleton className="h-32 w-full" />;
@@ -202,7 +232,7 @@ function ResourcesSection({ sessionId }: { sessionId: string }) {
     return (
       <div className="flex items-center gap-2 text-destructive">
         <AlertCircle className="h-5 w-5" />
-        <span>{error instanceof Error ? error.message : "Failed to load resources"}</span>
+        <span>{error instanceof Error ? error.message : ui("Failed to load resources")}</span>
       </div>
     );
   }
@@ -211,8 +241,10 @@ function ResourcesSection({ sessionId }: { sessionId: string }) {
     return (
       <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-card py-10 text-muted-foreground">
         <AgentIcon className="mb-3 h-10 w-10 opacity-50" />
-        <p className="font-medium">No resources leased</p>
-        <p className="mt-1 text-sm">Sandboxes, browser sessions and similar leases appear here.</p>
+        <p className="font-medium">{ui("No resources leased")}</p>
+        <p className="mt-1 text-sm">
+          {ui("Sandboxes, browser sessions and similar leases appear here.")}
+        </p>
       </div>
     );
   }
@@ -227,29 +259,31 @@ function ResourcesSection({ sessionId }: { sessionId: string }) {
 }
 
 export default function SessionWorkPage() {
+  const ui = useUiTranslations();
   const { sessionId, session } = useSessionContext();
   const features = new Set(session?.features ?? []);
 
   return (
     <div className="flex-1 space-y-8 overflow-y-auto p-6">
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Tasks</h2>
+        <h2 className="text-sm font-medium text-muted-foreground">{ui("Tasks")}</h2>
         <TasksSection sessionId={sessionId} />
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Resources</h2>
+        <h2 className="text-sm font-medium text-muted-foreground">{ui("Resources")}</h2>
         <ResourcesSection sessionId={sessionId} />
       </section>
 
       <SessionSchedulesSection sessionId={sessionId} announceEmpty={features.has("schedules")} />
 
       <p className="text-xs text-muted-foreground">
-        Work across every session used to live at <span className="font-mono">/work</span>; it is
-        now scoped to the session that started it. Subagent tasks link to their own recording from
-        the detail card, or browse{" "}
+        {ui("Work across every session used to live at")} <span className="font-mono">/work</span>
+        {ui(
+          "; it is now scoped to the session that started it. Subagent tasks link to their own recording from the detail card, or browse",
+        )}{" "}
         <Link href="/sessions" className="underline">
-          all sessions
+          {ui("all sessions")}
         </Link>
         .
       </p>

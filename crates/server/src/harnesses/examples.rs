@@ -23,7 +23,8 @@ pub struct HarnessExampleDef {
 }
 
 impl HarnessExampleDef {
-    fn new(definition: BuiltInHarnessDefinition) -> Self {
+    fn new(mut definition: BuiltInHarnessDefinition) -> Self {
+        definition.localizations = super::localizations::for_builtin(&definition.name);
         Self {
             definition,
             dev_only: false,

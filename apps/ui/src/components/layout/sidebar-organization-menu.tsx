@@ -5,6 +5,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { OrganizationIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -40,6 +41,7 @@ function CreateOrganizationDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const [name, setName] = useState("");
   const createOrg = useCreateOrganization();
   const { setCurrentOrg } = useOrg();
@@ -60,33 +62,33 @@ function CreateOrganizationDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create Organization</DialogTitle>
+          <DialogTitle>{ui("Create Organization")}</DialogTitle>
           <DialogDescription>
-            Create a new organization. You will be added as a member automatically.
+            {ui("Create a new organization. You will be added as a member automatically.")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="org-name">Name</Label>
+            <Label htmlFor="org-name">{ui("Name")}</Label>
             <Input
               id="org-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Organization name"
+              placeholder={ui("Organization name")}
               required
             />
           </div>
           {createOrg.isError && (
             <p className="text-sm text-destructive">
-              Failed to create organization: {createOrg.error.message}
+              {ui("Failed to create organization:")} {createOrg.error.message}
             </p>
           )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button type="submit" disabled={createOrg.isPending || !name.trim()}>
-              {createOrg.isPending ? "Creating..." : "Create"}
+              {createOrg.isPending ? ui("Creating...") : ui("Create")}
             </Button>
           </DialogFooter>
         </form>
@@ -102,6 +104,7 @@ export function SidebarOrganizationMenu({
   onCreateOrg: () => void;
   useDefaultCreateOrgDialog: boolean;
 }) {
+  const ui = useUiTranslations();
   const { currentOrg, organizations, setCurrentOrg } = useOrg();
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
 
@@ -122,14 +125,14 @@ export function SidebarOrganizationMenu({
           <DropdownMenuTrigger className="flex w-full items-center gap-1.5 border border-transparent px-2.5 py-1.5 text-[13px] transition-colors hover:border-border hover:bg-card">
             <OrganizationIcon className="icon-sharp h-4 w-4 text-muted-foreground" />
             <span className="flex-1 truncate text-left font-semibold leading-5">
-              {currentOrg?.name ?? "Select Organization"}
+              {currentOrg?.name ?? ui("Select Organization")}
             </span>
             <ChevronDown className="icon-sharp h-4 w-4 text-muted-foreground" />
           </DropdownMenuTrigger>
           <DropdownMenuPositioner side="bottom" align="start">
             <DropdownMenuContent className="w-56">
               <DropdownMenuGroup>
-                <DropdownMenuLabel>Organizations</DropdownMenuLabel>
+                <DropdownMenuLabel>{ui("Organizations")}</DropdownMenuLabel>
                 {organizations.map((org) => (
                   <DropdownMenuItem
                     key={org.public_id}
@@ -146,7 +149,7 @@ export function SidebarOrganizationMenu({
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleCreate}>
                 <Plus className="icon-sharp mr-2 h-4 w-4" />
-                Create Organization
+                {ui("Create Organization")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenuPositioner>

@@ -1,4 +1,7 @@
 "use client";
+import { Field } from "@/components/ui/field";
+
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
 
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import {
@@ -21,7 +24,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+import { ResourceMultiSelect } from "@/components/ui/resource-multi-select";
+import { TagInput } from "@/components/ui/tag-input";
+import { Slider } from "@/components/ui/slider";
 import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
 import { useAgents, useHarnesses } from "@/hooks";
 import { useCreateObserver, useUpdateObserver } from "@/hooks";
@@ -69,6 +74,8 @@ function scorerErrors(scorers: ObserverScorerConfig[]): Record<number, string> {
 }
 
 export function ObserverForm({ observer, initial }: ObserverFormProps) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const router = useRouter();
   const createObserver = useCreateObserver();
   const updateObserver = useUpdateObserver();
@@ -151,14 +158,6 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
     },
   });
 
-  const toggleAgent = (id: string) => {
-    setAgentIds((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
-  };
-
-  const toggleHarness = (id: string) => {
-    setHarnessIds((prev) => (prev.includes(id) ? prev.filter((h) => h !== id) : [...prev, id]));
-  };
-
   const buildMatch = () => {
     const tags = parseTagList(sessionTags);
     return {
@@ -212,27 +211,29 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
       {chatDraft.notice}
       <Card>
         <CardHeader>
-          <CardTitle>Details</CardTitle>
+          <CardTitle>{ui("Details")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="observer-name">Name</Label>
+          <Field
+            id="observer-name"
+            label={ui("Name")}
+            error={submitted && nameMissing ? ui("Name is required") : undefined}
+          >
             <Input
               id="observer-name"
-              placeholder="Production quality monitor"
+              aria-describedby="observer-name-hint"
+              aria-invalid={submitted && nameMissing}
+              placeholder={ui("Production quality monitor")}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-            {submitted && nameMissing && (
-              <p className="text-sm text-destructive">Name is required</p>
-            )}
-          </div>
+          </Field>
 
           <div className="space-y-2">
-            <Label htmlFor="observer-description">Description</Label>
+            <Label htmlFor="observer-description">{ui("Description")}</Label>
             <Textarea
               id="observer-description"
-              placeholder="What this observer watches for..."
+              placeholder={ui("What this observer watches for...")}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
@@ -241,11 +242,12 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="observer-sampling">
-              Sampling rate ({Math.round(samplingRate * 100)}% of turns)
+              {ui("Sampling rate (")}
+              {Math.round(samplingRate * 100)}
+              {ui("% of turns)")}
             </Label>
-            <Input
+            <Slider
               id="observer-sampling"
-              type="range"
               min={0}
               max={1}
               step={0.05}
@@ -253,7 +255,7 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
               onChange={(e) => setSamplingRate(Number(e.target.value))}
             />
             <p className="text-xs text-muted-foreground">
-              Fraction of matching production turns this observer scores.
+              {ui("Fraction of matching production turns this observer scores.")}
             </p>
           </div>
         </CardContent>
@@ -261,62 +263,43 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Match rules</CardTitle>
+          <CardTitle>{ui("Match rules")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Optional filters. When left empty an observer considers all production sessions in the
-            org.
+            {ui(
+              "Optional filters. When left empty an observer considers all production sessions in the org.",
+            )}
           </p>
 
-          <div className="space-y-2">
-            <Label>Agents</Label>
-            {agents.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No agents available.</p>
-            ) : (
-              <div className="flex max-h-48 flex-col gap-2 overflow-y-auto border p-3">
-                {agents.map((agent) => (
-                  <label key={agent.id} className="flex cursor-pointer items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={agentIds.includes(agent.id)}
-                      onCheckedChange={() => toggleAgent(agent.id)}
-                    />
-                    {getDisplayName(agent)}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
+          <ResourceMultiSelect
+            label={ui("Agents")}
+            emptyMessage={ui("No agents available.")}
+            value={agentIds}
+            onChange={setAgentIds}
+            options={agents.map((agent) => ({
+              value: agent.id,
+              label: getDisplayName(agent, displayLocale),
+            }))}
+          />
+          <ResourceMultiSelect
+            label={ui("Harnesses")}
+            emptyMessage={ui("No harnesses available.")}
+            value={harnessIds}
+            onChange={setHarnessIds}
+            options={harnesses.map((harness) => ({
+              value: harness.id,
+              label: getDisplayName(harness, displayLocale),
+            }))}
+          />
 
           <div className="space-y-2">
-            <Label>Harnesses</Label>
-            {harnesses.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No harnesses available.</p>
-            ) : (
-              <div className="flex max-h-48 flex-col gap-2 overflow-y-auto border p-3">
-                {harnesses.map((harness) => (
-                  <label
-                    key={harness.id}
-                    className="flex cursor-pointer items-center gap-2 text-sm"
-                  >
-                    <Checkbox
-                      checked={harnessIds.includes(harness.id)}
-                      onCheckedChange={() => toggleHarness(harness.id)}
-                    />
-                    {getDisplayName(harness)}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="observer-tags">Session tags</Label>
-            <Input
+            <Label htmlFor="observer-tags">{ui("Session tags")}</Label>
+            <TagInput
               id="observer-tags"
-              placeholder="comma, separated, tags"
+              placeholder={ui("Add a tag…")}
               value={sessionTags}
-              onChange={(e) => setSessionTags(e.target.value)}
+              onChange={setSessionTags}
             />
           </div>
         </CardContent>
@@ -324,7 +307,7 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Scorers</CardTitle>
+          <CardTitle>{ui("Scorers")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <ScorerEditor
@@ -333,24 +316,24 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
             errors={submitted ? errors : undefined}
           />
           {submitted && noScorers && (
-            <p className="text-sm text-destructive">Add at least one scorer.</p>
+            <p className="text-sm text-destructive">{ui("Add at least one scorer.")}</p>
           )}
         </CardContent>
       </Card>
 
       {mutationError && (
         <Notice variant="destructive">
-          <NoticeTitle>Failed to save observer</NoticeTitle>
+          <NoticeTitle>{ui("Failed to save observer")}</NoticeTitle>
           <NoticeDescription>{mutationError.message}</NoticeDescription>
         </Notice>
       )}
 
       <div className="flex gap-4">
         <Button type="submit" disabled={isPending || chatDraft.blocked}>
-          {isPending ? "Saving..." : observer ? "Save changes" : "Create observer"}
+          {isPending ? ui("Saving...") : observer ? ui("Save changes") : ui("Create observer")}
         </Button>
         <Button type="button" variant="outline" onClick={() => router.back()}>
-          Cancel
+          {ui("Cancel")}
         </Button>
       </div>
     </form>

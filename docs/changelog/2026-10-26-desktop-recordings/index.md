@@ -5,6 +5,7 @@ date: 2026-10-26
 kind: feature
 significance: minor
 products: [platform, cloud]
+release: "0.50.0"
 surfaces: [ui, api]
 links:
   docs: [/features/sandbox-templates/]

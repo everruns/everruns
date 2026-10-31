@@ -22,6 +22,7 @@
  *   permission variants without a backend.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
@@ -36,16 +37,17 @@ export const NO_INTELLIGENCE_DESCRIPTION =
 
 /** The way out, or who to ask when the caller cannot manage providers. */
 export function NoIntelligenceAction({ canManage }: { canManage: boolean }) {
+  const ui = useUiTranslations();
   if (!canManage) {
     return (
       <p className="text-xs text-muted-foreground">
-        Ask an organisation owner or admin to configure a model provider.
+        {ui("Ask an organisation owner or admin to configure a model provider.")}
       </p>
     );
   }
   return (
     <Link href="/models/providers" className={buttonVariants({ variant: "outline", size: "sm" })}>
-      Manage providers &amp; models
+      {ui("Manage providers & models")}
     </Link>
   );
 }

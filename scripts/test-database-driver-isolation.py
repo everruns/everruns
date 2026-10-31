@@ -5,6 +5,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location(
     "database_guard", Path(__file__).parent / "lib/check-database-driver-isolation.py"
@@ -21,6 +22,45 @@ def package(name, dependency="sqlx", kind=None, optional=False, rename=None):
 
 
 class DatabaseOwnership(unittest.TestCase):
+    def test_private_data_example_root_alias_keeps_the_exact_boundary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            example = root / "example"
+            example.mkdir()
+            alias = root / "alias"
+            alias.symlink_to(example, target_is_directory=True)
+            entry = package("everruns-custom-data-agent", "rusqlite")
+            entry["manifest_path"] = str(example / "Cargo.toml")
+            with patch.object(guard, "CUSTOM_DATA_EXAMPLE_ROOT", alias):
+                self.assertFalse(guard.dependency_violations([entry]))
+                entry["manifest_path"] = str(root / "elsewhere/Cargo.toml")
+                self.assertTrue(guard.dependency_violations([entry]))
+                entry["manifest_path"] = str(alias / "Cargo.toml")
+                entry["name"] = "everruns-worker"
+                self.assertTrue(guard.dependency_violations([entry]))
+
+    def test_private_data_example_exception_requires_its_identity_path_and_driver(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / "src").mkdir()
+            (root / "src/main.rs").write_text("Connection::open_with_flags(path, flags);")
+            entry = package("everruns-custom-data-agent", "rusqlite")
+            entry["manifest_path"] = str(root / "Cargo.toml")
+            with patch.object(guard, "CUSTOM_DATA_EXAMPLE_ROOT", root):
+                self.assertFalse(guard.dependency_violations([entry]))
+                self.assertFalse(guard.constructor_violations([entry]))
+                for driver in ["sqlx", "tokio-postgres"]:
+                    invalid = {**entry, "dependencies": package(entry["name"], driver)["dependencies"]}
+                    self.assertTrue(guard.dependency_violations([invalid]))
+                for name, manifest in [
+                    ("everruns-worker", entry["manifest_path"]),
+                    (entry["name"], str(root / "elsewhere/Cargo.toml")),
+                ]:
+                    invalid = {**entry, "name": name, "manifest_path": manifest}
+                    self.assertTrue(guard.dependency_violations([invalid]))
+                entry["name"] = "everruns-worker"
+                self.assertTrue(guard.constructor_violations([entry]))
+
     def test_normal_build_optional_and_renamed_driver_edges_are_rejected(self):
         for kind in [None, "build"]:
             for optional in [False, True]:

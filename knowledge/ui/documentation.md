@@ -99,6 +99,18 @@ menu, since the tabs carry it on wider screens. Slate tokens and Geist live in
 The Reference tab must remain active for all `/api/` pages, including nested
 OpenAPI-generated routes such as `/api/operations/*` and `/api/operations/tags/*`.
 
+### Embedded previews
+
+The component gallery lives under Reference, with a short overview and category
+subpages rather than a single long catalog. The chat guide and AG-UI support
+link to it, and each category links back to those guides and sibling categories.
+The original gallery URL redirects to the overview.
+
+The component gallery embeds a dedicated, non-indexed control surface. This is
+an interactive asset, not a standalone documentation page: its parent gallery
+owns search indexing and agent-readable source examples. Preview styles and
+runtime dependencies load only in the frames, preserving the rest of the docs.
+
 ### API reference
 
 The reference leads with the caller-facing Agent API, followed by collapsed
@@ -486,6 +498,7 @@ The docs site must ship a single `sitemap.xml` file at the docs root.
 3. Every `<url>` entry must include a `<lastmod>` value
 4. `apps/docs/integrations/sitemap-enhance.mjs` is responsible for post-processing Astro's generated sitemap into the final `sitemap.xml`
 5. `lastmod` currently uses the docs build date rather than git history so builds remain deterministic on shallow CI clones
+6. Explicitly redirected announcements are excluded from the sitemap; their successors remain canonical. The Worker and sitemap build share the [redirect rules](../../apps/docs/redirects.mjs), so live checks continue to require 200 responses for every listed page.
 
 ### Agent-Readable Output Requirements
 

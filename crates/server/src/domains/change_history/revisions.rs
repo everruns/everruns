@@ -144,7 +144,11 @@ impl Command for DiffEntityRevisions {
         let (entity_ref, kind) = readable(ctx, &self.entity_ref, self.kind.as_deref()).await?;
         let from = revision(ctx, &entity_ref, kind, Some(self.from)).await?;
         let to = revision(ctx, &entity_ref, kind, self.to).await?;
-        Ok(snapshot::diff(snapshot_of(&from)?, snapshot_of(&to)?))
+        Ok(snapshot::diff_revisions(
+            kind,
+            snapshot_of(&from)?,
+            snapshot_of(&to)?,
+        ))
     }
 }
 
@@ -332,6 +336,13 @@ impl RestoreEntityRevision {
             values.retain(|field, _| {
                 field == id_param || locators.contains(&field.as_str()) || fields.contains(field)
             });
+            snapshot::preserve_replacement_fields(
+                kind,
+                &entity_ref,
+                &mut params,
+                &current,
+                fields,
+            )?;
         }
         let command = if kind == super::EntityKind::VirtualUser
             && kind

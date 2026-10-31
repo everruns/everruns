@@ -171,6 +171,10 @@ It does not apply to:
 - logs
 - raw internal error messages
 
+Keep platform-only copy separate from kernel activity catalogs so portable
+Engine applications can discard unused translations. Shared localization changes
+must preserve the complete Worker upload-size budget, including JavaScript glue.
+
 ### String model
 
 Use stable message keys with parameter interpolation, for example:
@@ -231,11 +235,48 @@ This preserves the rendered message while keeping enough context for future anal
 
 ## UI Localization
 
+### Interface preference
+
+The UI offers System and the explicit languages in the shared
+[interface locale registry](../../apps/ui/src/lib/locale-registry.ts). The choice is a
+persistent device preference, synchronized between tabs, and updates the document
+language and translated presentation. System follows the browser. Runtime locale
+transport and session/virtual-user preferences remain independent; changing the
+interface never silently changes the agent response language.
+
+Existing semantic chat keys remain supported. The wider interface uses an explicit
+[gettext-style source catalog](../../apps/ui/src/lib/ui-messages.ts): only marked
+product copy and product-owned navigation labels pass through it. Identifiers,
+user content and execution instructions never do. Interpolation values remain
+separate from translated templates.
+
+Agents and harnesses carry generic locale-keyed display overlays, with bounded
+validation in the shared contract. Their editors save through page drafts; file
+packages preserve overlays across all supported transports. Display resolution
+uses the exact locale, language, English and original field independently per
+field. Harness display identity is not inherited from its parent. Capability
+schema overlays use the same order, merged from least to most specific while
+preserving configuration values and validation semantics.
+
+The command catalog exposes these maps as JSON `--localizations` flags. Schema
+changes must refresh the checked-in CLI command contract and offline evaluation
+catalog, then the CLI golden contract and reference pages; their inventory tests
+guard the server, terminal CLI and evaluation surfaces against drift. See
+[Command Tree](../execution/command-tree.md#one-command-line-two-surfaces).
+
 ### Browser locale detection
 
 - The browser client should detect locale from `navigator.languages` / `navigator.language`
-- UI copy should switch by supported language family (`uk*` → Ukrainian, otherwise English in the first iteration)
-- The raw normalized browser locale (for example `uk-UA`) should still be forwarded to the backend so later locales can be enabled without changing the transport
+- System selects the first supported entry in the browser’s ordered language preferences; an explicit device preference overrides it
+- British English retains its regional identity for spelling and date/number formatting. Display locale never changes the currency of a financial amount
+- Simplified Chinese has its own catalog. Traditional Chinese preferences fall through to the next supported browser preference rather than being labelled as Simplified Chinese
+- The raw normalized primary browser locale (for example `fr-CA`) should still be forwarded to the backend so later locales can be enabled without changing the transport
+
+The [source catalogs](../../apps/ui/src/lib/ui-messages.ts) and semantic chat
+messages share locale selection and interpolation checks. Built-in capability
+display overlays are enriched at the server boundary, keeping the larger API
+metadata catalog out of portable Engine activity code. Activity prefixes use a
+separate small catalog; authored arguments are appended only after translation.
 
 ### Catalog structure
 
@@ -296,3 +337,7 @@ This is important for debugging disagreements between browser, session, schedule
 ## Implementation Notes
 
 - Resolve execution context once per turn, then pass it through the worker pipeline -- keep resolution logic centralized
+
+Built-in capability category labels use the UI catalog in lists, selectors and
+details. API category values and filter keys remain stable; unknown tenant
+categories display verbatim. Search accepts both source and translated labels.

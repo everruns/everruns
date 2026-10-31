@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  useLocale as useFormattingLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { use } from "react";
 import { useCapability, useCapabilities, usePageTitle } from "@/hooks";
@@ -22,11 +28,12 @@ import {
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import {
+  localizedCapabilityCategory,
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
 import { capabilityTurnedOff, rolloutFlagMap } from "@/lib/capability-availability";
-import { useLocale } from "@/providers/locale-provider";
+
 import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
 import { formatCountLabel } from "@/lib/formatting";
@@ -59,6 +66,7 @@ function getStatusLabel(status: CapabilityStatus): string {
 }
 
 function ToolCard({ tool }: { tool: ToolDefinition }) {
+  const ui = useUiTranslations();
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -73,7 +81,7 @@ function ToolCard({ tool }: { tool: ToolDefinition }) {
           </div>
           {"policy" in tool && tool.policy && (
             <Badge variant={tool.policy === "auto" ? "default" : "secondary"} className="text-xs">
-              {tool.policy === "auto" ? "Auto" : "Requires Approval"}
+              {tool.policy === "auto" ? ui("Auto") : ui("Requires Approval")}
             </Badge>
           )}
         </div>
@@ -85,7 +93,7 @@ function ToolCard({ tool }: { tool: ToolDefinition }) {
           <div>
             <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
               <Code className="w-4 h-4" />
-              Parameters
+              {ui("Parameters")}
             </h4>
             <pre className="text-xs bg-muted p-3 overflow-x-auto">
               {JSON.stringify(tool.parameters, null, 2)}
@@ -102,11 +110,13 @@ export default function CapabilityDetailPage({
 }: {
   params: Promise<{ capabilityId: string }>;
 }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const { capabilityId } = use(params);
   const { locale } = useLocale();
   const featureFlags = useOptionalFeatureFlags();
   const { data: capability, isLoading, error } = useCapability(capabilityId);
-  usePageTitle(capability ? localizedCapabilityName(capability, locale) : null, "Capability");
+  usePageTitle(capability ? localizedCapabilityName(capability, locale) : null, ui("Capability"));
   const { data: allCapabilities } = useCapabilities();
 
   // Create a map of capability ID to capability for resolving dependency names
@@ -126,11 +136,13 @@ export default function CapabilityDetailPage({
   if (error || !capability) {
     return (
       <ResourceNotFound
-        title={error ? "Capability unavailable" : "Capability not found"}
+        title={error ? ui("Capability unavailable") : ui("Capability not found")}
         description={
           error
-            ? `The capability could not be loaded: ${error.message}`
-            : "This capability may have been deleted, moved to another organization, or the URL may be wrong."
+            ? ui("The capability could not be loaded: {value0}", { value0: error.message })
+            : ui(
+                "This capability may have been deleted, moved to another organization, or the URL may be wrong.",
+              )
         }
         backHref="/capabilities"
         backLabel="Back to capabilities"
@@ -145,7 +157,7 @@ export default function CapabilityDetailPage({
     <PageContainer>
       <PageBreadcrumb
         items={[
-          { label: "Capabilities", href: "/capabilities" },
+          { label: ui("Capabilities"), href: "/capabilities" },
           { label: localizedCapabilityName(capability, locale) },
         ]}
       />
@@ -163,15 +175,23 @@ export default function CapabilityDetailPage({
           <>
             <span className="inline-flex items-center gap-1">
               <AgentIcon className="h-3.5 w-3.5" />
-              {formatCountLabel(capability.agent_count ?? 0, "agent")}
+              {formatCountLabel(capability.agent_count ?? 0, "agent", undefined, displayLocale)}
             </span>
             <span className="inline-flex items-center gap-1">
               <Layers className="h-3.5 w-3.5" />
-              {formatCountLabel(capability.harness_count ?? 0, "harness", "harnesses")}
+              {formatCountLabel(
+                capability.harness_count ?? 0,
+                "harness",
+                "harnesses",
+                displayLocale,
+              )}
             </span>
             {capability.category && (
               <span>
-                Category <span className="text-foreground">{capability.category}</span>
+                {ui("Category")}{" "}
+                <span className="text-foreground">
+                  {localizedCapabilityCategory(capability.category, locale)}
+                </span>
               </span>
             )}
           </>
@@ -184,7 +204,7 @@ export default function CapabilityDetailPage({
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
             >
-              View documentation
+              {ui("View documentation")}
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           )
@@ -196,7 +216,7 @@ export default function CapabilityDetailPage({
           {/* Description Card */}
           <Card>
             <CardHeader>
-              <CardTitle>Description</CardTitle>
+              <CardTitle>{ui("Description")}</CardTitle>
             </CardHeader>
             <CardContent>
               <InlineStreamdownMessage className="text-muted-foreground">
@@ -207,7 +227,7 @@ export default function CapabilityDetailPage({
                 featureFlags && !featureFlags.isLoading ? rolloutFlagMap(featureFlags.flags) : null,
               ) && (
                 <p className="mt-3 text-sm text-muted-foreground">
-                  This capability is turned off for the organization.
+                  {ui("This capability is turned off for the organization.")}
                 </p>
               )}
             </CardContent>
@@ -219,7 +239,7 @@ export default function CapabilityDetailPage({
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="w-5 h-5" />
-                  System Prompt Addition
+                  {ui("System Prompt Addition")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -233,7 +253,8 @@ export default function CapabilityDetailPage({
             <div className="space-y-4">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Wrench className="w-5 h-5" />
-                Tools ({toolDefinitions.length})
+                {ui("Tools (")}
+                {toolDefinitions.length})
               </h2>
               <div className="space-y-4">
                 {toolDefinitions.map((tool) => (
@@ -247,9 +268,9 @@ export default function CapabilityDetailPage({
           {!capability.system_prompt && toolDefinitions.length === 0 && (
             <Card className="p-8 text-center">
               <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No contributions</h3>
+              <h3 className="text-lg font-medium mb-2">{ui("No contributions")}</h3>
               <p className="text-muted-foreground">
-                This capability does not contribute any system prompt additions or tools.
+                {ui("This capability does not contribute any system prompt additions or tools.")}
               </p>
             </Card>
           )}
@@ -259,11 +280,11 @@ export default function CapabilityDetailPage({
         <PageRail>
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Details</CardTitle>
+              <CardTitle className="text-base">{ui("Details")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <p className="text-sm font-medium">Status</p>
+                <p className="text-sm font-medium">{ui("Status")}</p>
                 <Badge
                   variant={getCapabilityStatusBadgeVariant(capability.status)}
                   className="mt-1"
@@ -274,9 +295,9 @@ export default function CapabilityDetailPage({
 
               {capability.category && (
                 <div>
-                  <p className="text-sm font-medium">Category</p>
+                  <p className="text-sm font-medium">{ui("Category")}</p>
                   <Badge variant="outline" className="mt-1">
-                    {capability.category}
+                    {localizedCapabilityCategory(capability.category, locale)}
                   </Badge>
                 </div>
               )}
@@ -285,7 +306,7 @@ export default function CapabilityDetailPage({
                 <div>
                   <p className="text-sm font-medium flex items-center gap-1.5">
                     <LinkIcon className="w-3.5 h-3.5" />
-                    Dependencies
+                    {ui("Dependencies")}
                   </p>
                   <div className="mt-1.5 space-y-1">
                     {capability.dependencies.map((depId) => {
@@ -308,36 +329,36 @@ export default function CapabilityDetailPage({
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Summary</CardTitle>
+              <CardTitle className="text-base">{ui("Summary")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm">
                   <AgentIcon className="h-4 w-4 text-muted-foreground" />
-                  <span>Agents</span>
+                  <span>{ui("Agents")}</span>
                 </div>
                 <span className="font-medium">{capability.agent_count ?? 0}</span>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm">
                   <Layers className="h-4 w-4 text-muted-foreground" />
-                  <span>Harnesses</span>
+                  <span>{ui("Harnesses")}</span>
                 </div>
                 <span className="font-medium">{capability.harness_count ?? 0}</span>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm">
                   <FileText className="h-4 w-4 text-muted-foreground" />
-                  <span>System Prompt</span>
+                  <span>{ui("System Prompt")}</span>
                 </div>
                 <Badge variant={capability.system_prompt ? "default" : "outline"}>
-                  {capability.system_prompt ? "Yes" : "No"}
+                  {capability.system_prompt ? ui("Yes") : ui("No")}
                 </Badge>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm">
                   <Wrench className="h-4 w-4 text-muted-foreground" />
-                  <span>Tools</span>
+                  <span>{ui("Tools")}</span>
                 </div>
                 <span className="font-medium">{toolDefinitions.length}</span>
               </div>
@@ -347,7 +368,7 @@ export default function CapabilityDetailPage({
       </PageColumns>
 
       <PageFooter>
-        <BackLink href="/capabilities">Back to Capabilities</BackLink>
+        <BackLink href="/capabilities">{ui("Back to Capabilities")}</BackLink>
       </PageFooter>
     </PageContainer>
   );

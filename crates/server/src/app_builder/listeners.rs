@@ -89,7 +89,7 @@ pub(super) fn build(
         Arc::new(domains::audit_logs::ApprovalAuditListener::new(db.clone())),
         mcp_events.listener(),
         A2aPushListener::shared(&db, &encryption, &host_composition, &auth_state),
-        Arc::new(listeners::TurnLatencyListener::new()),
+        Arc::new(listeners::TurnLatencyListener::new(db.clone())),
         thread_turns.clone(),
         automatic_titles.clone(),
     ];
@@ -175,6 +175,16 @@ pub(super) fn build(
     if let Some(braintrust_listener) = BraintrustListener::from_env() {
         tracing::info!("Braintrust integration enabled");
         event_listeners.push(Arc::new(braintrust_listener));
+    }
+
+    if let Some(encryption) = &encryption {
+        event_listeners.push(Arc::new(
+            crate::domains::trace_exports::router::CustomerTracingListener::new(
+                db.clone(),
+                encryption.clone(),
+                host_composition.egress_service(),
+            ),
+        ));
     }
 
     // Append custom event listeners

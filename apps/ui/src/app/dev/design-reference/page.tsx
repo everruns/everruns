@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import {
   ArrowRight,
   Blocks,
@@ -14,12 +15,15 @@ import {
   Save,
   Type,
 } from "lucide-react";
-import reference from "../../../../design-reference.json";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
+
+// Slate's public design system pages (docs/design-system/), built from this app's tokens
+// and icons. They replaced the external design export as the starting point for redesigns.
+const DESIGN_SYSTEM_URL = "https://everruns.com/docs/design-system/";
 
 const foundations = [
   { name: "Background", token: "--background", className: "bg-background" },
@@ -106,38 +110,44 @@ function ReferenceSection({
 }
 
 export default function DevDesignReferencePage() {
+  const ui = useUiTranslations();
   return (
     <DevPageShell
-      eyebrow="Pinned design export"
-      title="Slate Reference"
-      description="A review surface for the adopted Everruns Design System export and its production implementation contract."
+      eyebrow="Design system"
+      title={ui("Slate Reference")}
+      description={ui(
+        "A review surface for Slate as implemented in this app, next to the public design system pages.",
+      )}
       widthClassName="max-w-7xl"
     >
       <div className="space-y-6">
         <Notice variant="info" icon={<FileCode2 />}>
-          <NoticeTitle>{reference.name}</NoticeTitle>
+          <NoticeTitle>{ui("Slate design system")}</NoticeTitle>
           <NoticeDescription>
-            Reviewed {reference.reviewedOn} from <code>{reference.archiveFile}</code>. SHA-256{" "}
-            <code className="break-all text-foreground">{reference.archiveSha256}</code>. The export
-            is a pinned visual reference; <code>{reference.canonicalRuntime}</code> and{" "}
-            <code>{reference.canonicalGuidance}</code> remain canonical.
+            {ui(
+              "The public design system pages are where redesigns start. They read their tokens and icons from this app;",
+            )}{" "}
+            <code>src/app/design-system.css</code> {ui("and")} <code>DESIGN.md</code>{" "}
+            {ui("remain canonical.")}
           </NoticeDescription>
         </Notice>
 
         <div className="flex flex-wrap gap-2">
-          <LinkButton variant="accent" href={reference.componentShowcase}>
-            <Blocks /> Production components <ArrowRight />
+          <LinkButton variant="accent" href="/dev/ui-components">
+            <Blocks /> {ui("Production components")} <ArrowRight />
           </LinkButton>
-          <a href={reference.sourceUrl} target="_blank" rel="noreferrer">
+          <a href={DESIGN_SYSTEM_URL} target="_blank" rel="noreferrer">
             <Button variant="outline">
-              External design project <ExternalLink />
+              {ui("Design system pages")} <ExternalLink />
             </Button>
           </a>
         </div>
 
         <ReferenceSection
-          title="Visual foundations"
-          description="These swatches resolve from the runtime CSS variables—not copied values from the export."
+          title={ui("Visual foundations")}
+          description={ui(
+            "These swatches resolve from the runtime CSS variables—not copied values from the export.",
+          )}
         >
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {foundations.map((foundation) => (
@@ -157,30 +167,32 @@ export default function DevDesignReferencePage() {
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             <div className="border bg-background p-4">
               <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                Geist Sans
+                {ui("Geist Sans")}
               </p>
               <p className="mt-3 text-2xl font-semibold tracking-[-0.02em] text-foreground">
-                Durable agents, calm controls.
+                {ui("Durable agents, calm controls.")}
               </p>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Compact interface typography with clear hierarchy and direct language.
+                {ui("Compact interface typography with clear hierarchy and direct language.")}
               </p>
             </div>
             <div className="border bg-background p-4 font-mono">
               <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-                Geist Mono
+                {ui("Geist Mono")}
               </p>
-              <p className="mt-3 text-sm text-foreground">agent_019fda100f037c008024046d6b3d74c0</p>
+              <p className="mt-3 text-sm text-foreground">
+                {ui("agent_019fda100f037c008024046d6b3d74c0")}
+              </p>
               <p className="mt-2 text-xs leading-6 text-muted-foreground">
-                turn=42 · tools=7 · latency=1.8s
+                {ui("turn=42 · tools=7 · latency=1.8s")}
               </p>
             </div>
           </div>
         </ReferenceSection>
 
         <ReferenceSection
-          title="Non-negotiable invariants"
-          description="The highest-signal decisions from the export, retained in DESIGN.md."
+          title={ui("Non-negotiable invariants")}
+          description={ui("The highest-signal decisions from the export, retained in DESIGN.md.")}
         >
           <div className="grid gap-3 md:grid-cols-2">
             {invariants.map((item) => (
@@ -202,41 +214,41 @@ export default function DevDesignReferencePage() {
         </ReferenceSection>
 
         <ReferenceSection
-          title="Action hierarchy"
-          description="Button variants communicate intent, not decoration."
+          title={ui("Action hierarchy")}
+          description={ui("Button variants communicate intent, not decoration.")}
         >
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-3 border bg-background p-4">
-              <Badge variant="accent">Create</Badge>
+              <Badge variant="accent">{ui("Create")}</Badge>
               <Button variant="accent">
-                <CirclePlus /> New agent
+                <CirclePlus /> {ui("New agent")}
               </Button>
               <p className="text-xs leading-5 text-muted-foreground">
-                One gold action, last in a read-only page header.
+                {ui("One gold action, last in a read-only page header.")}
               </p>
             </div>
             <div className="space-y-3 border bg-background p-4">
-              <Badge>Commit</Badge>
+              <Badge>{ui("Commit")}</Badge>
               <Button>
-                <Save /> Save changes
+                <Save /> {ui("Save changes")}
               </Button>
               <p className="text-xs leading-5 text-muted-foreground">
-                One navy action on edit surfaces; pair with outline Discard.
+                {ui("One navy action on edit surfaces; pair with outline Discard.")}
               </p>
             </div>
             <div className="space-y-3 border bg-background p-4">
-              <Badge variant="outline">Secondary</Badge>
-              <Button variant="outline">Export</Button>
+              <Badge variant="outline">{ui("Secondary")}</Badge>
+              <Button variant="outline">{ui("Export")}</Button>
               <p className="text-xs leading-5 text-muted-foreground">
-                Copy, export, edit, analyze, disable, and discard stay neutral.
+                {ui("Copy, export, edit, analyze, disable, and discard stay neutral.")}
               </p>
             </div>
           </div>
         </ReferenceSection>
 
         <ReferenceSection
-          title="Component composition"
-          description="Domain components inherit Slate behavior through shared primitives."
+          title={ui("Component composition")}
+          description={ui("Domain components inherit Slate behavior through shared primitives.")}
         >
           <div className="grid items-stretch gap-2 md:grid-cols-[1fr_auto_1fr_auto_1fr]">
             {[
@@ -258,13 +270,15 @@ export default function DevDesignReferencePage() {
             ))}
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
-            Read left-to-right as “composes.” The domain component remains the preview target.
+            {ui(
+              "Read left-to-right as “composes.” The domain component remains the preview target.",
+            )}
           </p>
         </ReferenceSection>
 
         <ReferenceSection
-          title="Page archetypes"
-          description="Entities supply content to shared list, detail, and edit structures."
+          title={ui("Page archetypes")}
+          description={ui("Entities supply content to shared list, detail, and edit structures.")}
         >
           <div className="grid gap-3 lg:grid-cols-3">
             {archetypes.map((archetype) => (
@@ -296,8 +310,8 @@ export default function DevDesignReferencePage() {
         </ReferenceSection>
 
         <ReferenceSection
-          title="Review checklist"
-          description="Use this during UI implementation and visual review."
+          title={ui("Review checklist")}
+          description={ui("Use this during UI implementation and visual review.")}
         >
           <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
             {checklist.map((item) => (

@@ -5,6 +5,7 @@
  * reuse the session file browser/viewer patterns without requiring a session.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { relativeFilePath } from "@/lib/path-utils";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -83,6 +84,7 @@ export function InitialFilesEditor({
   title = "Files",
   description = "Starting files for new sessions. Existing session files are preserved.",
 }: InitialFilesEditorProps) {
+  const ui = useUiTranslations();
   const files = useMemo(() => value ?? [], [value]);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
@@ -222,7 +224,7 @@ export function InitialFilesEditor({
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" variant="outline" size="sm" onClick={addTextFile} disabled={disabled}>
           <Plus className="mr-2 h-4 w-4" />
-          Add Text File
+          {ui("Add Text File")}
         </Button>
         <Button
           type="button"
@@ -232,15 +234,17 @@ export function InitialFilesEditor({
           disabled={disabled}
         >
           <Upload className="mr-2 h-4 w-4" />
-          Upload File
+          {ui("Upload File")}
         </Button>
-        <Badge variant="secondary">{files.length} files</Badge>
+        <Badge variant="secondary">
+          {files.length} {ui("files")}
+        </Badge>
         <input
           ref={uploadInputRef}
           type="file"
           multiple
           className="hidden"
-          aria-label="Upload files"
+          aria-label={ui("Upload files")}
           onChange={(event) => {
             void addUploadedFiles(event.target.files);
             event.target.value = "";
@@ -250,12 +254,14 @@ export function InitialFilesEditor({
 
       {files.length === 0 ? (
         <div className="border border-dashed p-6 text-sm text-muted-foreground">
-          No starter files configured. Add a text file or upload an asset to seed new sessions.
+          {ui(
+            "No starter files configured. Add a text file or upload an asset to seed new sessions.",
+          )}
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
           <div className="flex min-h-[520px] flex-col border bg-muted/20">
-            <div className="border-b px-3 py-2 text-xs text-muted-foreground">Files</div>
+            <div className="border-b px-3 py-2 text-xs text-muted-foreground">{ui("Files")}</div>
             <ScrollArea className="flex-1 min-h-0">
               <FileTree
                 expanded={expandedPaths}
@@ -288,7 +294,7 @@ export function InitialFilesEditor({
                     {selectedFile.is_readonly && (
                       <Badge variant="outline" className="gap-1">
                         <Lock className="h-3 w-3" />
-                        read-only
+                        {ui("read-only")}
                       </Badge>
                     )}
                     <Badge variant="secondary">
@@ -299,7 +305,7 @@ export function InitialFilesEditor({
 
                 <div className="space-y-4 p-4">
                   <div className="space-y-2">
-                    <Label htmlFor="initial-file-path">Path</Label>
+                    <Label htmlFor="initial-file-path">{ui("Path")}</Label>
                     <Input
                       id="initial-file-path"
                       value={relativeFilePath(selectedFile.path)}
@@ -308,8 +314,9 @@ export function InitialFilesEditor({
                       disabled={disabled}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Path relative to the working directory. Leading `/` and `/workspace/` are also
-                      accepted.
+                      {ui(
+                        "Path relative to the working directory. Leading `/` and `/workspace/` are also accepted.",
+                      )}
                     </p>
                   </div>
 
@@ -323,7 +330,7 @@ export function InitialFilesEditor({
                         }
                         disabled={disabled}
                       />
-                      <Label htmlFor="initial-file-readonly">Read-only in session</Label>
+                      <Label htmlFor="initial-file-readonly">{ui("Read-only in session")}</Label>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -336,7 +343,7 @@ export function InitialFilesEditor({
                             onClick={() => setActiveView("source")}
                           >
                             <PencilLine className="mr-2 h-4 w-4" />
-                            Source
+                            {ui("Source")}
                           </Button>
                           <Button
                             type="button"
@@ -345,7 +352,7 @@ export function InitialFilesEditor({
                             onClick={() => setActiveView("preview")}
                           >
                             <Eye className="mr-2 h-4 w-4" />
-                            Preview
+                            {ui("Preview")}
                           </Button>
                         </>
                       )}
@@ -357,7 +364,7 @@ export function InitialFilesEditor({
                         disabled={disabled}
                       >
                         <Upload className="mr-2 h-4 w-4" />
-                        Replace
+                        {ui("Replace")}
                       </Button>
                       <Button
                         type="button"
@@ -367,14 +374,14 @@ export function InitialFilesEditor({
                         disabled={disabled}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
-                        Remove
+                        {ui("Remove")}
                       </Button>
                       <input
                         ref={replaceInputRef}
                         type="file"
                         className="hidden"
                         disabled={disabled}
-                        aria-label="Replace selected file with upload"
+                        aria-label={ui("Replace selected file with upload")}
                         onChange={(event) => {
                           void replaceWithUpload(selectedIndex!, event.target.files);
                           event.target.value = "";
@@ -388,10 +395,10 @@ export function InitialFilesEditor({
                   <div className="border-b px-4 py-2 text-xs text-muted-foreground">
                     <Label htmlFor="initial-file-content" className="text-xs font-normal">
                       {activeView === "preview"
-                        ? "Preview"
+                        ? ui("Preview")
                         : selectedFile.encoding === "text"
-                          ? "Content"
-                          : "Base64 Content"}
+                          ? ui("Content")
+                          : ui("Base64 Content")}
                     </Label>
                   </div>
                   <div className="min-h-0 flex-1">
@@ -416,7 +423,7 @@ export function InitialFilesEditor({
               </>
             ) : (
               <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-                Select a file to edit its contents.
+                {ui("Select a file to edit its contents.")}
               </div>
             )}
           </div>
@@ -427,6 +434,7 @@ export function InitialFilesEditor({
 }
 
 function InitialFilePreviewPane({ file }: { file: InitialFile }) {
+  const ui = useUiTranslations();
   const extension = getFileExtension(file.path);
   const previewType = getInitialFilePreviewType(file);
 
@@ -445,9 +453,9 @@ function InitialFilePreviewPane({ file }: { file: InitialFile }) {
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
         <FileArchive className="h-10 w-10 text-muted-foreground" />
         <div className="space-y-1">
-          <p className="text-sm font-medium">Binary file</p>
+          <p className="text-sm font-medium">{ui("Binary file")}</p>
           <p className="text-sm text-muted-foreground">
-            This asset is stored as base64 and does not have an inline preview.
+            {ui("This asset is stored as base64 and does not have an inline preview.")}
           </p>
         </div>
       </div>

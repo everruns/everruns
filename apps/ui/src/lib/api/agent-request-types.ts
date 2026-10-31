@@ -1,3 +1,4 @@
+import type { EntityLocalizations } from "../entity-localization";
 // Agent create/update request bodies, hand-maintained as UI compatibility over the
 // generated OpenAPI schemas. Split out of legacy-api-types.ts (size ratchet) and
 // re-exported from there; augmentations in agent-*-types.ts target this module.
@@ -11,6 +12,7 @@ import type {
 import type { Communication } from "./schema-types";
 
 export interface CreateAgentRequest {
+  localizations?: EntityLocalizations;
   service_virtual_user_id?: string;
   /** Addressable name (slug): lowercase alphanumeric and hyphens */
   name: string;
@@ -44,6 +46,7 @@ export interface CreateAgentRequest {
 }
 
 export interface UpdateAgentRequest {
+  localizations?: EntityLocalizations;
   service_virtual_user_id?: string | null;
   /** Addressable name (slug): lowercase alphanumeric and hyphens */
   name?: string;

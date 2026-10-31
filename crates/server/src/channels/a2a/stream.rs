@@ -95,7 +95,7 @@ pub(super) fn sse_response<G: Send + Sync + 'static>(ctx: StreamContext, guard: 
         let _guard = &guard;
         event
     });
-    Sse::new(with_guard)
+    Sse::new(crate::api::sse::until_shutdown(with_guard))
         .keep_alive(
             KeepAlive::new()
                 .interval(std::time::Duration::from_secs(15))

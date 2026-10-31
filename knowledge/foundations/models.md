@@ -192,11 +192,11 @@ When messages containing `image_file` content parts are sent to an LLM, the syst
 3. Convert to `data:` URLs
 4. Each LLM provider formats for its vision API
 
-**gRPC Transfer:**
+**Transfer:**
 
-Image data transferred via gRPC with 150MB message limit (100MB raw + ~33% encoding overhead).
-
-> **Warning:** The 150MB gRPC limit is a temporary workaround. Future: presigned URLs, streaming, or direct storage access. Revert to default 4MB when implemented.
+The resolve RPC returns metadata and a short-lived signed path; the worker
+fetches the bytes over HTTP on the same worker endpoint, never inside a gRPC
+message (`crates/server/src/api/internal_blobs.rs`).
 
 **Error Handling:**
 - Missing images: Replaced with `[Image not found: {id}]`

@@ -10,13 +10,16 @@ release: "0.48.0"
 links:
   docs: [/features/user-mcp-servers/, /capabilities/user-mcp-servers/]
   prs: [everruns/everruns#4295, everruns/everruns#4315, everruns/everruns#4343, everruns/everruns#4345, everruns/everruns#4381, everruns/everruns#4383, everruns/everruns#4496]
-visual: "Settings \u2192 My agent experience \u2192 My MCP servers list with the Add server dialog (/settings/agent-experience), cropped to the list"
 ---
 
 **In the UI:** open **Settings > My agent experience > My MCP servers** and
 choose **Add server**, from the organization catalog or by URL. Signing in to a
 catalog server as yourself also adds it to this list. In Chat, the **MCP**
 button lists a conversation's chat-only servers.
+
+![Personal MCP servers list with a custom server and a catalog server](./my-mcp-servers@2x.png)
+
+![Add an MCP server dialog adding a server by URL](./add-mcp-server-by-url@2x.png)
 
 **For agents:** with the **User MCP Servers** capability (`user_mcp`), each turn
 adds the enabled servers of the person chatting. Platform Chat has it on, with

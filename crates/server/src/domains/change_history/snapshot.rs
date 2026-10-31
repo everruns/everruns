@@ -62,6 +62,35 @@ const VOLATILE: &[&str] = &[
     "effective_harness",
 ];
 
+/// Read-only fields a kind's read command derives from other state (the
+/// joined provider, the model registry, the last sync). They are not part of
+/// the entity's configuration, so a registry update or a field added to the
+/// read shape must not show up as a change the user made.
+fn derived(kind: EntityKind) -> &'static [&'static str] {
+    match kind {
+        EntityKind::Model => &[
+            "provider_name",
+            "provider_type",
+            "healthy",
+            "profile",
+            "model_vendor",
+            "stale",
+            "is_new",
+        ],
+        _ => &[],
+    }
+}
+
+/// Drops `kind`'s derived fields. Applied when capturing, and again when
+/// comparing, so revisions recorded before a field was classed as derived
+/// diff the same as new ones.
+fn drop_derived(kind: EntityKind, mut state: Value) -> Value {
+    if let Some(object) = state.as_object_mut() {
+        object.retain(|key, _| !derived(kind).contains(&key.as_str()));
+    }
+    state
+}
+
 /// Whether changes to `kind` carry snapshots. Sessions change by
 /// conversation, not by configuration, so theirs are not kept.
 pub fn has_snapshots(kind: EntityKind) -> bool {
@@ -92,7 +121,7 @@ pub(super) async fn capture(
         Some(state) => state,
         None => output_entity(output, entity_ref)?,
     };
-    let mut snapshot = normalize(state);
+    let mut snapshot = drop_derived(kind, normalize(state));
     if kind == EntityKind::Skill
         && let Some(fields) = snapshot.as_object_mut()
     {
@@ -268,7 +297,7 @@ fn normalize(mut state: Value) -> Value {
 /// immutable and newly introduced secret markers cannot verify old revisions.
 pub(super) fn matches_current(kind: EntityKind, recorded: &Value, current: &Value) -> bool {
     let project = |state: &Value| {
-        let mut value = normalize(state.clone());
+        let mut value = drop_derived(kind, normalize(state.clone()));
         if kind == EntityKind::Skill
             && let Some(fields) = value.as_object_mut()
         {
@@ -286,6 +315,16 @@ pub(super) fn matches_current(kind: EntityKind, recorded: &Value, current: &Valu
             );
         }
         if let Some(object) = value.as_object_mut() {
+            // Pre-localization revisions omit the newly defaulted empty map.
+            // Keep nonempty overlays in the comparison to detect concurrent edits.
+            if matches!(kind, EntityKind::Agent | EntityKind::Harness)
+                && object
+                    .get("localizations")
+                    .and_then(Value::as_object)
+                    .is_some_and(Map::is_empty)
+            {
+                object.remove("localizations");
+            }
             for locator in restore_locators(kind) {
                 object.remove(*locator);
             }
@@ -339,6 +378,18 @@ async fn secret_columns(
     };
     let db = &ctx.db;
     match kind {
+        EntityKind::TracingDestination => {
+            match db.tracing_destination(org, id).await.ok().flatten() {
+                Some(row) => Some(vec![(
+                    "authentication",
+                    db.tracing_secrets(org, row.connection_id)
+                        .await
+                        .ok()
+                        .flatten(),
+                )]),
+                None => None,
+            }
+        }
         EntityKind::Provider => db
             .get_provider(org, id)
             .await
@@ -448,6 +499,13 @@ pub struct FieldDiff {
 }
 
 /// Field-level differences from `from` to `to`, in field order.
+pub fn diff_revisions(kind: EntityKind, from: &Value, to: &Value) -> Vec<FieldDiff> {
+    diff(
+        &drop_derived(kind, from.clone()),
+        &drop_derived(kind, to.clone()),
+    )
+}
+
 pub fn diff(from: &Value, to: &Value) -> Vec<FieldDiff> {
     let empty = Map::new();
     let (from, to) = (
@@ -490,6 +548,8 @@ pub fn restore_command(kind: EntityKind) -> Option<(&'static str, &'static str)>
         EntityKind::OrganizationDecision => ("set_default_decision_model", ""),
         EntityKind::UserProfile => ("update_account_profile", "id"),
         EntityKind::OrganizationAccount => ("update_organization_account_name", "id"),
+        EntityKind::TracingPolicy => ("update_tracing_policy", "id"),
+        EntityKind::TracingDestination => ("update_tracing_destination_metadata", "id"),
         EntityKind::SandboxTemplate => ("update_sandbox_template_metadata", "id"),
         EntityKind::Agent => ("update_agent", "id"),
         EntityKind::Harness => ("update_harness", "id"),
@@ -555,6 +615,27 @@ pub(super) fn update_params(command: &str) -> Option<Map<String, Value>> {
     Some(params)
 }
 
+/// Replacement-style commands default omitted settings instead of patching them.
+/// A field inverse must send CURRENT values for every unselected setting.
+pub(super) fn preserve_replacement_fields(
+    kind: EntityKind,
+    entity_ref: &str,
+    params: &mut Value,
+    current: &Value,
+    fields: &[String],
+) -> Result<(), CommandError> {
+    if !matches!(kind, EntityKind::Knowledge | EntityKind::TracingPolicy) {
+        return Ok(());
+    }
+    let (_, preserved) = restore_call(kind, entity_ref, current, current)?;
+    for (field, value) in preserved.as_object().into_iter().flatten() {
+        if !fields.contains(field) {
+            params[field] = value.clone();
+        }
+    }
+    Ok(())
+}
+
 /// `kind`'s update command and the params that make the entity look like
 /// `snapshot`: every snapshot field the command takes, never a secret.
 pub(super) fn restore_call(
@@ -591,7 +672,14 @@ pub(super) fn restore_call(
             && !VOLATILE.contains(&field.as_str())
             && snapshot.get(field).is_none()
         {
-            params.insert(field.clone(), Value::Null);
+            let empty = if field == "localizations"
+                && matches!(kind, EntityKind::Agent | EntityKind::Harness)
+            {
+                serde_json::json!({})
+            } else {
+                Value::Null
+            };
+            params.insert(field.clone(), empty);
         }
     }
     if kind == EntityKind::Provider {

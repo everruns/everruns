@@ -119,6 +119,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_contracts::ty
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 // Full UUID, not a truncated prefix: the leading chars of a v7
                 // UUID are shared timestamp bits, so a truncated prefix collides

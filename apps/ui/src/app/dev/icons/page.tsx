@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import * as icons from "@/components/icons/facet-icons";
 import { facetIconSvg } from "@/components/icons/facet-icon-data";
 import type { FacetIconName } from "@/components/icons/facet-icon-data";
@@ -53,17 +54,21 @@ function downloadIcon(name: FacetIconName) {
 }
 
 export default function IconsPage() {
+  const ui = useUiTranslations();
   return (
     <DevPageShell
       eyebrow="Slate · Iconography"
-      title="Facet icon masters"
-      description="Original Intent for Agents. Supporting domain glyphs share a 24-unit grid, square caps, mitered joins, and 1.75-unit outlines. Compare at 16, 20, 24, and 32 pixels before changing a master."
+      title={ui("Facet icon masters")}
+      description={ui(
+        "Original Intent for Agents. Supporting domain glyphs share a 24-unit grid, square caps, mitered joins, and 1.75-unit outlines. Compare at 16, 20, 24, and 32 pixels before changing a master.",
+      )}
     >
       <div className="mb-6 flex items-center gap-6 border border-border bg-card p-5">
         <icons.AgentIcon size={48} className="text-primary" />
         <p className="text-sm text-muted-foreground">
-          Agent is the solid anchor. Icons inherit color from their surface; official integration
-          logos and conventional action glyphs retain their identity.
+          {ui(
+            "Agent is the solid anchor. Icons inherit color from their surface; official integration logos and conventional action glyphs retain their identity.",
+          )}
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -75,16 +80,19 @@ export default function IconsPage() {
                 type="button"
                 onClick={() => downloadIcon(name)}
                 className="text-xs text-muted-foreground hover:text-foreground"
-                aria-label={`Download ${label} SVG`}
+                aria-label={ui("Download {value0} SVG", { value0: label })}
               >
-                SVG ↓
+                {ui("SVG ↓")}
               </button>
             </div>
             <div className="flex h-12 items-end justify-between gap-3 text-foreground">
               {[16, 20, 24, 32].map((size) => (
                 <div key={size} className="flex flex-col items-center gap-2">
                   <Icon size={size} />
-                  <span className="text-[10px] text-muted-foreground">{size}px</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {size}
+                    {ui("px")}
+                  </span>
                 </div>
               ))}
             </div>

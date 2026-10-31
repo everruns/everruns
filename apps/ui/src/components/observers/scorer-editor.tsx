@@ -7,6 +7,7 @@
 // other two tabs are rendered disabled with a "Coming soon" note. All editable
 // scorers therefore live under the `turn` scope.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -110,6 +111,7 @@ interface ScorerEditorProps {
 }
 
 export function ScorerEditor({ scorers, onChange, errors }: ScorerEditorProps) {
+  const ui = useUiTranslations();
   const [scopeTab, setScopeTab] = useState<ObserverScorerScope>("turn");
 
   const updateScorer = (index: number, next: ObserverScorerConfig) => {
@@ -141,18 +143,18 @@ export function ScorerEditor({ scorers, onChange, errors }: ScorerEditorProps) {
     <div className="space-y-4">
       <Tabs value={scopeTab} onValueChange={(v) => setScopeTab(v as ObserverScorerScope)}>
         <TabsList>
-          <TabsTrigger value="turn">Answers</TabsTrigger>
+          <TabsTrigger value="turn">{ui("Answers")}</TabsTrigger>
           <TabsTrigger value="session" disabled>
-            Conversations
+            {ui("Conversations")}
           </TabsTrigger>
           <TabsTrigger value="tool" disabled>
-            Tools
+            {ui("Tools")}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="turn" className="space-y-4">
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Starter templates</Label>
+            <Label className="text-xs text-muted-foreground">{ui("Starter templates")}</Label>
             <div className="flex flex-wrap gap-2">
               {SCORER_CATALOG.map((template) => (
                 <Button
@@ -172,7 +174,7 @@ export function ScorerEditor({ scorers, onChange, errors }: ScorerEditorProps) {
 
           {scorers.length === 0 ? (
             <div className="border border-dashed p-6 text-center text-sm text-muted-foreground">
-              No scorers yet. Add one from a template above or start from scratch.
+              {ui("No scorers yet. Add one from a template above or start from scratch.")}
             </div>
           ) : (
             <div className="space-y-4">
@@ -191,7 +193,7 @@ export function ScorerEditor({ scorers, onChange, errors }: ScorerEditorProps) {
 
           <Button type="button" variant="outline" size="sm" onClick={addScorer}>
             <Plus className="size-4" />
-            Add scorer
+            {ui("Add scorer")}
           </Button>
         </TabsContent>
 
@@ -208,12 +210,13 @@ export function ScorerEditor({ scorers, onChange, errors }: ScorerEditorProps) {
 }
 
 function ComingSoonNotice({ scope }: { scope: string }) {
+  const ui = useUiTranslations();
   return (
     <Notice variant="info">
-      <NoticeTitle>Coming soon</NoticeTitle>
+      <NoticeTitle>{ui("Coming soon")}</NoticeTitle>
       <NoticeDescription>
-        {scope === "tool" ? "Tool-level scoring" : "Conversation-level scoring"} is not available
-        yet. Observers currently score individual answers (turns).
+        {scope === "tool" ? ui("Tool-level scoring") : ui("Conversation-level scoring")}{" "}
+        {ui("is not available yet. Observers currently score individual answers (turns).")}
       </NoticeDescription>
     </Notice>
   );
@@ -228,6 +231,7 @@ interface ScorerRowProps {
 }
 
 function ScorerRow({ scorer, index, error, onChange, onRemove }: ScorerRowProps) {
+  const ui = useUiTranslations();
   const setMethod = (method: "rule" | "llm_judge") => {
     if (method === scorer.method) return;
     if (method === "rule") {
@@ -252,10 +256,10 @@ function ScorerRow({ scorer, index, error, onChange, onRemove }: ScorerRowProps)
     <div className="space-y-4 border p-4">
       <div className="flex items-start gap-3">
         <div className="flex-1 space-y-2">
-          <Label htmlFor={`scorer-key-${index}`}>Key</Label>
+          <Label htmlFor={`scorer-key-${index}`}>{ui("Key")}</Label>
           <Input
             id={`scorer-key-${index}`}
-            placeholder="e.g. answer_completeness"
+            placeholder={ui("e.g. answer_completeness")}
             value={scorer.key}
             onChange={(e) => onChange({ ...scorer, key: e.target.value })}
           />
@@ -266,14 +270,14 @@ function ScorerRow({ scorer, index, error, onChange, onRemove }: ScorerRowProps)
           size="sm"
           className="mt-7"
           onClick={onRemove}
-          aria-label="Remove scorer"
+          aria-label={ui("Remove scorer")}
         >
           <Trash2 className="size-4 text-muted-foreground" />
         </Button>
       </div>
 
       <div className="space-y-2">
-        <Label>Method</Label>
+        <Label>{ui("Method")}</Label>
         <div className="flex gap-2">
           {(["rule", "llm_judge"] as const).map((m) => (
             <Button
@@ -283,7 +287,7 @@ function ScorerRow({ scorer, index, error, onChange, onRemove }: ScorerRowProps)
               size="sm"
               onClick={() => setMethod(m)}
             >
-              {m === "rule" ? "Rule" : "LLM judge"}
+              {m === "rule" ? ui("Rule") : ui("LLM judge")}
             </Button>
           ))}
         </div>
@@ -309,13 +313,14 @@ function LlmJudgeFields({
   index: number;
   onChange: (next: ObserverScorerConfig) => void;
 }) {
+  const ui = useUiTranslations();
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor={`scorer-rubric-${index}`}>Rubric</Label>
+        <Label htmlFor={`scorer-rubric-${index}`}>{ui("Rubric")}</Label>
         <Textarea
           id={`scorer-rubric-${index}`}
-          placeholder="Describe how the judge should score this turn..."
+          placeholder={ui("Describe how the judge should score this turn...")}
           value={scorer.rubric}
           onChange={(e) => onChange({ ...scorer, rubric: e.target.value })}
           rows={3}
@@ -324,18 +329,18 @@ function LlmJudgeFields({
 
       <div className="space-y-2">
         <Label htmlFor={`scorer-model-${index}`}>
-          Judge model (defaults to your org default model when unset)
+          {ui("Judge model (defaults to your org default model when unset)")}
         </Label>
         <ModelPicker
           id={`scorer-model-${index}`}
           value={scorer.model_id ?? ""}
           onChange={(modelId) => onChange({ ...scorer, model_id: modelId || undefined })}
-          placeholder="Use org default model"
+          placeholder={ui("Use org default model")}
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`scorer-threshold-${index}`}>Pass threshold (0–1)</Label>
+        <Label htmlFor={`scorer-threshold-${index}`}>{ui("Pass threshold (0–1)")}</Label>
         <Input
           id={`scorer-threshold-${index}`}
           type="number"
@@ -359,6 +364,7 @@ function RuleFields({
   index: number;
   onChange: (next: ObserverScorerConfig) => void;
 }) {
+  const ui = useUiTranslations();
   const rule = scorer.rule;
 
   const setRule = (next: ScorerRule) => onChange({ ...scorer, rule: next });
@@ -366,7 +372,7 @@ function RuleFields({
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor={`scorer-rule-type-${index}`}>Rule type</Label>
+        <Label htmlFor={`scorer-rule-type-${index}`}>{ui("Rule type")}</Label>
         <Select
           value={rule.type}
           onValueChange={(value) => setRule(defaultRule(value as RuleType))}
@@ -387,7 +393,7 @@ function RuleFields({
       <RuleParamFields rule={rule} index={index} onChange={setRule} />
 
       <div className="space-y-2">
-        <Label htmlFor={`scorer-weight-${index}`}>Weight (optional, default 1.0)</Label>
+        <Label htmlFor={`scorer-weight-${index}`}>{ui("Weight (optional, default 1.0)")}</Label>
         <Input
           id={`scorer-weight-${index}`}
           type="number"
@@ -417,12 +423,13 @@ function RuleParamFields({
   index: number;
   onChange: (next: ScorerRule) => void;
 }) {
+  const ui = useUiTranslations();
   switch (rule.type) {
     case "contains":
     case "not_contains":
       return (
         <div className="space-y-2">
-          <Label htmlFor={`rule-text-${index}`}>Text</Label>
+          <Label htmlFor={`rule-text-${index}`}>{ui("Text")}</Label>
           <Input
             id={`rule-text-${index}`}
             value={rule.text}
@@ -433,7 +440,7 @@ function RuleParamFields({
     case "regex":
       return (
         <div className="space-y-2">
-          <Label htmlFor={`rule-pattern-${index}`}>Pattern</Label>
+          <Label htmlFor={`rule-pattern-${index}`}>{ui("Pattern")}</Label>
           <Input
             id={`rule-pattern-${index}`}
             value={rule.pattern}
@@ -445,7 +452,7 @@ function RuleParamFields({
       return (
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor={`rule-tool-${index}`}>Tool</Label>
+            <Label htmlFor={`rule-tool-${index}`}>{ui("Tool")}</Label>
             <Input
               id={`rule-tool-${index}`}
               value={rule.tool}
@@ -453,7 +460,7 @@ function RuleParamFields({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`rule-min-${index}`}>Minimum calls</Label>
+            <Label htmlFor={`rule-min-${index}`}>{ui("Minimum calls")}</Label>
             <Input
               id={`rule-min-${index}`}
               type="number"
@@ -467,7 +474,7 @@ function RuleParamFields({
     case "tool_not_called":
       return (
         <div className="space-y-2">
-          <Label htmlFor={`rule-tool-${index}`}>Tool</Label>
+          <Label htmlFor={`rule-tool-${index}`}>{ui("Tool")}</Label>
           <Input
             id={`rule-tool-${index}`}
             value={rule.tool}
@@ -479,7 +486,7 @@ function RuleParamFields({
       return (
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor={`rule-min-${index}`}>Min (optional)</Label>
+            <Label htmlFor={`rule-min-${index}`}>{ui("Min (optional)")}</Label>
             <Input
               id={`rule-min-${index}`}
               type="number"
@@ -494,7 +501,7 @@ function RuleParamFields({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`rule-max-${index}`}>Max (optional)</Label>
+            <Label htmlFor={`rule-max-${index}`}>{ui("Max (optional)")}</Label>
             <Input
               id={`rule-max-${index}`}
               type="number"
@@ -513,7 +520,7 @@ function RuleParamFields({
     case "turns_within":
       return (
         <div className="space-y-2">
-          <Label htmlFor={`rule-max-${index}`}>Max turns</Label>
+          <Label htmlFor={`rule-max-${index}`}>{ui("Max turns")}</Label>
           <Input
             id={`rule-max-${index}`}
             type="number"
@@ -526,7 +533,7 @@ function RuleParamFields({
     case "json_schema":
       return (
         <div className="space-y-2">
-          <Label htmlFor={`rule-schema-${index}`}>JSON schema</Label>
+          <Label htmlFor={`rule-schema-${index}`}>{ui("JSON schema")}</Label>
           <Textarea
             id={`rule-schema-${index}`}
             className="font-mono text-xs"
@@ -542,7 +549,7 @@ function RuleParamFields({
             }}
           />
           <p className="text-xs text-muted-foreground">
-            Must be valid JSON. Invalid input is ignored until corrected.
+            {ui("Must be valid JSON. Invalid input is ignored until corrected.")}
           </p>
         </div>
       );

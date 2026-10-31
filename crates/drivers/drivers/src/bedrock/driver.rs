@@ -35,6 +35,9 @@ use std::collections::{HashMap, HashSet};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::warn;
 
+mod non_streaming;
+use non_streaming::native_converse_events;
+
 const BEDROCK_STREAM_BUFFER_SIZE: usize = 64;
 
 use crate::bedrock::cache::CachePlan;
@@ -283,6 +286,21 @@ impl ChatDriver for FailDriver {
 
 #[async_trait]
 impl ChatDriver for BedrockChatDriver {
+    fn supports_native_non_streaming(&self) -> bool {
+        true
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &everruns_contracts::ProviderEndpoint,
+        messages: Vec<Message>,
+        config: &LlmCallConfig,
+    ) -> Result<everruns_contracts::driver_registry::LlmResponse> {
+        let mut config = config.clone();
+        config.prefer_non_streaming = true;
+        self.chat_completion(endpoint, messages, &config).await
+    }
+
     async fn chat_completion_stream(
         &self,
         endpoint: &everruns_contracts::ProviderEndpoint,
@@ -321,6 +339,30 @@ impl ChatDriver for BedrockChatDriver {
             .set_temperature(config.temperature)
             .set_max_tokens(config.max_tokens.map(|t| t as i32))
             .build();
+
+        if config.prefer_non_streaming && !config.limits.needs_incremental_events() {
+            let response = client
+                .converse()
+                .model_id(&model_id)
+                .set_messages(Some(bedrock_messages))
+                .set_system((!system_blocks.is_empty()).then_some(system_blocks))
+                .set_tool_config(tool_cfg)
+                .inference_config(inference_cfg)
+                .send()
+                .await
+                .map_err(|error| {
+                    let msg = describe_sdk_error(&error);
+                    if is_too_large(&msg) {
+                        AgentLoopError::request_too_large(msg)
+                    } else {
+                        AgentLoopError::llm_kind(
+                            LlmErrorKind::from_error_text(&msg),
+                            format!("Bedrock Converse failed: {msg}"),
+                        )
+                    }
+                })?;
+            return native_converse_events(response, &model_id);
+        }
 
         let mut req = client.converse_stream().model_id(&model_id);
 

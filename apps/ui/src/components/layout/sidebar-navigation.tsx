@@ -5,10 +5,11 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState, type ReactNode } from "react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FeatureFlags } from "@/lib/api/types";
 import { ExperimentalBadge } from "@/components/ui/experimental-badge";
@@ -20,7 +21,19 @@ import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 
 const isDev = process.env.NODE_ENV === "development";
 
+function NavigationPending() {
+  const ui = useUiTranslations();
+  const { pending } = useLinkStatus();
+  return pending ? (
+    <span role="status" className="ml-auto">
+      <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+      <span className="sr-only">{ui("Loading page")}</span>
+    </span>
+  ) : null;
+}
+
 function NavLink({ item, pathname }: { item: NavigationItem; pathname: string }) {
+  const ui = useUiTranslations();
   const router = useRouter();
   const chatMode = useChatMode();
 
@@ -54,12 +67,13 @@ function NavLink({ item, pathname }: { item: NavigationItem; pathname: string })
       )}
     >
       <item.icon className="icon-sharp h-4 w-4 shrink-0" />
-      {item.name}
+      {ui(item.name)}
       {item.href === "/chats" && chatMode && (
-        <kbd className="ml-auto text-[10px] text-muted-foreground">⌘J</kbd>
+        <kbd className="ml-auto text-[10px] text-muted-foreground">{ui("⌘J")}</kbd>
       )}
       {item.warningTooltip && <WarningBadge tooltip={item.warningTooltip} />}
       {item.experimental && !item.warningTooltip && <ExperimentalBadge />}
+      <NavigationPending />
     </Link>
   );
 }
@@ -77,6 +91,7 @@ function NavSection({
 }) {
   // A collapsed-by-default group still opens when the current page is in it,
   // so the active link is never hidden.
+  const ui = useUiTranslations();
   const [collapsed, setCollapsed] = useState(
     (section.defaultCollapsed ?? false) &&
       !section.items.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)),
@@ -94,7 +109,7 @@ function NavSection({
             onClick={() => setCollapsed((value) => !value)}
             className="flex w-full items-center justify-between px-3 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
-            {section.label}
+            {ui(section.label)}
             {collapsed ? (
               <ChevronRight className="h-3.5 w-3.5" />
             ) : (
@@ -102,10 +117,14 @@ function NavSection({
             )}
           </button>
         ) : (
-          <p className="px-3 py-0.5 text-xs font-medium text-muted-foreground">{section.label}</p>
+          <p className="px-3 py-0.5 text-xs font-medium text-muted-foreground">
+            {ui(section.label)}
+          </p>
         ))}
       {!collapsed &&
-        section.items.map((item) => <NavLink key={item.name} item={item} pathname={pathname} />)}
+        section.items.map((item) => (
+          <NavLink key={ui(item.name)} item={item} pathname={pathname} />
+        ))}
       {!collapsed && renderExtra?.(section)}
     </>
   );

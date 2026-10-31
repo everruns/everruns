@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { CredentialFormField, CredentialFormSchema } from "@/lib/api/types";
@@ -29,6 +30,7 @@ function CredentialField({
   idPrefix: string;
   nativeRequired: boolean;
 }) {
+  const ui = useUiTranslations();
   const id = `${idPrefix}-${field.name}`;
   return (
     <div className="space-y-2">
@@ -37,7 +39,7 @@ function CredentialField({
         {/* Grouped required fields are required once the user picks that method,
             so only mark genuinely optional fields. */}
         {field.required ? null : (
-          <span className="ml-1 text-xs text-muted-foreground">(optional)</span>
+          <span className="ml-1 text-xs text-muted-foreground">{ui("(optional)")}</span>
         )}
       </Label>
       <Input
@@ -70,6 +72,7 @@ export function CredentialFields({
    */
   allowEmptySubmit?: boolean;
 }) {
+  const ui = useUiTranslations();
   const ungrouped = schema.fields.filter((f) => !f.group);
   // Preserve declaration order of group labels.
   const groupLabels: string[] = [];
@@ -99,7 +102,9 @@ export function CredentialFields({
             <div className="flex items-center gap-3 py-1">
               <div className="h-px flex-1 bg-border" />
               <span className="text-xs text-muted-foreground">
-                {index === 0 && ungrouped.length === 0 ? label : `or ${label}`}
+                {index === 0 && ungrouped.length === 0
+                  ? label
+                  : ui("or {value0}", { value0: label })}
               </span>
               <div className="h-px flex-1 bg-border" />
             </div>

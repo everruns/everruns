@@ -58,10 +58,17 @@ chrono.workspace = true
 async-trait.workspace = true
 reqwest.workspace = true
 base64.workspace = true
+hostname = "0.4"
 
 # gRPC dependencies
 tonic.workspace = true
+prost.workspace = true
 prost-types.workspace = true
+moka.workspace = true
+# One-frame request body for uploads on the control-plane channel (already in
+# the tree through tonic).
+http-body-util = "0.1"
+bytes.workspace = true
 
 everruns = { workspace = true, default-features = false, features = ["bashkit", "utility-llm"] }
 [dev-dependencies]

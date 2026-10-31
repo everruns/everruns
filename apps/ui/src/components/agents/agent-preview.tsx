@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState } from "react";
 import { usePreviewAgent } from "@/hooks/use-agents";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -36,6 +37,7 @@ export function AgentPreview({
   initialFiles,
   tools = [],
 }: AgentPreviewProps) {
+  const ui = useUiTranslations();
   const previewMutation = usePreviewAgent();
   const [preview, setPreview] = useState<AgentPreviewResponse | null>(null);
 
@@ -99,12 +101,12 @@ export function AgentPreview({
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-destructive">
             <AlertCircle className="w-5 h-5" />
-            Preview Error
+            {ui("Preview Error")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Failed to generate preview: {previewMutation.error.message}
+            {ui("Failed to generate preview:")} {previewMutation.error.message}
           </p>
         </CardContent>
       </Card>
@@ -123,10 +125,10 @@ export function AgentPreview({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
-            Full System Prompt
+            {ui("Full System Prompt")}
           </CardTitle>
           <CardDescription>
-            The complete system prompt including harness and capability additions
+            {ui("The complete system prompt including harness and capability additions")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -141,17 +143,19 @@ export function AgentPreview({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Wrench className="w-5 h-5" />
-            Available Tools
+            {ui("Available Tools")}
             <Badge variant="secondary" className="ml-2">
               {preview.tools.length}
             </Badge>
           </CardTitle>
-          <CardDescription>Tools from the harness, enabled capabilities, and agent</CardDescription>
+          <CardDescription>
+            {ui("Tools from the harness, enabled capabilities, and agent")}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {preview.tools.length === 0 ? (
             <p className="text-sm text-muted-foreground italic">
-              No tools available. Add capabilities to enable tools.
+              {ui("No tools available. Add capabilities to enable tools.")}
             </p>
           ) : (
             <div className="space-y-4">
@@ -169,7 +173,9 @@ export function AgentPreview({
       }) && (
         <InitialFilesPreview
           files={preview.initial_files ?? initialFiles}
-          description="Files from the harness and agent. Agent files override inherited files with the same path."
+          description={ui(
+            "Files from the harness and agent. Agent files override inherited files with the same path.",
+          )}
         />
       )}
     </div>
@@ -177,6 +183,7 @@ export function AgentPreview({
 }
 
 function ToolCard({ tool }: { tool: ToolDefinition }) {
+  const ui = useUiTranslations();
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
@@ -188,7 +195,7 @@ function ToolCard({ tool }: { tool: ToolDefinition }) {
         </div>
         {"policy" in tool && tool.policy === "requires_approval" && (
           <Badge variant="outline" className="text-xs">
-            Requires approval
+            {ui("Requires approval")}
           </Badge>
         )}
       </div>
@@ -200,7 +207,7 @@ function ToolCard({ tool }: { tool: ToolDefinition }) {
           className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           onClick={() => setIsExpanded(!isExpanded)}
         >
-          {isExpanded ? "Hide parameters" : "Show parameters"}
+          {isExpanded ? ui("Hide parameters") : ui("Show parameters")}
         </button>
         {isExpanded && (
           <ScrollArea className="mt-2 max-h-[200px]">

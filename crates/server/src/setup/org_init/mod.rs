@@ -291,6 +291,7 @@ async fn upsert_built_in_harness(
         .await
         .with_context(|| format!("resolve parent for built-in harness {}", harness.name))?;
     let input = CreateHarnessRow {
+        localizations: harness.localizations.clone(),
         name: harness.name.to_string(),
         display_name: Some(harness.display_name.to_string()),
         icon: harness.icon.clone(),
@@ -725,7 +726,58 @@ mod tests {
         let caps = db.get_agent_capabilities(chat.id.uuid()).await.unwrap();
         assert!(
             caps.iter()
-                .any(|c| c.capability_id == "platform" && c.config["surface"] == "shell")
+                .any(|c| c.capability_id == "platform" && c.config["surface"] == "native")
+        );
+        assert!(caps.iter().any(|c| c.capability_id == "tool_search"
+            && c.config["bounded"] == true
+            && c.config["threshold"] == 1));
+    }
+
+    #[tokio::test]
+    async fn platform_chat_reconciles_shell_agents_to_bounded_native() {
+        let db = make_db();
+        seed_default_org(&db).await;
+        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+        let original = db
+            .get_agent_by_name(DEFAULT_ORG_ID, crate::platform_chat_agent::NAME)
+            .await
+            .unwrap()
+            .unwrap();
+        db.set_agent_capabilities(
+            original.id.uuid(),
+            vec![("platform".into(), 0, serde_json::json!({"surface":"shell"}))],
+        )
+        .await
+        .unwrap();
+
+        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+        let updated = db
+            .get_agent_by_name(DEFAULT_ORG_ID, crate::platform_chat_agent::NAME)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(original.id, updated.id);
+        assert_eq!(original.harness_id, updated.harness_id);
+        assert!(updated.system_prompt.contains("`platform_list_agents`"));
+        let caps = db.get_agent_capabilities(updated.id.uuid()).await.unwrap();
+        assert!(
+            caps.iter()
+                .any(|c| c.capability_id == "platform" && c.config["surface"] == "native")
+        );
+        assert!(
+            caps.iter()
+                .any(|c| c.capability_id == "tool_search" && c.config["bounded"] == true)
+        );
+        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+        let again = db.get_agent_capabilities(updated.id.uuid()).await.unwrap();
+        assert_eq!(
+            caps.iter()
+                .map(|c| (&c.capability_id, c.position, &c.config, c.id))
+                .collect::<Vec<_>>(),
+            again
+                .iter()
+                .map(|c| (&c.capability_id, c.position, &c.config, c.id))
+                .collect::<Vec<_>>()
         );
     }
 
@@ -918,6 +970,7 @@ mod tests {
             .create_harness(
                 DEFAULT_ORG_ID,
                 crate::storage::CreateHarnessRow {
+                    localizations: Default::default(),
                     name: "data-analyst".to_string(),
                     display_name: Some("Data Analyst".to_string()),
                     icon: None,

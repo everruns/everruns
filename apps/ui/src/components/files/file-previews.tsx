@@ -71,6 +71,7 @@
  * load; see `crates/server/src/app_builder.rs`.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo } from "react";
 import { Streamdown } from "streamdown";
 import { code } from "@streamdown/code";
@@ -290,13 +291,14 @@ function parseCSV(content: string): { headers: string[]; rows: string[][] } {
 }
 
 export function CSVPreview({ content }: { content: string }) {
+  const ui = useUiTranslations();
   const { headers, rows } = useMemo(() => parseCSV(content), [content]);
 
   if (headers.length === 0) {
     return (
       <div className="p-4 text-sm text-muted-foreground text-center">
         <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground/60" />
-        <p>Empty or invalid CSV</p>
+        <p>{ui("Empty or invalid CSV")}</p>
       </div>
     );
   }
@@ -325,7 +327,7 @@ export function CSVPreview({ content }: { content: string }) {
           </TableBody>
         </Table>
         <div className="mt-2 text-xs text-muted-foreground">
-          {rows.length} rows, {headers.length} columns
+          {rows.length} {ui("rows,")} {headers.length} {ui("columns")}
         </div>
       </div>
     </ScrollArea>
@@ -333,6 +335,7 @@ export function CSVPreview({ content }: { content: string }) {
 }
 
 export function JSONPreview({ content }: { content: string }) {
+  const ui = useUiTranslations();
   const { formatted, markdown } = useMemo(() => {
     try {
       const parsed = JSON.parse(content);
@@ -350,7 +353,7 @@ export function JSONPreview({ content }: { content: string }) {
     return (
       <div className="p-4 text-sm text-muted-foreground text-center">
         <AlertCircle className="h-8 w-8 mx-auto mb-2 text-warning" />
-        <p>Invalid JSON</p>
+        <p>{ui("Invalid JSON")}</p>
       </div>
     );
   }
@@ -563,6 +566,7 @@ export function SVGPreview({
   content: string;
   encoding: "text" | "base64";
 }) {
+  const ui = useUiTranslations();
   const svgSource = useMemo(() => decodeSvgSource(content, encoding), [content, encoding]);
 
   // Strict CSP for the iframe document. `default-src 'none'` blocks all
@@ -591,7 +595,7 @@ export function SVGPreview({
     return (
       <div className="p-4 text-sm text-muted-foreground text-center">
         <AlertCircle className="h-8 w-8 mx-auto mb-2 text-warning" />
-        <p>Empty or invalid SVG</p>
+        <p>{ui("Empty or invalid SVG")}</p>
       </div>
     );
   }
@@ -600,7 +604,7 @@ export function SVGPreview({
     <ScrollArea className="h-full">
       <div className="p-4 flex items-center justify-center min-h-full">
         <iframe
-          title="SVG preview"
+          title={ui("SVG preview")}
           // Empty `sandbox` means deny every flag — no scripts, no forms, no
           // top-nav, no same-origin, no popups. Combined with the CSP meta
           // tag inside `srcDoc`, this is the strongest browser-side gate
@@ -644,6 +648,7 @@ function injectHtmlPreviewCsp(html: string): string {
 }
 
 export function HtmlPreview({ content, src }: { content: string; src?: string }) {
+  const ui = useUiTranslations();
   const srcDoc = useMemo(() => injectHtmlPreviewCsp(content), [content]);
 
   // Server-backed mode (preferred): the iframe loads the sandboxed preview
@@ -656,7 +661,7 @@ export function HtmlPreview({ content, src }: { content: string; src?: string })
   if (src) {
     return (
       <iframe
-        title="HTML preview"
+        title={ui("HTML preview")}
         sandbox="allow-scripts"
         referrerPolicy="no-referrer"
         src={src}
@@ -672,7 +677,7 @@ export function HtmlPreview({ content, src }: { content: string; src?: string })
   // TRUST BOUNDARY at the top of this module.
   return (
     <iframe
-      title="HTML preview"
+      title={ui("HTML preview")}
       sandbox="allow-scripts"
       referrerPolicy="no-referrer"
       srcDoc={srcDoc}
@@ -682,6 +687,7 @@ export function HtmlPreview({ content, src }: { content: string; src?: string })
 }
 
 export function PdfPreview({ content }: { content: string }) {
+  const ui = useUiTranslations();
   // Chromium disables its PDF viewer inside any sandboxed iframe, so we cannot
   // use `sandbox` here. The data: URL gives the frame an opaque origin (no
   // cookie/DOM access) and forcing `application/pdf` prevents HTML execution
@@ -695,13 +701,17 @@ export function PdfPreview({ content }: { content: string }) {
     return (
       <div className="p-4 text-sm text-muted-foreground text-center">
         <AlertCircle className="h-8 w-8 mx-auto mb-2 text-warning" />
-        <p>Empty or invalid PDF</p>
+        <p>{ui("Empty or invalid PDF")}</p>
       </div>
     );
   }
 
   return (
-    <iframe title="PDF preview" src={dataUrl} className="w-full h-full border-0 bg-neutral-50" />
+    <iframe
+      title={ui("PDF preview")}
+      src={dataUrl}
+      className="w-full h-full border-0 bg-neutral-50"
+    />
   );
 }
 

@@ -19,12 +19,15 @@ use axum::{
 };
 use everruns_core::{Caller, ResourceConfigResponse, evaluate_policies_with};
 
+use super::command_http::CommandRouterExt;
 use super::common::{ErrorResponse, PaginatedResponse};
 use super::dispatch::Dispatchable;
 use crate::domains::common::Command;
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
+        .command::<crate::domains::virtual_users::self_profile::GetOwnVirtualUserProfile>()
+        .command::<crate::domains::virtual_users::self_profile::UpdateOwnVirtualUserProfile>()
         .route("/v1/virtual-users/config", get(virtual_user_config))
         .route("/v1/virtual-users/me", get(get_me).patch(update_me))
         .route(

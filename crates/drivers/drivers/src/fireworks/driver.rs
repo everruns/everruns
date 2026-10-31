@@ -70,20 +70,38 @@ pub fn is_fireworks_api_url(api_url: &str) -> bool {
 /// ```
 #[derive(Clone)]
 pub struct FireworksChatDriver {
-    inner: OpenAIProtocolChatDriver,
+    pub(super) inner: OpenAIProtocolChatDriver,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) batch: Option<super::FireworksBatchConfig>,
 }
 
 impl FireworksChatDriver {
+    /// Enable native dataset-backed batching for an explicitly configured account.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn with_batch(mut self, config: super::FireworksBatchConfig) -> Self {
+        self.batch = Some(config);
+        self
+    }
+
     /// Create the Fireworks-compatible Chat Completions wire driver.
     pub fn new() -> Self {
         Self {
             inner: OpenAIProtocolChatDriver::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            batch: None,
         }
     }
 }
 
 #[async_trait]
 impl ChatDriver for FireworksChatDriver {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn batch_driver(&self) -> Option<&dyn everruns_contracts::batch::BatchDriver> {
+        self.batch
+            .as_ref()
+            .map(|_| self as &dyn everruns_contracts::batch::BatchDriver)
+    }
+
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,

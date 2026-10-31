@@ -4,7 +4,7 @@ const DEFAULT_ORG_ID = "org_00000000000000000000000000000001";
 const AGENT_ID = "agent_019fd9b43fa37512b8f25226b21c2c8b";
 const HARNESS_ID = "harness_019fd9b43fa37512b8f25226b21c2c8b";
 
-async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
+async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent", chat = false) {
   await page.route("**/api/v1/**", async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     let json: unknown;
@@ -27,6 +27,7 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
       };
     } else if (pathname.endsWith("/feature-flags")) {
       json = {
+        chat_mode: chat,
         evals: true,
         plugins: true,
         voice: false,
@@ -141,6 +142,95 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
     }
 
     await route.fulfill({ json });
+  });
+}
+
+for (const scenario of [
+  { name: "split page", chat: true, width: 1280, height: 633, open: true },
+  { name: "mobile page", chat: true, width: 390, height: 633, open: false },
+  { name: "workspace off", chat: false, width: 1280, height: 633, open: false },
+]) {
+  test(`tall trigger dialog keeps Save reachable on ${scenario.name}`, async ({
+    page,
+    context,
+    baseURL,
+  }, testInfo) => {
+    await context.addCookies([
+      { name: "access_token", value: "e2e-only", domain: new URL(baseURL!).hostname, path: "/" },
+    ]);
+    await mockAgentDetailApi(page, "Jokes Agent", scenario.chat);
+    await page.route(`**/api/v1/agents/${AGENT_ID}/github`, (route) =>
+      route.fulfill({
+        json: {
+          connected: false,
+          app_created: false,
+          everruns_app_installations: [],
+          suggested_owners: [],
+          missing_permissions: [],
+        },
+      }),
+    );
+    await page.route("**/api/v1/budgets?**", (route) => route.fulfill({ json: [] }));
+    const triggerId = "trg_00000000000000000000000000000001";
+    const trigger = {
+      id: triggerId,
+      agent_id: AGENT_ID,
+      trigger_type: "schedule",
+      enabled: false,
+      config: {
+        cron_expression: "0 0 9 1 1 * *",
+        timezone: "UTC",
+        session_mode: "shared_session",
+        message: "Fictional scheduled report",
+      },
+      created_at: "2026-10-28T00:00:00Z",
+      updated_at: "2026-10-28T00:00:00Z",
+    };
+    let saved: Record<string, unknown> | undefined;
+    await page.route(`**/api/v1/agents/${AGENT_ID}/triggers**`, async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (route.request().method() === "PATCH") {
+        saved = route.request().postDataJSON();
+        trigger.config.message = saved!.message as string;
+        await route.fulfill({ json: trigger });
+      } else await route.fulfill({ json: path.endsWith("/triggers") ? [trigger] : [] });
+    });
+    await page.route(`**/api/v1/history/${triggerId}**`, (route) => route.fulfill({ json: [] }));
+    await page.setViewportSize({ width: scenario.width, height: scenario.height });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(`/agents/${AGENT_ID}?tab=integrations`);
+    await expect(page.getByRole("button", { name: "Quick edit trigger" })).toBeVisible();
+    if (scenario.open) {
+      await page.keyboard.press("Control+j");
+      await expect(page.locator(".chat-mode-shell")).toHaveAttribute("data-chat-mode", "open");
+    }
+    await page.getByRole("button", { name: "Quick edit trigger" }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit trigger" });
+    await expect(dialog).toBeVisible();
+    const bounds = scenario.chat
+      ? (await page.getByRole("region", { name: "Current page" }).boundingBox())!
+      : { x: 0, y: 0, width: scenario.width, height: scenario.height };
+    await expect
+      .poll(async () => {
+        const popup = await dialog.boundingBox();
+        return !!popup && popup.y >= bounds.y && popup.y + popup.height <= bounds.y + bounds.height;
+      })
+      .toBe(true);
+    await expect(dialog).toHaveCSS("overflow-y", "auto");
+    await dialog.getByRole("textbox", { name: "Message", exact: true }).fill("Reviewed report");
+    await dialog
+      .getByRole("button", { name: "Save changes", exact: true })
+      .scrollIntoViewIfNeeded();
+    await testInfo.attach("Scrollable trigger dialog", {
+      body: await page.screenshot(),
+      contentType: "image/png",
+    });
+    await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    expect(saved).toMatchObject({ message: "Reviewed report", enabled: false });
+    await expect(
+      page.getByRole("switch", { name: "Enable trigger", exact: true }),
+    ).not.toBeChecked();
   });
 }
 

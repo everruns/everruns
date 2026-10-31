@@ -43,6 +43,7 @@ async fn ensure_base_harness(
     db.create_harness(
         DEFAULT_ORG_ID,
         CreateHarnessRow {
+            localizations: Default::default(),
             name: "base".to_string(),
             display_name: Some("Base".to_string()),
             icon: None,
@@ -981,6 +982,7 @@ async fn tool_context_for_ctx_populates_network_access() {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "acl-test-harness".to_string(),
                 display_name: None,
                 icon: None,

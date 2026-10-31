@@ -289,6 +289,7 @@ async fn export_inner(
     let allowed = [
         "name",
         "display_name",
+        "localizations",
         "description",
         "system_prompt",
         "tags",
@@ -541,6 +542,7 @@ pub async fn request(
         package.legacy_model_id
     };
     let req = CreateAgentRequest {
+        localizations: m.localizations.clone(),
         service_virtual_user_id: None,
         id: None,
         name: m.name.clone(),

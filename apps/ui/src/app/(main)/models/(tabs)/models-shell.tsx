@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
 // Library → Models: models, the providers that serve them, and org defaults.
 //
@@ -13,6 +14,7 @@
 // drawers and notices it owns survive switching tabs. Old `?tab=` links and
 // `/settings/providers` redirect here (lib/tab-routes.ts).
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -70,7 +72,9 @@ type Selection =
   | { kind: "choose"; provider: Provider };
 
 export function ModelsShell({ children }: { children?: ReactNode }) {
-  usePageTitle("Models");
+  const requestConfirmation = useConfirmation();
+  const ui = useUiTranslations();
+  usePageTitle(ui("Models"));
   const queryClient = useQueryClient();
   const chatMode = useChatMode();
   const [applyingSelection, setApplyingSelection] = useState(false);
@@ -175,7 +179,7 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
   };
 
   const handleDelete = async (modelId: string) => {
-    if (!confirm("Are you sure you want to delete this model?")) return;
+    if (!(await requestConfirmation("Are you sure you want to delete this model?"))) return;
     await run("Failed to delete model", () => deleteModel.mutateAsync(modelId));
   };
 
@@ -237,43 +241,43 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
     {
       value: "models",
       href: tabPath("models"),
-      label: "Models",
+      label: ui("Models"),
       icon: <Cpu className="icon-sharp size-3.5" />,
       count: counts.models,
     },
     {
       value: "providers",
       href: tabPath("providers"),
-      label: "Providers",
+      label: ui("Providers"),
       icon: <PlugZap className="icon-sharp size-3.5" />,
       count: counts.providers,
     },
     {
       value: "defaults",
       href: tabPath("defaults"),
-      label: "Defaults",
+      label: ui("Defaults"),
       icon: <SlidersHorizontal className="icon-sharp size-3.5" />,
     },
   ];
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Models" }]} />
+      <PageBreadcrumb items={[{ label: ui("Models") }]} />
       <PageMasthead
         icon={<ModelsIcon />}
-        title="Models"
-        description="Connect providers and choose which of their models your agents can use."
+        title={ui("Models")}
+        description={ui("Connect providers and choose which of their models your agents can use.")}
         actions={
           canManage ? (
             <Button variant="accent" onClick={() => setConnectOpen(true)}>
               <Plus className="size-4" />
-              Connect provider
+              {ui("Connect provider")}
             </Button>
           ) : undefined
         }
       />
 
-      <SectionTabs aria-label="Models sections" value={tab} items={tabs} />
+      <SectionTabs aria-label={ui("Models sections")} value={tab} items={tabs} />
 
       {notice && (
         <Notice
@@ -287,7 +291,7 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
               className="text-xs text-muted-foreground hover:text-foreground"
               onClick={() => setNotice(null)}
             >
-              Dismiss
+              {ui("Dismiss")}
             </button>
           </NoticeDescription>
         </Notice>
@@ -362,13 +366,13 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
         onOpenChange={(open) => !open && setSelection(null)}
         title={
           selection?.kind === "choose"
-            ? `Choose ${selection.provider.name} models`
-            : "Review new models"
+            ? ui("Choose {value0} models", { value0: selection.provider.name })
+            : ui("Review new models")
         }
         description={
           selection?.kind === "choose"
-            ? "Ticked models are enabled for agents. Unticking one disables it."
-            : "These models appeared since the last review. Recommended ones are ticked."
+            ? ui("Ticked models are enabled for agents. Unticking one disables it.")
+            : ui("These models appeared since the last review. Recommended ones are ticked.")
         }
         models={selectionModels}
         mode={selection?.kind === "choose" ? "edit" : "enable"}

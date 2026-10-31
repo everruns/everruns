@@ -161,3 +161,11 @@ that already owns its API, authentication, and storage.
 
 To move to a managed, multi-tenant runtime instead, see
 [Moving to Platform or Cloud](/framework/moving-to-platform/).
+
+## Connect custom code to a control plane
+
+Use an experimental [custom agent worker](/how-to/custom-agent-workers/) when
+your binary should own private tools and model access while the self-hosted
+Platform owns user sessions, event history and tracing. The
+[data-agent walkthrough](/framework/examples/custom-data-agent/) includes
+container packaging and a real-model end-to-end smoke test.

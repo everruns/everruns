@@ -13,7 +13,7 @@ describe("i18n locale helpers", () => {
   });
 
   it("falls back to English UI copy for unsupported locales", () => {
-    expect(getSupportedLocale("fr-FR")).toBe("en");
+    expect(getSupportedLocale("ja-JP")).toBe("en");
     expect(formatMessage("en", "no_messages_yet")).toBe("No messages yet");
   });
 
@@ -31,5 +31,21 @@ describe("i18n locale helpers", () => {
     expect(formatEditCount("uk", 1)).toBe("1 зміна");
     expect(formatEditCount("uk", 3)).toBe("3 зміни");
     expect(formatEditCount("uk", 11)).toBe("11 змін");
+  });
+});
+
+describe("localized product counts", () => {
+  it("uses Ukrainian plurals after tens and teens", async () => {
+    const { formatCountLabel } = await import("@/lib/formatting");
+    for (const [count, noun] of [
+      [1, "агент"],
+      [2, "агенти"],
+      [5, "агентів"],
+      [11, "агентів"],
+      [21, "агент"],
+      [22, "агенти"],
+    ] as const) {
+      expect(formatCountLabel(count, "agent", undefined, "uk")).toBe(`${count} ${noun}`);
+    }
   });
 });

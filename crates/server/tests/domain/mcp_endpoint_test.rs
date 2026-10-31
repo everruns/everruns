@@ -2959,7 +2959,7 @@ async fn test_oauth_token_is_mcp_scoped_with_audience() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_oauth_refresh_token_rotates_and_rejects_reuse() {
+async fn test_oauth_refresh_token_rotates_with_one_grace_replay() {
     let server = TestServer::in_memory().await;
     let (client_id, client_secret) = register_oauth_client(&server).await;
     let initial: Value = issue_mcp_oauth_token_pair(&server, &client_id, &client_secret).await;
@@ -2983,18 +2983,25 @@ async fn test_oauth_refresh_token_rotates_and_rejects_reuse() {
         jwt_lifetime_secs(refreshed["access_token"].as_str().unwrap())
     );
 
+    // A replay right after rotation (lost response) is honoured once.
+    let replayed: Value =
+        refresh_mcp_oauth_token(&server, &client_id, &client_secret, &old_refresh)
+            .await
+            .assert_success()
+            .json();
+    assert_ne!(replayed["refresh_token"], refreshed["refresh_token"]);
+
     let reuse = refresh_mcp_oauth_token(&server, &client_id, &client_secret, &old_refresh).await;
     assert_eq!(reuse.status(), StatusCode::BAD_REQUEST);
-    let body: Value = reuse.json();
-    assert_eq!(body["error"], "invalid_grant");
-
+    assert_eq!(reuse.json::<Value>()["error"], "invalid_grant");
+    // A refused in-window replay revokes nothing.
     refresh_mcp_oauth_token(&server, &client_id, &client_secret, &new_refresh)
         .await
         .assert_success();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_oauth_refresh_token_concurrent_retries_are_single_use() {
+async fn test_oauth_refresh_token_concurrent_retries_both_succeed() {
     let server = TestServer::in_memory().await;
     let (client_id, client_secret) = register_oauth_client(&server).await;
     let initial: Value = issue_mcp_oauth_token_pair(&server, &client_id, &client_secret).await;
@@ -3003,33 +3010,22 @@ async fn test_oauth_refresh_token_concurrent_retries_are_single_use() {
         .expect("initial refresh_token must be present")
         .to_string();
 
+    // Two sessions of one host refreshing together must not force a reconnect:
+    // one rotates, the other takes the single grace replay.
     let (first, second) = tokio::join!(
         refresh_mcp_oauth_token(&server, &client_id, &client_secret, &refresh),
         refresh_mcp_oauth_token(&server, &client_id, &client_secret, &refresh),
     );
+    let first: Value = first.assert_success().json();
+    let second: Value = second.assert_success().json();
+    assert_ne!(first["refresh_token"], second["refresh_token"]);
 
-    let statuses = [first.status(), second.status()];
-    assert_eq!(
-        statuses.iter().filter(|status| status.is_success()).count(),
-        1,
-        "exactly one concurrent refresh should succeed: {statuses:?}",
-    );
-    assert_eq!(
-        statuses
-            .iter()
-            .filter(|status| **status == StatusCode::BAD_REQUEST)
-            .count(),
-        1,
-        "exactly one concurrent refresh should fail as invalid_grant: {statuses:?}",
-    );
-
-    let failed = if first.status().is_success() {
-        second
-    } else {
-        first
-    };
-    let body: Value = failed.json();
-    assert_eq!(body["error"], "invalid_grant");
+    for next in [&first, &second] {
+        let next = next["refresh_token"].as_str().unwrap();
+        refresh_mcp_oauth_token(&server, &client_id, &client_secret, next)
+            .await
+            .assert_success();
+    }
 }
 
 /// Helper: create a single authorization code and return the params needed to

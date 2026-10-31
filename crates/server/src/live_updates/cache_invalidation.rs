@@ -299,6 +299,7 @@ mod tests {
 
     fn harness_row(name: &str) -> CreateHarnessRow {
         CreateHarnessRow {
+            localizations: Default::default(),
             name: name.to_string(),
             display_name: None,
             icon: None,

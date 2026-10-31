@@ -57,6 +57,11 @@ pub(super) struct ToolChangeReplay {
     /// The tool list to send instead of the wanted one, when a removal is
     /// held: the wanted tools with the held ones kept in their places.
     held_tools: Option<Vec<ToolDefinition>>,
+    /// The wanted tools in declaration order: tools sent before keep their
+    /// places and new ones go last. Models that fold changes into `tools`
+    /// then keep the cached prefix up to the first new tool instead of losing
+    /// it wherever a revealed tool sorts in.
+    ordered_tools: Option<Vec<ToolDefinition>>,
 }
 
 /// When a removal may wait: the request time and how long the provider keeps
@@ -144,7 +149,7 @@ impl ToolChangeReplay {
     ) {
         config.tool_baseline = self.baseline_for(sent);
         config.system_prompt_baseline = self.system_prompt_for(sent);
-        if let Some(tools) = &self.held_tools {
+        if let Some(tools) = self.held_tools.as_ref().or(self.ordered_tools.as_ref()) {
             config.tools.clone_from(tools);
         }
     }
@@ -322,12 +327,14 @@ pub(super) fn prepare_holding(
         && !changes.removed.is_empty();
     let held_tools = (only_removes && cold.is_some_and(|cold| cold.warm_since(last_answer)))
         .then(|| with_held(&declared, wanted, &std::mem::take(&mut changes.removed)));
+    let ordered_tools = Some(in_declared_order(&declared, &changes));
     if changes.is_empty() {
         return ToolChangeReplay {
             transitions,
             baseline,
             system_prompt,
             held_tools,
+            ordered_tools,
             ..ToolChangeReplay::default()
         };
     }
@@ -344,7 +351,16 @@ pub(super) fn prepare_holding(
         system_prompt,
         unanchored: at.is_none(),
         held_tools: None,
+        ordered_tools,
     }
+}
+
+/// The declaration after `changes`: the wanted set, with tools already
+/// declared in their places and added ones after them in the order added.
+fn in_declared_order(declared: &DeclaredTools, changes: &ToolChanges) -> Vec<ToolDefinition> {
+    let mut declared = declared.clone();
+    declared.apply(changes);
+    declared.callable().cloned().collect()
 }
 
 #[cfg(test)]
@@ -417,6 +433,48 @@ mod tests {
         assert!(replay.record.is_none());
         assert_eq!(replay.transitions.len(), 1);
         assert_eq!(replay.transitions[&input].added[0].name(), "b");
+    }
+
+    /// Tools already sent keep their places and a revealed tool goes last, even
+    /// when the wanted list sorts it first, so folded `tools` only grow at the
+    /// end and the cached prefix up to them survives.
+    #[test]
+    fn revealed_tools_are_sent_after_the_ones_already_sent() {
+        use everruns_contracts::driver_registry::LlmCallConfig;
+        let order = |replay: &ToolChangeReplay, wanted: &[ToolDefinition]| {
+            let mut config = LlmCallConfig::new(MODEL);
+            config.tools = wanted.to_vec();
+            replay.apply_to(&mut config, &[]);
+            config
+                .tools
+                .iter()
+                .map(|t| t.name().to_string())
+                .collect::<Vec<_>>()
+        };
+        let mut messages = Vec::new();
+        step(&mut messages, "hi", &[tool("b", "B"), tool("d", "D")]);
+        let wanted = [
+            tool("a", "A"),
+            tool("b", "B"),
+            tool("c", "C"),
+            tool("d", "D"),
+        ];
+        let replay = step(&mut messages, "reveal a and c", &wanted);
+        assert_eq!(order(&replay, &wanted), ["b", "d", "a", "c"]);
+
+        // The next request sends the same list.
+        let replay = step(&mut messages, "next", &wanted);
+        assert_eq!(order(&replay, &wanted), ["b", "d", "a", "c"]);
+
+        // A removal together with a reveal drops the tool in place.
+        let wanted = [
+            tool("a", "A"),
+            tool("c", "C"),
+            tool("d", "D"),
+            tool("e", "E"),
+        ];
+        let replay = step(&mut messages, "swap", &wanted);
+        assert_eq!(order(&replay, &wanted), ["d", "a", "c", "e"]);
     }
 
     #[test]

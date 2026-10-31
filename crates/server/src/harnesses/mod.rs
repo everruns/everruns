@@ -22,6 +22,7 @@ mod data_analyst;
 pub mod examples;
 mod generic;
 mod levels;
+pub(crate) mod localizations;
 mod sandbox_worker;
 mod worker_base;
 
@@ -37,7 +38,7 @@ pub use examples::{
 /// Only platform-essential harnesses are listed here. Specialized harnesses
 /// (data analyst and coding) are adopted from `harness_examples()`.
 pub fn built_in_harnesses() -> Vec<BuiltInHarnessDefinition> {
-    vec![
+    let mut definitions = vec![
         base::definition(),
         levels::definition(BuiltInHarnessPreset::Conversation),
         levels::definition(BuiltInHarnessPreset::Worker),
@@ -45,7 +46,11 @@ pub fn built_in_harnesses() -> Vec<BuiltInHarnessDefinition> {
         sandbox_worker::definition(),
         worker_base::definition(),
         generic::definition(),
-    ]
+    ];
+    for definition in &mut definitions {
+        definition.localizations = localizations::for_builtin(&definition.name);
+    }
+    definitions
 }
 
 #[cfg(test)]

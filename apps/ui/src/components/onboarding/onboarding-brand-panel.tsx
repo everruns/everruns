@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Presentational navy brand panel for the onboarding shell.
  *
@@ -14,6 +16,7 @@
  * 0.13 gold opacity mirror the design frames.
  */
 import { Check } from "lucide-react";
+import { useUiTranslations } from "@/providers/locale-provider";
 
 export interface OnboardingFeature {
   label: string;
@@ -52,6 +55,7 @@ export function OnboardingBrandPanel({
   features = DEFAULT_FEATURES,
   footer = DEFAULT_FOOTER,
 }: OnboardingBrandPanelProps) {
+  const ui = useUiTranslations();
   return (
     <div className="relative hidden w-[440px] flex-shrink-0 flex-col justify-between overflow-hidden bg-primary px-9 py-10 text-primary-foreground lg:flex">
       {/* Gold dot grid */}
@@ -74,7 +78,7 @@ export function OnboardingBrandPanel({
 
       {eyebrow ? (
         <div className="relative font-mono text-[11px] uppercase tracking-[0.18em] text-accent/90">
-          {eyebrow}
+          {ui(eyebrow)}
         </div>
       ) : (
         <div className="relative" />
@@ -82,7 +86,7 @@ export function OnboardingBrandPanel({
 
       <div className="relative">
         <p className="max-w-[320px] text-[26px] font-semibold leading-[1.28] tracking-[-0.02em]">
-          {headline}
+          {ui(headline)}
         </p>
       </div>
 
@@ -104,12 +108,12 @@ export function OnboardingBrandPanel({
                   ·
                 </span>
               )}
-              {feature.label}
+              {ui(feature.label)}
             </li>
           ))}
         </ul>
         <div className="font-mono text-[11px] tracking-[0.04em] text-primary-foreground/45">
-          {footer}
+          {ui(footer)}
         </div>
       </div>
     </div>

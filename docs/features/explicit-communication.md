@@ -91,10 +91,11 @@ let agent = Agent::builder()
 The session event stream reports each sent message as
 `SessionEventKind::MessageSent { message_id, text }`. The
 [`explicit_communication`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/explicit_communication.rs)
-example runs offline and prints the sent messages separately from the notes:
+example runs against `gpt-6.1-sol`, opts into live note inspection, and prints
+the sent messages separately from the notes:
 
 ```bash
-cargo run -p everruns --example explicit_communication
+cargo run -p everruns --features openai --example explicit_communication
 ```
 
 ## The two tools
@@ -157,3 +158,37 @@ an Agent uses.
   and without calling `no_reply`, Everruns posts one short status line with a
   link to the session. A turn that calls `no_reply` stays silent.
 - Sent messages are not streamed token by token. Each one arrives complete.
+
+## Working notes and streaming
+
+Explicit Agents retain completed working notes and thinking in the session,
+without sending incremental text or thinking deltas by default. Messages sent
+through `send_message` still arrive as soon as the tool delivers them.
+Supported model drivers also use whole-response requests when the call does not
+need incremental processing.
+
+To inspect live notes for one turn, send this message control through the
+session messages API:
+
+```json
+{
+  "message": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Check the release."
+      }
+    ]
+  },
+  "controls": {
+    "hints": {
+      "output_streaming": true
+    }
+  }
+}
+```
+
+Set `output_streaming` to `false` for a consumer that only needs completed output.
+Session-level `hints` provide the default; message controls take precedence.
+Subagents default to completed output as well. Direct interactive chat keeps
+streaming by default.

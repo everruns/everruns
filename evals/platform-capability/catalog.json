@@ -581,6 +581,13 @@
         "ToolHints": {
           "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
           "properties": {
+            "capability_description": {
+              "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "capability_id": {
               "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload.",
               "type": [
@@ -846,6 +853,36 @@
     "name": "apply_model_selection",
     "output_shape": "unknown",
     "path": "/v1/models/selection",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "sandbox-templates",
+    "cli": "sandbox-templates builds apply",
+    "description": "Atomically apply a ready snapshot to its unchanged source template. Existing Agent and Session pins do not move.",
+    "input_schema": {
+      "$defs": {
+        "sbxbuildId": {
+          "description": "Prefixed identifier with 'sbxbuild' prefix",
+          "example": "sbxbuild_01933b5a000070008000000000000001",
+          "pattern": "^sbxbuild_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/sbxbuildId"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "apply_sandbox_template_build",
+    "output_shape": "unknown",
+    "path": "/v1/sandbox-template-builds/{id}/apply",
     "positional_arg": null,
     "read_only": false
   },
@@ -1195,6 +1232,36 @@
     "name": "cancel_eval_run",
     "output_shape": "unknown",
     "path": "/v1/evals/{eval_id}/runs/{run_id}/cancel",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "sandbox-templates",
+    "cli": "sandbox-templates builds cancel",
+    "description": "Cancel queued or running build work and clean up its disposable resources.",
+    "input_schema": {
+      "$defs": {
+        "sbxbuildId": {
+          "description": "Prefixed identifier with 'sbxbuild' prefix",
+          "example": "sbxbuild_01933b5a000070008000000000000001",
+          "pattern": "^sbxbuild_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/sbxbuildId"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "cancel_sandbox_template_build",
+    "output_shape": "unknown",
+    "path": "/v1/sandbox-template-builds/{id}/cancel",
     "positional_arg": null,
     "read_only": false
   },
@@ -1573,6 +1640,17 @@
                     "null"
                   ]
                 },
+                "github_account": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/SourceGitHubAccount",
+                      "description": "Development GitHub account the source reads and writes through; omitted\nprefers the caller's own GitHub, then the organization's link."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "mode": {
                   "$ref": "#/$defs/SourceMode",
                   "description": "Synchronization direction; two_way requires repository Contents write access."
@@ -1586,6 +1664,14 @@
             }
           ],
           "description": "Reviewed package location and concurrency tokens required to enable source sync."
+        },
+        "SourceGitHubAccount": {
+          "description": "Development GitHub account a source reads and writes through. Never the\nAgent's runtime GitHub identity.",
+          "enum": [
+            "personal",
+            "organization"
+          ],
+          "type": "string"
         },
         "SourceLocation": {
           "description": "Repository, branch and package path that define an Agent's GitHub source.",
@@ -2029,6 +2115,37 @@
             "always"
           ],
           "type": "string"
+        },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
         },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
@@ -2571,6 +2688,13 @@
         "ToolHints": {
           "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
           "properties": {
+            "capability_description": {
+              "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "capability_id": {
               "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload.",
               "type": [
@@ -2787,6 +2911,10 @@
             "string",
             "null"
           ]
+        },
+        "localizations": {
+          "$ref": "#/$defs/EntityLocalizations",
+          "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
         },
         "max_iterations": {
           "description": "Maximum number of LLM iterations per turn for this agent.",
@@ -4829,6 +4957,37 @@
           ],
           "type": "object"
         },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
           "properties": {
@@ -5026,6 +5185,10 @@
             "string",
             "null"
           ]
+        },
+        "localizations": {
+          "$ref": "#/$defs/EntityLocalizations",
+          "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
         },
         "mcpServers": {
           "$ref": "#/$defs/BTreeMap",
@@ -8478,6 +8641,13 @@
         "ToolHints": {
           "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
           "properties": {
+            "capability_description": {
+              "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "capability_id": {
               "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload.",
               "type": [
@@ -10003,6 +10173,30 @@
     "read_only": true
   },
   {
+    "category": "agents",
+    "cli": "agents external-worker disable",
+    "description": "Revoke external execution; queued sessions stay bound without native fallback.",
+    "input_schema": {
+      "description": "Revoke external execution without removing the persistent routing binding.",
+      "properties": {
+        "agent_id": {
+          "description": "Agent public ID or name; the HTTP route supplies this value.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "disable_external_agent",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/external-worker",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "payments",
     "cli": "payments accounts disable",
     "description": "Disable a machine-payment wallet account.",
@@ -10045,6 +10239,36 @@
     "name": "disable_payment_policy",
     "output_shape": "unknown",
     "path": "/v1/payments/policies/{payment_policy_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "sandbox-templates",
+    "cli": "sandbox-templates builds discard",
+    "description": "Remove an unused build artifact. Applied artifacts remain pinned and cannot be discarded.",
+    "input_schema": {
+      "$defs": {
+        "sbxbuildId": {
+          "description": "Prefixed identifier with 'sbxbuild' prefix",
+          "example": "sbxbuild_01933b5a000070008000000000000001",
+          "pattern": "^sbxbuild_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/sbxbuildId"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "discard_sandbox_template_build",
+    "output_shape": "unknown",
+    "path": "/v1/sandbox-template-builds/{id}/discard",
     "positional_arg": null,
     "read_only": false
   },
@@ -11148,6 +11372,14 @@
     "description": "Browse GitHub branches and Agent package paths.",
     "input_schema": {
       "$defs": {
+        "SourceGitHubAccount": {
+          "description": "Development GitHub account a source reads and writes through. Never the\nAgent's runtime GitHub identity.",
+          "enum": [
+            "personal",
+            "organization"
+          ],
+          "type": "string"
+        },
         "SourceOptionsRequest": {
           "description": "Repository location to browse before selecting an Agent source package.",
           "properties": {
@@ -11157,6 +11389,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "github_account": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SourceGitHubAccount",
+                  "description": "Development GitHub account to read through; omitted prefers the caller's own."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "path": {
@@ -11492,6 +11735,30 @@
     "output_shape": "unknown",
     "path": "/v1/durable/executions/{execution_id}",
     "positional_arg": "execution_id",
+    "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": "agents external-worker get",
+    "description": "Get an Agent's external execution endpoint.",
+    "input_schema": {
+      "description": "Identify the Agent whose external execution status should be read.",
+      "properties": {
+        "agent_id": {
+          "description": "Agent public ID or name; the HTTP route supplies this value.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_external_agent",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/external-worker",
+    "positional_arg": null,
     "read_only": true
   },
   {
@@ -12103,6 +12370,36 @@
     "name": "get_sandbox_fleet_stats",
     "output_shape": "unknown",
     "path": "/v1/sandboxes/stats",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "sandbox-templates",
+    "cli": "sandbox-templates builds get",
+    "description": "Inspect a build attempt in the authenticated organization.",
+    "input_schema": {
+      "$defs": {
+        "sbxbuildId": {
+          "description": "Prefixed identifier with 'sbxbuild' prefix",
+          "example": "sbxbuild_01933b5a000070008000000000000001",
+          "pattern": "^sbxbuild_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/sbxbuildId"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_sandbox_template_build",
+    "output_shape": "unknown",
+    "path": "/v1/sandbox-template-builds/{id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -12757,6 +13054,57 @@
     "output_shape": "unknown",
     "path": "/v1/skills/{id}/content",
     "positional_arg": "id",
+    "read_only": true
+  },
+  {
+    "category": "tracing",
+    "cli": "tracing destinations get",
+    "description": "Read safe destination metadata. Never returns receiver authentication.",
+    "input_schema": {
+      "description": "Identify a destination without reading its authentication.",
+      "properties": {
+        "id": {
+          "description": "Destination identifier owned by the current organization.",
+          "example": "00000000-0000-0000-0000-000000000001",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_tracing_destination_metadata",
+    "output_shape": "unknown",
+    "path": "/v1/tracing/destination-metadata/{id}",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "tracing",
+    "cli": "tracing routing get",
+    "description": "Read organization or agent trace routing without credentials.",
+    "input_schema": {
+      "description": "Identify the organization or agent whose routing policy should be read.",
+      "properties": {
+        "id": {
+          "description": "Organization public ID or agent public ID whose routing policy is selected.",
+          "example": "agent_01933b5a000070008000000000000001",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_tracing_policy",
+    "output_shape": "unknown",
+    "path": "/v1/tracing/policies/{id}",
+    "positional_arg": null,
     "read_only": true
   },
   {
@@ -13652,6 +14000,28 @@
     "read_only": true
   },
   {
+    "category": "agents",
+    "cli": "agents source accounts list",
+    "description": "Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_source_accounts",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/source/accounts",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "agent_triggers",
     "cli": "agents triggers deliveries list",
     "description": "List recent events delivered to an agent trigger: dispatched, filtered, duplicate or failed.",
@@ -14516,6 +14886,13 @@
                 "null"
               ]
             },
+            "tree": {
+              "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "version": {
               "format": "uuid",
               "type": [
@@ -15236,6 +15613,41 @@
     "name": "list_sandbox_targets",
     "output_shape": "unknown",
     "path": "/v1/sandbox-targets",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "sandbox-templates",
+    "cli": "sandbox-templates builds list",
+    "description": "List twenty build attempts at an optional offset, bounded logs, and captured software notes.",
+    "input_schema": {
+      "$defs": {
+        "sbxtplId": {
+          "description": "Prefixed identifier with 'sbxtpl' prefix",
+          "example": "sbxtpl_01933b5a000070008000000000000001",
+          "pattern": "^sbxtpl_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/sbxtplId"
+        },
+        "offset": {
+          "format": "int32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_sandbox_template_builds",
+    "output_shape": "array",
+    "path": "/v1/sandbox-templates/{id}/builds",
     "positional_arg": null,
     "read_only": true
   },
@@ -16567,6 +16979,344 @@
     "read_only": false
   },
   {
+    "category": "agents",
+    "cli": "agents cost-plan",
+    "description": "Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.",
+    "input_schema": {
+      "$defs": {
+        "AgentCapabilityConfig": {
+          "description": "Per-agent capability configuration\n\nAssociates a capability with an agent, including optional per-agent configuration.\nThe config field allows the same capability to behave differently per-agent.",
+          "properties": {
+            "config": {
+              "description": "Per-agent configuration for this capability (capability-specific)"
+            },
+            "ref": {
+              "description": "Reference to the capability ID",
+              "type": "string"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "type": "object"
+        },
+        "BTreeMap": {
+          "additionalProperties": {
+            "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
+            "properties": {
+              "actsAs": {
+                "$ref": "#/$defs/McpServerActsAs",
+                "description": "Identity whose grant this attachment requests."
+              },
+              "args": {
+                "description": "Arguments passed to the stdio `command`.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "auth_mode": {
+                "$ref": "#/$defs/McpServerAuthMode",
+                "description": "Authentication mode used when executing tools from this scoped server."
+              },
+              "command": {
+                "description": "Executable to spawn for a stdio transport server.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "connectInChat": {
+                "$ref": "#/$defs/McpConnectInChat",
+                "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
+              },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "elicitation_policy": {
+                "$ref": "#/$defs/McpElicitationPolicy",
+                "description": "Which elicitation modes this server may use (`url` by default)."
+              },
+              "env": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Environment variables set for the stdio `command`.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "headers": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Additional HTTP headers sent on MCP requests (HTTP transport only).",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "oauth_provider_id": {
+                "description": "Provider id used to resolve a user-scoped bearer token.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "protocol_mode": {
+                "$ref": "#/$defs/McpProtocolMode",
+                "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
+              },
+              "tool_discovery": {
+                "description": "Whether to discover tool definitions live from this server.",
+                "type": "boolean"
+              },
+              "tool_labels": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/McpToolLabel"
+                },
+                "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "type": {
+                "$ref": "#/$defs/McpServerTransportType",
+                "description": "MCP transport type. Only remote HTTP is supported today."
+              },
+              "url": {
+                "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio.",
+                "type": "string"
+              },
+              "use": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/McpServerPresetRef",
+                    "description": "Organization catalog preset that supplies transport and authentication policy."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "InitialFile": {
+          "description": "Starter file copied into a new session from an agent or harness.",
+          "properties": {
+            "content": {
+              "description": "File content: plain text or base64-encoded binary.",
+              "type": "string"
+            },
+            "encoding": {
+              "description": "Content encoding: `text` or `base64`.",
+              "type": "string"
+            },
+            "is_readonly": {
+              "description": "Prevent session-side edits or deletes when true.",
+              "type": "boolean"
+            },
+            "path": {
+              "description": "Absolute path within the session workspace. `/workspace` prefix is accepted.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ],
+          "type": "object"
+        },
+        "McpConnectInChat": {
+          "description": "Whether a missing sign-in for an agent MCP attachment may pause the turn\nwith an in-chat Connect card.\n\nDecision: `never` exists for agents behind channels that cannot render a\ncard (user MCP servers D5). The call then fails like any other tool error,\nnaming the server and where to connect it, and the turn keeps going. It\nchanges only how a missing grant is reported, never which grant is used.",
+          "enum": [
+            "ask",
+            "never"
+          ],
+          "example": "ask",
+          "type": "string"
+        },
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
+          "type": "string"
+        },
+        "McpProtocolMode": {
+          "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
+          "enum": [
+            "auto",
+            "2025-03-26",
+            "2025-06-18",
+            "2026-07-28"
+          ],
+          "example": "auto",
+          "type": "string"
+        },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user",
+            "user_or_service"
+          ],
+          "example": "service",
+          "type": "string"
+        },
+        "McpServerAuthMode": {
+          "description": "MCP server authentication mode.",
+          "enum": [
+            "none",
+            "api_key",
+            "oauth"
+          ],
+          "example": "api_key",
+          "type": "string"
+        },
+        "McpServerPresetRef": {
+          "description": "Reference to an organization MCP server catalog entry.",
+          "example": "catalog:linear",
+          "type": "string"
+        },
+        "McpServerTransportType": {
+          "description": "MCP Server transport type.",
+          "enum": [
+            "http",
+            "stdio"
+          ],
+          "example": "http",
+          "type": "string"
+        },
+        "McpToolLabel": {
+          "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+          "enum": [
+            "read_only",
+            "changes"
+          ],
+          "type": "string"
+        },
+        "PreviewAgentRequest": {
+          "description": "Request to preview the final agent shape with capabilities applied",
+          "properties": {
+            "capabilities": {
+              "description": "Capabilities to apply with per-agent configuration.",
+              "example": [
+                {
+                  "config": {},
+                  "ref": "current_time"
+                },
+                {
+                  "config": {},
+                  "ref": "test_math"
+                }
+              ],
+              "items": {
+                "$ref": "#/$defs/AgentCapabilityConfig"
+              },
+              "type": "array"
+            },
+            "harness_id": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/harnessId",
+                  "description": "Harness to layer beneath this draft. Omit to preview the agent layer alone."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "initial_files": {
+              "description": "Draft starter files; agent paths override inherited harness files.",
+              "items": {
+                "$ref": "#/$defs/InitialFile"
+              },
+              "type": "array"
+            },
+            "mcpServers": {
+              "$ref": "#/$defs/BTreeMap",
+              "description": "Remote MCP servers scoped to the previewed agent."
+            },
+            "system_prompt": {
+              "description": "The base system prompt (before capability additions)",
+              "example": "You are a helpful customer support agent.",
+              "type": "string"
+            },
+            "tools": {
+              "description": "Client-side tools to include in the preview.",
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "system_prompt"
+          ],
+          "type": "object"
+        },
+        "harnessId": {
+          "description": "Prefixed identifier with 'harness' prefix",
+          "example": "harness_01933b5a000070008000000000000001",
+          "pattern": "^harness_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "agent": {
+          "$ref": "#/$defs/PreviewAgentRequest"
+        },
+        "guidance": {
+          "description": "Optional description of the workload to plan. Empty infers typical tasks.",
+          "type": "string"
+        },
+        "locale": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "plan_agent_costs",
+    "output_shape": "unknown",
+    "path": "/v1/agents/cost-plan",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "session_tasks",
     "cli": "sessions tasks messages post",
     "description": "Send an inbound message to a session task.",
@@ -17078,6 +17828,13 @@
         "ToolHints": {
           "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
           "properties": {
+            "capability_description": {
+              "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "capability_id": {
               "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload.",
               "type": [
@@ -17265,6 +18022,14 @@
     "description": "Validate and compare a GitHub Agent package without changing the Agent.",
     "input_schema": {
       "$defs": {
+        "SourceGitHubAccount": {
+          "description": "Development GitHub account a source reads and writes through. Never the\nAgent's runtime GitHub identity.",
+          "enum": [
+            "personal",
+            "organization"
+          ],
+          "type": "string"
+        },
         "SourceLocation": {
           "description": "Repository, branch and package path that define an Agent's GitHub source.",
           "properties": {
@@ -17299,6 +18064,17 @@
           "properties": {
             "agent_id": {
               "type": "string"
+            },
+            "github_account": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SourceGitHubAccount",
+                  "description": "Development GitHub account to read through; omitted prefers the caller's own."
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -18189,6 +18965,29 @@
     "read_only": true
   },
   {
+    "category": "system",
+    "cli": "system doctor",
+    "description": "Check whether the whole install is set up right and working: database, workers, keys, messaging, storage, monitoring.",
+    "input_schema": {
+      "properties": {
+        "refresh": {
+          "description": "Run every check now instead of returning the report from the last\nminute. Refreshes closer than five seconds apart share one run.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "run_system_doctor",
+    "output_shape": "unknown",
+    "path": "/v1/system/doctor",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "knowledge",
     "cli": "knowledge search",
     "description": "Search selected knowledge collections with immutable citations.",
@@ -18705,6 +19504,153 @@
     "name": "snooze_health_issue",
     "output_shape": "unknown",
     "path": "/v1/health-issues/{issue_id}/snooze",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "sandbox-templates",
+    "cli": "sandbox-templates builds start",
+    "description": "Run an install script in fresh isolated compute and bake a reusable provider snapshot. Does not revise the template.",
+    "input_schema": {
+      "$defs": {
+        "SandboxBuildRequest": {
+          "additionalProperties": false,
+          "description": "Inputs for a single isolated installation and reusable filesystem snapshot.\nBuild compute receives no workload credentials or private Session state.",
+          "properties": {
+            "build_network": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxNetworkPolicy",
+                  "description": "Package sources for the build only. Defaults to the template policy."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "install_script": {
+              "description": "POSIX shell install script, 1–32768 UTF-8 bytes. Keep secrets out of it.",
+              "example": "python -m venv /home/daytona/.venvs/devtools\n/home/daytona/.venvs/devtools/bin/pip install httpie==3.2.4",
+              "type": "string"
+            },
+            "metadata_path": {
+              "description": "Optional bounded, author-supplied Markdown captured from the builder.",
+              "example": "/home/daytona/.everruns/sandbox.md",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source_revision_id": {
+              "description": "Source revision to guard against concurrent template edits.",
+              "example": "sbxtplrev_01933b5a000070008000000000000001",
+              "type": "string"
+            },
+            "timeout_seconds": {
+              "description": "Total build deadline, including installation and fresh verification, in seconds.",
+              "example": 600,
+              "format": "int64",
+              "maximum": 1800,
+              "minimum": 60,
+              "type": "integer"
+            },
+            "verification_command": {
+              "description": "Optional check run after installation and again in fresh snapshot compute.",
+              "example": "/home/daytona/.venvs/devtools/bin/http --version",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "source_revision_id",
+            "install_script"
+          ],
+          "type": "object"
+        },
+        "SandboxNetworkPolicy": {
+          "description": "Outbound network policy the target must actually enforce.",
+          "oneOf": [
+            {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "deny"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "allowed_hosts": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "mode": {
+                  "enum": [
+                    "allowlist"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "allowed_hosts",
+                "mode"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "allow"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "sbxtplId": {
+          "description": "Prefixed identifier with 'sbxtpl' prefix",
+          "example": "sbxtpl_01933b5a000070008000000000000001",
+          "pattern": "^sbxtpl_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SandboxBuildRequest"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/sbxtplId"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "start_sandbox_template_build",
+    "output_shape": "unknown",
+    "path": "/v1/sandbox-templates/{id}/builds",
     "positional_arg": null,
     "read_only": false
   },
@@ -19629,6 +20575,37 @@
           ],
           "type": "string"
         },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
           "properties": {
@@ -20170,6 +21147,13 @@
         "ToolHints": {
           "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
           "properties": {
+            "capability_description": {
+              "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "capability_id": {
               "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload.",
               "type": [
@@ -20390,6 +21374,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "localizations": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/EntityLocalizations",
+                  "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "max_iterations": {
@@ -22205,6 +23200,37 @@
           ],
           "type": "object"
         },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "HarnessStatus": {
           "description": "Harness lifecycle status.\n- `active`: Harness is available for use\n- `archived`: Harness is hidden from listings and cannot be modified or assigned\n- `deleted`: Harness is a tombstone kept only for historical references",
           "enum": [
@@ -22426,6 +23452,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "localizations": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/EntityLocalizations",
+                  "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "mcpServers": {
@@ -25119,6 +26156,108 @@
     "read_only": false
   },
   {
+    "category": "tracing",
+    "cli": "tracing destinations update",
+    "description": "Update safe destination metadata while preserving its receiver and current authentication.",
+    "input_schema": {
+      "description": "Change a destination name or pause state while preserving authentication.",
+      "properties": {
+        "enabled": {
+          "description": "Whether customer exports may be sent to this receiver; false pauses delivery.",
+          "example": true,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Destination identifier owned by the current organization.",
+          "example": "00000000-0000-0000-0000-000000000001",
+          "format": "uuid",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable destination name, from 1 to 128 characters.",
+          "example": "Production traces",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "PATCH",
+    "name": "update_tracing_destination_metadata",
+    "output_shape": "unknown",
+    "path": "/v1/tracing/destination-metadata/{id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "tracing",
+    "cli": "tracing routing update",
+    "description": "Set organization or agent destinations for future turns. Requires organization settings authority; never accepts credentials.",
+    "input_schema": {
+      "$defs": {
+        "RoutingMode": {
+          "description": "How an agent combines its destinations with organization defaults.",
+          "enum": [
+            "inherit",
+            "add",
+            "replace",
+            "off"
+          ],
+          "type": "string"
+        }
+      },
+      "description": "Set future-turn routing with an optional optimistic revision guard.",
+      "properties": {
+        "destination_ids": {
+          "description": "Distinct destination identifiers from this organization; at most eight selections.",
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "expected_revision": {
+          "description": "Current policy revision; omit to use the revision read during this command.",
+          "example": 1,
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Organization public ID or agent public ID whose routing policy is selected.",
+          "example": "agent_01933b5a000070008000000000000001",
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/$defs/RoutingMode",
+          "description": "Use organization defaults, add selections, replace defaults, or disable customer exports."
+        }
+      },
+      "required": [
+        "id",
+        "mode",
+        "destination_ids"
+      ],
+      "type": "object"
+    },
+    "method": "PATCH",
+    "name": "update_tracing_policy",
+    "output_shape": "unknown",
+    "path": "/v1/tracing/policies/{id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "virtual_users",
     "cli": "virtual-users update",
     "description": "Update a virtual user. Only provided fields are changed.",
@@ -25720,6 +26859,10 @@
                 "null"
               ]
             },
+            "localizations": {
+              "$ref": "#/$defs/EntityLocalizations",
+              "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+            },
             "max_iterations": {
               "description": "Maximum number of LLM iterations per turn for this agent.",
               "example": 20,
@@ -25855,6 +26998,37 @@
             "always"
           ],
           "type": "string"
+        },
+        "EntityLocalization": {
+          "additionalProperties": false,
+          "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+          "properties": {
+            "description": {
+              "description": "Localized description (1–2000 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "EntityLocalizations": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EntityLocalization"
+          },
+          "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
         },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
@@ -26397,6 +27571,13 @@
         "ToolHints": {
           "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
           "properties": {
+            "capability_description": {
+              "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "capability_id": {
               "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload.",
               "type": [
@@ -26778,6 +27959,13 @@
             "path": {
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "tree": {
+              "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+              "type": [
+                "boolean",
                 "null"
               ]
             },

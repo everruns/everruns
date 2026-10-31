@@ -13,6 +13,7 @@ Server status.
 | Command | What it does |
 |---|---|
 | [`system health`](#system-health) | Health check endpoint. |
+| [`system doctor`](#system-doctor) | Check whether the whole install is set up right and working: database, workers, keys, messaging, storage, monitoring. |
 
 ## system health
 
@@ -27,4 +28,23 @@ Example:
 ```bash
 # Check that the control plane is reachable and healthy
 everruns system health
+```
+
+## system doctor
+
+Check whether the whole install is set up right and working: database, workers, keys, messaging, storage, monitoring.
+
+```bash
+everruns system doctor [OPTIONS]
+```
+
+| Flag | Description |
+|---|---|
+| `--refresh` | Run every check now instead of returning the report from the last minute. |
+
+Example:
+
+```bash
+# Check every part of the install and list what needs fixing
+everruns system doctor --refresh true
 ```

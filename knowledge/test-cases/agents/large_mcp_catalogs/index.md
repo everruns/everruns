@@ -6,3 +6,4 @@
 * [TC004: Dynamic catalog changes and replay](TC004_dynamic_catalog_changes_and_replay.md) - Verify attachment, plugin, schema, authorization, restart, and compaction changes do not restore stale execution authority.
 * [TC005: Discovery limits and incomplete catalogs](TC005_discovery_limits_and_incomplete_catalogs.md) - Verify exact bounds are accepted and over-limit or incomplete paginated catalogs fail without appearing complete.
 * [TC006: Deferred loading limits and scope](TC006_deferred_server_loading_limits_and_scope.md) - Verify bounded deferred-server loading remains atomic and within the current turn's scope.
+* [TC007: Sparse session context](TC007_sparse_session_context.md) - Verify selected schemas, CLI help, dynamic plugins, and usage accounting stay bounded and observable.

@@ -242,3 +242,23 @@ fn field_example_coverage_does_not_regress() {
          payload without reverse-engineering the shape."
     );
 }
+
+#[test]
+fn public_conversation_reads_do_not_require_a_bearer_credential() {
+    let spec: serde_json::Value = serde_json::from_str(&ApiDoc::to_json()).unwrap();
+    for prefix in ["/v1/channels", "/v1/e"] {
+        for suffix in ["chat/config", "chat/shared/{token}"] {
+            let path = format!("{prefix}/{{channel_id}}/{suffix}");
+            assert_eq!(
+                spec["paths"][&path]["get"]["security"],
+                serde_json::json!([]),
+                "{path}"
+            );
+        }
+        let path = format!("{prefix}/{{channel_id}}/sessions/{{session_id}}/settings");
+        assert_eq!(
+            spec["paths"][&path]["post"]["security"],
+            serde_json::json!([{"AgentCredential": []}])
+        );
+    }
+}

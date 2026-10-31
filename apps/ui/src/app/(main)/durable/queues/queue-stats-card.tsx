@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ActivityTypeStats } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ export function QueueStatsCard({
   activityType: string;
   stats: ActivityTypeStats;
 }) {
+  const ui = useUiTranslations();
   const totalActive = stats.pending + stats.claimed;
   return (
     <Card>
@@ -21,29 +23,29 @@ export function QueueStatsCard({
       <CardContent>
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
-            <p className="text-muted-foreground text-xs">Pending</p>
+            <p className="text-muted-foreground text-xs">{ui("Pending")}</p>
             <p className="font-semibold text-lg">{stats.pending}</p>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">Claimed</p>
+            <p className="text-muted-foreground text-xs">{ui("Claimed")}</p>
             <p className="font-semibold text-lg">{stats.claimed}</p>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">Completed/hr</p>
+            <p className="text-muted-foreground text-xs">{ui("Completed/hr")}</p>
             <p className="font-medium">{stats.completed_last_hour}</p>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">Failed/hr</p>
+            <p className="text-muted-foreground text-xs">{ui("Failed/hr")}</p>
             <p className={cn("font-medium", stats.failed_last_hour > 0 && "text-destructive")}>
               {stats.failed_last_hour}
             </p>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">Avg Duration</p>
+            <p className="text-muted-foreground text-xs">{ui("Avg Duration")}</p>
             <p className="font-medium">{formatDurationCompact(stats.avg_duration_ms)}</p>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">p99 Duration</p>
+            <p className="text-muted-foreground text-xs">{ui("p99 Duration")}</p>
             <p className="font-medium">{formatDurationCompact(stats.p99_duration_ms)}</p>
           </div>
         </div>
@@ -56,7 +58,7 @@ export function QueueStatsCard({
               />
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stats.claimed}/{totalActive} processing
+              {stats.claimed}/{totalActive} {ui("processing")}
             </p>
           </div>
         )}

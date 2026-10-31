@@ -179,6 +179,7 @@ async fn create_harness(db: &StorageBackend) -> HarnessId {
     db.create_harness(
         everruns_core::DEFAULT_ORG_ID,
         CreateHarnessRow {
+            localizations: Default::default(),
             name: format!("acts-as-test-{}", Uuid::now_v7()),
             display_name: None,
             icon: None,
@@ -224,6 +225,7 @@ async fn create_agent_and_session(
         .create_agent(
             everruns_core::DEFAULT_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: format!("acts-as-agent-{}", Uuid::now_v7()),
                 display_name: None,

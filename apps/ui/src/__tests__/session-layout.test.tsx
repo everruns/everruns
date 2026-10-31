@@ -134,6 +134,7 @@ jest.mock("@/providers/notifications-provider", () => ({
 }));
 
 jest.mock("@/providers/locale-provider", () => ({
+  ...jest.requireActual("@/providers/locale-provider"),
   useLocale: () => ({
     locale: "en",
     t: (key: string) => (key === "fork_into_chat" ? "Fork into chat" : key),

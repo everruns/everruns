@@ -482,7 +482,45 @@ impl WorkerInfo {
             avg_task_duration_ms: None,
         }
     }
+
+    /// The worker/control-plane contract version the worker speaks, when it
+    /// said so at registration.
+    pub fn protocol_version(&self) -> Option<u32> {
+        self.metadata_field(WORKER_META_PROTOCOL_VERSION)?
+            .as_u64()
+            .and_then(|version| u32::try_from(version).ok())
+    }
+
+    /// When the worker started draining, for a draining worker.
+    pub fn draining_since(&self) -> Option<DateTime<Utc>> {
+        self.metadata_time(WORKER_META_DRAINING_SINCE)
+    }
+
+    /// The worker's latest report on its own setup
+    /// ([`WorkerRegistry::record_worker_checks`]) and when it arrived.
+    pub fn self_checks(&self) -> Option<(&serde_json::Value, DateTime<Utc>)> {
+        let checks = self.metadata_field(WORKER_META_SELF_CHECKS)?;
+        Some((checks, self.metadata_time(WORKER_META_SELF_CHECKED_AT)?))
+    }
+
+    fn metadata_field(&self, key: &str) -> Option<&serde_json::Value> {
+        self.metadata.as_ref()?.get(key)
+    }
+
+    fn metadata_time(&self, key: &str) -> Option<DateTime<Utc>> {
+        let value = self.metadata_field(key)?.as_str()?;
+        DateTime::parse_from_rfc3339(value)
+            .ok()
+            .map(|at| at.with_timezone(&Utc))
+    }
 }
+
+// Keys the registry keeps in `WorkerInfo::metadata`. Read them through the
+// `WorkerInfo` accessors above.
+pub(crate) const WORKER_META_PROTOCOL_VERSION: &str = "protocol_version";
+pub(crate) const WORKER_META_DRAINING_SINCE: &str = "draining_since";
+pub(crate) const WORKER_META_SELF_CHECKS: &str = "self_checks";
+pub(crate) const WORKER_META_SELF_CHECKED_AT: &str = "self_checked_at";
 
 /// Snapshot of total system worker capacity for fair-share claiming.
 #[derive(Debug, Clone, Default)]
@@ -858,6 +896,19 @@ pub trait WorkerRegistry: Send + Sync + 'static {
 
     /// Resume a draining worker (set status back to active, start accepting new tasks)
     async fn resume_worker(&self, worker_id: &str) -> Result<(), StoreError>;
+
+    /// Keep the worker's report on its own setup (egress proxy reachable,
+    /// control-plane connection encrypted, ...), replacing the previous one.
+    /// Operators read it back through [`WorkerInfo::self_checks`]. A store
+    /// with no operator view may keep nothing.
+    async fn record_worker_checks(
+        &self,
+        worker_id: &str,
+        checks: serde_json::Value,
+    ) -> Result<(), StoreError> {
+        let _ = (worker_id, checks);
+        Ok(())
+    }
 }
 
 /// Dead letter queue for tasks that exhausted their retries.

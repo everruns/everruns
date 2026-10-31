@@ -57,6 +57,14 @@ const MAX_SNIPPET_CHARS: usize = 500;
 pub struct CitationWebCapability;
 
 impl Capability for CitationWebCapability {
+    fn localizations(&self) -> Vec<everruns_core::capabilities::CapabilityLocalization> {
+        vec![everruns_core::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Вебджерела",
+            "Додає до тверджень відповіді посилання на джерела з вебпошуку інструмента web_search або самої моделі.",
+        )]
+    }
+
     fn id(&self) -> &str {
         CITATION_WEB_CAPABILITY_ID
     }

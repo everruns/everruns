@@ -108,6 +108,8 @@ impl Database {
         // because the caller emits session.title.updated in the same transaction.
         // Manual command transactions can already hold the session row; NOWAIT
         // below drops advisory work instead of forming a lock-order deadlock.
+        // Only non-key fields change: allow KEY SHARE locks held by concurrent
+        // foreign-key inserts, while still refusing competing session writers.
         let exists = sqlx::query_scalar::<_, i32>(
             "SELECT 1 FROM event_sequences es JOIN sessions s ON s.id = es.session_id
              WHERE s.org_id = $1 AND s.id = $2 FOR UPDATE OF es",
@@ -124,7 +126,7 @@ impl Database {
             "WITH prior AS (
                 SELECT id, title FROM sessions WHERE org_id = $1 AND id = $2
                 AND archived_at IS NULL AND (title IS NULL OR (title_is_automatic AND $5))
-                AND auto_title_sequence < $4 AND auto_title_attempt_sequence = $4 FOR UPDATE NOWAIT
+                AND auto_title_sequence < $4 AND auto_title_attempt_sequence = $4 FOR NO KEY UPDATE NOWAIT
              ) UPDATE sessions s SET title = COALESCE($3, s.title), title_is_automatic = TRUE,
                auto_title_sequence = $4,
                updated_at = CASE WHEN $3 IS NOT NULL AND $3 IS DISTINCT FROM s.title

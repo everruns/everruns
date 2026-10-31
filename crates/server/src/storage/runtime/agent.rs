@@ -58,6 +58,7 @@ impl DbAgentStore {
                     .collect();
 
                 Ok(Some(Agent {
+                    localizations: row.localizations.clone(),
                     avatar: row
                         .avatar_id
                         .map(crate::domains::agents::record::AgentAvatar::from_uuid),

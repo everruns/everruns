@@ -1122,6 +1122,12 @@ impl<A: WorkerAdapters> ImageResolver for OrgAdapter<A> {
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
         self.adapters.resolve_image(self.org_id, image_id).await
     }
+
+    async fn resolve_images(&self, image_ids: &[Uuid]) -> Result<HashMap<Uuid, ResolvedImage>> {
+        self.adapters
+            .resolve_images_batch(self.org_id, image_ids)
+            .await
+    }
 }
 
 #[async_trait]

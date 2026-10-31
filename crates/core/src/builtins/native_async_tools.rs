@@ -24,6 +24,14 @@ fn selected(config: &Value) -> Result<BTreeMap<String, Option<Value>>, String> {
 }
 #[async_trait]
 impl Capability for NativeAsyncToolsCapability {
+    fn localizations(&self) -> Vec<crate::capabilities::CapabilityLocalization> {
+        vec![crate::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Асинхронні інструменти",
+            "Виконує вибрані запити лише для читання, поки підтримувана модель продовжує міркування. Потребує надійного сховища виконавця.",
+        )]
+    }
+
     fn id(&self) -> &str {
         "native_async_tools"
     }

@@ -1,15 +1,5 @@
-// Anthropic Claude Chat Driver
-//
-// Implementation of ChatDriver for Anthropic's Claude API.
-// Uses the Messages API with streaming support.
-//
-// Rate limit handling: On 429 errors, the driver automatically retries with
-// exponential backoff, respecting the retry-after header if provided.
-// Retry metadata is included in the response for observability.
-//
-// Note: OTel instrumentation is handled via the event-listener pattern.
-// llm.generation events are emitted by ReasonAtom, and OtelEventListener
-// creates the appropriate gen-ai spans. No direct tracing in drivers.
+// Anthropic Messages driver. Streaming and whole responses share request
+// construction, reasoning replay and accounting; event listeners own OTel.
 
 use reqwest::Client;
 use serde::ser::SerializeStruct;
@@ -891,6 +881,7 @@ impl AnthropicChatDriver {
 }
 
 mod chat_driver;
+mod non_streaming;
 
 impl std::fmt::Debug for AnthropicChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

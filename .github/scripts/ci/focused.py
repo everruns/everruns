@@ -48,6 +48,20 @@ def affected(packages, paths, root):
 
 def risk_filters(paths):
     filters = set()
+    if any(p.startswith(('crates/server/src/domains/change_history/',
+                         'crates/server/src/storage/entity_changes',
+                         'crates/server/src/storage/manager_context',
+                         'crates/server/src/storage/repositories/entity_changes',
+                         'crates/server/src/storage/repositories/manager_context'))
+           or p in ('crates/server/src/api/history.rs',
+                    'crates/server/src/api/manager_context.rs',
+                    'crates/server/src/domains/common/mod.rs',
+                    'crates/server/src/storage/transaction.rs',
+                    'crates/server/tests/domain/change_history_test.rs',
+                    '.github/scripts/ci/focused.py') for p in paths):
+        # History/context writes must retain their baseline and revision guards
+        # across the real REST and command adapters, not just unit fixtures.
+        filters.add('change_history_test::')
     if any(p.startswith('crates/server/src/domains/knowledge/')
            or p in ('crates/server/src/api/knowledge.rs',
                     'crates/server/src/api/agent_api/work_chat.rs',
@@ -76,6 +90,8 @@ def risk_filters(paths):
         filters.update(['auth_integration_test::', 'org_isolation_test::',
                         'db_pool_isolation_test::', 'service_mcp_oauth_lifecycle_test::',
                         'migration_baseline_test::', 'migration_history_test::'])
+    if 'crates/server/tests/domain/db_pool_isolation_test.rs' in paths:
+        filters.add('db_pool_isolation_test::')
     return sorted(filters)
 
 
@@ -88,7 +104,16 @@ def real_server_targets(paths):
            or p in ('crates/server/src/storage/test_database.rs',
                     'crates/server/src/setup/storage_init.rs') for p in paths):
         return targets
-    return [target for target in targets if f'crates/server/tests/{target}.rs' in paths]
+    selected = {target for target in targets if f'crates/server/tests/{target}.rs' in paths}
+    if any(p.startswith(('crates/server/src/api/',
+                         'crates/server/src/domains/',
+                         'crates/server/src/app_builder/',
+                         'crates/server-macros/'))
+           or p == '.github/scripts/ci/focused.py' for p in paths):
+        # OpenAPI command declarations do not mount handlers. Exercise the
+        # production router and its token scopes before merging route changes.
+        selected.add('pat_scope_sweep_test')
+    return [target for target in targets if target in selected]
 
 
 def select(metadata, paths, root):

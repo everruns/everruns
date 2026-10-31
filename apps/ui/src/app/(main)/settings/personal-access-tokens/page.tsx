@@ -1,5 +1,7 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { TokenIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
@@ -106,9 +108,12 @@ function PersonalAccessTokenRow({
   token: PersonalAccessTokenListItem;
   onDelete: (id: string) => void;
 }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const formatDate = (dateStr: string | undefined) => {
     if (!dateStr) return "Never";
-    return new Date(dateStr).toLocaleDateString();
+    return new Date(dateStr).toLocaleDateString(displayLocale);
   };
 
   return (
@@ -128,11 +133,11 @@ function PersonalAccessTokenRow({
         </Badge>
         <div className="text-sm text-muted-foreground">
           <Clock className="h-3 w-3 inline mr-1" />
-          Last used: {formatDate(token.last_used_at)}
+          {ui("Last used:")} {formatDate(token.last_used_at)}
         </div>
         {token.expires_at && (
           <Badge variant="outline" className="text-xs">
-            Expires: {formatDate(token.expires_at)}
+            {ui("Expires:")} {formatDate(token.expires_at)}
           </Badge>
         )}
         <Button
@@ -157,6 +162,7 @@ function CreatePersonalAccessTokenDialog({
   onOpenChange: (open: boolean) => void;
   onTokenCreated: (token: string) => void;
 }) {
+  const ui = useUiTranslations();
   const [name, setName] = useState("");
   const [scope, setScope] = useState<TokenScope>(DEFAULT_TOKEN_SCOPE);
   const [expiryPreset, setExpiryPreset] = useState<TokenExpiryValue>(DEFAULT_TOKEN_EXPIRY);
@@ -175,7 +181,7 @@ function CreatePersonalAccessTokenDialog({
     values: { name, scope, expiration_days: neverExpires ? "never" : String(expiresInDays ?? "") },
     readonlyFields: ["scope", "expiration_days"],
     entityType: "personal_access_token",
-    label: "Create token",
+    label: ui("Create token"),
     priority: 30,
     enabled: open,
     baseline: "new",
@@ -216,27 +222,27 @@ function CreatePersonalAccessTokenDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create personal access token</DialogTitle>
+          <DialogTitle>{ui("Create personal access token")}</DialogTitle>
           <DialogDescription>
-            Personal access tokens are tied to your user account, not to an organization. The token
-            inherits access to every organization and resource available to your account, limited by
-            the access you choose below.
+            {ui(
+              "Personal access tokens are tied to your user account, not to an organization. The token inherits access to every organization and resource available to your account, limited by the access you choose below.",
+            )}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {chat.notice}
           <div className="space-y-2">
-            <Label htmlFor="token-name">Name</Label>
+            <Label htmlFor="token-name">{ui("Name")}</Label>
             <Input
               id="token-name"
               value={name}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-              placeholder="My personal access token"
+              placeholder={ui("My personal access token")}
               required
             />
           </div>
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Access</legend>
+            <legend className="text-sm font-medium">{ui("Access")}</legend>
             {TOKEN_SCOPES.map((option) => (
               <label
                 key={option.value}
@@ -266,8 +272,8 @@ function CreatePersonalAccessTokenDialog({
             ))}
           </fieldset>
           <div className="space-y-2">
-            <Label>Expiration</Label>
-            <div className="flex" role="group" aria-label="Expiration">
+            <Label>{ui("Expiration")}</Label>
+            <div className="flex" role="group" aria-label={ui("Expiration")}>
               {TOKEN_EXPIRY_PRESETS.map((preset, index) => {
                 const selected = !neverExpires && preset.value === expiryPreset;
                 return (
@@ -300,9 +306,9 @@ function CreatePersonalAccessTokenDialog({
                   }
                   placeholder="45"
                   className="w-24"
-                  aria-label="Days until expiration"
+                  aria-label={ui("Days until expiration")}
                 />
-                <span className="text-sm text-muted-foreground">days</span>
+                <span className="text-sm text-muted-foreground">{ui("days")}</span>
               </div>
             )}
             <p className="text-xs text-muted-foreground" aria-live="polite">
@@ -310,7 +316,7 @@ function CreatePersonalAccessTokenDialog({
                 "This token never expires. Use only when you own the rotation process."
               ) : expiresInDays !== undefined ? (
                 <>
-                  Expires on{" "}
+                  {ui("Expires on")}{" "}
                   <span className="font-medium text-foreground">
                     {formatExpiryDate(expiresInDays)}
                   </span>
@@ -327,16 +333,17 @@ function CreatePersonalAccessTokenDialog({
                 onCheckedChange={setNeverExpires}
               />
               <Label htmlFor="token-never-expires" className="text-sm font-normal">
-                Never expires <span className="text-destructive">(not recommended)</span>
+                {ui("Never expires")}{" "}
+                <span className="text-destructive">{ui("(not recommended)")}</span>
               </Label>
             </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button type="submit" disabled={createToken.isPending || !name || !expiryValid}>
-              {createToken.isPending ? "Creating..." : "Create token"}
+              {createToken.isPending ? ui("Creating...") : ui("Create token")}
             </Button>
           </DialogFooter>
         </form>
@@ -354,6 +361,7 @@ function ShowPersonalAccessTokenDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -368,9 +376,9 @@ function ShowPersonalAccessTokenDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent chatProtected="Created token" className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Personal access token created</DialogTitle>
+          <DialogTitle>{ui("Personal access token created")}</DialogTitle>
           <DialogDescription>
-            Copy your token now. You won&apos;t be able to see it again!
+            {ui("Copy your token now. You won't be able to see it again!")}
           </DialogDescription>
         </DialogHeader>
         <div className="flex items-center gap-2">
@@ -382,14 +390,14 @@ function ShowPersonalAccessTokenDialog({
             variant="outline"
             size="icon"
             className="shrink-0"
-            aria-label={copied ? "Token copied" : "Copy token"}
-            title={copied ? "Token copied" : "Copy token"}
+            aria-label={copied ? ui("Token copied") : ui("Copy token")}
+            title={copied ? ui("Token copied") : ui("Copy token")}
           >
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </Button>
         </div>
         <DialogFooter>
-          <Button onClick={() => onOpenChange(false)}>Done</Button>
+          <Button onClick={() => onOpenChange(false)}>{ui("Done")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -397,7 +405,9 @@ function ShowPersonalAccessTokenDialog({
 }
 
 export default function PersonalAccessTokensPage() {
-  usePageTitle("Personal access tokens", "Settings");
+  const requestConfirmation = useConfirmation();
+  const ui = useUiTranslations();
+  usePageTitle(ui("Personal access tokens"), ui("Settings"));
   const { requiresAuth } = useAuth();
   const {
     data: userTokens,
@@ -411,7 +421,7 @@ export default function PersonalAccessTokensPage() {
 
   const handleDeleteToken = async (id: string) => {
     if (
-      confirm(
+      await requestConfirmation(
         "Are you sure you want to delete this personal access token? This action cannot be undone.",
       )
     ) {
@@ -430,17 +440,18 @@ export default function PersonalAccessTokensPage() {
       <div className="space-y-8">
         <section>
           <div className="mb-4">
-            <h2 className="text-xl font-semibold">Personal access tokens</h2>
+            <h2 className="text-xl font-semibold">{ui("Personal access tokens")}</h2>
             <p className="text-sm text-muted-foreground">
-              Manage your personal access tokens for programmatic access.
+              {ui("Manage your personal access tokens for programmatic access.")}
             </p>
           </div>
           <Card className="p-8 text-center">
             <ShieldAlert className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Authentication Disabled</h3>
+            <h3 className="text-lg font-medium mb-2">{ui("Authentication Disabled")}</h3>
             <p className="text-muted-foreground">
-              Personal access tokens are only available when authentication is enabled. Contact your
-              administrator to enable authentication.
+              {ui(
+                "Personal access tokens are only available when authentication is enabled. Contact your administrator to enable authentication.",
+              )}
             </p>
           </Card>
         </section>
@@ -453,15 +464,16 @@ export default function PersonalAccessTokensPage() {
       <section>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-xl font-semibold">Personal access tokens</h2>
+            <h2 className="text-xl font-semibold">{ui("Personal access tokens")}</h2>
             <p className="text-sm text-muted-foreground">
-              Manage your personal access tokens for programmatic access. Tokens are tied to your
-              user account, not to an organization.
+              {ui(
+                "Manage your personal access tokens for programmatic access. Tokens are tied to your user account, not to an organization.",
+              )}
             </p>
           </div>
           <Button onClick={() => setCreateTokenOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Create token
+            {ui("Create token")}
           </Button>
         </div>
 
@@ -470,12 +482,11 @@ export default function PersonalAccessTokensPage() {
           icon={<ShieldAlert className="h-5 w-5 shrink-0" aria-hidden="true" />}
           className="mb-4"
         >
-          <NoticeTitle>Account-wide access</NoticeTitle>
+          <NoticeTitle>{ui("Account-wide access")}</NoticeTitle>
           <NoticeDescription>
-            Personal access tokens are tied to your user account (not an organization) and reach
-            every organization available to your account. A full-access token can do anything you
-            can; a read-only token can still read everything you can. Treat both like passwords
-            &mdash; do not share or commit them to source control.
+            {ui(
+              "Personal access tokens are tied to your user account (not an organization) and reach every organization available to your account. A full-access token can do anything you can; a read-only token can still read everything you can. Treat both like passwords — do not share or commit them to source control.",
+            )}
           </NoticeDescription>
         </Notice>
 
@@ -494,13 +505,13 @@ export default function PersonalAccessTokensPage() {
           emptyState={
             <Card className="p-8 text-center">
               <TokenIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No personal access tokens</h3>
+              <h3 className="text-lg font-medium mb-2">{ui("No personal access tokens")}</h3>
               <p className="text-muted-foreground mb-4">
-                Create a personal access token to access the Everruns API programmatically.
+                {ui("Create a personal access token to access the Everruns API programmatically.")}
               </p>
               <Button onClick={() => setCreateTokenOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Create token
+                {ui("Create token")}
               </Button>
             </Card>
           }

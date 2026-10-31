@@ -367,6 +367,10 @@ impl Database {
                 UNION ALL
                 SELECT 1 FROM leased_resources
                 WHERE connection_id = $2 AND status <> 'released'
+                UNION ALL
+                SELECT 1 FROM sandbox_template_builds
+                WHERE record #>> '{source_spec,target,credential,connection_id}' = $1
+                  AND (status IN ('queued','running','ready') OR cleanup_pending)
             )"#,
         )
         .bind(connection_id.to_string())

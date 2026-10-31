@@ -94,7 +94,7 @@ pub fn completions_provider(
 /// ```
 #[derive(Clone)]
 pub struct OpenAIChatDriver {
-    inner: OpenResponsesProtocolChatDriver,
+    pub(crate) inner: OpenResponsesProtocolChatDriver,
 }
 
 impl OpenAIChatDriver {
@@ -193,6 +193,11 @@ impl OpenAIChatDriver {
 
 #[async_trait]
 impl ChatDriver for OpenAIChatDriver {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn batch_driver(&self) -> Option<&dyn everruns_contracts::batch::BatchDriver> {
+        Some(self)
+    }
+
     fn native_async_driver(
         &self,
         model: &str,
@@ -250,9 +255,11 @@ impl ChatDriver for OpenAIChatDriver {
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
-        self.inner
-            .chat_completion_non_streaming(endpoint, messages, config)
-            .await
+        let mut config = config.clone();
+        config.prefer_non_streaming = true;
+        // Keep the endpoint-specific feature gates in `chat_completion_stream`
+        // when a completion selects whole-response transport.
+        self.chat_completion(endpoint, messages, &config).await
     }
 
     async fn list_models(
@@ -340,7 +347,7 @@ impl std::fmt::Debug for OpenAIChatDriver {
 /// ```
 #[derive(Clone)]
 pub struct OpenAICompletionsChatDriver {
-    inner: OpenAIProtocolChatDriver,
+    pub(crate) inner: OpenAIProtocolChatDriver,
 }
 
 impl OpenAICompletionsChatDriver {
@@ -380,6 +387,11 @@ impl OpenAICompletionsChatDriver {
 
 #[async_trait]
 impl ChatDriver for OpenAICompletionsChatDriver {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn batch_driver(&self) -> Option<&dyn everruns_contracts::batch::BatchDriver> {
+        Some(self)
+    }
+
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,

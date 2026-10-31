@@ -1,5 +1,13 @@
 "use client";
+import {
+  Select as SharedSelect,
+  SelectTrigger as SharedSelectTrigger,
+  SelectContent as SharedSelectContent,
+  SelectValue as SharedSelectValue,
+  SelectItem as SharedSelectItem,
+} from "@/components/ui/select";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { use, useState, useCallback } from "react";
@@ -79,18 +87,19 @@ function scorerLabel(scorer: Scorer): string {
 }
 
 function TargetBadge({ target }: { target?: EvalTarget }) {
+  const ui = useUiTranslations();
   if (!target) return null;
   switch (target.type) {
     case "session":
       return (
         <Badge variant="outline" className="text-xs">
-          session
+          {ui("session")}
         </Badge>
       );
     case "app":
       return (
         <Badge variant="outline" className="text-xs">
-          app: {target.app_id}
+          {ui("app:")} {target.app_id}
         </Badge>
       );
     default:
@@ -107,6 +116,7 @@ function CaseCard({
   onDelete: (id: string) => void;
   deleting: boolean;
 }) {
+  const ui = useUiTranslations();
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -128,12 +138,12 @@ function CaseCard({
         )}
         {evalCase.target && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Target override:</span>
+            <span className="text-xs text-muted-foreground">{ui("Target override:")}</span>
             <TargetBadge target={evalCase.target} />
           </div>
         )}
         <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">Messages</p>
+          <p className="text-xs font-medium text-muted-foreground">{ui("Messages")}</p>
           {evalCase.conversation.map((msg, i) => (
             <div key={i} className="text-sm bg-muted/50 rounded px-2 py-1">
               {msg.content}
@@ -141,7 +151,7 @@ function CaseCard({
           ))}
         </div>
         <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">Scorers</p>
+          <p className="text-xs font-medium text-muted-foreground">{ui("Scorers")}</p>
           <div className="flex flex-wrap gap-1">
             {evalCase.scorers.map((scorer, i) => (
               <Badge key={i} variant="outline" className="text-xs font-mono">
@@ -152,8 +162,16 @@ function CaseCard({
         </div>
         {(evalCase.max_turns || evalCase.timeout_seconds) && (
           <div className="flex gap-3 text-xs text-muted-foreground">
-            {evalCase.max_turns && <span>Max turns: {evalCase.max_turns}</span>}
-            {evalCase.timeout_seconds && <span>Timeout: {evalCase.timeout_seconds}s</span>}
+            {evalCase.max_turns && (
+              <span>
+                {ui("Max turns:")} {evalCase.max_turns}
+              </span>
+            )}
+            {evalCase.timeout_seconds && (
+              <span>
+                {ui("Timeout:")} {evalCase.timeout_seconds}s
+              </span>
+            )}
           </div>
         )}
         {evalCase.tags.length > 0 && (
@@ -181,6 +199,9 @@ function RunRow({
   selected?: boolean;
   onToggleSelect?: (runId: string) => void;
 }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   return (
     <div className="flex items-center gap-3">
       {onToggleSelect && (
@@ -198,19 +219,22 @@ function RunRow({
             <div className="flex items-center gap-4">
               <Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>
               <span className="text-sm text-muted-foreground">
-                {new Date(run.created_at).toLocaleString()}
+                {new Date(run.created_at).toLocaleString(displayLocale)}
               </span>
-              <span className="text-xs text-muted-foreground">by {run.triggered_by}</span>
+              <span className="text-xs text-muted-foreground">
+                {ui("by")} {run.triggered_by}
+              </span>
               {run.target && <TargetBadge target={run.target} />}
             </div>
             <div className="flex items-center gap-4 text-sm">
               {run.summary && (
                 <>
                   <span className={passRateColor(run.summary.pass_rate)}>
-                    {(run.summary.pass_rate * 100).toFixed(0)}% pass
+                    {(run.summary.pass_rate * 100).toFixed(0)}
+                    {ui("% pass")}
                   </span>
                   <span className="text-muted-foreground">
-                    {run.summary.passed}/{run.summary.total} passed
+                    {run.summary.passed}/{run.summary.total} {ui("passed")}
                   </span>
                 </>
               )}
@@ -223,6 +247,7 @@ function RunRow({
 }
 
 function AddCaseForm({ evalId, onCreated }: { evalId: string; onCreated: () => void }) {
+  const ui = useUiTranslations();
   const createCase = useCreateEvalCase(evalId);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -235,7 +260,7 @@ function AddCaseForm({ evalId, onCreated }: { evalId: string; onCreated: () => v
     schema: evalCaseDraftSchema,
     entityType: "eval_case",
     entityId: evalId,
-    label: "Add test case",
+    label: ui("Add test case"),
     formId: "new_case",
     baseline: "new",
     dirty:
@@ -302,35 +327,35 @@ function AddCaseForm({ evalId, onCreated }: { evalId: string; onCreated: () => v
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Add Test Case</CardTitle>
+        <CardTitle className="text-base">{ui("Add Test Case")}</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           {chat.notice}
           <div className="space-y-2">
-            <Label htmlFor="case-name">Name</Label>
+            <Label htmlFor="case-name">{ui("Name")}</Label>
             <Input
               id="case-name"
-              placeholder="Test case name"
+              placeholder={ui("Test case name")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="case-description">Description (optional)</Label>
+            <Label htmlFor="case-description">{ui("Description (optional)")}</Label>
             <Input
               id="case-description"
-              placeholder="What this test verifies"
+              placeholder={ui("What this test verifies")}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="case-messages">Messages (one per line)</Label>
+            <Label htmlFor="case-messages">{ui("Messages (one per line)")}</Label>
             <Textarea
               id="case-messages"
-              placeholder="Hello, can you help me write a Python script?"
+              placeholder={ui("Hello, can you help me write a Python script?")}
               value={messageContent}
               onChange={(e) => setMessageContent(e.target.value)}
               rows={3}
@@ -338,30 +363,39 @@ function AddCaseForm({ evalId, onCreated }: { evalId: string; onCreated: () => v
             />
           </div>
           <div className="space-y-2">
-            <Label>Scorers</Label>
+            <Label>{ui("Scorers")}</Label>
             <div className="flex gap-2">
-              <select
-                value={scorerType}
-                onChange={(e) => setScorerType(e.target.value as typeof scorerType)}
-                className="border rounded px-2 py-1 text-sm bg-background"
+              <SharedSelect
+                value={String(scorerType)}
+                onValueChange={(selection) => setScorerType(selection as typeof scorerType)}
               >
-                <option value="contains">contains</option>
-                <option value="not_contains">not_contains</option>
-                <option value="regex">regex</option>
-                <option value="tool_called">tool_called</option>
-              </select>
+                <SharedSelectTrigger
+                  className="border rounded px-2 py-1 text-sm bg-background"
+                  aria-label="Scorer type"
+                >
+                  <SharedSelectValue />
+                </SharedSelectTrigger>
+                <SharedSelectContent>
+                  <SharedSelectItem value="contains">{ui("contains")}</SharedSelectItem>
+                  <SharedSelectItem value="not_contains">not_contains</SharedSelectItem>
+                  <SharedSelectItem value="regex">{ui("regex")}</SharedSelectItem>
+                  <SharedSelectItem value="tool_called">tool_called</SharedSelectItem>
+                </SharedSelectContent>
+              </SharedSelect>
               <Input
-                placeholder="Value (comma-separated for multiple)"
+                placeholder={ui("Value (comma-separated for multiple)")}
                 value={scorerValue}
                 onChange={(e) => setScorerValue(e.target.value)}
               />
             </div>
           </div>
           <Button type="submit" size="sm" disabled={chat.blocked || createCase.isPending}>
-            {createCase.isPending ? "Adding..." : "Add Case"}
+            {createCase.isPending ? ui("Adding...") : ui("Add Case")}
           </Button>
           {createCase.error && (
-            <p className="text-sm text-destructive">Error: {createCase.error.message}</p>
+            <p className="text-sm text-destructive">
+              {ui("Error:")} {createCase.error.message}
+            </p>
           )}
         </form>
       </CardContent>
@@ -370,6 +404,7 @@ function AddCaseForm({ evalId, onCreated }: { evalId: string; onCreated: () => v
 }
 
 export default function EvalDetailPage({ params }: { params: Promise<{ evalId: string }> }) {
+  const ui = useUiTranslations();
   const { evalId } = use(params);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("cases");
@@ -385,7 +420,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
     );
 
   const { data: ev, isLoading: evalLoading } = useEval(evalId);
-  usePageTitle(ev?.name ?? null, "Eval");
+  usePageTitle(ev?.name ?? null, ui("Eval"));
   const { data: cases, isLoading: casesLoading } = useEvalCases(evalId);
   const { data: runs, isLoading: runsLoading } = useEvalRuns(evalId);
   const deleteCase = useDeleteEvalCase(evalId);
@@ -424,8 +459,10 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
   if (!ev) {
     return (
       <ResourceNotFound
-        title="Eval not found"
-        description="This eval may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Eval not found")}
+        description={ui(
+          "This eval may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref="/evals"
         backLabel="Back to evals"
         resourceId={evalId}
@@ -440,7 +477,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Evals
+        {ui("Back to Evals")}
       </Link>
 
       <div className="flex items-start justify-between mb-6">
@@ -454,7 +491,9 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
           {ev.description && <p className="text-muted-foreground mt-1">{ev.description}</p>}
           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
             <TargetBadge target={ev.target} />
-            <span>{ev.case_count} cases</span>
+            <span>
+              {ev.case_count} {ui("cases")}
+            </span>
             {ev.tags.length > 0 && (
               <div className="flex gap-1">
                 {ev.tags.map((tag) => (
@@ -467,10 +506,11 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
           </div>
           {ev.last_run?.summary && (
             <div className="flex items-center gap-3 mt-2 text-sm">
-              <span>Last run:</span>
+              <span>{ui("Last run:")}</span>
               <Badge variant={runStatusVariant(ev.last_run.status)}>{ev.last_run.status}</Badge>
               <span className={passRateColor(ev.last_run.summary.pass_rate)}>
-                {(ev.last_run.summary.pass_rate * 100).toFixed(0)}% pass rate
+                {(ev.last_run.summary.pass_rate * 100).toFixed(0)}
+                {ui("% pass rate")}
               </span>
             </div>
           )}
@@ -478,7 +518,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
         <div className="flex gap-2">
           <LinkButton variant="outline" href={`/evals/${evalId}/edit`}>
             <Pencil className="w-4 h-4 mr-2" />
-            Edit
+            {ui("Edit")}
           </LinkButton>
           <Button
             variant="accent"
@@ -486,7 +526,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
             disabled={createRun.isPending || ev.status !== "active"}
           >
             <Play className="w-4 h-4 mr-2" />
-            {createRun.isPending ? "Starting..." : "Run Eval"}
+            {createRun.isPending ? ui("Starting...") : ui("Run Eval")}
           </Button>
           <EntityActionsMenu
             entityRef={ev.id}
@@ -501,11 +541,13 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
         <TabsList className="mb-6">
           <TabsTrigger value="cases">
             <ListChecks className="w-4 h-4 mr-2" />
-            Cases ({cases?.length ?? 0})
+            {ui("Cases (")}
+            {cases?.length ?? 0})
           </TabsTrigger>
           <TabsTrigger value="runs">
             <BarChart3 className="w-4 h-4 mr-2" />
-            Runs ({runs?.length ?? 0})
+            {ui("Runs (")}
+            {runs?.length ?? 0})
           </TabsTrigger>
         </TabsList>
 
@@ -519,7 +561,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
                 onClick={() => setShowAddCase(!showAddCase)}
               >
                 <Plus className="w-4 h-4 mr-2" />
-                {showAddCase ? "Cancel" : "Add Case"}
+                {showAddCase ? ui("Cancel") : ui("Add Case")}
               </Button>
             </div>
 
@@ -534,10 +576,10 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
               </div>
             ) : !cases || cases.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-muted-foreground mb-4">No test cases yet</p>
+                <p className="text-muted-foreground mb-4">{ui("No test cases yet")}</p>
                 <Button onClick={() => setShowAddCase(true)}>
                   <Plus className="w-4 h-4 mr-2" />
-                  Add your first test case
+                  {ui("Add your first test case")}
                 </Button>
               </div>
             ) : (
@@ -564,17 +606,17 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
               </div>
             ) : !runs || runs.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-muted-foreground mb-4">No runs yet</p>
+                <p className="text-muted-foreground mb-4">{ui("No runs yet")}</p>
                 <Button onClick={handleStartRun} disabled={createRun.isPending}>
                   <Play className="w-4 h-4 mr-2" />
-                  Start your first run
+                  {ui("Start your first run")}
                 </Button>
               </div>
             ) : (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-muted-foreground">
-                    Select runs to compare them case by case.
+                    {ui("Select runs to compare them case by case.")}
                   </p>
                   <Button
                     size="sm"
@@ -584,7 +626,8 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
                       router.push(`/evals/${evalId}/compare?runs=${selectedRuns.join(",")}`)
                     }
                   >
-                    Compare ({selectedRuns.length})
+                    {ui("Compare (")}
+                    {selectedRuns.length})
                   </Button>
                 </div>
                 {runs.map((run) => (

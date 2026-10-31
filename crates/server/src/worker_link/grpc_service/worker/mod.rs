@@ -11,6 +11,7 @@ mod actors;
 mod artifacts;
 pub(crate) mod commands;
 mod credentials;
+mod detached_calls;
 mod durable;
 mod events;
 mod leases;

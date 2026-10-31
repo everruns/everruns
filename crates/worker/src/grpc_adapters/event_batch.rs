@@ -12,6 +12,7 @@ fn proto_fence(fence: &ActorFence) -> proto::ActorFence {
     proto::ActorFence {
         holder: fence.holder.clone(),
         fence: fence.fence_i64(),
+        detached_tool_call_id: fence.detached_tool_call_id.clone(),
     }
 }
 

@@ -288,6 +288,24 @@ pub trait UserConnectionResolver: Send + Sync {
         Ok(None)
     }
 
+    /// Resolve a GitHub token through one exact connection of `owner`, outside
+    /// a session, limited to `access.repositories` and `access.permissions`.
+    /// Used where the caller already selected and recorded the connection (an
+    /// Agent source binding), so an owner holding several GitHub connections
+    /// (the org's shared App links) never answers with a different one.
+    ///
+    /// THREAT[TM-GITHUB-006]: fail-closed by default, like
+    /// [`Self::get_github_token`].
+    async fn get_github_token_for_connection(
+        &self,
+        _org_id: i64,
+        _owner: Uuid,
+        _connection_id: Uuid,
+        _access: &GitHubAccess,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Invalidate an MCP credential after the remote server rejects it.
     ///
     /// Implementations that own persistent grants can remove the credential

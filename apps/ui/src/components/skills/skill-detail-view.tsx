@@ -1,5 +1,6 @@
 "use client";
 
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Archive, FileText, FolderTree, Info, ScrollText } from "lucide-react";
@@ -31,6 +32,8 @@ export function SkillDetailView({
   contentLoading,
   contentError,
 }: SkillDetailViewProps) {
+  const ui = useUiTranslations();
+  const { displayLocale } = useLocale();
   const [activeTab, setActiveTab] = useState<SkillDetailTab>("overview");
   const split = useMemo(
     () => (content ? splitFrontmatter(content.skill_md) : { frontmatter: "", body: "" }),
@@ -47,15 +50,15 @@ export function SkillDetailView({
       <TabsList>
         <TabsTrigger value="overview">
           <Info className="mr-2 h-4 w-4" />
-          Overview
+          {ui("Overview")}
         </TabsTrigger>
         <TabsTrigger value="instructions">
           <ScrollText className="mr-2 h-4 w-4" />
-          Instructions
+          {ui("Instructions")}
         </TabsTrigger>
         <TabsTrigger value="files">
           <FolderTree className="mr-2 h-4 w-4" />
-          Files
+          {ui("Files")}
         </TabsTrigger>
       </TabsList>
 
@@ -68,23 +71,27 @@ export function SkillDetailView({
               ) : (
                 <FileText className="h-5 w-5 text-primary" />
               )}
-              Details
+              {ui("Details")}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <section className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm md:grid-cols-2">
-              <DetailField label="Status">
+              <DetailField label={ui("Status")}>
                 <Badge variant={getEntityStatusBadgeVariant(skill.status)}>{skill.status}</Badge>
               </DetailField>
-              <DetailField label="Source">{skill.source_type}</DetailField>
-              <DetailField label="Version">{skill.version}</DetailField>
-              <DetailField label="License">{skill.license ?? "-"}</DetailField>
-              <DetailField label="Compatibility">{skill.compatibility ?? "-"}</DetailField>
-              <DetailField label="Allowed tools">{skill.allowed_tools ?? "-"}</DetailField>
-              <DetailField label="Created">{formatDateTime(skill.created_at)}</DetailField>
-              <DetailField label="Updated">{formatDateTime(skill.updated_at)}</DetailField>
+              <DetailField label={ui("Source")}>{skill.source_type}</DetailField>
+              <DetailField label={ui("Version")}>{skill.version}</DetailField>
+              <DetailField label={ui("License")}>{skill.license ?? "-"}</DetailField>
+              <DetailField label={ui("Compatibility")}>{skill.compatibility ?? "-"}</DetailField>
+              <DetailField label={ui("Allowed tools")}>{skill.allowed_tools ?? "-"}</DetailField>
+              <DetailField label={ui("Created")}>
+                {formatDateTime(skill.created_at, displayLocale)}
+              </DetailField>
+              <DetailField label={ui("Updated")}>
+                {formatDateTime(skill.updated_at, displayLocale)}
+              </DetailField>
               <div className="md:col-span-2">
-                <Label className="text-muted-foreground">Used by</Label>
+                <Label className="text-muted-foreground">{ui("Used by")}</Label>
                 <div className="mt-1">
                   <SkillUsageRow usage={usage} />
                 </div>
@@ -97,16 +104,16 @@ export function SkillDetailView({
       <TabsContent value="instructions" className="space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Frontmatter</CardTitle>
+            <CardTitle className="text-lg">{ui("Frontmatter")}</CardTitle>
           </CardHeader>
           <CardContent>
             {contentLoading && <Skeleton className="h-28 w-full" />}
             {contentError != null && (
-              <p className="text-sm text-destructive">Failed to load skill content.</p>
+              <p className="text-sm text-destructive">{ui("Failed to load skill content.")}</p>
             )}
             {content && (
               <pre className="max-h-[360px] overflow-auto bg-muted p-3 font-mono text-xs whitespace-pre-wrap break-all">
-                {split.frontmatter || "(no frontmatter)"}
+                {split.frontmatter || ui("(no frontmatter)")}
               </pre>
             )}
           </CardContent>
@@ -114,7 +121,7 @@ export function SkillDetailView({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">SKILL.md</CardTitle>
+            <CardTitle className="text-lg">{ui("SKILL.md")}</CardTitle>
           </CardHeader>
           <CardContent>
             {contentLoading && <Skeleton className="h-64 w-full" />}
@@ -123,7 +130,7 @@ export function SkillDetailView({
                 {split.body.trim() ? (
                   <InlineStreamdownMessage>{split.body}</InlineStreamdownMessage>
                 ) : (
-                  <span className="text-muted-foreground">(empty)</span>
+                  <span className="text-muted-foreground">{ui("(empty)")}</span>
                 )}
               </div>
             )}
@@ -141,14 +148,16 @@ export function SkillDetailView({
         ) : contentError != null ? (
           <Card>
             <CardContent className="p-6">
-              <p className="text-sm text-destructive">Failed to load skill files.</p>
+              <p className="text-sm text-destructive">{ui("Failed to load skill files.")}</p>
             </CardContent>
           </Card>
         ) : (
           <InitialFilesPreview
             files={skillFiles}
-            title="Skill Files"
-            description="Read-only reconstructed skill files. Archive skills include extracted text files alongside SKILL.md."
+            title={ui("Skill Files")}
+            description={ui(
+              "Read-only reconstructed skill files. Archive skills include extracted text files alongside SKILL.md.",
+            )}
           />
         )}
       </TabsContent>
@@ -189,8 +198,8 @@ function toReadonlySkillFiles(content: SkillContent | undefined): InitialFile[] 
   ];
 }
 
-function formatDateTime(value: string): string {
+function formatDateTime(value: string, locale?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return date.toLocaleString(locale);
 }

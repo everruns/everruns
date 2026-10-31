@@ -104,6 +104,8 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
         &[
             "durable",
             "monitoring",
+            "tracing",
+            "system",
             "durable-schedules",
             "sandbox-templates",
             "sandboxes",
@@ -317,7 +319,9 @@ fn apply(spec: &mut Value) {
                 }
             }
             if group == &"agent-api" {
-                operation["security"] = if path == "/v1/channels/{channel_id}/chat/config" {
+                let public_read = method == "get"
+                    && (path.ends_with("/chat/config") || path.ends_with("/chat/shared/{token}"));
+                operation["security"] = if public_read {
                     json!([])
                 } else {
                     json!([{"AgentCredential": []}])

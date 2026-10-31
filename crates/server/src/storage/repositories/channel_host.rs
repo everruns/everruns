@@ -233,3 +233,66 @@ impl Database {
         }
     }
 }
+
+impl Database {
+    pub async fn replace_work_chat_share(
+        &self,
+        channel: Uuid,
+        session: Uuid,
+        token: Option<&str>,
+    ) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SELECT id FROM sessions WHERE id = $1 AND channel_id = $2 FOR UPDATE")
+            .bind(session)
+            .bind(channel)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM channel_bindings WHERE channel_id = $1 AND session_id = $2 AND starts_with(binding_key, 'work_chat:share:')").bind(channel).bind(session).execute(&mut *tx).await?;
+        if let Some(token) = token {
+            sqlx::query("INSERT INTO channel_bindings (channel_id, binding_key, session_id) VALUES ($1, $2, $3)").bind(channel).bind(format!("work_chat:share:{token}")).bind(session).execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+}
+
+/// The public transcript query does not load private routing/context columns.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct WorkChatShareEventRow {
+    pub id: everruns_contracts::typed_id::EventId,
+    pub sequence: i32,
+    pub event_type: String,
+    pub ts: chrono::DateTime<chrono::Utc>,
+    pub data: serde_json::Value,
+}
+
+impl Database {
+    /// Anonymous reads never materialize an unbounded message body. Keep the
+    /// channel/session index and backward cursor, with a decoded JSON size cap.
+    /// Limit candidates before checking size: a run of oversized messages must
+    /// not turn one anonymous read into an unbounded scan of their bodies.
+    /// Empty payloads retain pagination positions but project to no message.
+    pub async fn work_chat_share_events(
+        &self,
+        session: everruns_contracts::typed_id::SessionId,
+        before: Option<i32>,
+    ) -> Result<Vec<WorkChatShareEventRow>> {
+        sqlx::query_as::<_, WorkChatShareEventRow>(
+            "SELECT id, sequence, event_type, ts,
+                    CASE WHEN octet_length(data::text) <= 262144
+                         THEN data ELSE '{}'::jsonb END AS data
+             FROM (
+                SELECT id, sequence, event_type, ts, data FROM events
+                WHERE session_id = $1
+                  AND event_type IN ('input.message', 'output.message.completed')
+                  AND ($2::int IS NULL OR sequence < $2)
+                ORDER BY sequence DESC LIMIT 101
+             ) page ORDER BY sequence ASC",
+        )
+        .bind(session)
+        .bind(before)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(Into::into)
+    }
+}

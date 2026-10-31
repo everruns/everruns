@@ -1,4 +1,5 @@
 "use client";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useOrg } from "@/providers/org-provider";
 import { listKnowledge } from "@/lib/api/knowledge";
@@ -14,6 +15,7 @@ export function KnowledgeConfigEditor({
   onChange: (c: Record<string, unknown>) => void;
   disabled?: boolean;
 }) {
+  const ui = useUiTranslations();
   const { currentOrg } = useOrg();
   const collections = useInfiniteQuery({
     queryKey: ["knowledge-picker", currentOrg?.public_id],
@@ -28,11 +30,13 @@ export function KnowledgeConfigEditor({
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
-        Selected collections mount read-only. Unindexed files remain available to read and grep.
+        {ui(
+          "Selected collections mount read-only. Unindexed files remain available to read and grep.",
+        )}
       </p>
       {collections.error && (
         <p role="alert" className="text-sm text-destructive">
-          Unable to load collections.
+          {ui("Unable to load collections.")}
         </p>
       )}
       <div className="max-h-60 space-y-3 overflow-auto">
@@ -65,7 +69,7 @@ export function KnowledgeConfigEditor({
               />
               <span>{c.name}</span>
               <span className="ml-auto text-xs text-muted-foreground">
-                {c.indexing === "off" ? "Files only" : c.indexing}
+                {c.indexing === "off" ? ui("Files only") : c.indexing}
               </span>
             </label>
           ))}
@@ -77,7 +81,7 @@ export function KnowledgeConfigEditor({
           disabled={collections.isFetchingNextPage}
           onClick={() => collections.fetchNextPage()}
         >
-          Load more collections
+          {ui("Load more collections")}
         </button>
       )}
       <label className="flex items-center gap-2 text-sm">
@@ -86,10 +90,10 @@ export function KnowledgeConfigEditor({
           checked={config.automatic === true}
           onCheckedChange={(value) => onChange({ ...config, automatic: !!value })}
         />
-        Retrieve relevant context automatically
+        {ui("Retrieve relevant context automatically")}
       </label>
       <div className="space-y-2">
-        <Label htmlFor="knowledge-result-limit">Result limit</Label>
+        <Label htmlFor="knowledge-result-limit">{ui("Result limit")}</Label>
         <Input
           id="knowledge-result-limit"
           disabled={disabled}

@@ -8,6 +8,7 @@
 // `ChatPanel` keeps this component and adds the composer on top, so the two
 // surfaces cannot drift.
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useMemo, type ReactNode } from "react";
 import { ArrowDown } from "lucide-react";
 import { getEventData } from "@/lib/api/types";
@@ -25,7 +26,6 @@ import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { assignRunsToEvents } from "@/components/chat/run-cards";
 import { ChatNavRail, type ChatNavAnchor } from "@/components/chat/chat-nav-rail";
 import { StreamingMessage } from "@/components/streaming-message";
-import { useLocale } from "@/providers/locale-provider";
 
 export function SessionTranscript({
   /** Rendered inside the scroll container, below the transcript (e.g. composer errors). */
@@ -45,6 +45,7 @@ export function SessionTranscript({
   emptyState?: ReactNode;
   messageActions?: boolean;
 }) {
+  const ui = useUiTranslations();
   const { t } = useLocale();
   const {
     events,
@@ -103,11 +104,11 @@ export function SessionTranscript({
       const text = getMessageText(data).trim();
       anchors.push({
         id: event.id,
-        label: text.length > 80 ? `${text.slice(0, 80)}…` : text,
+        label: text.length > 80 ? ui("{value0}…", { value0: text.slice(0, 80) }) : text,
       });
     }
     return anchors;
-  }, [chatEvents, getMessageText]);
+  }, [chatEvents, getMessageText, ui]);
 
   const { currentAnchorId, scrollToAnchor } = useMessageScrollerVisibility(
     scrollContainerRef,
@@ -157,6 +158,7 @@ export function SessionTranscript({
             collapseWorkLog={collapseWorkLog}
             pendingSends={chatSends.pending}
             onRetrySend={chatSends.retry}
+            onDiscardSend={chatSends.discard}
             sessionActive={isActive}
             messageActions={messageActions}
             streamingWork={

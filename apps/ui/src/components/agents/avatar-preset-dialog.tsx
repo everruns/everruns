@@ -1,5 +1,13 @@
 "use client";
+import {
+  Select as SharedSelect,
+  SelectTrigger as SharedSelectTrigger,
+  SelectContent as SharedSelectContent,
+  SelectValue as SharedSelectValue,
+  SelectItem as SharedSelectItem,
+} from "@/components/ui/select";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Check, Loader2, Search, X } from "lucide-react";
 import { useAvatarPresets } from "@/hooks";
@@ -36,6 +44,7 @@ export function AvatarPresetDialog({
   onClose: () => void;
   onSave: (id: string) => Promise<void>;
 }) {
+  const ui = useUiTranslations();
   const { catalog, current } = useAvatarPresets(agent.id, open);
   const [query, setQuery] = useState("");
   const [family, setFamily] = useState("");
@@ -57,11 +66,15 @@ export function AvatarPresetDialog({
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && close()}>
-      <DialogContent className="flex max-h-[90dvh] flex-col sm:max-w-3xl" showCloseButton={!saving}>
+      <DialogContent
+        chatProtected="Agent avatar"
+        className="flex max-h-[90dvh] flex-col sm:max-w-3xl"
+        showCloseButton={!saving}
+      >
         <DialogHeader>
-          <DialogTitle>Choose an avatar</DialogTitle>
+          <DialogTitle>{ui("Choose an avatar")}</DialogTitle>
           <DialogDescription>
-            Find a face, familiar or shape. Search by name, role, animal or color.
+            {ui("Find a face, familiar or shape. Search by name, role, animal or color.")}
           </DialogDescription>
         </DialogHeader>
         <div className="flex items-center gap-3">
@@ -69,22 +82,22 @@ export function AvatarPresetDialog({
             <div
               className="flex items-center gap-2"
               role="group"
-              aria-label="Current avatar in square and circle"
+              aria-label={ui("Current avatar in square and circle")}
             >
               <AgentAvatar avatar={agent.avatar} size={40} />
               <AgentAvatar avatar={agent.avatar} size={40} shape="circle" />
             </div>
           )}
           <p className="text-xs text-muted-foreground">
-            {agent.avatar ? "Current avatar" : "No avatar selected"}
+            {agent.avatar ? ui("Current avatar") : ui("No avatar selected")}
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <div className="relative flex-1">
             <Search className="absolute top-2 left-2 size-4 text-muted-foreground" aria-hidden />
             <Input
-              aria-label="Search avatars"
-              placeholder="Search names, roles, animals, colors…"
+              aria-label={ui("Search avatars")}
+              placeholder={ui("Search names, roles, animals, colors…")}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               className="pr-8 pl-8"
@@ -93,7 +106,7 @@ export function AvatarPresetDialog({
             {query && (
               <button
                 type="button"
-                aria-label="Clear search"
+                aria-label={ui("Clear search")}
                 className="absolute top-1.5 right-2 p-0.5"
                 onClick={() => setQuery("")}
                 disabled={saving}
@@ -102,40 +115,49 @@ export function AvatarPresetDialog({
               </button>
             )}
           </div>
-          <select
-            aria-label="Avatar family"
-            value={family}
-            onChange={(event) => setFamily(event.target.value)}
+          <SharedSelect
+            value={String(family)}
+            onValueChange={(selection) => setFamily(selection)}
             disabled={saving}
-            className="h-8 border border-input bg-background px-2 text-sm"
           >
-            <option value="">All families</option>
-            {[...new Set(presets.map((p) => p.family))].map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+            <SharedSelectTrigger
+              aria-label={ui("Avatar family")}
+              className="h-8 border border-input bg-background px-2 text-sm"
+            >
+              <SharedSelectValue />
+            </SharedSelectTrigger>
+            <SharedSelectContent>
+              <SharedSelectItem value="">{ui("All families")}</SharedSelectItem>
+              {[...new Set(presets.map((p) => p.family))].map((name) => (
+                <SharedSelectItem key={name} value={String(name)}>
+                  {name}
+                </SharedSelectItem>
+              ))}
+            </SharedSelectContent>
+          </SharedSelect>
         </div>
         <p className="text-xs text-muted-foreground" role="status">
           {catalog.isLoading
-            ? "Loading avatars…"
-            : `${matches.length} avatar${matches.length === 1 ? "" : "s"}`}
+            ? ui("Loading avatars…")
+            : ui("{value0} avatar{value1}", {
+                value0: matches.length,
+                value1: matches.length === 1 ? "" : "s",
+              })}
         </p>
         {catalog.error ? (
           <div role="alert" className="text-sm text-destructive">
-            Could not load avatars.{" "}
+            {ui("Could not load avatars.")}{" "}
             <Button type="button" variant="outline" size="sm" onClick={() => catalog.refetch()}>
-              Retry
+              {ui("Retry")}
             </Button>
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto p-1">
             {!catalog.isLoading && matches.length === 0 ? (
               <div className="py-10 text-center">
-                <p className="text-sm">No avatars match your search.</p>
+                <p className="text-sm">{ui("No avatars match your search.")}</p>
                 <Button type="button" variant="ghost" onClick={clear} disabled={saving}>
-                  Clear filters
+                  {ui("Clear filters")}
                 </Button>
               </div>
             ) : (
@@ -146,7 +168,11 @@ export function AvatarPresetDialog({
                     type="button"
                     disabled={disabled}
                     aria-pressed={selected === preset.id}
-                    aria-label={`${preset.name}, ${preset.family}, ${preset.role}`}
+                    aria-label={ui("{value0}, {value1}, {value2}", {
+                      value0: preset.name,
+                      value1: preset.family,
+                      value2: preset.role,
+                    })}
                     aria-description={preset.description}
                     onClick={() => setPicked(preset.id)}
                     className={cn(
@@ -180,7 +206,7 @@ export function AvatarPresetDialog({
           <div
             className="flex items-center gap-3 border-t pt-3"
             role="group"
-            aria-label="Selected avatar in square and circle"
+            aria-label={ui("Selected avatar in square and circle")}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -205,7 +231,7 @@ export function AvatarPresetDialog({
         )}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={close} disabled={saving}>
-            Cancel
+            {ui("Cancel")}
           </Button>
           <Button
             type="button"
@@ -221,7 +247,7 @@ export function AvatarPresetDialog({
             }}
           >
             {saving && <Loader2 className="animate-spin" />}
-            {saving ? "Saving avatar…" : "Use avatar"}
+            {saving ? ui("Saving avatar…") : ui("Use avatar")}
           </Button>
         </DialogFooter>
       </DialogContent>

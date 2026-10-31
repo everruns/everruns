@@ -16,7 +16,7 @@ async fn actor_rpcs_lease_renew_read_and_release() {
         .unwrap();
 
     let leased = svc
-        .lease_actors(Request::new(proto::LeaseActorsRequest {
+        .lease_actors(trusted_request(proto::LeaseActorsRequest {
             holder: "worker-a".to_string(),
             limit: 10,
             ttl_ms: 0,
@@ -41,7 +41,7 @@ async fn actor_rpcs_lease_renew_read_and_release() {
         crate::storage::ActorCancel::Requested
     );
     let renewal = svc
-        .renew_actor_lease(Request::new(proto::RenewActorLeaseRequest {
+        .renew_actor_lease(trusted_request(proto::RenewActorLeaseRequest {
             session_id: Some(proto_uuid(session_id)),
             holder: "worker-a".to_string(),
             fence: actor.fence,
@@ -61,7 +61,7 @@ async fn actor_rpcs_lease_renew_read_and_release() {
     );
 
     let journal = svc
-        .read_actor_journal(Request::new(proto::ReadActorJournalRequest {
+        .read_actor_journal(trusted_request(proto::ReadActorJournalRequest {
             session_id: Some(proto_uuid(session_id)),
             after_sequence: None,
             limit: 0,
@@ -79,7 +79,7 @@ async fn actor_rpcs_lease_renew_read_and_release() {
     );
 
     let released = svc
-        .release_actor(Request::new(proto::ReleaseActorRequest {
+        .release_actor(trusted_request(proto::ReleaseActorRequest {
             session_id: Some(proto_uuid(session_id)),
             holder: "worker-a".to_string(),
             fence: actor.fence,
@@ -92,7 +92,7 @@ async fn actor_rpcs_lease_renew_read_and_release() {
     assert!(released.still_runnable, "input 5 starts the next turn");
 
     let stale = svc
-        .renew_actor_lease(Request::new(proto::RenewActorLeaseRequest {
+        .renew_actor_lease(trusted_request(proto::RenewActorLeaseRequest {
             session_id: Some(proto_uuid(session_id)),
             holder: "worker-a".to_string(),
             fence: actor.fence,
@@ -109,7 +109,7 @@ async fn actor_rpcs_lease_renew_read_and_release() {
 async fn actor_rpcs_reject_a_missing_holder() {
     let svc = test_worker_service().await;
     let status = svc
-        .lease_actors(Request::new(proto::LeaseActorsRequest {
+        .lease_actors(trusted_request(proto::LeaseActorsRequest {
             holder: " ".to_string(),
             limit: 1,
             ttl_ms: 0,
@@ -139,6 +139,7 @@ fn fenced_emit(
         actor_fence: Some(proto::ActorFence {
             holder: holder.to_string(),
             fence,
+            detached_tool_call_id: None,
         }),
     }
 }
@@ -158,7 +159,7 @@ async fn emit_event_with_a_stale_actor_fence_is_refused_and_stores_nothing() {
     let fence = leased[0].fence;
 
     let stored = svc
-        .emit_event(Request::new(fenced_emit(session_id, "worker-a", fence)))
+        .emit_event(trusted_request(fenced_emit(session_id, "worker-a", fence)))
         .await
         .expect("the holder's write lands")
         .into_inner()
@@ -167,7 +168,11 @@ async fn emit_event_with_a_stale_actor_fence_is_refused_and_stores_nothing() {
     assert!(stored.sequence > 0);
 
     let status = svc
-        .emit_event(Request::new(fenced_emit(session_id, "worker-a", fence + 1)))
+        .emit_event(trusted_request(fenced_emit(
+            session_id,
+            "worker-a",
+            fence + 1,
+        )))
         .await
         .expect_err("a stale fence is refused");
     assert_eq!(status.code(), tonic::Code::FailedPrecondition);

@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  useLocale as useDisplayLocale,
+  useUiTranslations,
+  useLocale,
+} from "@/providers/locale-provider";
+
 import { use, useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { ResourceNotFound } from "@/components/resource-not-found";
@@ -14,7 +20,6 @@ import { usePageTitle } from "@/hooks";
 import { useProviders } from "@/hooks/use-providers";
 import { buildTraceConfigByDriver, resolveSessionTraceUrl } from "@/lib/chat-trace";
 import { getDisplayName } from "@/lib/entity-lifecycle";
-import { useLocale } from "@/providers/locale-provider";
 
 const SESSION_TAB_LABELS: Record<SessionNavKey, string> = {
   trace: "Trace",
@@ -46,6 +51,8 @@ interface SessionLayoutContentProps {
 }
 
 export function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const pathname = usePathname();
   const { agent, session, llmModel, sessionLoading, effectiveStatus, liveUsage, agentId } =
     useSessionContext();
@@ -62,8 +69,8 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
   };
   const activeTab = getActiveTab();
 
-  const sessionLabel = session?.title || (agent ? getDisplayName(agent) : null);
-  usePageTitle(SESSION_TAB_LABELS[activeTab], sessionLabel, "Session");
+  const sessionLabel = session?.title || (agent ? getDisplayName(agent, displayLocale) : null);
+  usePageTitle(SESSION_TAB_LABELS[activeTab], sessionLabel, ui("Session"));
 
   const basePath = `/sessions/${sessionId}`;
   const features = useMemo(() => new Set(session?.features ?? []), [session?.features]);
@@ -102,8 +109,10 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
   if (!session) {
     return (
       <ResourceNotFound
-        title="Session not found"
-        description="This session may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Session not found")}
+        description={ui(
+          "This session may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref="/sessions"
         backLabel="Back to sessions"
         resourceId={sessionId}
@@ -131,7 +140,7 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
               // one exists, and fall back for chat threads, runs that have not
               // finished, and deployments with no utility LLM.
               (session.run_summary?.trim() ??
-              `Started ${new Date(session.created_at).toLocaleString()}`)
+              `Started ${new Date(session.created_at).toLocaleString(displayLocale)}`)
         }
         sessionTraceUrl={sessionTraceUrl}
         sessionTraceLabel={t("trace_view_session")}

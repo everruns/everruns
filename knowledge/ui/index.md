@@ -7,10 +7,13 @@
 * [A2UI, Google Generative UI Integration](a2ui.md) - A2UI generative-UI capability.
 * [MCP Entity Cards](mcp-cards.md) - MCP Apps entity cards and sandboxed HTML resources.
 * [Agent Page](agent-page.md) - Why the agent page reads and edits in one layout, with the system prompt as the page.
+* [Agent Cost Estimation](agent-cost-estimation.md) - Scenario-based model cost planning, assumptions and calibration boundaries.
 * [Agents Home](agents-home.md) - Why the Agents page shows what each agent is doing, how it is reached and what needs attention, with channels replacing Exposures.
+* [Knowledge Pages](knowledge-pages.md) - Why Knowledge is tabbed like Sandboxes and a collection is browsed with the session file browser.
 * [Models and Providers](models-and-providers.md) - Why providers live under Library → Models with Models, Providers and Defaults tabs and share the models permission.
 * [Session Trace](session-trace.md) - One Trace view of turns and steps, and the trace index that keeps it fast for very large sessions.
 * [Chat Experience](chat-experience.md) - Why chat is a centered reading column with one turn status row from Enter to answer, and the send/turn state contracts behind it.
+* [Chat Recovery and Live Transport](chat-recovery.md) - Tab-local drafts and pending sends, safe reconnection and shared SSE subscriptions.
 * [Page-aware Chat Mode](chat-mode.md) - Adoption-gated split shell, page context, Agent change attribution and guarded undo, with the remaining migration slices.
 * [Harness Page](harness-page.md) - Why the harness page uses that workspace with capabilities as the page.
 * [Entity Actions Menu](entity-actions-menu.md) - One header overflow menu per entity page for secondary record functions and lifecycle actions, in a fixed order.
@@ -21,4 +24,5 @@
 * [Demo Screenshot Set](demo-screenshots.md) - Maintained light and dark demo scenes, data, framing, and refresh contract.
 * [Documentation Site Specification](documentation.md) - Documentation site.
 * [Sign-up Experience Redesign, Analysis & Design Brief](signup-experience-redesign-brief.md) - Design brief for on-brand sign-up / onboarding screens.
+* [Slate Design System Pages](design-system.md) - Why Slate is published as docs pages built from the app's tokens and icons, and the contract that keeps them current.
 * [Facet Iconography](iconography.md) - Custom domain icon philosophy, the original Intent Agent mark, and the reproduction contract.

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useRef, useState } from "react";
 import { Copy, Hash, Check } from "lucide-react";
 import { Button } from "./button";
@@ -15,6 +16,7 @@ interface CopyButtonProps {
 }
 
 export function CopyButton({ value, label = "Copy", kind = "value", className }: CopyButtonProps) {
+  const ui = useUiTranslations();
   const [copied, setCopied] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -60,7 +62,7 @@ export function CopyButton({ value, label = "Copy", kind = "value", className }:
         </TooltipTrigger>
         <TooltipContent className="max-w-[min(40rem,calc(100vw-2rem))] break-all font-mono">
           <span>{label}</span>
-          {copied && <span className="ml-2 text-success">Copied</span>}
+          {copied && <span className="ml-2 text-success">{ui("Copied")}</span>}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

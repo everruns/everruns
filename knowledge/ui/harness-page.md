@@ -42,3 +42,9 @@ harnesses and custom ones also did not make read-only versus editable obvious.
 - **One tab row:** Harness, Preview, Integrate, Stats. Integrate stays the headless calling guide.
   Archive and delete live in the header overflow menu. There is no test-chat action: a session
   still needs an agent.
+
+- **Localization is a draft section.** A More row opens locale-keyed display-name and
+  description overrides. Add or remove any supported language tag, then use the
+  page-level Save changes or Discard. Built-in resources keep their read-only policy.
+  Display text falls back per field; stable addresses and execution configuration
+  remain independent.

@@ -43,7 +43,8 @@ fn test_cost_control_masks_old_read_file_results() {
         "cost_control": {
             "keep_recent_tool_results": 2,
             "mask_after_tool_results": 4,
-            "min_masked_tool_result_bytes": 0
+            "min_masked_tool_result_bytes": 0,
+            "mask_batch_results": 1
         }
     }));
     let result = apply_cost_control_masking(&messages, &config, None);
@@ -113,7 +114,8 @@ fn test_cost_control_keeps_recent_paginated_read_group() {
         "cost_control": {
             "keep_recent_tool_results": 1,
             "mask_after_tool_results": 2,
-            "min_masked_tool_result_bytes": 0
+            "min_masked_tool_result_bytes": 0,
+            "mask_batch_results": 1
         }
     }));
     let result = build_model_view_messages(&messages, &config, None);
@@ -221,7 +223,8 @@ fn test_cost_control_uses_prior_usage_signal() {
             "mask_after_tool_results": 99,
             "max_live_tool_result_bytes": 999999,
             "min_masked_tool_result_bytes": 0,
-            "max_uncached_input_tokens": 1000
+            "max_uncached_input_tokens": 1000,
+            "mask_batch_results": 1
         }
     }));
     let usage = TokenUsage::with_cache(10_000, 100, Some(0), None);
@@ -249,7 +252,10 @@ fn test_cost_control_keeps_small_results_past_the_count_trigger() {
         ));
     }
 
-    let config = RuntimeCompactionConfig::default();
+    // Batches of one, so the big result below is masked as soon as it can be.
+    let config = RuntimeCompactionConfig::from_json(&json!({
+        "cost_control": { "mask_batch_results": 1 }
+    }));
     let result = apply_cost_control_masking(&messages, &config, None);
     assert_eq!(result.masked_count, 0);
 
@@ -326,10 +332,50 @@ fn test_model_view_uses_provider_cache_signal_from_compaction_config() {
     }
     let usage = TokenUsage::with_cache(150_000, 100, Some(0), None);
 
-    let config = RuntimeCompactionConfig::default();
+    let config = RuntimeCompactionConfig::from_json(&json!({
+        "cost_control": { "mask_batch_results": 1 }
+    }));
     let result = build_model_view_messages(&messages, &config, Some(&usage));
 
     assert_eq!(result.masked_count, 1);
     let first_tool = result.messages[2].tool_result_content().unwrap();
     assert_eq!(first_tool.result.as_ref().unwrap()["masked"], true);
+}
+
+/// The masked region moves in batches, so a busy session rewrites its history
+/// (and loses the prompt cache) once per batch instead of on every tool call,
+/// and a result once masked stays masked as the history grows.
+#[test]
+fn test_cost_control_masks_in_batches_that_only_grow() {
+    let config = RuntimeCompactionConfig::default();
+    let mut messages = vec![RuntimeMessage::user("run commands")];
+    let mut previous: Vec<bool> = Vec::new();
+    let mut rewrites = 0;
+    for index in 0..20 {
+        messages.extend(make_message_tool_turn(
+            &format!("call_{index}"),
+            "bash",
+            json!({ "stdout": "y".repeat(5 * 1024), "exit_code": 0, "success": true }),
+        ));
+        let view = apply_cost_control_masking(&messages, &config, None);
+        let masked: Vec<bool> = view
+            .messages
+            .iter()
+            .filter_map(|message| message.tool_result_content())
+            .map(|result| result.result.as_ref().is_some_and(|r| r["masked"] == true))
+            .collect();
+        for (at, was_masked) in previous.iter().enumerate() {
+            assert!(
+                !was_masked || masked[at],
+                "result {at} unmasked at call {index}"
+            );
+        }
+        rewrites += usize::from(
+            masked.iter().filter(|m| **m).count() != previous.iter().filter(|m| **m).count(),
+        );
+        previous = masked;
+    }
+    // 18 maskable results: two batches of eight, the newest two stay verbatim.
+    assert_eq!(previous.iter().filter(|m| **m).count(), 16);
+    assert_eq!(rewrites, 2);
 }

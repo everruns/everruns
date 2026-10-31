@@ -4,6 +4,7 @@
  * Dev page showcasing the StreamingThinking component
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { StreamingThinking } from "@/components/streaming-thinking";
 import { usePageTitle } from "@/hooks";
 
@@ -34,6 +35,7 @@ const SAMPLE_THINKING = `Let me analyze this step by step.
 const SHORT_THINKING = "This is a simple arithmetic question. 2+2 equals 4.";
 
 export default function ThinkingComponentsPage() {
+  const ui = useUiTranslations();
   usePageTitle(isDev ? "Thinking Components" : "Page not found", isDev ? "Dev" : null);
   // Show 404-like message in production
   if (!isDev) {
@@ -41,7 +43,7 @@ export default function ThinkingComponentsPage() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
-          <p className="text-muted-foreground mt-2">Page not found</p>
+          <p className="text-muted-foreground mt-2">{ui("Page not found")}</p>
         </div>
       </div>
     );
@@ -49,49 +51,49 @@ export default function ThinkingComponentsPage() {
 
   return (
     <div className="container mx-auto p-8 max-w-4xl space-y-8">
-      <h1 className="text-3xl font-bold mb-2">Thinking Components</h1>
+      <h1 className="text-3xl font-bold mb-2">{ui("Thinking Components")}</h1>
       <p className="text-muted-foreground mb-8">
-        Showcase of the StreamingThinking component for extended thinking models
+        {ui("Showcase of the StreamingThinking component for extended thinking models")}
       </p>
 
       {/* Expanded state */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold">Expanded Thinking</h2>
+        <h2 className="text-xl font-semibold">{ui("Expanded Thinking")}</h2>
         <p className="text-sm text-muted-foreground">
-          Shows the model&apos;s chain-of-thought reasoning before producing the final response.
+          {ui("Shows the model's chain-of-thought reasoning before producing the final response.")}
         </p>
         <StreamingThinking text={SAMPLE_THINKING} defaultCollapsed={false} />
       </section>
 
       {/* Collapsed state */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold">Collapsed Thinking</h2>
+        <h2 className="text-xl font-semibold">{ui("Collapsed Thinking")}</h2>
         <p className="text-sm text-muted-foreground">
-          Users can collapse the thinking section to focus on the response.
+          {ui("Users can collapse the thinking section to focus on the response.")}
         </p>
         <StreamingThinking text={SAMPLE_THINKING} defaultCollapsed={true} />
       </section>
 
       {/* Streaming state */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold">Streaming Thinking</h2>
+        <h2 className="text-xl font-semibold">{ui("Streaming Thinking")}</h2>
         <p className="text-sm text-muted-foreground">
-          Shows a pulsing indicator and cursor while the model is still thinking.
+          {ui("Shows a pulsing indicator and cursor while the model is still thinking.")}
         </p>
         <StreamingThinking text={SHORT_THINKING} isStreaming={true} />
       </section>
 
       {/* In context example */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold">In Chat Context</h2>
+        <h2 className="text-xl font-semibold">{ui("In Chat Context")}</h2>
         <p className="text-sm text-muted-foreground">
-          Example of how thinking appears in a chat conversation.
+          {ui("Example of how thinking appears in a chat conversation.")}
         </p>
         <div className="border p-4 space-y-4 bg-background">
           {/* User message */}
           <div className="flex justify-end">
             <div className="bg-primary text-primary-foreground px-4 py-2 max-w-[80%]">
-              Why is the sky blue?
+              {ui("Why is the sky blue?")}
             </div>
           </div>
 
@@ -100,18 +102,19 @@ export default function ThinkingComponentsPage() {
             <StreamingThinking text={SAMPLE_THINKING} defaultCollapsed={false} />
             <div className="text-sm prose prose-sm max-w-none">
               <p>
-                The blue color of the sky is caused by <strong>Rayleigh scattering</strong>.
+                {ui("The blue color of the sky is caused by")}{" "}
+                <strong>{ui("Rayleigh scattering")}</strong>.
               </p>
               <p>
-                When sunlight enters Earth&apos;s atmosphere, it collides with gas molecules.
-                Shorter wavelengths (blue light) scatter more than longer wavelengths (red light),
-                with scattering intensity proportional to 1/wavelength^4.
+                {ui(
+                  "When sunlight enters Earth's atmosphere, it collides with gas molecules. Shorter wavelengths (blue light) scatter more than longer wavelengths (red light), with scattering intensity proportional to 1/wavelength^4.",
+                )}
               </p>
-              <p>We see blue rather than violet (which scatters even more) because:</p>
+              <p>{ui("We see blue rather than violet (which scatters even more) because:")}</p>
               <ul>
-                <li>The sun emits less violet light than blue</li>
-                <li>Our eyes are more sensitive to blue</li>
-                <li>Some violet is absorbed in the upper atmosphere</li>
+                <li>{ui("The sun emits less violet light than blue")}</li>
+                <li>{ui("Our eyes are more sensitive to blue")}</li>
+                <li>{ui("Some violet is absorbed in the upper atmosphere")}</li>
               </ul>
             </div>
           </div>

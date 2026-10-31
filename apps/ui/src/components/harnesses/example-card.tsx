@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +19,8 @@ import {
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
+import { getDisplayName } from "@/lib/entity-lifecycle";
+import { localizedEntityDescription } from "@/lib/entity-localization";
 
 interface HarnessExampleCardProps {
   example: HarnessExample;
@@ -35,19 +37,20 @@ export function HarnessExampleCard({
   adopting = false,
   preview = false,
 }: HarnessExampleCardProps) {
-  const { locale } = useLocale();
+  const ui = useUiTranslations();
+  const { locale, displayLocale } = useLocale();
   const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
     allCapabilities?.find((c) => c.id === capabilityId);
 
   return (
     <EntityCard
       icon={<IconTile size="md" icon={<HarnessIcon icon={example.icon} />} />}
-      title={example.display_name}
+      title={getDisplayName(example, displayLocale)}
       headerActions={
         <>
           {example.dev_only && (
             <Badge variant="outline" className="text-xs">
-              dev
+              {ui("dev")}
             </Badge>
           )}
           {preview && (
@@ -57,7 +60,7 @@ export function HarnessExampleCard({
               onClick={() => onImport(example.name)}
               disabled={adopting}
             >
-              {adopting ? "Importing..." : "Import"}
+              {adopting ? ui("Importing...") : ui("Import")}
             </Button>
           )}
         </>
@@ -73,14 +76,16 @@ export function HarnessExampleCard({
                 disabled={adopting}
               >
                 <Import className="w-4 h-4 mr-2" />
-                {adopting ? "Importing..." : "Import"}
+                {adopting ? ui("Importing...") : ui("Import")}
               </Button>
             }
           />
         )
       }
     >
-      <EntityCardDescription>{example.description}</EntityCardDescription>
+      <EntityCardDescription>
+        {localizedEntityDescription(example, displayLocale)}
+      </EntityCardDescription>
 
       {!preview && (
         <div className="space-y-3">

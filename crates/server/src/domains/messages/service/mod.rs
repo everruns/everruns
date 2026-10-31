@@ -162,7 +162,9 @@ impl MessageService {
         req: CreateMessageRequest,
         prefetch: CreateMessagePrefetch,
     ) -> Result<Message> {
-        self.create_inner(ctx, req, prefetch, None).await
+        // Keep the intake future off nested HTTP handler stacks. Agent API
+        // sends add enough wrappers to overflow a default debug worker stack.
+        Box::pin(self.create_inner(ctx, req, prefetch, None)).await
     }
 
     /// [`Self::create`] for a message whose turn runs a saved script instead
@@ -552,6 +554,7 @@ impl MessageService {
                 (runtime_message, stored_event.sequence.unwrap_or(0))
             };
 
+            let runtime_message = runtime_message.into_public();
             let message = Message {
                 id: runtime_message.id,
                 session_id,
@@ -750,24 +753,25 @@ impl MessageService {
                     everruns_core::EventData::InputMessage(data) => &data.message,
                     everruns_core::EventData::OutputMessageCompleted(data) => &data.message,
                     everruns_core::EventData::ToolCompleted(data) => {
-                        // Separate text and image parts from the result content
-                        let mut images: Vec<everruns_contracts::tool_types::ToolResultImage> =
-                            Vec::new();
+                        // Separate text from media (inline images, and
+                        // screenshots stored as `image_file`).
+                        let mut media: Vec<everruns_core::ContentPart> = Vec::new();
                         let result: Option<serde_json::Value> =
                             data.result
                                 .as_ref()
                                 .map(|parts: &Vec<everruns_core::ContentPart>| {
                                     for part in parts {
-                                        if let everruns_core::ContentPart::Image(img) = part
-                                            && let (Some(b64), Some(mt)) =
-                                                (&img.base64, &img.media_type)
-                                        {
-                                            images.push(
-                                                everruns_contracts::tool_types::ToolResultImage {
-                                                    base64: b64.clone(),
-                                                    media_type: mt.clone(),
-                                                },
-                                            );
+                                        match part {
+                                            everruns_core::ContentPart::Image(img)
+                                                if img.base64.is_some()
+                                                    && img.media_type.is_some() =>
+                                            {
+                                                media.push(part.clone());
+                                            }
+                                            everruns_core::ContentPart::ImageFile(_) => {
+                                                media.push(part.clone());
+                                            }
+                                            _ => {}
                                         }
                                     }
                                     let text_parts: Vec<&everruns_core::ContentPart> = parts
@@ -783,18 +787,20 @@ impl MessageService {
                                     }
                                     serde_json::to_value(&text_parts).unwrap_or_default()
                                 });
-                        let msg = if images.is_empty() {
+                        let msg = if media.is_empty() {
                             everruns_core::RuntimeMessage::tool_result(
                                 &data.tool_call_id,
                                 result,
                                 data.error.clone(),
                             )
                         } else {
-                            everruns_core::RuntimeMessage::tool_result_with_images(
+                            let mut msg = everruns_core::RuntimeMessage::tool_result(
                                 &data.tool_call_id,
                                 result,
-                                images,
-                            )
+                                None,
+                            );
+                            msg.content.extend(media);
+                            msg
                         };
                         return Ok(Message {
                             id: msg.id,
@@ -814,20 +820,18 @@ impl MessageService {
                     _ => return Err("unexpected event type".to_string()),
                 };
 
+                let core_message = core_message.clone().into_public();
                 Ok(Message {
                     id: core_message.id,
                     session_id: SessionId::from_uuid(session_id),
                     sequence,
                     role: MessageRole::from(core_message.role.to_string().as_str()),
-                    // `to_public` drops signatures and encrypted payloads:
-                    // replay state is not content and must not cross an API
-                    // boundary.
-                    content: core_message.clone().into_public().content,
+                    content: core_message.content,
                     phase: core_message.phase,
                     phase_source: core_message.phase_source,
-                    controls: core_message.controls.clone(),
-                    metadata: core_message.metadata.clone(),
-                    external_actor: core_message.external_actor.clone(),
+                    controls: core_message.controls,
+                    metadata: core_message.metadata,
+                    external_actor: core_message.external_actor,
                     delivery: None,
                     created_at: core_message.created_at,
                 })
@@ -865,7 +869,7 @@ impl MessageService {
 /// The stored user message a duplicate send resolves to.
 fn stored_input_message(row: crate::storage::EventRow) -> Result<Message> {
     let data: InputMessageData = serde_json::from_value(row.data)?;
-    let message = data.message;
+    let message = data.message.into_public();
     Ok(Message {
         id: message.id,
         session_id: row.session_id,

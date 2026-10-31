@@ -1,5 +1,7 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { TeamIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
@@ -46,8 +48,8 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString(undefined, {
+function formatDate(dateStr: string, locale?: string): string {
+  return new Date(dateStr).toLocaleDateString(locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -92,6 +94,10 @@ function MemberCard({
   /** Viewer has owner role in the current org. */
   viewerIsOwner: boolean;
 }) {
+  const { displayLocale } = useLocale();
+
+  const requestConfirmation = useConfirmation();
+  const ui = useUiTranslations();
   const updateRole = useUpdateMemberRole();
   const removeMember = useRemoveMember();
   const [pendingRole, setPendingRole] = useState<string | null>(null);
@@ -120,7 +126,7 @@ function MemberCard({
   };
 
   const handleRemove = async () => {
-    if (!confirm(`Remove ${member.name} from this organization?`)) return;
+    if (!(await requestConfirmation(`Remove ${member.name} from this organization?`))) return;
     try {
       await removeMember.mutateAsync(member.user_id);
     } catch {
@@ -147,7 +153,7 @@ function MemberCard({
               {member.name}
               {isSelf && (
                 <Badge variant="outline" className="text-xs">
-                  You
+                  {ui("You")}
                 </Badge>
               )}
             </div>
@@ -156,7 +162,7 @@ function MemberCard({
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground hidden sm:inline">
-            Joined {formatDate(member.joined_at)}
+            {ui("Joined")} {formatDate(member.joined_at, displayLocale)}
           </span>
 
           {canChangeRole ? (
@@ -174,9 +180,9 @@ function MemberCard({
               </SelectTrigger>
               <SelectContent>
                 {/* Only owners can promote to owner. */}
-                {viewerIsOwner && <SelectItem value="owner">Owner</SelectItem>}
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="member">Member</SelectItem>
+                {viewerIsOwner && <SelectItem value="owner">{ui("Owner")}</SelectItem>}
+                <SelectItem value="admin">{ui("Admin")}</SelectItem>
+                <SelectItem value="member">{ui("Member")}</SelectItem>
               </SelectContent>
             </Select>
           ) : (
@@ -192,7 +198,7 @@ function MemberCard({
               size="icon"
               onClick={handleRemove}
               disabled={removeMember.isPending}
-              title="Remove member"
+              title={ui("Remove member")}
             >
               {removeMember.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -241,11 +247,13 @@ const INVITE_STATUS_LABEL: Record<InvitationStatus, string> = {
 };
 
 function InviteRow({ invite, canManage }: { invite: Invitation; canManage: boolean }) {
+  const requestConfirmation = useConfirmation();
+  const ui = useUiTranslations();
   const revokeInvite = useRevokeInvite();
   const isExpired = invite.status === "expired";
 
   const handleRevoke = async () => {
-    if (!confirm(`Revoke the invitation for ${invite.email}?`)) return;
+    if (!(await requestConfirmation(`Revoke the invitation for ${invite.email}?`))) return;
     try {
       await revokeInvite.mutateAsync(invite.id);
     } catch {
@@ -275,7 +283,7 @@ function InviteRow({ invite, canManage }: { invite: Invitation; canManage: boole
             size="icon"
             onClick={handleRevoke}
             disabled={revokeInvite.isPending}
-            title="Revoke invitation"
+            title={ui("Revoke invitation")}
           >
             {revokeInvite.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -290,15 +298,16 @@ function InviteRow({ invite, canManage }: { invite: Invitation; canManage: boole
 }
 
 function PendingInvitesSection({ canManage }: { canManage: boolean }) {
+  const ui = useUiTranslations();
   const { data: invites, isLoading } = useInvitations();
 
   if (isLoading || !invites || invites.length === 0) return null;
 
   return (
     <section>
-      <h2 className="text-xl font-semibold mb-1">Pending invitations</h2>
+      <h2 className="text-xl font-semibold mb-1">{ui("Pending invitations")}</h2>
       <p className="text-sm text-muted-foreground mb-4">
-        Invitations that haven&apos;t been accepted yet.
+        {ui("Invitations that haven't been accepted yet.")}
       </p>
       <div className="space-y-2">
         {invites.map((invite) => (
@@ -310,7 +319,8 @@ function PendingInvitesSection({ canManage }: { canManage: boolean }) {
 }
 
 export default function MembersPage() {
-  usePageTitle("Members", "Settings");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Members"), ui("Settings"));
   const { user } = useAuth();
   const { currentOrg, hasRole } = useOrg();
   const { data: members, isLoading, error } = useMembers();
@@ -325,16 +335,16 @@ export default function MembersPage() {
       <section>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-xl font-semibold">Members</h2>
+            <h2 className="text-xl font-semibold">{ui("Members")}</h2>
             <p className="text-sm text-muted-foreground">
-              Manage members of{" "}
-              <span className="font-medium">{currentOrg?.name ?? "your organization"}</span>.
+              {ui("Manage members of")}{" "}
+              <span className="font-medium">{currentOrg?.name ?? ui("your organization")}</span>.
             </p>
           </div>
           {canManage && (
             <Button onClick={() => setInviteOpen(true)} className="gap-2">
               <UserPlus className="h-4 w-4" />
-              Invite member
+              {ui("Invite member")}
             </Button>
           )}
         </div>
@@ -354,9 +364,9 @@ export default function MembersPage() {
           emptyState={
             <Card className="p-8 text-center">
               <TeamIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No members</h3>
+              <h3 className="text-lg font-medium mb-2">{ui("No members")}</h3>
               <p className="text-muted-foreground">
-                No members have been added to this organization yet.
+                {ui("No members have been added to this organization yet.")}
               </p>
             </Card>
           }
@@ -364,7 +374,8 @@ export default function MembersPage() {
           {(items) => (
             <div className="space-y-2">
               <div className="text-sm text-muted-foreground mb-2">
-                {items.length} member{items.length !== 1 ? "s" : ""}
+                {items.length} {ui("member")}
+                {items.length !== 1 ? "s" : ""}
               </div>
               {items.map((member) => (
                 <MemberCard

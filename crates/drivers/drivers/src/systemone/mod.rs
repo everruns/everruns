@@ -1,5 +1,6 @@
 //! System One protocol shared by TypeSafe and OpenRouter accounts.
 
+mod catalog;
 pub mod client;
 
 use async_trait::async_trait;
@@ -53,6 +54,15 @@ impl DecisionDriver for SystemOneDecisionDriver {
             .url("systemone")
             .ok_or_else(|| invalid("Decision provider endpoint is required"))?;
         self.evaluate_at(endpoint, url, request).await
+    }
+    async fn list_models(
+        &self,
+        endpoint: &ProviderEndpoint,
+    ) -> Result<Option<Vec<everruns_contracts::model_discovery::DiscoveredModel>>> {
+        match &self.http {
+            Some(http) => catalog::typesafe(http, endpoint).await,
+            None => Ok(None),
+        }
     }
 }
 
@@ -283,13 +293,7 @@ pub fn decode(request: &DecisionRequest, value: serde_json::Value) -> Result<Dec
 
 /// Explicit OpenRouter aliases, independent from provider selection.
 /// Unrecognized IDs remain opaque, including snapshot IDs.
-pub fn openrouter_model(model: &str) -> &str {
-    match model {
-        "jev-1.13.0" => "typesafe/jev-1.13",
-        "jev-latest" => "typesafe/jev-latest",
-        other => other,
-    }
-}
+pub use everruns_contracts::model_profile_data::openrouter_decision_model_id as openrouter_model;
 
 #[derive(Clone, Debug, Default)]
 pub struct OpenRouterDecisionDriver(SystemOneDecisionDriver);
@@ -312,6 +316,15 @@ impl DecisionDriver for OpenRouterDecisionDriver {
             .map(openrouter_model)
             .map(str::to_owned);
         self.0.evaluate(endpoint, request).await
+    }
+    async fn list_models(
+        &self,
+        endpoint: &ProviderEndpoint,
+    ) -> Result<Option<Vec<everruns_contracts::model_discovery::DiscoveredModel>>> {
+        match &self.0.http {
+            Some(http) => catalog::openrouter(http, endpoint).await,
+            None => Ok(None),
+        }
     }
 }
 

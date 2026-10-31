@@ -58,6 +58,7 @@ pub mod openui;
 pub mod output_truncation;
 pub mod parallel_tool_calls;
 pub use native_async_tools::NativeAsyncToolsCapability;
+pub mod artifact_inspection;
 pub mod progress_guard;
 pub mod prompt_caching;
 pub mod prompt_canary_guardrail;

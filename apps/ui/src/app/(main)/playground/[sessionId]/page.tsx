@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { use, useState } from "react";
@@ -34,6 +36,8 @@ import { threadTitle } from "@/lib/chat-threads";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 
 function Conversation({ id }: { id: string }) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const { session, agent, sessionLoading, chatEvents, getMessageText } = useSessionContext();
   const { data: harnesses = [] } = useHarnesses();
   const { data: subject, isLoading: subjectLoading } = useVirtualUser(
@@ -55,15 +59,19 @@ function Conversation({ id }: { id: string }) {
     "New Playground chat",
   );
   const harness = harnesses.find((h) => h.id === session?.harness_id);
-  const counterpart = agent ? getDisplayName(agent) : harness ? getDisplayName(harness) : undefined;
+  const counterpart = agent
+    ? getDisplayName(agent, displayLocale)
+    : harness
+      ? getDisplayName(harness, displayLocale)
+      : undefined;
   const canSend = hasRole("admin") || (!!me && session?.playground_user_id === me.id);
-  usePageTitle(title, "Playground");
+  usePageTitle(title, ui("Playground"));
   if (sessionLoading) return <Skeleton className="m-6 h-64" />;
   if (!session || session.source !== "playground")
     return (
       <ResourceNotFound
-        title="Playground chat not found"
-        description="This Playground chat is unavailable in your organisation."
+        title={ui("Playground chat not found")}
+        description={ui("This Playground chat is unavailable in your organisation.")}
         backHref="/playground"
         backLabel="Back to Playground"
         resourceId={id}
@@ -71,7 +79,9 @@ function Conversation({ id }: { id: string }) {
     );
   return (
     <PageContainer fullWidth className="min-h-full xl:h-full xl:min-h-0">
-      <PageBreadcrumb items={[{ label: "Playground", href: "/playground" }, { label: title }]} />
+      <PageBreadcrumb
+        items={[{ label: ui("Playground"), href: "/playground" }, { label: title }]}
+      />
       <ChatThreadHeader
         session={session}
         title={title}
@@ -99,7 +109,7 @@ function Conversation({ id }: { id: string }) {
         extraActions={
           <LinkButton href="/playground/new" variant="accent">
             <Plus className="size-4" />
-            New Playground chat
+            {ui("New Playground chat")}
           </LinkButton>
         }
       />
@@ -108,8 +118,8 @@ function Conversation({ id }: { id: string }) {
           value={tab}
           onValueChange={(value) => setTab(value as "chat" | "workspace")}
           items={[
-            { value: "chat", label: "Chat" },
-            { value: "workspace", label: "Workspace" },
+            { value: "chat", label: ui("Chat") },
+            { value: "workspace", label: ui("Workspace") },
           ]}
         />
       </PageControlStrip>
@@ -133,38 +143,40 @@ function Conversation({ id }: { id: string }) {
               <SessionTranscript showRunCards />
               <p className="border-t bg-background p-4 text-center text-sm text-muted-foreground">
                 {session.archived_at
-                  ? "Unarchive this chat to continue."
+                  ? ui("Unarchive this chat to continue.")
                   : subject?.status !== "active"
-                    ? "The selected virtual user is unavailable."
-                    : "An organisation admin can continue Playground chats as another virtual user."}
+                    ? ui("The selected virtual user is unavailable.")
+                    : ui(
+                        "An organisation admin can continue Playground chats as another virtual user.",
+                      )}
               </p>
             </>
           )}
         </PageMain>
         <PageRail>
-          <RailSection label={agent ? "Agent" : "Harness"}>
+          <RailSection label={agent ? ui("Agent") : ui("Harness")}>
             <Link
               href={agent ? `/agents/${agent.id}` : `/harnesses/${session.harness_id}`}
               className="text-sm font-medium underline underline-offset-4 hover:text-primary"
             >
-              {counterpart ?? "Harness chat"}
+              {counterpart ?? ui("Harness chat")}
             </Link>
           </RailSection>
-          <RailSection label="Talk as">
+          <RailSection label={ui("Talk as")}>
             <Link
               href={`/virtual-users/${session.playground_user_id}`}
               className="text-sm font-medium underline underline-offset-4 hover:text-primary"
             >
               {subject?.name ?? session.playground_user_id}
             </Link>
-            <p className="mt-2 text-xs text-muted-foreground">Fixed for this chat</p>
+            <p className="mt-2 text-xs text-muted-foreground">{ui("Fixed for this chat")}</p>
           </RailSection>
-          <RailSection label="Sharing">
+          <RailSection label={ui("Sharing")}>
             <p className="flex items-center gap-2 text-sm font-medium">
-              <Users className="size-4" /> Organisation shared
+              <Users className="size-4" /> {ui("Organisation shared")}
             </p>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              Private user connections and memory are unavailable here.
+              {ui("Private user connections and memory are unavailable here.")}
             </p>
           </RailSection>
         </PageRail>

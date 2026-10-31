@@ -433,7 +433,7 @@ against one version is not evidence about the next.
 
 Ids are the provider's own, so they are spelled the way the vendor spells them.
 `jev-latest` is TypeSafe's alias for the current Jev, so it tracks whatever the
-current version is; an exact id like `jev-1.13.0` pins one, so a vendor update
+current version is; an exact id like `jev-1.14.0` pins one, so a vendor update
 cannot move your thresholds under you. Bare `jev` is not an id the API knows —
 nothing here rewrites what you pass.
 
@@ -443,7 +443,7 @@ threshold is calibrated:
 ```rust
 # use everruns::Answers;
 # fn run(answers: Answers) {
-let version = answers.model(); // "jev-1.13.0" for a "jev-latest" request
+let version = answers.model(); // "jev-1.14.0" for a "jev-latest" request
 # let _ = version;
 # }
 ```
@@ -457,7 +457,7 @@ builder, and it wins for that call:
 let answers = decisions
     .about("...")
     .noul("urgent", "Does this convey urgency?")
-    .model("jev-1.13.0")
+    .model("jev-1.14.0")
     .send()
     .await?;
 # let _ = answers;
@@ -561,12 +561,16 @@ does the same for the agent path.
 ### Shared provider accounts for decisions
 
 `Decisions::from_registry` accepts a `ProviderRegistry` and an explicit `ModelSpec`.
-Select `ModelSpec::on("typesafe", "jev-1.13.0")` for direct TypeSafe, or
-`ModelSpec::on("openrouter", "jev-1.13.0")` for OpenRouter. The OpenRouter driver maps that
-explicit alias to `typesafe/jev-1.13`; other IDs remain opaque. Providers hold authentication
+Select `ModelSpec::on("typesafe", "jev-1.14.0")` for direct TypeSafe, or
+`ModelSpec::on("openrouter", "jev-1.14.0")` for OpenRouter. The OpenRouter driver maps that
+explicit alias to `typesafe/jev-1.14`; other IDs remain opaque. Providers hold authentication
 once, so their chat and decision drivers use the same account. Returned model IDs report
 the snapshot that actually answered.
 
 `Jev::with_provider(provider, model_spec)` supplies that same account to a Framework capability.
 Use its exact provider key in the model spec. Existing `Jev::new` and `Jev::with_client` conveniences
 remain available for applications holding a direct TypeSafe key.
+
+## Offline batches
+
+For independent requests that can wait hours, use [Batch Model Requests](/framework/batch-model-requests/) to submit through Anthropic Message Batches and persist a ticket for later collection.

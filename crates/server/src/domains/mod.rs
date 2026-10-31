@@ -19,6 +19,7 @@ pub mod credentials;
 pub mod dreaming;
 pub mod evals;
 pub mod events;
+pub mod external_agents;
 pub mod git_fetch;
 pub mod git_sources;
 pub mod harnesses;
@@ -64,3 +65,5 @@ pub mod users;
 pub mod validation;
 pub mod virtual_users;
 pub mod workspaces;
+
+pub mod trace_exports;

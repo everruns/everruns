@@ -402,6 +402,34 @@
         }
       }
     },
+    "/v1/agents/cost-plan": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Plan agent cost workloads",
+        "description": "Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.",
+        "operationId": "plan_agent_costs",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCostPlan"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/diff": {
       "post": {
         "tags": [
@@ -3163,6 +3191,121 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/external-worker": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Read an Agent's external execution status",
+        "operationId": "get_external_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ExternalAgent"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Connect or rotate an external HTTPS worker",
+        "description": "Requires dangerous-settings permission and installation enablement. Stop\nactive turns first. The preinstalled secret is encrypted and never returned.",
+        "operationId": "register_external_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterExternalAgent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalAgent"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Disable external worker execution",
+        "description": "Revocation never falls back to the built-in runtime.",
+        "operationId": "disable_external_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/failures": {
       "get": {
         "tags": [
@@ -4238,6 +4381,45 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/source/accounts": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "List GitHub accounts for Agent source sync",
+        "description": "Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.",
+        "operationId": "list_agent_source_accounts",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSourceAccounts"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/source/options": {
       "post": {
         "tags": [
@@ -4425,6 +4607,88 @@
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/tracing": {
+      "get": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Get agent routing",
+        "operationId": "get_agent_routing",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingPolicyView"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "put": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Save agent routing",
+        "operationId": "save_agent_routing",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveRoutingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingPolicyView"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
           "support": "preview"
         }
       }
@@ -6735,6 +6999,57 @@
         }
       }
     },
+    "/v1/channels/{channel_id}/chat/shared/{token}": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Read work chat share",
+        "operationId": "read_work_chat_share",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read-only transcript page"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "security": [],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/channels/{channel_id}/fcp": {
       "post": {
         "tags": [
@@ -6914,6 +7229,14 @@
                 "string",
                 "null"
               ]
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -7757,6 +8080,152 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/sessions/{session_id}/settings": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Update work chat conversation",
+        "operationId": "update_work_chat_conversation",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Settings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/sessions/{session_id}/share": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Share work chat conversation",
+        "operationId": "share_work_chat_conversation",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revocable link token"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Revoke work chat share",
+        "operationId": "revoke_work_chat_share",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked"
+          },
+          "404": {
+            "description": "Unavailable"
           }
         },
         "security": [
@@ -10989,11 +11458,7 @@
           }
         },
         "deprecated": true,
-        "security": [
-          {
-            "AgentCredential": []
-          }
-        ],
+        "security": [],
         "x-deprecation": {
           "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
         },
@@ -11056,6 +11521,62 @@
           "support": "preview"
         },
         "x-superseded-by": "resolve_work_chat_main"
+      }
+    },
+    "/v1/e/{channel_id}/chat/shared/{token}": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Read work chat share legacy",
+        "operationId": "read_work_chat_share_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read-only transcript page"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "read_work_chat_share"
       }
     },
     "/v1/e/{channel_id}/fcp": {
@@ -11869,6 +12390,167 @@
           "support": "preview"
         },
         "x-superseded-by": "agent_api_answer_questions"
+      }
+    },
+    "/v1/e/{channel_id}/sessions/{session_id}/settings": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Update work chat conversation legacy",
+        "operationId": "update_work_chat_conversation_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Settings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "update_work_chat_conversation"
+      }
+    },
+    "/v1/e/{channel_id}/sessions/{session_id}/share": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Share work chat conversation legacy",
+        "operationId": "share_work_chat_conversation_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revocable link token"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "share_work_chat_conversation"
+      },
+      "delete": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Revoke work chat share legacy",
+        "operationId": "revoke_work_chat_share_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "revoke_work_chat_share"
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}/sse": {
@@ -15355,6 +16037,18 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "tree",
+            "in": "query",
+            "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -15715,6 +16409,18 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "tree",
+            "in": "query",
+            "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -15966,6 +16672,18 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "tree",
+            "in": "query",
+            "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -16087,6 +16805,18 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "tree",
+            "in": "query",
+            "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           }
         ],
@@ -19960,6 +20690,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "popup",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -23242,6 +23980,162 @@
         }
       }
     },
+    "/v1/sandbox-template-builds/{id}": {
+      "get": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Get Sandbox Template build",
+        "description": "Inspect a build attempt in the authenticated organization.",
+        "operationId": "get_sandbox_template_build",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxTemplateBuild"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sandbox-template-builds/{id}/apply": {
+      "post": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Save built snapshot as new revision",
+        "description": "Atomically apply a ready snapshot to its unchanged source template. Existing Agent and Session pins do not move.",
+        "operationId": "apply_sandbox_template_build",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxTemplate"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sandbox-template-builds/{id}/cancel": {
+      "post": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Cancel Sandbox Template build",
+        "description": "Cancel queued or running build work and clean up its disposable resources.",
+        "operationId": "cancel_sandbox_template_build",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxTemplateBuild"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sandbox-template-builds/{id}/discard": {
+      "post": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Discard unused build artifact",
+        "description": "Remove an unused build artifact. Applied artifacts remain pinned and cannot be discarded.",
+        "operationId": "discard_sandbox_template_build",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxTemplateBuild"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sandbox-template-metadata/{id}": {
       "get": {
         "tags": [
@@ -23380,6 +24274,95 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SandboxTemplate"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sandbox-templates/{id}/builds": {
+      "get": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "List Sandbox Template builds",
+        "description": "List twenty build attempts at an optional offset, bounded logs, and captured software notes.",
+        "operationId": "list_sandbox_template_builds",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SandboxTemplateBuild"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Build a Sandbox Template snapshot",
+        "description": "Run an install script in fresh isolated compute and bake a reusable provider snapshot. Does not revise the template.",
+        "operationId": "start_sandbox_template_build",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SandboxBuildRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxTemplateBuild"
                 }
               }
             }
@@ -28796,6 +29779,67 @@
         }
       }
     },
+    "/v1/system/doctor": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Check the whole install",
+        "operationId": "run_system_doctor",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "description": "Run every check now instead of returning the report from the last minute",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Health of every part of the install",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DoctorReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Platform user access is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The system doctor is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/task-webhooks": {
       "get": {
         "tags": [
@@ -29197,6 +30241,442 @@
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/tracing/defaults": {
+      "get": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Get defaults",
+        "operationId": "get_defaults",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingPolicyView"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "put": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Save defaults",
+        "operationId": "save_defaults",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveRoutingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingPolicyView"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/tracing/destination-metadata/{id}": {
+      "get": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Read safe destination metadata",
+        "description": "Read safe destination metadata. Never returns receiver authentication.",
+        "operationId": "get_tracing_destination_metadata",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Tracing resource ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingDestinationMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Update tracing destination metadata",
+        "description": "Update safe destination metadata while preserving its receiver and current authentication.",
+        "operationId": "update_tracing_destination_metadata",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Tracing resource ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingDestinationMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/tracing/destinations": {
+      "get": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "List destinations",
+        "operationId": "list_destinations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DestinationView"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Create destination",
+        "operationId": "create_destination",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveDestinationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DestinationView"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/tracing/destinations/{id}": {
+      "put": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Update destination",
+        "operationId": "update_destination",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Destination ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveDestinationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DestinationView"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Delete destination",
+        "operationId": "delete_destination",
+        "parameters": [
+          {
+            "name": "revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Destination ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {}
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/tracing/destinations/{id}/test": {
+      "post": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Test destination",
+        "operationId": "test_destination",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Destination ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestTraceResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/tracing/policies/{id}": {
+      "get": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Get tracing policy",
+        "description": "Read organization or agent trace routing without credentials.",
+        "operationId": "get_tracing_policy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Tracing resource ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingPolicyMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "tracing"
+        ],
+        "summary": "Set organization or agent destinations for future turns",
+        "description": "Set organization or agent destinations for future turns. Requires organization settings authority; never accepts credentials.",
+        "operationId": "update_tracing_policy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Tracing resource ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracingPolicyMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
           "support": "preview"
         }
       }
@@ -32452,6 +33932,10 @@
             "description": "Built-in agents (Platform Chat) are provisioned by the platform and\nare read-only: they cannot be modified or deleted via the API. Copy\none to get an editable version.",
             "example": false
           },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+          },
           "max_iterations": {
             "type": [
               "integer",
@@ -33080,6 +34564,23 @@
           }
         }
       },
+      "AgentCostPlan": {
+        "type": "object",
+        "description": "Three representative workload hypotheses; prices and usage frequency are set separately.",
+        "required": [
+          "tasks"
+        ],
+        "properties": {
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostPlanTask"
+            },
+            "description": "Exactly three suggested tasks that users can edit before projecting costs."
+          }
+        },
+        "additionalProperties": false
+      },
       "AgentCredentialBinding": {
         "type": "object",
         "description": "Metadata for a write-only credential bound to one agent: either an MCP\ntool parameter or an HTTP API the agent's shell calls.",
@@ -33299,6 +34800,7 @@
         "type": "object",
         "description": "A read-only agent example defined in code",
         "required": [
+          "localizations",
           "name",
           "display_name",
           "description",
@@ -33337,6 +34839,10 @@
             "type": "string",
             "description": "Explicit harness selected when importing this example.",
             "example": "conversation"
+          },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display names and descriptions."
           },
           "name": {
             "type": "string",
@@ -33663,6 +35169,7 @@
         "type": "object",
         "description": "Harness that a newly created session for this agent will resolve to.",
         "required": [
+          "localizations",
           "source",
           "status"
         ],
@@ -33678,6 +35185,10 @@
               "string",
               "null"
             ]
+          },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display names and descriptions."
           },
           "name": {
             "type": [
@@ -34128,12 +35639,17 @@
         "type": "object",
         "description": "A session as an execution caller sees it: no instructions, tools, owners\nor costs, which are management's.",
         "required": [
+          "archived",
+          "pinned",
           "id",
           "status",
           "created_at",
           "updated_at"
         ],
         "properties": {
+          "archived": {
+            "type": "boolean"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -34175,6 +35691,9 @@
             },
             "description": "Question sets the session waits on. Only `GET …/sessions/{id}` reads\nthem; a list leaves them out."
           },
+          "pinned": {
+            "type": "boolean"
+          },
           "status": {
             "type": "string",
             "description": "`started`, `active`, `idle`, `waitingforinput` or `failed`.",
@@ -34203,11 +35722,40 @@
           }
         }
       },
+      "AgentSourceAccounts": {
+        "type": "object",
+        "description": "Development GitHub accounts available to an Agent's source sync.",
+        "required": [
+          "available",
+          "personal",
+          "organization"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "The deployment has the shared Everruns GitHub App configured."
+          },
+          "install_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where a person installs the shared Everruns App on another GitHub account."
+          },
+          "organization": {
+            "$ref": "#/components/schemas/OrganizationSourceAccount"
+          },
+          "personal": {
+            "$ref": "#/components/schemas/PersonalSourceAccount"
+          }
+        }
+      },
       "AgentSourceStatus": {
         "type": "object",
         "description": "Continuous GitHub source binding, applied revision and reconciliation status.",
         "required": [
           "mode",
+          "github_account",
           "local_dirty",
           "generation",
           "repository",
@@ -34243,6 +35791,11 @@
             "format": "uuid",
             "description": "Binding generation used to detect a concurrent reconnect or disconnect.",
             "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c"
+          },
+          "github_account": {
+            "type": "string",
+            "description": "GitHub account the source reads through: personal, organization, or\nagent for a binding made before sync stopped using the Agent's identity.",
+            "example": "organization"
           },
           "last_checked_at": {
             "type": [
@@ -36774,6 +38327,21 @@
           }
         }
       },
+      "CheckArea": {
+        "type": "string",
+        "description": "The part of the install a check covers. The order is the display order.",
+        "enum": [
+          "control_plane",
+          "database",
+          "workers",
+          "security",
+          "messaging",
+          "storage",
+          "observability",
+          "models",
+          "integrations"
+        ]
+      },
       "CheckCredentialsRequest": {
         "type": "object",
         "description": "Request to check a provider credential without storing it.",
@@ -36828,6 +38396,16 @@
             "description": "Whether the name is available for use."
           }
         }
+      },
+      "CheckStatus": {
+        "type": "string",
+        "description": "How a check came out. Ordered from best to worst so the report's verdict\nis the maximum.",
+        "enum": [
+          "ok",
+          "info",
+          "warning",
+          "problem"
+        ]
       },
       "CircuitBreakerResponse": {
         "type": "object",
@@ -37341,6 +38919,17 @@
                 "format": "uuid",
                 "description": "Current binding generation when replacing a source; omit for an unbound Agent.",
                 "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c"
+              },
+              "github_account": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SourceGitHubAccount",
+                    "description": "Development GitHub account the source reads and writes through; omitted\nprefers the caller's own GitHub, then the organization's link."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "mode": {
                 "$ref": "#/components/schemas/SourceMode",
@@ -38429,6 +40018,58 @@
           }
         }
       },
+      "CostPlanTask": {
+        "type": "object",
+        "description": "One illustrative task and its editable token and model-call assumptions.",
+        "required": [
+          "name",
+          "description",
+          "assumption",
+          "calls",
+          "message_tokens",
+          "output_tokens",
+          "tool_result_tokens"
+        ],
+        "properties": {
+          "assumption": {
+            "type": "string",
+            "description": "Expected steps and the main uncertainty behind the workload estimate."
+          },
+          "calls": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Model calls per task, including follow-ups after tools; between 1 and 100.",
+            "minimum": 0
+          },
+          "description": {
+            "type": "string",
+            "description": "Example user request that this task represents."
+          },
+          "message_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Initial user-input tokens, excluding system instructions and tool schemas.",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "description": "Short name of the representative task."
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Output tokens per model call, including reasoning and tool arguments.",
+            "minimum": 0
+          },
+          "tool_result_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "New tool-result tokens added at each step of the task.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "CostTier": {
         "type": "object",
         "description": "A pricing tier that activates above a context token threshold.\nFor example, OpenAI charges higher rates for prompts exceeding 200K tokens.",
@@ -38723,6 +40364,10 @@
             ],
             "description": "Markdown intro shown as an intro box on a fresh Platform Chat thread.\nImages are allowed. Wins over the harness intro. Hidden once the user\ninputs.",
             "example": "Hey, I'm Ava. Ask me anything about your account."
+          },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
           },
           "max_iterations": {
             "type": [
@@ -39507,6 +41152,10 @@
             "description": "Deprecated: configure conversation presentation on the Agent instead.",
             "deprecated": true,
             "example": "I triage incidents, dig through logs, and draft the update."
+          },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
           },
           "mcpServers": {
             "$ref": "#/components/schemas/BTreeMap",
@@ -41293,6 +42942,129 @@
           }
         }
       },
+      "DestinationConfig": {
+        "type": "object",
+        "description": "Non-secret receiver settings and explicit content capture consent.",
+        "required": [
+          "name",
+          "provider",
+          "endpoint"
+        ],
+        "properties": {
+          "capture_content": {
+            "type": "boolean",
+            "description": "Explicit consent to export message and tool content; defaults to metadata only.",
+            "example": false
+          },
+          "capture_reasoning": {
+            "type": "boolean",
+            "description": "Explicit consent to export reasoning; also requires content capture.",
+            "example": false
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether customer exports may be sent to this receiver; false pauses delivery.",
+            "example": true
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "HTTPS receiver endpoint without embedded credentials, query parameters, or fragments.",
+            "example": "https://collector.example.com/v1/traces"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable destination name, from 1 to 128 characters.",
+            "example": "Production traces"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Braintrust project identifier; required for Braintrust receivers.",
+            "example": "00000000-0000-0000-0000-000000000002"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/TraceProvider",
+            "description": "Receiver protocol: Braintrust project or generic OTLP over HTTPS."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DestinationView": {
+        "type": "object",
+        "description": "Destination settings, safe delivery health, and routing usage; excludes credentials.",
+        "required": [
+          "id",
+          "config",
+          "revision",
+          "dropped_events",
+          "organization_default",
+          "agent_selections"
+        ],
+        "properties": {
+          "agent_selections": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of agent policies that explicitly select this destination.",
+            "example": 0
+          },
+          "config": {
+            "$ref": "#/components/schemas/DestinationConfig",
+            "description": "Non-secret destination settings, including capture consent and pause state."
+          },
+          "dropped_events": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of events omitted by bounded customer export delivery.",
+            "example": 0
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Destination identifier owned by the current organization.",
+            "example": "00000000-0000-0000-0000-000000000001"
+          },
+          "last_accepted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Time the receiver last accepted an export, or null before any acceptance.",
+            "example": "2026-10-28T00:00:00Z"
+          },
+          "last_attempt_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Time of the latest delivery attempt, or null before the first attempt.",
+            "example": "2026-10-28T00:00:00Z"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Sanitized delivery failure; never includes receiver credentials or response bodies.",
+            "example": "Receiver unavailable"
+          },
+          "organization_default": {
+            "type": "boolean",
+            "description": "Whether this destination is selected in organization defaults.",
+            "example": false
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Current revision used to reject stale saves and deletes.",
+            "example": 1
+          }
+        }
+      },
       "DiffQuery": {
         "type": "object",
         "description": "Query for diff endpoint",
@@ -41418,6 +43190,119 @@
             "type": "integer",
             "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
+          }
+        }
+      },
+      "DoctorCheck": {
+        "type": "object",
+        "description": "One check's outcome, written for an operator: what is true, why it\nmatters, and what to do.",
+        "required": [
+          "id",
+          "area",
+          "title",
+          "status",
+          "summary",
+          "observed_at"
+        ],
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/CheckArea"
+          },
+          "fix": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "How to fix it."
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable identifier, `area.name`.",
+            "example": "database.migrations"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the check observed this."
+          },
+          "status": {
+            "$ref": "#/components/schemas/CheckStatus"
+          },
+          "summary": {
+            "type": "string",
+            "description": "What the check found, in one sentence.",
+            "example": "All 14 migrations are applied."
+          },
+          "title": {
+            "type": "string",
+            "description": "Short name of what is checked.",
+            "example": "Migrations applied"
+          },
+          "why": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What goes wrong if this is not fixed."
+          }
+        }
+      },
+      "DoctorReport": {
+        "type": "object",
+        "description": "The whole install's health.",
+        "required": [
+          "status",
+          "checked_at",
+          "version",
+          "grade",
+          "auth_mode",
+          "setup",
+          "checks"
+        ],
+        "properties": {
+          "auth_mode": {
+            "type": "string",
+            "description": "Authentication mode.",
+            "example": "full"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the checks ran."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DoctorCheck"
+            },
+            "description": "Every check, problems first."
+          },
+          "grade": {
+            "type": "string",
+            "description": "Deployment grade (`dev`, `poc`, `preview`, `prod`). Decides how strict\nthe security checks are.",
+            "example": "prod"
+          },
+          "setup": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What the doctor found this install is made of, one fact per entry.",
+            "example": [
+              "Postgres 16.4",
+              "3 workers",
+              "NATS",
+              "S3 blob storage"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/CheckStatus",
+            "description": "The worst status of any check."
+          },
+          "version": {
+            "type": "string",
+            "description": "Server build version.",
+            "example": "0.50.0"
           }
         }
       },
@@ -41814,6 +43699,37 @@
             ],
             "description": "The session through which an agent made the change."
           }
+        }
+      },
+      "EntityLocalization": {
+        "type": "object",
+        "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Localized description (1–2000 characters when set)."
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Localized display name (1–255 characters when set)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "EntityLocalizations": {
+        "type": "object",
+        "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/EntityLocalization"
+        },
+        "propertyNames": {
+          "type": "string"
         }
       },
       "EntityRevision": {
@@ -43546,6 +45462,40 @@
           }
         }
       },
+      "ExternalAgent": {
+        "type": "object",
+        "description": "Public status of a customer-hosted HTTPS runtime; credentials are never exposed.",
+        "required": [
+          "endpoint_url",
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether this binding can lease new work. Disabled bindings retain routing."
+          },
+          "endpoint_url": {
+            "type": "string",
+            "description": "Verified public HTTPS URL that receives signed invocation requests.",
+            "example": "https://sales.example.workers.dev/"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Sanitized dispatch error, cleared after a successful invocation or registration."
+          },
+          "last_invoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Time of the latest invocation attempt, if any."
+          }
+        }
+      },
       "ExternalScoreStatus": {
         "type": "string",
         "description": "Result status reported alongside externally computed scores.",
@@ -45103,6 +47053,10 @@
             "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
             "example": false
           },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+          },
           "mcpServers": {
             "$ref": "#/components/schemas/BTreeMap",
             "description": "Remote MCP servers scoped to this harness and inherited by descendant layers."
@@ -45174,6 +47128,7 @@
         "type": "object",
         "description": "A read-only harness example defined in code.",
         "required": [
+          "localizations",
           "name",
           "display_name",
           "description",
@@ -45207,6 +47162,10 @@
               "null"
             ],
             "description": "Display glyph name rendered by the UI (e.g. `bar-chart`)."
+          },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display names and descriptions."
           },
           "name": {
             "type": "string",
@@ -46980,6 +48939,10 @@
                   "description": "Built-in agents (Platform Chat) are provisioned by the platform and\nare read-only: they cannot be modified or deleted via the API. Copy\none to get an editable version.",
                   "example": false
                 },
+                "localizations": {
+                  "$ref": "#/components/schemas/EntityLocalizations",
+                  "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+                },
                 "max_iterations": {
                   "type": [
                     "integer",
@@ -48430,6 +50393,10 @@
                   "type": "boolean",
                   "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
                   "example": false
+                },
+                "localizations": {
+                  "$ref": "#/components/schemas/EntityLocalizations",
+                  "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
                 },
                 "mcpServers": {
                   "$ref": "#/components/schemas/BTreeMap",
@@ -50879,6 +52846,10 @@
                           "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
                           "example": false
                         },
+                        "localizations": {
+                          "$ref": "#/components/schemas/EntityLocalizations",
+                          "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+                        },
                         "mcpServers": {
                           "$ref": "#/components/schemas/BTreeMap",
                           "description": "Remote MCP servers scoped to this harness and inherited by descendant layers."
@@ -52198,6 +54169,10 @@
               "null"
             ],
             "description": "Optional Markdown introduction shown before the conversation starts."
+          },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
           },
           "max_iterations": {
             "type": [
@@ -55697,6 +57672,42 @@
           }
         }
       },
+      "OrganizationSourceAccount": {
+        "type": "object",
+        "description": "The organization's links to the shared Everruns GitHub App.",
+        "required": [
+          "can_connect",
+          "accounts",
+          "repositories"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Linked GitHub accounts."
+          },
+          "can_connect": {
+            "type": "boolean",
+            "description": "The caller may link another GitHub account (organization admins)."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why repositories could not be listed, when they could not."
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRepository"
+            },
+            "description": "Repositories reachable through the linked installations."
+          }
+        }
+      },
       "OutputMessageCompletedData": {
         "type": "object",
         "description": "Data for output.message.completed event",
@@ -57895,6 +59906,42 @@
           }
         }
       },
+      "PersonalSourceAccount": {
+        "type": "object",
+        "description": "The caller's own GitHub sign-in.",
+        "required": [
+          "connected",
+          "repositories"
+        ],
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "description": "The caller has signed in to GitHub."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why repositories could not be listed, when they could not."
+          },
+          "login": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub login of that sign-in.",
+            "example": "octocat"
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRepository"
+            },
+            "description": "Repositories reachable through the shared App's installations the person can access."
+          }
+        }
+      },
       "PhaseSource": {
         "type": "string",
         "description": "Where a message's [`ExecutionPhase`] came from.\n\nOnly some providers report a phase. For the rest the runtime infers one from\ntool-call presence, where \"commentary\" means nothing more than \"this message\ncalled tools\" — so a text-only preamble is indistinguishable from a final\nanswer. Those are different claims, and a consumer cannot tell them apart\nfrom the phase value alone, so the source travels with it.",
@@ -58997,6 +61044,30 @@
           }
         }
       },
+      "RegisterExternalAgent": {
+        "type": "object",
+        "description": "Register a predeployed HTTPS endpoint after a signed ownership challenge.",
+        "required": [
+          "endpoint_url",
+          "endpoint_secret"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Agent public ID or name; the HTTP route supplies this value."
+          },
+          "endpoint_secret": {
+            "type": "string",
+            "description": "Preinstall this random, 32+ character secret in the endpoint. Never a user PAT.",
+            "writeOnly": true
+          },
+          "endpoint_url": {
+            "type": "string",
+            "description": "Verified public HTTPS URL that receives signed invocation requests.",
+            "example": "https://sales.example.workers.dev/"
+          }
+        }
+      },
       "RenameOrganizationConnectionRequest": {
         "type": "object",
         "description": "A display-name change that preserves the connected account credential.",
@@ -59819,6 +61890,35 @@
           }
         }
       },
+      "RoutingMode": {
+        "type": "string",
+        "description": "How an agent combines its destinations with organization defaults.",
+        "enum": [
+          "inherit",
+          "add",
+          "replace",
+          "off"
+        ]
+      },
+      "RoutingPolicy": {
+        "type": "object",
+        "description": "Customer destinations selected for future turns; never changes platform telemetry.",
+        "properties": {
+          "destination_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Distinct destination identifiers from this organization; at most eight selections."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/RoutingMode",
+            "description": "Use organization defaults, add selections, replace defaults, or disable customer exports."
+          }
+        },
+        "additionalProperties": false
+      },
       "RunBucket": {
         "type": "object",
         "description": "Turns started and failed in one bucket.",
@@ -60030,6 +62130,118 @@
             "description": "Ordered commands replayed when creating or recovering physical compute."
           }
         }
+      },
+      "SandboxBuildProvenance": {
+        "type": "object",
+        "description": "Reference data resolved by the server from an applied artifact in this tenant.\nSoftware notes remain untrusted author content, never runtime policy.",
+        "required": [
+          "build_id",
+          "snapshot_id",
+          "built_at"
+        ],
+        "properties": {
+          "build_id": {
+            "type": "string",
+            "description": "Applied build resolved from the exact tenant, provider account, and snapshot.",
+            "example": "sbxbuild_01933b5a000070008000000000000001"
+          },
+          "built_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the originating build attempt was accepted.",
+            "example": "2026-10-29T00:01:00Z"
+          },
+          "snapshot_id": {
+            "type": "string",
+            "description": "Exact immutable provider snapshot selected by the Session.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "software_notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Author-supplied reference notes, never trusted instructions or policy.",
+            "example": "# Installed tools\n- HTTPie 3.2.4"
+          },
+          "verification_command": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional check that passed after installation and in fresh snapshot compute.",
+            "example": "/home/daytona/.venvs/devtools/bin/http --version"
+          }
+        }
+      },
+      "SandboxBuildRequest": {
+        "type": "object",
+        "description": "Inputs for a single isolated installation and reusable filesystem snapshot.\nBuild compute receives no workload credentials or private Session state.",
+        "required": [
+          "source_revision_id",
+          "install_script"
+        ],
+        "properties": {
+          "build_network": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SandboxNetworkPolicy",
+                "description": "Package sources for the build only. Defaults to the template policy."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "install_script": {
+            "type": "string",
+            "description": "POSIX shell install script, 1–32768 UTF-8 bytes. Keep secrets out of it.",
+            "example": "python -m venv /home/daytona/.venvs/devtools\n/home/daytona/.venvs/devtools/bin/pip install httpie==3.2.4"
+          },
+          "metadata_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional bounded, author-supplied Markdown captured from the builder.",
+            "example": "/home/daytona/.everruns/sandbox.md"
+          },
+          "source_revision_id": {
+            "type": "string",
+            "description": "Source revision to guard against concurrent template edits.",
+            "example": "sbxtplrev_01933b5a000070008000000000000001"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total build deadline, including installation and fresh verification, in seconds.",
+            "example": 600,
+            "maximum": 1800,
+            "minimum": 60
+          },
+          "verification_command": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional check run after installation and again in fresh snapshot compute.",
+            "example": "/home/daytona/.venvs/devtools/bin/http --version"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SandboxBuildStatus": {
+        "type": "string",
+        "description": "Durable build lifecycle. Ready artifacts can be applied only after cleanup completes.",
+        "enum": [
+          "queued",
+          "running",
+          "ready",
+          "failed",
+          "cancelled",
+          "applied",
+          "discarded"
+        ]
       },
       "SandboxCapabilities": {
         "type": "object",
@@ -60975,6 +63187,142 @@
           }
         }
       },
+      "SandboxTemplateBuild": {
+        "type": "object",
+        "description": "Tenant-scoped build attempt, retained inputs, bounded output, and provider artifact.\nManagement credentials are stored separately and never appear in this record.",
+        "required": [
+          "id",
+          "sandbox_template_id",
+          "request",
+          "source_spec",
+          "status",
+          "step",
+          "logs",
+          "snapshot_name",
+          "cancel_requested",
+          "cleanup_pending",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "applied_revision_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Immutable template revision created by applying this artifact, if applied.",
+            "example": "sbxtplrev_01933b5a000070008000000000000002"
+          },
+          "builder_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Disposable installation compute identifier or its persisted submission name.",
+            "example": "550e8400-e29b-41d4-a716-446655440001"
+          },
+          "cancel_requested": {
+            "type": "boolean",
+            "description": "Whether cancellation was accepted; stale worker saves cannot erase this request.",
+            "example": false
+          },
+          "cleanup_pending": {
+            "type": "boolean",
+            "description": "Whether provider resources still require confirmed cleanup or reconciliation.",
+            "example": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time this build attempt was accepted.",
+            "example": "2026-10-29T00:00:00Z"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Bounded failure explanation, absent when no failure has been recorded.",
+            "example": "Command failed with exit code 23"
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique build attempt identifier.",
+            "example": "sbxbuild_01933b5a000070008000000000000001"
+          },
+          "logs": {
+            "type": "string",
+            "description": "UTF-8 execution-output tail, bounded to 32 KiB.",
+            "example": "HTTPie 3.2.4\nVerification passed\n"
+          },
+          "request": {
+            "$ref": "#/components/schemas/SandboxBuildRequest",
+            "description": "Original immutable installation and verification inputs."
+          },
+          "sandbox_template_id": {
+            "type": "string",
+            "description": "Parent template whose immutable source revision supplied the build configuration.",
+            "example": "sbxtpl_01933b5a000070008000000000000001"
+          },
+          "snapshot_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider snapshot identifier, present once the artifact has been resolved.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "snapshot_name": {
+            "type": "string",
+            "description": "Deterministic provider artifact name used to reconcile uncertain submissions.",
+            "example": "everruns-build-01933b5a000070008000000000000001"
+          },
+          "snapshot_requested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Submission time used when reconciling a snapshot response lost in transport.",
+            "example": "2026-10-29T00:00:00Z"
+          },
+          "software_notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Up to 16 KiB of author-supplied Markdown, presented as untrusted reference data.",
+            "example": "# Installed tools\n- HTTPie 3.2.4"
+          },
+          "source_spec": {
+            "$ref": "#/components/schemas/SandboxTemplateSpec",
+            "description": "Exact source spec; no runtime credentials or workspace are attached."
+          },
+          "status": {
+            "$ref": "#/components/schemas/SandboxBuildStatus",
+            "description": "Persisted lifecycle state; inspect cleanup_pending before applying a Ready build."
+          },
+          "step": {
+            "type": "string",
+            "description": "Current execution or cleanup step.",
+            "example": "installing"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time of the last persisted build update.",
+            "example": "2026-10-29T00:01:00Z"
+          },
+          "verification_sandbox_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Disposable fresh-snapshot verification compute identifier or submission name.",
+            "example": "550e8400-e29b-41d4-a716-446655440002"
+          }
+        }
+      },
       "SandboxTemplateMetadataRequest": {
         "type": "object",
         "description": "Editable template metadata; omitted fields retain their current values.",
@@ -61188,6 +63536,41 @@
           }
         }
       },
+      "SaveDestinationRequest": {
+        "type": "object",
+        "description": "Create or update a receiver; omitted authentication preserves existing credentials.",
+        "required": [
+          "config"
+        ],
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/DestinationConfig",
+            "description": "Non-secret destination settings, including capture consent and pause state."
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Expected current revision for updates; omit when creating a destination.",
+            "example": 1
+          },
+          "secrets": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TraceSecrets",
+                "description": "Receiver authentication. Required for creation or a receiver change; never returned."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "writeOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
       "SaveOrganizationConnectionRequest": {
         "allOf": [
           {
@@ -61209,6 +63592,27 @@
           }
         ],
         "description": "Organization-owned provider account input (sandbox provider or search account)."
+      },
+      "SaveRoutingRequest": {
+        "type": "object",
+        "description": "Save routing only when the supplied revision still matches the current policy.",
+        "required": [
+          "policy",
+          "revision"
+        ],
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/RoutingPolicy",
+            "description": "Routing mode and the organization-owned destination selections to save."
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Current revision used to reject stale saves and deletes.",
+            "example": 1
+          }
+        },
+        "additionalProperties": false
       },
       "SavedReport": {
         "type": "object",
@@ -63699,6 +66103,17 @@
           "resolved_from"
         ],
         "properties": {
+          "build": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SandboxBuildProvenance",
+                "description": "Server-resolved provenance for the exact tenant, account and snapshot.\nCaptured software notes are untrusted author reference data."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "capabilities": {
             "$ref": "#/components/schemas/SandboxCapabilities"
           },
@@ -64296,6 +66711,30 @@
           }
         }
       },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "archived": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "pinned": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "SideEffectClass": {
         "type": "string",
         "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
@@ -64525,6 +66964,14 @@
           }
         }
       },
+      "SourceGitHubAccount": {
+        "type": "string",
+        "description": "Development GitHub account a source reads and writes through. Never the\nAgent's runtime GitHub identity.",
+        "enum": [
+          "personal",
+          "organization"
+        ]
+      },
       "SourceInput": {
         "type": "object",
         "description": "A connected repository mounted beneath a non-overlapping collection path.",
@@ -64602,6 +67049,17 @@
             "description": "Branch to browse; omitted uses the repository's default branch.",
             "example": "main"
           },
+          "github_account": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SourceGitHubAccount",
+                "description": "Development GitHub account to read through; omitted prefers the caller's own."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "path": {
             "type": "string",
             "description": "Repository-relative directory to browse; empty selects the root.",
@@ -64611,6 +67069,30 @@
             "type": "string",
             "description": "GitHub repository in owner/name form.",
             "example": "acme/agents"
+          }
+        }
+      },
+      "SourceRepository": {
+        "type": "object",
+        "description": "One repository a development account can reach.",
+        "required": [
+          "full_name",
+          "account",
+          "private"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "GitHub account that owns the repository.",
+            "example": "acme"
+          },
+          "full_name": {
+            "type": "string",
+            "description": "Repository in owner/name form.",
+            "example": "acme/agents"
+          },
+          "private": {
+            "type": "boolean"
           }
         }
       },
@@ -65349,6 +67831,26 @@
           }
         }
       },
+      "TestTraceResponse": {
+        "type": "object",
+        "description": "Result of sending synthetic data to the receiver; contains no customer turn content.",
+        "required": [
+          "accepted",
+          "message"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "description": "Whether the receiver accepted the synthetic export; partial OTLP rejection is false.",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "description": "Safe explanation of the synthetic test result.",
+            "example": "Receiver accepted the test trace"
+          }
+        }
+      },
       "TextAnnotation": {
         "type": "object",
         "description": "A claim-level citation attached to a span of generated text.\n\nThe single shared type across every citation capability: a text span linked\nto a source. Producers agree only on this render contract — each capability\nkeeps its own richer representation (e.g. `KnowledgeIndexCitation`) and maps\ninto this envelope at emit time.",
@@ -66030,6 +68532,13 @@
         "type": "object",
         "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
         "properties": {
+          "capability_description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets."
+          },
           "capability_id": {
             "type": [
               "string",
@@ -66846,6 +69355,14 @@
           }
         }
       },
+      "TraceProvider": {
+        "type": "string",
+        "description": "Receiver protocol used for customer trace delivery.",
+        "enum": [
+          "braintrust",
+          "otlp"
+        ]
+      },
       "TraceRequestMessage": {
         "type": "object",
         "description": "One message of a model request.",
@@ -67252,6 +69769,23 @@
           "errored",
           "skipped"
         ]
+      },
+      "TraceSecrets": {
+        "type": "object",
+        "description": "Write-only receiver authentication, encrypted at rest and never returned.",
+        "properties": {
+          "headers": {
+            "type": "object",
+            "description": "Authentication headers: Authorization, X-API-Key, or Api-Key. Values are write-only.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
       },
       "TraceStep": {
         "type": "object",
@@ -67690,6 +70224,77 @@
               "$ref": "#/components/schemas/TraceTurn"
             },
             "description": "Turns in turn order."
+          }
+        }
+      },
+      "TracingDestinationMetadata": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DestinationConfig",
+            "description": "Non-secret destination settings, including capture consent and pause state."
+          },
+          {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "Destination identifier owned by the current organization.",
+                "example": "00000000-0000-0000-0000-000000000001"
+              }
+            }
+          }
+        ],
+        "description": "Safe destination settings used by native reads and change history."
+      },
+      "TracingPolicyMetadata": {
+        "type": "object",
+        "description": "Safe organization or agent routing metadata returned by native commands.",
+        "required": [
+          "id",
+          "mode",
+          "destination_ids"
+        ],
+        "properties": {
+          "destination_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Distinct destination identifiers from this organization; at most eight selections."
+          },
+          "id": {
+            "type": "string",
+            "description": "Organization public ID or agent public ID whose routing policy is selected.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/RoutingMode",
+            "description": "Use organization defaults, add selections, replace defaults, or disable customer exports."
+          }
+        }
+      },
+      "TracingPolicyView": {
+        "type": "object",
+        "description": "Current routing policy and the revision required for a guarded save.",
+        "required": [
+          "policy",
+          "revision"
+        ],
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/RoutingPolicy",
+            "description": "Routing mode and the organization-owned destination selections to save."
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Current revision used to reject stale saves and deletes.",
+            "example": 1
           }
         }
       },
@@ -68375,6 +70980,17 @@
             ],
             "description": "Markdown intro for fresh Platform Chat threads. Outer `None` leaves\nunchanged; inner `None` clears.",
             "example": "Hey, I'm Ava. Ask me anything about your account."
+          },
+          "localizations": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EntityLocalizations",
+                "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "max_iterations": {
             "type": [
@@ -69137,6 +71753,17 @@
             "description": "Deprecated: configure conversation presentation on the Agent instead.",
             "deprecated": true,
             "example": "I triage incidents, dig through logs, and draft the update."
+          },
+          "localizations": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EntityLocalizations",
+                "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "mcpServers": {
             "oneOf": [
@@ -71389,6 +74016,10 @@
                 "description": "Built-in agents (Platform Chat) are provisioned by the platform and\nare read-only: they cannot be modified or deleted via the API. Copy\none to get an editable version.",
                 "example": false
               },
+              "localizations": {
+                "$ref": "#/components/schemas/EntityLocalizations",
+                "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+              },
               "max_iterations": {
                 "type": [
                   "integer",
@@ -72354,6 +74985,10 @@
                 "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
                 "example": false
               },
+              "localizations": {
+                "$ref": "#/components/schemas/EntityLocalizations",
+                "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+              },
               "mcpServers": {
                 "$ref": "#/components/schemas/BTreeMap",
                 "description": "Remote MCP servers scoped to this harness and inherited by descendant layers."
@@ -73148,6 +75783,10 @@
                     "type": "boolean",
                     "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
                     "example": false
+                  },
+                  "localizations": {
+                    "$ref": "#/components/schemas/EntityLocalizations",
+                    "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
                   },
                   "mcpServers": {
                     "$ref": "#/components/schemas/BTreeMap",
@@ -74945,6 +77584,15 @@
       "x-displayName": "Monitoring"
     },
     {
+      "name": "tracing",
+      "x-displayName": "Tracing"
+    },
+    {
+      "name": "system",
+      "description": "Whole-install health checks for platform operators",
+      "x-displayName": "System"
+    },
+    {
       "name": "durable-schedules",
       "description": "Durable scheduled tasks management endpoints",
       "x-displayName": "Durable schedules"
@@ -75080,6 +77728,8 @@
       "tags": [
         "durable",
         "monitoring",
+        "tracing",
+        "system",
         "durable-schedules",
         "sandbox-templates",
         "sandboxes",

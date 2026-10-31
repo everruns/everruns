@@ -1,7 +1,10 @@
 "use client";
 
+import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
+import { ExternalWorker } from "@/components/agents/external-worker";
 import { AgentSourcePanel } from "@/components/agents/agent-source";
 import { useAgentSource } from "@/hooks/use-agent-source";
 import { exportAgentPackage } from "@/lib/api/agents";
@@ -80,6 +83,7 @@ import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { AgentChecks, applyByteSpanReplacement } from "@/components/agents/agent-checks";
 import { agentFilesSectionVisible } from "@/components/agents/agent-files-visibility";
 import { AgentConfigColumn, type AgentMoreRow } from "@/components/agents/agent-config-column";
+import { AgentCostEstimate } from "@/components/agents/agent-cost-estimate";
 import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
 import { useAgentChannels } from "@/hooks/use-agent-channels";
 import { useAgentTriggers } from "@/hooks/use-agent-triggers";
@@ -125,8 +129,13 @@ import {
   useChatChanges,
 } from "@/components/chat-mode/chat-change-mark";
 
-const count = (n: number, singular: string, plural?: string) =>
-  `${n} ${pluralize(n, singular, plural)}`;
+/** Shown on the More row. Empty means the provider's own output limit. */
+function maxOutputTokensSummary(value: string, locale: string, providerDefault: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return providerDefault;
+  if (!/^\d+$/.test(trimmed)) return trimmed;
+  return Number(trimmed).toLocaleString(locale);
+}
 
 function healthSummary(latest: LatestHealthCheckRun | undefined): string {
   const run = latest?.run;
@@ -147,6 +156,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 }
 
 function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }) {
+  const { displayLocale } = useDisplayLocale();
+  const count = (n: number, singular: string, plural?: string) =>
+    `${n} ${pluralize(n, singular, plural, displayLocale)}`;
+  const ui = useUiTranslations();
   const { agentId } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -163,7 +176,9 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
     setActiveTab(deepLink.tab);
   }
   const [editRequested, setEditRequested] = useState(() => searchParams.get("mode") === "edit");
-  const [sourceOpen, setSourceOpen] = useState(false);
+  // `?sync=github` reopens the Sync dialog after connecting GitHub in this tab
+  // (the fallback when the browser blocks the connect popup).
+  const [sourceOpen, setSourceOpen] = useState(() => searchParams.get("sync") === "github");
   const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null);
   // Optional "Reason for this change", sent with Save and with Archive/Delete.
   const [saveReason, setSaveReason] = useState("");
@@ -184,7 +199,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   const sourceQuery = useAgentSource(agentId);
   const sourceManaged = !!sourceQuery.data && sourceQuery.data.mode !== "two_way";
   const { data: harnesses } = useHarnesses();
-  usePageTitle(agent ? getDisplayName(agent) : null, "Agent");
+  usePageTitle(agent ? getDisplayName(agent, displayLocale) : null, ui("Agent"));
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
   const { data: models } = useModels();
   const { data: stats, isLoading: statsLoading, error: statsError } = useAgentStats(agentId);
@@ -243,7 +258,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   }, [agent?.updated_at, chatMode, draft.isDirty, editing]);
   const registerPage = chatMode?.registerPage;
   const pageRoute = chatPageRoute(`/agents/${agentId}`, searchParams);
-  const pageLabel = agent ? getDisplayName(agent) : "Agent";
+  const pageLabel = agent ? getDisplayName(agent, displayLocale) : "Agent";
   const pageLoaded = !!agent;
   useEffect(
     () =>
@@ -322,10 +337,15 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
     if (!result.ok) {
       selectTab("agent");
       if (BRANDING_FIELDS.some((field) => result.errors[field])) setOpenSection("branding");
+      else if (result.errors.max_output_tokens) setOpenSection("max_output_tokens");
       return;
     }
     try {
-      await updateAgent.mutateAsync({ agentId, request: result.request, reason: saveReason });
+      await updateAgent.mutateAsync({
+        agentId,
+        request: result.request,
+        reason: saveReason,
+      });
       chatMode?.recordAction(`Saved page draft changes to ${pageLabel}`);
       draft.reset();
       chatDraft.changes.clear();
@@ -348,7 +368,11 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
         properties: {},
         additionalProperties: false,
       },
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
       execute: async () => {
         webmcp.assertBinding(webmcp.bindingToken);
         if (!agent || agent.id !== agentId || agent.status !== "active") {
@@ -356,7 +380,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
         }
         await webmcp.requestApproval({
           title: "Open this agent in Playground?",
-          description: `Open Playground with ${getDisplayName(agent)} selected. No session, sandbox, or model usage starts until you confirm the Playground setup.`,
+          description: `Open Playground with ${getDisplayName(agent, displayLocale)} selected. No session, sandbox, or model usage starts until you confirm the Playground setup.`,
           confirmLabel: "Open Playground",
         });
         webmcp.assertBinding(webmcp.bindingToken);
@@ -364,7 +388,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
         return { opened: true, path: playgroundPath };
       },
     }),
-    [agent, agentId, playgroundPath, router, webmcp],
+    [agent, agentId, playgroundPath, router, webmcp, displayLocale],
   );
 
   useWebMcpTool(openPlaygroundTool, {
@@ -381,7 +405,9 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
         const blob =
           format === "zip"
             ? await exportAgentPackage(agent.name)
-            : new Blob([await exportAgent.mutateAsync(agentId)], { type: "text/markdown" });
+            : new Blob([await exportAgent.mutateAsync(agentId)], {
+                type: "text/markdown",
+              });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
@@ -437,8 +463,10 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   if (!agent) {
     return (
       <ResourceNotFound
-        title="Agent not found"
-        description="This agent may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Agent not found")}
+        description={ui(
+          "This agent may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref="/agents"
         backLabel="Back to agents"
         resourceId={agentId}
@@ -449,7 +477,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   const isActive = agent.status === "active";
   const canEdit = isActive && !readOnly;
   const sessionCount = agent.session_count;
-  const displayName = getDisplayName(agent);
+  const displayName = getDisplayName(agent, displayLocale);
   const fixedSandbox = harnessInheritsFromName(
     draft.fields.harness_id || agent.harness_id,
     harnesses ?? [],
@@ -460,7 +488,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   const network = normalizeNetworkAccess(draft.networkAccess);
   const brandingParts = [
     ...(agent.avatar ? ["Avatar"] : []),
-    draft.fields.description.trim() ? "Description" : "No description",
+    draft.fields.description.trim() ? ui("Description") : ui("No description"),
     ...(draft.starters.length > 0 ? [count(draft.starters.length, "starter")] : []),
   ];
   // Keep an open Files sheet available if the draft drops the last file.
@@ -473,57 +501,84 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
       catalog: allCapabilities,
     }) || openSection === "files";
   const moreRows: AgentMoreRow[] = [
-    { id: "branding", label: "Branding", summary: brandingParts.join(" · ") },
+    {
+      id: "localization",
+      label: ui("Localization"),
+      summary: Object.keys(draft.localizations).join(", ") || ui("Default"),
+    },
+    {
+      id: "branding",
+      label: ui("Branding"),
+      summary: brandingParts.join(" · "),
+    },
     {
       id: "mcp",
-      label: "MCP servers",
-      summary: mcpAttachments?.length ? `${mcpAttachments.length} attached` : "None",
+      label: ui("MCP servers"),
+      summary: mcpAttachments?.length
+        ? ui("{value0} attached", { value0: mcpAttachments.length })
+        : ui("None"),
     },
     {
       id: "credentials",
-      label: "Credentials",
-      summary: credentials?.length ? `${credentials.length} bound` : "None",
+      label: ui("Credentials"),
+      summary: credentials?.length
+        ? ui("{value0} bound", { value0: credentials.length })
+        : ui("None"),
     },
     {
       id: "service",
-      label: "Service account",
+      label: ui("Service account"),
       summary: agent.service_virtual_user_id
-        ? (serviceAccount?.name ?? "Assigned")
-        : "On first use",
+        ? (serviceAccount?.name ?? ui("Assigned"))
+        : ui("On first use"),
     },
     {
       id: "files",
-      label: "Files",
-      summary: draft.files.length ? count(draft.files.length, "file") : "None",
+      label: ui("Files"),
+      summary: draft.files.length ? count(draft.files.length, "file") : ui("None"),
     },
     {
       id: "network",
-      label: "Network access",
+      label: ui("Network access"),
       summary:
         network.allowed.length || network.blocked.length
           ? [
               ...(network.allowed.length ? [`${network.allowed.length} allowed`] : []),
               ...(network.blocked.length ? [`${network.blocked.length} blocked`] : []),
             ].join(" · ")
-          : "Inherited",
+          : ui("Inherited"),
     },
     {
       id: "sandbox",
-      label: "Sandbox",
+      label: ui("Sandbox"),
       summary:
         fixedSandbox ??
         (draft.sandboxPolicy
           ? `${Object.keys(draft.sandboxPolicy.templates ?? {}).length} · default ${draft.sandboxPolicy.default}`
-          : "None"),
+          : ui("None")),
+    },
+    {
+      id: "max_output_tokens",
+      label: ui("Max output tokens"),
+      summary: maxOutputTokensSummary(
+        draft.fields.max_output_tokens,
+        displayLocale,
+        ui("Provider default"),
+      ),
     },
     {
       id: "usage",
-      label: "Token usage",
+      label: ui("Token usage"),
       summary: agent.usage
         ? formatTokens(agent.usage.input_tokens + agent.usage.output_tokens)
-        : "None",
+        : ui("None"),
     },
-    { id: "health", label: "Health check", summary: healthSummary(latestHealth) },
+    ...(!builtIn ? [{ id: "tracing", label: ui("Tracing"), summary: ui("Destinations") }] : []),
+    {
+      id: "health",
+      label: ui("Health check"),
+      summary: ui(healthSummary(latestHealth)),
+    },
   ].filter((row) => row.id !== "files" || showFiles);
 
   const canArchive = canEdit;
@@ -546,7 +601,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
           ? [
               {
                 id: "source",
-                label: "Sync with GitHub",
+                label: ui("Sync with GitHub"),
                 icon: <RefreshCw className="size-4" />,
                 onSelect: () => setSourceOpen(true),
                 disabled: sourceQuery.isLoading || !!sourceQuery.error,
@@ -573,7 +628,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
         },
         {
           id: "export-markdown",
-          label: "Export Markdown",
+          label: ui("Export Markdown"),
           icon: <Download className="size-4" />,
           onSelect: () => handleExport("markdown"),
           disabled: exporting,
@@ -583,9 +638,12 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
           ? [
               {
                 id: "observe",
-                label: "Observe this agent",
+                label: ui("Observe this agent"),
                 icon: <Telescope className="size-4" />,
-                href: { pathname: "/observers/new", query: { agent_id: agentId } },
+                href: {
+                  pathname: "/observers/new",
+                  query: { agent_id: agentId },
+                },
               },
             ]
           : []),
@@ -599,10 +657,10 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
     <>
       <Button onClick={handleSave} disabled={updateAgent.isPending || draftConflict}>
         <Check className="size-4" />
-        {updateAgent.isPending ? "Saving..." : "Save changes"}
+        {updateAgent.isPending ? ui("Saving...") : ui("Save changes")}
       </Button>
       <Button variant="outline" onClick={handleDiscard} disabled={updateAgent.isPending}>
-        Discard
+        {ui("Discard")}
       </Button>
     </>
   ) : (
@@ -610,13 +668,13 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
       {canEdit && (
         <Button variant="outline" onClick={startEdit}>
           <Pencil className="size-4" />
-          Edit
+          {ui("Edit")}
         </Button>
       )}
       {overflowMenu}
       <Button variant="accent" onClick={handleTestAgent} disabled={!isActive}>
         <MessageCircle className="size-4" />
-        Test in Playground
+        {ui("Test in Playground")}
       </Button>
     </>
   );
@@ -626,14 +684,18 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
       <ChatChangesContext.Provider
         value={
           chatChanges
-            ? { ...chatChanges, canUndo: canEdit, pending: chatChanges.pending || editing }
+            ? {
+                ...chatChanges,
+                canUndo: canEdit,
+                pending: chatChanges.pending || editing,
+              }
             : null
         }
       >
         <div className="min-h-full bg-brand-dots">
           <PageContainer>
             <PageBreadcrumb
-              items={[{ label: "Agents", href: "/agents" }, { label: displayName }]}
+              items={[{ label: ui("Agents"), href: "/agents" }, { label: displayName }]}
             />
 
             <PageMasthead
@@ -646,23 +708,27 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                   {editing ? (
                     <Badge variant="accent">
                       <Pencil />
-                      Editing
+                      {ui("Editing")}
                     </Badge>
                   ) : (
                     <Badge variant={getEntityStatusBadgeVariant(agent.status)}>
-                      {agent.status}
+                      {ui(agent.status)}
                     </Badge>
                   )}
-                  {builtIn && <Badge variant="outline">Built-in</Badge>}
+                  {builtIn && <Badge variant="outline">{ui("Built-in")}</Badge>}
                 </>
               }
               description={
                 editing
                   ? chatMode
-                    ? "Unsaved draft. Save changes to update the Agent definition. Running turns continue."
-                    : "Changes apply to new sessions only. Running sessions keep the current definition."
+                    ? ui(
+                        "Unsaved draft. Save changes to update the Agent definition. Running turns continue.",
+                      )
+                    : ui(
+                        "Changes apply to new sessions only. Running sessions keep the current definition.",
+                      )
                   : builtIn
-                    ? "Managed by Everruns and read-only. Copy it to make an editable version."
+                    ? ui("Managed by Everruns and read-only. Copy it to make an editable version.")
                     : undefined
               }
               meta={
@@ -670,8 +736,33 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                   <ManagerNotesHint entityRef={agent.id} kind="agent" enabled={canManage} />
                 ) : undefined
               }
-              actions={actions}
+              actions={
+                <>
+                  <AgentCostEstimate
+                    modelId={draft.fields.default_model_id}
+                    maxOutputTokens={draft.fields.max_output_tokens}
+                    previewRequest={{
+                      system_prompt: draft.fields.system_prompt,
+                      harness_id:
+                        draft.fields.harness_id || agent.effective_harness?.id || undefined,
+                      capabilities: draft.capabilities,
+                      initial_files: draft.files,
+                      tools: agent.tools ?? [],
+                      mcpServers: agent.mcpServers,
+                    }}
+                  />
+                  {actions}
+                </>
+              }
             />
+
+            {!editing && !builtIn && (
+              <ExternalWorker
+                key={agent.id}
+                agentId={agent.id}
+                disabled={!can("agent.dangerous")}
+              />
+            )}
 
             {!editing && !builtIn && (
               <AgentSourcePanel
@@ -693,12 +784,12 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
 
             {exportError && (
               <p role="alert" className="text-destructive">
-                Could not export: {exportError}
+                {ui("Could not export:")} {exportError}
               </p>
             )}
             {updateAgent.error && (
               <p role="alert" className="-mt-2 text-sm text-destructive">
-                Could not save: {updateAgent.error.message}
+                {ui("Could not save:")} {updateAgent.error.message}
               </p>
             )}
 
@@ -710,7 +801,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                   onValueChange={(value) => {
                     if (isAgentTab(value)) selectTab(value);
                   }}
-                  items={getAgentTabItems(sessionCount, integrationCount)}
+                  items={getAgentTabItems(sessionCount, integrationCount, ui)}
                   className="border-x border-t bg-background px-2"
                 />
               </PageControlStrip>
@@ -794,13 +885,14 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
             </div>
 
             <PageFooter>
-              <BackLink href="/agents">Back to Agents</BackLink>
+              <BackLink href="/agents">{ui("Back to Agents")}</BackLink>
             </PageFooter>
           </PageContainer>
           {draftConflict && (
             <p role="alert" className="mx-6 border border-accent bg-card p-3 text-sm">
-              The saved agent changed while you were editing. Your unsaved draft is kept. Discard it
-              to review the latest definition before saving.
+              {ui(
+                "The saved agent changed while you were editing. Your unsaved draft is kept. Discard it to review the latest definition before saving.",
+              )}
             </p>
           )}
           <ChatChangesToast name={displayName} canUndo={canEdit} editing={editing} />
@@ -841,26 +933,34 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>
-                  {confirmAction === "delete" ? "Delete agent" : "Archive agent"}
+                  {confirmAction === "delete" ? ui("Delete agent") : ui("Archive agent")}
                 </DialogTitle>
                 <DialogDescription>
                   {confirmAction === "delete"
-                    ? `Permanently delete the archived agent “${displayName}”? Existing references will render as deleted tombstones.`
-                    : `Archive “${displayName}”? It stays visible when archived items are shown, becomes read-only, and stops being assignable.`}
+                    ? ui(
+                        "Permanently delete the archived agent “{value0}”? Existing references will render as deleted tombstones.",
+                        { value0: displayName },
+                      )
+                    : ui(
+                        "Archive “{value0}”? It stays visible when archived items are shown, becomes read-only, and stops being assignable.",
+                        { value0: displayName },
+                      )}
                 </DialogDescription>
                 {confirmAction && channels && (
                   <SlackRemovalNotice channels={channels} action={confirmAction} />
                 )}
                 {slackRemovalForbidden && (
                   <p className="text-sm text-muted-foreground">
-                    Removing managed Slack apps requires permission to delete Agent integrations.
+                    {ui(
+                      "Removing managed Slack apps requires permission to delete Agent integrations.",
+                    )}
                   </p>
                 )}
                 {channels === undefined && (
                   <p className="text-sm text-muted-foreground">
                     {channelsError
-                      ? "Could not check Slack connections. Reload before continuing."
-                      : "Checking Slack connections…"}
+                      ? ui("Could not check Slack connections. Reload before continuing.")
+                      : ui("Checking Slack connections…")}
                   </p>
                 )}
                 {confirmError && confirmAction && (
@@ -885,7 +985,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                     setConfirmReason("");
                   }}
                 >
-                  Cancel
+                  {ui("Cancel")}
                 </Button>
                 <Button
                   variant={confirmAction === "delete" ? "destructive" : "default"}
@@ -894,11 +994,11 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                 >
                   {confirmAction === "delete"
                     ? destroyAgent.isPending
-                      ? "Deleting..."
-                      : "Delete agent"
+                      ? ui("Deleting...")
+                      : ui("Delete agent")
                     : deleteAgent.isPending
-                      ? "Archiving..."
-                      : "Archive agent"}
+                      ? ui("Archiving...")
+                      : ui("Archive agent")}
                 </Button>
               </DialogFooter>
             </DialogContent>

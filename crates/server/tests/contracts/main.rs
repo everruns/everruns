@@ -16,6 +16,7 @@ mod test_harness;
 mod mcp_form_elicitation_test;
 mod mcp_url_consent_test;
 mod mcp_url_elicitation_test;
+mod public_message_metadata_test;
 mod question_answers_test;
 mod session_schedules_policy_test;
 mod session_storage_policy_test;

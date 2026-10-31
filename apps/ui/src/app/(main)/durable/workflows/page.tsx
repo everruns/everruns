@@ -1,5 +1,8 @@
 "use client";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
+import { PageContainer, PageMasthead } from "@/components/layout";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
 
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
@@ -78,6 +81,9 @@ function WorkflowRow({
   workflow: DurableWorkflow;
   onCancel: (id: string) => void;
 }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   return (
     <TableRow>
       <TableCell>
@@ -95,9 +101,15 @@ function WorkflowRow({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(workflow.created_at), { addSuffix: true })}
+              {formatDistanceToNow(
+                new Date(workflow.created_at),
+                { addSuffix: true },
+                displayLocale,
+              )}
             </TooltipTrigger>
-            <TooltipContent>{new Date(workflow.created_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>
+              {new Date(workflow.created_at).toLocaleString(displayLocale)}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -106,9 +118,15 @@ function WorkflowRow({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger className="text-sm text-muted-foreground">
-                {formatDistanceToNow(new Date(workflow.started_at), { addSuffix: true })}
+                {formatDistanceToNow(
+                  new Date(workflow.started_at),
+                  { addSuffix: true },
+                  displayLocale,
+                )}
               </TooltipTrigger>
-              <TooltipContent>{new Date(workflow.started_at).toLocaleString()}</TooltipContent>
+              <TooltipContent>
+                {new Date(workflow.started_at).toLocaleString(displayLocale)}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
@@ -120,9 +138,15 @@ function WorkflowRow({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger className="text-sm text-muted-foreground">
-                {formatDistanceToNow(new Date(workflow.completed_at), { addSuffix: true })}
+                {formatDistanceToNow(
+                  new Date(workflow.completed_at),
+                  { addSuffix: true },
+                  displayLocale,
+                )}
               </TooltipTrigger>
-              <TooltipContent>{new Date(workflow.completed_at).toLocaleString()}</TooltipContent>
+              <TooltipContent>
+                {new Date(workflow.completed_at).toLocaleString(displayLocale)}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
@@ -136,7 +160,7 @@ function WorkflowRow({
             className="flex items-center gap-1 text-sm text-primary hover:underline"
           >
             <ExternalLink className="h-3 w-3" />
-            View Session
+            {ui("View Session")}
           </Link>
         ) : (
           <span className="text-sm text-muted-foreground">-</span>
@@ -145,11 +169,11 @@ function WorkflowRow({
       <TableCell>
         <div className="flex items-center gap-2">
           <LinkButton variant="outline" size="sm" href={`/durable/workflows/${workflow.id}`}>
-            View
+            {ui("View")}
           </LinkButton>
           {workflow.status === "running" && (
             <Button variant="outline" size="sm" onClick={() => onCancel(workflow.id)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
           )}
         </div>
@@ -159,6 +183,9 @@ function WorkflowRow({
 }
 
 function TaskRow({ task }: { task: DurableTask }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   return (
     <TableRow>
       <TableCell>
@@ -203,9 +230,11 @@ function TaskRow({ task }: { task: DurableTask }) {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(task.scheduled_at), { addSuffix: true })}
+              {formatDistanceToNow(new Date(task.scheduled_at), { addSuffix: true }, displayLocale)}
             </TooltipTrigger>
-            <TooltipContent>{new Date(task.scheduled_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>
+              {new Date(task.scheduled_at).toLocaleString(displayLocale)}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -214,13 +243,13 @@ function TaskRow({ task }: { task: DurableTask }) {
           <LinkButton
             variant="ghost"
             size="sm"
-            aria-label={`View workflow ${task.workflow_id}`}
+            aria-label={ui("View workflow {value0}", { value0: task.workflow_id })}
             href={`/durable/workflows/${task.workflow_id}`}
           >
             <ExternalLink className="h-3 w-3" />
           </LinkButton>
         ) : (
-          <Badge variant="outline">standalone</Badge>
+          <Badge variant="outline">{ui("standalone")}</Badge>
         )}
       </TableCell>
     </TableRow>
@@ -228,6 +257,9 @@ function TaskRow({ task }: { task: DurableTask }) {
 }
 
 function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string) => void }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   return (
     <TableRow>
       <TableCell>
@@ -257,9 +289,9 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(entry.dead_at), { addSuffix: true })}
+              {formatDistanceToNow(new Date(entry.dead_at), { addSuffix: true }, displayLocale)}
             </TooltipTrigger>
-            <TooltipContent>{new Date(entry.dead_at).toLocaleString()}</TooltipContent>
+            <TooltipContent>{new Date(entry.dead_at).toLocaleString(displayLocale)}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </TableCell>
@@ -270,19 +302,19 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => onRequeue(entry.id)}>
             <RotateCcw className="h-3 w-3 mr-1" />
-            Requeue
+            {ui("Requeue")}
           </Button>
           {entry.workflow_id ? (
             <LinkButton
               variant="ghost"
               size="sm"
-              aria-label={`View workflow ${entry.workflow_id}`}
+              aria-label={ui("View workflow {value0}", { value0: entry.workflow_id })}
               href={`/durable/workflows/${entry.workflow_id}`}
             >
               <ExternalLink className="h-3 w-3" />
             </LinkButton>
           ) : (
-            <Badge variant="outline">standalone</Badge>
+            <Badge variant="outline">{ui("standalone")}</Badge>
           )}
         </div>
       </TableCell>
@@ -291,7 +323,9 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
 }
 
 export default function WorkflowsPage() {
-  usePageTitle("Workflows", "Durable");
+  const requestConfirmation = useConfirmation();
+  const ui = useUiTranslations();
+  usePageTitle(ui("Workflows"), ui("Durable"));
   const [activeTab, setActiveTab] = useState<TabValue>("workflows");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -362,57 +396,57 @@ export default function WorkflowsPage() {
 
   if (isLoading) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">Workflows</h1>
+          <PageMasthead title={ui("Workflows")} className="min-w-0 flex-1" />
         </div>
         <div className="space-y-6">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-96" />
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (workflowsError) {
     return (
-      <div className="operational-page container mx-auto p-6">
+      <PageContainer className="operational-page">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">Workflows</h1>
+          <PageMasthead title={ui("Workflows")} className="min-w-0 flex-1" />
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Unable to Load Workflows</h3>
+            <h3 className="text-lg font-medium mb-2">{ui("Unable to Load Workflows")}</h3>
             <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-              The durable workflows API is not available.
+              {ui("The durable workflows API is not available.")}
             </p>
             <Button onClick={() => refetchWorkflows()} variant="outline">
               <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
+              {ui("Retry")}
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
-  const handleCancel = (workflowId: string) => {
-    if (confirm("Are you sure you want to cancel this workflow?")) {
+  const handleCancel = async (workflowId: string) => {
+    if (await requestConfirmation("Are you sure you want to cancel this workflow?")) {
       cancelMutation.mutate(workflowId);
     }
   };
 
-  const handleRequeue = (dlqId: string) => {
-    if (confirm("Are you sure you want to requeue this task?")) {
+  const handleRequeue = async (dlqId: string) => {
+    if (await requestConfirmation("Are you sure you want to requeue this task?")) {
       requeueMutation.mutate(dlqId);
     }
   };
 
   return (
-    <div className="operational-page container mx-auto p-6">
+    <PageContainer className="operational-page">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">Workflows</h1>
+        <PageMasthead title={ui("Workflows")} className="min-w-0 flex-1" />
       </div>
       <div className="space-y-6">
         {/* Tab Navigation */}
@@ -427,7 +461,7 @@ export default function WorkflowsPage() {
             )}
           >
             <Workflow className="h-4 w-4" />
-            Workflows
+            {ui("Workflows")}
             {workflows.length > 0 && (
               <Badge variant="secondary" className="ml-1">
                 {workflowsData?.total || 0}
@@ -444,7 +478,7 @@ export default function WorkflowsPage() {
             )}
           >
             <ListTodo className="h-4 w-4" />
-            Tasks
+            {ui("Tasks")}
             {tasks.length > 0 && (
               <Badge variant="secondary" className="ml-1">
                 {tasksData?.total || 0}
@@ -461,7 +495,7 @@ export default function WorkflowsPage() {
             )}
           >
             <Inbox className="h-4 w-4" />
-            Dead Letter Queue
+            {ui("Dead Letter Queue")}
             {dlqEntries.length > 0 && (
               <Badge variant="destructive" className="ml-1">
                 {dlqData?.total || 0}
@@ -477,26 +511,26 @@ export default function WorkflowsPage() {
             <div className="flex items-center gap-4">
               <SearchInput
                 containerClassName="flex-1 max-w-sm"
-                placeholder="Search workflows..."
+                placeholder={ui("Search workflows...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Status" />
+                  <SelectValue placeholder={ui("Status")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="running">Running</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="all">{ui("All Status")}</SelectItem>
+                  <SelectItem value="pending">{ui("Pending")}</SelectItem>
+                  <SelectItem value="running">{ui("Running")}</SelectItem>
+                  <SelectItem value="completed">{ui("Completed")}</SelectItem>
+                  <SelectItem value="failed">{ui("Failed")}</SelectItem>
+                  <SelectItem value="cancelled">{ui("Cancelled")}</SelectItem>
                 </SelectContent>
               </Select>
               <Button variant="outline" size="sm" onClick={() => refetchWorkflows()}>
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
+                {ui("Refresh")}
               </Button>
             </div>
 
@@ -508,13 +542,13 @@ export default function WorkflowsPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Workflow</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Created</TableHead>
-                          <TableHead>Started</TableHead>
-                          <TableHead>Completed</TableHead>
-                          <TableHead>Session</TableHead>
-                          <TableHead>Actions</TableHead>
+                          <TableHead>{ui("Workflow")}</TableHead>
+                          <TableHead>{ui("Status")}</TableHead>
+                          <TableHead>{ui("Created")}</TableHead>
+                          <TableHead>{ui("Started")}</TableHead>
+                          <TableHead>{ui("Completed")}</TableHead>
+                          <TableHead>{ui("Session")}</TableHead>
+                          <TableHead>{ui("Actions")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -531,11 +565,11 @@ export default function WorkflowsPage() {
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <Workflow className="h-12 w-12 mb-4" />
-                    <h3 className="text-lg font-medium mb-2">No Workflows Found</h3>
+                    <h3 className="text-lg font-medium mb-2">{ui("No Workflows Found")}</h3>
                     <p className="text-sm text-center max-w-md">
                       {searchQuery || statusFilter !== "all"
-                        ? "No workflows match your search criteria."
-                        : "No workflows have been created yet."}
+                        ? ui("No workflows match your search criteria.")
+                        : ui("No workflows have been created yet.")}
                     </p>
                   </div>
                 )}
@@ -550,14 +584,14 @@ export default function WorkflowsPage() {
             <div className="flex justify-end">
               <Button variant="outline" size="sm" onClick={() => refetchTasks()}>
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
+                {ui("Refresh")}
               </Button>
             </div>
 
             <Card>
               <CardHeader>
-                <CardTitle>Task Queue</CardTitle>
-                <CardDescription>Active and pending tasks in the queue</CardDescription>
+                <CardTitle>{ui("Task Queue")}</CardTitle>
+                <CardDescription>{ui("Active and pending tasks in the queue")}</CardDescription>
               </CardHeader>
               <CardContent>
                 {!tasksLoading && tasks.length > 0 ? (
@@ -565,13 +599,13 @@ export default function WorkflowsPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Activity</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Priority</TableHead>
-                          <TableHead>Attempt</TableHead>
-                          <TableHead>Claimed By</TableHead>
-                          <TableHead>Scheduled</TableHead>
-                          <TableHead>Workflow</TableHead>
+                          <TableHead>{ui("Activity")}</TableHead>
+                          <TableHead>{ui("Status")}</TableHead>
+                          <TableHead>{ui("Priority")}</TableHead>
+                          <TableHead>{ui("Attempt")}</TableHead>
+                          <TableHead>{ui("Claimed By")}</TableHead>
+                          <TableHead>{ui("Scheduled")}</TableHead>
+                          <TableHead>{ui("Workflow")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -586,10 +620,11 @@ export default function WorkflowsPage() {
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <ListTodo className="h-12 w-12 mb-4" />
-                    <h3 className="text-lg font-medium mb-2">No Tasks in Queue</h3>
+                    <h3 className="text-lg font-medium mb-2">{ui("No Tasks in Queue")}</h3>
                     <p className="text-sm text-center max-w-md">
-                      The task queue is empty. Tasks will appear here when workflows schedule
-                      activities.
+                      {ui(
+                        "The task queue is empty. Tasks will appear here when workflows schedule activities.",
+                      )}
                     </p>
                   </div>
                 )}
@@ -604,14 +639,16 @@ export default function WorkflowsPage() {
             <div className="flex justify-end">
               <Button variant="outline" size="sm" onClick={() => refetchDlq()}>
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
+                {ui("Refresh")}
               </Button>
             </div>
 
             <Card>
               <CardHeader>
-                <CardTitle>Dead Letter Queue</CardTitle>
-                <CardDescription>Tasks that have exhausted all retry attempts</CardDescription>
+                <CardTitle>{ui("Dead Letter Queue")}</CardTitle>
+                <CardDescription>
+                  {ui("Tasks that have exhausted all retry attempts")}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 {!dlqLoading && dlqEntries.length > 0 ? (
@@ -619,12 +656,12 @@ export default function WorkflowsPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Activity</TableHead>
-                          <TableHead>Attempts</TableHead>
-                          <TableHead>Last Error</TableHead>
-                          <TableHead>Dead At</TableHead>
-                          <TableHead>Requeue Count</TableHead>
-                          <TableHead>Actions</TableHead>
+                          <TableHead>{ui("Activity")}</TableHead>
+                          <TableHead>{ui("Attempts")}</TableHead>
+                          <TableHead>{ui("Last Error")}</TableHead>
+                          <TableHead>{ui("Dead At")}</TableHead>
+                          <TableHead>{ui("Requeue Count")}</TableHead>
+                          <TableHead>{ui("Actions")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -639,9 +676,11 @@ export default function WorkflowsPage() {
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <CheckCircle className="h-12 w-12 mb-4 text-success" />
-                    <h3 className="text-lg font-medium mb-2">DLQ is Empty</h3>
+                    <h3 className="text-lg font-medium mb-2">{ui("DLQ is Empty")}</h3>
                     <p className="text-sm text-center max-w-md">
-                      No tasks have failed permanently. All tasks are being processed successfully.
+                      {ui(
+                        "No tasks have failed permanently. All tasks are being processed successfully.",
+                      )}
                     </p>
                   </div>
                 )}
@@ -650,6 +689,6 @@ export default function WorkflowsPage() {
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

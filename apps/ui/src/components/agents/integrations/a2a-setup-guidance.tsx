@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +47,7 @@ export function A2aSetupGuidance({
   onRotateKey,
   isRotating,
 }: A2aSetupGuidanceProps) {
+  const ui = useUiTranslations();
   const [agentCard, setAgentCard] = useState<A2aAgentCard | null>(null);
   const [agentCardError, setAgentCardError] = useState<string | null>(null);
   const [agentCardLoading, setAgentCardLoading] = useState(false);
@@ -81,43 +83,44 @@ export function A2aSetupGuidance({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Badge variant="default">A2A (Agent2Agent)</Badge>
+        <Badge variant="default">{ui("A2A (Agent2Agent)")}</Badge>
         <span className="text-sm text-muted-foreground">
           {isPublished
-            ? "Ready to accept authenticated A2A JSON-RPC requests."
-            : "Publish the channel to accept A2A requests."}
+            ? ui("Ready to accept authenticated A2A JSON-RPC requests.")
+            : ui("Publish the channel to accept A2A requests.")}
         </span>
       </div>
 
       <div>
-        <p className="text-sm font-medium">JSON-RPC channel</p>
+        <p className="text-sm font-medium">{ui("JSON-RPC channel")}</p>
         <div className="mt-2 flex items-center gap-2 bg-muted p-3">
           <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
           <code className="flex-1 truncate text-sm">{channelUrl}</code>
           <CopyButton value={channelUrl} />
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Send <code>POST</code> with a JSON-RPC 2.0 envelope. Only the <code>message/send</code>{" "}
-          method is supported in this iteration.
+          {ui("Send")} <code>POST</code> {ui("with a JSON-RPC 2.0 envelope. Only the")}{" "}
+          <code>message/send</code> {ui("method is supported in this iteration.")}
         </p>
       </div>
 
       <div>
-        <p className="text-sm font-medium">Agent Card</p>
+        <p className="text-sm font-medium">{ui("Agent Card")}</p>
         <div className="mt-2 flex items-center gap-2 bg-muted p-3">
           <AgentIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
           <code className="flex-1 truncate text-sm">{agentCardUrl}</code>
           <CopyButton value={agentCardUrl} />
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Public discovery document for A2A clients. Returns 404 unless the channel is published and
-          enabled.
+          {ui(
+            "Public discovery document for A2A clients. Returns 404 unless the channel is published and enabled.",
+          )}
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <p className="text-sm font-medium">Authentication</p>
+          <p className="text-sm font-medium">{ui("Authentication")}</p>
           <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
             <KeyRound className="h-4 w-4 shrink-0" />
             <span>
@@ -126,16 +129,17 @@ export function A2aSetupGuidance({
           </div>
           <div className="mt-2 flex items-center gap-2 bg-muted p-2">
             <code className="flex-1 truncate text-xs font-mono">
-              {apiKeyPrefix || "(no key configured)"}
+              {apiKeyPrefix || ui("(no key configured)")}
             </code>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            The plaintext key is shown once at create / rotate time. Only the prefix is stored for
-            display; the full value is hashed at rest.
+            {ui(
+              "The plaintext key is shown once at create / rotate time. Only the prefix is stored for display; the full value is hashed at rest.",
+            )}
           </p>
         </div>
         <div>
-          <p className="text-sm font-medium">Session Mode</p>
+          <p className="text-sm font-medium">{ui("Session Mode")}</p>
           <p className="text-sm text-muted-foreground">
             {getInvocationSessionModeDisplayName(sessionMode)}
           </p>
@@ -146,13 +150,13 @@ export function A2aSetupGuidance({
         <div className="grid gap-4 md:grid-cols-2">
           {agentCardName && (
             <div>
-              <p className="text-sm font-medium">Card name</p>
+              <p className="text-sm font-medium">{ui("Card name")}</p>
               <p className="text-sm text-muted-foreground">{agentCardName}</p>
             </div>
           )}
           {agentCardDescription && (
             <div>
-              <p className="text-sm font-medium">Card description</p>
+              <p className="text-sm font-medium">{ui("Card description")}</p>
               <p className="text-sm text-muted-foreground">{agentCardDescription}</p>
             </div>
           )}
@@ -161,7 +165,7 @@ export function A2aSetupGuidance({
 
       <div>
         <div className="mb-2 flex items-center justify-between gap-3">
-          <p className="text-sm font-medium">Discovered Agent Card</p>
+          <p className="text-sm font-medium">{ui("Discovered Agent Card")}</p>
           {canFetchAgentCard && (
             <Button
               type="button"
@@ -171,20 +175,21 @@ export function A2aSetupGuidance({
               disabled={agentCardLoading}
             >
               <RefreshCw className="mr-1 h-3 w-3" />
-              {agentCardLoading ? "Refreshing" : "Refresh"}
+              {agentCardLoading ? ui("Refreshing") : ui("Refresh")}
             </Button>
           )}
         </div>
         {!canFetchAgentCard ? (
           <div className="rounded-md border p-3 text-sm text-muted-foreground">
-            Publish and enable this channel to fetch the public Agent Card. Until then, discovery
-            returns 404.
+            {ui(
+              "Publish and enable this channel to fetch the public Agent Card. Until then, discovery returns 404.",
+            )}
           </div>
         ) : agentCard ? (
           <A2aAgentCardPreview card={agentCard} agentName={agentName} sessionMode={sessionMode} />
         ) : (
           <div className="rounded-md border p-3 text-sm text-muted-foreground">
-            {agentCardLoading ? "Loading Agent Card..." : "Could not load Agent Card."}
+            {agentCardLoading ? ui("Loading Agent Card...") : ui("Could not load Agent Card.")}
             {agentCardError && <span className="ml-1">({agentCardError})</span>}
             <div className="mt-2 flex items-center gap-2 bg-muted p-2">
               <code className="flex-1 truncate text-xs">{agentCardUrl}</code>
@@ -195,30 +200,31 @@ export function A2aSetupGuidance({
       </div>
 
       <div>
-        <p className="text-sm font-medium">Invocation Message</p>
+        <p className="text-sm font-medium">{ui("Invocation Message")}</p>
         <div className="mt-2 rounded-md border p-3 text-sm text-muted-foreground">
           <code className="whitespace-pre-wrap break-words">{message}</code>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Templates can reference <code>{"{{a2a.text}}"}</code>, <code>{"{{payload}}"}</code>, and
-          agent metadata.
+          {ui("Templates can reference")} <code>{"{{a2a.text}}"}</code>,{" "}
+          <code>{"{{payload}}"}</code>
+          {ui(", and agent metadata.")}
         </p>
       </div>
 
       <div>
-        <p className="text-sm font-medium">Call it from your client</p>
+        <p className="text-sm font-medium">{ui("Call it from your client")}</p>
         <div className="mt-2">
           <CodeBlock samples={a2aSamples({ origin, channelUrl })} />
         </div>
       </div>
 
       <div>
-        <p className="text-sm font-medium">Let a coding agent wire it up</p>
+        <p className="text-sm font-medium">{ui("Let a coding agent wire it up")}</p>
         <div className="mt-2">
           <CodeBlock
             samples={[
               {
-                label: "Prompt",
+                label: ui("Prompt"),
                 language: "text",
                 code: codingAgentPrompt({ origin, kind: "a2a", channelUrl }),
               },
@@ -230,13 +236,13 @@ export function A2aSetupGuidance({
       <div className="flex flex-wrap gap-2 pt-1">
         {onConfigure && (
           <Button size="sm" variant="outline" onClick={onConfigure}>
-            Configure
+            {ui("Configure")}
           </Button>
         )}
         {onRotateKey && (
           <Button size="sm" variant="outline" onClick={onRotateKey} disabled={isRotating}>
             <RefreshCw className="mr-1 h-3 w-3" />
-            {isRotating ? "Rotating..." : "Rotate API key"}
+            {isRotating ? ui("Rotating...") : ui("Rotate API key")}
           </Button>
         )}
       </div>

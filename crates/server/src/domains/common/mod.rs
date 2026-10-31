@@ -352,6 +352,12 @@ pub struct CommandMeta {
 }
 
 impl CommandMeta {
+    /// Dedicated credential entry stays outside agent tools and their transcripts.
+    /// The authenticated HTTP handler still runs the command's policy normally.
+    pub fn is_interactive_secret_setup(&self) -> bool {
+        self.name == "register_external_agent"
+    }
+
     /// Whether this is internal worker plumbing; see
     /// [`INTERNAL_COMMAND_PATH_PREFIX`].
     pub fn is_internal(&self) -> bool {
@@ -470,6 +476,8 @@ pub struct Ctx {
     pub decisions: Option<Arc<dyn everruns_core::DecisionsService>>,
     /// Agent health check service.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
+    /// Whole-install health checks; `None` on surfaces without the server's services.
+    pub system_doctor: Option<Arc<crate::domains::system::doctor::SystemDoctor>>,
     /// Runs the OAuth catalog preset connection check; `None` on surfaces
     /// without the API layer's OAuth client (presets stay `not_checked`).
     pub mcp_oauth_checker:
@@ -543,6 +551,7 @@ impl Ctx {
             utility_llm_service: None,
             decisions: None,
             health_check_service: None,
+            system_doctor: None,
             mcp_event_triggers: None,
             channels: None,
             mcp_oauth_checker: None,

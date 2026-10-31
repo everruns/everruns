@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { z } from "zod";
 import { usePageSettingsDraft } from "@/components/chat-mode/use-page-settings-draft";
@@ -17,11 +18,12 @@ import type { Organization } from "@/lib/api/types";
 const chatSettingsSchema = z.strictObject({ chat_model_id: z.string() });
 
 export default function ChatSettingsPage() {
-  usePageTitle("Chat", "Settings");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Chat"), ui("Settings"));
   const { hasRole } = useOrg();
   const { data: organization, isLoading, error } = useOrganization();
   if (isLoading) return <Skeleton className="h-48 w-full" />;
-  if (error || !organization) return <p role="alert">Unable to load Chat settings.</p>;
+  if (error || !organization) return <p role="alert">{ui("Unable to load Chat settings.")}</p>;
   // A new organization gets a fresh draft; pending edits never cross tenants.
   return (
     <ChatModelSettings
@@ -39,6 +41,7 @@ function ChatModelSettings({
   organization: Organization;
   canManage: boolean;
 }) {
+  const ui = useUiTranslations();
   const [modelId, setModelId] = useState(organization.chat_model_id || "");
   const [savedId, setSavedId] = useState(organization.chat_model_id || "");
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +52,7 @@ function ChatModelSettings({
     entityType: "organization",
     entityId: organization.id,
     formId: "chat_model",
-    label: "Chat settings",
+    label: ui("Chat settings"),
     writable: canManage && !update.isPending,
     save: (values) => update.mutateAsync({ chat_model_id: values.chat_model_id || null }),
   });
@@ -68,19 +71,19 @@ function ChatModelSettings({
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <ChatIcon className="size-5" />
-        <h1 className="text-xl font-semibold">Chat settings</h1>
+        <h1 className="text-xl font-semibold">{ui("Chat settings")}</h1>
       </div>
       <Card className="space-y-4 p-6">
         <div className="space-y-1">
-          <h2 className="font-medium">Default Chat model</h2>
+          <h2 className="font-medium">{ui("Default Chat model")}</h2>
           <p className="text-sm text-muted-foreground">
-            Choose the model for Everruns Chat in this organization. Agents, sessions, and their
-            Work Chat channels keep their own model settings. Explicit conversation selections take
-            priority.
+            {ui(
+              "Choose the model for Everruns Chat in this organization. Agents, sessions, and their Work Chat channels keep their own model settings. Explicit conversation selections take priority.",
+            )}
           </p>
         </div>
         <div className="max-w-lg space-y-2">
-          <Label htmlFor="chat-model">Model</Label>
+          <Label htmlFor="chat-model">{ui("Model")}</Label>
           <ModelPicker
             id="chat-model"
             value={selectedModel}
@@ -91,13 +94,13 @@ function ChatModelSettings({
             organizationDefault
             requireTools
             disabled={!canManage || update.isPending}
-            placeholder="Use agents and sessions default"
+            placeholder={ui("Use agents and sessions default")}
           />
         </div>
         {draft.controls}
         {!canManage && (
           <p className="text-sm text-muted-foreground">
-            Only organization owners and admins can change this setting.
+            {ui("Only organization owners and admins can change this setting.")}
           </p>
         )}
         {error && (
@@ -107,7 +110,7 @@ function ChatModelSettings({
         )}
         {canManage && !draft.adopted && (
           <Button onClick={save} disabled={update.isPending || modelId === savedId}>
-            {update.isPending ? "Saving…" : "Save"}
+            {update.isPending ? ui("Saving…") : ui("Save")}
           </Button>
         )}
       </Card>

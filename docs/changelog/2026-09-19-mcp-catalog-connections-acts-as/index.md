@@ -10,7 +10,6 @@ release: "0.30.0"
 links:
   docs: [/features/mcp/, /integrations/mcp-credentials/]
   prs: [everruns/everruns#3726, everruns/everruns#3675, everruns/everruns#3638, everruns/everruns#3635]
-visual: "Agent detail MCP tab listing attached servers with identity and connection state (/agents/<id>, MCP tab); crop to the list"
 ---
 
 **In the UI:** the MCP servers page becomes a catalog of presets showing which
@@ -18,6 +17,8 @@ active agents use each one and what archiving would affect. The agent detail pag
 gains an MCP tab listing the agent's effective servers, their identity and
 connection state, with flows to add a preset or custom HTTP server and to revoke a
 connection. People can see and revoke the MCP sign-ins they granted.
+
+![Agent MCP servers sheet listing catalog servers with their identity and connection state](./agent-mcp-servers@2x.png)
 
 **In agent config:** an MCP entry can reference a preset with `catalog:<name>` and
 say whose sign-in its calls use with `actsAs` (`none`, `service`, `user` or

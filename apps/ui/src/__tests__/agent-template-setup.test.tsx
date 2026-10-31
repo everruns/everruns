@@ -54,6 +54,7 @@ const reviewerSetup: AgentExampleSetup = {
 
 const example = (name: string, setup?: AgentExampleSetup): GuidedAgentExample => ({
   harness_name: "bashkit-worker",
+  localizations: {},
   name,
   display_name: name,
   description: `${name} description`,

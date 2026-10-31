@@ -443,5 +443,329 @@
         "after": "2c9d828ade20a0941272d9fcbc034ff2f78b801444f57d995ba934b73077b6ed"
       }
     }
+  },
+  "@copilotkit/a2ui-renderer@1.83.0": {
+    "package": "@copilotkit/a2ui-renderer",
+    "version": "1.83.0",
+    "declared_zod": "^3.25.75",
+    "files": {
+      "dist/index.umd.js": {
+        "before": "298e9a374763c3c2efaf5a68cd2593d57702eb6f816d7df0dd3137ca0b69774f",
+        "after": "2424aeb64c196bfc5a4c278f910e8691198549bd1db87e8001e60a7546d11014"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Button.cjs": {
+        "before": "c09a339612a49acfb271b70cb0f84542edc6cd5f7676b1f761f095179e99a382",
+        "after": "a9c9e4a159a4e50947b6d662e8b3b8a0e1425ebc250372cafe05b9dd1e57822d"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Button.d.cts": {
+        "before": "4a62953d045581e2910bac1b77d3bd1e2f75728220b9f67d606d12f5fcbfccf9",
+        "after": "cd027a0f94d1dfcbf75ebca97e4896e042debaeb25272d4a585ddc6e67c9f51a"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Button.d.mts": {
+        "before": "1edae6bfec268eadaca2d607517cbf210aa64e3e35b3dfc0aa05f3ec077f43c3",
+        "after": "8599dda773ef9974e24af692773989ec26c9f2b086ddbdc99bca3b5b498d5d00"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Button.mjs": {
+        "before": "1f62d296f5ed6b0f3cdb9fdb4cac01fc8f45294b2ef1f6259b8875b7880d3442",
+        "after": "a1691f5ed9d69fd07b7cf66cc514b826b0a53bc881a41fefdf1233dfe69c619e"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Column.cjs": {
+        "before": "9b6f88dfdd1750dfa6c928403c0289b6fb3f820d4b3cc7b3641952e1990c47ba",
+        "after": "4610a9dfa1b82cec062262c9d2e21c34331f7717fe700e216b82a237d9747788"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Column.d.cts": {
+        "before": "4a62953d045581e2910bac1b77d3bd1e2f75728220b9f67d606d12f5fcbfccf9",
+        "after": "cd027a0f94d1dfcbf75ebca97e4896e042debaeb25272d4a585ddc6e67c9f51a"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Column.d.mts": {
+        "before": "1edae6bfec268eadaca2d607517cbf210aa64e3e35b3dfc0aa05f3ec077f43c3",
+        "after": "8599dda773ef9974e24af692773989ec26c9f2b086ddbdc99bca3b5b498d5d00"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Column.mjs": {
+        "before": "468dc6fadea67f724738a6cfaba69b751e059af9f2c3e8d66cc6728b3b19e695",
+        "after": "f8cbde1c9fec7d144a3f827961b8a0c37ab94cb493d80ec8f61c993b1eec2e6d"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Row.cjs": {
+        "before": "3b5a6fb2c0c64c5b5b075ad39d252a28ea7b86f1eb57a5c87b199b5228eedb9b",
+        "after": "82bbdbd4e319a177d40ce317c6696118ac00aadf619642e0904b9d3d0bca8939"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Row.d.cts": {
+        "before": "4a62953d045581e2910bac1b77d3bd1e2f75728220b9f67d606d12f5fcbfccf9",
+        "after": "cd027a0f94d1dfcbf75ebca97e4896e042debaeb25272d4a585ddc6e67c9f51a"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Row.d.mts": {
+        "before": "1edae6bfec268eadaca2d607517cbf210aa64e3e35b3dfc0aa05f3ec077f43c3",
+        "after": "8599dda773ef9974e24af692773989ec26c9f2b086ddbdc99bca3b5b498d5d00"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Row.mjs": {
+        "before": "7b50a37ee11c6c1fea7a3b726efe7154aa65b0ea80de680cbfca6ba209e5df05",
+        "after": "e20192adf734414dbad4c8e365ffd93899b2af3c23896e6adfb020710bc103b8"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Text.cjs": {
+        "before": "b41e9c234714690c3ab2c1b107dc2d2f981a56c6b300ab1f97e6ac5da36a5a9a",
+        "after": "430adff06b190b77271225dc42a473d8da20a05a19f214ba22aa5c9947c92ecc"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Text.d.cts": {
+        "before": "4a62953d045581e2910bac1b77d3bd1e2f75728220b9f67d606d12f5fcbfccf9",
+        "after": "cd027a0f94d1dfcbf75ebca97e4896e042debaeb25272d4a585ddc6e67c9f51a"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Text.d.mts": {
+        "before": "1edae6bfec268eadaca2d607517cbf210aa64e3e35b3dfc0aa05f3ec077f43c3",
+        "after": "8599dda773ef9974e24af692773989ec26c9f2b086ddbdc99bca3b5b498d5d00"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Text.mjs": {
+        "before": "5d3f0a5c859db48d11ec7b5193eb8c0ea20ee243e67ef1a9c7ef99df44261a1b",
+        "after": "26624839370e5bd599e3de1fa8c9e4d7415251d0aba53198c8d121ac2d5c0cbd"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/TextField.cjs": {
+        "before": "f1dcf62dda8e1756b5a85296478fd725b76e06820df91da8b03bacdaf7690400",
+        "after": "39f0db3f71926be32c9d63a82426e950a6fae8299014f5b87260b0f529eb3d29"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/TextField.d.cts": {
+        "before": "4a62953d045581e2910bac1b77d3bd1e2f75728220b9f67d606d12f5fcbfccf9",
+        "after": "cd027a0f94d1dfcbf75ebca97e4896e042debaeb25272d4a585ddc6e67c9f51a"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/TextField.d.mts": {
+        "before": "1edae6bfec268eadaca2d607517cbf210aa64e3e35b3dfc0aa05f3ec077f43c3",
+        "after": "8599dda773ef9974e24af692773989ec26c9f2b086ddbdc99bca3b5b498d5d00"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/TextField.mjs": {
+        "before": "02244ed0f9d2ea6710d904ca1fd5b437936bcf01e41d5ce8d448a4dac2efb783",
+        "after": "e6925d37276ff7428082d6e548c1539b6c52aceb2cc8c15a1994651854611d77"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/index.cjs": {
+        "before": "b81cddffd98305ba70aabd4c6b79c3b6866d0c897bd1800ecbfae10fb8b34708",
+        "after": "8af7c6a579b11e2cbf1ef029af5f07802718a457f6abfc5bde25be5ce9314069"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/index.mjs": {
+        "before": "95966ffc9fcb70e847217c63ebe5895acfc4346e7244b5e7ef9454955a409ef0",
+        "after": "d4650fca34760702aef9ee138caf94d7622c8d60b7c030920f4dc23e80c3d00b"
+      },
+      "dist/react-renderer/create-catalog.d.cts": {
+        "before": "a3955f6bc0c952bea918f2e8b3324319ba263bc440b3331c9fad9b76e1ed75ed",
+        "after": "d7c8340a97b8002ffce2ea827f86dc7c019de240f68482f17a99c8acac82fbe9"
+      },
+      "dist/react-renderer/create-catalog.d.mts": {
+        "before": "a3cd9e3fb012693865df4698009fca2e968810d08792dbe90a5dcf6ebab91a16",
+        "after": "ece509b7ff2fd45f51fc659db1ecb6b8f4fdc28d688d427272def4ad24ad6b3c"
+      }
+    }
+  },
+  "@copilotkit/core@1.83.0": {
+    "package": "@copilotkit/core",
+    "version": "1.83.0",
+    "files": {}
+  },
+  "@copilotkit/learning@1.83.0": {
+    "package": "@copilotkit/learning",
+    "version": "1.83.0",
+    "files": {}
+  },
+  "@copilotkit/mcp-apps-renderer@1.83.0": {
+    "package": "@copilotkit/mcp-apps-renderer",
+    "version": "1.83.0",
+    "declared_zod": ">=3.25",
+    "files": {
+      "dist/activity.umd.js": {
+        "before": "557744287216f8fc8ffe7301dbe8f590a8e977bf2f9bc9e94bb8f846c48f9278",
+        "after": "e00c18f612f9d04bdb6117856632e6f87bc8b98a35cec54f1aabc82a7cc37d33"
+      },
+      "dist/content-schema.cjs": {
+        "before": "69ca772bd04c1be57d2eaf4f4b46dac92bd23485b1ad55e21b0927e0e1bb9e81",
+        "after": "d56735165d956b98e48bbe1b391baacc852a08ddb7e386a0b816eb0529e722ab"
+      },
+      "dist/content-schema.d.cts": {
+        "before": "d1f1f0fea4334518ea3fccc93522e7ade12a5fe5956f1235007e8d27abf8c784",
+        "after": "39f46a42c2aa4a4dfa5e568ec4d2f82eba15b2e458058f8b1fd264264398d24a"
+      },
+      "dist/content-schema.d.mts": {
+        "before": "92b5f384b1522ed9b6f2fd3bb10638d83e2cbfd99ee0a15936690b9c0e72cc4e",
+        "after": "0d792fce23cd43600cb4c3180a33b30270c5c5350db0a09ae55ae74d19c01c6f"
+      },
+      "dist/content-schema.mjs": {
+        "before": "e012b8c25a324ac44f4105af8bbcdbcc15de0f8724568a0ff537498f706a9744",
+        "after": "4364a3ee06750ee60511742daf82156f49ba0e9b4ca20bf090672a0683f473cd"
+      },
+      "dist/session.mjs": {
+        "before": "11c12b7d7c39c1beb8039582c63cfc8a41b4fbdd79dca0c8784f1846612cbba1",
+        "after": "e18a917f30da904ca92aa442522c75c106d9c8a12399ee90b308b7ba05e1518a"
+      }
+    }
+  },
+  "@copilotkit/react-core@1.83.0": {
+    "package": "@copilotkit/react-core",
+    "version": "1.83.0",
+    "declared_zod": ">=3.25",
+    "files": {
+      "dist/MarkdownSurfaces-DGpjmPaB.mjs": {
+        "before": "48f214bf1582d5b8faeaa1d64bc73dc96792796a8678741f8b392d16518da176",
+        "after": "0c73a35c7269bcb5276062a6d5d136f61fbc44e8a7cf5b18aacba6c9bd35c9bd"
+      },
+      "dist/MarkdownSurfaces-FF5za2kU.cjs": {
+        "before": "1cd18cb5f6752050d4b7ee4b7c0b2a378b3dc1618a9465ae51fcd8f9833900a7",
+        "after": "c3cc42c6a49e68c9f6f8dd98d79641e0e83a5a8a61d007f107ae9b0ed60a4aef"
+      },
+      "dist/copilotkit-BuIuo-Z1.cjs": {
+        "before": "97f6fb0b7d9e259a158dcb2b9c276ee9854b3b9af1a878ce52829857317a52ff",
+        "after": "0242b69efc0a419c82859df8debe242a4da61943c1b0cac3cd1bc3c168955b85"
+      },
+      "dist/copilotkit-C765tOUi.d.mts": {
+        "before": "b66dd61a53447656607bba5eb4d51177ba22dce1fdbe7b865878564cea9e24b6",
+        "after": "ea72c998e987b21709e70ffe6cbe8097a5f3e1e26777f4ff5c0f34aa6efe1db3"
+      },
+      "dist/copilotkit-DyxwF9wL.mjs": {
+        "before": "bbd3eba4690515887699bd909fd572ee21053b810ca8c27516fea0b279c256f2",
+        "after": "9974b1723ea141c734911326dc5104783cbe0f48ed680b83966a494d104b60c5"
+      },
+      "dist/copilotkit-wqaNanhw.d.cts": {
+        "before": "481a9b1d7f295dab5826a0c6e5f60bd8ea715222851614f5d6ebcc3901370350",
+        "after": "7c6ae81d1a058d544d07ac29e09e20f74afa3f87b5e07a2112d69962286a5b4b"
+      },
+      "dist/index.cjs": {
+        "before": "9049f1adf31443d7a0a262a9b82a304e0e06a3d0d48c12c3e77e3761e1759114",
+        "after": "ab00e6ac3252b93b2c68270f8e583e755137cefa020ee18f15c8ddc700291984"
+      },
+      "dist/index.d.cts": {
+        "before": "52299a3dd0c83021541adecab63f546466ab5bb66e58ad16db14a6485c80fba3",
+        "after": "f1f36f979fb02407b54cc70369a98f3dae2615b7ee4eed53bdc2594e9bd4df7d"
+      },
+      "dist/index.d.mts": {
+        "before": "216a03c2d949e8574f40fed0f7736a42e8533fae7c6dcb2c0e43656a88a5e98f",
+        "after": "dca2f3d344a806195c2d55f702f7f2dfdc8dedca8f17e439d36961d004382c7f"
+      },
+      "dist/index.mjs": {
+        "before": "fd8d42480176eb87e86b7f4c96547946dc50ec281ab6e56a52caa3c9e77b4cc2",
+        "after": "8be9a01838af60604233b0b1bd1d54f0553b2fa5e7b5edfdf50c8d09bde4d15d"
+      },
+      "dist/index.umd.js": {
+        "before": "80eb3413fe9ff74f955cfa23ee1b173ec85dacff88cf09a46223d66b61263d75",
+        "after": "519be6b25392d88902d3d6acd773cb8fc2e89471bb3ee005a1c82a7b4a2d0d97"
+      },
+      "dist/v2/generative-ui.cjs": {
+        "before": "96f486d09ed6b92905b4ea249efadc909b06ae6bb1228dce7d4c1a96e7212a4e",
+        "after": "f2949927314efaf901be9ea80ec9d27f6efada3860000ea42d85af57879fe0a4"
+      },
+      "dist/v2/generative-ui.d.cts": {
+        "before": "45f87ab89d954d3199ac77ae5ccecf0b57200ad60ae3a04441743027fb05edc5",
+        "after": "63431397420eef4c439e94e1de7ab89cc577e1a3c23e863ccfd2b0b843aa94d5"
+      },
+      "dist/v2/generative-ui.d.mts": {
+        "before": "47df0876441fe0a080199ce1a7295e4997df952c529225c895ddf77ebe25fb5a",
+        "after": "59e8a114d21494ce18c2bf0c9bcd23140279edc55b26ebd8f694b906d654b792"
+      },
+      "dist/v2/generative-ui.mjs": {
+        "before": "63917d45850b7901c462867633485d3807e9d06815e40318d94a25af32cef32b",
+        "after": "32d8443c48d201d6d21d65b06b8c2dfaec6157ff51376ef548a6fa10ba15710b"
+      },
+      "dist/v2/headless.cjs": {
+        "before": "3acf8551c92b95eff191a0a83c59e6f4bcaff16f1596399f53ebbb46ca504a45",
+        "after": "492ac8a65ddb172aae3c8a209b1ec51ff93d0e38926bf3b6a4e201c0a0aee5dc"
+      },
+      "dist/v2/headless.mjs": {
+        "before": "6eec9ed6e525539576c6417728f29177d068268f44d675adcabd71a6fe158edd",
+        "after": "2c858aed4af086b16c1d97443ad88cc8acd9badcbac35de9210df9e5f974d995"
+      },
+      "dist/v2/index.umd.js": {
+        "before": "965c58b3fd5f3d4e039c3e58576555f898a59268a963de7eb404ca241abb5e0b",
+        "after": "ef6bfdd32bf609d7fb636bb7df5f59ab7a136abafc488f3c6531e48d328c08ab"
+      }
+    }
+  },
+  "@copilotkit/runtime-client-gql@1.83.0": {
+    "package": "@copilotkit/runtime-client-gql",
+    "version": "1.83.0",
+    "files": {}
+  },
+  "@copilotkit/shared@1.83.0": {
+    "package": "@copilotkit/shared",
+    "version": "1.83.0",
+    "declared_zod": "^3.23.3",
+    "files": {
+      "dist/index.umd.js": {
+        "before": "27e3c86871a058fd8b0d5e755ad748d088608a13196188d1e92bd1d5ce329ec1",
+        "after": "d4fd74eb5fbacba801449d2e1e6e53ce64c83abed97178988ce8f0820787a0cf"
+      },
+      "dist/utils/json-schema.cjs": {
+        "before": "f50221edea48dd8284d2b39b7c6ccb1ad35de53a2119ace6761db9e488e20c05",
+        "after": "7ca941a98f365ef6d5d530431fc6098f46933245252b9a34da6d53798b32b849"
+      },
+      "dist/utils/json-schema.d.cts": {
+        "before": "4a6ee0e23861c3f6480faaee35723325981720a9abf51492803fa6091bda6db5",
+        "after": "23c3c280ce255d7254196ced2316aabf31db567e12016c58308d198751786df3"
+      },
+      "dist/utils/json-schema.d.mts": {
+        "before": "bf5b53890329ea667a54227698d4b10d0320f807c8e1a1090f5a5525699ee4db",
+        "after": "fd2fb56b4da0612cc38ca772bb5d62b964021c50d9c27a4ce85db6295c372fb2"
+      },
+      "dist/utils/json-schema.mjs": {
+        "before": "77979312c49ba8763127c081575aac0fc1b90bc8ce76b896a77de076c1bb0933",
+        "after": "897e5b5c99436745ca102c25a8c34ddf9b6b93c78c11e8c3e592cc7ec4c921d5"
+      }
+    }
+  },
+  "@copilotkit/web-components@1.83.0": {
+    "package": "@copilotkit/web-components",
+    "version": "1.83.0",
+    "files": {}
+  },
+  "@copilotkit/web-inspector@1.83.0": {
+    "package": "@copilotkit/web-inspector",
+    "version": "1.83.0",
+    "files": {}
+  },
+  "@copilotkit/runtime@1.83.0": {
+    "package": "@copilotkit/runtime",
+    "version": "1.83.0",
+    "declared_zod": "^3.25.18",
+    "files": {
+      "dist/agent/index.cjs": {
+        "before": "274aef04a794cb2285c80d42e187f279c85d348e0b6915257d7007e88021f1a1",
+        "after": "93f36f98bb9d44c59319e96660b89909f52cb42adbca61e197157d69cd86610f"
+      },
+      "dist/agent/index.d.cts": {
+        "before": "59d89d2d25bf3c8b96408d499bc780f1c160e3a9da14859516a61fdfd9b216db",
+        "after": "b4130996130131a258e2bd218d6bf5b91bca672a5d33d4c4623740440b7aa86d"
+      },
+      "dist/agent/index.d.mts": {
+        "before": "996e85d5ebd83a2beb9fe6796053d0361690c80ea80e0c1163422c0c4eb6375f",
+        "after": "ddc385a24940fcf84bca6cee08700bcc4b1f92e972a312aeea544489e86f770f"
+      },
+      "dist/agent/index.mjs": {
+        "before": "298b366af1c8c57acbd7b4b29934bb8af646d6db5fb9ab7ffc433d760daa226b",
+        "after": "25bd4828726cff00284f233c8c19638c32f773dfbfdfdbf0111241f9f8a4d306"
+      },
+      "dist/v2/runtime/intelligence-platform/client.cjs": {
+        "before": "021d87834e88686b59f57a9d03a122c02b0b47db17b5c0c6f8e90e0ee41489d2",
+        "after": "fd6f1838123320c06b5edf008fa85e239732e7292cd3e84e58f24f26e344f2dc"
+      },
+      "dist/v2/runtime/intelligence-platform/client.mjs": {
+        "before": "25d61fda1cd0ef3d103664822f49abfbef25699fe1ea6c52acef547eac369b4f",
+        "after": "727737dae754ac2b585823100e5ac4582e8d3cd9f06c9681fccb649f53ff64a7"
+      },
+      "dist/v2/runtime/intelligence-platform/learning-management.cjs": {
+        "before": "be0c7af50e3e1944ddd1e96af672ea11d96d7a15b2b4e6ef7bc3469a808ffe2f",
+        "after": "66b2bdf0f86238ff6ec240e6310dc74bf7c9326fb5b9f568f389597befedea96"
+      },
+      "dist/v2/runtime/intelligence-platform/learning-management.d.cts": {
+        "before": "331aacbd87e1bd8a8f86735781c8cff236552baa9aeb6bbb29fc9cdfb5e31485",
+        "after": "61a275e6d2faeaaa6815d023dc734925d1ccb43508743aa0c58e1ea4efb9ca33"
+      },
+      "dist/v2/runtime/intelligence-platform/learning-management.d.mts": {
+        "before": "f684e6649d9e27772d4c84220c951d158780317c3f078a94e5fdb8cb93936df8",
+        "after": "c2821840a81ccb2f4e802a743e6bf98e9a008cae7b5bb34fac24d1aab8a073fc"
+      },
+      "dist/v2/runtime/intelligence-platform/learning-management.mjs": {
+        "before": "8123bb9c42bb2af6c1a118b3ef91b6eabd5c39e1bedaafeaafd0a98d66070134",
+        "after": "9c8519746cd3f50de9c9560b473d421f87b8c2768ce3f90f3a666e1acbd8eae5"
+      },
+      "dist/v2/runtime/intelligence-platform/trajectories.cjs": {
+        "before": "110d1ea17f305eb212287cea52574460449632734c7d96b988cd1b9a4458cb54",
+        "after": "f1d295777a9baf6e8529e8caa52fee3357091a589013fe10437d0f84c458d09d"
+      },
+      "dist/v2/runtime/intelligence-platform/trajectories.mjs": {
+        "before": "15a3473924c60fc7eabf3cc8edf545bb8f9a058faa3f16fd1677f508111fd848",
+        "after": "370c3e289d38a98964e64778aec67dd65061da3f9d39e96105150434c3be54fb"
+      }
+    }
   }
 }

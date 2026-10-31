@@ -39,6 +39,7 @@ async fn package_folders_with_manifest_extensions_are_read_as_directories() {
             path: "support.md".into(),
             ..location()
         },
+        github_account: None,
     }
     .run(&ctx)
     .await
@@ -212,6 +213,7 @@ async fn changed_preview_blocks_connect_and_revoked_connection_keeps_readonly() 
     let preview = PreviewAgentSource {
         agent_id: id.clone(),
         req: location(),
+        github_account: None,
     }
     .run(&ctx)
     .await
@@ -223,6 +225,7 @@ async fn changed_preview_blocks_connect_and_revoked_connection_keeps_readonly() 
         req: ConnectSourceRequest {
             mode: SourceMode::Pull,
             location: location(),
+            github_account: None,
             commit: preview["commit"].as_str().unwrap().into(),
             agent_digest: preview["agent_digest"].as_str().unwrap().into(),
             expected_generation: None,
@@ -318,7 +321,7 @@ async fn push_wakeups_match_tenant_receiving_identity_repository_and_branch() {
         ),
     ] {
         ctx.db
-            .request_agent_source_push(org, &[identity], repo, branch)
+            .request_agent_source_push(org, &[identity], None, repo, branch)
             .await
             .unwrap();
         assert_eq!(
@@ -330,6 +333,7 @@ async fn push_wakeups_match_tenant_receiving_identity_repository_and_branch() {
         .request_agent_source_push(
             ctx.org_id(),
             &[original.identity_id],
+            None,
             original.repository_id,
             "main",
         )
@@ -506,24 +510,14 @@ async fn replacing_installation_on_the_same_connection_requires_explicit_rebindi
     package(&remote, 'a', "Good", None).await;
     connect(&ctx, &id).await;
     let row = binding(&ctx, &id).await.unwrap();
-    let replacement = ctx
-        .db
-        .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
-            virtual_user_id: VirtualUserId::from_uuid(row.identity_id),
-            provider: "github".into(),
-            connection_type: crate::github_apps::GITHUB_APP_CONNECTION_TYPE.into(),
-            provider_user_id: None,
-            provider_username: Some("acme".into()),
-            access_token_encrypted: None,
-            refresh_token_encrypted: None,
-            scopes: Some("contents:read".into()),
-            expires_at: None,
-            installation_id: Some(row.installation_id + 1),
-            provider_metadata: None,
-        })
-        .await
-        .unwrap();
-    assert_eq!(replacement.id, row.connection_id);
+    // The same link row now names another installation.
+    sqlx::query(
+        "UPDATE virtual_user_connections SET installation_id = installation_id + 1 WHERE id = $1",
+    )
+    .bind(row.connection_id)
+    .execute(ctx.db.pool())
+    .await
+    .unwrap();
     ctx.db
         .request_agent_source_sync(ctx.org_id(), row.agent_id)
         .await
@@ -573,4 +567,174 @@ async fn sync_and_readonly_guard_use_database_identity_when_public_id_differs() 
         binding(&ctx, &id).await.unwrap().applied_commit,
         Some("c".repeat(40))
     );
+}
+
+/// A person in the org with their own GitHub sign-in; returns their caller context.
+async fn person_with_github(ctx: &Ctx) -> (Ctx, Uuid) {
+    let user = ctx
+        .db
+        .create_user(crate::storage::CreateUserRow {
+            email: format!("{}@example.test", Uuid::new_v4()),
+            name: "Source Author".into(),
+            avatar_url: None,
+            roles: vec!["user".into()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+    ctx.db
+        .add_organization_member(ctx.org_id(), user.id, "member")
+        .await
+        .unwrap();
+    let person = ctx
+        .db
+        .default_virtual_user(ctx.org_id(), user.id)
+        .await
+        .unwrap();
+    let connection = ctx
+        .db
+        .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+            virtual_user_id: person.id,
+            provider: "github".into(),
+            connection_type: "oauth".into(),
+            provider_user_id: Some("7".into()),
+            provider_username: Some("octocat".into()),
+            access_token_encrypted: Some(b"encrypted".to_vec()),
+            refresh_token_encrypted: None,
+            scopes: None,
+            expires_at: None,
+            installation_id: None,
+            provider_metadata: None,
+        })
+        .await
+        .unwrap();
+    let mut caller = Caller::internal(ctx.org_id());
+    caller.user_id = Some(user.id);
+    caller.role = everruns_core::OrgRole::Member;
+    (
+        Ctx {
+            caller,
+            ..ctx.clone()
+        },
+        connection.id,
+    )
+}
+
+#[tokio::test]
+async fn source_sync_reads_through_the_org_link_not_the_agent_identity() {
+    let (ctx, remote, id) = setup().await;
+    package(&remote, 'a', "Good", None).await;
+    let status = connect(&ctx, &id).await;
+    assert_eq!(status.github_account, "organization");
+    let row = binding(&ctx, &id).await.unwrap();
+    let agent_identity = agent(&ctx, &id).await.unwrap().service_virtual_user_id;
+    assert_ne!(Some(row.identity_id), agent_identity.map(|v| v.uuid()));
+    assert_eq!(row.installation_id, Some(42));
+}
+
+#[tokio::test]
+async fn personal_source_uses_the_configuring_persons_sign_in() {
+    let (ctx, remote, id) = setup().await;
+    package(&remote, 'a', "Good", None).await;
+    let (person, connection) = person_with_github(&ctx).await;
+    let preview = PreviewAgentSource {
+        agent_id: id.clone(),
+        req: location(),
+        github_account: Some(SourceGitHubAccount::Personal),
+    }
+    .run(&person)
+    .await
+    .unwrap();
+    let status = ConnectAgentSource {
+        agent_id: id.clone(),
+        req: ConnectSourceRequest {
+            mode: SourceMode::Pull,
+            location: location(),
+            github_account: Some(SourceGitHubAccount::Personal),
+            commit: preview["commit"].as_str().unwrap().into(),
+            agent_digest: preview["agent_digest"].as_str().unwrap().into(),
+            expected_generation: None,
+        },
+    }
+    .run(&person)
+    .await
+    .unwrap();
+    assert_eq!(status.github_account, "personal");
+    let row = binding(&ctx, &id).await.unwrap();
+    assert_eq!(row.connection_id, connection);
+    assert_eq!(row.installation_id, None);
+
+    // The person disconnects GitHub: the source pauses rather than borrowing
+    // the org link or the Agent's identity.
+    sqlx::query("DELETE FROM virtual_user_connections WHERE id = $1")
+        .bind(connection)
+        .execute(ctx.db.pool())
+        .await
+        .unwrap();
+    ctx.db
+        .request_agent_source_sync(ctx.org_id(), row.agent_id)
+        .await
+        .unwrap();
+    assert!(reconcile_one(&ctx).await.unwrap());
+    let after = binding(&ctx, &id).await.unwrap();
+    assert_eq!(after.status, "error");
+    assert!(after.error.unwrap().contains("connection changed"));
+}
+
+#[tokio::test]
+async fn explicit_accounts_fail_closed_when_not_connected() {
+    let (ctx, remote, id) = setup().await;
+    package(&remote, 'a', "Good", None).await;
+    // The internal caller is not a person, so there is no personal account.
+    let personal = PreviewAgentSource {
+        agent_id: id.clone(),
+        req: location(),
+        github_account: Some(SourceGitHubAccount::Personal),
+    }
+    .run(&ctx)
+    .await
+    .unwrap_err();
+    assert!(personal.message().contains("person"), "{personal:?}");
+    let other = PreviewAgentSource {
+        agent_id: id,
+        req: SourceLocation {
+            repository: "other/agents".into(),
+            ..location()
+        },
+        github_account: Some(SourceGitHubAccount::Organization),
+    }
+    .run(&ctx)
+    .await
+    .unwrap_err();
+    assert!(
+        other
+            .message()
+            .contains("No organization GitHub account is connected for other"),
+        "{other:?}"
+    );
+}
+
+#[tokio::test]
+async fn org_link_pushes_wake_sources_on_that_installation() {
+    let (ctx, remote, id) = setup().await;
+    package(&remote, 'a', "Good", None).await;
+    connect(&ctx, &id).await;
+    let original = binding(&ctx, &id).await.unwrap();
+    ctx.db
+        .request_agent_source_push(ctx.org_id(), &[], Some(41), original.repository_id, "main")
+        .await
+        .unwrap();
+    assert_eq!(
+        binding(&ctx, &id).await.unwrap().next_sync_at,
+        original.next_sync_at
+    );
+    ctx.db
+        .request_agent_source_push(ctx.org_id(), &[], Some(42), original.repository_id, "main")
+        .await
+        .unwrap();
+    assert!(binding(&ctx, &id).await.unwrap().next_sync_at < original.next_sync_at);
 }

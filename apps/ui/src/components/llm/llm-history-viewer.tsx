@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +69,7 @@ function ToolResultContentPart({
   result?: unknown;
   error?: string;
 }) {
+  const ui = useUiTranslations();
   // Format the result for display
   const formatResult = (value: unknown): string => {
     if (value === undefined || value === null) {
@@ -110,7 +112,7 @@ function ToolResultContentPart({
           <CheckCircle className="w-3 h-3 text-success" />
         )}
         <span className="text-xs font-medium">
-          <EntityIdentity value={toolCallId}>Tool Result</EntityIdentity>
+          <EntityIdentity value={toolCallId}>{ui("Tool Result")}</EntityIdentity>
         </span>
       </div>
       {error ? (
@@ -125,10 +127,11 @@ function ToolResultContentPart({
 }
 
 function ImageContentPart({ imageId, filename }: { imageId?: string; filename?: string }) {
+  const ui = useUiTranslations();
   return (
     <div className="border p-2 bg-muted/50 flex items-center gap-2">
       <FileText className="w-4 h-4 text-muted-foreground" />
-      <span className="text-xs">{filename || imageId || "Image"}</span>
+      <span className="text-xs">{filename || imageId || ui("Image")}</span>
     </div>
   );
 }
@@ -165,18 +168,19 @@ export function ContentPartRenderer({ part }: { part: ContentPart }) {
 // ============================================
 
 function MessageCard({ message, index }: { message: Message; index: number }) {
+  const ui = useUiTranslations();
   const roleConfig = {
     user: {
       icon: User,
-      label: "User",
+      label: ui("User"),
     },
     agent: {
       icon: AgentIcon,
-      label: "Assistant",
+      label: ui("Assistant"),
     },
     tool_result: {
       icon: Wrench,
-      label: "Tool Result",
+      label: ui("Tool Result"),
     },
   };
 
@@ -196,7 +200,7 @@ function MessageCard({ message, index }: { message: Message; index: number }) {
         <span className="text-xs text-muted-foreground">#{index + 1}</span>
         {message.tool_call_id && (
           <span className="text-xs text-muted-foreground font-mono">
-            (tool_call_id: {message.tool_call_id})
+            {ui("(tool_call_id:")} {message.tool_call_id})
           </span>
         )}
       </div>
@@ -214,25 +218,27 @@ function MessageCard({ message, index }: { message: Message; index: number }) {
 // ============================================
 
 function OutputSection({ output }: { output: LlmGenerationOutput }) {
+  const ui = useUiTranslations();
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
           <ChevronRight className="w-4 h-4" />
-          LLM Output
+          {ui("LLM Output")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {output.text && (
           <div className="border p-3 bg-muted/30">
-            <p className="text-xs font-medium text-muted-foreground mb-1">Text Response</p>
+            <p className="text-xs font-medium text-muted-foreground mb-1">{ui("Text Response")}</p>
             <p className="text-sm whitespace-pre-wrap">{output.text}</p>
           </div>
         )}
         {output.tool_calls && output.tool_calls.length > 0 && (
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-2">
-              Tool Calls ({output.tool_calls.length})
+              {ui("Tool Calls (")}
+              {output.tool_calls.length})
             </p>
             <div className="space-y-2">
               {output.tool_calls.map((toolCall, index) => (
@@ -242,7 +248,7 @@ function OutputSection({ output }: { output: LlmGenerationOutput }) {
           </div>
         )}
         {!output.text && (!output.tool_calls || output.tool_calls.length === 0) && (
-          <p className="text-sm text-muted-foreground italic">No output</p>
+          <p className="text-sm text-muted-foreground italic">{ui("No output")}</p>
         )}
       </CardContent>
     </Card>
@@ -254,43 +260,44 @@ function OutputSection({ output }: { output: LlmGenerationOutput }) {
 // ============================================
 
 function MetadataSection({ metadata }: { metadata: LlmGenerationMetadata }) {
+  const ui = useUiTranslations();
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Generation Metadata</CardTitle>
+        <CardTitle className="text-sm">{ui("Generation Metadata")}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <p className="text-xs text-muted-foreground">Model</p>
+            <p className="text-xs text-muted-foreground">{ui("Model")}</p>
             <p className="text-sm font-medium">{metadata.model}</p>
           </div>
           {metadata.provider && (
             <div>
-              <p className="text-xs text-muted-foreground">Provider</p>
+              <p className="text-xs text-muted-foreground">{ui("Provider")}</p>
               <p className="text-sm font-medium">{metadata.provider}</p>
             </div>
           )}
           {metadata.duration_ms !== undefined && (
             <div>
               <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Clock className="w-3 h-3" /> Duration
+                <Clock className="w-3 h-3" /> {ui("Duration")}
               </p>
               <p className="text-sm font-medium">{formatDuration(metadata.duration_ms)}</p>
             </div>
           )}
           <div>
-            <p className="text-xs text-muted-foreground">Status</p>
+            <p className="text-xs text-muted-foreground">{ui("Status")}</p>
             <div className="flex items-center gap-1">
               {metadata.success ? (
                 <>
                   <CheckCircle className="w-3 h-3 text-success" />
-                  <span className="text-sm font-medium text-success">Success</span>
+                  <span className="text-sm font-medium text-success">{ui("Success")}</span>
                 </>
               ) : (
                 <>
                   <XCircle className="w-3 h-3 text-destructive" />
-                  <span className="text-sm font-medium text-destructive">Failed</span>
+                  <span className="text-sm font-medium text-destructive">{ui("Failed")}</span>
                 </>
               )}
             </div>
@@ -298,7 +305,7 @@ function MetadataSection({ metadata }: { metadata: LlmGenerationMetadata }) {
         </div>
         {metadata.error && (
           <div className="mt-3 p-2 bg-destructive/10 border border-destructive/30 rounded">
-            <p className="text-xs font-medium text-destructive">Error</p>
+            <p className="text-xs font-medium text-destructive">{ui("Error")}</p>
             <p className="text-sm text-destructive">{metadata.error}</p>
           </div>
         )}
@@ -309,6 +316,9 @@ function MetadataSection({ metadata }: { metadata: LlmGenerationMetadata }) {
 }
 
 function UsageDisplay({ usage }: { usage: TokenUsage }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const total = usage.input_tokens + usage.output_tokens;
   // Best-effort cost: prefer the provider's actual cost, fall back to the
   // price-table estimate. Mark estimate-only values as "est.".
@@ -320,40 +330,42 @@ function UsageDisplay({ usage }: { usage: TokenUsage }) {
     <div className="mt-3 p-3 bg-muted/50">
       <div className="flex items-center gap-2 mb-2">
         <Zap className="w-4 h-4 text-accent-foreground" />
-        <span className="text-sm font-medium">Token Usage</span>
+        <span className="text-sm font-medium">{ui("Token Usage")}</span>
         {effectiveCostUsd !== undefined && (
           <Badge
             variant="outline"
             className="ml-auto"
-            title={isEstimated ? "Price-table estimate" : "Provider-reported cost"}
+            title={isEstimated ? ui("Price-table estimate") : ui("Provider-reported cost")}
           >
             {formatCostUsd(effectiveCostUsd)}
-            {isEstimated ? " est." : ""}
+            {isEstimated ? ui(" est.") : ""}
           </Badge>
         )}
         <Badge variant="outline" className={effectiveCostUsd !== undefined ? "" : "ml-auto"}>
-          {formatTokens(total)} total
+          {formatTokens(total)} {ui("total")}
         </Badge>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
         <div>
-          <p className="text-muted-foreground">Input</p>
-          <p className="font-medium">{usage.input_tokens.toLocaleString()}</p>
+          <p className="text-muted-foreground">{ui("Input")}</p>
+          <p className="font-medium">{usage.input_tokens.toLocaleString(displayLocale)}</p>
         </div>
         <div>
-          <p className="text-muted-foreground">Output</p>
-          <p className="font-medium">{usage.output_tokens.toLocaleString()}</p>
+          <p className="text-muted-foreground">{ui("Output")}</p>
+          <p className="font-medium">{usage.output_tokens.toLocaleString(displayLocale)}</p>
         </div>
         {usage.cache_read_tokens !== undefined && usage.cache_read_tokens > 0 && (
           <div>
-            <p className="text-muted-foreground">Cache Read</p>
-            <p className="font-medium">{usage.cache_read_tokens.toLocaleString()}</p>
+            <p className="text-muted-foreground">{ui("Cache Read")}</p>
+            <p className="font-medium">{usage.cache_read_tokens.toLocaleString(displayLocale)}</p>
           </div>
         )}
         {usage.cache_creation_tokens !== undefined && usage.cache_creation_tokens > 0 && (
           <div>
-            <p className="text-muted-foreground">Cache Created</p>
-            <p className="font-medium">{usage.cache_creation_tokens.toLocaleString()}</p>
+            <p className="text-muted-foreground">{ui("Cache Created")}</p>
+            <p className="font-medium">
+              {usage.cache_creation_tokens.toLocaleString(displayLocale)}
+            </p>
           </div>
         )}
       </div>
@@ -392,6 +404,7 @@ function ToolItem({ tool }: { tool: ToolDefinitionSummary }) {
 }
 
 function ToolsSection({ tools }: { tools: ToolDefinitionSummary[] }) {
+  const ui = useUiTranslations();
   const [open, setOpen] = useState(false);
 
   return (
@@ -400,7 +413,10 @@ function ToolsSection({ tools }: { tools: ToolDefinitionSummary[] }) {
         <CardHeader className="pb-2">
           <CollapsibleTrigger className="flex items-center gap-2 w-full text-left">
             {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            <CardTitle className="text-sm">Tools ({tools.length})</CardTitle>
+            <CardTitle className="text-sm">
+              {ui("Tools (")}
+              {tools.length})
+            </CardTitle>
           </CollapsibleTrigger>
         </CardHeader>
         <CollapsibleContent>
@@ -440,6 +456,9 @@ export function LlmHistoryViewer({
   timestamp,
   compact = false,
 }: LlmHistoryViewerProps) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const { messages, tools, output, metadata } = data;
 
   if (compact) {
@@ -447,10 +466,13 @@ export function LlmHistoryViewer({
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-sm">
           <Badge variant="outline">{metadata.model}</Badge>
-          <span className="text-muted-foreground">{messages.length} messages</span>
+          <span className="text-muted-foreground">
+            {messages.length} {ui("messages")}
+          </span>
           {metadata.usage && (
             <span className="text-muted-foreground">
-              {formatTokens(metadata.usage.input_tokens + metadata.usage.output_tokens)} tokens
+              {formatTokens(metadata.usage.input_tokens + metadata.usage.output_tokens)}{" "}
+              {ui("tokens")}
             </span>
           )}
           {metadata.duration_ms !== undefined && (
@@ -467,7 +489,7 @@ export function LlmHistoryViewer({
           ))}
           {messages.length > 3 && (
             <p className="text-xs text-muted-foreground text-center">
-              +{messages.length - 3} more messages
+              +{messages.length - 3} {ui("more messages")}
             </p>
           )}
         </div>
@@ -482,18 +504,22 @@ export function LlmHistoryViewer({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="font-mono">
-              llm.generation
+              {ui("llm.generation")}
             </Badge>
             {eventId && (
               <span className="text-xs text-muted-foreground font-mono flex items-center gap-1">
                 {eventId.slice(0, 8)}...
-                <CopyButton value={eventId} label={`Copy ID: ${eventId}`} kind="id" />
+                <CopyButton
+                  value={eventId}
+                  label={ui("Copy ID: {value0}", { value0: eventId })}
+                  kind="id"
+                />
               </span>
             )}
           </div>
           {timestamp && (
             <span className="text-xs text-muted-foreground">
-              {new Date(timestamp).toLocaleString()}
+              {new Date(timestamp).toLocaleString(displayLocale)}
             </span>
           )}
         </div>
@@ -508,7 +534,10 @@ export function LlmHistoryViewer({
       {/* Input Messages - capped height with internal scroll */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Input Messages ({messages.length})</CardTitle>
+          <CardTitle className="text-sm">
+            {ui("Input Messages (")}
+            {messages.length})
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <ScrollArea className="max-h-[50vh] p-4">

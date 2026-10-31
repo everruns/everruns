@@ -306,10 +306,13 @@ every reason step and returns deployment-level provider keys (and environment
 fallbacks), which are not org-owned command data; `GetMcpServerByPrefix` runs
 on every MCP tool call.
 
-Image and file byte transfer stays gRPC by design: `CreateImageArtifact`,
-`GetImageArtifact`, `ResolveImage(s)` and `ResolveFiles` carry bytes of up to
-100 MiB (inline, or base64 for model input), which outgrow an internal
-command's 1 MiB JSON. The metadata-only `GetImageArtifactInfo` had no caller in
+Image and file bytes never ride inside gRPC messages. `GetImageArtifact`,
+`ResolveImage(s)` and `ResolveFiles` stay RPCs that answer with metadata and a
+short-lived signed path; the worker GETs that path as plain HTTP on the same
+worker endpoint (`api/internal_blobs.rs`), so bytes stream without base64 or
+the message cap. Generated images go up the same way: the worker POSTs a JSON
+head line and the raw bytes (`internal-protocol` `blob_wire`), and the
+`CreateImageArtifact` RPC that carried them was removed. The metadata-only `GetImageArtifactInfo` had no caller in
 the runtime and was removed with `ImageArtifactStore::get_image_info`, rather
 than converted.
 

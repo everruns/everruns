@@ -4,6 +4,7 @@
 // kind, batches, gaps and the unloaded-turns bars. Layout follows the design
 // handoff: gutter, spine with an icon tile, content, waterfall.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import {
   Bot,
@@ -22,6 +23,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StreamdownMessage } from "@/components/chat/streamdown-message";
 import type { TraceBatch, TraceGap, TraceStep, TraceTurn } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import {
@@ -75,12 +77,13 @@ export function UnloadedBar({
   onLoad: () => void;
   onJumpToError?: () => void;
 }) {
+  const ui = useUiTranslations();
   const Icon = edge === "earlier" ? ChevronsUp : ChevronsDown;
   return (
     <div className="flex flex-wrap items-center gap-3 border bg-muted/50 px-4 py-2.5 text-sm">
       <Icon className="size-4 text-muted-foreground" aria-hidden />
       <span className="font-medium">
-        Turns {formatCount(from)}–{formatCount(to)} not loaded
+        {ui("Turns")} {formatCount(from)}–{formatCount(to)} {ui("not loaded")}
       </span>
       <span className="text-muted-foreground">
         {[
@@ -95,11 +98,11 @@ export function UnloadedBar({
       <div className="ml-auto flex gap-2">
         {onJumpToError && (
           <Button variant="outline" size="sm" onClick={onJumpToError} disabled={busy}>
-            Jump to error
+            {ui("Jump to error")}
           </Button>
         )}
         <Button variant="outline" size="sm" onClick={onLoad} disabled={busy}>
-          {edge === "earlier" ? "Load 20 earlier" : "Load 20 later"}
+          {edge === "earlier" ? ui("Load 20 earlier") : ui("Load 20 later")}
         </Button>
       </div>
     </div>
@@ -117,6 +120,7 @@ export function TurnHeader({
   onToggle: () => void;
   showScale: boolean;
 }) {
+  const ui = useUiTranslations();
   const Chevron = collapsed ? ChevronRight : ChevronDown;
   const duration = turn.duration_ms ?? null;
   return (
@@ -130,15 +134,15 @@ export function TurnHeader({
         <Chevron className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
         <div className="min-w-0 flex-1">
           <div className="font-mono text-[11px] tracking-[0.04em] text-muted-foreground">
-            TURN {formatCount(turn.turn)} · {formatClock(turn.started_at)} · user
+            {ui("TURN")} {formatCount(turn.turn)} · {formatClock(turn.started_at)} {ui("· user")}
           </div>
           <div className="mt-1 line-clamp-3 text-sm font-medium leading-normal break-words">
-            {turn.prompt || <span className="italic text-muted-foreground">No prompt</span>}
+            {turn.prompt || <span className="italic text-muted-foreground">{ui("No prompt")}</span>}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {turn.status === "running" ? (
-            <span className="font-mono text-foreground">running</span>
+            <span className="font-mono text-foreground">{ui("running")}</span>
           ) : (
             duration !== null && (
               <span className="font-mono text-foreground">{formatDuration(duration)}</span>
@@ -148,7 +152,8 @@ export function TurnHeader({
           {turn.error_count > 0 && (
             <span className="inline-flex items-center gap-1 text-destructive">
               <CircleAlert className="size-3.5" aria-hidden />
-              {formatCount(turn.error_count)} error{turn.error_count === 1 ? "" : "s"}
+              {formatCount(turn.error_count)} {ui("error")}
+              {turn.error_count === 1 ? "" : "s"}
             </span>
           )}
         </div>
@@ -156,7 +161,7 @@ export function TurnHeader({
       {!collapsed && showScale && (
         <div className="hidden justify-end px-0 pt-1 min-[1100px]:flex">
           <div className="flex w-40 justify-between pr-4 font-mono text-[10px] tracking-[0.08em] text-muted-foreground">
-            <span>0s</span>
+            <span>{ui("0s")}</span>
             <span>{formatDuration(turnSpanMs(turn))}</span>
           </div>
         </div>
@@ -166,6 +171,7 @@ export function TurnHeader({
 }
 
 export function TurnFooter({ turn }: { turn: TraceTurn }) {
+  const ui = useUiTranslations();
   const tokens = turn.input_tokens + turn.output_tokens;
   const label =
     turn.status === "running"
@@ -183,9 +189,12 @@ export function TurnFooter({ turn }: { turn: TraceTurn }) {
       >
         <span className="font-medium">{label}</span>
         <span>
-          {formatCount(turn.step_count)} step{turn.step_count === 1 ? "" : "s"}
-          {tokens ? ` · ${formatCount(tokens)} tokens` : ""}
-          {turn.duration_ms != null ? ` · ${formatDuration(turn.duration_ms)}` : ""}
+          {formatCount(turn.step_count)} {ui("step")}
+          {turn.step_count === 1 ? "" : "s"}
+          {tokens ? ui(" · {value0} tokens", { value0: formatCount(tokens) }) : ""}
+          {turn.duration_ms != null
+            ? ui(" · {value0}", { value0: formatDuration(turn.duration_ms) })
+            : ""}
         </span>
         {turn.error && <span className="w-full truncate text-destructive">{turn.error}</span>}
       </div>
@@ -194,9 +203,10 @@ export function TurnFooter({ turn }: { turn: TraceTurn }) {
 }
 
 export function EmptyTurnRow() {
+  const ui = useUiTranslations();
   return (
     <div className="border-x bg-card py-3 pl-[84px] text-sm italic text-muted-foreground">
-      No steps match the current filter.
+      {ui("No steps match the current filter.")}
     </div>
   );
 }
@@ -258,9 +268,11 @@ function RowShell({
       role={onSelect ? "button" : undefined}
       tabIndex={onSelect ? 0 : undefined}
       aria-pressed={onSelect ? selected : undefined}
-      onClick={onSelect}
+      onClick={(e) => {
+        if (!(e.target as HTMLElement).closest("a, button, input")) onSelect?.();
+      }}
       onKeyDown={(e) => {
-        if (onSelect && (e.key === "Enter" || e.key === " ")) {
+        if (e.target === e.currentTarget && onSelect && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
           onSelect();
         }
@@ -340,6 +352,7 @@ export function StepRow({
   turn,
   step,
   view,
+  plainText,
   selected,
   onSelect,
   nested,
@@ -348,17 +361,19 @@ export function StepRow({
   turn: TraceTurn;
   step: TraceStep;
   view: "all" | "messages" | "tools";
+  plainText: boolean;
   selected: boolean;
   onSelect: () => void;
   nested?: boolean;
   expand?: ExpandToggle;
 }) {
+  const ui = useUiTranslations();
   const error = step.status === "error";
   const running = step.status === "running";
   const Icon = error ? CircleAlert : (KIND_ICON[step.kind] ?? Wrench);
   return (
     <RowShell
-      label={`#${step.step}`}
+      label={ui("#{value0}", { value0: step.step })}
       offset={formatOffset(step.offset_ms)}
       icon={Icon}
       tile={tileFor(step.kind)}
@@ -377,12 +392,21 @@ export function StepRow({
         />
       }
     >
-      <StepContent step={step} view={view} />
+      <StepContent step={step} view={view} plainText={plainText} />
     </RowShell>
   );
 }
 
-function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages" | "tools" }) {
+function StepContent({
+  step,
+  view,
+  plainText,
+}: {
+  step: TraceStep;
+  view: "all" | "messages" | "tools";
+  plainText: boolean;
+}) {
+  const ui = useUiTranslations();
   const error = step.status === "error";
   switch (step.kind) {
     case "model":
@@ -397,7 +421,7 @@ function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages"
           {view === "all" && (
             <div className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
               <span className="font-medium text-foreground">
-                {step.kind === "answer" ? "Final answer" : "Model call"}
+                {step.kind === "answer" ? ui("Final answer") : ui("Model call")}
               </span>
               {tokens && <span className="font-mono">{tokens}</span>}
               {step.duration_ms != null && (
@@ -405,21 +429,28 @@ function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages"
               )}
               {requested > 0 && (
                 <span>
-                  requested {requested} tool call{requested === 1 ? "" : "s"}
+                  {ui("requested")} {requested} {ui("tool call")}
+                  {requested === 1 ? "" : "s"}
                 </span>
               )}
               {error && step.result && <span className="text-destructive">{step.result}</span>}
             </div>
           )}
           {step.narration && (
-            <p
+            <div
               className={cn(
-                "text-sm leading-[1.55] break-words whitespace-pre-wrap",
+                "min-w-0 text-sm leading-[1.55] break-words",
                 step.kind === "answer" && "border-l border-primary/65 pl-3.5",
               )}
             >
-              {step.narration}
-            </p>
+              {plainText ? (
+                <p className="whitespace-pre-wrap">{step.narration}</p>
+              ) : (
+                <StreamdownMessage variant="compact" skipHtml>
+                  {step.narration}
+                </StreamdownMessage>
+              )}
+            </div>
           )}
         </>
       );
@@ -428,7 +459,7 @@ function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages"
       return (
         <>
           <div className="flex min-w-0 items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Sub-agent</span>
+            <span className="text-xs font-medium text-muted-foreground">{ui("Sub-agent")}</span>
             {step.target && (
               <span className="truncate text-[13px] font-semibold">{step.target}</span>
             )}
@@ -455,7 +486,7 @@ function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages"
     case "approval":
       return (
         <>
-          <div className="text-[13px] font-medium">Approval recorded</div>
+          <div className="text-[13px] font-medium">{ui("Approval recorded")}</div>
           <div className="flex flex-wrap gap-x-2 text-xs">
             {step.target && <span className="font-mono text-muted-foreground">{step.target}</span>}
             {step.result && (
@@ -478,11 +509,11 @@ function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages"
             )}
             {isSimulatedResult(step.result) && (
               <span className="shrink-0 border border-warning/40 bg-warning/10 px-1.5 text-[11px] text-warning">
-                Simulated
+                {ui("Simulated")}
               </span>
             )}
             <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
-              {step.status === "running" ? "running" : formatDuration(step.duration_ms)}
+              {step.status === "running" ? ui("running") : formatDuration(step.duration_ms)}
             </span>
           </div>
           {step.result && (
@@ -522,10 +553,11 @@ export function BatchRow({
   onSelect: () => void;
   expand?: ExpandToggle;
 }) {
+  const ui = useUiTranslations();
   const okShare = batch.count ? batch.succeeded / batch.count : 0;
   return (
     <RowShell
-      label={`#${batch.first_step}`}
+      label={ui("#{value0}", { value0: batch.first_step })}
       offset={formatOffset(batch.offset_ms)}
       icon={Layers}
       tile="border-border bg-accent/12"
@@ -560,14 +592,24 @@ export function BatchRow({
       </div>
       <div className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
         <span>
-          {formatCount(batch.succeeded)} succeeded
-          {batch.p50_ms != null ? ` · p50 ${formatDuration(batch.p50_ms)}` : ""}
-          {batch.p95_ms != null ? ` · p95 ${formatDuration(batch.p95_ms)}` : ""}
+          {formatCount(batch.succeeded)} {ui("succeeded")}
+          {batch.p50_ms != null
+            ? ui(" · p50 {value0}", { value0: formatDuration(batch.p50_ms) })
+            : ""}
+          {batch.p95_ms != null
+            ? ui(" · p95 {value0}", { value0: formatDuration(batch.p95_ms) })
+            : ""}
         </span>
         {batch.failed > 0 && (
-          <span className="text-destructive">{formatCount(batch.failed)} failed</span>
+          <span className="text-destructive">
+            {formatCount(batch.failed)} {ui("failed")}
+          </span>
         )}
-        {batch.running > 0 && <span>{formatCount(batch.running)} running</span>}
+        {batch.running > 0 && (
+          <span>
+            {formatCount(batch.running)} {ui("running")}
+          </span>
+        )}
       </div>
     </RowShell>
   );
@@ -582,14 +624,17 @@ export function GapRow({
   busy: boolean;
   onShowMore: () => void;
 }) {
+  const ui = useUiTranslations();
   return (
     <div className="flex flex-wrap items-center gap-3 border-x bg-muted/40 py-2.5 pr-4 pl-[84px] text-xs text-muted-foreground">
       <span>
-        {formatCount(gap.count)} steps hidden (#{gap.first_step}–#{gap.last_step})
+        {formatCount(gap.count)} {ui("steps hidden (#")}
+        {gap.first_step}–#{gap.last_step})
       </span>
       {gap.errors > 0 && (
         <span className="text-destructive">
-          {formatCount(gap.errors)} error{gap.errors === 1 ? "" : "s"}
+          {formatCount(gap.errors)} {ui("error")}
+          {gap.errors === 1 ? "" : "s"}
         </span>
       )}
       <Button
@@ -599,7 +644,7 @@ export function GapRow({
         onClick={onShowMore}
         disabled={busy}
       >
-        Show {formatCount(Math.min(100, gap.count))} more
+        {ui("Show")} {formatCount(Math.min(100, gap.count))} {ui("more")}
       </Button>
     </div>
   );
@@ -613,33 +658,37 @@ export function ExpansionFooter({
   expansion: Expansion;
   onMore?: () => void;
 }) {
+  const ui = useUiTranslations();
   return (
     <div className="flex flex-wrap items-center gap-3 border-x bg-muted/40 py-2 pr-4 pl-[108px] text-xs text-muted-foreground">
       {expansion.loading ? (
-        <span>Loading…</span>
+        <span>{ui("Loading…")}</span>
       ) : expansion.error ? (
-        <span className="text-destructive">Could not load: {expansion.error}</span>
+        <span className="text-destructive">
+          {ui("Could not load:")} {expansion.error}
+        </span>
       ) : expansion.steps.length === 0 ? (
-        <span>No steps yet.</span>
+        <span>{ui("No steps yet.")}</span>
       ) : null}
       {!expansion.loading && expansion.nextStep != null && onMore && (
         <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={onMore}>
-          Show more calls from #{expansion.nextStep}
+          {ui("Show more calls from #")}
+          {expansion.nextStep}
         </Button>
       )}
       {!expansion.loading && expansion.childSessionId && (
         <>
           {!!expansion.hiddenTurns && (
             <span>
-              {formatCount(expansion.hiddenTurns)} earlier turn
-              {expansion.hiddenTurns === 1 ? "" : "s"} not shown
+              {formatCount(expansion.hiddenTurns)} {ui("earlier turn")}
+              {expansion.hiddenTurns === 1 ? "" : "s"} {ui("not shown")}
             </span>
           )}
           <Link
             href={`/sessions/${expansion.childSessionId}/trace`}
             className="font-medium text-primary hover:underline"
           >
-            Open the sub-agent&apos;s trace
+            {ui("Open the sub-agent's trace")}
           </Link>
         </>
       )}

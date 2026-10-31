@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useState } from "react";
 import Link from "next/link";
 import {
@@ -29,6 +30,7 @@ interface AgentHealthCheckProps {
  * configuration and shows a score card. See knowledge/evaluation/agent-checks.md (tier 3).
  */
 export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
+  const ui = useUiTranslations();
   const trigger = useTriggerHealthCheck();
   const [runId, setRunId] = useState<string | null>(null);
   const { data: latest } = useLatestHealthCheckRun(agentId);
@@ -55,7 +57,7 @@ export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
         <div className="flex flex-wrap items-center gap-2">
           <CardTitle className="flex min-w-0 items-center gap-2 text-base">
             <Activity className="size-4 shrink-0" />
-            Health check
+            {ui("Health check")}
           </CardTitle>
           <Button
             type="button"
@@ -72,7 +74,7 @@ export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
             {isRunning ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                Running…
+                {ui("Running…")}
               </>
             ) : (
               "Run health check"
@@ -80,25 +82,26 @@ export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
           </Button>
         </div>
         <CardDescription className="text-xs leading-relaxed">
-          Runs generated smoke tests as real sessions, then scores them with an AI judge. Takes a
-          minute or two.
+          {ui(
+            "Runs generated smoke tests as real sessions, then scores them with an AI judge. Takes a minute or two.",
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className="min-w-0 px-4 pb-4">
         {trigger.error && (
           <p className="text-sm text-destructive">
-            Could not start health check: {trigger.error.message}
+            {ui("Could not start health check:")} {trigger.error.message}
           </p>
         )}
         {!run && !trigger.error && (
           <p className="text-sm text-muted-foreground italic">
-            No health check has been run for this configuration yet.
+            {ui("No health check has been run for this configuration yet.")}
           </p>
         )}
         {configChanged && (
           <p className="text-sm text-warning flex items-center gap-2 mb-3">
             <AlertTriangle className="w-4 h-4 shrink-0" />
-            This agent&apos;s configuration changed since this run. Re-run to refresh results.
+            {ui("This agent's configuration changed since this run. Re-run to refresh results.")}
           </p>
         )}
         {run && <HealthCheckResults run={run} />}
@@ -108,10 +111,13 @@ export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
 }
 
 function HealthCheckResults({ run }: { run: HealthCheckRun }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   if (run.status === "failed") {
     return (
       <p className="text-sm text-destructive">
-        Health check failed: {run.error_message ?? "unknown error"}
+        {ui("Health check failed:")} {run.error_message ?? ui("unknown error")}
       </p>
     );
   }
@@ -119,7 +125,7 @@ function HealthCheckResults({ run }: { run: HealthCheckRun }) {
     return (
       <p className="text-sm text-muted-foreground flex items-center gap-2">
         <Loader2 className="w-4 h-4 animate-spin" />
-        Generating and running cases…
+        {ui("Generating and running cases…")}
       </p>
     );
   }
@@ -129,22 +135,23 @@ function HealthCheckResults({ run }: { run: HealthCheckRun }) {
     <div className="min-w-0 space-y-3">
       {summary && (
         <div className="grid grid-cols-2 gap-2">
-          <Metric label="Pass rate" value={`${Math.round(summary.pass_rate * 100)}%`} />
-          <Metric label="Passed" value={`${summary.passed}/${summary.total}`} />
-          <Metric label="Avg score" value={summary.avg_score.toFixed(2)} />
-          <Metric label="Avg turns" value={summary.avg_turns.toFixed(1)} />
+          <Metric label={ui("Pass rate")} value={`${Math.round(summary.pass_rate * 100)}%`} />
+          <Metric label={ui("Passed")} value={`${summary.passed}/${summary.total}`} />
+          <Metric label={ui("Avg score")} value={summary.avg_score.toFixed(2)} />
+          <Metric label={ui("Avg turns")} value={summary.avg_turns.toFixed(1)} />
         </div>
       )}
       {summary && (summary.total_input_tokens > 0 || summary.total_output_tokens > 0) && (
         <p className="text-xs text-muted-foreground">
-          {summary.total_input_tokens.toLocaleString()} input /{" "}
-          {summary.total_output_tokens.toLocaleString()} output tokens
+          {summary.total_input_tokens.toLocaleString(displayLocale)} {ui("input /")}{" "}
+          {summary.total_output_tokens.toLocaleString(displayLocale)} {ui("output tokens")}
         </p>
       )}
       {(run.results?.length ?? 0) > 0 && (
         <details className="min-w-0 border p-3">
           <summary className="cursor-pointer text-sm font-medium">
-            Case results ({run.results?.length ?? 0})
+            {ui("Case results (")}
+            {run.results?.length ?? 0})
           </summary>
           <ul className="mt-3 min-w-0 space-y-2">
             {(run.results ?? []).map((result, index) => (
@@ -167,6 +174,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function CaseRow({ result }: { result: HealthCheckCaseResult }) {
+  const ui = useUiTranslations();
   const icon = result.error ? (
     <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
   ) : result.passed ? (
@@ -191,7 +199,7 @@ function CaseRow({ result }: { result: HealthCheckCaseResult }) {
               href={`/sessions/${result.session_id}/trace`}
               target="_blank"
               className="text-muted-foreground hover:text-foreground"
-              aria-label="Open session"
+              aria-label={ui("Open session")}
             >
               <ExternalLink className="w-3.5 h-3.5" />
             </Link>
