@@ -8,6 +8,10 @@
 
 ## 2026-10-30
 
+* **Chat pre-merge security pins.** Carry the latest ZIP and Undici fixes into
+  the example's independent lockfiles while retaining its qualified Worker
+  toolchain. See [The isolate host](framework/wasm-kernel.md).
+
 * **Chat dependency advisory coverage.** Refresh the example's separately pinned
   TLS verifier/root data and record that standalone lockfiles need their own
   RustSec pass, independently of the workspace lock. See
