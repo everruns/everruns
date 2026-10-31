@@ -1433,3 +1433,47 @@ async fn harness_localizations_follow_partial_updates_and_revision_restore() {
     );
     assert_eq!(restored["entity"]["description"], "New description");
 }
+
+#[test]
+fn model_diffs_ignore_fields_derived_from_the_provider_and_registry() {
+    // A revision recorded before `is_new` existed, with an older registry
+    // profile, against today's read shape after a display-name edit.
+    let before = json!({
+        "id": "model_01933b5a000070008000000000000099",
+        "display_name": "Old",
+        "enabled": true,
+        "healthy": true,
+        "profile": {"cost": {"input": 0.2, "output": 0.75}},
+        "provider_name": "OpenAI",
+    });
+    let after = json!({
+        "id": "model_01933b5a000070008000000000000099",
+        "display_name": "New",
+        "enabled": true,
+        "healthy": false,
+        "is_new": false,
+        "stale": false,
+        "profile": {"cost": {"input": 0.2, "output": 0.75}, "attachment": true},
+        "model_vendor": "openai",
+        "provider_name": "OpenAI",
+        "provider_type": "openai",
+    });
+    let fields: Vec<String> = snapshot::diff_revisions(EntityKind::Model, &before, &after)
+        .into_iter()
+        .map(|change| change.field)
+        .collect();
+    assert_eq!(fields, ["display_name"]);
+    // Other kinds keep every field.
+    assert!(snapshot::diff_revisions(EntityKind::Agent, &before, &after).len() > 1);
+    assert!(snapshot::matches_current(
+        EntityKind::Model,
+        &before,
+        &json!({
+            "id": "model_01933b5a000070008000000000000099",
+            "display_name": "Old",
+            "enabled": true,
+            "is_new": true,
+            "profile": {},
+        })
+    ));
+}

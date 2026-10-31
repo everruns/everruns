@@ -62,6 +62,35 @@ const VOLATILE: &[&str] = &[
     "effective_harness",
 ];
 
+/// Read-only fields a kind's read command derives from other state (the
+/// joined provider, the model registry, the last sync). They are not part of
+/// the entity's configuration, so a registry update or a field added to the
+/// read shape must not show up as a change the user made.
+fn derived(kind: EntityKind) -> &'static [&'static str] {
+    match kind {
+        EntityKind::Model => &[
+            "provider_name",
+            "provider_type",
+            "healthy",
+            "profile",
+            "model_vendor",
+            "stale",
+            "is_new",
+        ],
+        _ => &[],
+    }
+}
+
+/// Drops `kind`'s derived fields. Applied when capturing, and again when
+/// comparing, so revisions recorded before a field was classed as derived
+/// diff the same as new ones.
+fn drop_derived(kind: EntityKind, mut state: Value) -> Value {
+    if let Some(object) = state.as_object_mut() {
+        object.retain(|key, _| !derived(kind).contains(&key.as_str()));
+    }
+    state
+}
+
 /// Whether changes to `kind` carry snapshots. Sessions change by
 /// conversation, not by configuration, so theirs are not kept.
 pub fn has_snapshots(kind: EntityKind) -> bool {
@@ -92,7 +121,7 @@ pub(super) async fn capture(
         Some(state) => state,
         None => output_entity(output, entity_ref)?,
     };
-    let mut snapshot = normalize(state);
+    let mut snapshot = drop_derived(kind, normalize(state));
     if kind == EntityKind::Skill
         && let Some(fields) = snapshot.as_object_mut()
     {
@@ -268,7 +297,7 @@ fn normalize(mut state: Value) -> Value {
 /// immutable and newly introduced secret markers cannot verify old revisions.
 pub(super) fn matches_current(kind: EntityKind, recorded: &Value, current: &Value) -> bool {
     let project = |state: &Value| {
-        let mut value = normalize(state.clone());
+        let mut value = drop_derived(kind, normalize(state.clone()));
         if kind == EntityKind::Skill
             && let Some(fields) = value.as_object_mut()
         {
@@ -470,6 +499,13 @@ pub struct FieldDiff {
 }
 
 /// Field-level differences from `from` to `to`, in field order.
+pub fn diff_revisions(kind: EntityKind, from: &Value, to: &Value) -> Vec<FieldDiff> {
+    diff(
+        &drop_derived(kind, from.clone()),
+        &drop_derived(kind, to.clone()),
+    )
+}
+
 pub fn diff(from: &Value, to: &Value) -> Vec<FieldDiff> {
     let empty = Map::new();
     let (from, to) = (
