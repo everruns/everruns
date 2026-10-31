@@ -204,11 +204,14 @@ function WorkChat({ config }: { config: Config }) {
     lastSequence = useRef(0);
   const fail = useCallback((error: unknown) => {
     const text = error instanceof Error ? error.message : "Chat temporarily unavailable";
-    setError(text);
     if (text === "Sign in to continue") {
+      // The signed-out card is the sign-in prompt. An alert would stack a second one.
       accessDenied.current = true;
       setSignedIn(false);
+      setError(null);
+      return;
     }
+    setError(text);
   }, []);
   useEffect(() => {
     const timer = setInterval(async () => {
@@ -976,21 +979,6 @@ function WorkChat({ config }: { config: Config }) {
           {error && (
             <div role="alert" className="error">
               {error}
-              {!signedIn && (
-                <>
-                  {" "}
-                  ·{" "}
-                  <a
-                    href={
-                      selected
-                        ? `/auth/start?session=${encodeURIComponent(selected)}`
-                        : "/auth/start"
-                    }
-                  >
-                    Sign in
-                  </a>
-                </>
-              )}
             </div>
           )}
           {!signedIn ? (

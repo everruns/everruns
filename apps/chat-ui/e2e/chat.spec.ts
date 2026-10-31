@@ -611,8 +611,11 @@ test("an authorization rejection stops stream reconnection", async ({ page, requ
   await expect(page.getByRole("link", { name: "Continue to sign in →" })).toBeVisible({
     timeout: 15000,
   });
+  await expect(page.getByText("Sign in to continue")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveCount(1);
   await page.waitForTimeout(2200);
   expect(streams).toBe(1);
+  await expect(page.getByText("Sign in to continue")).toHaveCount(0);
 });
 
 test("sign-out retires an attachment read before it can start a message", async ({
