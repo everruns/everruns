@@ -99,7 +99,9 @@ conversation and history-search child has its own native Cloudflare authority,
 canonical journal, execution epoch and alarm. There is no celld runtime,
 sibling-example dependency, external executor or custom turn loop. Its
 [hosting audit](../../examples/cloudflare-durable-chat/test/hosting-contract.mjs)
-checks that dependency boundary. The Worker installs the authority command
+checks that dependency boundary. Its standalone lockfile must also pass the
+repository non-workspace advisory gate; root-workspace dependency updates do not
+refresh this separate resolution. The Worker installs the authority command
 exports from its Engine Wasm and imports the storage service directly, avoiding
 a second reducer upload.
 The chat also minifies its JS glue and strips Wasm name/producer sections;

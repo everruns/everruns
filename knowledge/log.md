@@ -8,6 +8,11 @@
 
 ## 2026-10-30
 
+* **Chat dependency advisory coverage.** Refresh the example's separately pinned
+  TLS verifier/root data and record that standalone lockfiles need their own
+  RustSec pass, independently of the workspace lock. See
+  [The isolate host](framework/wasm-kernel.md).
+
 * **Navigation loading**: Keep the displayed page during route transitions and
   show pending sidebar feedback instead of replacing static page chrome with
   generic skeletons. See [Navigation Information Architecture](ui/information-architecture.md).
