@@ -155,7 +155,7 @@ To list the agent in the AgentID directory, use `{API base URL}/v1/agentid/initi
 
 ## Agent API
 
-An Agent API channel gives one Agent a base URL, `/v1/channels/{channel_id}`, that your own code calls with an **agent key** (`evr_ak_…`). A key reaches only this Agent's session routes, never the management API. Callers start sessions, send messages, follow events over SSE, answer questions, approve tool calls and cancel turns, and each caller sees only its own sessions. Channel settings add end users, your own identity provider, browser origins, safe retries and a daily spending limit per caller.
+An Agent API channel gives one Agent a base URL, `/v1/channels/{channel_id}`, that your own code calls with an **agent key** (`evr_ak_…`). A key reaches only this Agent's session routes, never the management API. Callers start sessions, send messages, follow events over SSE, answer questions, approve tool calls and cancel turns, and each caller sees only its own sessions. Channel settings add end users, your own identity provider, browser origins, safe retries and a daily spending limit per caller. In the console that daily limit sits with the channel budget under **Spending**: the budget is the shared pool, and the daily limit caps each person until midnight UTC.
 
 Add an **Agent API** channel on the Agent's **Integrations** tab, publish it, and create a key in its **Agent keys** card. See [Agent API](/features/agent-api/) for keys, every route, authentication, settings, streaming and errors, and [Call your agent from code](/how-to/call-your-agent-from-code/) for a walkthrough. A [serve](/framework/serve/) app serves the same routes at `/v1/channels/{agent}`.
 
@@ -235,7 +235,7 @@ work activity, threads, questions and permitted approvals. Workspace tools enabl
 file browsing and editing; read-only files remain protected. Provider reasoning,
 debug records and private runtime mounts are excluded.
 
-Existing budgets, approval policies and session ownership continue to apply.
+Existing budgets, approval policies and session ownership continue to apply. **Spending** on the channel page is the shared channel budget and the optional daily limit for each person. The shared budget stops the channel when the pool is spent. The daily limit stops one person until the next UTC day; leave it empty for no per-person cap. A rate limit stays under **Advanced**.
 Changing a channel's configuration changes the same URL. The channel introduces
 no separate history or retention policy.
 

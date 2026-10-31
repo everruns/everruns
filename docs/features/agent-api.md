@@ -182,7 +182,7 @@ Set `org_members` to `true` to let members of your organization call the Agent w
 
 ## Channel settings
 
-Set these in the channel's `channel_config`, or in the console form. Unknown fields are rejected.
+Set these in the channel's `channel_config`, or in the console form. Unknown fields are rejected. In the console, `daily_spend_limit_usd` is the **Each person, per day** field under **Spending**, next to the shared channel budget.
 
 | Setting | Default | Values and effect |
 |---|---|---|

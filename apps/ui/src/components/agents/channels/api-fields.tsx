@@ -153,6 +153,43 @@ export function isApiFormValid(state: ApiFormState): boolean {
   );
 }
 
+/// The per-person daily cap. It belongs next to the channel budget: the budget
+/// is the shared pool, and this stops one person until the next UTC day.
+export function CallerDailyLimitField({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  const ui = useUiTranslations();
+  const id = useId();
+  const valid = parseSpendLimit(value) !== null;
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{ui("Each person, per day (USD)")}</Label>
+      <Input
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        inputMode="decimal"
+        placeholder={ui("No daily cap")}
+        aria-invalid={!valid}
+        disabled={disabled}
+      />
+      {valid ? (
+        <p className="text-xs text-muted-foreground">
+          {ui("A person who reaches this cannot start new work until the next UTC day.")}
+        </p>
+      ) : (
+        <p className="text-xs text-destructive">{ui("Use an amount above 0, up to 1,000,000.")}</p>
+      )}
+    </div>
+  );
+}
+
 export function ApiFields({
   value,
   onChange,
@@ -168,42 +205,21 @@ export function ApiFields({
     onChange({ ...value, [key]: next });
   const rateLimitValid = parseRateLimit(value.rateLimitPerMinute) !== null;
   const originsValid = corsOriginsValid(value.corsOrigins);
-  const spendLimitValid = parseSpendLimit(value.dailySpendLimitUsd) !== null;
-  const limitFields = (
-    <>
-      <div className="space-y-2">
-        <Label htmlFor={`${id}_rate_limit`}>{ui("Rate limit / minute")}</Label>
-        <Input
-          id={`${id}_rate_limit`}
-          value={value.rateLimitPerMinute}
-          onChange={(event) => set("rateLimitPerMinute", event.target.value)}
-          inputMode="numeric"
-          placeholder={ui("No per-channel cap")}
-          aria-invalid={!rateLimitValid}
-        />
-        {!rateLimitValid && (
-          <p className="text-xs text-destructive">{ui("Use a whole number up to 1,000,000.")}</p>
-        )}
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor={`${id}_daily_spend_limit`}>
-          {ui("Daily spending limit per caller (USD)")}
-        </Label>
-        <Input
-          id={`${id}_daily_spend_limit`}
-          value={value.dailySpendLimitUsd}
-          onChange={(event) => set("dailySpendLimitUsd", event.target.value)}
-          inputMode="decimal"
-          placeholder={ui("No limit")}
-          aria-invalid={!spendLimitValid}
-        />
-        {!spendLimitValid && (
-          <p className="text-xs text-destructive">
-            {ui("Use an amount above 0, up to 1,000,000.")}
-          </p>
-        )}
-      </div>
-    </>
+  const rateLimitField = (
+    <div className="space-y-2">
+      <Label htmlFor={`${id}_rate_limit`}>{ui("Rate limit / minute")}</Label>
+      <Input
+        id={`${id}_rate_limit`}
+        value={value.rateLimitPerMinute}
+        onChange={(event) => set("rateLimitPerMinute", event.target.value)}
+        inputMode="numeric"
+        placeholder={ui("No per-channel cap")}
+        aria-invalid={!rateLimitValid}
+      />
+      {!rateLimitValid && (
+        <p className="text-xs text-destructive">{ui("Use a whole number up to 1,000,000.")}</p>
+      )}
+    </div>
   );
 
   return (
@@ -303,7 +319,7 @@ export function ApiFields({
             </Select>
           </div>
         )}
-        {!hosted && limitFields}
+        {!hosted && rateLimitField}
         {value.visibility === "activity" && (
           <div className="space-y-2">
             <Label htmlFor={`${id}_tool_activity_text`}>{ui("Tool activity text")}</Label>
@@ -336,7 +352,7 @@ export function ApiFields({
       )}
       {hosted && (
         <FoldedSettings summary={ui("Advanced")}>
-          <div className="grid gap-4 md:grid-cols-2">{limitFields}</div>
+          <div className="grid gap-4 md:grid-cols-2">{rateLimitField}</div>
         </FoldedSettings>
       )}
       {!hosted && (

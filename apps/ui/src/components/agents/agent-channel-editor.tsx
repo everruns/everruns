@@ -72,6 +72,7 @@ import {
   type ChannelFormState,
 } from "@/components/agents/channels/channel-form";
 import { AgentKeysCard } from "@/components/agents/channels/agent-keys-card";
+import { CallerDailyLimitField } from "@/components/agents/channels/api-fields";
 import { WorkChatAddress, WorkChatHeaderLink } from "@/components/agents/channels/work-chat-link";
 import { CronLabel } from "@/components/apps/cron-label";
 import {
@@ -272,7 +273,26 @@ function AgentChannelForm({
     updateEndpoint.reset();
   };
 
+  const saveChannel = () => {
+    if (chatDraft.blocked || !canManage || !isChannelFormValid(formState)) return;
+    updateEndpoint.mutate(
+      {
+        channel_config: buildChannelConfig(formState),
+        enabled: formState.enabled,
+      },
+      {
+        // Start again from what was saved: secret fields come back
+        // blank, so the page leaves edit mode.
+        onSuccess: (saved) =>
+          setFormState(getDefaultChannelFormState(saved.channel_type, saved as AgentChannel)),
+      },
+    );
+  };
   const publish = (next: boolean) => publishEndpoint.mutate({ channelId, publish: next });
+  // Work Chat and Agent API cap each person as well as the shared pool. Both
+  // sit in Spending, including on Connect, so Save writes the form state here.
+  const callerSpend =
+    !sourceOwned && (channel.channel_type === "api" || channel.channel_type === "work_chat");
   const primaryAction = editing ? null : !lifecycle.isLive ? (
     <Button
       type="button"
@@ -381,8 +401,8 @@ function AgentChannelForm({
                 </a>
               )}
               <Button
-                type="submit"
-                form="channel-edit-form"
+                type="button"
+                onClick={saveChannel}
                 disabled={
                   chatDraft.blocked ||
                   !canManage ||
@@ -519,19 +539,7 @@ function AgentChannelForm({
                     className="border-t"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      if (chatDraft.blocked) return;
-                      updateEndpoint.mutate(
-                        {
-                          channel_config: buildChannelConfig(formState),
-                          enabled: formState.enabled,
-                        },
-                        {
-                          onSuccess: (saved) =>
-                            setFormState(
-                              getDefaultChannelFormState(saved.channel_type, saved as AgentChannel),
-                            ),
-                        },
-                      );
+                      saveChannel();
                     }}
                   >
                     <ChannelForm
@@ -599,21 +607,7 @@ function AgentChannelForm({
                 id="channel-edit-form"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (chatDraft.blocked) return;
-                  updateEndpoint.mutate(
-                    {
-                      channel_config: buildChannelConfig(formState),
-                      enabled: formState.enabled,
-                    },
-                    {
-                      // Start again from what was saved: secret fields come back
-                      // blank, so the page leaves edit mode.
-                      onSuccess: (saved) =>
-                        setFormState(
-                          getDefaultChannelFormState(saved.channel_type, saved as AgentChannel),
-                        ),
-                    },
-                  );
+                  saveChannel();
                 }}
               >
                 {slackInstallFailure !== undefined && (
@@ -682,14 +676,40 @@ function AgentChannelForm({
                 "Publish opens this channel to callers and Unpublish closes it. Pausing all channels on the agent's Integrations tab overrides both.",
               )}
             </p>
-            {canBudget("budget.view") && (
-              <div className="border-t pt-4">
-                <BudgetPanel
-                  subjectType="agent_channel"
-                  subjectId={channelId}
-                  title={ui("Channel budget")}
-                  canManage={canBudget("budget.manage")}
-                />
+            {(canBudget("budget.view") || callerSpend) && (
+              <div className="space-y-4 border-t pt-4">
+                <div>
+                  <h3 className="text-sm font-semibold">{ui("Spending")}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {callerSpend
+                      ? ui(
+                          "The shared pool covers everyone on this channel. The daily limit caps each person until midnight UTC.",
+                        )
+                      : ui(
+                          "Caps what this channel can spend, separately from the agent's budget.",
+                        )}
+                  </p>
+                </div>
+                {canBudget("budget.view") && (
+                  <BudgetPanel
+                    subjectType="agent_channel"
+                    subjectId={channelId}
+                    title={ui("Shared pool")}
+                    canManage={canBudget("budget.manage")}
+                  />
+                )}
+                {callerSpend && (
+                  <CallerDailyLimitField
+                    value={formState.api.dailySpendLimitUsd}
+                    disabled={!canManage || updateEndpoint.isPending}
+                    onChange={(dailySpendLimitUsd) =>
+                      setFormState((current) => ({
+                        ...current,
+                        api: { ...current.api, dailySpendLimitUsd },
+                      }))
+                    }
+                  />
+                )}
               </div>
             )}
           </aside>

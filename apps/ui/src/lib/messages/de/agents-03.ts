@@ -1,6 +1,16 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
   Advanced: "Erweitert",
+  Spending: "Ausgaben",
+  "The shared pool covers everyone on this channel. The daily limit caps each person until midnight UTC.":
+    "Der gemeinsame Pool gilt für alle Personen in diesem Kanal. Das Tageslimit begrenzt jede Person bis Mitternacht UTC.",
+  "Caps what this channel can spend, separately from the agent's budget.":
+    "Begrenzt, was dieser Kanal ausgeben kann, getrennt vom Budget des Agenten.",
+  "Shared pool": "Gemeinsamer Pool",
+  "Each person, per day (USD)": "Jede Person, pro Tag (USD)",
+  "No daily cap": "Kein Tageslimit",
+  "A person who reaches this cannot start new work until the next UTC day.":
+    "Eine Person, die diesen Betrag erreicht, kann bis zum nächsten UTC-Tag keine neue Arbeit starten.",
   "Who can use this chat": "Wer diesen Chat nutzen kann",
   "Open access": "Offener Zugang",
   "Anyone can register and sign in.": "Jede Person kann sich registrieren und anmelden.",
