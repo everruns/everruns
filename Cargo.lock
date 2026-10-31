@@ -2964,6 +2964,7 @@ dependencies = [
  "gloo-timers",
  "hex",
  "http",
+ "hyper-util",
  "insta",
  "inventory",
  "jsonschema",
@@ -8783,6 +8784,16 @@ dependencies = [
  "everruns-serve-build",
  "serde",
  "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "serve-example-bashkit-workspace"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "everruns-serve",
+ "everruns-serve-build",
  "tokio",
 ]
 

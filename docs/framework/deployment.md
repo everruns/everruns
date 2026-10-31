@@ -143,8 +143,9 @@ the Framework. Use it instead of a hand-written binary when you want:
   from;
 - a `start` command that requires every declared secret, and that fails a
   model with no real route instead of falling back to the simulator. Hosts
-  route models through `SERVE_GATEWAY_URL` and `SERVE_GATEWAY_KEY` (any
-  OpenAI-compatible gateway) or `OPENROUTER_API_KEY`.
+  configure `OPENAI_API_KEY` for `openai/…` models, optionally with
+  `OPENAI_BASE_URL` for a compatible Responses API endpoint, or use
+  `OPENROUTER_API_KEY` for provider-qualified model IDs.
 
 A serve binary listens on `0.0.0.0`, on `PORT` (default 3000). Its state goes
 to the SQLite file named by `DATABASE_URL`, else to `SERVE_DATA_DIR`, else to

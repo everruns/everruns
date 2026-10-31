@@ -92,9 +92,14 @@ runtime.
   client resumes with the server's cursors: `since_id` (an event id) or
   `after_sequence` (a durable sequence). Both address the engine's canonical
   log, which survives restarts with dense sequences.
-- **Apps name models; hosts own keys.** `provider/model` strings resolve
-  through a gateway. Without one, `dev` and evals fall back to per-agent
-  simulator scripts, so examples and evals run offline and deterministically.
+- **Apps name models; hosts own keys.** Model routing uses the standard provider
+  environment settings; OpenAI endpoint overrides apply only to OpenAI-routed
+  models and preserve the provider-visible model ID after removing its routing
+  prefix. Explicit endpoints do not capture other providers' credentials or
+  silently reroute their models. See the [routing implementation](../../crates/serve/src/gateway.rs)
+  and [configuration guide](../../crates/serve/docs/guide.md).
+  Without a real route, `dev` and evals can use per-agent simulator scripts;
+  `start` fails. Examples use real models, with scripted models confined to tests.
 - **Approvals and questions are the runtime's.** Coherent Engine profiles persist
   pending calls and resolve them with exact-turn, deduplicated authority commands.
   Batch validation precedes every write; omitted approval decisions deny and
@@ -208,6 +213,16 @@ and [DO qualification](durable-object-native.md) for tested failure domains.
 
 ## See also
 
+- [Bashkit workspace example](../../examples/serve/bashkit-workspace/README.md):
+  a real-model HTTP walkthrough checks files across turns and a graceful
+  restart with the same build and data directory, plus session isolation.
+  Shell process state is not persistent; workspace files and session stores
+  must both be retained. Selecting Bashkit does not grant workspace writes;
+  the example explicitly scopes its write policy to its disposable demo subtree.
+  The walkthrough does not claim crash-during-write
+  or remote-host durability.
+  [Serve's host tests](../../crates/serve/src/execution_host_tests.rs) cover
+  the storage contract with real Bashkit and a scripted model confined to tests.
 - [Application API Boundaries](application-api.md)
 - [Framework Harnesses](harnesses.md)
 - `crates/serve/README.md`, `crates/serve/docs/`

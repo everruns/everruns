@@ -12,6 +12,14 @@
   show pending sidebar feedback instead of replacing static page chrome with
   generic skeletons. See [Navigation Information Architecture](ui/information-architecture.md).
 
+- Separate configured forward proxies from provider destinations in the shared
+  HTTP transport, retaining destination validation and assigning outbound DNS
+  enforcement to the trusted proxy. See [LLM Drivers](foundations/llm-drivers.md#host-owned-transport).
+
+- Use standard OpenAI endpoint settings in [Serve](framework/serve.md), with
+  provider-scoped routing and endpoint-visible model IDs; simplify the Bashkit
+  example's first-run instructions.
+
 - Raise the Bashkit dependency floor to 0.20.2 for Wasmtime 48.0.8 security fixes without advisory exceptions. See [Bashkit requirements](execution/bashkit-requirements.md) and [Dependency Surface](project/dependency-surface.md).
 
 * **MCP resource continuations.** HTTP resource reads share tool-call input
@@ -20,6 +28,9 @@
   [MCP Server Specification](integrations/mcp-servers.md).
 
 - Add outbound MCP client metadata-document negotiation with existing-client precedence and capability-based DCR fallback. See [Runtime MCP](integrations/runtime-mcp.md).
+
+- Added the [Serve Bashkit workspace walkthrough](framework/serve.md), checking
+  shell output, files across turns and a graceful restart, and session isolation.
 
 ## 2026-10-29
 

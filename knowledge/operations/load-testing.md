@@ -283,7 +283,7 @@ Realistic turns stay open for seconds, so reaching a given turn rate needs many 
 
 ## Load Testing a Hosted Deployment, and Baselines
 
-The October 2026 capacity work used three layers. Each answered a different question, and none is settled as the right method; replace any of them when a better one appears.
+The October 2026 capacity work used three layers. Each answered a different question, and none is settled as the right method; replace any of them when a better one appears. The [local stress bench](#local-stress-bench) adds a fourth that needs no deployment.
 
 1. **`turn_latency` bench (local).** Statements per turn is the number to compare between commits. It is stable run to run, unlike wall time.
 2. **Local stack under a driver.** A release build of the agent dev stack, driven by many concurrent sessions over the public API with `scripts/load-test.py`. An instant llmsim model with no marker measures platform overhead; scenario markers measure capacity under realistic turns. This shows where queueing starts (worker slots, the per-IP API limit) before touching production.
@@ -350,6 +350,51 @@ Baselines to start from (numbers, not targets):
 | Chaos harness, 200 sessions, low-memory release build | 2026-10-12, actor cutover | pickup p50/p95 102/604 ms without kills and 94/496 ms with them (1.3 s/3.2 s while the per-org lease cap held work back; main 53/462 ms); recovery 21 s after a worker kill, 20 s after a server kill; about 475 statements per turn |
 
 Known gaps in the method: a single driver machine hits the per-IP limit early, and a few long idle SSE streams were cut on the client or edge side during the hosted run, so the driver reconnects with `since_id` like the UI does.
+
+## Local Stress Bench
+
+`scripts/stress/` (`just stress`) answers "what does one agent turn cost the
+platform, and which settings change it" without production. The October 2026
+capacity work found each wall on the hosted deployment first, one deploy per
+experiment. Most of what those fixes changed (commits, WAL and statements per
+turn, CPU per turn) costs the same locally, so the bench measures them in
+minutes and sweeps settings with no deploy and no risk to users. Production
+stays the final check after a deploy.
+
+- **Topology.** Release binaries in the deployment's shape: two API servers and
+  two gRPC workers by default, through the chaos harness's `Topology`. The
+  bench starts its own PostgreSQL (with `pg_stat_statements`, `track=all`),
+  NATS with JetStream and Valkey, so it can restart PostgreSQL between sweep
+  points with different settings. Every point gets a fresh database.
+- **Load.** The hosted mix (`luna-agent=3,sol-agent=2,muse-agent=2,long-tool=1`,
+  three messages, 5 s think) through `scripts/load-test.py`, one driver process
+  per server, so one Python event loop never caps the run.
+- **Per turn.** Commits, WAL KB and syncs, statements and their execution time,
+  and CPU milliseconds of PostgreSQL, the servers and the workers, from counter
+  deltas over the run. Overhead per model call and pickup come from the
+  persisted events, with the same definitions as the hosted runs. Database load
+  is sampled from `pg_stat_activity` twice a second, as average and peak active
+  sessions split by wait event, the shape RDS Performance Insights reports.
+- **Prod-shaped mode.** `--cpus postgres=0,server=1-2,worker=3` pins each role
+  with `taskset`. `--fsync-delay-ms` preloads a shim (`fsync_delay.c`) that
+  delays every PostgreSQL `fsync` and `fdatasync`, so commits pay a
+  network-disk flush the way RDS does. `--prod-shaped` sets both: a quarter of
+  the cores for PostgreSQL, half for the servers, the rest for the workers, and
+  a 1 ms flush. The 1 ms is an assumption, not measured from RDS. Tune it until
+  the bench's WAL wait share matches Performance Insights before reading
+  absolute latencies from it. Ratios between sweep points are the reliable
+  output.
+- **Sweeps.** `--sweep env:KEY=a,b` (server and worker environment),
+  `--sweep pg:KEY=a,b` (PostgreSQL settings) and `--sweep arg:NAME=a,b` (bench
+  arguments such as `servers` or `fsync-delay-ms`). Repeated axes form a grid.
+  Results go to `target/stress/<time>/results.jsonl` and a Markdown table.
+
+Each run is one machine, so absolute throughput tracks its cores, not
+production's. Compare per-turn costs and the ratios between points, and keep
+`cpus`, `fsync_delay_ms`, the mix and the revision with each result. The bench
+exits non-zero when a turn fails or a driver reports errors.
+`scripts/test-stress-bench.sh` covers sweep parsing, turn accounting and the
+fsync shim without binaries.
 
 ## Chaos Harness
 

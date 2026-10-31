@@ -43,9 +43,7 @@ protocol forwards from CopilotKit or `@ag-ui/client`.
 2. Create the runtime with the AG-UI protocol (or `HTTP` for plain
    `{"prompt": ...}` callers) and [session storage](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-persistent-filesystems.html),
    so a session's conversation survives the microVM stopping after its idle
-   timeout. `SERVE_GATEWAY_URL` routes the model; an AgentCore Gateway inference
-   endpoint works, with targets named after providers (`anthropic`, `openai`) so
-   `openai/gpt-6.1-sol` routes as-is:
+   timeout. Supply `OPENAI_API_KEY` for this example's OpenAI model:
 
    ```sh
    aws bedrock-agentcore-control create-agent-runtime \
@@ -55,11 +53,16 @@ protocol forwards from CopilotKit or `@ag-ui/client`.
      --network-configuration networkMode=PUBLIC \
      --protocol-configuration serverProtocol=AGUI \
      --filesystem-configurations '[{"sessionStorage":{"mountPath":"/mnt/workspace"}}]' \
-     --environment-variables "SERVE_GATEWAY_URL=$GATEWAY_URL/inference/v1,SERVE_GATEWAY_KEY=$GATEWAY_TOKEN"
+     --environment-variables "OPENAI_API_KEY=$OPENAI_API_KEY"
    ```
 
    serve finds the mount on the first invocation and keeps its session log in
    `/mnt/workspace/.serve`.
+
+   For a compatible Responses API endpoint, also set `OPENAI_BASE_URL` and use
+   its credential as `OPENAI_API_KEY`. The model string is `openai/<endpoint-model-id>`:
+   Serve strips the first `openai/`. If an endpoint requires `target/model`,
+   configure the agent as `openai/target/model` before building the image.
 
 3. Invoke it with any AG-UI client, or:
 

@@ -285,6 +285,7 @@ dependencies = [
  "gloo-timers",
  "hex",
  "http",
+ "hyper-util",
  "rand",
  "regex",
  "reqwest",
