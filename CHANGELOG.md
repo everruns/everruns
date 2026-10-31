@@ -29,6 +29,8 @@ Changelog: https://everruns.com/docs/changelog/2026-10-30-everruns-0-50-0/
 
 ### What's Changed
 
+- fix(compaction): mask old tool results in batches to keep the prompt cache ([#5089](https://github.com/everruns/everruns/pull/5089)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): handle resource read input continuations ([#5084](https://github.com/everruns/everruns/pull/5084)) by [@chaliy](https://github.com/chaliy)
 - chore(deps): bump bashkit from 0.20.1 to 0.20.2 ([#5091](https://github.com/everruns/everruns/pull/5091)) by [@chaliy](https://github.com/chaliy)
 - docs(changelog): note Claude judge sampling fix ([#5088](https://github.com/everruns/everruns/pull/5088)) by [@chaliy](https://github.com/chaliy)
 - fix(mcp-oauth): honour one refresh replay inside a 60s grace window ([#5067](https://github.com/everruns/everruns/pull/5067)) by [@chaliy](https://github.com/chaliy)
