@@ -8,18 +8,16 @@ use everruns_contracts::driver_registry::{
 use everruns_contracts::model::ReasoningEffort;
 use everruns_contracts::reasoning::ReasoningContentPart;
 use everruns_contracts::{ProviderEndpoint, ToolDefinition};
-use everruns_drivers::mistral::{MISTRAL_RESPONSES_OPTION, provider, register_driver};
+use everruns_drivers::mistral::{
+    MISTRAL_RESPONSES_OPTION, MistralApi, MistralConfigExt, provider, register_driver,
+};
 use futures::StreamExt;
 use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn config() -> LlmCallConfig {
-    let mut config = LlmCallConfig::new("mistral-large-4");
-    config
-        .driver_options
-        .insert(MISTRAL_RESPONSES_OPTION.into(), json!(true));
-    config
+    LlmCallConfig::new("mistral-large-4").with_mistral_api(MistralApi::Responses)
 }
 
 fn completed(output: Value) -> Value {

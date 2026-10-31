@@ -52,6 +52,11 @@ pub(super) fn validate_messages(messages: &[Message]) -> Result<()> {
 struct MistralResponsesExtension;
 
 impl OpenResponsesRequestExtension for MistralResponsesExtension {
+    fn supports_native_non_streaming(&self) -> bool {
+        // The preview is qualified through SSE, including collected calls.
+        false
+    }
+
     fn decorate(&self, body: &mut Value, config: &LlmCallConfig) -> Result<()> {
         if config.provider_opaque_context.is_some() {
             return Err(AgentLoopError::Configuration(

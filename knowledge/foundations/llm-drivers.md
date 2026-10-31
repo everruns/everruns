@@ -687,7 +687,7 @@ for anything else, so its profile offers exactly those two (`none`, the API defa
 sent). `/v1/models` lists every alias as its own entry repeating the canonical `name`;
 discovery keeps the `id == name` entry, chat models only, minus scheduled retirements.
 
-Mistral Responses is an explicit `mistral/responses: true` call option, using the
+Mistral Responses is an explicit typed per-call selection owned by the Mistral driver, using the
 shared Responses driver with stateless full-history replay and required terminal
 completion. This preserves the existing Chat Completions default and its native
 JSON transport. The request extension removes OpenAI-only fields and flattens

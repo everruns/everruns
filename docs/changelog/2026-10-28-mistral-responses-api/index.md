@@ -16,7 +16,11 @@ The [Mistral provider](/providers/mistral/) now supports
 Mistral's Responses API preview. Framework callers opt in per call:
 
 ```rust
-config.driver_options.insert("mistral/responses".into(), true.into());
+use everruns_contracts::LlmCallConfig;
+use everruns_drivers::mistral::{MistralApi, MistralConfigExt};
+
+let config = LlmCallConfig::new("mistral-large-4")
+    .with_mistral_api(MistralApi::Responses);
 ```
 
 The integration streams text, reasoning and function calls, replays full
