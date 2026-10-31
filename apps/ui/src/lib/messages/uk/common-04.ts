@@ -1,5 +1,6 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 export const messages: Readonly<Record<string, string>> = {
+  "Loading page": "Завантаження сторінки",
   "Step {current} of {total}": "Крок {current} з {total}",
   "Step {current} / {total}": "Крок {current} / {total}",
   "Every step persisted: agents that survive restarts, deploys, and outages.":

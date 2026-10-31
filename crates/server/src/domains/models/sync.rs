@@ -151,19 +151,52 @@ impl ModelSyncService {
             "Discovered models from provider API"
         );
 
-        // Sync discovered models to database (use provider's org_id)
-        let sync_result = self.sync_models_to_db(&provider_row, &discovered).await?;
+        self.record_sync(&provider_row, &discovered).await
+    }
 
-        // Update provider's last_synced_at
-        self.db
-            .update_provider_last_synced(org_id, provider_id, Utc::now())
+    /// Store a provider's model listing and stamp the provider as synced.
+    ///
+    /// Decision: one timestamp is written to every seen model's `last_seen_at`
+    /// and to the provider's `last_synced_at`. Staleness is read back as
+    /// `last_seen_at < last_synced_at`, so stamping the provider with a later
+    /// clock reading than the models (and leaving new models' `last_seen_at`
+    /// NULL) marked every listed model "No longer listed" after each sync.
+    async fn record_sync(
+        &self,
+        provider_row: &ProviderRow,
+        discovered: &[DiscoveredModel],
+    ) -> Result<SyncResult> {
+        let now = Utc::now();
+        let sync_result = self
+            .sync_models_to_db(provider_row, discovered, now)
             .await?;
-
+        self.db
+            .update_provider_last_synced(provider_row.org_id, provider_row.id.uuid(), now)
+            .await?;
         Ok(sync_result)
     }
 
-    /// Sync all providers across all orgs (called by background job)
+    /// Sync all providers across all orgs.
     pub async fn sync_all(&self) -> Result<Vec<(ProviderId, SyncResult)>> {
+        self.sync_providers(None).await
+    }
+
+    /// Sync providers not synced within `max_age` (called by the background
+    /// job). The age comes from `last_synced_at`, so the schedule survives
+    /// restarts: an in-process timer alone never fired on servers redeployed
+    /// more often than the interval.
+    pub async fn sync_due(
+        &self,
+        max_age: chrono::Duration,
+    ) -> Result<Vec<(ProviderId, SyncResult)>> {
+        self.sync_providers(Some(max_age)).await
+    }
+
+    async fn sync_providers(
+        &self,
+        max_age: Option<chrono::Duration>,
+    ) -> Result<Vec<(ProviderId, SyncResult)>> {
+        let due_before = max_age.map(|age| Utc::now() - age);
         let orgs = self.db.list_organizations().await?;
         let mut results = Vec::new();
 
@@ -179,6 +212,13 @@ impl ModelSyncService {
                         org_id = provider.org_id,
                         "Skipping model sync: no API key configured for provider"
                     );
+                    continue;
+                }
+                if let Some(due_before) = due_before
+                    && provider
+                        .last_synced_at
+                        .is_some_and(|synced| synced > due_before)
+                {
                     continue;
                 }
                 let result = self
@@ -199,8 +239,8 @@ impl ModelSyncService {
         &self,
         provider: &ProviderRow,
         discovered: &[DiscoveredModel],
+        now: chrono::DateTime<Utc>,
     ) -> Result<SyncResult> {
-        let now = Utc::now();
         let mut created = 0;
         let mut updated = 0;
 
@@ -310,7 +350,18 @@ impl ModelSyncService {
                     provider_metadata: Some(metadata),
                 };
 
-                self.db.create_model(provider.org_id, input).await?;
+                let row = self.db.create_model(provider.org_id, input).await?;
+                // The insert leaves `last_seen_at` NULL, which reads as stale.
+                self.db
+                    .update_model(
+                        provider.org_id,
+                        row.id.uuid(),
+                        UpdateModel {
+                            last_seen_at: Some(now),
+                            ..Default::default()
+                        },
+                    )
+                    .await?;
                 created += 1;
             }
         }
@@ -463,6 +514,77 @@ mod tests {
             }
             _ => panic!("Expected Failed variant"),
         }
+    }
+
+    #[tokio::test]
+    async fn models_the_provider_still_lists_are_not_stale_after_a_sync() {
+        use crate::domains::models::ModelService;
+        use crate::kernel_imports::{Caller, OrgRole};
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let db = Arc::new(StorageBackend::test_database());
+        let service = ModelSyncService::new(db.clone(), Arc::new(DriverRegistry::new()), None);
+        let models = ModelService::new(db.clone());
+        let caller = Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: format!("org_{DEFAULT_ORG_ID:032}"),
+            user_id: None,
+            role: OrgRole::Owner,
+            is_platform_user: false,
+            is_internal: false,
+            read_only: false,
+        };
+        let provider = db
+            .create_provider(
+                DEFAULT_ORG_ID,
+                CreateProviderRow {
+                    name: "OpenAI sync".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        let listed = |id: &str| DiscoveredModel {
+            model_id: id.to_string(),
+            display_name: None,
+            created_at: None,
+            owned_by: None,
+            capabilities: vec!["chat".to_string()],
+            discovered_profile: None,
+        };
+        let stale = |models: &[crate::domains::models::record::ModelWithProvider], id: &str| {
+            models
+                .iter()
+                .find(|model| model.model_id == id)
+                .unwrap_or_else(|| panic!("{id} is listed"))
+                .stale
+        };
+
+        service
+            .record_sync(&provider, &[listed("gpt-kept"), listed("gpt-gone")])
+            .await
+            .unwrap();
+        let after_first = models
+            .list_all_with_filters(&caller, None, true, false)
+            .await
+            .unwrap();
+        assert!(!stale(&after_first, "gpt-kept"));
+        assert!(!stale(&after_first, "gpt-gone"));
+
+        // The next sync no longer lists `gpt-gone`; only that one is stale.
+        service
+            .record_sync(&provider, &[listed("gpt-kept")])
+            .await
+            .unwrap();
+        let after_second = models
+            .list_all_with_filters(&caller, None, true, false)
+            .await
+            .unwrap();
+        assert!(!stale(&after_second, "gpt-kept"));
+        assert!(stale(&after_second, "gpt-gone"));
     }
 
     // --- resolve_api_key tests ---
@@ -781,6 +903,63 @@ mod tests {
         // we don't have real API endpoints, but the providers are enumerated)
         let results = service.sync_all().await.unwrap();
         assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn sync_due_skips_providers_synced_within_max_age() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let db = Arc::new(StorageBackend::test_database());
+        let encryption = Arc::new(
+            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
+                .unwrap(),
+        );
+        let service = ModelSyncService::new(
+            db.clone(),
+            Arc::new(DriverRegistry::new()),
+            Some(encryption.clone()),
+        );
+        let mut providers = Vec::new();
+        for name in ["Fresh", "Old", "Never"] {
+            providers.push(
+                db.create_provider(
+                    DEFAULT_ORG_ID,
+                    CreateProviderRow {
+                        name: name.to_string(),
+                        provider_type: "openai".to_string(),
+                        base_url: None,
+                        api_key_encrypted: Some(encryption.encrypt_string("sk-test").unwrap()),
+                        settings: None,
+                    },
+                )
+                .await
+                .unwrap(),
+            );
+        }
+        let now = Utc::now();
+        db.update_provider_last_synced(DEFAULT_ORG_ID, providers[0].id.uuid(), now)
+            .await
+            .unwrap();
+        db.update_provider_last_synced(
+            DEFAULT_ORG_ID,
+            providers[1].id.uuid(),
+            now - chrono::Duration::hours(25),
+        )
+        .await
+        .unwrap();
+
+        // Each attempted sync fails (no real endpoint); only which providers
+        // were attempted matters here.
+        let attempted: Vec<_> = service
+            .sync_due(chrono::Duration::hours(24))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert!(!attempted.contains(&providers[0].id));
+        assert!(attempted.contains(&providers[1].id));
+        assert!(attempted.contains(&providers[2].id));
     }
 
     // =========================================================================
