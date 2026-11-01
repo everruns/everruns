@@ -11586,6 +11586,33 @@
     ]
   },
   {
+    "wire_name": "get_session_cost",
+    "path": [
+      "sessions",
+      "cost"
+    ],
+    "verb": "get",
+    "description": "Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/cost",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See where a session's spend went",
+        "command": "everruns sessions cost get session_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "create_session",
     "path": [
       "sessions"

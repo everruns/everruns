@@ -1,6 +1,6 @@
 ---
 title: Session Cost tab shows spend by category and over time
-description: The session Cost tab now shows dollars split into uncached prompt, cache reads, cache writes and output, spend per day or per turn, tool calls, sandbox time and what started each turn.
+description: The session Cost tab splits spend into uncached prompt, cache reads, cache writes and output, and charts it per day or per turn.
 date: 2026-11-01
 kind: improvement
 significance: minor
@@ -21,6 +21,11 @@ Below it are tool calls with failures and running time, sandbox running and
 paused time, and which person, schedule, trigger or channel started the turns.
 A notice appears when most spend is prompt that was not read from cache.
 
-The same data is available from `GET /v1/sessions/{session_id}/cost` and
-`everruns sessions cost get --session-id <id>`. See the
+The same data is available from the API and the CLI. See the
 [Cost tab](/features/ui/#cost-tab).
+
+```bash
+curl -H "Authorization: Bearer $EVERRUNS_API_KEY" \
+  https://app.everruns.com/api/v1/sessions/$SESSION_ID/cost
+everruns sessions cost get $SESSION_ID
+```

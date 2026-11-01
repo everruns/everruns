@@ -21,6 +21,7 @@ Running and archived sessions, their state and participants.
 | [`sessions fork`](#sessions-fork) | Fork a session into a new, independent session that copies its conversation history and workspace files. |
 | [`sessions get`](#sessions-get) | Get session details including status, agent, harness, and model. |
 | [`sessions context`](#sessions-context) | Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation. |
+| [`sessions cost get`](#sessions-cost-get) | Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time. |
 | [`sessions facets`](#sessions-facets) | Counts per status, source, and agent plus masthead metrics for the sessions list, over the same filters as list_sessions. |
 | [`sessions stats`](#sessions-stats) | Get session counts by status. |
 | [`sessions list`](#sessions-list) | List sessions. |
@@ -252,6 +253,25 @@ Example:
 ```bash
 # See what is filling a session's context window
 everruns sessions context session_01h9
+```
+
+## sessions cost get
+
+Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time.
+
+```bash
+everruns sessions cost get [OPTIONS] [SESSION_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Session's prefixed public identifier (a path parameter). |
+
+Example:
+
+```bash
+# See where a session's spend went
+everruns sessions cost get session_01h9
 ```
 
 ## sessions facets
