@@ -154,10 +154,17 @@ isolation, stop/restart behavior, publication bounds/revisions/rate limits, hard
 approval replay/expiry/changed arguments, invalidation, archive and reopen.
 Ordinary Slack and pane regression tests remain required.
 
-Live qualification is currently blocked: the configured test installation
-successfully authenticates but Slack rejects Code methods for missing Code
-management permission. Updating an app requires app-management authorization and
-renewed workspace consent; a bot token cannot grant those to itself. This is an
-external validation blocker, not a completed live acceptance result. Hosted SaaS
+Live API qualification now confirms Code-scoped authentication, stable-session
+creation reuse, public-origin privacy preservation, assigned-bot metadata,
+status/context/diff publication and archive. These API checks use a disposable
+bot-authored origin; they do not establish requester authorization or human
+collaboration. Conversation inspection requires query parameters: Slack rejects
+JSON bodies for `conversations.info` with `invalid_arguments`.
+
+Diff removal remains blocked by a live contract mismatch: publication returns a
+singleton session view with ID `code`, listed under `session_views`, but removing
+that returned ID produces `view_not_found`. Do not treat this as successful
+removal or delete another agent's view. Full runtime, private-origin, stop,
+approval and two-person UI qualification remain required. Hosted SaaS
 adoption remains a separate pinned-OSS rollout and must not replace its submodule
 with the sibling checkout.

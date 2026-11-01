@@ -3,7 +3,7 @@ use crate::channels::slack::host_tests::{Slack, slack_config};
 use everruns_core::channel::SessionBinding;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
-    matchers::{body_partial_json, method, path},
+    matchers::{body_partial_json, method, path, query_param},
 };
 
 struct Fixture {
@@ -28,11 +28,11 @@ impl Fixture {
             )
             .mount(&api)
             .await;
-        Mock::given(method("POST")).and(path("/conversations.info")).and(body_partial_json(json!({"channel":"C_SOURCE"})))
+        Mock::given(method("GET")).and(path("/conversations.info")).and(query_param("channel", "C_SOURCE"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"channel":{"id":"C_SOURCE","is_private":true,"is_member":true,"properties":{}}}))).mount(&api).await;
-        Mock::given(method("POST"))
+        Mock::given(method("GET"))
             .and(path("/conversations.info"))
-            .and(body_partial_json(json!({"channel":"C_CODE"})))
+            .and(query_param("channel", "C_CODE"))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_json(json!({"ok":true,"channel":code_info("B_AGENT")})),
@@ -264,9 +264,9 @@ async fn teammates_and_thread_replies_use_the_same_session_and_keep_identity() {
 #[tokio::test]
 async fn assignment_and_source_restrictions_fail_closed() {
     let f = Fixture::new().await;
-    Mock::given(method("POST"))
+    Mock::given(method("GET"))
         .and(path("/conversations.info"))
-        .and(body_partial_json(json!({"channel":"C_OTHER"})))
+        .and(query_param("channel", "C_OTHER"))
         .respond_with(
             ResponseTemplate::new(200)
                 .set_body_json(json!({"ok":true,"channel":{"id":"C_OTHER","properties":{}}})),
