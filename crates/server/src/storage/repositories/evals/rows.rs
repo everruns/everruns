@@ -125,6 +125,8 @@ pub struct EvalRunRow {
     pub started_by_user_id: Option<Uuid>,
     /// Org role of a credential without a person that started the run.
     pub started_by_role: Option<String>,
+    /// Spending cap asked for at creation; enforced by the run's budget.
+    pub max_cost_usd: Option<f64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -172,6 +174,8 @@ pub struct CreateEvalRunRow {
     /// Who started the run; cases run with their authority.
     pub started_by_user_id: Option<Uuid>,
     pub started_by_role: Option<String>,
+    /// Spending cap; creates the run's `eval_run` budget with the run.
+    pub max_cost_usd: Option<f64>,
 }
 
 /// Typed failures from `create_eval_run_with_case_results`. Returned (boxed in

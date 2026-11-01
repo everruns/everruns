@@ -480,7 +480,7 @@ pub struct CreateEvalRun {
     category = "evals",
     description = "Create an eval run.",
     method = "POST",
-    cli = CliRoute::new(&["evals", "runs"], "create").with_examples(&[CliExample::new("Run every case in an eval, optionally on a different model", "everruns evals runs create --eval-id eval_01h9 --model-override gpt-5.1 --reason 'Check the suite on the new model'")]),
+    cli = CliRoute::new(&["evals", "runs"], "create").with_examples(&[CliExample::new("Run every case in an eval, optionally on a different model", "everruns evals runs create --eval-id eval_01h9 --model-override gpt-6-luna --max-cost-usd 5 --reason 'Check the suite on the new model within $5'")]),
     path = "/v1/evals/{eval_id}/runs",
     policy = crate::domains::evals::EVAL_RUN,
     http = created,

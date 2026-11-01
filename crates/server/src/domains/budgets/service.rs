@@ -71,6 +71,8 @@ struct BudgetScope {
     /// No person started this turn: a schedule fired it, or an agent trigger
     /// started the session. The org's daily unattended budget binds it.
     unattended: bool,
+    /// Public id of the eval run whose case created the session.
+    eval_run_subject_id: Option<String>,
 }
 
 impl BudgetScope {
@@ -84,6 +86,7 @@ impl BudgetScope {
             org_public_id: Some(self.org_subject_id.as_str()),
             trigger_id: self.trigger_subject_id.as_deref(),
             channel_id: self.channel_subject_id.as_deref(),
+            eval_run_id: self.eval_run_subject_id.as_deref(),
         }
     }
 }
@@ -123,6 +126,7 @@ impl BudgetService {
             harness_id: None,
             schedule_subject_id: None,
             unattended: false,
+            eval_run_subject_id: None,
         })
     }
 
@@ -193,6 +197,16 @@ impl BudgetService {
             None => None,
         };
         let root_session_id = session.root_session_id.unwrap_or(session.id);
+        // An eval case session (or one it delegated to) also spends from its
+        // run's cap. Only eval sessions pay for the lookup.
+        let eval_run_subject_id =
+            if session.source == crate::domains::sessions::record::SessionSource::Eval.as_str() {
+                self.db
+                    .eval_run_public_id_for_session(session.org_id, root_session_id.uuid())
+                    .await?
+            } else {
+                None
+            };
         Ok(BudgetScope {
             // Session-scoped budgets are owned by the root of a delegation
             // tree, so descendants debit and check the same shared pool.
@@ -211,6 +225,7 @@ impl BudgetService {
             harness_id: session.harness_id.map(|id| id.uuid()),
             schedule_subject_id: None,
             unattended: session.trigger_id.is_some(),
+            eval_run_subject_id,
         })
     }
 
@@ -568,6 +583,45 @@ impl BudgetService {
             usage.cache_read_tokens,
             usage.cache_creation_tokens,
             usage.estimated_cost_usd,
+            None,
+            &[],
+        )
+        .await;
+    }
+
+    /// Meter what grading one eval result cost against the budgets of its
+    /// case session, the run's cap among them. Keyed to the result, so the
+    /// journal's unique source index refuses a second charge for one grade.
+    /// Grading with no known price is not metered: a dollar budget must not be
+    /// debited a token count.
+    pub(crate) async fn meter_grading(
+        &self,
+        session_id: SessionId,
+        result_id: uuid::Uuid,
+        input_tokens: u64,
+        output_tokens: u64,
+        cost_usd: Option<f64>,
+    ) {
+        if !cost_usd.is_some_and(|cost| cost > 0.0) {
+            return;
+        }
+        self.process_llm_generation(
+            GenerationSource {
+                session_id,
+                source_type: "eval_grading",
+                source_id: result_id.to_string(),
+                event_id: None,
+                turn_id: None,
+                input_message_id: None,
+                ref_id: result_id,
+            },
+            None,
+            None,
+            input_tokens as i64,
+            output_tokens as i64,
+            0,
+            0,
+            cost_usd,
             None,
             &[],
         )

@@ -5365,6 +5365,13 @@
         "help": "Eval's prefixed public identifier."
       },
       {
+        "field": "max_cost_usd",
+        "long": "max-cost-usd",
+        "kind": "number",
+        "required": false,
+        "help": "Spending cap in USD for the whole run, agents and grading together. Once spent, running turns..."
+      },
+      {
         "field": "model_override",
         "long": "model-override",
         "kind": "string",
@@ -5388,7 +5395,7 @@
     "examples": [
       {
         "intent": "Run every case in an eval, optionally on a different model",
-        "command": "everruns evals runs create --eval-id eval_01h9 --model-override gpt-5.1 --reason 'Check the suite on the new model'"
+        "command": "everruns evals runs create --eval-id eval_01h9 --model-override gpt-6-luna --max-cost-usd 5 --reason 'Check the suite on the new model within $5'"
       }
     ]
   },

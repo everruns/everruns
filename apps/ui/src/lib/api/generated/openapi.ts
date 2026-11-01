@@ -13127,6 +13127,13 @@ export interface components {
     /** @description Request to create an eval run */
     CreateEvalRunRequest: {
       /**
+       * Format: double
+       * @description Spending cap in USD for the whole run, agents and grading together.
+       *     Once spent, running turns stop and remaining cases are skipped.
+       * @example 5
+       */
+      max_cost_usd?: number | null;
+      /**
        * @description Model override for this run.
        * @example gpt-6-luna
        */
@@ -15049,8 +15056,15 @@ export interface components {
        */
       id: string;
       /**
+       * Format: double
+       * @description Spending cap in USD. Once the run's agents and graders have spent it,
+       *     running turns stop and remaining cases are skipped.
+       * @example 5
+       */
+      max_cost_usd?: number | null;
+      /**
        * @description Model override for this run.
-       * @example gpt-5.1
+       * @example gpt-6-luna
        */
       model_override?: string | null;
       /** @description Case results (populated on detail view). */
@@ -18284,8 +18298,15 @@ export interface components {
          */
         id: string;
         /**
+         * Format: double
+         * @description Spending cap in USD. Once the run's agents and graders have spent it,
+         *     running turns stop and remaining cases are skipped.
+         * @example 5
+         */
+        max_cost_usd?: number | null;
+        /**
          * @description Model override for this run.
-         * @example gpt-5.1
+         * @example gpt-6-luna
          */
         model_override?: string | null;
         /** @description Case results (populated on detail view). */
@@ -25176,6 +25197,13 @@ export interface components {
        * @example 12
        */
       total: number;
+      /**
+       * Format: double
+       * @description What the run spent in USD: the agents' model calls plus grading.
+       *     Absent on imported runs, whose cost is in their own metrics.
+       * @example 0.42
+       */
+      total_cost_usd?: number | null;
       /**
        * Format: int64
        * @description Total input tokens across cases.

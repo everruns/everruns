@@ -33,6 +33,9 @@ pub struct BudgetSubjectLookup<'a> {
     /// The org's public id, set only for unattended turns (a schedule fire or
     /// a trigger-started session), so the daily unattended cap binds them.
     pub org_unattended_id: Option<&'a str>,
+    /// Public id of the eval run whose case created the session: the run's
+    /// spending cap binds every case of the run as one pool.
+    pub eval_run_id: Option<&'a str>,
 }
 
 impl<'a> BudgetSubjectLookup<'a> {
@@ -40,6 +43,9 @@ impl<'a> BudgetSubjectLookup<'a> {
     /// order from most specific (session) to most general (org).
     pub fn to_pairs(&self) -> Vec<(&'a str, &'a str)> {
         let mut pairs = Vec::new();
+        if let Some(id) = self.eval_run_id {
+            pairs.push(("eval_run", id));
+        }
         if let Some(id) = self.schedule_id {
             pairs.push(("session_schedule", id));
         }
@@ -201,6 +207,7 @@ impl Database {
                 channel_id: None,
                 schedule_id: None,
                 org_unattended_id: None,
+                eval_run_id: None,
             },
         )
         .await

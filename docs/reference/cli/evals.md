@@ -349,6 +349,7 @@ everruns evals runs create [OPTIONS] --eval-id <eval_id>
 | Flag | Description |
 |---|---|
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+| `--max-cost-usd <MAX_COST_USD>` | Spending cap in USD for the whole run, agents and grading together. Once spent, running turns... |
 | `--model-override <MODEL_OVERRIDE>` | Model override for this run. |
 | `--target <TARGET>` |  |
 | `--trials <TRIALS>` | How many times to run each case, 1 to 20 (default 1). |
@@ -357,7 +358,7 @@ Example:
 
 ```bash
 # Run every case in an eval, optionally on a different model
-everruns evals runs create --eval-id eval_01h9 --model-override gpt-5.1 --reason 'Check the suite on the new model'
+everruns evals runs create --eval-id eval_01h9 --model-override gpt-6-luna --max-cost-usd 5 --reason 'Check the suite on the new model within $5'
 ```
 
 ## evals runs get
