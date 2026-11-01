@@ -4,6 +4,8 @@ import { settingsNavigationSections } from "./settings-navigation";
 
 const resources: Record<string, { type: string; roots: string[] }> = {
   dashboard: { type: "dashboard", roots: ["sessions", "agents", "harnesses"] },
+  // Home registers its attention rows explicitly; the cache fallback covers its lists.
+  home: { type: "home", roots: ["agents", "sessions", "sandboxes"] },
   approvals: { type: "approval", roots: [] },
   exposures: { type: "exposure", roots: [] },
   agents: {

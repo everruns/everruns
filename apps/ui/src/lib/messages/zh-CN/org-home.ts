@@ -1,0 +1,68 @@
+// zh-CN product copy for Home (knowledge/ui/org-home.md).
+export const messages: Readonly<Record<string, string>> = {
+  "1 sandbox needs attention": "1 个沙箱需要关注",
+  "1 session paused at its budget limit": "1 个会话因预算上限暂停",
+  "Add provider": "添加提供方",
+  "Agents need at least one enabled model.": "智能体至少需要一个已启用的模型。",
+  "Agents, channels, sessions, sandboxes and limits all look fine.":
+    "智能体、渠道、会话、沙箱和限额一切正常。",
+  "All checks pass": "全部检查通过",
+  "All {count} agents": "全部 {count} 个智能体",
+  "Blocking first, then the oldest": "阻塞项优先，其次按时间最早",
+  "Channel sessions": "渠道会话",
+  "Checking what needs attention…": "正在检查需要关注的事项…",
+  "Connect a model provider": "连接模型提供方",
+  "Created, {days} days": "创建数，{days} 天",
+  "Describe it in a sentence, start from an example, or import one.":
+    "用一句话描述、从示例开始，或导入一个。",
+  Failing: "失败中",
+  Home: "首页",
+  "Last 24h": "最近 24 小时",
+  "Last turn": "最近一轮",
+  "Live sandboxes": "运行中的沙箱",
+  "Lost, failed to start, failed cleanup, or running with no activity for an hour.":
+    "丢失、启动失败、清理失败，或运行一小时无活动。",
+  "Most recent turns ended in an error. Open the failed sessions to see why.":
+    "最近的大部分轮次以错误结束。打开失败的会话查看原因。",
+  "No agent ran in the last 24 hours.": "最近 24 小时没有智能体运行。",
+  "Nothing needs attention.": "没有需要关注的事项。",
+  "Open fleet": "打开沙箱集群",
+  "Open in Monitoring": "在监控中打开",
+  "Open sessions": "打开会话",
+  "Organization issues": "组织问题",
+  "Pick model": "选择模型",
+  "Publish a channel": "发布渠道",
+  "Rebuilt after loss, {days} days": "丢失后重建，{days} 天",
+  "Running time, {days} days": "运行时长，{days} 天",
+  "See channels": "查看渠道",
+  "Show all {count}": "显示全部 {count} 项",
+  "Show fewer": "收起",
+  "Slack, a public chat page, the Agent API or a schedule.":
+    "Slack、公开聊天页面、Agent API 或定时任务。",
+  "System checked {when}": "系统检查于 {when}",
+  "System problems": "系统问题",
+  "System warnings": "系统警告",
+  "Turns started per hour": "每小时开始的轮次",
+  "Untitled session": "未命名会话",
+  "What needs attention in this organization, and how its agents ran today.":
+    "此组织中需要关注的事项，以及其智能体今天的运行情况。",
+  "What needs you, and how your agents ran in the last 24 hours.":
+    "需要你处理的事项，以及你的智能体最近 24 小时的运行情况。",
+  "Your organization is set up. Here is what to do next.": "组织已设置完成。下一步如下。",
+  "last 24 hours": "最近 24 小时",
+  "started by channels, 7 days": "由渠道发起，7 天",
+  "through published channels": "通过已发布的渠道",
+  "vs previous 24h": "对比前 24 小时",
+  "was {rate}": "之前为 {rate}",
+  "{count} running": "{count} 个运行中",
+  "{count} sandboxes need attention": "{count} 个沙箱需要关注",
+  "{count} sessions": "{count} 个会话",
+  "{count} sessions paused at their budget limit": "{count} 个会话因预算上限暂停",
+  "{done} of {total} done": "已完成 {done}/{total}",
+  "{failed} of {runs} turns failed in the last {hours} hours":
+    "最近 {hours} 小时内 {runs} 轮中有 {failed} 轮失败",
+  "{running} of {limit} turn limit": "{running}/{limit} 轮次上限",
+  "{runs} turns in the last 24 hours": "最近 24 小时 {runs} 轮",
+  "{sessions}. A paused run resumes when its limit is raised.":
+    "{sessions}。提高上限后，暂停的运行会继续。",
+};

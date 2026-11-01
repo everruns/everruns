@@ -8,6 +8,7 @@
 * [MCP Entity Cards](mcp-cards.md) - MCP Apps entity cards and sandboxed HTML resources.
 * [Agent Page](agent-page.md) - Why the agent page reads and edits in one layout, with the system prompt as the page.
 * [Agent Cost Estimation](agent-cost-estimation.md) - Scenario-based model cost planning, assumptions and calibration boundaries.
+* [Org Home](org-home.md) - Why Home ranks what needs a person before how the agents ran, and why Chat stays the landing route with Home beside it.
 * [Agents Home](agents-home.md) - Why the Agents page shows what each agent is doing, how it is reached and what needs attention, with channels replacing Exposures.
 * [Knowledge Pages](knowledge-pages.md) - Why Knowledge is tabbed like Sandboxes and a collection is browsed with the session file browser.
 * [Models and Providers](models-and-providers.md) - Why providers live under Library → Models with Models, Providers and Defaults tabs and share the models permission.

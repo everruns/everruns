@@ -5,6 +5,7 @@ import { messages as sharedControls } from "./messages/uk/shared-controls";
 import { messages as tracing } from "./messages/uk/tracing";
 import { messages as backgroundLimits } from "./messages/uk/background-limits";
 import { messages as monitoringTimeline } from "./messages/uk/monitoring-timeline";
+import { messages as orgHome } from "./messages/uk/org-home";
 import { messages as zh } from "./messages/zh-CN";
 import { messages as es } from "./messages/es";
 import { messages as de } from "./messages/de";
@@ -61,6 +62,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   externalWorker,
   backgroundLimits,
   monitoringTimeline,
+  orgHome,
 );
 
 /** Product catalogs use null-prototype maps so hostile lookup keys fall back safely. */

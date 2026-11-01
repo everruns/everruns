@@ -63,6 +63,7 @@
     "evals/page.tsx",
     "harnesses/examples/page.tsx",
     "harnesses/page.tsx",
+    "home/page.tsx",
     "knowledge/[collectionId]/(tabs)/page.tsx",
     "knowledge/[collectionId]/(tabs)/search/page.tsx",
     "monitoring/page.tsx",
