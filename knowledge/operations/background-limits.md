@@ -18,8 +18,9 @@ approval that never came. It fired 3,766 times over 13 days and spent about
 $106 before a person noticed. Five safeguards were missing: schedules had no
 end, unattended work had no default spend cap, every fire ran on the whole
 session history, nothing noticed the runs achieved nothing, and nobody was
-told. This concept owns the first two, detection and the limits table; lean
-runs follow in a later change (see Rollout).
+told. This concept owns the first two, detection, polling without the model
+and the limits table; a small model view for scheduled turns follows (see
+Rollout).
 
 ## Lifetime
 
@@ -45,7 +46,7 @@ runs follow in a later change (see Rollout).
 
 Source: `crates/contracts/src/runtime/session_schedule.rs`
 (`resolve_agent_schedule_bounds`), `crates/server/src/domains/session_schedules/service.rs`
-(`mark_triggered`), `crates/server/src/background/session_scheduler.rs`.
+(`mark_triggered`), `crates/server/src/background/session_scheduler/mod.rs`.
 
 ## Spend
 
@@ -106,6 +107,34 @@ for unattended work that goes wrong. Each is about one subject, kept in
 Source: `crates/server/src/domains/health_issues/background_work.rs`,
 `crates/server/src/storage/background_work.rs`.
 
+## Polling without the model
+
+Most runaway schedules are polls: call an endpoint, act only when the answer
+changes. A poll should cost fetches, not model turns.
+
+- `spawn_background` with a `schedule` and a `schedule.wake_when` creates a
+  **probe monitor** on a tool the scheduler can run itself (`web_fetch`,
+  `get_current_time`; `MONITOR_PROBE_TOOLS`). Each fire runs the tool directly,
+  with no agent turn and no model tokens, and records one short line on the
+  monitor's thread.
+- `wake_when` is a JSON pointer into the tool result (a JSON response body is
+  parsed under `/json`) plus exactly one of `equals`, `not_equals` or `changed`.
+  The agent gets one turn when the condition becomes true, with the result in
+  the fire message; a condition that stays true does not wake it again, and
+  `changed` wakes once per new value. A failed call is `{"error": …}`, so a
+  broken poll wakes the agent once instead of failing silently.
+- The probe runs with the session's tool context: the folded network access
+  list and the host egress boundary scoped to the org and session, the same
+  controls an agent turn applies (THREAT TM-AGENT-018). If that context cannot
+  be built, the probe does not run. Bound credentials, files and sandboxes are
+  not available to probes.
+- Lifetime and budget limits apply to the monitor's schedule as to any other;
+  quiet fires cost nothing, so only woken turns spend.
+
+For the Shipmail case: 3,766 fetches, no model tokens, and one turn when the
+approval arrives. Source: `crates/contracts/src/runtime/monitor_probe.rs`,
+`crates/server/src/background/monitor_probe.rs`.
+
 ## Limits
 
 | Limit | Default | Org may set |
@@ -135,8 +164,9 @@ records them, but does not meter spend.
 1. Lifetime, `stop_when`, schedule and org unattended budgets, Settings →
    Limits (this concept).
 2. Detection (this concept).
-3. Lean runs: `web_fetch` probe monitors with a wake condition, a small model
-   view for scheduled turns. The Muse cache fix shipped separately.
+3. Lean runs: `web_fetch` probe monitors with a wake condition (this concept),
+   then a small model view for scheduled turns. The Muse cache fix shipped
+   separately.
 
 Related: [Budgeting](../security/budgeting.md),
 [Actionable Health Issues](health-issues.md),

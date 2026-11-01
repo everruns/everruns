@@ -56,6 +56,7 @@ pub mod message;
 pub mod message_filter;
 pub use crate::message_origin;
 pub mod message_retriever;
+pub mod monitor_probe;
 pub mod mount_fs;
 pub mod network_access;
 pub mod org_egress_allowlist;

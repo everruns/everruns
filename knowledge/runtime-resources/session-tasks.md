@@ -178,21 +178,26 @@ to the backing session schedule via `spec["schedule_id"]`. The monitor spec
 also stores `spec["tool"]` and `spec["arguments"]`, the probe tool to run on
 each fire.
 
-On each fire the session scheduler executes the probe tool directly (using a
-small built-in registry of context-free probe tools) and records the result as
-an outbound message on the monitor's thread. Because the probe runs autonomously, no agent turn is
-started, the session LLM is not involved.
+On each fire the session scheduler executes the probe tool directly, with the
+session's tool context (network access list and scoped egress, built like API
+executor calls), and records the result as an outbound message on the monitor's
+thread. Because the probe runs autonomously, no agent turn is started, the
+session LLM is not involved. Probe tools are `MONITOR_PROBE_TOOLS` (`web_fetch`,
+`get_current_time`); `spawn_background` accepts them on a schedule only with a
+`wake_when` condition, stored as `spec["wake_when"]`, and the agent gets one
+turn when it becomes true ([Background Work Limits](../operations/background-limits.md),
+"Polling without the model"). `spec["probe_state"]` keeps what the last fire
+saw.
 
 A plain `"Monitor fired at …"` placeholder is recorded and the normal
 scheduled session turn runs instead when any of the following are true:
 
-- No tool registry is available at startup.
+- No probe host is available at startup.
 - `spec["tool"]` is absent or empty.
-- The named tool is not in the built-in probe registry. Network, filesystem,
-  storage, and other context-sensitive tools are intentionally excluded until
-  probe execution can use the same fully populated `ToolContext` as worker/API
-  executor paths.
-- The tool returns `InternalError` or `ConnectionRequired` (non-observable outcomes).
+- The named tool is not a probe tool (for example a scheduled `bash` run).
+- A probe without `wake_when` returns `InternalError`, `ConnectionRequired` or
+  a policy outcome (non-observable outcomes). With `wake_when`, these are the
+  error the condition sees.
 
 One-shot monitors transition to `succeeded` after their single fire; recurring
 monitors stay `running` until `cancel_task` is called, which cancels the linked

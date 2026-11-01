@@ -93,6 +93,26 @@ impl StorageBackend {
         Ok(())
     }
 
+    /// Keep what a probe monitor saw at this fire in its spec, for the next
+    /// fire's wake decision (`everruns_contracts::runtime::monitor_probe`).
+    pub async fn set_monitor_probe_state(
+        &self,
+        session_id: Uuid,
+        task_id: &str,
+        state: serde_json::Value,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE session_tasks SET spec = spec || jsonb_build_object('probe_state', $3::jsonb)
+             WHERE session_id = $1 AND id = $2",
+        )
+        .bind(session_id)
+        .bind(task_id)
+        .bind(state)
+        .execute(self.database().pool())
+        .await?;
+        Ok(())
+    }
+
     /// How many runs in a row the schedule has ended the same way.
     pub async fn schedule_same_outcome_runs(&self, schedule_id: Uuid) -> Result<i32> {
         Ok(sqlx::query_scalar::<_, i32>(

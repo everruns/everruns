@@ -33,6 +33,9 @@ pub mod stranded_actor_sweep;
 // Session schedule poller
 pub mod session_scheduler;
 
+// Probes a scheduled monitor runs itself, waking the agent only on its condition
+pub mod monitor_probe;
+
 // Retained background-task supervision for server-owned control-plane loops
 pub mod supervised_task;
 
