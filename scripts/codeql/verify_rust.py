@@ -55,9 +55,11 @@ def verify(metadata, rows, sarif):
             for key in ("toolExecutionNotifications", "toolConfigurationNotifications"):
                 for diagnostic in invocation.get(key, []):
                     message = diagnostic.get("message", {}).get("text", str(diagnostic))
-                    if diagnostic.get("level") == "error":
+                    # SARIF notification.level defaults to warning when omitted.
+                    level = diagnostic.get("level", "warning")
+                    if level == "error":
                         failures.append(message)
-                    elif diagnostic.get("level") == "warning":
+                    elif level == "warning":
                         warnings.append(message)
     return targets, failures, warnings
 

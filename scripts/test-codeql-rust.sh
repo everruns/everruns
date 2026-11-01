@@ -65,6 +65,10 @@ class CoverageTest(unittest.TestCase):
         self.sarif['runs'][0]['invocations'][0]['toolExecutionNotifications'] = [
             {'level': 'warning', 'message': {'text': 'macro expansion incomplete'}}]
         self.assertEqual(['macro expansion incomplete'], verify(self.metadata, self.rows, self.sarif)[2])
+    def test_sarif_default_warning_level_retained(self):
+        self.sarif['runs'][0]['invocations'][0]['toolExecutionNotifications'] = [
+            {'message': {'text': 'implicit warning'}}]
+        self.assertEqual(['implicit warning'], verify(self.metadata, self.rows, self.sarif)[2])
     def test_findings_unchanged(self):
         self.sarif['runs'][0]['results'] = [{'ruleId': 'rust/sql-injection'}]
         original = copy.deepcopy(self.sarif)

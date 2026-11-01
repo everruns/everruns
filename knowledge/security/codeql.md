@@ -18,8 +18,10 @@ Neither Rust nor JavaScript/TypeScript had a job; a successful overall run is
 therefore not Rust or UI coverage. The same missing languages were observed on
 [PR 5153](https://github.com/everruns/everruns/actions/runs/41315602782) and
 [PR 5155](https://github.com/everruns/everruns/actions/runs/41329670774).
-The selection is server-side. Its administrative cause is unconfirmed because
-reading the default-setup endpoint returned HTTP 403.
+The selection is server-side. Rust is [supported by both default and advanced
+setup](https://github.blog/changelog/2025-10-14-codeql-scanning-rust-and-c-c-without-builds-is-now-generally-available/),
+so lack of language support does not explain its absence. The administrative
+cause is unconfirmed because reading the default-setup endpoint returned HTTP 403.
 
 The [advanced workflow candidate](../../.github/codeql/advanced.yml) is deliberately
 outside `.github/workflows/` and is **inactive**. Existing default scans remain
@@ -70,6 +72,25 @@ database contains 408 crate roots, including independent workspaces, without
 partitioning away cross-component relationships. Extraction and AST evidence
 alone are not the success bar: the standard query suite must also pass before
 results can be published.
+
+The full 37-query standard suite completed successfully in about 56 minutes.
+Both ordinary CLI SARIF and the Action's pack-grouped SARIF passed the coverage
+gate with all findings preserved. The full local pipeline finished within the
+candidate's 120-minute budget. This establishes a viable native analysis path,
+not an active GitHub Code Scanning configuration or a completed hosted-runner
+upload test.
+
+The SARIF contains zero error-level diagnostics and 83 warnings: 82 extraction
+warnings plus one data-flow consistency warning (`Node should have one toString`).
+The extraction warnings affect 54 files: 49 pre-existing generated files under
+the local `target/` directory and five tracked files (macro-expansion limitations
+and the shared eval usage module). GitHub's clean checkout and the candidate's
+external build directory avoid that pre-existing generated-file inventory; the
+tracked limitations remain. The CLI's "files extracted with errors" summary
+includes these warning-bearing files and is not an error-level diagnostic count.
+The SARIF also retains 778 unresolved-macro notifications with level `none`.
+The validator handles SARIF's default warning severity when `level` is omitted;
+it does not silently discard these diagnostics.
 
 An earlier two-thread/two-Cargo-job attempt exited 137 with one OOM kill while
 approximately 6.3 GiB of bundle, database, and build files lived on RAM-backed
