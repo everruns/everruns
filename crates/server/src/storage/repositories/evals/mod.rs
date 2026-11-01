@@ -410,8 +410,8 @@ impl Database {
 
         let row = sqlx::query_as::<_, EvalRunRow>(
             sql!(r#"
-            INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by, trials, started_by_user_id, started_by_role)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by, trials, started_by_user_id, started_by_role, max_cost_usd)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING {EvalRunRow}
             "#),
         )
@@ -425,8 +425,27 @@ impl Database {
         .bind(trials as i32)
         .bind(input.started_by_user_id)
         .bind(&input.started_by_role)
+        .bind(input.max_cost_usd)
         .fetch_one(&mut *tx)
         .await?;
+
+        // The cap is an ordinary budget, created with the run so no case can
+        // start before it binds. The budget hierarchy finds it from the case
+        // session (`eval_run` subject), so the loop gate stops a turn once the
+        // run's money is spent.
+        if let Some(limit) = input.max_cost_usd {
+            sqlx::query(
+                r#"
+                INSERT INTO budgets (org_id, subject_type, subject_id, currency, "limit", balance, metadata, status)
+                VALUES ($1, 'eval_run', $2, 'usd', $3, $3, '{"created_by": "evals"}'::jsonb, 'active')
+                "#,
+            )
+            .bind(org_id)
+            .bind(&row.public_id)
+            .bind(limit)
+            .execute(&mut *tx)
+            .await?;
+        }
 
         for case in cases {
             for trial in 0..trials as i32 {
@@ -1071,6 +1090,38 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
+    }
+
+    /// Public id of the eval run whose case created this session, for the
+    /// `eval_run` budget level. `session_id` is a delegation root.
+    pub async fn eval_run_public_id_for_session(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+    ) -> Result<Option<String>> {
+        Ok(sqlx::query_scalar(
+            "SELECT r.public_id FROM eval_case_results cr \
+             JOIN eval_runs r ON r.id = cr.eval_run_id \
+             WHERE cr.session_id = $2 AND r.org_id = $1 LIMIT 1",
+        )
+        .bind(org_id)
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    /// What a case session and the sessions it delegated to spent on model
+    /// calls, in USD (provider-reported where there is one, else estimated).
+    pub async fn eval_session_cost_usd(&self, org_id: i64, session_id: Uuid) -> Result<f64> {
+        Ok(sqlx::query_scalar(
+            "SELECT COALESCE(SUM(COALESCE(g.actual_cost_usd, g.estimated_cost_usd)), 0)::float8 \
+             FROM llm_generations g JOIN sessions s ON s.id = g.session_id \
+             WHERE g.org_id = $1 AND (s.id = $2 OR s.root_session_id = $2)",
+        )
+        .bind(org_id)
+        .bind(session_id)
+        .fetch_one(&self.pool)
+        .await?)
     }
 
     /// Load an eval run by internal id (used by the public share resolver, which

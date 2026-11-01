@@ -150,7 +150,7 @@ pub struct UpdateEvalCaseRequest {
 }
 
 /// Request to create an eval run
-#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalRunRequest {
     /// Optional per-run target override.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -164,6 +164,11 @@ pub struct CreateEvalRunRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = 3, minimum = 1, maximum = 20)]
     pub trials: Option<u32>,
+    /// Spending cap in USD for the whole run, agents and grading together.
+    /// Once spent, running turns stop and remaining cases are skipped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 5.0)]
+    pub max_cost_usd: Option<f64>,
 }
 
 /// Result status reported alongside externally computed scores.

@@ -42266,6 +42266,15 @@
         "type": "object",
         "description": "Request to create an eval run",
         "properties": {
+          "max_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Spending cap in USD for the whole run, agents and grading together.\nOnce spent, running turns stop and remaining cases are skipped.",
+            "example": 5
+          },
           "model_override": {
             "type": [
               "string",
@@ -45602,13 +45611,22 @@
             "description": "External identifier (evalrun_<32-hex>).",
             "example": "evalrun_01933b5a000070008000000000000001"
           },
+          "max_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Spending cap in USD. Once the run's agents and graders have spent it,\nrunning turns stop and remaining cases are skipped.",
+            "example": 5
+          },
           "model_override": {
             "type": [
               "string",
               "null"
             ],
             "description": "Model override for this run.",
-            "example": "gpt-5.1"
+            "example": "gpt-6-luna"
           },
           "results": {
             "type": "array",
@@ -51337,13 +51355,22 @@
                   "description": "External identifier (evalrun_<32-hex>).",
                   "example": "evalrun_01933b5a000070008000000000000001"
                 },
+                "max_cost_usd": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "description": "Spending cap in USD. Once the run's agents and graders have spent it,\nrunning turns stop and remaining cases are skipped.",
+                  "example": 5
+                },
                 "model_override": {
                   "type": [
                     "string",
                     "null"
                   ],
                   "description": "Model override for this run.",
-                  "example": "gpt-5.1"
+                  "example": "gpt-6-luna"
                 },
                 "results": {
                   "type": "array",
@@ -63649,6 +63676,15 @@
             "description": "Total number of cases in the run.",
             "example": 12,
             "minimum": 0
+          },
+          "total_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "What the run spent in USD: the agents' model calls plus grading.\nAbsent on imported runs, whose cost is in their own metrics.",
+            "example": 0.42
           },
           "total_input_tokens": {
             "type": "integer",

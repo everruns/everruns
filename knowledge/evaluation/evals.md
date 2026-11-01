@@ -84,6 +84,15 @@ trial (pass^k) and in at least one (pass@k). pass^k is the bar for an agent
 that must work every time; a single trial cannot tell a flaky case from a
 broken one.
 
+A run may carry a spending cap (`max_cost_usd`). The cap is an ordinary
+[budget](../security/budgeting.md) with the `eval_run` subject, created with
+the run, and every case session (with the sessions it delegates to) spends
+from it, so the cases share one pool. Grading spends from the same budgets as
+the agent. Once the pool is spent the loop gate ends running turns, cases that
+have not started are skipped, and a stopped case is recorded as skipped with
+the reason rather than as an agent failure. What each result spent (agent and
+grading) is in its metadata and the run summary totals it.
+
 Internal runs create sessions and score them. External runs are imported
 observations and are never re-executed or silently rescored by Everruns.
 

@@ -527,6 +527,27 @@ pub fn validate_target(target: &Option<EvalTarget>) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Upper bound on repetitions per case in one run.
+pub const MAX_TRIALS: u32 = 20;
+
+/// Upper bound on one run's spending cap, a guard against typos.
+pub const MAX_RUN_COST_USD: f64 = 100_000.0;
+
+/// Check a run's repetitions and spending cap; returns the trial count.
+pub fn validate_run_bounds(trials: Option<u32>, max_cost_usd: Option<f64>) -> anyhow::Result<u32> {
+    let bad = |reason: String| anyhow::Error::new(crate::errors::BadRequestError::new(reason));
+    let trials = trials.unwrap_or(1);
+    if !(1..=MAX_TRIALS).contains(&trials) {
+        return Err(bad(format!("trials must be between 1 and {MAX_TRIALS}")));
+    }
+    if max_cost_usd.is_some_and(|cap| !(cap > 0.0 && cap <= MAX_RUN_COST_USD)) {
+        return Err(bad(format!(
+            "max_cost_usd must be above 0 and at most {MAX_RUN_COST_USD}"
+        )));
+    }
+    Ok(trials)
+}
+
 /// Validate every scorer of a case; the first one that could never grade is
 /// a 400.
 pub fn validate_scorers(scorers: &[Scorer]) -> anyhow::Result<()> {
@@ -617,6 +638,11 @@ pub struct RunSummary {
     #[serde(default)]
     #[schema(example = 4)]
     pub cases_passed_any_trial: u32,
+    /// What the run spent in USD: the agents' model calls plus grading.
+    /// Absent on imported runs, whose cost is in their own metrics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 0.42)]
+    pub total_cost_usd: Option<f64>,
 }
 
 fn default_one_trial() -> u32 {
@@ -785,7 +811,7 @@ pub struct EvalRun {
     pub target: Option<EvalTarget>,
     /// Model override for this run.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "gpt-5.1")]
+    #[schema(example = "gpt-6-luna")]
     pub model_override: Option<String>,
     /// Only run cases matching these tags.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -810,6 +836,11 @@ pub struct EvalRun {
     #[serde(default = "default_one_trial")]
     #[schema(example = 3)]
     pub trials: u32,
+    /// Spending cap in USD. Once the run's agents and graders have spent it,
+    /// running turns stop and remaining cases are skipped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 5.0)]
+    pub max_cost_usd: Option<f64>,
     /// When the run started executing.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "2026-01-15T10:30:00Z")]

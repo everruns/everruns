@@ -248,8 +248,13 @@ async fn run_case_task_inner(ctx: &EvalRunContext, task: &EvalCaseTask) -> Resul
         return Ok(());
     }
     match result.status.as_str() {
-        // Fresh: take it. Losing the race means another task has it.
+        // Fresh: take it, unless the run's money is already spent. Losing
+        // the race means another task has it.
         "pending" => {
+            if let Some(reason) = run_budget_spent(ctx, &run).await? {
+                record_case_error(ctx, result.id, "skipped", &reason, 0, None).await?;
+                return Ok(());
+            }
             if !ctx.db.claim_eval_case_result(result.id).await? {
                 return Ok(());
             }
@@ -276,14 +281,28 @@ async fn run_case_task_inner(ctx: &EvalRunContext, task: &EvalCaseTask) -> Resul
         Err(error) => Err(CaseError::Failed(error)),
     };
     let latency_ms = start.elapsed().as_millis() as i64;
+    // What the case's agent spent, recorded on every outcome that ran a
+    // session so the run's cost covers failed and stopped cases too.
+    let session_cost = match ctx.db.get_eval_case_result(result.id).await? {
+        Some(row) => match row.session_id {
+            Some(session) => Some(ctx.db.eval_session_cost_usd(run.org_id, session).await?),
+            None => None,
+        },
+        None => None,
+    };
 
     match outcome {
-        Ok(_) => {
+        Ok(grader_usage) => {
+            let mut metadata = serde_json::json!({ "cost_usd": session_cost.unwrap_or(0.0) });
+            if let Some(usage) = &grader_usage {
+                metadata["grader_usage"] = serde_json::to_value(usage)?;
+            }
             ctx.db
                 .update_eval_case_result(
                     result.id,
                     UpdateEvalCaseResultRow {
                         latency_ms: Some(latency_ms),
+                        metadata: Some(metadata),
                         ..Default::default()
                     },
                 )
@@ -291,17 +310,16 @@ async fn run_case_task_inner(ctx: &EvalRunContext, task: &EvalCaseTask) -> Resul
         }
         Err(CaseError::Cancelled) => {}
         Err(CaseError::Timeout) => {
-            record_case_error(
-                ctx,
-                result.id,
-                "timeout",
-                "Case timeout exceeded",
-                latency_ms,
-            )
-            .await?;
+            let reason = "Case timeout exceeded";
+            record_case_error(ctx, result.id, "timeout", reason, latency_ms, session_cost).await?;
+        }
+        // Stopped for money, not because the agent failed: skipped, not errored.
+        Err(CaseError::BudgetSpent(reason)) => {
+            record_case_error(ctx, result.id, "skipped", &reason, latency_ms, session_cost).await?;
         }
         Err(CaseError::Failed(e)) => {
-            record_case_error(ctx, result.id, "errored", &e.to_string(), latency_ms).await?;
+            let reason = e.to_string();
+            record_case_error(ctx, result.id, "errored", &reason, latency_ms, session_cost).await?;
         }
     }
     Ok(())
@@ -351,6 +369,7 @@ async fn record_case_error(
     status: &str,
     message: &str,
     latency_ms: i64,
+    session_cost: Option<f64>,
 ) -> Result<()> {
     ctx.db
         .update_eval_case_result(
@@ -359,11 +378,54 @@ async fn record_case_error(
                 status: Some(status.to_string()),
                 error_message: Some(message.to_string()),
                 latency_ms: Some(latency_ms),
+                metadata: session_cost.map(|cost| serde_json::json!({ "cost_usd": cost })),
                 ..Default::default()
             },
         )
         .await?;
     Ok(())
+}
+
+/// Why a run with a spending cap may start no more cases: its `eval_run`
+/// budget is exhausted or paused. `None` for a run without a cap.
+async fn run_budget_spent(
+    ctx: &EvalRunContext,
+    run: &crate::storage::EvalRunRow,
+) -> Result<Option<String>> {
+    let Some(limit) = run.max_cost_usd else {
+        return Ok(None);
+    };
+    let budgets = ctx
+        .db
+        .list_budgets(run.org_id, Some("eval_run"), Some(&run.public_id))
+        .await?;
+    let spent = budgets
+        .iter()
+        .any(|b| matches!(b.status.as_str(), "exhausted" | "paused") || b.balance <= 0.0);
+    Ok(spent.then(|| budget_spent_reason(limit)))
+}
+
+fn budget_spent_reason(limit: f64) -> String {
+    format!("Stopped: the run's budget of ${limit:.2} is spent")
+}
+
+/// Stop before sending more work when a budget the case session spends from
+/// (the run's cap, or the session's, user's or org's) is spent. The loop gate
+/// would end the turn anyway; stopping here records why.
+async fn ensure_budget_left(
+    ctx: &EvalRunContext,
+    sctx: &SessionCtx,
+) -> std::result::Result<(), CaseError> {
+    let check = crate::domains::budgets::BudgetService::new(ctx.db.clone())
+        .check_budgets_for_session(sctx.org_id, &sctx.session_id.to_string(), None)
+        .await;
+    match check.action.as_str() {
+        "stop" | "pause" => Err(CaseError::BudgetSpent(format!(
+            "Stopped: {}",
+            check.message.as_deref().unwrap_or("a budget is spent")
+        ))),
+        _ => Ok(()),
+    }
 }
 
 /// Finish a running run when none of its results is still pending or running.
@@ -409,6 +471,8 @@ enum CaseError {
     Cancelled,
     /// The case ran past its timeout.
     Timeout,
+    /// A budget the case spends from ran out; the reason says which.
+    BudgetSpent(String),
     Failed(anyhow::Error),
 }
 
@@ -427,7 +491,7 @@ async fn execute_case_inner(
     target_json: &Option<serde_json::Value>,
     existing_session: Option<Uuid>,
     run_model_override: Option<&str>,
-) -> std::result::Result<(), CaseError> {
+) -> std::result::Result<Option<GraderUsage>, CaseError> {
     let org_id = caller.org_id;
     let case_row = ctx
         .db
@@ -580,6 +644,7 @@ async fn execute_case_inner(
     }
     for (index, msg) in messages.iter().enumerate().skip(sent) {
         ensure_run_active(ctx, result_id).await?;
+        ensure_budget_left(ctx, &sctx).await?;
         send_message(ctx, &sctx, &msg.content).await?;
         wait_for_settled_turns(ctx, &sctx, index + 1).await?;
     }
@@ -634,6 +699,18 @@ async fn execute_case_inner(
     };
     let (scores, grader_usage) = run_scorers(&ctx.graders, org_id, &scorers, &grade_input).await;
     let all_passed = scores.iter().all(|s| s.pass);
+    // Grading spends from the same budgets as the agent, the run's cap first.
+    if let Some(usage) = &grader_usage {
+        crate::domains::budgets::BudgetService::new(ctx.db.clone())
+            .meter_grading(
+                session_id,
+                result_id,
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.cost_usd,
+            )
+            .await;
+    }
 
     // Calculate weighted average score
     let artifacts = collect_case_artifacts(&ctx.db, session_uuid, artifact_specs.as_deref()).await;
@@ -646,9 +723,8 @@ async fn execute_case_inner(
             UpdateEvalCaseResultRow {
                 status: Some(status.to_string()),
                 scores: Some(serde_json::to_value(&scores)?),
-                // What grading cost, so judge and decision spend is visible
-                // per case.
-                metadata: grader_usage.map(|usage| serde_json::json!({ "grader_usage": usage })),
+                // What grading cost is written with the agent's cost by the
+                // caller, so judge and decision spend is visible per case.
                 turns: Some(turn_count as i32),
                 latency_ms: None, // Set by caller
                 input_tokens: Some(input_tokens as i64),
@@ -659,7 +735,7 @@ async fn execute_case_inner(
         )
         .await?;
 
-    Ok(())
+    Ok(grader_usage)
 }
 
 struct SessionCtx {
@@ -760,13 +836,21 @@ async fn wait_for_settled_turns(
                 TURN_COMPLETED => Ok(()),
                 TURN_CANCELLED => Err(anyhow::anyhow!("Turn was cancelled").into()),
                 _ => {
-                    let error_msg = event
-                        .data
-                        .get("error")
-                        .and_then(|e| e.get("message"))
-                        .and_then(|m| m.as_str())
+                    let error = event.data.get("error");
+                    let error_msg = error
+                        .and_then(|e| e.as_str())
+                        .or_else(|| {
+                            error
+                                .and_then(|e| e.get("message"))
+                                .and_then(|m| m.as_str())
+                        })
                         .or_else(|| event.data.get("message").and_then(|m| m.as_str()))
                         .unwrap_or("turn failed");
+                    // The loop gate ended the turn: a budget ran out.
+                    let code = event.data.get("error_code").and_then(|c| c.as_str());
+                    if code.is_some_and(|c| c.starts_with("budget_")) {
+                        return Err(CaseError::BudgetSpent(format!("Stopped: {error_msg}")));
+                    }
                     Err(anyhow::anyhow!("Turn failed: {error_msg}").into())
                 }
             };

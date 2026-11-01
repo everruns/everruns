@@ -84,9 +84,6 @@ pub struct EvalService {
     limits: EvalLimits,
 }
 
-/// Upper bound on repetitions per case in one run.
-pub const MAX_TRIALS: u32 = 20;
-
 impl EvalService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
@@ -365,12 +362,7 @@ impl EvalService {
         req: CreateEvalRunRequest,
     ) -> Result<EvalRun> {
         validate_target(&req.target)?;
-        let trials = req.trials.unwrap_or(1);
-        if !(1..=MAX_TRIALS).contains(&trials) {
-            return Err(
-                BadRequestError::new(format!("trials must be between 1 and {MAX_TRIALS}")).into(),
-            );
-        }
+        let trials = validate_run_bounds(req.trials, req.max_cost_usd)?;
 
         let eval = self
             .db
@@ -393,6 +385,7 @@ impl EvalService {
             trials: trials as i32,
             started_by_user_id: caller.user_id,
             started_by_role: crate::domains::evals::runner::started_by_role(caller),
+            max_cost_usd: req.max_cost_usd,
         };
 
         // Load eval-level target for resolution
@@ -1269,6 +1262,7 @@ fn run_row_to_run(row: crate::storage::EvalRunRow, results: Vec<EvalCaseResult>)
         attribution: row.attribution,
         triggered_by: row.triggered_by,
         trials: row.trials.max(1) as u32,
+        max_cost_usd: row.max_cost_usd,
         started_at: row.started_at,
         completed_at: row.completed_at,
         summary: row.summary.and_then(|s| serde_json::from_value(s).ok()),
@@ -1579,6 +1573,7 @@ impl ImportSummaryAcc {
             cases: total,
             cases_passed_every_trial: self.passed,
             cases_passed_any_trial: self.passed,
+            total_cost_usd: None,
         }
     }
 }
@@ -1680,7 +1675,7 @@ mod tests {
         let run_req = CreateEvalRunRequest {
             target: None,
             model_override: None,
-            trials: None,
+            ..Default::default()
         };
 
         let mut tasks = Vec::new();
@@ -1996,7 +1991,7 @@ mod tests {
         let run_req = CreateEvalRunRequest {
             target: None,
             model_override: None,
-            trials: None,
+            ..Default::default()
         };
 
         let err = svc

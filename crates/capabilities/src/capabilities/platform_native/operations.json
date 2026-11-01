@@ -4510,6 +4510,15 @@
         "CreateEvalRunRequest": {
           "description": "Request to create an eval run",
           "properties": {
+            "max_cost_usd": {
+              "description": "Spending cap in USD for the whole run, agents and grading together.\nOnce spent, running turns stop and remaining cases are skipped.",
+              "example": 5.0,
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
             "model_override": {
               "description": "Model override for this run.",
               "example": "gpt-6-luna",

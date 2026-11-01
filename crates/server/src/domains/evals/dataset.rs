@@ -368,6 +368,7 @@ mod tests {
             source: crate::domains::evals::record::EvalRunSource::Internal,
             attribution: None,
             trials: 1,
+            max_cost_usd: None,
             triggered_by: "test".into(),
             started_at: None,
             completed_at: None,
