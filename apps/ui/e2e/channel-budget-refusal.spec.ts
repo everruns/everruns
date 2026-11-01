@@ -177,7 +177,6 @@ test.describe("channel budget refusal", () => {
       (current) => current.status === "exhausted",
       "the production budget listener to exhaust the channel budget",
     );
-    expect(exhausted.balance).toBe(0);
 
     const ledger = await jsonResponse<
       Array<{
@@ -187,9 +186,15 @@ test.describe("channel budget refusal", () => {
         session_id: string;
       }>
     >(await request.get(`${apiBaseUrl}/api/v1/budgets/${budget.id}/ledger`));
+    // The model also reads the platform's "Scheduled run ... Not written by
+    // the person." header, so one generation spends at least the limit
+    // rather than exactly it. Assert against what the ledger recorded.
+    const spent = ledger[0]?.amount ?? 0;
+    expect(spent).toBeGreaterThanOrEqual(25);
+    expect(exhausted.balance).toBe(25 - spent);
     expect(ledger).toEqual([
       expect.objectContaining({
-        amount: 25,
+        amount: spent,
         meter_source: "llm_tokens",
         ref_type: "llm_generation",
         session_id: consumed.session_id,
@@ -223,7 +228,7 @@ test.describe("channel budget refusal", () => {
       error_code: "budget_exhausted",
       error_fields: {
         budget_id: budget.id,
-        spent: 25,
+        spent,
         limit: 25,
         currency: "tokens",
       },
@@ -244,7 +249,9 @@ test.describe("channel budget refusal", () => {
     await expect(channelBudgetPanel.getByText(budget.id, { exact: true })).toBeVisible();
     await expect(channelBudgetPanel.getByText("exhausted", { exact: true })).toBeVisible();
     await expect(
-      channelBudgetPanel.getByText("0.00 of 25.00 tokens remaining", { exact: true }),
+      channelBudgetPanel.getByText(`${(25 - spent).toFixed(2)} of 25.00 tokens remaining`, {
+        exact: true,
+      }),
     ).toBeVisible();
     await expect(channelBudgetPanel.getByText("1h sliding", { exact: false })).toBeVisible();
     await expect(channelBudgetPanel.getByText("Reset due", { exact: false })).toBeVisible();
