@@ -55,6 +55,37 @@ probe on each fire and records the result on the task's thread. This composition
 (recurring schedule + monitor) is the supported way to run periodic background
 work, there is no separate recurring-task primitive to configure.
 
+To poll a URL without spending model tokens, an agent calls `spawn_background`
+with `web_fetch`, a `schedule` and a `schedule.wake_when` condition. Each fire
+fetches the URL with the session's network rules and starts no turn; the agent
+gets one turn, with the response, when the condition becomes true. The
+condition reads the result, with a JSON body parsed under `/json`:
+
+```json
+{
+  "tool": "web_fetch",
+  "args": {
+    "url": "https://claims.example/token",
+    "method": "POST",
+    "json": {
+      "claim": "clm_1"
+    }
+  },
+  "schedule": {
+    "cron_expression": "*/5 * * * *",
+    "max_runs": 96,
+    "stop_when": "the claim is approved or has expired",
+    "wake_when": {
+      "path": "/json/error",
+      "not_equals": "authorization_pending"
+    }
+  }
+}
+```
+
+Use `equals` to wait for a value, `not_equals` to wait for one to end, or
+`"changed": true` to hear about every new value.
+
 ## Limits on unattended runs
 
 A schedule runs with no person watching, so it always has an end and a

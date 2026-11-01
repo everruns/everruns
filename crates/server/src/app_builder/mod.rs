@@ -1469,11 +1469,11 @@ impl ServerAppBuilder {
                 ),
                 driver_registry: driver_registry.clone(),
                 session_sandbox_service: session_sandbox_service.clone(),
+                egress: host_composition.egress_service(),
             },
             cluster_jobs_store,
         )
         .await;
-
         // -- Custom background tasks --
         spawn_background_tasks(&mut supervisor, &server_context, self.background_tasks);
 

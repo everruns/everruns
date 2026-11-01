@@ -19,6 +19,7 @@
 // active. This closes the gap where the schedule is canceled/deleted directly
 // (not via cancel_task) so the monitor would otherwise stay `running` forever.
 
+use super::monitor_probe::{ProbeHost, ProbeOutcome, run_probe};
 use crate::domains::budgets::FireGate;
 use crate::domains::health_issues::background_work;
 use crate::domains::session_schedules::SessionScheduleService;
@@ -34,8 +35,6 @@ use everruns_core::session_task::{
     NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState, SessionTaskUpdate,
     TASK_KIND_MONITOR,
 };
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tools::ToolRegistry;
 use everruns_core::{ContentPart, RuntimeMessage, RuntimeMessageRole, TextContentPart};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -51,15 +50,6 @@ const ORPHAN_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Maximum monitor tasks to cancel per sweep pass (bounds latency per cycle).
 const ORPHAN_SWEEP_LIMIT: i64 = 50;
-
-/// Build the deliberately narrow tool registry used by autonomous monitor
-/// probes. Portable context-free tools are composed by the product rather than
-/// being hard-coded into the core registry.
-pub(crate) fn monitor_probe_tool_registry() -> ToolRegistry {
-    let mut registry = ToolRegistry::with_monitor_probe_defaults();
-    everruns_core::builtins::register_monitor_tools(&mut registry);
-    registry
-}
 
 /// Poll interval for the schedule poller: 15s, overridable with
 /// `SESSION_SCHEDULER_POLL_INTERVAL_SECS` so the real-server wiring test does
@@ -78,15 +68,15 @@ pub fn poll_interval_from_env() -> Duration {
 /// Polls every `poll_interval` for due schedules, injects messages, and
 /// triggers turns. Safe for concurrent execution via `FOR UPDATE SKIP LOCKED`.
 ///
-/// When `probe_tool_registry` is provided, monitor tasks that carry a probe
-/// spec (`spec["tool"]` + `spec["arguments"]`) execute the probe directly
-/// instead of delegating to an agent turn.
+/// When `probes` is provided, monitor tasks that carry a probe spec
+/// (`spec["tool"]` + `spec["arguments"]`) execute the probe directly instead
+/// of delegating to an agent turn (see `super::monitor_probe`).
 pub fn spawn_session_scheduler(
     db: Arc<StorageBackend>,
     schedule_service: Arc<SessionScheduleService>,
     event_service: Arc<EventService>,
     runner: Arc<dyn TurnBackend>,
-    probe_tool_registry: Option<Arc<ToolRegistry>>,
+    probes: Option<Arc<ProbeHost>>,
     poll_interval: Duration,
 ) -> JoinHandle<()> {
     // One identity per process, stamped on every schedule this instance claims.
@@ -117,7 +107,7 @@ pub fn spawn_session_scheduler(
                 &schedule_service,
                 &event_service,
                 &runner,
-                probe_tool_registry.as_deref(),
+                probes.as_deref(),
             )
             .await
             {
@@ -145,7 +135,7 @@ async fn poll_and_trigger(
     schedule_service: &Arc<SessionScheduleService>,
     event_service: &Arc<EventService>,
     runner: &Arc<dyn TurnBackend>,
-    probe_tool_registry: Option<&ToolRegistry>,
+    probes: Option<&ProbeHost>,
 ) -> anyhow::Result<()> {
     // Build the task registry once per poll iteration; reused for all fired schedules.
     // EventService implements EventEmitter so task snapshot events piggyback on the
@@ -242,23 +232,28 @@ async fn poll_and_trigger(
         }
 
         // Update linked monitor tasks (best-effort; never fail the fire loop).
-        // Returns true when a probe ran — in that case the monitor is autonomous
-        // and we skip the agent-mediated session turn.
-        let probe_ran = fire_monitor_tasks(
+        // A probe that ran stands in for the agent turn, unless its wake
+        // condition was met: then the turn runs with the probe's result.
+        let monitors = fire_monitor_tasks(
             &task_registry,
+            org_id,
             session_id,
             schedule_id,
             is_one_shot,
-            probe_tool_registry,
+            probes,
         )
         .await;
-        if probe_ran {
+        if monitors.probe_ran && monitors.wake.is_empty() {
             tracing::debug!(
                 schedule_id = %schedule_id,
                 session_id = %session_id,
                 "Monitor probe ran; skipping agent turn"
             );
             continue;
+        }
+        for wake in monitors.wake {
+            description.push_str("\n\n");
+            description.push_str(&wake);
         }
 
         // Look up session to get harness_id and agent_id for the runner.
@@ -456,21 +451,19 @@ pub(crate) fn fire_message(schedule: &everruns_core::session_schedule::SessionSc
 /// Record a fire event on linked monitor tasks and, for one-shot schedules,
 /// transition the monitor to `Succeeded`.
 ///
-/// When `tool_registry` is provided and a matched task has `spec["tool"]` +
-/// `spec["arguments"]`, executes the probe tool directly and records the
-/// result (success or error) as the outbound message on the monitor's thread.
-///
-/// Returns `true` when at least one probe ran so the caller can skip the
-/// agent-mediated session turn — probes are autonomous.
+/// When `probes` is provided and a matched task has `spec["tool"]` +
+/// `spec["arguments"]`, runs the probe directly and records what it saw on
+/// the monitor's thread.
 ///
 /// Best-effort: errors are logged; the caller never sees them.
 async fn fire_monitor_tasks(
     registry: &DbSessionTaskRegistry,
+    org_id: i64,
     session_id: SessionId,
     schedule_id: everruns_contracts::typed_id::ScheduleId,
     is_one_shot: bool,
-    tool_registry: Option<&ToolRegistry>,
-) -> bool {
+    probes: Option<&ProbeHost>,
+) -> MonitorFire {
     let schedule_id_str = schedule_id.to_string();
     let now = Utc::now();
 
@@ -495,7 +488,7 @@ async fn fire_monitor_tasks(
                 error = %e,
                 "fire_monitor_tasks: failed to list monitor tasks"
             );
-            return false;
+            return MonitorFire::default();
         }
     };
 
@@ -511,18 +504,17 @@ async fn fire_monitor_tasks(
         })
         .collect();
 
-    let mut any_probe_ran = false;
+    let mut fire = MonitorFire::default();
 
     for task in matched {
         // Probe execution: if the task spec carries a tool + args and we have
-        // a tool registry, run the probe directly instead of posting a plain
+        // a probe host, run the probe directly instead of posting a plain
         // "Monitor fired" message.
-        let probe_result = run_probe_for_task(&task, session_id, tool_registry).await;
-
-        let outbound_text = match probe_result {
-            ProbeOutcome::Ran { output } => {
-                any_probe_ran = true;
-                output
+        let outbound_text = match run_probe(probes, org_id, session_id, &task).await {
+            ProbeOutcome::Ran { thread, wake } => {
+                fire.probe_ran = true;
+                fire.wake.extend(wake);
+                thread
             }
             ProbeOutcome::Skipped => {
                 // No probe configured or registry unavailable — fall back to
@@ -570,114 +562,16 @@ async fn fire_monitor_tasks(
         // Recurring monitors stay Running until cancel_task is called.
     }
 
-    any_probe_ran
+    fire
 }
 
-enum ProbeOutcome {
-    /// Probe executed; `output` is the formatted result text for the thread.
-    Ran { output: String },
-    /// No probe configured or tool registry not available; caller records the
-    /// legacy "Monitor fired" placeholder instead.
-    Skipped,
-}
-
-/// Attempt to run the probe tool stored in a monitor task's spec.
-///
-/// Returns `Ran` with the formatted result when the tool is found and runs
-/// (whether it succeeds or returns an error — both produce an observation).
-/// Returns `Skipped` when the spec has no tool, the registry lacks it, or
-/// the registry itself is `None`.
-async fn run_probe_for_task(
-    task: &everruns_core::SessionTask,
-    session_id: SessionId,
-    tool_registry: Option<&ToolRegistry>,
-) -> ProbeOutcome {
-    let Some(registry) = tool_registry else {
-        return ProbeOutcome::Skipped;
-    };
-
-    let tool_name = match task.spec.get("tool").and_then(|v| v.as_str()) {
-        Some(name) if !name.is_empty() => name,
-        _ => return ProbeOutcome::Skipped,
-    };
-
-    let tool_args = task
-        .spec
-        .get("arguments")
-        .cloned()
-        .unwrap_or(serde_json::Value::Object(Default::default()));
-
-    let Some(tool) = registry.get(tool_name) else {
-        tracing::debug!(
-            task_id = %task.id,
-            tool = %tool_name,
-            "Monitor probe: tool not in probe registry, skipping"
-        );
-        return ProbeOutcome::Skipped;
-    };
-
-    let ctx = ToolContext::new(session_id);
-    let result = tool.execute_with_context(tool_args, &ctx).await;
-
-    let output = match result {
-        everruns_core::ToolExecutionResult::Success(ref val) => {
-            // Try the MCP `{"content":[{"text":"…"}]}` envelope first, then a
-            // top-level string, then pretty-print the raw JSON so structured
-            // tool outputs (e.g. `get_current_time` → `{"datetime":…}`) are
-            // never silently discarded.
-            let content = val
-                .get("content")
-                .and_then(|c| c.as_array())
-                .and_then(|arr| arr.first())
-                .and_then(|item| item.get("text"))
-                .and_then(|t| t.as_str())
-                .map(str::to_owned)
-                .or_else(|| val.as_str().map(str::to_owned))
-                .unwrap_or_else(|| {
-                    serde_json::to_string_pretty(val)
-                        .unwrap_or_else(|_| "(probe completed with no text output)".to_owned())
-                });
-            format!(
-                "Probe `{tool_name}` succeeded at {}.\n\n{}",
-                Utc::now().to_rfc3339(),
-                content
-            )
-        }
-        everruns_core::ToolExecutionResult::ToolError(ref msg) => {
-            format!(
-                "Probe `{tool_name}` failed at {}.\n\nError: {msg}",
-                Utc::now().to_rfc3339()
-            )
-        }
-        // InternalError, ConnectionRequired and PolicyOutcome cannot produce a useful probe
-        // observation — fall back so the caller records the legacy placeholder
-        // and starts a normal scheduled agent turn.
-        everruns_core::ToolExecutionResult::InternalError(_)
-        | everruns_core::ToolExecutionResult::ConnectionRequired { .. }
-        | everruns_core::ToolExecutionResult::PolicyOutcome(_) => {
-            return ProbeOutcome::Skipped;
-        }
-        everruns_core::ToolExecutionResult::SuccessWithImages { ref result, .. } => {
-            // Pretty-print the JSON result; note image count for context.
-            let text = result.as_str().map(str::to_owned).unwrap_or_else(|| {
-                serde_json::to_string_pretty(result)
-                    .unwrap_or_else(|_| "(probe completed with image output)".to_owned())
-            });
-            format!(
-                "Probe `{tool_name}` succeeded at {}.\n\n{}",
-                Utc::now().to_rfc3339(),
-                text
-            )
-        }
-    };
-
-    tracing::debug!(
-        task_id = %task.id,
-        tool = %tool_name,
-        "Monitor probe ran"
-    );
-
-    ProbeOutcome::Ran { output }
+/// What firing a schedule's monitors did.
+#[derive(Default)]
+struct MonitorFire {
+    /// A probe ran, standing in for the agent turn.
+    probe_ran: bool,
+    /// Probe results whose wake condition was met: the agent turn runs, with these.
+    wake: Vec<String>,
 }
 
 /// Cancel running monitor tasks whose linked schedule is inactive.
@@ -765,6 +659,28 @@ mod tests {
             })
             .collect::<Vec<_>>()
             .join("")
+    }
+
+    /// A session with a harness, so a probe can load its tool settings.
+    pub(super) async fn harnessed_session(db: &Arc<StorageBackend>) -> SessionId {
+        let session_id = db.create_test_session().await;
+        let harness = Uuid::now_v7();
+        db.create_test_harness(DEFAULT_ORG_ID, harness).await;
+        sqlx::query("UPDATE sessions SET harness_id = $1 WHERE id = $2")
+            .bind(harness)
+            .bind(session_id.uuid())
+            .execute(db.database().pool())
+            .await
+            .unwrap();
+        session_id
+    }
+
+    fn probe_host(db: &Arc<StorageBackend>) -> ProbeHost {
+        ProbeHost::with_tools(
+            db.clone(),
+            super::super::monitor_probe::monitor_probe_tool_registry(),
+            None,
+        )
     }
 
     fn make_registry(db: Arc<StorageBackend>) -> DbSessionTaskRegistry {
@@ -1092,15 +1008,14 @@ mod tests {
 
     #[tokio::test]
     async fn monitor_probe_registry_excludes_network_and_filesystem_tools() {
-        let registry = monitor_probe_tool_registry();
+        let registry = super::super::monitor_probe::monitor_probe_tool_registry();
 
-        assert!(
-            registry.has("get_current_time"),
-            "context-free probe tools remain available"
-        );
-        assert!(
-            !registry.has("web_fetch"),
-            "scheduled probes must not run network-capable tools without the worker/API ToolContext"
+        for tool in everruns_contracts::runtime::monitor_probe::MONITOR_PROBE_TOOLS {
+            assert!(registry.has(tool), "probe tool {tool} is registered");
+        }
+        assert_eq!(
+            registry.len(),
+            everruns_contracts::runtime::monitor_probe::MONITOR_PROBE_TOOLS.len()
         );
         assert!(
             !registry.has("read_file"),
@@ -1111,7 +1026,7 @@ mod tests {
     #[tokio::test]
     async fn probe_monitor_records_tool_result_not_placeholder() {
         let db = make_db();
-        let session_id = db.create_test_session().await;
+        let session_id = harnessed_session(&db).await;
         let schedule_id = ScheduleId::new();
 
         let task = create_probe_monitor_task(
@@ -1124,16 +1039,18 @@ mod tests {
         .await;
 
         let registry = make_registry(db.clone());
-        let tool_registry = Arc::new(monitor_probe_tool_registry());
+        let probes = probe_host(&db);
 
         let probe_ran = fire_monitor_tasks(
             &registry,
+            DEFAULT_ORG_ID,
             session_id,
             schedule_id,
             false,
-            Some(&tool_registry),
+            Some(&probes),
         )
-        .await;
+        .await
+        .probe_ran;
 
         assert!(
             probe_ran,
@@ -1172,16 +1089,18 @@ mod tests {
         let task = create_monitor_task(&db, session_id, schedule_id).await;
 
         let registry = make_registry(db.clone());
-        let tool_registry = Arc::new(monitor_probe_tool_registry());
+        let probes = probe_host(&db);
 
         let probe_ran = fire_monitor_tasks(
             &registry,
+            DEFAULT_ORG_ID,
             session_id,
             schedule_id,
             false,
-            Some(&tool_registry),
+            Some(&probes),
         )
-        .await;
+        .await
+        .probe_ran;
 
         assert!(
             !probe_ran,
@@ -1218,7 +1137,16 @@ mod tests {
         let registry = make_registry(db.clone());
 
         // No probe registry supplied → must fall back to "Monitor fired" placeholder.
-        let probe_ran = fire_monitor_tasks(&registry, session_id, schedule_id, false, None).await;
+        let probe_ran = fire_monitor_tasks(
+            &registry,
+            DEFAULT_ORG_ID,
+            session_id,
+            schedule_id,
+            false,
+            None,
+        )
+        .await
+        .probe_ran;
 
         assert!(!probe_ran, "no registry → probe_ran must be false");
 
@@ -1433,3 +1361,7 @@ mod limits_tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "monitor_probe_tests.rs"]
+mod monitor_probe_tests;

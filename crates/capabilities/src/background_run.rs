@@ -22,6 +22,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::runtime::monitor_probe::{
+    MONITOR_PROBE_TOOLS, WAKE_WHEN_SPEC_KEY, WakeCondition, is_monitor_probe_tool,
+};
 use everruns_contracts::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::background::{BackgroundEventSink, BackgroundOutcome, BackgroundProgress};
@@ -155,6 +158,7 @@ struct BackgroundScheduleRequest {
     scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
     timezone: String,
     bounds: everruns_core::session_schedule::ScheduleBounds,
+    wake_when: Option<WakeCondition>,
 }
 
 fn parse_background_schedule(
@@ -214,12 +218,18 @@ fn parse_background_schedule(
         .to_string();
 
     let bounds = everruns_core::session_schedule::ScheduleBounds::from_tool_args(schedule)?;
+    let wake_when = schedule
+        .get("wake_when")
+        .filter(|value| !value.is_null())
+        .map(WakeCondition::from_tool_arg)
+        .transpose()?;
 
     Ok(Some(BackgroundScheduleRequest {
         cron_expression,
         scheduled_at,
         timezone,
         bounds,
+        wake_when,
     }))
 }
 
@@ -242,6 +252,46 @@ fn build_background_schedule_description(
         "Monitor: {title}\n\n\
 This scheduled monitor fired. Start the background run now.\n\n\
 spawn_background payload:\n{payload_json}"
+    )
+}
+
+/// Whether a scheduled call is a probe monitor, which the scheduler runs
+/// itself: a probe tool with a `wake_when`. A `wake_when` on any other tool,
+/// or a probe tool scheduled without one, is a mistake the agent can fix.
+fn probe_monitor_check(
+    tool_name: &str,
+    schedule: Option<&BackgroundScheduleRequest>,
+    args: &Value,
+) -> std::result::Result<bool, String> {
+    let Some(schedule) = schedule else {
+        return Ok(false);
+    };
+    match (is_monitor_probe_tool(tool_name), &schedule.wake_when) {
+        (true, Some(_)) if args.get("save_to_file").is_some_and(|v| !v.is_null()) => {
+            Err("A monitor probe cannot save files; drop save_to_file.".to_string())
+        }
+        (true, Some(_)) => Ok(true),
+        (true, None) => Err(format!(
+            "A scheduled {tool_name} monitor needs schedule.wake_when: the scheduler runs {tool_name} on each fire and wakes you only when that condition becomes true."
+        )),
+        (false, Some(_)) => Err(format!(
+            "wake_when only works for tools the scheduler can run itself ({}), not {tool_name}.",
+            MONITOR_PROBE_TOOLS.join(", ")
+        )),
+        (false, None) => Ok(false),
+    }
+}
+
+fn build_probe_schedule_description(
+    tool_name: &str,
+    title: &str,
+    wake_when: &WakeCondition,
+) -> String {
+    format!(
+        "Monitor: {title}\n\n\
+This monitor runs {tool_name} on each fire without waking you, and wakes you once when {condition}. \
+Its latest result is below. Act on it, and cancel the monitor with cancel_task once it is no longer needed.",
+        condition = wake_when.describe()
     )
 }
 
@@ -351,7 +401,8 @@ impl Tool for SpawnBackgroundTool {
                         "ends_at": bounds["ends_at"],
                         "max_runs": bounds["max_runs"],
                         "stop_when": bounds["stop_when"],
-                        "budget_usd": bounds["budget_usd"]
+                        "budget_usd": bounds["budget_usd"],
+                        "wake_when": WakeCondition::tool_schema()
                     },
                     "additionalProperties": false
                 },
@@ -412,12 +463,20 @@ impl Tool for SpawnBackgroundTool {
                 "spawn_background cannot target itself recursively",
             );
         }
-        if tool.hints().supports_background != Some(true) {
+        // A scheduled monitor on a probe tool never runs in the background:
+        // the scheduler runs the tool itself on each fire and wakes the agent
+        // only when `wake_when` becomes true (monitor_probe module docs).
+        let probe = match probe_monitor_check(tool_name, schedule_request.as_ref(), &requested_args)
+        {
+            Ok(probe) => probe,
+            Err(message) => return ToolExecutionResult::tool_error(message),
+        };
+        if !probe && tool.hints().supports_background != Some(true) {
             return ToolExecutionResult::tool_error(format!(
                 "Tool does not support background execution: {tool_name}"
             ));
         }
-        if tool.as_background_executable().is_none() {
+        if !probe && tool.as_background_executable().is_none() {
             return ToolExecutionResult::tool_error(format!(
                 "Tool declared background support but has no background executor: {tool_name}"
             ));
@@ -476,12 +535,15 @@ impl Tool for SpawnBackgroundTool {
                 );
             };
 
-            let description = build_background_schedule_description(
-                tool_name,
-                &tool_args,
-                &title,
-                signal_on_completion,
-            );
+            let description = match &schedule_request.wake_when {
+                Some(wake_when) => build_probe_schedule_description(tool_name, &title, wake_when),
+                None => build_background_schedule_description(
+                    tool_name,
+                    &tool_args,
+                    &title,
+                    signal_on_completion,
+                ),
+            };
 
             return match schedule_store
                 .create_schedule_enforcing_limits(
@@ -500,7 +562,7 @@ impl Tool for SpawnBackgroundTool {
                     // does not fail the spawn.
                     let mut monitor_task_id: Option<String> = None;
                     if let Some(ref task_registry) = context.session_task_registry {
-                        let spec = json!({
+                        let mut spec = json!({
                             "tool": tool_name,
                             "arguments": &tool_args,
                             "schedule_id": schedule.id.to_string(),
@@ -510,6 +572,9 @@ impl Tool for SpawnBackgroundTool {
                             "timezone": schedule.timezone,
                             "signal_on_completion": signal_on_completion,
                         });
+                        if let Some(wake_when) = &schedule_request.wake_when {
+                            spec[WAKE_WHEN_SPEC_KEY] = json!(wake_when);
+                        }
                         match task_registry
                             .create(everruns_core::session_task::CreateSessionTask {
                                 session_id: context.session_id,
@@ -1391,3 +1456,7 @@ mod tests;
 #[cfg(test)]
 #[path = "background_run/ownership_tests.rs"]
 mod ownership_tests;
+
+#[cfg(test)]
+#[path = "background_run_probe_tests.rs"]
+mod probe_tests;
