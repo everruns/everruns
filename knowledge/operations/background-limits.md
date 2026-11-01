@@ -46,7 +46,7 @@ Rollout).
 
 Source: `crates/contracts/src/runtime/session_schedule.rs`
 (`resolve_agent_schedule_bounds`), `crates/server/src/domains/session_schedules/service.rs`
-(`mark_triggered`), `crates/server/src/background/session_scheduler.rs`.
+(`mark_triggered`), `crates/server/src/background/session_scheduler/mod.rs`.
 
 ## Spend
 
