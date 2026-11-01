@@ -56,7 +56,7 @@ test("a stopped schedule shows why and can be re-enabled", async () => {
     />,
   );
   expect(screen.getByText("Ended")).toBeInTheDocument();
-  expect(screen.getByText("Budget used up")).toBeInTheDocument();
+  expect(screen.getByText("Usage limit reached")).toBeInTheDocument();
   fireEvent.click(screen.getAllByRole("button", { name: "Re-enable" })[1]);
   await waitFor(() =>
     expect(mockMutate).toHaveBeenCalledWith({

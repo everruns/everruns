@@ -27,13 +27,14 @@ type ScheduleStatus =
   | "Disabled"
   | "Deleted"
   | "Ended"
-  | "Budget used up"
+  | "Usage limit reached"
   | "Stopped: repeating";
 
 function scheduleStatus(schedule: SessionSchedule): ScheduleStatus {
   if (schedule.deleted_at) return "Deleted";
   if (!schedule.enabled && schedule.stop_reason === "ended") return "Ended";
-  if (!schedule.enabled && schedule.stop_reason === "budget_exhausted") return "Budget used up";
+  if (!schedule.enabled && schedule.stop_reason === "budget_exhausted")
+    return "Usage limit reached";
   if (!schedule.enabled && schedule.stop_reason === "runaway") return "Stopped: repeating";
   return schedule.enabled ? "Active" : "Disabled";
 }
@@ -43,7 +44,7 @@ const STATUS_BADGE: Record<ScheduleStatus, "default" | "secondary" | "outline" |
   Disabled: "secondary",
   Deleted: "secondary",
   Ended: "outline",
-  "Budget used up": "destructive",
+  "Usage limit reached": "destructive",
   "Stopped: repeating": "destructive",
 };
 

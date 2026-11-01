@@ -147,7 +147,7 @@ it("lists what needs attention, gives Chat the same rows, and shows the agents",
   const attention = screen.getByTestId("home-attention");
   const rows = within(attention).getAllByRole("listitem");
   expect(rows.map((row) => row.dataset.severity)).toEqual(["error", "error", "warning"]);
-  expect(within(attention).getByText("1 session paused at its budget limit")).toBeInTheDocument();
+  expect(within(attention).getByText("1 session paused at its usage limit")).toBeInTheDocument();
   expect(
     within(attention).getByText("6 of 8 turns failed in the last 2 hours"),
   ).toBeInTheDocument();

@@ -1,7 +1,7 @@
 // zh-CN product copy for Home (knowledge/ui/org-home.md).
 export const messages: Readonly<Record<string, string>> = {
   "1 sandbox needs attention": "1 个沙箱需要关注",
-  "1 session paused at its budget limit": "1 个会话因预算上限暂停",
+  "1 session paused at its usage limit": "1 个会话因用量上限暂停",
   "Add provider": "添加提供方",
   "Agents need at least one enabled model.": "智能体至少需要一个已启用的模型。",
   "Agents, channels, sessions, sandboxes and limits all look fine.":
@@ -57,7 +57,7 @@ export const messages: Readonly<Record<string, string>> = {
   "{count} running": "{count} 个运行中",
   "{count} sandboxes need attention": "{count} 个沙箱需要关注",
   "{count} sessions": "{count} 个会话",
-  "{count} sessions paused at their budget limit": "{count} 个会话因预算上限暂停",
+  "{count} sessions paused at their usage limit": "{count} 个会话因用量上限暂停",
   "{done} of {total} done": "已完成 {done}/{total}",
   "{failed} of {runs} turns failed in the last {hours} hours":
     "最近 {hours} 小时内 {runs} 轮中有 {failed} 轮失败",

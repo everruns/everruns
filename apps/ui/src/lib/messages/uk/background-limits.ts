@@ -41,7 +41,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Daily cap must be more than $0, or turn on No cap.":
     "Денний ліміт має бути більшим за $0, або увімкніть «Без ліміту».",
   "Unattended work (daily)": "Робота без нагляду (за день)",
-  "Budget used up": "Бюджет вичерпано",
+  "Usage limit reached": "Досягнуто ліміту використання",
   "Stopped: repeating": "Зупинено: повторюється",
   " · Run {value0} of {value1}": " · запуск {value0} з {value1}",
   " · Ends {value0}": " · завершується {value0}",

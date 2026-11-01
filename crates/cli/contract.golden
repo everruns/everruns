@@ -19,6 +19,7 @@ agents check-rules list	--context-revision --reason
 agents check-rules upsert	--category --context-revision --enabled! --kind! --match-mode --message --pattern --reason --rubric --rule-id! --severity
 agents copy	--context-revision --id --reason <id>
 agents cost-plan	--agent! --context-revision --guidance --locale --reason
+agents costs get	--agent-id --context-revision --reason <agent_id>
 agents create	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --reason --tag/-t... --writable
 agents credentials create	--agent-id --auth --context-revision --description --env-name --header-name --label! --mcp-server-name --parameter-name --reason --tool-name --url
 agents delete	--context-revision --id --reason <id>
@@ -69,13 +70,13 @@ agents update	--description --file/-f --harness/-H --initial-files-dir --instruc
 agents upsert	--capabilities --communication --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --localizations --max-iterations --max-output-tokens --mcpServers --name! --network-access --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents validate	--remote <file>!
 budgets check	--budget-id! --context-revision --reason
-budgets create	--context-revision --currency! --limit! --metadata --period --reason --soft-limit --subject-id! --subject-type!
+budgets create	--context-revision --currency! --limit! --metadata --period --policy --reason --soft-limit --subject-id! --subject-type!
 budgets delete	--budget-id --context-revision --reason <budget_id>
 budgets get	--budget-id --context-revision --reason <budget_id>
 budgets ledger list	--budget-id! --context-revision --limit --offset --reason
 budgets list	--context-revision --reason --subject-id --subject-type
 budgets top-up top	--amount! --budget-id! --context-revision --description --reason
-budgets update	--budget-id! --context-revision --limit --metadata --reason --soft-limit --status
+budgets update	--budget-id! --context-revision --limit --metadata --policy --reason --soft-limit --status
 capabilities create	--context-revision --definition! --reason
 capabilities declarative delete	--context-revision --id --reason <id>
 capabilities declarative destroy	--context-revision --id --reason <id>
@@ -94,6 +95,12 @@ context append	--context-revision --entity-ref --kind --reason --text! <entity_r
 context clear	--context-revision --entity-ref --expected-revision --kind --reason <entity_ref>
 context get	--context-revision --entity-ref --kind --reason <entity_ref>
 context set	--content! --context-revision --entity-ref --expected-revision --kind --reason <entity_ref>
+costs rates create	--context-revision --effective-from --list-price-multiplier --match --meter! --reason --unit-price-usd
+costs rates list	--context-revision --reason
+costs rates retire	--context-revision --effective-from --rate-id! --reason
+costs settings get	--context-revision --reason
+costs settings update	--context-revision --reason --timezone
+costs summary get	--agent-id --context-revision --from --reason --to
 credential-bindings create	--binding --context-revision --label! --mcp --name --owner-id --reason --scope! --source --usage!
 credential-bindings list	--context-revision --owner-id --reason --scope! --usage!
 credential-bindings revoke	--context-revision --id! --reason --revision!

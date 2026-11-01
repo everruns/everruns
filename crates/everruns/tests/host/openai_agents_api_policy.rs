@@ -265,7 +265,7 @@ async fn a_budget_halt_stops_the_remote_turn_before_more_tools_run() {
     let h = Harness::new().await;
     h.executor.then(Script::Halt(
         "budget_exhausted",
-        "Budget exhausted. Increase the budget to continue.",
+        "Usage limit reached. A usage policy stopped this work; raise its limit to continue.",
     ));
     let (outcome, _) = h.run(&request(1, "Who is customer 123?")).await;
     match outcome {
@@ -276,7 +276,7 @@ async fn a_budget_halt_stops_the_remote_turn_before_more_tools_run() {
         } => {
             assert_eq!(code.as_deref(), Some("budget_exhausted"));
             assert!(policy);
-            assert!(message.starts_with("Budget exhausted."));
+            assert!(message.starts_with("Usage limit reached."));
         }
         other => panic!("expected a failed turn, got {other:?}"),
     }
@@ -293,7 +293,7 @@ async fn a_budget_halt_stops_the_remote_turn_before_more_tools_run() {
         results[0]["error"]
             .as_str()
             .unwrap()
-            .starts_with("Budget exhausted.")
+            .starts_with("Usage limit reached.")
     );
 }
 

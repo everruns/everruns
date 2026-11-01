@@ -38,7 +38,7 @@ export const messages: Readonly<Record<string, string>> = {
     "每个计划任务的默认预算不能超过最高预算。",
   "Daily cap must be more than $0, or turn on No cap.": "每日上限必须大于 $0，或开启不设上限。",
   "Unattended work (daily)": "无人值守工作（每日）",
-  "Budget used up": "预算已用尽",
+  "Usage limit reached": "已达到使用限额",
   "Stopped: repeating": "已停止：重复结果",
   " · Run {value0} of {value1}": " · 第 {value0} 次，共 {value1} 次",
   " · Ends {value0}": " · 结束于 {value0}",

@@ -50,6 +50,7 @@ import { MessageImage } from "@/components/chat/image-attachments";
 import { MessageContent } from "@/components/chat/message-content";
 import { WorkLogNarration } from "@/components/chat/work-log-narration";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
+import { ContinueTurnButton } from "@/components/costs/continue-turn-button";
 import { ToolErrorDisclosureProvider } from "@/components/chat/tool-error-disclosure";
 import {
   getReasoningMultiIterationTurnIds,
@@ -307,6 +308,8 @@ export const ChatMessageList = memo(function ChatMessageList({
   sessionActive = false,
   messageActions = false,
 }: ChatMessageListProps) {
+  const askAction = (error?: { code?: string | null }) =>
+    error?.code === "budget_paused" ? <ContinueTurnButton sessionId={sessionId} /> : undefined;
   const { locale, displayLocale, t } = useLocale();
   const ui = useUiTranslations();
   const { data: providers } = useProviders();
@@ -1136,6 +1139,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                     retryable={isRetryableRuntimeError(
                       getRuntimeErrorFromTurnFailed(turnFailedData),
                     )}
+                    action={askAction(getRuntimeErrorFromTurnFailed(turnFailedData))}
                   />
                 );
               }
@@ -1241,6 +1245,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                     key={event.id}
                     message={textContent}
                     retryable={isRetryableRuntimeError(outputError)}
+                    action={askAction(outputError)}
                   />
                 );
               }

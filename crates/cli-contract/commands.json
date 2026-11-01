@@ -811,6 +811,33 @@
     ]
   },
   {
+    "wire_name": "get_agent_cost",
+    "path": [
+      "agents",
+      "costs"
+    ],
+    "verb": "get",
+    "description": "What one agent cost the organization this month.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/costs",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See what an agent cost this month",
+        "command": "everruns agents costs get agent_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "create_agent",
     "path": [
       "agents"
@@ -3388,7 +3415,7 @@
         "long": "currency",
         "kind": "string",
         "required": true,
-        "help": "Unit in which usage and the limit are measured."
+        "help": "What the limit measures: \"usd\" (cost from the org's price list) or \"tokens\"."
       },
       {
         "field": "limit",
@@ -3407,6 +3434,12 @@
       {
         "field": "period",
         "long": "period",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "policy",
+        "long": "policy",
         "kind": "json",
         "required": false
       },
@@ -3633,6 +3666,12 @@
         "kind": "json",
         "required": false,
         "help": "Free-form metadata attached to this resource."
+      },
+      {
+        "field": "policy",
+        "long": "policy",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "soft_limit",
@@ -4137,6 +4176,195 @@
       {
         "intent": "Record an agent's requirements from a file",
         "command": "everruns context set agent_01h9 --content @notes.md --expected-revision 3 --reason 'Product review decisions'"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_cost_rate",
+    "path": [
+      "costs",
+      "rates"
+    ],
+    "verb": "create",
+    "description": "Add a rate to the organization's price list. A rate is a fixed price per unit or a multiple of the list price; rates are never edited, a change is a new rate from a later date.",
+    "method": "POST",
+    "http_path": "/v1/cost-rates",
+    "args": [
+      {
+        "field": "effective_from",
+        "long": "effective-from",
+        "kind": "string",
+        "required": false,
+        "help": "When it starts; now when absent."
+      },
+      {
+        "field": "list_price_multiplier",
+        "long": "list-price-multiplier",
+        "kind": "number",
+        "required": false,
+        "help": "Multiple of the provider's or catalog price."
+      },
+      {
+        "field": "match",
+        "long": "match",
+        "kind": "json",
+        "required": false,
+        "help": "Which usage it applies to (see `CostRate.match`)."
+      },
+      {
+        "field": "meter",
+        "long": "meter",
+        "kind": "string",
+        "required": true,
+        "help": "`model.tokens` or `sandbox.time`."
+      },
+      {
+        "field": "unit_price_usd",
+        "long": "unit-price-usd",
+        "kind": "number",
+        "required": false,
+        "help": "Fixed USD per million tokens (model tokens) or per hour (sandboxes)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Record a negotiated 20% discount on OpenAI",
+        "command": "everruns costs rates create --meter model.tokens --match '{\"provider\":\"openai\"}' --list-price-multiplier 0.8 --reason 'Enterprise discount'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_cost_rates",
+    "path": [
+      "costs",
+      "rates"
+    ],
+    "verb": "list",
+    "description": "List the organization's price list, history included.",
+    "method": "GET",
+    "http_path": "/v1/cost-rates",
+    "args": [],
+    "examples": [
+      {
+        "intent": "See which rates price your agents' usage",
+        "command": "everruns costs rates list"
+      }
+    ]
+  },
+  {
+    "wire_name": "retire_cost_rate",
+    "path": [
+      "costs",
+      "rates"
+    ],
+    "verb": "retire",
+    "description": "End a rate from a date. Past costs keep the rate they used; usage after the date falls back to the provider's or catalog price.",
+    "method": "POST",
+    "http_path": "/v1/cost-rates/{rate_id}/retire",
+    "args": [
+      {
+        "field": "effective_from",
+        "long": "effective-from",
+        "kind": "string",
+        "required": false,
+        "help": "When it ends; now when absent."
+      },
+      {
+        "field": "rate_id",
+        "long": "rate-id",
+        "kind": "string",
+        "required": true,
+        "help": "Rate id (`rate_...`) whose match to retire."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop applying a discount that expired",
+        "command": "everruns costs rates retire --rate-id rate_01h9 --reason 'Contract ended'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_cost_settings",
+    "path": [
+      "costs",
+      "settings"
+    ],
+    "verb": "get",
+    "description": "Read the organization's cost settings.",
+    "method": "GET",
+    "http_path": "/v1/costs/settings",
+    "args": [],
+    "examples": [
+      {
+        "intent": "See which timezone daily and monthly limits reset in",
+        "command": "everruns costs settings get"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_cost_settings",
+    "path": [
+      "costs",
+      "settings"
+    ],
+    "verb": "update",
+    "description": "Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.",
+    "method": "PATCH",
+    "http_path": "/v1/costs/settings",
+    "args": [
+      {
+        "field": "timezone",
+        "long": "timezone",
+        "kind": "string",
+        "required": false,
+        "help": "IANA timezone, or null for UTC."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Reset monthly limits at midnight in Austin",
+        "command": "everruns costs settings update --timezone America/Chicago --reason 'Team is in Austin'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_cost_summary",
+    "path": [
+      "costs",
+      "summary"
+    ],
+    "verb": "get",
+    "description": "Summarize what usage cost the organization.",
+    "method": "GET",
+    "http_path": "/v1/costs/summary",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only this agent (`agent_...`)."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "string",
+        "required": false,
+        "help": "Window start (inclusive)."
+      },
+      {
+        "field": "to",
+        "long": "to",
+        "kind": "string",
+        "required": false,
+        "help": "Window end (exclusive)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See this month's cost by agent and source",
+        "command": "everruns costs summary get"
       }
     ]
   },
@@ -13711,7 +13939,7 @@
       "sessions"
     ],
     "verb": "resume",
-    "description": "Resume all paused session budgets for a session.",
+    "description": "Continue a session past a usage policy's ask step.",
     "method": "POST",
     "http_path": "/v1/sessions/{session_id}/resume",
     "args": [
@@ -13726,8 +13954,8 @@
     ],
     "examples": [
       {
-        "intent": "Restart a session that paused when a budget ran out",
-        "command": "everruns sessions resume session_01h9 --reason 'Budget topped up'"
+        "intent": "Let a session continue after a usage policy asked before going further",
+        "command": "everruns sessions resume session_01h9 --reason 'Finish the report'"
       }
     ]
   },

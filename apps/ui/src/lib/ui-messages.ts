@@ -6,6 +6,7 @@ import { messages as tracing } from "./messages/uk/tracing";
 import { messages as backgroundLimits } from "./messages/uk/background-limits";
 import { messages as monitoringTimeline } from "./messages/uk/monitoring-timeline";
 import { messages as orgHome } from "./messages/uk/org-home";
+import { messages as costs } from "./messages/uk/costs";
 import { messages as evals } from "./messages/uk/evals";
 import { messages as zh } from "./messages/zh-CN";
 import { messages as es } from "./messages/es";
@@ -64,6 +65,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   backgroundLimits,
   monitoringTimeline,
   orgHome,
+  costs,
   evals,
 );
 

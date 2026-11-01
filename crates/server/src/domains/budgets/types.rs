@@ -4,7 +4,7 @@
 // the domain never imports `api`. The `api` module re-exports them, keeping
 // OpenAPI schema names and JSON shapes unchanged.
 
-use everruns_core::budget::BudgetPeriod;
+use everruns_core::budget::{BudgetPeriod, UsagePolicy};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -17,7 +17,8 @@ pub struct CreateBudgetRequest {
     /// Public identifier of the constrained resource.
     #[schema(example = "agent_01933b5a00007000800000000000001")]
     pub subject_id: String,
-    /// Unit in which usage and the limit are measured.
+    /// What the limit measures: "usd" (cost from the org's price list) or
+    /// "tokens".
     #[schema(example = "usd")]
     pub currency: String,
     /// Hard spending ceiling for the budget.
@@ -33,6 +34,10 @@ pub struct CreateBudgetRequest {
     #[serde(default)]
     /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
+    /// Name, steps (notify, ask to continue, stop) and which usage counts.
+    /// Absent: notify at 80%, ask at the soft limit, stop at the limit.
+    #[serde(default)]
+    pub policy: Option<UsagePolicy>,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -56,4 +61,7 @@ pub struct UpdateBudgetRequest {
     pub status: Option<String>,
     /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
+    /// Replacement name, steps and filter.
+    #[serde(default)]
+    pub policy: Option<UsagePolicy>,
 }

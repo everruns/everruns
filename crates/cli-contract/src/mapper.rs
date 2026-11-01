@@ -38,6 +38,7 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "agents check-rules",
         "Rules the agent analyzer applies, built-in and custom.",
     ),
+    ("agents costs", "What an agent cost the organization."),
     (
         "agents credentials",
         "Secrets an agent needs from whoever runs it.",
@@ -100,13 +101,13 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     (
         "budgets",
-        "Spending limits for sessions, agents, users and organizations.",
+        "Usage policies: limits on what sessions, agents, people and the organization use.",
     ),
     (
         "budgets ledger",
         "Charges and top-ups recorded against a budget.",
     ),
-    ("budgets top-up", "Add credits to a budget."),
+    ("budgets top-up", "Add to a usage policy's balance."),
     (
         "capabilities",
         "Capabilities agents can use, including declarative ones you define.",
@@ -130,6 +131,22 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "context",
         "Notes managers keep about an entity, read by agents that manage it.",
+    ),
+    (
+        "costs",
+        "What usage cost the organization, its price list and cost settings.",
+    ),
+    (
+        "costs rates",
+        "The organization's price list: rates for model tokens and sandbox time.",
+    ),
+    (
+        "costs settings",
+        "Cost settings, such as the timezone calendar windows use.",
+    ),
+    (
+        "costs summary",
+        "Costs over a window, by where each number came from.",
     ),
     (
         "credential-bindings",

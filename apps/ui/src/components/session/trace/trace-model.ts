@@ -491,7 +491,7 @@ export function parseTraceError(raw: unknown): ParsedTraceError | null {
  * label: the error text says more than "Processing error" would.
  */
 const ERROR_CODE_LABEL: Record<string, string> = {
-  provider_quota_exhausted: "Out of credits",
+  provider_quota_exhausted: "Provider account out of funds",
   provider_rate_limited: "Rate limited",
   provider_usage_limit_reached: "Usage limit reached",
   provider_unavailable: "Provider down",
@@ -501,8 +501,8 @@ const ERROR_CODE_LABEL: Record<string, string> = {
   model_unavailable: "Model unavailable",
   model_not_configured: "Model not configured",
   request_too_large: "Request too large",
-  budget_exhausted: "Budget exhausted",
-  budget_paused: "Budget paused",
+  budget_exhausted: "Usage policy stopped",
+  budget_paused: "Usage policy asked",
   dependency_unavailable: "Dependency unavailable",
   invalid_tool_schema: "Invalid tool schema",
   max_iterations: "Step limit reached",

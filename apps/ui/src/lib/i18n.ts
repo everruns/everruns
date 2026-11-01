@@ -171,18 +171,19 @@ const messages = {
     voice_service_unavailable_error: "Voice service is unavailable.",
     error_prefix: "Error: {value}",
     runtime_error_budget_exhausted_reached:
-      "Budget exhausted. {spent} {currency} spent reached the {limit} {currency} limit. Increase the budget to continue.",
+      "Usage limit reached. {spent} {currency} spent reached the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.",
     runtime_error_budget_exhausted_exceeded:
-      "Budget exhausted. {spent} {currency} spent exceeded the {limit} {currency} limit. Increase the budget to continue.",
-    runtime_error_budget_exhausted_generic: "Budget exhausted. Increase the budget to continue.",
+      "Usage limit reached. {spent} {currency} spent exceeded the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.",
+    runtime_error_budget_exhausted_generic:
+      "Usage limit reached. A usage policy stopped this work; raise its limit to continue.",
     runtime_error_budget_paused_reached:
-      "Budget paused. {spent} {currency} spent reached the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.",
+      "Usage policy asks before continuing. {spent} {currency} spent reached the {soft_limit} {currency} ask point. Continue this turn or raise the limit.",
     runtime_error_budget_paused_exceeded:
-      "Budget paused. {spent} {currency} spent exceeded the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.",
+      "Usage policy asks before continuing. {spent} {currency} spent exceeded the {soft_limit} {currency} ask point. Continue this turn or raise the limit.",
     runtime_error_budget_paused_with_spent:
-      "Budget paused with {spent} {currency} spent. Increase or resume the budget to continue.",
+      "Usage policy asks before continuing, with {spent} {currency} spent. Continue this turn or raise the limit.",
     runtime_error_budget_paused_generic:
-      "Budget paused. Increase or resume the budget to continue.",
+      "Usage policy asks before continuing. Continue this turn or raise the limit.",
     runtime_error_model_unavailable:
       "The model `{value}` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
     runtime_error_model_unavailable_generic:
@@ -491,18 +492,19 @@ const messages = {
     voice_service_unavailable_error: "Голосовий сервіс недоступний.",
     error_prefix: "Помилка: {value}",
     runtime_error_budget_exhausted_reached:
-      "Бюджет вичерпано. Витрачено {spent} {currency}, що досягло ліміту {limit} {currency}. Збільште бюджет, щоб продовжити.",
+      "Досягнуто ліміту використання. Витрачено {spent} {currency}, що досягло ліміту {limit} {currency}. Правило використання зупинило цю роботу; підвищте його ліміт, щоб продовжити.",
     runtime_error_budget_exhausted_exceeded:
-      "Бюджет вичерпано. Витрачено {spent} {currency}, що перевищило ліміт {limit} {currency}. Збільште бюджет, щоб продовжити.",
-    runtime_error_budget_exhausted_generic: "Бюджет вичерпано. Збільште бюджет, щоб продовжити.",
+      "Досягнуто ліміту використання. Витрачено {spent} {currency}, що перевищило ліміт {limit} {currency}. Правило використання зупинило цю роботу; підвищте його ліміт, щоб продовжити.",
+    runtime_error_budget_exhausted_generic:
+      "Досягнуто ліміту використання. Правило використання зупинило цю роботу; підвищте його ліміт, щоб продовжити.",
     runtime_error_budget_paused_reached:
-      "Бюджет призупинено. Витрачено {spent} {currency}, що досягло м'якого ліміту {soft_limit} {currency}. Збільште бюджет або відновіть його, щоб продовжити.",
+      "Правило використання просить підтвердження. Витрачено {spent} {currency}, що досягло порогу запиту {soft_limit} {currency}. Продовжте цей хід або підвищте ліміт.",
     runtime_error_budget_paused_exceeded:
-      "Бюджет призупинено. Витрачено {spent} {currency}, що перевищило м'який ліміт {soft_limit} {currency}. Збільште бюджет або відновіть його, щоб продовжити.",
+      "Правило використання просить підтвердження. Витрачено {spent} {currency}, що перевищило поріг запиту {soft_limit} {currency}. Продовжте цей хід або підвищте ліміт.",
     runtime_error_budget_paused_with_spent:
-      "Бюджет призупинено після витрати {spent} {currency}. Збільште бюджет або відновіть його, щоб продовжити.",
+      "Правило використання просить підтвердження: витрачено {spent} {currency}. Продовжте цей хід або підвищте ліміт.",
     runtime_error_budget_paused_generic:
-      "Бюджет призупинено. Збільште бюджет або відновіть його, щоб продовжити.",
+      "Правило використання просить підтвердження. Продовжте цей хід або підвищте ліміт.",
     runtime_error_model_unavailable:
       "Модель `{value}` недоступна. Її могли видалити, перейменувати або ваш API-ключ не має до неї доступу. Виберіть іншу модель.",
     runtime_error_model_unavailable_generic: "Вибрана модель недоступна. Виберіть іншу модель.",

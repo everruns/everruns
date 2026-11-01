@@ -1,6 +1,6 @@
 ---
 title: everruns budgets
-description: "Spending limits for sessions, agents, users and organizations. CLI reference for everruns budgets: usage, flags and examples."
+description: "Usage policies: limits on what sessions, agents, people and the organization use. CLI reference for everruns budgets: usage, flags and examples."
 sidebar:
   label: budgets
 appliesTo: [platform, cloud]
@@ -8,7 +8,7 @@ appliesTo: [platform, cloud]
 
 <!-- Generated from the everruns CLI by `UPDATE_CLI_REFERENCE=1 cargo test -p everruns-cli the_cli_reference`. Edit command descriptions and examples in the code, not here. -->
 
-Spending limits for sessions, agents, users and organizations.
+Usage policies: limits on what sessions, agents, people and the organization use.
 
 | Command | What it does |
 |---|---|
@@ -50,10 +50,11 @@ everruns budgets create [OPTIONS] --currency <currency> --limit <limit> --subjec
 
 | Flag | Description |
 |---|---|
-| `--currency <CURRENCY>` | Required. Unit in which usage and the limit are measured. |
+| `--currency <CURRENCY>` | Required. What the limit measures: "usd" (cost from the org's price list) or "tokens". |
 | `--limit <LIMIT>` | Required. Hard spending ceiling for the budget. |
 | `--metadata <METADATA>` | Free-form metadata attached to this resource. |
 | `--period <PERIOD>` |  |
+| `--policy <POLICY>` |  |
 | `--soft-limit <SOFT_LIMIT>` | Optional threshold that triggers a warning or pause before exhaustion. |
 | `--subject-id <SUBJECT_ID>` | Required. Public identifier of the constrained resource. |
 | `--subject-type <SUBJECT_TYPE>` | Required. Kind of resource constrained by the budget. |
@@ -136,6 +137,7 @@ everruns budgets update [OPTIONS] --budget-id <budget_id>
 | `--budget-id <BUDGET_ID>` | Required. Budget's prefixed public identifier. |
 | `--limit <LIMIT>` | Maximum number of items returned in this page. |
 | `--metadata <METADATA>` | Free-form metadata attached to this resource. |
+| `--policy <POLICY>` |  |
 | `--soft-limit <SOFT_LIMIT>` | Replacement soft threshold, or null to remove it. |
 | `--status <STATUS>` | Current lifecycle status. |
 

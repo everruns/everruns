@@ -1879,7 +1879,7 @@ async fn execution_preserves_reason_failure_message() {
     let output = serde_json::to_value(ReasonResult {
         native_counts: None,
         success: false,
-        text: "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue."
+        text: "Usage limit reached. 100.00 tokens spent reached the 100.00 tokens limit. A usage policy stopped this work; raise its limit to continue."
             .into(),
         tool_calls: vec![],
         has_tool_calls: false,
@@ -1916,7 +1916,7 @@ async fn execution_preserves_reason_failure_message() {
 
     assert_eq!(
         turn_failed.error,
-        "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue."
+        "Usage limit reached. 100.00 tokens spent reached the 100.00 tokens limit. A usage policy stopped this work; raise its limit to continue."
     );
     assert_eq!(
         turn_failed.error_code.as_deref(),

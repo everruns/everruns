@@ -1,16 +1,28 @@
 ---
 type: Specification
-title: "Budgeting Specification"
-description: "Extensible budgeting system."
+title: "Costs and Usage Policies Specification"
+description: "Org cost accounting (usage record, price list, cost basis) and usage policies (budgets) that notify, ask to continue, or stop."
 tags:
   - everruns
   - security
 ---
-# Budgeting Specification
+# Costs and Usage Policies Specification
 
 ## Abstract
 
-Extensible budgeting system for controlling resource consumption across sessions, agents, users, and organizations. Supports multiple currencies (USD cost, token counts, custom credits), pluggable metering, pluggable policy rules, and soft enforcement (pause/warn before hard-stop).
+Two things, kept apart on purpose:
+
+- **Costs**: what usage cost the organization, by the org's own price list. Every
+  usage is recorded whether or not a policy covers it, and every cost says where
+  its number came from (its **basis**).
+- **Usage policies** (stored as budgets): rules on cost or tokens over a window,
+  with steps that **notify**, **ask to continue**, or **stop**.
+
+Credits are not an OSS concept. A host that bills usage itself (the hosted
+platform charges Everruns credits for built-in models) reports what it charged
+through `BudgetService::record_host_charge`, and that charge replaces the
+estimate for the usage. The API keeps the `/v1/budgets` paths; the UI says
+"usage policy".
 
 Budget enforcement remains owned by this domain. Analytical budget reports are
 derived asynchronously from `usage_ledger` and related budget metadata; see
@@ -28,11 +40,52 @@ See source files for full definitions:
 - Typed IDs: `crates/contracts/src/typed_id.rs` (`BudgetId`, `LedgerEntryId`)
 - Events: `crates/core/src/events.rs` (budget event constants and `BudgetEventData`)
 - Storage: `crates/server/src/storage/repositories/budgets/`
-- Service: `crates/server/src/domains/budgets/service.rs`
+- Service: `crates/server/src/domains/budgets/service/mod.rs`
 - API: `crates/server/src/api/budgets.rs`
 - Capability: `crates/core/src/builtins/budgeting.rs`
 - Loop gate: `crates/core/src/host/budget_gate.rs` (applied in `execute_reason_activity_with_prompt_messages`, `crates/core/src/host/host.rs`)
 - Migrations: `crates/server/migrations/legacy/010_v0.8.9.sql`, `crates/server/migrations/legacy/020_budget_journal_ledger.sql`
+
+## Cost of each usage
+
+Each usage journal row gets exactly one cost posting: a `usage_ledger` row with
+no `budget_id`, `currency = usd`, and a `basis`. Bases, in priority order
+([rating](../../crates/server/src/domains/budgets/costs.rs)):
+
+1. `host`: the host reported its charge (a later `cost_host` posting carries
+   the difference from the first rating, so the usage's cost is the charge).
+2. `rate`: a row of the org's price list matched (`rate_id` says which).
+3. `provider`: the provider returned a cost with the response.
+4. `list_price`: the model catalog's cache-aware estimate.
+5. `unpriced`: no price anywhere. The cost is unknown, never zero, and never a
+   token count read as dollars (that fallback was a bug before 2026-11-01).
+
+Totals that include unpriced usage are partial and the UI says so.
+
+### Price list
+
+`cost_rates`: per org, per meter (`model.tokens`, `sandbox.time`), a `match` on
+`provider` / `model` / `source` (`managed` or `own_keys`) or `provider` / `size`,
+and either a fixed `unit_price_usd` (per million tokens, per hour) or a
+`list_price_multiplier` (0.8 is a 20% discount, 0 counts usage at no cost).
+Rows are never edited: a change is a new row with a later `effective_from`, and
+retiring is a row with `retired = true`, so past costs keep the rate they used.
+The most specific match wins, then the latest start.
+
+### Sandbox time
+
+A cluster job ([meter](../../crates/server/src/background/sandbox_time_meter.rs))
+turns each closed `ready` span of a sandbox into a `sandbox_time` usage record,
+priced only by a price-list rate (sandboxes have no list price). Running
+sandboxes are charged when they stop.
+
+### Host charges
+
+`record_host_charge(HostCharge { source_type, source_id, amount_usd, label, .. })`
+finds the usage by its journal source (`event` + the `llm.generation` event id),
+posts `cost_host` with the difference, and debits dollar policies by the same
+difference (`host_correction`), so a $10 policy means $10 of what the host
+charged. A second report for the same usage changes nothing.
 
 ## Concepts
 
@@ -56,7 +109,7 @@ See source files for full definitions:
 ┌──────────────▼──────────────────────────────────────┐
 │                    Budget                           │
 │  subject: (session | agent | user | org)            │
-│  currency: (usd | tokens | credits | custom)        │
+│  currency: (usd | tokens)  policy: steps, source    │
 │  limit / soft_limit / period                        │
 │  balance: denormalized current snapshot             │
 └─────────────────────────────────────────────────────┘
@@ -90,21 +143,26 @@ The new subject is keyed on the trigger's API id (`trg_…`), not on `agent_trig
 
 The four App-era prefixes stay in `RESERVED_SESSION_TAG_PREFIXES` regardless of what reads them — that list is append-only.
 
-**Currencies**: Strings (not enum), new currencies added without migrations. Built-in: `usd` (via ModelProfile cost lookup), `tokens` (raw count), `credits` (1 credit = 1000 tokens).
+**Currencies**: `usd` (the rated cost of each usage) and `tokens`. New policies accept only these two. The retired `credits` currency (tokens / 1000) was converted to `tokens` by migration `20261101154145` (limit, soft limit and balance × 1000, `metadata.converted_from = "credits"`); any other legacy currency is never debited.
+
+**Policy**: `budgets.policy` holds an optional name, the steps, and a source filter (`all`, `managed` built-in models only, `own_keys` only, which includes sandboxes). Steps are `{at_percent, action}` with action `notify`, `ask` or `stop`; a policy always stops at 100%. A policy without steps keeps the long-standing behavior: notify at 80%, ask at the soft limit when one is set, stop at the limit ([UsagePolicy](../../crates/contracts/src/runtime/budget.rs)).
+
+**Windows**: calendar days, weeks and months start at midnight in the org's timezone (`organization_settings.timezone`, UTC until set). The unattended daily cap follows it too.
 
 **Balance**: `limit - SUM(debits) + SUM(credits)`. Denormalized on `budgets.balance`, updated atomically with each budget-scoped ledger insert (transaction + `SELECT ... FOR UPDATE`).
 
-**Status lifecycle**: `active` → `paused` (soft limit reached) → `exhausted` (balance ≤ 0) → `disabled` (soft-deleted). Budget can be resumed by top-up or limit increase.
+**Status lifecycle**: `active` → `exhausted` (a stop step reached) → `disabled` (soft-deleted). Raising the limit or changing the policy reactivates an exhausted policy. An ask step does not change the status: it is answered per session (below). `paused` is only a manual status now; approving a session clears it.
 
 ### Usage Journal
 
-Immutable raw activity fact. Current writers:
-- `llm_generation` from `llm.generation` events
+Immutable raw activity fact, written for every usage whether or not a policy covers it. Current writers:
+- `llm_generation` from `llm.generation` events (`measures.quantity` in tokens; `metadata` carries `managed`, `source_key`/`source_label`, `started_by`)
+- `sandbox_time` from closed sandbox spans (`measures.quantity` in hours)
 - synthetic adjustment rows for budget top-ups / manual compatibility writes
 
 The journal stores scope (`org_id`, `user_id`, `principal_id`, `session_id`, `agent_id`, `harness_id`) plus raw `measures` and free-form `metadata`.
 
-A generation can declare billable components beyond its tokens (`cost_components` on `llm.generation`, used by the OpenAI Agents API backend for hosted tools and containers). The meter debits the priced ones and records every component whose amount is unknown in the journal metadata and the ledger's rating metadata as `cost_unknown_components`, so a total never silently treats an unknown amount as zero. A generation whose token usage is unknown but declares components still journals, with zero tokens ([meter](../../crates/server/src/domains/budgets/service.rs), `GenerationMeter`). When the provider reports that usage later (an Agents API turn, EVE-1145), the late tokens are metered once more as their own journal entry, sourced `llm_generation_late_usage` with the generation record's id, so the unique `(source_type, source_id)` index refuses a second late debit of the same generation ([late usage](../execution/openai-agents-api-runtime.md#observability-and-cost)).
+A generation can declare billable components beyond its tokens (`cost_components` on `llm.generation`, used by the OpenAI Agents API backend for hosted tools and containers). The meter debits the priced ones and records every component whose amount is unknown in the journal metadata and the ledger's rating metadata as `cost_unknown_components`, so a total never silently treats an unknown amount as zero. A generation whose token usage is unknown but declares components still journals, with zero tokens ([meter](../../crates/server/src/domains/budgets/service/mod.rs), `GenerationMeter`). When the provider reports that usage later (an Agents API turn, EVE-1145), the late tokens are metered once more as their own journal entry, sourced `llm_generation_late_usage` with the generation record's id, so the unique `(source_type, source_id)` index refuses a second late debit of the same generation ([late usage](../execution/openai-agents-api-runtime.md#observability-and-cost)).
 
 ### Usage Ledger
 
@@ -143,27 +201,24 @@ Look up session → find active budgets in hierarchy
   (root session → agent channel → agent trigger → agent → user → org)
   │
   ▼ (for each matching budget)
-compute_debit(currency, tokens, cache tokens, model, provider, provider_cost_usd)
-  │  "tokens" → raw count
-  │  "usd"    → provider_cost_usd when the provider reports it
-  │            (e.g. OpenRouter usage.cost), else the cache-aware
-  │            ModelProfile estimate (cached reads billed at the
-  │            cache_read rate, not the input rate), else raw count
-  │  "credits" → tokens / 1000
+rate the usage once (price list > provider > list price > unpriced)
+  + INSERT its cost posting (budget_id NULL, basis)
+  │
+  ▼ (for each matching active policy whose source filter counts it)
+debit
+  │  "usd"    → the rated cost; unpriced usage is not debited
+  │  "tokens" → the token count
   │
   ▼
 INSERT usage_ledger row (journal_id -> budget_id)
   + UPDATE budget.balance (atomic)
   │
   ▼
-evaluate_rules(budget)
-  │  balance ≤ 0         → Stop  (mark budget "exhausted")
-  │  spent > soft_limit  → Pause (mark budget "paused")
-  │  balance ≤ 20% limit → Warn  (log warning)
-  │  otherwise           → Continue
-  │
-  ▼
-Execute action (set budget status)
+evaluate_rules(budget): the most restrictive step reached
+  │  stop   → mark the policy "exhausted"
+  │  ask    → nothing stored; the loop gate asks before the next call
+  │  notify → notify org owners and admins, once per step and window
+  │           (usage_policy_notices), linking to Settings → Costs
 ```
 
 **Post-hoc enforcement**: Budget checks happen after each metered event, not before. This avoids blocking the LLM hot path. Minor overshoot on the last generation is acceptable and expected.
@@ -186,22 +241,15 @@ budget roots. Detached count caps (`max_active_detached_tasks` /
 
 **Loop gate**: debits are post-hoc, so the loop reads budget status before every provider call instead. Each reason atom first asks the host's `BudgetChecker` (`RuntimeHostAdapter::budget_checker`: direct in the server, gRPC from remote workers, `InProcessRuntimeBuilder::budget_checker` for embedders) once. `exhausted` or `paused` ends the turn before the model runs: the gate emits `budget.exhausted` / `budget.paused` and the canonical error message, and the engine's failed-reason path emits a single `turn.failed` with the `budget_exhausted` / `budget_paused` code. The in-process loop, durable workflows and worker activities all reach the gate through the one reason entry point; the OpenAI Agents API backend applies the same evaluation before each tool batch. A checker error fails open (logged), because an unreachable budget store must not stop every turn. Overshoot is bounded by the one generation already in flight. The checker resolves the full hierarchy (`root session`, `agent channel`, `agent trigger`, `agent`, `user`, `org`) from the session owner and org context.
 
-## Soft Enforcement: Pause
+## Ask to continue
 
-Pause is a **soft prevention** mechanism for interactive sessions:
+An ask step is answered by the person using the agent, per session:
 
-1. Budget spending exceeds `soft_limit` threshold
-2. Budget status set to `paused`
-3. The loop gate sees `paused` before the next provider call → the turn fails with `budget_paused` and the session goes idle
-4. User can: (a) increase limit, (b) top up, (c) resume via API, then send again
+1. Spend crosses the step. The loop gate (via `check_budgets_for_session`) reports `pause` before the next provider call, the turn fails with `budget_paused`, and chat shows a "Continue this turn" card.
+2. `POST /v1/sessions/{id}/resume` (any member who can view policies) records a `usage_policy_approvals` row for the session and the policy's current window, and the person sends again.
+3. That session (and its delegation tree, through the root) continues; other sessions are still asked. The approval ends when the window resets. A stop step is never passed by an approval.
 
-**Headless/API flow**: For headless sessions (no human watching), the `HardLimitStopRule` fires when balance ≤ 0 and terminates the turn. Soft limit pause is also respected, the API caller should poll `GET /v1/sessions/{id}/budget-check` or listen to `budget.paused` SSE events.
-
-```
-Session states: started → active → idle
-                          ↓        ↑
-                        paused ────┘ (resume)
-```
+Unattended work has no one to ask: a schedule or trigger turn stops at an ask step the same way, and its owner sees it in the session.
 
 ## Events
 
@@ -222,10 +270,10 @@ All four events use the same `BudgetEventData` struct. See `crates/core/src/even
 POST   /v1/budgets                        Create budget
 GET    /v1/budgets                        List budgets (?subject_type=&subject_id=)
 GET    /v1/budgets/{id}                   Get budget with current balance
-PATCH  /v1/budgets/{id}                   Update limit / soft_limit / status
+PATCH  /v1/budgets/{id}                   Update limit / soft_limit / period / policy / status
 DELETE /v1/budgets/{id}                   Soft-delete (sets status=disabled)
 
-POST   /v1/budgets/{id}/top-up           Add credits (negative ledger entry)
+POST   /v1/budgets/{id}/top-up           Allow more in this window (negative ledger entry)
 GET    /v1/budgets/{id}/ledger           Paginated ledger entries (?limit=&offset=)
 GET    /v1/budgets/{id}/check            Check budget status
 ```
@@ -235,8 +283,22 @@ GET    /v1/budgets/{id}/check            Check budget status
 ```
 GET    /v1/sessions/{id}/budgets          List budgets for this session
 GET    /v1/sessions/{id}/budget-check     Check all budgets (session + hierarchy)
-POST   /v1/sessions/{id}/resume           Resume paused budgets for this session
+POST   /v1/sessions/{id}/resume           Let this session past ask steps for the current window
 ```
+
+### Costs
+
+```
+GET    /v1/cost-rates                     Price list, history included
+POST   /v1/cost-rates                     Add a rate (never edits one)
+POST   /v1/cost-rates/{id}/retire         Retire a rate from a date
+GET    /v1/costs/summary                  Org cost by basis, source, agent, person, day
+GET    /v1/agents/{id}/costs              One agent's cost this month
+GET    /v1/costs/settings                 Org timezone for calendar windows
+PATCH  /v1/costs/settings
+```
+
+Commands: [cost_commands.rs](../../crates/server/src/domains/budgets/cost_commands.rs).
 
 ### Examples
 
@@ -252,15 +314,23 @@ POST /v1/budgets
 }
 ```
 
-**Give a user 100 credits/month (admin-defined):**
+**Give an agent $50 a month, notify at 80%, ask at 90%:**
 ```json
 POST /v1/budgets
 {
-  "subject_type": "user",
-  "subject_id": "usr_xyz789",
-  "currency": "credits",
-  "limit": 100,
-  "period": { "type": "calendar", "unit": "month" }
+  "subject_type": "agent",
+  "subject_id": "agent_xyz789",
+  "currency": "usd",
+  "limit": 50,
+  "period": { "type": "calendar", "unit": "month" },
+  "policy": {
+    "name": "Research assistant",
+    "steps": [
+      { "at_percent": 80, "action": "notify" },
+      { "at_percent": 90, "action": "ask" },
+      { "at_percent": 100, "action": "stop" }
+    ]
+  }
 }
 ```
 
@@ -272,7 +342,7 @@ POST /v1/budgets/{id}/top-up
   "description": "Emergency top-up"
 }
 ```
-This adds $5 to the balance. If the budget was `paused` or `exhausted` and now has positive balance, it auto-reactivates to `active`.
+This allows $5 more in the current window. If the policy was `paused` or `exhausted` and now has positive balance, it reactivates.
 
 ## Agent Awareness (Capability)
 
