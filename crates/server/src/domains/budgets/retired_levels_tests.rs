@@ -100,6 +100,9 @@ async fn resolved_subject_types(svc: &BudgetService, session: &SessionRow) -> Ve
     svc.list_budgets_for_session_hierarchy(session.org_id, &session.id.to_string(), None)
         .await
         .iter()
+        // A trigger-started session is unattended, so the org's daily
+        // unattended budget always joins it; these tests are about the others.
+        .filter(|b| b.subject_type != "org_unattended")
         .map(|b| b.subject_type.clone())
         .collect()
 }
