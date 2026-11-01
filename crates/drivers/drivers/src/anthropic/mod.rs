@@ -35,6 +35,7 @@ mod computer_toolset;
 mod driver;
 mod effort;
 mod prefill;
+mod recommended;
 mod server_compaction;
 mod web_search;
 

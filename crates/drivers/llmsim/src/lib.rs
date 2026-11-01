@@ -926,6 +926,19 @@ pub const LLMSIM_REASONING_TEXT: &str = "llmsim deliberating about the request";
 // Driver Registration
 // ============================================================================
 
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const LLMSIM_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "llmsim",
+        recommended_models: &["llmsim-default"],
+        coding_model: "llmsim-default",
+        research_model: "llmsim-default",
+        chat_model: "llmsim-default",
+        small_model: "llmsim-default",
+        decision_model: "llmsim-default",
+    };
+
 /// Register the LlmSim driver with the driver registry
 ///
 /// This registers a driver for the `LlmSim` provider type.
@@ -942,10 +955,11 @@ pub const LLMSIM_REASONING_TEXT: &str = "llmsim deliberating about the request";
 /// register_driver(&mut registry);
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
-    let descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, |_config| {
+    let mut descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, |_config| {
         // Default driver - tests can create custom drivers directly.
         Box::new(LlmSimDriver::default_driver()) as BoxedChatDriver
     });
+    descriptor.recommended_models = Some(LLMSIM_RECOMMENDED);
     registry.register_descriptor_or_replace(realtime::with_simulated_realtime(descriptor));
 }
 
@@ -959,9 +973,10 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// shared across invocations.
 pub fn register_driver_with_config(registry: &mut DriverRegistry, config: LlmSimConfig) {
     let driver = LlmSimDriver::new(config);
-    let descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, move |_config| {
+    let mut descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, move |_config| {
         Box::new(driver.clone()) as BoxedChatDriver
     });
+    descriptor.recommended_models = Some(LLMSIM_RECOMMENDED);
     registry.register_descriptor_or_replace(realtime::with_simulated_realtime(descriptor));
 }
 
