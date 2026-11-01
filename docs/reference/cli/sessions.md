@@ -21,7 +21,6 @@ Running and archived sessions, their state and participants.
 | [`sessions fork`](#sessions-fork) | Fork a session into a new, independent session that copies its conversation history and workspace files. |
 | [`sessions get`](#sessions-get) | Get session details including status, agent, harness, and model. |
 | [`sessions context`](#sessions-context) | Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation. |
-| [`sessions cost get`](#sessions-cost-get) | Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time. |
 | [`sessions facets`](#sessions-facets) | Counts per status, source, and agent plus masthead metrics for the sessions list, over the same filters as list_sessions. |
 | [`sessions stats`](#sessions-stats) | Get session counts by status. |
 | [`sessions list`](#sessions-list) | List sessions. |
@@ -32,6 +31,7 @@ Running and archived sessions, their state and participants.
 | [`sessions update`](#sessions-update) | Update session title, tags, locale, or model. |
 | [`sessions budget-check check`](#sessions-budget-check-check) | Check all budgets for a session. |
 | [`sessions budgets list`](#sessions-budgets-list) | List all budgets for a session. |
+| [`sessions cost get`](#sessions-cost-get) | Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time. |
 | [`sessions databases create`](#sessions-databases-create) | Create a new SQL database inside a session. |
 | [`sessions databases delete`](#sessions-databases-delete) | Delete a session SQL database. |
 | [`sessions databases get`](#sessions-databases-get) | Get metadata for a session SQL database. |
@@ -255,25 +255,6 @@ Example:
 everruns sessions context session_01h9
 ```
 
-## sessions cost get
-
-Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time.
-
-```bash
-everruns sessions cost get [OPTIONS] [SESSION_ID]
-```
-
-| Flag | Description |
-|---|---|
-| `--session-id <SESSION_ID>` | Session's prefixed public identifier (a path parameter). |
-
-Example:
-
-```bash
-# See where a session's spend went
-everruns sessions cost get session_01h9
-```
-
 ## sessions facets
 
 Counts per status, source, and agent plus masthead metrics for the sessions list, over the same filters as list_sessions.
@@ -491,6 +472,25 @@ Example:
 ```bash
 # List every budget that constrains a session
 everruns sessions budgets list session_01h9
+```
+
+## sessions cost get
+
+Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time.
+
+```bash
+everruns sessions cost get [OPTIONS] [SESSION_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Session's prefixed public identifier (a path parameter). |
+
+Example:
+
+```bash
+# See where a session's spend went
+everruns sessions cost get session_01h9
 ```
 
 ## sessions databases create
