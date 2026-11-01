@@ -571,16 +571,27 @@ async fn migrated_webhook_reuses_legacy_session_and_enforces_its_budget() {
     let selected = service
         .list_budgets_for_session_hierarchy(DEFAULT_ORG_ID, session_id, None)
         .await;
-    assert_eq!(selected.len(), 1);
-    assert_eq!(selected[0].id, budget.id);
-    assert_eq!(selected[0].subject_type, "agent_trigger");
-    assert_eq!(selected[0].subject_id, trigger.id.to_string());
-    assert_eq!(selected[0].soft_limit, Some(25.0));
+    // A trigger-started session is unattended, so the org's default daily
+    // unattended budget binds it alongside the trigger's own budget.
+    assert_eq!(selected.len(), 2);
+    assert!(
+        selected
+            .iter()
+            .any(|row| row.subject_type == "org_unattended"),
+        "the org's unattended budget binds a trigger-started session"
+    );
+    let trigger_budget = selected
+        .iter()
+        .find(|row| row.subject_type == "agent_trigger")
+        .expect("the migrated trigger budget binds the session");
+    assert_eq!(trigger_budget.id, budget.id);
+    assert_eq!(trigger_budget.subject_id, trigger.id.to_string());
+    assert_eq!(trigger_budget.soft_limit, Some(25.0));
     assert_eq!(
-        selected[0].metadata,
+        trigger_budget.metadata,
         Some(json!({"policy": "migrated-webhook-cap"}))
     );
-    assert_eq!(selected[0].status, "exhausted");
+    assert_eq!(trigger_budget.status, "exhausted");
 
     let enforcement = service
         .check_budgets_for_session(DEFAULT_ORG_ID, session_id, None)
