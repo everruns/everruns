@@ -2,12 +2,15 @@ import type { TraceEventRef, TraceItem, TraceStep, TraceTurn } from "@/lib/api/t
 import {
   batchKey,
   buildRows,
+  errorCodeLabel,
   fillGap,
   isSimulatedResult,
   formatDuration,
   lifecycleEvents,
   mergeTurns,
   parseStepKey,
+  parseTraceError,
+  retrySummary,
   rowIndexOfStep,
   searchSnippet,
   selectableKeys,
@@ -288,5 +291,52 @@ describe("isSimulatedResult", () => {
     expect(isSimulatedResult("200 OK")).toBe(false);
     expect(isSimulatedResult('{"status":"dry_run"}')).toBe(false);
     expect(isSimulatedResult(undefined)).toBe(false);
+  });
+});
+
+describe("parseTraceError", () => {
+  const raw =
+    "LLM error: provider 'provider_01a1': OpenAI Responses API error (402 Payment Required): " +
+    '{"error":{"message":"This request requires more credits.","code":402}}';
+
+  it("leads with the provider's message, source and status", () => {
+    expect(parseTraceError({ error: raw })).toEqual({
+      message: "This request requires more credits.",
+      source: "OpenAI Responses API",
+      status: "402 Payment Required",
+      body: { error: { message: "This request requires more credits.", code: 402 } },
+    });
+  });
+
+  it("keeps an error it cannot split as it is", () => {
+    expect(parseTraceError("404 Not Found")).toEqual({
+      message: "404 Not Found",
+      source: undefined,
+      status: undefined,
+      body: undefined,
+    });
+    expect(parseTraceError(raw.slice(0, 120))?.message).toBe(raw.slice(0, 120));
+  });
+
+  it("returns nothing for a value that is not an error", () => {
+    expect(parseTraceError({ text: "hi" })).toBeNull();
+    expect(parseTraceError("  ")).toBeNull();
+  });
+});
+
+describe("error classification", () => {
+  it("labels known failure codes and leaves the generic one unlabeled", () => {
+    expect(errorCodeLabel("provider_quota_exhausted")).toBe("Out of credits");
+    expect(errorCodeLabel("provider_unavailable")).toBe("Provider down");
+    expect(errorCodeLabel("processing_error")).toBeNull();
+    expect(errorCodeLabel(undefined)).toBeNull();
+  });
+
+  it("summarizes retries only when there were any", () => {
+    expect(retrySummary({ retry_attempts: 3, retry_wait_ms: 42_000 })).toBe(
+      "Retried 3× · waited 42s",
+    );
+    expect(retrySummary({ retry_attempts: 0, retry_wait_ms: 0 })).toBeNull();
+    expect(retrySummary({})).toBeNull();
   });
 });

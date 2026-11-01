@@ -13,6 +13,8 @@ pub struct TraceTurnRow {
     pub status: String,
     pub prompt_preview: Option<String>,
     pub error: Option<String>,
+    /// Classified code of the failure (`provider_quota_exhausted`, ...).
+    pub error_code: Option<String>,
     pub step_count: i32,
     pub model_calls: i32,
     pub tool_calls: i32,
@@ -43,6 +45,10 @@ pub struct TraceStepRow {
     pub output_tokens: Option<i32>,
     pub message_count: Option<i32>,
     pub requested_tool_call_ids: Vec<String>,
+    /// Retries a model call made before it succeeded or gave up (0 = first try).
+    pub retry_attempts: Option<i32>,
+    /// Time spent waiting between those retries.
+    pub retry_wait_ms: Option<i64>,
 }
 
 /// Outcome of one catch-up pass over a session's events.

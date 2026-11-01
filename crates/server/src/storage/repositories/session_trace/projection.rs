@@ -170,6 +170,7 @@ impl TraceWorkingSet {
             prompt_preview: str_field(&event.data, "input_content")
                 .map(|p| truncate(p, PROMPT_PREVIEW_CHARS)),
             error: None,
+            error_code: None,
             step_count: 0,
             model_calls: 0,
             tool_calls: 0,
@@ -192,9 +193,16 @@ impl TraceWorkingSet {
         turn.status = end_status.to_string();
         turn.end_sequence = Some(event.sequence);
         turn.ended_at = Some(event.ts);
+        if end_status == status::FAILED {
+            turn.error_code = str_field(&event.data, "error_code").map(str::to_string);
+        }
         if let Some(error) = error {
             turn.error = Some(error);
-            turn.error_count += 1;
+            // A turn that fails because one of its steps failed reports that same
+            // failure again; count it only when no step error was counted yet.
+            if turn.error_count == 0 {
+                turn.error_count = 1;
+            }
         }
         // The turn's own usage is authoritative once it reports one.
         if let Some(usage) = event.data.get("usage") {
@@ -274,6 +282,7 @@ impl TraceWorkingSet {
             .unwrap_or(true);
         let duration_ms = metadata.get("duration_ms").and_then(Value::as_i64);
         let usage = metadata.get("usage");
+        let retry = metadata.get("retry").filter(|r| !r.is_null());
         let tokens = |field: &str| {
             usage
                 .and_then(|u| u.get(field))
@@ -316,6 +325,13 @@ impl TraceWorkingSet {
                 .and_then(Value::as_i64)
                 .and_then(|v| i32::try_from(v).ok()),
             requested_tool_call_ids: requested,
+            retry_attempts: retry
+                .and_then(|r| r.get("attempts"))
+                .and_then(Value::as_i64)
+                .and_then(|v| i32::try_from(v).ok()),
+            retry_wait_ms: retry
+                .and_then(|r| r.get("total_wait_ms"))
+                .and_then(Value::as_i64),
         };
         self.push_step(turn_id, |turn_no, step_no| TraceStepRow {
             turn_no,
@@ -356,6 +372,8 @@ impl TraceWorkingSet {
             output_tokens: None,
             message_count: None,
             requested_tool_call_ids: Vec::new(),
+            retry_attempts: None,
+            retry_wait_ms: None,
         };
         self.push_step(turn_id, |turn_no, step_no| TraceStepRow {
             turn_no,
@@ -444,6 +462,8 @@ impl TraceWorkingSet {
                     output_tokens: None,
                     message_count: None,
                     requested_tool_call_ids: Vec::new(),
+                    retry_attempts: None,
+                    retry_wait_ms: None,
                 };
                 self.push_step(turn_id, |turn_no, step_no| TraceStepRow {
                     turn_no,
@@ -718,6 +738,40 @@ mod tests {
         let tools: Vec<_> = steps.iter().filter(|s| s.kind == kind::TOOL).collect();
         assert!(tools.iter().all(|s| s.status == status::CANCELLED));
         assert!(tools.iter().all(|s| s.duration_ms == Some(1_900)));
+    }
+
+    #[test]
+    fn a_turn_failed_by_its_model_call_counts_one_error() {
+        let turn = Uuid::now_v7();
+        let mut events = sample_turn(turn, 1);
+        events.truncate(1);
+        events.push(ev(
+            2,
+            "llm.generation",
+            400,
+            turn,
+            json!({"output": {}, "metadata": {
+                "success": false, "duration_ms": 400, "error": "402 Payment Required",
+                "retry": {"attempts": 3, "total_wait_ms": 42_000}
+            }}),
+        ));
+        events.push(ev(
+            3,
+            "turn.failed",
+            500,
+            turn,
+            json!({"error": "The AI provider account is out of credits", "error_code": "provider_quota_exhausted"}),
+        ));
+        let (_, turns, steps) = project(&events);
+        assert_eq!(steps[0].status, status::ERROR);
+        assert_eq!(steps[0].retry_attempts, Some(3));
+        assert_eq!(steps[0].retry_wait_ms, Some(42_000));
+        assert_eq!(
+            turns[0].error_code.as_deref(),
+            Some("provider_quota_exhausted")
+        );
+        assert_eq!(turns[0].status, status::FAILED);
+        assert_eq!(turns[0].error_count, 1);
     }
 
     #[test]

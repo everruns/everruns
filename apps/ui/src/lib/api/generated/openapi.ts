@@ -28709,6 +28709,18 @@ export interface components {
       result?: string | null;
       /**
        * Format: int32
+       * @description Attempts a model call took when it was retried.
+       * @example 3
+       */
+      retry_attempts?: number | null;
+      /**
+       * Format: int64
+       * @description Time spent waiting between retried attempts.
+       * @example 42000
+       */
+      retry_wait_ms?: number | null;
+      /**
+       * Format: int32
        * @description First event sequence of the step.
        * @example 14
        */
@@ -28805,6 +28817,12 @@ export interface components {
       ended_at?: string | null;
       /** @description Why the turn failed, when it did. */
       error?: string | null;
+      /**
+       * @description Classified failure (`provider_quota_exhausted`, `provider_rate_limited`,
+       *     `provider_unavailable`, ...), when the turn failed with one.
+       * @example provider_quota_exhausted
+       */
+      error_code?: string | null;
       /**
        * Format: int32
        * @description Failed steps in the turn.
