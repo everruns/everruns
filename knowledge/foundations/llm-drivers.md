@@ -698,7 +698,7 @@ for anything else, so its profile offers exactly those two (`none`, the API defa
 sent). `/v1/models` lists every alias as its own entry repeating the canonical `name`;
 discovery keeps the `id == name` entry, chat models only, minus scheduled retirements.
 
-Mistral Responses is an explicit typed per-call selection owned by the Mistral driver, using the
+Mistral Responses is an explicit connection-level selection owned by the Mistral driver, using the
 shared Responses driver with stateless full-history replay and required terminal
 completion. This preserves the existing Chat Completions default and its native
 JSON transport. The request extension removes OpenAI-only fields and flattens
@@ -1442,3 +1442,15 @@ requests. See [scenario adapter and regression tests](../../crates/drivers/llmsi
    - `agent_run_with_thinking.rs`, extended thinking, parameterized over thinking-capable providers
    - Add new providers: one `const` in `llm_test_matrix` + one `#[case]` per test function
    - Tests skip gracefully when provider API key env var is not set
+
+### Connection-level protocol selection
+
+Provider configuration owns chat protocol selection. Typed Framework values
+convert to the same service assembly used by hosts; shared call settings carry no
+vendor-specific protocol selectors. Driver descriptors declare supported choices
+and registry construction validates them before network I/O. Hosted provider
+writes validate against that catalog, preserve choices across unrelated updates,
+and propagate the persisted choice through direct and gRPC workers. Resetting to
+the driver default is explicit. Existing connections keep their defaults; selecting
+OpenAI Chat Completions does not discard unrelated provider services. See the
+[public setup guide](../../docs/framework/models-and-providers.md#provider-configuration).

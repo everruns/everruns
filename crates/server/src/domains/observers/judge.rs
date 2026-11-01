@@ -209,6 +209,7 @@ impl JudgeClient for LlmJudgeClient {
         provider_config.api_key = Some(runtime_provider.credentials.api_key);
         provider_config.base_url = runtime_provider.credentials.base_url;
         provider_config.request_options = runtime_provider.request_options;
+        provider_config.api = runtime_provider.api;
         let driver = self.driver_registry.create_chat_driver(&provider_config)?;
 
         let (system, user) = build_judge_messages(rubric, evidence);

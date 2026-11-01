@@ -106,6 +106,7 @@ impl ModelSyncService {
         );
         config.api_key = Some(api_key);
         config.base_url = provider_row.base_url.clone();
+        config.api = crate::services::provider_resolver::provider_api(&provider_row.settings)?;
         config.request_options =
             crate::services::provider_resolver::provider_request_options(&provider_row.settings);
 

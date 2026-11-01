@@ -1,5 +1,5 @@
 //! Mistral's stateless Responses preview. Keep Chat Completions as the default
-//! until callers explicitly choose the preview through driver options.
+//! until a provider connection explicitly chooses the preview.
 
 use std::sync::Arc;
 
@@ -8,20 +8,6 @@ use everruns_contracts::driver_registry::{LlmCallConfig, LlmContentPart, Message
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::openresponses_protocol::OpenResponsesRequestExtension;
 use serde_json::Value;
-
-/// Set to `true` in `LlmCallConfig::driver_options` to use `/v1/responses`.
-/// Absent or `false` preserves Chat Completions, including native JSON calls.
-pub const MISTRAL_RESPONSES_OPTION: &str = "mistral/responses";
-
-pub(super) fn enabled(config: &LlmCallConfig) -> Result<bool> {
-    match config.driver_options.get(MISTRAL_RESPONSES_OPTION) {
-        None | Some(Value::Bool(false)) => Ok(false),
-        Some(Value::Bool(true)) => Ok(true),
-        Some(_) => Err(AgentLoopError::Configuration(
-            "mistral/responses must be a boolean".into(),
-        )),
-    }
-}
 
 pub(super) fn driver() -> OpenResponsesProtocolChatDriver {
     OpenResponsesProtocolChatDriver::new()

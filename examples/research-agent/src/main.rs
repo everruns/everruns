@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Agent::builder()
             .name("research-agent")
             .instructions(include_str!("instructions.md"))
-            .provider(everruns_drivers::openrouter::from_env("openrouter")?)
+            .provider(everruns::OpenRouter::from_env()?)
             .model(MODEL),
     )
     .capability(BraveSearch::from_env()?)

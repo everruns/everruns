@@ -60,33 +60,62 @@ Large 4, Mistral Medium 3.5 (`mistral-medium-2604`, also
 
 ```rust
 // Reads MISTRAL_API_KEY, and MISTRAL_BASE_URL when set.
-let provider = everruns_drivers::mistral::from_env("mistral")?;
+let provider = everruns::Mistral::from_env()?;
 ```
 
-Enable the `mistral` feature of `everruns-drivers`.
+Enable the `mistral` feature of `everruns`.
 
 ## Responses API preview
 
 The existing Mistral provider can opt into Mistral's stateless
-[Responses API](https://docs.mistral.ai/studio/conversations/responses) per call.
-Chat Completions remains the default. In Framework code, select the API with
-the typed Mistral extension on `LlmCallConfig` or `LlmCallConfigBuilder`:
+[Responses API](https://docs.mistral.ai/studio/conversations/responses) per connection.
+Chat Completions remains the default. Select Responses when constructing the
+provider connection (enable the `mistral` feature of `everruns`):
 
 ```rust
-use everruns_contracts::LlmCallConfig;
-use everruns_drivers::mistral::{MistralApi, MistralConfigExt};
+use everruns::{Agent, Mistral, MistralApi};
 
-let config = LlmCallConfig::new("mistral-large-4")
-    .with_mistral_api(MistralApi::Responses);
+let agent = Agent::builder()
+    .provider(Mistral::from_env()?.api(MistralApi::Responses))
+    .model("mistral-large-4")
+    .instructions("Be concise.")
+    .build()?;
 ```
 
-Use the same provider, API key, and `/v1` base URL. The option sends requests to
-`/v1/responses`; `MistralApi::ChatCompletions` restores Chat Completions.
-The typed extension stores the selection in `driver_options` internally.
-Existing callers setting `mistral/responses` to a boolean remain supported,
-including hosts setting the option on a runtime agent.
-This is a Framework driver option; there is no separate hosted provider type or
-UI protocol selector.
+For a direct call, convert the same configuration into `everruns::Provider`:
+
+```rust
+use everruns::{Mistral, MistralApi, Provider};
+
+let provider: Provider = Mistral::from_env()?
+    .api(MistralApi::Responses)
+    .into();
+```
+
+Use the same API key and `/v1` base URL. `MistralApi::ChatCompletions` selects
+`/v1/chat/completions`; `MistralApi::Responses` selects `/v1/responses`.
+Shared call configuration carries the model and generation settings, not the protocol.
+The runnable `mistral_responses` example uses this configuration:
+`cargo run -p everruns --features mistral --example mistral_responses`.
+Low-level hosts can use `everruns_drivers::mistral::provider_with_api(id, key, api)`.
+
+Hosted REST clients select the same API when creating or updating a provider:
+
+```json
+{
+  "name": "Mistral Responses",
+  "provider_type": "mistral",
+  "api": "responses"
+}
+```
+
+Configure credentials through the normal provider credential fields. `api` may be
+`responses`, `chat_completions`, or `default`. Omitting it on create preserves the
+existing default; omitting it on PATCH preserves the stored selection. PATCH
+`"api": "default"` restores the default. The server validates choices against the
+driver catalog. API reads return the stored selection, and `/v1/providers/config`
+returns supported choices in each driver's `apis` field. Server and worker must
+both run a version supporting this field. The Settings UI has no selector yet.
 
 Responses supports streamed text and reasoning, client-executed function calls,
 parallel tool calls, JSON Schema output, token usage, prompt-cache routing, and

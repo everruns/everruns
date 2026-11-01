@@ -17,7 +17,7 @@ use everruns_contracts::credential_provider::EnvCredentialProvider;
 use crate::Provider;
 
 /// Re-exported `everruns_drivers::mistral` driver for direct, low-level use.
-pub use everruns_drivers::mistral::{MistralChatDriver, register_driver};
+pub use everruns_drivers::mistral::{MistralApi, MistralChatDriver, register_driver};
 
 /// Why an [`Mistral`] provider configuration could not be produced.
 ///
@@ -60,6 +60,7 @@ impl std::error::Error for MistralError {}
 pub struct Mistral {
     api_key: String,
     base_url: Option<String>,
+    api: MistralApi,
 }
 
 impl Mistral {
@@ -78,6 +79,7 @@ impl Mistral {
         Self {
             api_key: api_key.into(),
             base_url: None,
+            api: MistralApi::default(),
         }
     }
 
@@ -124,7 +126,19 @@ impl Mistral {
         Ok(Self {
             api_key: credentials.api_key().expect("filtered above").to_string(),
             base_url: credentials.base_url().map(str::to_owned),
+            api: MistralApi::default(),
         })
+    }
+
+    /// Select the chat API for this provider connection.
+    ///
+    /// ```
+    /// use everruns::{Mistral, MistralApi};
+    /// let provider = Mistral::new("key").api(MistralApi::Responses);
+    /// ```
+    pub fn api(mut self, api: MistralApi) -> Self {
+        self.api = api;
+        self
     }
 
     /// Override the API base URL (a proxy or gateway that speaks the Mistral
@@ -136,8 +150,8 @@ impl Mistral {
 
     /// Consume the config into its provider assembly parts. Crate-internal so
     /// the public surface never leaks the raw key.
-    fn into_parts(self) -> (String, Option<String>) {
-        (self.api_key, self.base_url)
+    fn into_parts(self) -> (String, Option<String>, MistralApi) {
+        (self.api_key, self.base_url, self.api)
     }
 }
 
@@ -145,6 +159,7 @@ impl fmt::Debug for Mistral {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Mistral")
             .field("base_url", &self.base_url.as_ref().map(|_| "<configured>"))
+            .field("api", &self.api)
             .field("api_key", &"[REDACTED]")
             .finish()
     }
@@ -152,8 +167,8 @@ impl fmt::Debug for Mistral {
 
 impl From<Mistral> for Provider {
     fn from(config: Mistral) -> Self {
-        let (api_key, base_url) = config.into_parts();
-        let mut provider = everruns_drivers::mistral::provider("mistral", api_key)
+        let (api_key, base_url, api) = config.into_parts();
+        let mut provider = everruns_drivers::mistral::provider_with_api("mistral", api_key, api)
             .with_driver_id(crate::DriverId::Mistral);
         if let Some(base_url) = base_url {
             provider = provider.base_url(base_url);
@@ -168,7 +183,7 @@ mod tests {
 
     #[test]
     fn from_lookup_reads_key_and_optional_base_url() {
-        let (api_key, base_url) = Mistral::from_lookup(|name| match name {
+        let (api_key, base_url, _) = Mistral::from_lookup(|name| match name {
             "MISTRAL_API_KEY" => Some("mistral-env".to_string()),
             "MISTRAL_BASE_URL" => Some("https://proxy.example/v1beta".to_string()),
             _ => None,

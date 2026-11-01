@@ -16,7 +16,7 @@ sessions keep their existing behavior.
 | Anthropic direct Messages API | Native Rust, `anthropic` Cargo feature; Message Batches submit, poll, collect, cancel |
 | Anthropic-compatible proxy | Explicit versioned `base_url`; must implement the Message Batches API, not just Messages |
 | OpenAI direct Responses API | Native Rust, `openai` feature; Files upload and Batches submit, poll, collect, cancel |
-| OpenAI direct Chat Completions API | Same lifecycle, using `OpenAICompletionsChatDriver`; tickets are separate from Responses tickets |
+| OpenAI direct Chat Completions API | Same lifecycle, using `OpenAI::from_env()?.api(OpenAIApi::ChatCompletions)`; tickets are separate from Responses tickets |
 | Gemini Developer API | Native Rust, `gemini` feature; inline batch submit, poll, collect, cancel; Files and Vertex AI modes are unsupported |
 | Mistral La Plateforme | Native Rust, `mistral` feature; inline request submission, polling, inline/file result collection and cancellation |
 | Groq Chat Completions | Native Rust, `groq` feature; Files/Batches submit, poll, collect and cancel; audio batches are outside this completion API |
@@ -223,15 +223,15 @@ For Gemini, enable `gemini`, use `Gemini::from_env()` from
 scope. `submit_requests(Vec<BatchRequest>)`, tickets and lifecycle operations
 stay the same. Requests in each OpenAI, Gemini, Mistral, Groq or Fireworks job must use one model.
 
-To select OpenAI Chat Completions explicitly, assemble the provider with its
-re-exported driver and your trusted credential source:
+To select OpenAI Chat Completions explicitly, configure the connection with its
+typed API selector:
 
 ```rust
-use everruns::{BearerAuth, Provider, providers::openai::OpenAICompletionsChatDriver};
+use everruns::{OpenAI, OpenAIApi, Provider};
 
-let provider = Provider::new("openai", OpenAICompletionsChatDriver::new())
-    .base_url("https://api.openai.com/v1")
-    .auth(BearerAuth::new("your-key-from-trusted-storage"));
+let provider: Provider = OpenAI::from_env()?
+    .api(OpenAIApi::ChatCompletions)
+    .into();
 assert!(provider.supports_batch());
 ```
 

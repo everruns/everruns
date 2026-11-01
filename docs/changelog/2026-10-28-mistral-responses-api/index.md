@@ -13,14 +13,12 @@ links:
 ![Everruns and Mistral Responses API](./integration@2x.png)
 
 The [Mistral provider](/providers/mistral/) now supports
-Mistral's Responses API preview. Framework callers opt in per call:
+Mistral's Responses API preview. Framework callers select the protocol on the provider connection:
 
 ```rust
-use everruns_contracts::LlmCallConfig;
-use everruns_drivers::mistral::{MistralApi, MistralConfigExt};
+use everruns::{Mistral, MistralApi};
 
-let config = LlmCallConfig::new("mistral-large-4")
-    .with_mistral_api(MistralApi::Responses);
+let provider = Mistral::from_env()?.api(MistralApi::Responses);
 ```
 
 The integration streams text, reasoning and function calls, replays full
@@ -31,3 +29,9 @@ call configuration. Chat Completions remains the default.
 Responses is stateless: Everruns sends `store: false` and does not chain response
 IDs. Non-streaming calls collect the stream; incomplete or interrupted responses
 fail the call. The provider guide lists the preview's configuration and limits.
+
+OpenAI uses the same `.api(...)` pattern with `OpenAIApi`. Every production
+provider now has a typed Framework configuration, with its authentication
+requirements kept explicit. Hosted provider create/update requests accept `api`,
+validate it against the driver catalog, and persist it for direct and remote
+workers. Shared per-call settings remain provider-neutral.

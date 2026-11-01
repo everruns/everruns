@@ -2,8 +2,8 @@
 //
 // Mistral's La Plateforme serves an OpenAI-compatible Chat Completions API at
 // `https://api.mistral.ai/v1`, so this driver wraps `OpenAIProtocolChatDriver`
-// and adds identity, auth, and model discovery. The `mistral/responses` call
-// option selects the stateless Responses preview without changing the default.
+// and adds identity, auth, and model discovery. Protocol selection belongs
+// to the provider connection; Chat Completions remains the default.
 //
 // Two wire differences matter, and both are handled in the shared protocol
 // rather than here, because any gateway relaying Mistral's native shape hits
@@ -27,8 +27,7 @@
 mod options;
 mod responses;
 
-pub use options::{MistralApi, MistralConfigExt};
-pub use responses::MISTRAL_RESPONSES_OPTION;
+pub use options::MistralApi;
 
 use async_trait::async_trait;
 use chrono::TimeZone;
@@ -74,14 +73,32 @@ pub fn provider(
         .auth(BearerAuth::new(api_key))
 }
 
+/// Assemble a Mistral connection using an explicit chat API.
+pub fn provider_with_api(
+    id: impl Into<everruns_contracts::ProviderKey>,
+    api_key: impl Into<String>,
+    api: MistralApi,
+) -> Provider {
+    Provider::new(id, MistralChatDriver::new().api(api))
+        .base_url(MISTRAL_DEFAULT_API_URL)
+        .auth(BearerAuth::new(api_key))
+}
+
 /// Mistral AI chat driver (OpenAI-compatible Chat Completions).
 #[derive(Clone)]
 pub struct MistralChatDriver {
     pub(crate) inner: OpenAIProtocolChatDriver,
     responses: everruns_contracts::OpenResponsesProtocolChatDriver,
+    api: MistralApi,
 }
 
 impl MistralChatDriver {
+    /// Select the chat API for this provider connection.
+    pub fn api(mut self, api: MistralApi) -> Self {
+        self.api = api;
+        self
+    }
+
     /// Create the Mistral Chat Completions wire driver.
     pub fn new() -> Self {
         Self {
@@ -89,6 +106,7 @@ impl MistralChatDriver {
             // same prompt cache; cached input bills at 10%.
             inner: OpenAIProtocolChatDriver::new().with_prompt_cache_key(true),
             responses: responses::driver(),
+            api: MistralApi::default(),
         }
     }
 }
@@ -134,7 +152,7 @@ impl ChatDriver for MistralChatDriver {
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        if responses::enabled(config)? {
+        if self.api == MistralApi::Responses {
             responses::validate_messages(&messages)?;
             return self
                 .responses
@@ -151,7 +169,7 @@ impl ChatDriver for MistralChatDriver {
     }
 
     fn supports_native_non_streaming(&self) -> bool {
-        self.inner.supports_native_non_streaming()
+        self.api == MistralApi::ChatCompletions && self.inner.supports_native_non_streaming()
     }
 
     async fn chat_completion_non_streaming(
@@ -160,7 +178,7 @@ impl ChatDriver for MistralChatDriver {
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
-        if responses::enabled(config)? {
+        if self.api == MistralApi::Responses {
             responses::validate_messages(&messages)?;
             return self
                 .responses
@@ -197,7 +215,7 @@ impl ChatDriver for MistralChatDriver {
 impl std::fmt::Debug for MistralChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MistralChatDriver")
-            .field("api", &"Mistral AI (Chat Completions)")
+            .field("api", &self.api)
             .finish()
     }
 }
@@ -348,6 +366,7 @@ impl MistralModelInfo {
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Mistral AI".into(),
+        apis: vec!["chat_completions".into(), "responses".into()],
         // The variable Mistral's own SDKs read.
         credential_schema: CredentialFormSchema::api_key(
             "MISTRAL_API_KEY",
@@ -356,17 +375,24 @@ pub fn descriptor() -> DriverDescriptor {
         ),
         base_url_env: Some("MISTRAL_BASE_URL".into()),
         ..DriverDescriptor::chat_only(DriverId::Mistral, |config| {
-            Provider::new(config.provider.clone(), MistralChatDriver::new())
-                .base_url(
-                    config
-                        .base_url
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|url| !url.is_empty())
-                        .unwrap_or(MISTRAL_DEFAULT_API_URL),
-                )
-                .auth(BearerAuth::new(config.api_key.clone().unwrap_or_default()))
-                .into_boxed_driver()
+            Provider::new(
+                config.provider.clone(),
+                MistralChatDriver::new().api(if config.api.as_deref() == Some("responses") {
+                    MistralApi::Responses
+                } else {
+                    MistralApi::ChatCompletions
+                }),
+            )
+            .base_url(
+                config
+                    .base_url
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|url| !url.is_empty())
+                    .unwrap_or(MISTRAL_DEFAULT_API_URL),
+            )
+            .auth(BearerAuth::new(config.api_key.clone().unwrap_or_default()))
+            .into_boxed_driver()
         })
     }
 }

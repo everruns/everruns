@@ -200,7 +200,7 @@ fn crew(repo: &Path, external: Option<ExternalAgent>) -> Result<Crew> {
     let model = || -> Result<Model> {
         Ok(Model::new(
             agent::WORKER_MODEL,
-            everruns_drivers::openrouter::from_env("openrouter")?,
+            everruns::OpenRouter::from_env()?,
         ))
     };
     let verifier = agent::verifier(model()?, repo)?;

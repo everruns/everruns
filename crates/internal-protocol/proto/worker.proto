@@ -1131,6 +1131,8 @@ message GetDefaultProviderCredentialsResponse {
     // the JSON of ProviderRequestOptions. Empty when the connection configures
     // none, so an older worker simply sends no options.
     string request_options_json = 5;
+    // Connection-level chat API selected by the provider owner.
+    string api = 7;
     string decision_binding_json = 6;
 }
 

@@ -2939,7 +2939,6 @@ name = "everruns-coding-review-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
- "everruns-drivers",
  "everruns-example-demo",
  "tempfile",
  "tokio",
@@ -3200,7 +3199,6 @@ dependencies = [
  "async-trait",
  "clap",
  "everruns",
- "everruns-drivers",
  "everruns-example-demo",
  "libc",
  "serde",
@@ -3218,7 +3216,6 @@ dependencies = [
  "everruns",
  "everruns-contracts",
  "everruns-core",
- "everruns-drivers",
  "everruns-integrations",
  "everruns-llmsim",
  "serde_json",
@@ -3230,7 +3227,6 @@ name = "everruns-framework-support-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
- "everruns-drivers",
  "everruns-example-demo",
  "tokio",
 ]
@@ -3250,7 +3246,6 @@ name = "everruns-incident-commander-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
- "everruns-drivers",
  "everruns-example-demo",
  "tempfile",
  "tokio",
@@ -3420,7 +3415,6 @@ name = "everruns-research-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
- "everruns-drivers",
  "everruns-example-demo",
  "everruns-integrations",
  "serde_json",

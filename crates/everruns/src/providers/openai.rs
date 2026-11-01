@@ -16,7 +16,7 @@ use crate::Provider;
 
 /// Re-exported `everruns_drivers::openai` drivers for direct, low-level use.
 pub use everruns_drivers::openai::{
-    OpenAIChatDriver, OpenAICompletionsChatDriver, register_driver,
+    OpenAIApi, OpenAIChatDriver, OpenAICompletionsChatDriver, register_driver,
 };
 
 /// Why an [`OpenAI`] provider configuration could not be produced.
@@ -54,13 +54,14 @@ impl std::error::Error for OpenAIError {}
 /// Build one with [`OpenAI::new`] (explicit, deterministic — reads no environment)
 /// or [`OpenAI::from_env`] (reads `OPENAI_API_KEY` and, when set,
 /// `OPENAI_BASE_URL`). Select the model separately on the agent builder. Both
-/// paths target OpenAI's Responses API via the recommended [`OpenAIChatDriver`].
+/// paths default to the Responses API. Use [`OpenAI::api`] to select Chat Completions.
 ///
 /// The API key is redacted from [`Debug`] output.
 #[derive(Clone)]
 pub struct OpenAI {
     api_key: String,
     base_url: Option<String>,
+    api: OpenAIApi,
 }
 
 impl OpenAI {
@@ -79,6 +80,7 @@ impl OpenAI {
         Self {
             api_key: api_key.into(),
             base_url: None,
+            api: OpenAIApi::default(),
         }
     }
 
@@ -128,7 +130,19 @@ impl OpenAI {
         Ok(Self {
             api_key: credentials.api_key().expect("filtered above").to_string(),
             base_url: credentials.base_url().map(str::to_owned),
+            api: OpenAIApi::default(),
         })
+    }
+
+    /// Select the chat API for this provider connection.
+    ///
+    /// ```
+    /// use everruns::{OpenAI, OpenAIApi};
+    /// let provider = OpenAI::new("key").api(OpenAIApi::Responses);
+    /// ```
+    pub fn api(mut self, api: OpenAIApi) -> Self {
+        self.api = api;
+        self
     }
 
     /// Override the API base URL (OpenAI-compatible proxy, self-hosted endpoint,
@@ -140,8 +154,8 @@ impl OpenAI {
 
     /// Consume the config into its provider assembly parts. Crate-internal so
     /// the public surface never leaks the raw key.
-    fn into_parts(self) -> (String, Option<String>) {
-        (self.api_key, self.base_url)
+    fn into_parts(self) -> (String, Option<String>, OpenAIApi) {
+        (self.api_key, self.base_url, self.api)
     }
 }
 
@@ -149,6 +163,7 @@ impl fmt::Debug for OpenAI {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OpenAI")
             .field("base_url", &self.base_url)
+            .field("api", &self.api)
             .field("api_key", &"[REDACTED]")
             .finish()
     }
@@ -217,8 +232,8 @@ impl OpenAI {
 
 impl From<OpenAI> for Provider {
     fn from(config: OpenAI) -> Self {
-        let (api_key, base_url) = config.into_parts();
-        let mut provider = everruns_drivers::openai::provider("openai", api_key)
+        let (api_key, base_url, api) = config.into_parts();
+        let mut provider = everruns_drivers::openai::provider_with_api("openai", api_key, api)
             .with_driver_id(crate::DriverId::OpenAI);
         if let Some(base_url) = base_url {
             provider = provider.base_url(base_url);
@@ -239,7 +254,7 @@ mod tests {
             _ => None,
         })
         .expect("key present");
-        let (api_key, base_url) = config.into_parts();
+        let (api_key, base_url, _) = config.into_parts();
         assert_eq!(api_key, "sk-env");
         assert_eq!(base_url, Some("https://proxy.example/v1".to_string()));
     }

@@ -75,12 +75,17 @@ pub fn resolve_provider_api_key(
     Ok(None)
 }
 
-/// Read a provider row's connection-level request options from its stored
-/// settings.
-///
-/// A malformed or absent `request_options` blob yields the empty options rather
-/// than failing resolution: a bad settings value must not take a provider
-/// offline.
+/// Read the connection's chat API selection, rejecting malformed stored values.
+pub(crate) fn provider_api(settings: &serde_json::Value) -> Result<Option<String>> {
+    match settings.get("api") {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::String(api)) => Ok(Some(api.clone())),
+        Some(_) => anyhow::bail!("Provider chat API must be a string"),
+    }
+}
+
+/// Read connection-level request options from the provider's stored settings.
+/// Malformed or absent options yield empty options rather than taking a provider offline.
 pub fn provider_request_options(
     settings: &serde_json::Value,
 ) -> everruns_contracts::provider::ProviderRequestOptions {
@@ -119,6 +124,8 @@ pub struct ResolvedServiceProvider {
     pub credentials: ResolvedProviderCredentials,
     /// Connection-level request options stored on the provider row.
     pub request_options: everruns_contracts::provider::ProviderRequestOptions,
+    /// Connection-level chat API chosen by the provider owner.
+    pub api: Option<String>,
 }
 
 /// A realtime provider ready to place calls.
@@ -140,6 +147,8 @@ pub(crate) struct ResolvedRuntimeProviderConfig {
     pub base_url: Option<String>,
     /// Connection-level request options stored on the provider row.
     pub request_options: everruns_contracts::provider::ProviderRequestOptions,
+    /// Connection-level chat API chosen by the provider owner.
+    pub api: Option<String>,
 }
 
 /// Cache key: (org_id, model_uuid). Organization defaults select an identity before lookup.
@@ -176,6 +185,14 @@ impl ProviderResolverService {
     pub fn with_driver_registry(mut self, driver_registry: DriverRegistry) -> Self {
         self.driver_registry = driver_registry;
         self
+    }
+
+    pub(crate) fn validate_api(&self, driver: &DriverId, api: &str) -> Result<()> {
+        let descriptor = self
+            .driver_registry
+            .descriptor(driver)
+            .ok_or_else(|| anyhow::anyhow!("Provider driver is not registered"))?;
+        descriptor.validate_api(Some(api)).map_err(Into::into)
     }
 
     /// Resolve tenant decisions without reading deployment utility credentials.
@@ -413,6 +430,7 @@ impl ProviderResolverService {
                     base_url: provider.base_url.clone(),
                 },
                 request_options: provider_request_options(&provider.settings),
+                api: provider_api(&provider.settings)?,
             });
         }
 
@@ -457,6 +475,7 @@ impl ProviderResolverService {
                     base_url: provider.base_url.clone(),
                 },
                 request_options: provider_request_options(&provider.settings),
+                api: provider_api(&provider.settings)?,
             });
         }
 
@@ -475,6 +494,7 @@ impl ProviderResolverService {
                         base_url: provider.base_url.clone(),
                     },
                     request_options: provider_request_options(&provider.settings),
+                    api: provider_api(&provider.settings)?,
                 });
             }
         }
@@ -512,6 +532,7 @@ impl ProviderResolverService {
         config.api_key = Some(resolved.credentials.api_key);
         config.base_url = resolved.credentials.base_url;
         config.request_options = resolved.request_options;
+        config.api = resolved.api;
         let (driver, endpoint) = self
             .driver_registry
             .create_realtime_driver(&config)
@@ -598,6 +619,7 @@ impl ProviderResolverService {
                 base_url: provider.base_url,
             },
             request_options: provider_request_options(&provider.settings),
+            api: provider_api(&provider.settings)?,
         }))
     }
 
@@ -642,11 +664,13 @@ impl ProviderResolverService {
         };
 
         let request_options = provider_request_options(&provider.settings);
+        let api = provider_api(&provider.settings)?;
         Ok(Some(ResolvedRuntimeProviderConfig {
             provider_type: provider.provider_type,
             api_key,
             base_url: provider.base_url,
             request_options,
+            api,
         }))
     }
 

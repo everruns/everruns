@@ -439,6 +439,7 @@ mod tests {
     /// `DriverConfig::from_provider_config`.
     fn driver_config(api_key: Option<&str>, extra: Option<serde_json::Value>) -> DriverConfig {
         DriverConfig {
+            api: None,
             provider: everruns_contracts::ProviderKey::new("mai"),
             provider_type: DriverId::Mai,
             credentials: everruns_contracts::credential_schema::parse_credential_document(api_key),

@@ -17,6 +17,9 @@ pub enum ProviderStatus {
 /// This is the persisted provider entity, separate from the runtime provider trait.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Provider {
+    /// Chat API declared by the provider driver; "default" restores its default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
     /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     #[schema(value_type = String, example = "provider_01933b5a00007000800000000000001")]
     pub id: ProviderId,

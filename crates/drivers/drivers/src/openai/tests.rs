@@ -268,3 +268,29 @@ mod provider_tests {
         );
     }
 }
+
+#[test]
+fn connection_api_selection_is_validated_and_preserves_services() {
+    use everruns_contracts::{DriverId, DriverRegistry, ProviderConfig, ServiceKind};
+    let mut registry = DriverRegistry::new();
+    super::register_driver(&mut registry);
+    for api in ["default", "responses", "chat_completions"] {
+        let config = ProviderConfig::new(DriverId::OpenAI)
+            .with_api_key("synthetic-key")
+            .with_api(api);
+        let provider = registry.create_provider(&config).unwrap();
+        assert!(provider.supports_service(ServiceKind::Chat));
+        assert!(provider.supports_service(ServiceKind::Embeddings));
+        assert!(provider.supports_service(ServiceKind::Decisions));
+        assert!(provider.supports_service(ServiceKind::Realtime));
+        assert_eq!(
+            provider.driver().unwrap().supports_stateful_responses(),
+            api != "chat_completions"
+        );
+    }
+    let invalid = ProviderConfig::new(DriverId::OpenAI)
+        .with_api_key("synthetic-key")
+        .with_api("messages");
+    assert!(registry.create_chat_driver(&invalid).is_err());
+    assert!(registry.create_provider(&invalid).is_err());
+}

@@ -315,7 +315,14 @@ pub mod providers;
     feature = "groq",
     feature = "fireworks",
     feature = "openai",
-    feature = "openrouter"
+    feature = "openrouter",
+    feature = "meta",
+    feature = "mai",
+    feature = "cloudflare",
+    feature = "vercel",
+    feature = "typesafe",
+    feature = "chatgpt",
+    feature = "codex"
 ))]
 pub use everruns_drivers as drivers;
 #[cfg(feature = "anthropic")]
@@ -329,11 +336,28 @@ pub use providers::gemini::{Gemini, GeminiError};
 #[cfg(feature = "groq")]
 pub use providers::groq::{Groq, GroqError};
 #[cfg(feature = "mistral")]
-pub use providers::mistral::{Mistral, MistralError};
+pub use providers::mistral::{Mistral, MistralApi, MistralError};
 #[cfg(feature = "openai")]
-pub use providers::openai::{OpenAI, OpenAIError};
+pub use providers::openai::{OpenAI, OpenAIApi, OpenAIError};
 #[cfg(feature = "openrouter")]
 pub use providers::openrouter::{OpenRouter, OpenRouterError};
+
+#[cfg(feature = "openai")]
+pub use providers::azure::AzureOpenAI;
+#[cfg(feature = "chatgpt")]
+pub use providers::chatgpt::ChatGpt;
+#[cfg(feature = "cloudflare")]
+pub use providers::cloudflare::Cloudflare;
+#[cfg(feature = "codex")]
+pub use providers::codex::Codex;
+#[cfg(feature = "mai")]
+pub use providers::mai::Mai;
+#[cfg(feature = "meta")]
+pub use providers::meta::Meta;
+#[cfg(feature = "typesafe")]
+pub use providers::typesafe::TypeSafe;
+#[cfg(feature = "vercel")]
+pub use providers::vercel::Vercel;
 
 // --- Runtime construction and execution ---------------------------------
 // Note: the value-first `AgentBuilder` above intentionally replaces the
@@ -475,7 +499,7 @@ pub mod prelude {
     pub use crate::{ContainmentMode, HostShell};
     pub use crate::{DriverId, EnvCredentialError, EnvCredentialProvider};
     #[cfg(feature = "openai")]
-    pub use crate::{OpenAI, OpenAIError};
+    pub use crate::{OpenAI, OpenAIApi, OpenAIError};
     #[allow(deprecated)]
     #[deprecated(note = "use WorkspaceBackend and WorkspaceBackendId")]
     pub use crate::{WorkspaceProvider, WorkspaceProviderId};

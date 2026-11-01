@@ -8,16 +8,18 @@ use everruns_contracts::driver_registry::{
 use everruns_contracts::model::ReasoningEffort;
 use everruns_contracts::reasoning::ReasoningContentPart;
 use everruns_contracts::{ProviderEndpoint, ToolDefinition};
-use everruns_drivers::mistral::{
-    MISTRAL_RESPONSES_OPTION, MistralApi, MistralConfigExt, provider, register_driver,
-};
+use everruns_drivers::mistral::{MistralApi, provider_with_api, register_driver};
 use futures::StreamExt;
 use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+fn provider(id: &str, key: &str) -> everruns_contracts::Provider {
+    provider_with_api(id, key, MistralApi::Responses)
+}
+
 fn config() -> LlmCallConfig {
-    LlmCallConfig::new("mistral-large-4").with_mistral_api(MistralApi::Responses)
+    LlmCallConfig::new("mistral-large-4")
 }
 
 fn completed(output: Value) -> Value {
@@ -78,6 +80,7 @@ async fn registered_and_direct_calls_preserve_stateless_history_and_controls() {
             let driver = registry
                 .create_chat_driver(
                     &ProviderConfig::new(DriverId::Mistral)
+                        .with_api("responses")
                         .with_api_key("synthetic-key")
                         .with_base_url(format!("{}/v1", server.uri())),
                 )
@@ -242,13 +245,11 @@ async fn http_errors_surface_and_invalid_options_fail_before_network() {
     }
     let server = MockServer::start().await;
     let service = provider("mistral", "synthetic-key").base_url(format!("{}/v1", server.uri()));
-    let mut cfg = config();
-    cfg.driver_options
-        .insert(MISTRAL_RESPONSES_OPTION.into(), json!("true"));
+    let mut registry = DriverRegistry::new();
+    register_driver(&mut registry);
     assert!(
-        service
-            .chat_completion(vec![Message::text(MessageRole::User, "hi")], &cfg)
-            .await
+        registry
+            .create_chat_driver(&ProviderConfig::new(DriverId::Mistral).with_api("invalid"))
             .is_err()
     );
     let mut message = Message::text(MessageRole::User, "");
