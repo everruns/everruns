@@ -4916,7 +4916,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Break down a selected window: busiest agents and failure causes */
+    /** Break down a window by agent and failure cause */
     get: operations["get_monitoring_timeline_window"];
     put?: never;
     post?: never;

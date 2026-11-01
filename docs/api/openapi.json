@@ -19594,7 +19594,7 @@
         "tags": [
           "monitoring"
         ],
-        "summary": "Break down a selected window: busiest agents and failure causes",
+        "summary": "Break down a window by agent and failure cause",
         "operationId": "get_monitoring_timeline_window",
         "parameters": [
           {

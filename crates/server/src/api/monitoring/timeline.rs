@@ -571,7 +571,7 @@ pub async fn get_fleet_monitoring_timeline(
     timeline(&state, None, query).await
 }
 
-/// Break down a selected window: busiest agents and failure causes.
+/// Break down a window by agent and failure cause.
 #[utoipa::path(get, path = "/v1/monitoring/timeline/window", tag = "monitoring", params(TimelineWindowQuery),
     responses((status = 200, description = "Organization window breakdown", body = MonitoringTimelineWindow),
         (status = 400, description = "Invalid window", body = ErrorResponse),
