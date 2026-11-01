@@ -56,6 +56,7 @@ mod command_transaction_test;
 mod concurrent_session_create_test;
 mod db_pool_isolation_test;
 mod dev_grade;
+mod evals_experiments_test;
 mod evals_integration_test;
 mod evals_trials_test;
 mod fcp_integration_test;

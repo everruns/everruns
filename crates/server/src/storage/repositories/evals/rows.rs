@@ -20,6 +20,9 @@ pub struct EvalRow {
     pub updated_at: DateTime<Utc>,
     pub archived_at: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
+    /// Version of the eval's cases (its dataset), bumped by a trigger on
+    /// every case change.
+    pub version: i32,
 }
 
 /// Input for creating an eval
@@ -129,6 +132,27 @@ pub struct EvalRunRow {
     pub max_cost_usd: Option<f64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Dataset version the run was created from (set by a trigger).
+    pub dataset_version: Option<i32>,
+    /// The experiment this run is a variant of, and the variant's label.
+    pub experiment_id: Option<Uuid>,
+    pub variant_label: Option<String>,
+}
+
+/// An experiment: one dataset version against several variants.
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
+pub struct EvalExperimentRow {
+    pub id: Uuid,
+    pub public_id: String,
+    pub org_id: i64,
+    pub eval_id: Uuid,
+    pub name: String,
+    pub dataset_version: i32,
+    pub trials: i32,
+    pub max_cost_usd: Option<f64>,
+    pub baseline_label: String,
+    pub created_by_user_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
 }
 
 /// A read-only share token for an eval run (migration 091). The raw token is
@@ -317,4 +341,18 @@ pub struct UpdateEvalRunDatasetRow {
     pub body: Option<String>,
     pub record_count: Option<i64>,
     pub error_message: Option<String>,
+}
+
+/// Input for creating an experiment.
+#[derive(Debug, Clone)]
+pub struct CreateEvalExperimentRow {
+    pub id: Uuid,
+    pub public_id: String,
+    pub eval_id: Uuid,
+    pub name: String,
+    pub dataset_version: i32,
+    pub trials: i32,
+    pub max_cost_usd: Option<f64>,
+    pub baseline_label: String,
+    pub created_by_user_id: Option<Uuid>,
 }

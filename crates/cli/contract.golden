@@ -124,6 +124,11 @@ evals cases list	--context-revision --eval-id! --reason
 evals cases update	--artifacts --case-id! --context-revision --conversation --description --eval-id! --max-turns --name --position --post --reason --scorers --tags... --target --timeout-seconds
 evals create	--context-revision --description --model-override --name! --reason --tags... --target
 evals delete	--context-revision --eval-id! --reason
+evals experiments create	--context-revision --eval-id! --max-cost-usd --name --reason --trials --variants!
+evals experiments gate	--context-revision --eval-id! --experiment-id! --min-pass-rate --min-passed-every-trial --no-regression --reason --variant
+evals experiments get	--context-revision --eval-id! --experiment-id! --reason
+evals experiments list	--context-revision --eval-id! --reason
+evals experiments recent	--context-revision --reason
 evals get	--context-revision --eval-id --reason <eval_id>
 evals import	--context-revision --evals! --reason --source!
 evals import-preflight	--context-revision --reason

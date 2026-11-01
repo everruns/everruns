@@ -55,7 +55,10 @@ The exact target variants and fields live in `crates/server/src/domains/evals/re
 
 An eval is a named, tagged collection of cases with lifecycle state and optional
 default target/model behavior. It is isolated to one organization and follows
-the normal archive/delete conventions for building blocks.
+the normal archive/delete conventions for building blocks. Its cases are its
+dataset: the eval's `version` counts changes to them, and every run records
+the version it ran. Comparing variants on one version is an
+[experiment](experiments.md).
 
 ### Case
 
