@@ -1263,7 +1263,7 @@ mod limits_tests {
         assert!(text.contains("cancel_schedule"), "{text}");
         let header = fire_origin(&first).model_header();
         assert!(
-            header.starts_with("Scheduled run 1 of 2: \"Poll the claim\"."),
+            header.starts_with("[Scheduled run 1 of 2: \"Poll the claim\"."),
             "{header}"
         );
         assert!(
