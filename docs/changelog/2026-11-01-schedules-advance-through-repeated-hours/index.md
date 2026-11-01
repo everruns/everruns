@@ -4,7 +4,8 @@ description: Recurring session schedules ignore past UTC candidates during repea
 date: 2026-11-01
 kind: fix
 significance: notable
-products: [platform]
+products: [platform, cloud]
+cloud: 2026-11-01
 surfaces: [agent, api]
 links:
   docs: [/capabilities/session-schedules/]
