@@ -1135,7 +1135,13 @@ async fn cancel_a2a_session_turn(
     let user_message_event = EventRequest::new(
         session_id,
         context,
-        InputMessageData::new(RuntimeMessage::user("A2A client requested cancellation.")),
+        InputMessageData::new({
+            let mut message = RuntimeMessage::user("A2A client requested cancellation.");
+            message.metadata = Some(
+                everruns_core::message::MessageOrigin::system("Work cancelled").into_metadata(),
+            );
+            message
+        }),
     );
     if let Err(err) = event_service.emit(user_message_event).await {
         tracing::warn!(session_id = %session_id, error = %err, "A2A tasks/cancel: emit user message failed");

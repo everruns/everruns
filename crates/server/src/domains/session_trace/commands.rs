@@ -104,6 +104,7 @@ fn turn_out(row: &TraceTurnRow, items: Vec<TraceItem>) -> TraceTurn {
         turn_id: TurnId::from_uuid(row.turn_id).to_string(),
         status: row.status.clone(),
         prompt: row.prompt_preview.clone(),
+        origin: row.origin.clone(),
         error: row.error.clone(),
         error_code: row.error_code.clone(),
         started_at: row.started_at,

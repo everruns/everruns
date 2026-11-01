@@ -253,6 +253,7 @@ async fn history_pages_count_messages_and_skip_lifecycle_envelopes() {
             agent_id: None,
             agent_name: None,
             agent_description: None,
+            origin: None,
         },
     ))
     .await

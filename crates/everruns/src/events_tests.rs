@@ -49,6 +49,7 @@ fn turn_started(session_id: SessionId, turn_id: TurnId) -> everruns_core::EventR
             agent_id: None,
             agent_name: None,
             agent_description: None,
+            origin: None,
         },
     )
 }

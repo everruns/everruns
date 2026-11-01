@@ -325,4 +325,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Response ·": "回应·",
   "Response field:": "响应字段：",
   "Restore split view": "恢复分割视图",
+  "run {number} of {limit}": "第 {number} 次运行，共 {limit} 次",
+  "run {number}": "第 {number} 次运行",
 };

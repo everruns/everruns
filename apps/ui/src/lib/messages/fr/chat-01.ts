@@ -334,4 +334,6 @@ export const messages: Readonly<Record<string, string>> = {
   "Response ·": "Réponse ·",
   "Response field:": "Champ de réponse :",
   "Restore split view": "Restaurer la vue fractionnée",
+  "run {number} of {limit}": "Exécution {number} sur {limit}",
+  "run {number}": "Exécution {number}",
 };

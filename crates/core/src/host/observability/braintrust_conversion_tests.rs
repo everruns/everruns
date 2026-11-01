@@ -190,6 +190,7 @@ fn test_turn_events_are_self_referencing_root_spans() {
         agent_id: None,
         agent_name: None,
         agent_description: None,
+        origin: None,
     };
     let started_event = Event::new(
         SessionId::new(),

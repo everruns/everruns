@@ -1080,7 +1080,16 @@ impl Command for CancelSession {
             let user_message_event = EventRequest::new(
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
-                InputMessageData::new(RuntimeMessage::user(strings.cancellation_message)),
+                // Platform words for the person's cancel: marked so no surface
+                // shows them as something the person typed.
+                InputMessageData::new({
+                    let mut message = RuntimeMessage::user(strings.cancellation_message);
+                    message.metadata = Some(
+                        everruns_core::message::MessageOrigin::system("Work cancelled")
+                            .into_metadata(),
+                    );
+                    message
+                }),
             );
             if let Err(error) = event_service.emit(user_message_event).await {
                 tracing::warn!(session_id = %session_id, error = %error, "Failed to emit user cancellation message");

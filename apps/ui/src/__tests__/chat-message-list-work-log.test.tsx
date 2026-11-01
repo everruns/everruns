@@ -660,7 +660,7 @@ describe("ChatMessageList full work log", () => {
 });
 
 describe("ChatMessageList platform messages", () => {
-  function renderMessages(messages: { text: string; metadata?: Record<string, string> }[]) {
+  function renderMessages(messages: { text: string; metadata?: Record<string, unknown> }[]) {
     const chatEvents = messages.map(({ text, metadata }, index) =>
       event("m".repeat(index + 1), "input.message", {
         message: { role: "user", content: [{ type: "text", text }], metadata },
@@ -726,6 +726,41 @@ describe("ChatMessageList platform messages", () => {
     expect(screen.queryByText("Task exploded in a way the parser misses")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "automatic_update" }));
     expect(screen.getByText("Task exploded in a way the parser misses")).toBeInTheDocument();
+  });
+
+  it("shows a scheduled run as a platform row, not a person's message", () => {
+    renderMessages([
+      {
+        text: "Shipmail claim poll for Everruns Worker agent. Read the state file.",
+        metadata: {
+          everruns_origin: {
+            kind: "schedule",
+            source_id: "sched_1",
+            name: "Shipmail claim poll for Everruns Worker agent",
+            run: { number: 12, limit: 96 },
+          },
+        },
+      },
+    ]);
+    expect(screen.getByTestId("automatic-update")).toBeInTheDocument();
+    expect(screen.getByText("scheduled")).toBeInTheDocument();
+    expect(screen.getByText("Shipmail claim poll for Everruns Worker agent")).toBeInTheDocument();
+    expect(screen.getByText("origin_run")).toBeInTheDocument();
+    // The prompt is folded until opened.
+    expect(screen.queryByText(/Read the state file/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /scheduled/ }));
+    expect(screen.getByText(/Read the state file/)).toBeInTheDocument();
+  });
+
+  it("reads a schedule message written before origins existed", () => {
+    renderMessages([
+      {
+        text: "Check the build",
+        metadata: { source: "schedule", schedule_id: "sched_2" },
+      },
+    ]);
+    expect(screen.getByText("scheduled")).toBeInTheDocument();
+    expect(screen.queryByText("Check the build")).not.toBeInTheDocument();
   });
 
   it("shows a coordinator brief without the worker's instructions", () => {

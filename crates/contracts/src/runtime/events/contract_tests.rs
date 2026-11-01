@@ -123,6 +123,7 @@ fn snapshot_turn_started() {
         agent_id: None,
         agent_name: None,
         agent_description: None,
+        origin: None,
     };
     with_settings!({
         sort_maps => true,
@@ -661,6 +662,7 @@ fn representative_event_payloads_preserve_wire_identity() {
                 agent_id: None,
                 agent_name: None,
                 agent_description: None,
+                origin: None,
             }
             .into(),
         ),

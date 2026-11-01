@@ -18,15 +18,7 @@
 "use client";
 
 import { AgentIcon } from "@/components/icons/facet-icons";
-import {
-  CalendarClock,
-  Loader2,
-  MessageSquare,
-  RefreshCw,
-  Sparkles,
-  UserMinus,
-  UserPlus,
-} from "lucide-react";
+import { Loader2, MessageSquare, RefreshCw, Sparkles, UserMinus, UserPlus } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type {
@@ -48,6 +40,8 @@ import type { TextAnnotation } from "@/lib/api/types";
 import { useAgents, useProviders } from "@/hooks";
 import { buildTraceConfigByDriver, resolveGenerationTraceUrl } from "@/lib/chat-trace";
 import { AutomaticUpdate } from "@/components/chat/automatic-update";
+import { ORIGIN_ICON } from "@/components/chat/message-origin-icon";
+import { messageOrigin, ORIGIN_LABEL_KEY } from "@/lib/message-origin";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { MessageReplyActions } from "@/components/chat/message-reply-actions";
 import { parseCoordinatorMessage, parseTaskUpdate } from "@/lib/chat-thread-messages";
@@ -1266,18 +1260,25 @@ export const ChatMessageList = memo(function ChatMessageList({
                     turnId: event.context?.turn_id,
                   })
                 : null;
-              const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
-              // Platform-injected task updates (a thread finished, asked, or failed),
-              // not words the person typed.
-              const isTaskWake = isUser && data.message?.metadata?.everruns_origin === "task_wake";
+              // Words the platform wrote, not the person: a schedule run, a
+              // trigger, a thread update, a notice (knowledge/execution/message-origin.md).
+              const origin = isUser ? messageOrigin(data.message?.metadata) : null;
+              const isTaskWake = origin?.kind === "task_wake";
               const taskUpdate = isTaskWake && textContent ? parseTaskUpdate(textContent) : null;
               // What a coordinator sent this thread, shown without the worker's instructions.
               const coordinatorMessage =
-                isUser && !isTaskWake && textContent ? parseCoordinatorMessage(textContent) : null;
+                isUser && !origin && textContent ? parseCoordinatorMessage(textContent) : null;
               const isToolOnlyMessage =
                 !isUser && outputToolCalls.length > 0 && !textContent && images.length === 0;
 
-              if (isTaskWake) {
+              if (origin) {
+                const run = origin.run;
+                const detail =
+                  run?.number === undefined
+                    ? undefined
+                    : run.limit === undefined
+                      ? t("origin_run_number", { number: run.number })
+                      : t("origin_run", { number: run.number, limit: run.limit });
                 return (
                   <div
                     key={`user-${getClientMessageId(event) ?? event.id}`}
@@ -1286,14 +1287,16 @@ export const ChatMessageList = memo(function ChatMessageList({
                     id={data.message?.id ? `message-${data.message.id}` : undefined}
                   >
                     <AutomaticUpdate
-                      label={t("automatic_update")}
+                      label={t(ORIGIN_LABEL_KEY[origin.kind])}
+                      icon={ORIGIN_ICON[origin.kind]}
                       headline={
                         taskUpdate
                           ? t(`task_update_${taskUpdate.kind}` as const, {
                               title: taskUpdate.title,
                             })
-                          : undefined
+                          : origin.name
                       }
+                      detail={detail}
                       body={taskUpdate ? taskUpdate.body : textContent}
                       trailing={<MessageInfoIcon event={event} />}
                     />
@@ -1334,12 +1337,6 @@ export const ChatMessageList = memo(function ChatMessageList({
                       {isUser ? (
                         <div className={chatSurfaceStyles.userMessage}>
                           {showPageContext && <MessagePageContext value={pageContext} />}
-                          {isScheduleTriggered && (
-                            <div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                              <CalendarClock className="h-3 w-3" />
-                              <span>{t("scheduled")}</span>
-                            </div>
-                          )}
                           {coordinatorMessage && (
                             <div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
                               <MessageSquare className="h-3 w-3" />

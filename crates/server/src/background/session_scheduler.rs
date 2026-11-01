@@ -293,8 +293,7 @@ async fn poll_and_trigger(
             "schedule_id".to_string(),
             serde_json::Value::String(schedule_id.to_string()),
         );
-        // The run's counters as data, so a later model-view header (message
-        // origin) can render them instead of the text footer fire_message adds.
+        // Kept beside the origin for readers that predate it.
         metadata.insert(
             "schedule_run".to_string(),
             serde_json::json!({
@@ -304,6 +303,11 @@ async fn poll_and_trigger(
                 "stop_when": fired.stop_when,
                 "budget": fired.budget,
             }),
+        );
+        // Who wrote this message (knowledge/execution/message-origin.md).
+        metadata.insert(
+            everruns_core::message::MESSAGE_ORIGIN_METADATA_KEY.to_string(),
+            fire_origin(&fired).to_value(),
         );
 
         let core_message = RuntimeMessage {
@@ -373,29 +377,40 @@ async fn stop_schedule(
     }
 }
 
-/// The message a fire injects: the schedule's task, then where the schedule
-/// stands, so the agent is reminded every run how long it has left, when it
-/// is done, what it spent, and how to stop (2026-11-01: a test poll ran 13
-/// days because nothing reminded the agent to give up).
+/// Who wrote a fire's message. The schedule has no name of its own, so its
+/// task names it. A recurring schedule's run counters, end and stop condition
+/// travel here as data: the Chat and trace show them, and the model reads
+/// them in the origin header line ("Scheduled run 3 of 10: ... Stop when:
+/// ... Ends at ...") instead of a duplicated text footer.
+pub(crate) fn fire_origin(
+    schedule: &everruns_core::session_schedule::SessionSchedule,
+) -> everruns_core::message::MessageOrigin {
+    let origin = everruns_core::message::MessageOrigin::schedule(
+        schedule.id.to_string(),
+        &schedule.description,
+    );
+    if schedule.cron_expression.is_none() {
+        return origin;
+    }
+    origin.with_run(everruns_core::message::MessageOriginRun {
+        number: Some(u64::from(schedule.trigger_count)),
+        limit: schedule.max_runs.map(u64::from),
+        ends_at: schedule.ends_at.map(|end| end.to_rfc3339()),
+        stop_when: schedule.stop_when.clone(),
+    })
+}
+
+/// The message a fire injects: the schedule's task, then what the agent must
+/// know to stop, so it is reminded every run what it spent and how to give up
+/// (2026-11-01: a test poll ran 13 days because nothing reminded the agent).
+/// Which run this is, the end and the stop condition come from the origin
+/// header ([`fire_origin`]), not from this text.
 pub(crate) fn fire_message(schedule: &everruns_core::session_schedule::SessionSchedule) -> String {
     // A one-shot fires once; its task is the whole message.
     if schedule.cron_expression.is_none() {
         return schedule.description.clone();
     }
     let mut lines = Vec::new();
-    match schedule.max_runs {
-        Some(max) => lines.push(format!(
-            "Scheduled run {} of {max}.",
-            schedule.trigger_count
-        )),
-        None => lines.push(format!("Scheduled run {}.", schedule.trigger_count)),
-    }
-    if let Some(end) = schedule.ends_at {
-        lines.push(format!("The schedule ends at {}.", end.to_rfc3339()));
-    }
-    if let Some(stop_when) = &schedule.stop_when {
-        lines.push(format!("Stop when: {stop_when}"));
-    }
     if let Some(budget) = &schedule.budget {
         lines.push(format!(
             "Its runs have spent ${:.2} of its ${:.2} budget.",
@@ -1241,9 +1256,20 @@ mod limits_tests {
         assert_eq!(first.stop_reason, None);
         let text = fire_message(&first);
         assert!(text.starts_with("Poll the claim"), "{text}");
-        assert!(text.contains("Scheduled run 1 of 2."), "{text}");
-        assert!(text.contains("Stop when: the claim is approved"), "{text}");
+        assert!(
+            !text.contains("Scheduled run"),
+            "the header carries the run: {text}"
+        );
         assert!(text.contains("cancel_schedule"), "{text}");
+        let header = fire_origin(&first).model_header();
+        assert!(
+            header.starts_with("[Scheduled run 1 of 2: \"Poll the claim\"."),
+            "{header}"
+        );
+        assert!(
+            header.contains("Stop when: the claim is approved."),
+            "{header}"
+        );
 
         let last = service
             .mark_triggered(DEFAULT_ORG_ID, row.id)

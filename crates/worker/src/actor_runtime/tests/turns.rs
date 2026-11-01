@@ -998,6 +998,7 @@ async fn died_before_idling(fixture: &Fixture, terminal: &str, committed: bool) 
                 agent_id: None,
                 agent_name: None,
                 agent_description: None,
+                origin: None,
             },
         ))
         .await

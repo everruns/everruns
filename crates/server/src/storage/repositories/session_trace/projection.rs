@@ -178,6 +178,7 @@ impl TraceWorkingSet {
             error_count: 0,
             input_tokens: 0,
             output_tokens: 0,
+            origin: event.data.get("origin").filter(|v| v.is_object()).cloned(),
         };
         self.turns.insert(turn_id, turn);
         self.touch_turn(turn_id);
@@ -623,6 +624,33 @@ mod tests {
         assert_eq!(prompt_tokens(&usage), Some(4123));
         assert_eq!(prompt_tokens(&json!({"input_tokens": 600})), Some(600));
         assert_eq!(prompt_tokens(&json!({"output_tokens": 1})), None);
+    }
+
+    #[test]
+    fn a_turn_keeps_who_started_it_when_no_person_did() {
+        let person = Uuid::now_v7();
+        let scheduled = Uuid::now_v7();
+        let origin =
+            json!({"kind": "schedule", "source_id": "sched_1", "name": "Shipmail claim poll"});
+        let (_, turns, _) = project(&[
+            ev(
+                1,
+                "turn.started",
+                0,
+                person,
+                json!({"input_content": "Check the links"}),
+            ),
+            ev(
+                2,
+                "turn.started",
+                10,
+                scheduled,
+                json!({"input_content": "Shipmail claim poll", "origin": origin}),
+            ),
+        ]);
+        let by_id = |id| turns.iter().find(|t| t.turn_id == id).unwrap();
+        assert_eq!(by_id(person).origin, None);
+        assert_eq!(by_id(scheduled).origin, Some(origin));
     }
 
     #[test]

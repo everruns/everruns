@@ -388,6 +388,7 @@ async fn lifecycle_events_reach_live_delivery_and_trace_listeners() {
             agent_id: None,
             agent_name: None,
             agent_description: None,
+            origin: None,
         },
     );
     let emit = |event: EventRequest| {

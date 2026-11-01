@@ -278,6 +278,7 @@ async fn cancel_names_the_running_turn() {
                 agent_id: None,
                 agent_name: None,
                 agent_description: None,
+                origin: None,
             },
         ))
         .await

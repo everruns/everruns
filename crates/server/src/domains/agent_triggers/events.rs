@@ -264,6 +264,7 @@ async fn run(
         trigger.org_id,
         agent,
         trigger.id,
+        &trigger.trigger_type,
         session_id,
         execution_context.harness_id,
         execution_context.owner_principal_id,

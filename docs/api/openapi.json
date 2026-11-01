@@ -70224,6 +70224,13 @@
             "description": "Model calls in the turn.",
             "example": 2
           },
+          "origin": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Who wrote the input when no person did: `kind` (`schedule`,\n`agent_trigger`, `channel_schedule`, `webhook`, `task_wake`, `system`),\nand when known `source_id`, `name` and `run` (`number`, `limit`,\n`ends_at`, `stop_when`). Absent when a person started the turn."
+          },
           "output_tokens": {
             "type": "integer",
             "format": "int64",
@@ -70842,6 +70849,13 @@
             "type": "string",
             "description": "Input message ID that triggered this turn",
             "example": "message_01933b5a00007000800000000000001"
+          },
+          "origin": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Who wrote the input message when no person did (a schedule run, a\ntrigger, a thread wake-up, a platform notice). Absent when a person\nstarted the turn."
           },
           "turn_id": {
             "type": "string",

@@ -146,6 +146,7 @@ mod tests {
                     agent_id: None,
                     agent_name: Some("Customer test".into()),
                     agent_description: None,
+                    origin: None,
                 },
             ))
             .await;

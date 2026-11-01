@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageContent } from "./message-content";
 import { FilePreview, downloadFile } from "./file-preview";
 import { WorkLog, workForMessages } from "./work-log";
-import { conversationMessages, orderedEvents } from "./transcript";
+import { conversationMessages, orderedEvents, originLabel } from "./transcript";
 import { SharedChat } from "./shared-chat";
 import { consumeSse, streamFailure } from "../client/sse";
 import { presentViewer, type Viewer } from "../profile";
@@ -865,11 +865,22 @@ function WorkChat({ config }: { config: Config }) {
               message.role === "user" && next?.role !== "assistant"
                 ? (turnWork.byUser.get(message.id) ?? [])
                 : [];
+            if (message.origin) {
+              return (
+                <div key={message.id}>
+                  <p className="automatic">
+                    <span className="sr-only">Automatic message: </span>
+                    {originLabel(message.origin)}
+                  </p>
+                  {ownWork.length > 0 && (
+                    <WorkLog events={ownWork} running={running && index === messages.length - 1} />
+                  )}
+                </div>
+              );
+            }
             return (
               <div key={message.id}>
-                <article
-                  className={message.role === "user" ? "message user" : "message assistant"}
-                >
+                <article className={message.role === "user" ? "message user" : "message assistant"}>
                   <span className="sr-only">{message.role}</span>
                   {message.role !== "user" && (
                     <WorkLog events={turnWork.logs.get(message.id) ?? []} />
@@ -1330,7 +1341,10 @@ function AgentLogo({ src, variant }: { src?: string; variant: "brand" | "welcome
 function initials(name: string) {
   const parts = name.split(/\s+/).filter(Boolean);
   const words = parts.length > 1 ? parts.slice(0, 2) : parts.slice(0, 1);
-  return words.map((part) => [...part][0] ?? "").join("").toUpperCase();
+  return words
+    .map((part) => [...part][0] ?? "")
+    .join("")
+    .toUpperCase();
 }
 function Account({ viewer }: { viewer: Viewer }) {
   const [picture, setPicture] = useState(viewer.picture);

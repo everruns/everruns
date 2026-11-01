@@ -4,7 +4,7 @@
 // kind, batches, gaps and the unloaded-turns bars. Layout follows the design
 // handoff: gutter, spine with an icon tile, content, waterfall.
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import {
   Bot,
@@ -26,6 +26,8 @@ import { Button } from "@/components/ui/button";
 import { StreamdownMessage } from "@/components/chat/streamdown-message";
 import type { TraceBatch, TraceGap, TraceStep, TraceTurn } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { ORIGIN_ICON } from "@/components/chat/message-origin-icon";
+import { readOrigin, ORIGIN_LABEL_KEY, type MessageOrigin } from "@/lib/message-origin";
 import {
   errorCodeLabel,
   formatClock,
@@ -125,20 +127,35 @@ export function TurnHeader({
   const ui = useUiTranslations();
   const Chevron = collapsed ? ChevronRight : ChevronDown;
   const duration = turn.duration_ms ?? null;
+  const origin = readOrigin(turn.origin);
   return (
     <div className="mt-5 border border-b-0 bg-card first:mt-0">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={!collapsed}
-        className="flex w-full items-start gap-3 border-b bg-accent/9 px-4 py-3.5 text-left hover:bg-accent/14"
+        // Gold wash: a person started the turn. Gray surface with a gray edge:
+        // the platform did (schedule run, trigger, update, notice). Every turn
+        // stays a turn; nothing is folded (knowledge/execution/message-origin.md).
+        className={cn(
+          "flex w-full items-start gap-3 border-b px-4 py-3.5 text-left",
+          origin
+            ? "border-l-[3px] border-l-muted-foreground/40 bg-muted/70 hover:bg-muted"
+            : "bg-accent/9 hover:bg-accent/14",
+        )}
       >
         <Chevron className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
         <div className="min-w-0 flex-1">
           <div className="font-mono text-[11px] tracking-[0.04em] text-muted-foreground">
-            {ui("TURN")} {formatCount(turn.turn)} · {formatClock(turn.started_at)} {ui("· user")}
+            {ui("TURN")} {formatCount(turn.turn)} · {formatClock(turn.started_at)}{" "}
+            {origin ? <TurnOrigin origin={origin} /> : ui("· user")}
           </div>
-          <div className="mt-1 line-clamp-3 text-sm font-medium leading-normal break-words">
+          <div
+            className={cn(
+              "mt-1 line-clamp-3 text-sm leading-normal break-words",
+              origin ? "text-muted-foreground" : "font-medium",
+            )}
+          >
             {turn.prompt || <span className="italic text-muted-foreground">{ui("No prompt")}</span>}
           </div>
         </div>
@@ -178,6 +195,33 @@ export function TurnHeader({
         </div>
       )}
     </div>
+  );
+}
+
+/** Who started an automatic turn: icon, kind, name, run counter and id. */
+function TurnOrigin({ origin }: { origin: MessageOrigin }) {
+  const { t } = useLocale();
+  const Icon = ORIGIN_ICON[origin.kind];
+  const run = origin.run;
+  const counter =
+    run?.number === undefined
+      ? null
+      : run.limit === undefined
+        ? t("origin_run_number", { number: run.number })
+        : t("origin_run", { number: run.number, limit: run.limit });
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5 align-middle">
+      <span>·</span>
+      <Icon className="size-3.5 text-foreground" aria-hidden />
+      <span className="font-medium text-foreground">{t(ORIGIN_LABEL_KEY[origin.kind])}</span>
+      {origin.name && <span>· {origin.name}</span>}
+      {counter && <span className="border px-1 leading-4">{counter}</span>}
+      {origin.source_id && (
+        <span className="border px-1 leading-4" title={origin.source_id}>
+          {origin.source_id.length > 14 ? `${origin.source_id.slice(0, 13)}…` : origin.source_id}
+        </span>
+      )}
+    </span>
   );
 }
 

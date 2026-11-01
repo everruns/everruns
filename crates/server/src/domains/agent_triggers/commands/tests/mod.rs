@@ -430,6 +430,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         DEFAULT_ORG_ID,
         &agent,
         TriggerId::new(),
+        "schedule",
         session.id,
         preserved_harness.id,
         owner.id,
@@ -464,6 +465,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         DEFAULT_ORG_ID,
         &agent,
         TriggerId::new(),
+        "schedule",
         session.id,
         preserved_harness.id,
         owner.id,
@@ -487,6 +489,11 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         })
         .collect();
     assert_eq!(marked, vec![&serde_json::to_value(&run).unwrap()]);
+    // Both trigger messages say a trigger wrote them, not a person.
+    let origins = events
+        .iter()
+        .filter_map(|event| event.data.pointer("/message/metadata/everruns_origin/kind"));
+    assert_eq!(origins.collect::<Vec<_>>(), vec!["agent_trigger"; 2]);
 }
 
 // ---- cron / config validation -------------------------------------------
