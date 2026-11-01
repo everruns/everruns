@@ -32,13 +32,16 @@ pub struct BudgetService {
 }
 
 /// What the session scheduler does with a due schedule.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FireGate {
     Fire,
     /// The schedule's own budget is spent: stop the schedule.
     ScheduleBudgetSpent,
     /// The org's unattended spend for today is used up: skip this fire.
-    OrgUnattendedSpent,
+    OrgUnattendedSpent {
+        /// The org's daily limit, for the health issue.
+        limit_usd: f64,
+    },
 }
 
 struct BudgetScope {
@@ -804,8 +807,11 @@ impl BudgetService {
         }
         match self.db.org_unattended_budget(org_id).await {
             Ok(Some(row)) => {
-                if spent(&self.maybe_reset_period(row).await) {
-                    FireGate::OrgUnattendedSpent
+                let row = self.maybe_reset_period(row).await;
+                if spent(&row) {
+                    FireGate::OrgUnattendedSpent {
+                        limit_usd: row.limit,
+                    }
                 } else {
                     FireGate::Fire
                 }

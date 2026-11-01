@@ -54,6 +54,13 @@ pub struct HealthIssue {
     /// Application-relative link to the issue details.
     #[schema(example = "/settings/health?issue=550e8400-e29b-41d4-a716-446655440000")]
     pub href: String,
+    /// What a background-work issue is about: a schedule (`sched_…`), an agent
+    /// (`agent_…`), a session (`session_…`) or the organization (`org_…`).
+    #[schema(example = "sched_550e8400e29b41d4a716446655440000")]
+    pub subject_id: Option<String>,
+    /// Public identifier of the session the issue points at, when it has one.
+    #[schema(example = "session_550e8400e29b41d4a716446655440000")]
+    pub session_id: Option<String>,
 }
 
 /// A page of pending operational health issues visible to the current caller.

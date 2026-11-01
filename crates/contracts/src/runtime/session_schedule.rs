@@ -326,6 +326,8 @@ pub mod stop_reason {
     pub const ENDED: &str = "ended";
     /// Its budget ran out.
     pub const BUDGET_EXHAUSTED: &str = "budget_exhausted";
+    /// Its runs kept ending the same way, so it was achieving nothing.
+    pub const RUNAWAY: &str = "runaway";
 }
 
 /// Normalize a session-schedule cron expression to the seconds-aware form the

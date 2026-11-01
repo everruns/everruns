@@ -43,6 +43,7 @@ export const messages: Readonly<Record<string, string>> = {
     "El límite diario debe ser mayor que 0 $, o activa Sin límite.",
   "Unattended work (daily)": "Trabajo desatendido (diario)",
   "Budget used up": "Presupuesto agotado",
+  "Stopped: repeating": "Detenido: se repite",
   " · Run {value0} of {value1}": " · Ejecución {value0} de {value1}",
   " · Ends {value0}": " · Termina {value0}",
   " · {value0} of {value1}": " · {value0} de {value1}",

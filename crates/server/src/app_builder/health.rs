@@ -144,6 +144,10 @@ pub(super) async fn start(
     );
     supervisor.track(
         "active_turn_limit_health_sweep",
-        crate::domains::health_issues::active_turns::spawn_sweep(db),
+        crate::domains::health_issues::active_turns::spawn_sweep(db.clone()),
+    );
+    supervisor.track(
+        "background_work_health_sweep",
+        crate::domains::health_issues::background_work::spawn_sweep(db),
     );
 }

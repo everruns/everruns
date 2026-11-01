@@ -47604,6 +47604,14 @@
             "description": "Current user's announcement identifier, when one was issued.",
             "example": "notification_550e8400e29b41d4a716446655440001"
           },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public identifier of the session the issue points at, when it has one.",
+            "example": "session_550e8400e29b41d4a716446655440000"
+          },
           "snoozed_until": {
             "type": [
               "string",
@@ -47622,6 +47630,14 @@
             "type": "string",
             "description": "Current issue state: open, needs_check, resolved, or inapplicable.",
             "example": "open"
+          },
+          "subject_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What a background-work issue is about: a schedule (`sched_…`), an agent\n(`agent_…`), a session (`session_…`) or the organization (`org_…`).",
+            "example": "sched_550e8400e29b41d4a716446655440000"
           },
           "title": {
             "type": "string",

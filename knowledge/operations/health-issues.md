@@ -34,7 +34,14 @@ the `everruns_org_active_turn_cap_rejections_total` counter. Recording is best e
 and outside the refused request. The issue resolves once the organization runs fewer
 turns than the limit: a one-minute sweep and **Check again** recount, since sessions
 leave the active state in many places. The limit is protective and approximate,
-so the issue may open slightly above or below it. Custom
+so the issue may open slightly above or below it.
+
+Further detectors watch unattended background work: runaway schedules, schedules
+stopped by their budget, the org's daily unattended budget, unattended spend spikes
+and large uncached session contexts. They are keyed on a subject (schedule, agent,
+session or org) rather than a channel, and unlike the detectors above they announce
+an opened issue to specific people right away. See
+[Background Work Limits](background-limits.md). Custom
 detectors, automatic repairs, background LLM analysis and external delivery are outside
 this delivery's scope.
 

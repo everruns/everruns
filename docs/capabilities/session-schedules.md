@@ -72,6 +72,14 @@ budget:
 - Every run's message tells the agent which run it is, when the schedule ends,
   its stop condition and what it has spent, so it can cancel the schedule once
   the work is done.
+- A schedule whose runs keep ending with the same answer is achieving nothing.
+  After 24 identical runs in a row, each run's message warns the agent; after
+  48 the schedule stops, with the reason `runaway`. Resuming it starts the
+  count over.
+- **Settings → Health** reports schedules that repeat or hit their budget, the
+  organization's daily cap, a jump in an agent's unattended spend, and sessions
+  that send a large, mostly uncached history. The schedule's owner and the
+  agent's authors are notified; organization owners hear about the daily cap.
 - Organization admins change these limits in **Settings → Limits**. A person
   can extend one schedule's end, runs or budget, or resume it, from the
   session's schedules, without the agent limits.

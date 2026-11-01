@@ -20,6 +20,7 @@
 // (not via cancel_task) so the monitor would otherwise stay `running` forever.
 
 use crate::domains::budgets::FireGate;
+use crate::domains::health_issues::background_work;
 use crate::domains::session_schedules::SessionScheduleService;
 use crate::execution_metadata;
 use crate::services::EventService;
@@ -184,9 +185,11 @@ async fn poll_and_trigger(
                     stop_reason::BUDGET_EXHAUSTED,
                 )
                 .await;
+                background_work::observe_schedule_budget_stop(db, &row).await;
                 continue;
             }
-            FireGate::OrgUnattendedSpent => {
+            FireGate::OrgUnattendedSpent { limit_usd } => {
+                background_work::observe_org_unattended_spent(db, org_id, limit_usd).await;
                 tracing::info!(
                     schedule_id = %schedule_id,
                     org_id,
@@ -197,6 +200,20 @@ async fn poll_and_trigger(
                 }
                 continue;
             }
+        }
+
+        // A schedule whose runs keep ending the same way is achieving
+        // nothing: warn the agent after RUNAWAY_WARN_RUNS identical runs and
+        // stop it after RUNAWAY_STOP_RUNS (knowledge/operations/background-limits.md).
+        let same_runs = if row.cron_expression.is_some() {
+            background_work::count_previous_outcome(db, &row).await
+        } else {
+            0
+        };
+        if same_runs >= background_work::RUNAWAY_STOP_RUNS {
+            stop_schedule(schedule_service, org_id, schedule_id, stop_reason::RUNAWAY).await;
+            background_work::observe_runaway(db, &row, same_runs, true).await;
+            continue;
         }
 
         // Mark triggered (updates next_trigger, disables one-shot, ends a
@@ -214,7 +231,15 @@ async fn poll_and_trigger(
                 continue;
             }
         };
-        let description = fire_message(&fired);
+        let mut description = fire_message(&fired);
+        if same_runs >= background_work::RUNAWAY_WARN_RUNS {
+            description.push(' ');
+            description.push_str(&background_work::runaway_warning(
+                same_runs,
+                fired.next_trigger_at,
+            ));
+            background_work::observe_runaway(db, &row, same_runs, false).await;
+        }
 
         // Update linked monitor tasks (best-effort; never fail the fire loop).
         // Returns true when a probe ran — in that case the monitor is autonomous
@@ -1355,7 +1380,7 @@ mod limits_tests {
             budgets
                 .unattended_fire_gate(DEFAULT_ORG_ID, &row.public_id)
                 .await,
-            FireGate::OrgUnattendedSpent
+            FireGate::OrgUnattendedSpent { limit_usd: 20.0 }
         );
 
         // Removing the cap in Settings → Limits disables the daily budget.

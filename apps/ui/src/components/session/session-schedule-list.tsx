@@ -22,12 +22,19 @@ import type { SessionSchedule } from "@/lib/api/types";
 import { useSessionSchedules, useUpdateSessionSchedule } from "@/hooks/use-session-schedules";
 import { SessionScheduleExtendDialog } from "./session-schedule-extend-dialog";
 
-type ScheduleStatus = "Active" | "Disabled" | "Deleted" | "Ended" | "Budget used up";
+type ScheduleStatus =
+  | "Active"
+  | "Disabled"
+  | "Deleted"
+  | "Ended"
+  | "Budget used up"
+  | "Stopped: repeating";
 
 function scheduleStatus(schedule: SessionSchedule): ScheduleStatus {
   if (schedule.deleted_at) return "Deleted";
   if (!schedule.enabled && schedule.stop_reason === "ended") return "Ended";
   if (!schedule.enabled && schedule.stop_reason === "budget_exhausted") return "Budget used up";
+  if (!schedule.enabled && schedule.stop_reason === "runaway") return "Stopped: repeating";
   return schedule.enabled ? "Active" : "Disabled";
 }
 
@@ -37,6 +44,7 @@ const STATUS_BADGE: Record<ScheduleStatus, "default" | "secondary" | "outline" |
   Deleted: "secondary",
   Ended: "outline",
   "Budget used up": "destructive",
+  "Stopped: repeating": "destructive",
 };
 
 export function SessionScheduleList({ schedules }: { schedules: SessionSchedule[] }) {

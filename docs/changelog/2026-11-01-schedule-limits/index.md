@@ -1,6 +1,6 @@
 ---
-title: "Agent schedules now have an end, a budget and a daily cap"
-description: "Recurring schedules an agent creates must state when they stop, each schedule has its own spend cap, and unattended work has a daily limit per organization."
+title: "Agent schedules now have an end, a budget, a daily cap and health alerts"
+description: "Recurring schedules an agent creates must state when they stop and have a spend cap, unattended work has a daily limit, and repeating schedules are stopped and reported."
 date: 2026-11-01
 kind: improvement
 significance: notable
@@ -28,3 +28,9 @@ agent of its end, stop condition and spend.
 organization. Admins change every limit in **Settings → Limits**, and a
 stopped schedule can be extended or resumed from the session. See
 [Schedules](/capabilities/session-schedules/).
+
+**Health alerts:** a schedule whose runs end the same way 24 times in a row
+warns the agent, and stops after 48. **Settings → Health** reports repeating
+and budget-stopped schedules, the daily cap, jumps in an agent's unattended
+spend, and sessions sending a large, uncached history, and notifies the
+schedule's owner and the agent's authors.

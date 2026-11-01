@@ -5,7 +5,7 @@
 import type { BackgroundLimits, BudgetStatus, BudgetSubjectType } from "./schema-types";
 
 /** Why the platform stopped a schedule; null while it runs or after a person re-enables it. */
-export type ScheduleStopReason = "ended" | "budget_exhausted";
+export type ScheduleStopReason = "ended" | "budget_exhausted" | "runaway";
 
 /** The schedule's own budget, as the schedule list reports it. */
 export interface ScheduleBudget {
