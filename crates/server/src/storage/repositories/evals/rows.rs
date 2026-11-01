@@ -121,6 +121,10 @@ pub struct EvalRunRow {
     pub attribution: Option<serde_json::Value>,
     /// How many times each case runs (pass@k / pass^k); 1 for older runs.
     pub trials: i32,
+    /// The person whose authority the cases run with.
+    pub started_by_user_id: Option<Uuid>,
+    /// Org role of a credential without a person that started the run.
+    pub started_by_role: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -155,7 +159,7 @@ pub struct CreateEvalRunShareTokenRow {
 }
 
 /// Input for creating an eval run
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CreateEvalRunRow {
     pub public_id: String,
     pub eval_id: Uuid,
@@ -165,6 +169,9 @@ pub struct CreateEvalRunRow {
     pub triggered_by: String,
     /// Repetitions per case, at least 1.
     pub trials: i32,
+    /// Who started the run; cases run with their authority.
+    pub started_by_user_id: Option<Uuid>,
+    pub started_by_role: Option<String>,
 }
 
 /// Typed failures from `create_eval_run_with_case_results`. Returned (boxed in

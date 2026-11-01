@@ -1,4 +1,5 @@
-//! Eval runs as case tasks: repeated trials, pass^k summaries, cancellation.
+//! Eval runs as case tasks: repeated trials, pass^k summaries, cancellation,
+//! and cases running with the authority of the person who started the run.
 //!
 //! No model answers in these tests, so cases end by their own short timeout.
 //! That still drives the whole lifecycle: one task per (case, trial), each
@@ -12,6 +13,8 @@ use serde_json::{Value, json};
 use test_harness::TestServer;
 
 use everruns_server::domains::evals::record::{Eval, EvalCase};
+
+const TEST_ORG_ID: i64 = 1;
 
 async fn seed_eval(server: &TestServer, cases: usize, timeout_seconds: u32) -> Eval {
     let harness: Value = server
@@ -173,4 +176,41 @@ async fn cancelling_skips_unfinished_cases_and_keeps_the_run_cancelled() {
             .iter()
             .all(|r| r["status"] == "skipped")
     );
+}
+
+#[tokio::test]
+async fn cases_run_as_the_person_who_started_the_run() {
+    let server = TestServer::in_memory().await;
+    let eval = seed_eval(&server, 1, 1).await;
+    let run: Value = server
+        .post(&format!("/v1/evals/{}/runs", eval.public_id), json!({}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let run_id = run["id"].as_str().expect("run id").to_string();
+    let done = wait_for_status(&server, &eval, &run_id, "completed").await;
+
+    let run_row = server
+        .db
+        .get_eval_run_by_public_id(TEST_ORG_ID, &run_id)
+        .await
+        .unwrap()
+        .expect("run row");
+    let starter = run_row
+        .started_by_user_id
+        .expect("a person started this run");
+
+    // The case's session belongs to that person, not to the system caller.
+    let session_id: everruns_contracts::typed_id::SessionId = done["results"][0]["session_id"]
+        .as_str()
+        .expect("case session")
+        .parse()
+        .unwrap();
+    let session = server
+        .db
+        .get_session(TEST_ORG_ID, session_id)
+        .await
+        .unwrap()
+        .expect("session row");
+    assert_eq!(session.resolved_owner_user_id, Some(starter));
 }

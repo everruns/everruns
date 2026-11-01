@@ -303,8 +303,8 @@ impl Database {
     ) -> Result<EvalRunRow> {
         let row = sqlx::query_as::<_, EvalRunRow>(
             sql!(r#"
-            INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by, started_by_user_id, started_by_role)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING {EvalRunRow}
             "#),
         )
@@ -315,6 +315,8 @@ impl Database {
         .bind(&input.model_override)
         .bind(&input.filter_tags)
         .bind(&input.triggered_by)
+        .bind(input.started_by_user_id)
+        .bind(&input.started_by_role)
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
@@ -408,8 +410,8 @@ impl Database {
 
         let row = sqlx::query_as::<_, EvalRunRow>(
             sql!(r#"
-            INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by, trials)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by, trials, started_by_user_id, started_by_role)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING {EvalRunRow}
             "#),
         )
@@ -421,6 +423,8 @@ impl Database {
         .bind(&input.filter_tags)
         .bind(&input.triggered_by)
         .bind(trials as i32)
+        .bind(input.started_by_user_id)
+        .bind(&input.started_by_role)
         .fetch_one(&mut *tx)
         .await?;
 

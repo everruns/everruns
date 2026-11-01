@@ -3,11 +3,11 @@
 pub mod commands;
 pub mod dataset;
 pub mod dataset_export;
+pub mod graders;
 pub mod limits;
 pub mod queries;
 pub mod record;
 pub mod runner;
-pub mod scoring;
 pub mod service;
 pub mod summary;
 pub mod types;

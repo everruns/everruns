@@ -10,25 +10,26 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
-use crate::domains::evals::record::Score;
+use crate::domains::evals::graders::{GradeError, GradeInput, Graders};
+use crate::domains::evals::record::Scorer;
 use crate::domains::observers::record::{ObserverScorerConfig, ScorerMethod};
 use everruns_contracts::typed_id::SessionId;
 use tracing::{debug, warn};
 
-use crate::domains::evals::runner::{extract_final_assistant_content, extract_tool_calls};
-use crate::domains::evals::scoring::score_rule;
-use crate::domains::observers::judge::{JudgeClient, TurnEvidence};
+use crate::domains::evals::runner::{
+    extract_final_assistant_content, extract_token_usage, extract_tool_calls,
+};
 use crate::storage::StorageBackend;
 use crate::storage::{CompleteTraceScoreRow, TraceScoreRow};
 use crate::storage::{EventRow, ListEventsParams};
 
-/// Dependencies the worker loop needs to score: storage plus an optional judge
-/// client. `judge` is `None` when no LLM path is available (e.g. dev without
-/// providers); llm_judge scores are then skipped with a clear reason.
+/// Dependencies the worker loop needs to score: storage plus the graders
+/// shared with eval runs. Without a model stack (dev without providers) the
+/// model-backed scorers are skipped with a clear reason.
 #[derive(Clone)]
 pub struct ObserverWorkerDeps {
     pub db: Arc<StorageBackend>,
-    pub judge: Option<Arc<dyn JudgeClient>>,
+    pub graders: Graders,
 }
 
 /// Worker tuning. Conservative defaults; bounded judge fan-out.
@@ -148,65 +149,51 @@ async fn process_score(deps: &ObserverWorkerDeps, score: &TraceScoreRow) -> anyh
 
     let final_content = extract_final_assistant_content(&msg_events);
     let tool_calls = extract_tool_calls(&tool_events);
+    let input_message = extract_input_content(&turn_events);
 
-    let completion = match scorer.method {
-        ScorerMethod::Rule { rule } => {
-            let iterations = extract_iterations(&turn_events);
-            let Some(Score {
-                pass,
-                value,
-                reason,
-            }) = score_rule(&rule, &final_content, &tool_calls, iterations)
-            else {
-                // file_contains is rejected at create time, so this shouldn't
-                // happen; mark skipped to avoid a retry loop.
-                finalize_skipped(db, score, "scorer rule unsupported for observers").await?;
-                return Ok(());
-            };
-            CompleteTraceScoreRow {
-                status: "completed".to_string(),
-                pass: Some(pass),
-                value: Some(value),
-                reason: Some(reason),
-                ..Default::default()
-            }
+    // An llm_judge scorer is the shared `judge` grader with the observer's
+    // own pass threshold.
+    let rule = match scorer.method {
+        ScorerMethod::Rule { rule } => rule,
+        ScorerMethod::LlmJudge(judge) => Scorer::Judge {
+            rubric: judge.rubric,
+            model_id: judge.model_id,
+            pass_threshold: judge.pass_threshold,
+            weight: 1.0,
+        },
+    };
+    let input = GradeInput {
+        input_message: &input_message,
+        final_answer: &final_content,
+        tool_calls: &tool_calls,
+        turns: extract_iterations(&turn_events),
+        tokens: {
+            let (input, output) = extract_token_usage(&turn_events);
+            input + output
+        },
+        ..Default::default()
+    };
+    let graded = match deps.graders.grade(score.org_id, &rule, &input).await {
+        Ok(graded) => graded,
+        // A lasting condition (no model configured, unsupported rule): skip
+        // rather than retry into an error.
+        Err(GradeError::Unavailable(reason)) => {
+            finalize_skipped(db, score, &reason).await?;
+            return Ok(());
         }
-        ScorerMethod::LlmJudge(judge_config) => {
-            let Some(judge) = deps.judge.clone() else {
-                finalize_skipped(db, score, "llm judge unavailable (no model provider)").await?;
-                return Ok(());
-            };
-            let evidence = TurnEvidence {
-                input_message: extract_input_content(&turn_events),
-                final_answer: final_content,
-                tool_names: tool_calls,
-            };
-            let Some(result) = judge
-                .judge(
-                    score.org_id,
-                    judge_config.model_id,
-                    &judge_config.rubric,
-                    &evidence,
-                )
-                .await?
-            else {
-                // Org has no judge model configured — a permanent config
-                // condition, not a transient failure. Skip without retrying.
-                finalize_skipped(db, score, "no judge model configured for org").await?;
-                return Ok(());
-            };
-            CompleteTraceScoreRow {
-                status: "completed".to_string(),
-                pass: Some(result.value >= judge_config.pass_threshold),
-                value: Some(result.value),
-                label: result.label,
-                reason: Some(result.reasoning),
-                judge_input_tokens: result.input_tokens.map(|t| t as i64),
-                judge_output_tokens: result.output_tokens.map(|t| t as i64),
-                judge_cost_usd: result.cost_usd,
-                error_message: None,
-            }
-        }
+        Err(GradeError::Failed(error)) => return Err(error),
+    };
+    let usage = graded.usage.unwrap_or_default();
+    let completion = CompleteTraceScoreRow {
+        status: "completed".to_string(),
+        pass: Some(graded.score.pass),
+        value: Some(graded.score.value),
+        label: graded.label,
+        reason: Some(graded.score.reason),
+        judge_input_tokens: graded.usage.map(|_| usage.input_tokens as i64),
+        judge_output_tokens: graded.usage.map(|_| usage.output_tokens as i64),
+        judge_cost_usd: usage.cost_usd,
+        error_message: None,
     };
 
     db.complete_trace_score(score.id, completion).await?;
@@ -273,7 +260,7 @@ fn extract_input_content(turn_events: &[EventRow]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domains::observers::judge::{JudgeResult, TurnEvidence};
+    use crate::domains::observers::judge::{JudgeClient, JudgeResult, TurnEvidence};
     use crate::domains::observers::record::{
         LlmJudgeConfig, ObserverScope, ObserverScorerConfig, ScorerMethod,
     };
@@ -289,7 +276,7 @@ mod tests {
     fn deps(db: &Arc<StorageBackend>) -> ObserverWorkerDeps {
         ObserverWorkerDeps {
             db: db.clone(),
-            judge: None,
+            graders: Graders::new(db.clone()),
         }
     }
 
@@ -614,9 +601,13 @@ mod tests {
             .unwrap();
         enqueue(&db, observer.id, "greeted", session.id, turn_id, agent).await;
 
+        let graders = match judge {
+            Some(judge) => Graders::new(db.clone()).with_judge(judge),
+            None => Graders::new(db.clone()),
+        };
         let deps = ObserverWorkerDeps {
             db: db.clone(),
-            judge,
+            graders,
         };
         drain_once(&deps, ObserverWorkerConfig::default())
             .await
@@ -683,6 +674,66 @@ mod tests {
         assert_eq!(
             scores[0].reason.as_deref(),
             Some("no judge model configured for org")
+        );
+    }
+
+    #[tokio::test]
+    async fn decision_rule_routes_through_the_shared_graders() {
+        // No decision model on this deployment: the shared grader says so and
+        // the observer skips the score instead of retrying it.
+        let db = Arc::new(StorageBackend::test_database());
+        let agent = AgentId::from_uuid(db.create_test_agent(ORG, Uuid::now_v7()).await);
+        let harness = HarnessId::from_uuid(Uuid::now_v7());
+        db.create_test_harness(ORG, harness.uuid()).await;
+        let turn_id = "turn_01933b5a0000700080000000000000dc";
+        let session = db
+            .create_session(session_row(agent, harness, vec![]))
+            .await
+            .unwrap();
+        seed_turn(&db, session.id, turn_id, "hello there").await;
+        let observer = db
+            .create_observer(
+                ORG,
+                observer_with_scorer(
+                    agent,
+                    ObserverScorerConfig {
+                        key: "polite".to_string(),
+                        scope: ObserverScope::Turn,
+                        method: ScorerMethod::Rule {
+                            rule: Scorer::Decision {
+                                question: "Is the answer polite?".to_string(),
+                                yes: None,
+                                no: None,
+                                pass_threshold: 0.5,
+                                weight: 1.0,
+                            },
+                        },
+                    },
+                ),
+            )
+            .await
+            .unwrap();
+        enqueue(&db, observer.id, "polite", session.id, turn_id, agent).await;
+
+        drain_once(&deps(&db), ObserverWorkerConfig::default())
+            .await
+            .unwrap();
+        let scores = db
+            .list_trace_scores(
+                ORG,
+                crate::storage::ListTraceScoresParams {
+                    observer_id: observer.id,
+                    session_id: None,
+                    limit: 10,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(scores[0].status, "skipped");
+        assert_eq!(
+            scores[0].reason.as_deref(),
+            Some("decision model unavailable on this deployment")
         );
     }
 }

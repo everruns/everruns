@@ -65496,6 +65496,32 @@
           },
           {
             "type": "object",
+            "description": "The agent spent at most `max` tokens (input plus output).",
+            "required": [
+              "max",
+              "type"
+            ],
+            "properties": {
+              "max": {
+                "type": "integer",
+                "format": "int64",
+                "example": 20000,
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "tokens_within"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Session filesystem file contains substring.",
             "required": [
               "path",
@@ -65619,6 +65645,93 @@
                 "format": "double",
                 "description": "Relative weight of this scorer in the case's weighted average.",
                 "example": 1
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The org's chat model grades the answer against a rubric and returns a\nvalue from 0 to 1 with its reasoning.",
+            "required": [
+              "rubric",
+              "type"
+            ],
+            "properties": {
+              "model_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/modelId",
+                    "description": "Judge model; the org's default is used when absent."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "pass_threshold": {
+                "type": "number",
+                "format": "double",
+                "description": "Minimum judged value to pass.",
+                "example": 0.5
+              },
+              "rubric": {
+                "type": "string",
+                "description": "What a good answer does and what a bad one does.",
+                "example": "Score 1 when the answer resolves the refund request with the policy's actual terms; 0 when it invents terms or deflects."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "judge"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A decision model answers one yes/no question about the answer; the\nprobability of yes is the value. Cheaper than `judge` and typed, so it\nsuits any check with a yes/no shape.",
+            "required": [
+              "question",
+              "type"
+            ],
+            "properties": {
+              "no": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "What a no means."
+              },
+              "pass_threshold": {
+                "type": "number",
+                "format": "double",
+                "description": "Minimum probability of yes to pass.",
+                "example": 0.5
+              },
+              "question": {
+                "type": "string",
+                "description": "The yes/no question, asked about the user message, the answer and\nthe tools used.",
+                "example": "Does the answer stay within the published refund policy?"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "decision"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              },
+              "yes": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "What a yes means, when the question alone is ambiguous."
               }
             }
           }

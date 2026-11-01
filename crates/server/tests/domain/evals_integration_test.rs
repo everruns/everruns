@@ -318,16 +318,13 @@ struct SeededRun {
     result_ids: Vec<String>,
 }
 
-/// A one-trial internal run row with no target or overrides.
 fn test_run_row(public_id: &str, eval_id: uuid::Uuid) -> CreateEvalRunRow {
     CreateEvalRunRow {
         public_id: public_id.to_string(),
         eval_id,
-        target: None,
-        model_override: None,
-        filter_tags: None,
         triggered_by: "test".to_string(),
         trials: 1,
+        ..Default::default()
     }
 }
 

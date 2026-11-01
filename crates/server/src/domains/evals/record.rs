@@ -306,6 +306,13 @@ pub enum Scorer {
         #[serde(default = "default_weight")]
         weight: f64,
     },
+    /// The agent spent at most `max` tokens (input plus output).
+    TokensWithin {
+        #[schema(example = 20000)]
+        max: u64,
+        #[serde(default = "default_weight")]
+        weight: f64,
+    },
     /// Session filesystem file contains substring.
     FileContains {
         path: String,
@@ -357,10 +364,54 @@ pub enum Scorer {
         #[schema(example = 1.0)]
         weight: f64,
     },
+    /// The org's chat model grades the answer against a rubric and returns a
+    /// value from 0 to 1 with its reasoning.
+    Judge {
+        /// What a good answer does and what a bad one does.
+        #[schema(
+            example = "Score 1 when the answer resolves the refund request with the policy's \
+                             actual terms; 0 when it invents terms or deflects."
+        )]
+        rubric: String,
+        /// Judge model; the org's default is used when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model_id: Option<ModelId>,
+        /// Minimum judged value to pass.
+        #[serde(default = "default_half")]
+        #[schema(example = 0.5)]
+        pass_threshold: f64,
+        #[serde(default = "default_weight")]
+        weight: f64,
+    },
+    /// A decision model answers one yes/no question about the answer; the
+    /// probability of yes is the value. Cheaper than `judge` and typed, so it
+    /// suits any check with a yes/no shape.
+    Decision {
+        /// The yes/no question, asked about the user message, the answer and
+        /// the tools used.
+        #[schema(example = "Does the answer stay within the published refund policy?")]
+        question: String,
+        /// What a yes means, when the question alone is ambiguous.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        yes: Option<String>,
+        /// What a no means.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        no: Option<String>,
+        /// Minimum probability of yes to pass.
+        #[serde(default = "default_half")]
+        #[schema(example = 0.5)]
+        pass_threshold: f64,
+        #[serde(default = "default_weight")]
+        weight: f64,
+    },
 }
 
 fn default_pass_threshold() -> f64 {
     0.8
+}
+
+fn default_half() -> f64 {
+    0.5
 }
 
 impl Scorer {
@@ -379,10 +430,64 @@ impl Scorer {
             Scorer::ToolNotCalled { .. } => "tool_not_called",
             Scorer::ToolCallCount { .. } => "tool_call_count",
             Scorer::TurnsWithin { .. } => "turns_within",
+            Scorer::TokensWithin { .. } => "tokens_within",
             Scorer::FileContains { .. } => "file_contains",
             Scorer::JsonSchema { .. } => "json_schema",
             Scorer::CitationFaithful { .. } => "citation_faithful",
             Scorer::CitationJudged { .. } => "citation_judged",
+            Scorer::Judge { .. } => "judge",
+            Scorer::Decision { .. } => "decision",
+        }
+    }
+
+    /// Reject a scorer that could never grade: an empty rubric or question,
+    /// a threshold outside 0..1, a pattern or schema that does not compile.
+    /// Returns the reason, for a 400.
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        let threshold = |name: &str, value: f64| {
+            if (0.0..=1.0).contains(&value) {
+                Ok(())
+            } else {
+                Err(format!("{name} pass_threshold must be between 0.0 and 1.0"))
+            }
+        };
+        if !self.weight().is_finite() || self.weight() < 0.0 {
+            return Err(format!("{} weight must be zero or more", self.kind()));
+        }
+        match self {
+            Scorer::Judge {
+                rubric,
+                pass_threshold,
+                ..
+            } => {
+                if rubric.trim().is_empty() {
+                    return Err("judge rubric must not be empty".to_string());
+                }
+                threshold("judge", *pass_threshold)
+            }
+            Scorer::Decision {
+                question,
+                pass_threshold,
+                ..
+            } => {
+                if question.trim().is_empty() {
+                    return Err("decision question must not be empty".to_string());
+                }
+                threshold("decision", *pass_threshold)
+            }
+            Scorer::CitationFaithful { pass_threshold, .. } => {
+                threshold("citation_faithful", *pass_threshold)
+            }
+            Scorer::CitationJudged { pass_threshold, .. } => {
+                threshold("citation_judged", *pass_threshold)
+            }
+            Scorer::Regex { pattern, .. } => regex::Regex::new(pattern)
+                .map(|_| ())
+                .map_err(|error| format!("regex pattern does not compile: {error}")),
+            Scorer::JsonSchema { schema, .. } => jsonschema::validator_for(schema)
+                .map(|_| ())
+                .map_err(|error| format!("json_schema schema is invalid: {error}")),
+            _ => Ok(()),
         }
     }
 
@@ -396,12 +501,41 @@ impl Scorer {
             | Scorer::ToolNotCalled { weight, .. }
             | Scorer::ToolCallCount { weight, .. }
             | Scorer::TurnsWithin { weight, .. }
+            | Scorer::TokensWithin { weight, .. }
             | Scorer::FileContains { weight, .. }
             | Scorer::JsonSchema { weight, .. }
             | Scorer::CitationFaithful { weight, .. }
-            | Scorer::CitationJudged { weight, .. } => *weight,
+            | Scorer::CitationJudged { weight, .. }
+            | Scorer::Judge { weight, .. }
+            | Scorer::Decision { weight, .. } => *weight,
         }
     }
+}
+
+/// Validates an EvalTarget if present. Returns error on invalid combinations.
+pub fn validate_target(target: &Option<EvalTarget>) -> anyhow::Result<()> {
+    if let Some(EvalTarget::Session {
+        harness_id,
+        harness_name,
+        ..
+    }) = target
+        && harness_id.is_some()
+        && harness_name.is_some()
+    {
+        anyhow::bail!("harness_id and harness_name are mutually exclusive in eval target");
+    }
+    Ok(())
+}
+
+/// Validate every scorer of a case; the first one that could never grade is
+/// a 400.
+pub fn validate_scorers(scorers: &[Scorer]) -> anyhow::Result<()> {
+    for scorer in scorers {
+        scorer
+            .validate()
+            .map_err(|reason| anyhow::Error::new(crate::errors::BadRequestError::new(reason)))?;
+    }
+    Ok(())
 }
 
 fn default_weight() -> f64 {
