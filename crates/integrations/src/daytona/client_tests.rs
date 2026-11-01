@@ -4,6 +4,52 @@ use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+#[test]
+fn missing_cwd_prevents_every_line_of_the_command() {
+    let root = tempfile::tempdir().unwrap();
+    let missing = root.path().join("missing");
+    let marker = root.path().join("must-not-run");
+    for command in [
+        format!("true\nprintf unsafe > '{}'", marker.display()),
+        format!("true )\nprintf unsafe > '{}'\n( true", marker.display()),
+    ] {
+        let generated = format_exec_command(&command, Some(missing.to_str().unwrap()));
+        let wrapper = generated.strip_prefix(SHELL_PROFILE_PREAMBLE).unwrap();
+        let output = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(wrapper)
+            .current_dir(root.path())
+            .output()
+            .unwrap();
+        assert!(
+            !marker.exists(),
+            "a later line ran despite the rejected cwd"
+        );
+        assert!(!output.status.success());
+    }
+}
+
+#[test]
+fn trailing_comment_does_not_hide_the_shell_wrapper() {
+    let root = tempfile::tempdir().unwrap();
+    for cwd in [None, root.path().to_str()] {
+        let generated = format_exec_command("printf 'ok\\n' # comment", cwd);
+        let wrapper = generated.strip_prefix(SHELL_PROFILE_PREAMBLE).unwrap();
+        let output = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(wrapper)
+            .current_dir(root.path())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(output.stdout, b"ok\n");
+    }
+}
+
 #[tokio::test]
 async fn test_client_create_sandbox() {
     let mock_server = MockServer::start().await;
@@ -1138,14 +1184,21 @@ fn exec_shell_loads_profiles_silently_and_keeps_cwd_literal_and_exit_local() {
 #[tokio::test]
 async fn exec_preserves_status_output_and_command_options() {
     for (command, cwd, timeout, exit_code, output, suffix) in [
-        ("echo hello", None, None, 0, "hello\n", "( echo hello )"),
+        (
+            "echo hello",
+            None,
+            None,
+            0,
+            "hello\n",
+            "( eval 'echo hello' )",
+        ),
         (
             "ls",
             Some("/my project's files"),
             Some(5000),
             1,
             "failed\n",
-            "( cd '/my project'\"'\"'s files' && ls )",
+            "( cd '/my project'\"'\"'s files' && eval 'ls' )",
         ),
         (
             "nonexistent",
@@ -1153,7 +1206,7 @@ async fn exec_preserves_status_output_and_command_options() {
             Some(5000),
             127,
             "command not found",
-            "( nonexistent )",
+            "( eval 'nonexistent' )",
         ),
     ] {
         let server = MockServer::start().await;
