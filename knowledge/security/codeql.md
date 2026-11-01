@@ -47,7 +47,7 @@ reduce the workspace, prune source paths, disable features, or suppress loading
 errors to make a run green or fast.
 
 The candidate records the complete Cargo workspace inventory, executes the
-standard security queries, and checks semantic AST evidence for every workspace
+standard security queries, and checks semantic crate/AST evidence for every workspace
 target before uploading results. The [coverage query](../../.github/codeql/rust/Files.ql)
 and [validator](../../scripts/codeql/verify_rust.py) distinguish indexed filenames
 from extracted semantic code. Empty results, missing target roots, failed query
@@ -58,27 +58,50 @@ coverage gate.
 
 ## Validation status
 
-The candidate has not established production Rust coverage. A local CodeQL
-2.27.3 extraction of the full checkout at `b4873b90` (49 workspace packages,
-296 Cargo targets) exited 137 after about 11 minutes 48 seconds during extraction.
-The environment recorded one OOM kill and a 16 GiB cgroup memory peak/limit.
-No finalized database or OSS SARIF resulted. Do not finalize the partial database
-or shrink the workspace to conceal this failure. A supported runner/resource
-configuration must demonstrate complete extraction before activation; the
-candidate's hosted-runner budget is not yet validated.
+The candidate is not active and has not established production Code Scanning
+coverage. Local CodeQL 2.27.3 extraction of the complete checkout succeeded on a
+4-CPU, 16 GiB cgroup with disk-backed scratch, one Cargo build job, and no swap.
+It processed 3,518 Rust files and finalized the database in about 28 minutes.
+The workspace inventory contains 49 packages and 296 target roots. All 296
+target roots have semantic AST and crate records in the finalized database.
+Of 3,469 tracked Rust files, 3,444 have semantic AST evidence. The complete
+database contains 408 crate roots, including independent workspaces, without
+partitioning away cross-component relationships. Extraction and AST evidence
+alone are not the success bar: the standard query suite must also pass before
+results can be published.
 
-The coverage query and validator were separately exercised end to end on a tiny
-Rust fixture with CodeQL 2.27.3: one semantic source file, all 37 default-suite
-queries completed, valid SARIF, and no extraction errors/warnings. This proves
-the validation plumbing, not coverage of Everruns.
+An earlier attempt exited 137 with one OOM kill because approximately 6.3 GiB of
+bundle, database, and build files lived on RAM-backed `/tmp`. Moving this scratch
+to disk allowed the complete extraction without another OOM. Sampled aggregate
+anonymous memory peaked at approximately 12.15 GiB; total cgroup usage also
+includes reclaimable disk cache and is not a process-memory requirement.
+`--ram` is a suggestion to the Rust extractor, not a hard memory cap. The
+candidate rejects tmpfs/ramfs scratch, keeps Cargo build output on disk, records
+resource evidence, and uses the CodeQL bundle linked to the pinned action.
+This is evidence for the tested environment, not a measured minimum capacity or
+a guarantee for every hosted runner image.
+
+The coverage gate was also exercised on a tiny real Rust fixture: semantic AST
+and crate-root evidence, all 37 default-suite queries, valid SARIF, and no
+extraction errors/warnings. Regression tests reject filename-only coverage,
+missing crate roots, failed execution, error diagnostics, and RAM-backed scratch.
 
 ## Target limits
 
 The candidate is explicitly **native Linux** coverage. Native semantic extraction
 cannot establish coverage for `cfg(target_arch = "wasm32")` branches, WASM-only
-modules, other platform-specific branches, or excluded standalone workspaces.
+modules, other platform-specific branches, or sources outside the loaded target
+graph. Per-file semantic coverage also does not imply that every conditional
+branch or macro expansion inside that file was analyzed.
 In particular, Durable Object and Cloudflare example WASM paths require a
-separate validated target analysis. A file present in the source archive or a
+separate validated target analysis. The portable host is selected only when
+`execution-host` is enabled and `host` is disabled, so all-features extraction
+does not cover that alternative either. The 25 tracked files without semantic
+AST evidence also include 12 trybuild fixtures, two executable demonstration
+fixtures, a historical source without a Cargo manifest, two `include!` test
+fragments, and the shared eval usage module. Macro expansion nodes may be
+associated with the including file; this inventory alone cannot prove the
+semantic completeness of those fragments or the shared module. A file present in the source archive or a
 native Cargo check is insufficient evidence. The candidate must remain draft
 until extraction evidence is reviewed and this target gap has an explicit
 resolution; do not describe it as complete Rust coverage.

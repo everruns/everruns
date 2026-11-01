@@ -3,6 +3,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 python3 - <<'PY'
 import copy
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import yaml
 import sys
 import unittest
 sys.path.insert(0, 'scripts/codeql')
@@ -12,7 +17,7 @@ class CoverageTest(unittest.TestCase):
     def setUp(self):
         self.metadata = {'workspace_root': '/src', 'workspace_members': ['core'],
                          'packages': [{'id': 'core', 'targets': [{'src_path': '/src/core/lib.rs'}]}]}
-        self.rows = [{'path': 'core/lib.rs', 'semantics': 'true', 'nodes': '10'}]
+        self.rows = [{'path': 'core/lib.rs', 'semantics': 'true', 'nodes': '10', 'crates': '1'}]
         self.sarif = {'runs': [{'tool': {'driver': {'name': 'CodeQL', 'rules': [{'id': 'rust/sql-injection'}]}},
                                 'invocations': [{'executionSuccessful': True}], 'results': []}]}
     def errors(self):
@@ -27,6 +32,9 @@ class CoverageTest(unittest.TestCase):
         self.assertTrue(self.errors())
     def test_empty_ast(self):
         self.rows[0]['nodes'] = '0'
+        self.assertTrue(self.errors())
+    def test_ast_without_crate_graph_is_not_target_coverage(self):
+        self.rows[0]['crates'] = '0'
         self.assertTrue(self.errors())
     def test_failed_execution(self):
         self.sarif['runs'][0]['invocations'][0]['executionSuccessful'] = False
@@ -53,6 +61,48 @@ class CoverageTest(unittest.TestCase):
         original = copy.deepcopy(self.sarif)
         self.assertEqual([], self.errors())
         self.assertEqual(original, self.sarif)
+
+class StorageTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.steps = yaml.safe_load(Path('.github/codeql/advanced.yml').read_text())['jobs']['rust']['steps']
+        cls.script = next(step['run'] for step in cls.steps if step.get('id') == 'storage')
+
+    def prepare(self, filesystem, status=0):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake_stat = root / 'stat'
+            fake_stat.write_text('#!/bin/sh\nprintf "%s\\n" "$TEST_FILESYSTEM"\nexit "$TEST_STAT_STATUS"\n')
+            fake_stat.chmod(0o755)
+            env = dict(os.environ, PATH=str(root)+':'+os.environ['PATH'],
+                       TEST_FILESYSTEM=filesystem, TEST_STAT_STATUS=str(status),
+                       RUNNER_TEMP=directory, GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='2',
+                       GITHUB_ENV=str(root/'env'), GITHUB_OUTPUT=str(root/'output'))
+            result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', self.script],
+                                    env=env, text=True, capture_output=True)
+            return result.returncode, (root/'env').read_text() if (root/'env').exists() else ''
+
+    def test_disk_storage_exports_build_and_temporary_paths(self):
+        status, env = self.prepare('ext2/ext3')
+        self.assertEqual(status, 0)
+        self.assertIn('CODEQL_EXTRACTOR_RUST_OPTION_CARGO_TARGET_DIR=', env)
+        self.assertIn('TMPDIR=', env)
+
+    def test_tmpfs_does_not_consume_analysis_ram(self):
+        status, env = self.prepare('tmpfs')
+        self.assertNotEqual(status, 0)
+        self.assertEqual(env, '')
+
+    def test_ramfs_also_rejected(self):
+        self.assertNotEqual(self.prepare('ramfs')[0], 0)
+
+    def test_unknown_storage_fails_closed(self):
+        self.assertNotEqual(self.prepare('', status=1)[0], 0)
+
+    def test_findings_are_not_published_in_public_artifacts(self):
+        upload = next(step for step in self.steps if step.get('uses', '').startswith('actions/upload-artifact@'))
+        self.assertEqual(set(upload['with']['path'].splitlines()),
+                         {'evidence/workspace.json', 'evidence/files.csv', 'evidence/resources.txt'})
 
 unittest.main()
 PY

@@ -24,8 +24,12 @@ def verify(metadata, rows, sarif):
         failures.append("Workspace has no targets")
     for target in sorted(targets):
         row = files.get(target, {})
-        if row.get("semantics") != "true" or int(row.get("nodes", 0)) == 0:
-            failures.append(f"Missing semantic AST for workspace target: {target}")
+        if (
+            row.get("semantics") != "true"
+            or int(row.get("nodes", 0)) == 0
+            or int(row.get("crates", 0)) == 0
+        ):
+            failures.append(f"Missing semantic crate/AST for workspace target: {target}")
     runs = sarif.get("runs", [])
     if not runs:
         failures.append("SARIF has no runs")
