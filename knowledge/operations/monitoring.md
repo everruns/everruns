@@ -68,7 +68,7 @@ minutes, so averages divide by the platform row's sample count. History from
 before recording began is rebuilt a week per run from projected turn intervals
 and committed events, marked `backfilled` (no phase split, queue, or worker
 data). Reads aggregate minutes into the requested bucket. The sampling and
-read rules live in [the timeline repository](../../crates/server/src/storage/repositories/monitoring/timeline.rs)
+read rules live in [the timeline repository](../../crates/server/src/storage/repositories/monitoring/timeline/mod.rs)
 and [the timeline API](../../crates/server/src/api/monitoring/timeline.rs).
 Timeline endpoints follow the other Monitoring endpoints: scoped personal
 access tokens are denied, browser sessions and full-access tokens are not.
