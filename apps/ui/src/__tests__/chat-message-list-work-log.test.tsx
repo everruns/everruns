@@ -705,6 +705,17 @@ describe("ChatMessageList platform messages", () => {
     expect(screen.queryByText(/task_01abc/)).not.toBeInTheDocument();
   });
 
+  it("shows no row for a reaction note; the chip is the record", () => {
+    renderMessages([
+      {
+        text: '[Reactions, not typed messages]\nAlice reacted 👍 on your reply "Done." (message_1)',
+        metadata: { everruns_origin: { kind: "reaction" } },
+      },
+    ]);
+    expect(screen.queryByText(/Alice reacted/)).not.toBeInTheDocument();
+    expect(screen.queryByText("origin_reaction")).not.toBeInTheDocument();
+  });
+
   it("leaves an automatic update with no report as a line", () => {
     renderMessages([
       {

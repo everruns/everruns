@@ -5,7 +5,7 @@ import { fetchUpstream } from "../../../server/upstream";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const allowed =
-  /^(sessions(?:\/[a-zA-Z0-9_-]+(?:\/(?:messages|events|sse|cancel|question-answers|tool-approvals|files|work|settings|share))?)?|chat\/(?:main|config|shared\/[a-zA-Z0-9_-]+)|virtual-users\/me(?:\/connections(?:\/[a-zA-Z0-9_-]+(?:\/authorize)?)?)?)$/;
+  /^(sessions(?:\/[a-zA-Z0-9_-]+(?:\/(?:messages(?:\/[a-zA-Z0-9_-]+\/reactions\/(?!\.)[^/\s?#]{1,64})?|events|sse|cancel|question-answers|tool-approvals|files|work|settings|share|reactions))?)?|chat\/(?:main|config|shared\/[a-zA-Z0-9_-]+)|virtual-users\/me(?:\/connections(?:\/[a-zA-Z0-9_-]+(?:\/authorize)?)?)?)$/;
 async function proxy(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   try {
     const path = (await params).path.join("/");
@@ -50,7 +50,8 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
     const search = new URL(request.url).search;
     const route = path.startsWith("virtual-users/")
       ? `/v1/${path}`
-      : `/v1/channels/${channel}/${path}`;
+      : // Segments arrive decoded; an emoji reaction segment must be re-encoded.
+        `/v1/channels/${channel}/${path.split("/").map(encodeURIComponent).join("/")}`;
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     const contentType = request.headers.get("content-type");
     if (contentType) headers["Content-Type"] = contentType;
@@ -101,4 +102,4 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
     return new Response("Chat temporarily unavailable", { status: 503 });
   }
 }
-export { proxy as GET, proxy as POST, proxy as DELETE };
+export { proxy as GET, proxy as POST, proxy as PUT, proxy as DELETE };

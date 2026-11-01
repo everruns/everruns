@@ -4,6 +4,14 @@ import { MessageContent } from "./message-content";
 import { FilePreview, downloadFile } from "./file-preview";
 import { WorkLog, workForMessages } from "./work-log";
 import { conversationMessages, orderedEvents, originLabel } from "./transcript";
+import { ReactionBar } from "./reaction-bar";
+import {
+  applyReaction,
+  loadReactions,
+  reactionVersion,
+  saveReaction,
+  type ReactionsByMessage,
+} from "./reactions";
 import { SharedChat } from "./shared-chat";
 import { consumeSse, streamFailure } from "../client/sse";
 import { presentViewer, type Viewer } from "../profile";
@@ -209,6 +217,7 @@ function WorkChat({ config }: { config: Config }) {
   const [notice, setNotice] = useState(""),
     [effort, setEffort] = useState("");
   const [preview, setPreview] = useState(true);
+  const [reactions, setReactions] = useState<ReactionsByMessage>(new Map());
   const end = useRef<HTMLDivElement>(null),
     generation = useRef(0),
     lastSequence = useRef(0);
@@ -604,6 +613,7 @@ function WorkChat({ config }: { config: Config }) {
   };
   const ordered = orderedEvents(events);
   const messages = conversationMessages(ordered);
+  const reactionsSeen = reactionVersion(ordered);
   const turnWork = workForMessages(ordered);
   const turnState = ordered.findLast((event) =>
     ["turn.started", "turn.completed", "turn.failed", "turn.cancelled"].includes(event.type),
@@ -611,6 +621,31 @@ function WorkChat({ config }: { config: Config }) {
   const running = turnState
     ? turnState.type === "turn.started"
     : ["active", "started"].includes(session?.status ?? "");
+  // Read reactions when the conversation opens and whenever anyone reacts.
+  useEffect(() => {
+    if (!selected) return;
+    let stale = false;
+    loadReactions(selected)
+      .then((value) => {
+        if (!stale) setReactions(value);
+      })
+      .catch(() => {
+        /* chips are an extra; the conversation still works without them */
+      });
+    return () => {
+      stale = true;
+    };
+  }, [selected, reactionsSeen]);
+  const react = (messageId: string, emoji: string, add: boolean) => {
+    if (!selected) return;
+    const sessionId = selected;
+    setReactions((old) => applyReaction(old, messageId, emoji, add));
+    saveReaction(sessionId, messageId, emoji, add)
+      .catch((error) => {
+        setReactions((old) => applyReaction(old, messageId, emoji, !add));
+        fail(error);
+      });
+  };
   const choose = (id: string) => {
     const url = new URL(window.location.href);
     url.searchParams.set("session", id);
@@ -917,6 +952,13 @@ function WorkChat({ config }: { config: Config }) {
                     </button>
                   )}
                 </article>
+                {message.id.startsWith("message_") && (
+                  <ReactionBar
+                    reactions={reactions.get(message.id) ?? []}
+                    onToggle={(emoji, add) => react(message.id, emoji, add)}
+                    alwaysShowButton={message.role !== "user" && message.id === messages.at(-1)?.id}
+                  />
+                )}
                 {ownWork.length > 0 && (
                   <WorkLog events={ownWork} running={running && index === messages.length - 1} />
                 )}

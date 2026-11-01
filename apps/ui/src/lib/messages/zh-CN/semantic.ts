@@ -308,4 +308,8 @@ export const messages: Readonly<Record<string, string>> = {
   "ATIF export stopped after {count} parts": "{count} 零件后 ATIF 导出停止",
   "{count} image was omitted from the ATIF export": "{count} 图像",
   "{count} images were omitted from the ATIF export": "{count} 图像",
+  "Add reaction": "添加回应",
+  "{names} reacted {emoji}": "{names} 回应了 {emoji}",
+  "Remove your {emoji}": "移除你的 {emoji}",
+  Reaction: "回应",
 };
