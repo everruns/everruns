@@ -387,6 +387,7 @@ async fn seed_completed_run(server: &TestServer) -> SeededRun {
                 model_override: None,
                 filter_tags: None,
                 triggered_by: "test".to_string(),
+                trials: 1,
             },
         )
         .await
@@ -628,6 +629,7 @@ async fn seed_run_with_session_events(server: &TestServer) -> (String, String) {
                 model_override: None,
                 filter_tags: None,
                 triggered_by: "test".to_string(),
+                trials: 1,
             },
         )
         .await
@@ -1041,6 +1043,7 @@ async fn seed_run_with_tool_iterations(
                 model_override: None,
                 filter_tags: None,
                 triggered_by: "test".to_string(),
+                trials: 1,
             },
         )
         .await

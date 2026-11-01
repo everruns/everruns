@@ -6,7 +6,7 @@
 use crate::auth::share_token::{SHARE_PREFIX, generate_share_token, hash_share_token};
 use crate::domains::evals::limits::EvalLimits;
 use crate::domains::evals::record::*;
-use crate::domains::evals::runner::{EvalRunContext, spawn_eval_run};
+use crate::domains::evals::runner::{EvalRunContext, dispatch_eval_run};
 use crate::domains::evals::types::{
     BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
     EvalRunShareLink, ExternalScoreStatus, ImportEvalCaseEntry, ImportEvalRunRequest,
@@ -85,6 +85,9 @@ pub struct EvalService {
 }
 
 /// Validates an EvalTarget if present. Returns error on invalid combinations.
+/// Upper bound on repetitions per case in one run.
+pub const MAX_TRIALS: u32 = 20;
+
 fn validate_target(target: &Option<EvalTarget>) -> Result<()> {
     if let Some(EvalTarget::Session {
         harness_id,
@@ -375,6 +378,12 @@ impl EvalService {
         req: CreateEvalRunRequest,
     ) -> Result<EvalRun> {
         validate_target(&req.target)?;
+        let trials = req.trials.unwrap_or(1);
+        if !(1..=MAX_TRIALS).contains(&trials) {
+            return Err(
+                BadRequestError::new(format!("trials must be between 1 and {MAX_TRIALS}")).into(),
+            );
+        }
 
         let eval = self
             .db
@@ -394,6 +403,7 @@ impl EvalService {
             model_override: req.model_override,
             filter_tags: None, // Phase 2: tag-based partial runs
             triggered_by: "user".to_string(),
+            trials: trials as i32,
         };
 
         // Load eval-level target for resolution
@@ -429,7 +439,7 @@ impl EvalService {
 
         // Dispatch background execution if run context is available
         if let Some(run_ctx) = &self.run_context {
-            spawn_eval_run(run_ctx.clone(), caller.org_id, run_row.id);
+            dispatch_eval_run(run_ctx.clone(), caller.org_id, run_row.id);
         }
 
         Ok(run_row_to_run(run_row, vec![]))
@@ -617,6 +627,11 @@ impl EvalService {
         let updated = self
             .db
             .update_eval_run_status(run_row.id, "cancelled", None)
+            .await?;
+        // Queued case tasks see the skipped status and do nothing; a case
+        // already talking to its session stops at its next message.
+        self.db
+            .skip_unfinished_eval_case_results(run_row.id)
             .await?;
         Ok(updated.map(|r| run_row_to_run(r, vec![])))
     }
@@ -1163,7 +1178,9 @@ impl EvalService {
         case_rows: &[crate::storage::EvalCaseRow],
         result_rows: &[crate::storage::EvalCaseResultRow],
     ) -> Result<()> {
-        let summary = build_run_summary(case_rows, result_rows);
+        let trials = result_rows.iter().map(|r| r.trial + 1).max().unwrap_or(1) as u32;
+        let summary =
+            crate::domains::evals::summary::build_run_summary(case_rows, result_rows, trials);
         self.db
             .update_eval_run_status(run_id, "completed", Some(serde_json::to_value(summary)?))
             .await?;
@@ -1262,6 +1279,7 @@ fn run_row_to_run(row: crate::storage::EvalRunRow, results: Vec<EvalCaseResult>)
         source: EvalRunSource::from(row.source.as_str()),
         attribution: row.attribution,
         triggered_by: row.triggered_by,
+        trials: row.trials.max(1) as u32,
         started_at: row.started_at,
         completed_at: row.completed_at,
         summary: row.summary.and_then(|s| serde_json::from_value(s).ok()),
@@ -1427,6 +1445,7 @@ fn result_row_to_result(
         target,
         target_snapshot,
         status: CaseResultStatus::from(row.status.as_str()),
+        trial: row.trial.max(0) as u32,
         scores: row.scores,
         metadata: row.metadata,
         turns: row.turns.map(|v| v as u32),
@@ -1503,72 +1522,7 @@ fn resolve_external_score_status(
     }
 }
 
-fn build_run_summary(
-    case_rows: &[crate::storage::EvalCaseRow],
-    result_rows: &[crate::storage::EvalCaseResultRow],
-) -> RunSummary {
-    let total = result_rows.len() as u32;
-    let mut passed = 0u32;
-    let mut failed = 0u32;
-    let mut errored = 0u32;
-    let mut total_score = 0.0f64;
-    let mut total_turns = 0.0f64;
-    let mut total_latency = 0u64;
-    let mut total_input_tokens = 0u64;
-    let mut total_output_tokens = 0u64;
-
-    for result in result_rows {
-        let status = CaseResultStatus::from(result.status.as_str());
-        match status {
-            CaseResultStatus::Passed => passed += 1,
-            CaseResultStatus::Failed => failed += 1,
-            CaseResultStatus::Errored | CaseResultStatus::Timeout => errored += 1,
-            CaseResultStatus::Pending | CaseResultStatus::Running | CaseResultStatus::Skipped => {}
-        }
-
-        if matches!(status, CaseResultStatus::Passed | CaseResultStatus::Failed) {
-            total_score += case_result_avg_score(
-                result,
-                case_rows.iter().find(|case| case.id == result.eval_case_id),
-            );
-            total_turns += result.turns.unwrap_or_default() as f64;
-            total_latency += result.latency_ms.unwrap_or_default() as u64;
-            total_input_tokens += result.input_tokens.unwrap_or_default() as u64;
-            total_output_tokens += result.output_tokens.unwrap_or_default() as u64;
-        }
-    }
-
-    RunSummary {
-        total,
-        passed,
-        failed,
-        errored,
-        pass_rate: if total > 0 {
-            passed as f64 / total as f64
-        } else {
-            0.0
-        },
-        avg_score: if total > 0 {
-            total_score / total as f64
-        } else {
-            0.0
-        },
-        avg_turns: if total > 0 {
-            total_turns / total as f64
-        } else {
-            0.0
-        },
-        avg_latency_ms: if total > 0 {
-            total_latency / total as u64
-        } else {
-            0
-        },
-        total_input_tokens,
-        total_output_tokens,
-    }
-}
-
-/// Accumulates a `RunSummary` for an imported run. Mirrors `build_run_summary`
+/// Accumulates a `RunSummary` for an imported run. Mirrors `summary::build_run_summary`
 /// but reads the import request directly. `total` counts executed cases
 /// (passed/failed/errored); skipped cases are excluded from all tallies.
 #[derive(Default)]
@@ -1631,6 +1585,11 @@ impl ImportSummaryAcc {
             },
             total_input_tokens: self.total_input_tokens,
             total_output_tokens: self.total_output_tokens,
+            // Imported runs carry one result per case.
+            trials: 1,
+            cases: total,
+            cases_passed_every_trial: self.passed,
+            cases_passed_any_trial: self.passed,
         }
     }
 }
@@ -1647,55 +1606,6 @@ fn import_case_avg_score(case: &ImportEvalCaseEntry) -> f64 {
         return 0.0;
     }
     applicable.iter().sum::<f64>() / applicable.len() as f64
-}
-
-fn case_result_avg_score(
-    result: &crate::storage::EvalCaseResultRow,
-    case_row: Option<&crate::storage::EvalCaseRow>,
-) -> f64 {
-    let Some(scores) = result
-        .scores
-        .clone()
-        .and_then(|value| serde_json::from_value::<Vec<Score>>(value).ok())
-    else {
-        return 0.0;
-    };
-    if scores.is_empty() {
-        return 0.0;
-    }
-
-    let scorers = case_row
-        .and_then(|case| serde_json::from_value::<Vec<Scorer>>(case.scorers.clone()).ok())
-        .unwrap_or_default();
-    if scorers.len() == scores.len() {
-        let total_weight: f64 = scorers.iter().map(scorer_weight).sum();
-        if total_weight > 0.0 {
-            let weighted_sum: f64 = scores
-                .iter()
-                .zip(scorers.iter())
-                .map(|(score, scorer)| score.value * scorer_weight(scorer))
-                .sum();
-            return weighted_sum / total_weight;
-        }
-    }
-
-    scores.iter().map(|score| score.value).sum::<f64>() / scores.len() as f64
-}
-
-fn scorer_weight(scorer: &Scorer) -> f64 {
-    match scorer {
-        Scorer::Contains { weight, .. } => *weight,
-        Scorer::NotContains { weight, .. } => *weight,
-        Scorer::Regex { weight, .. } => *weight,
-        Scorer::ToolCalled { weight, .. } => *weight,
-        Scorer::ToolNotCalled { weight, .. } => *weight,
-        Scorer::ToolCallCount { weight, .. } => *weight,
-        Scorer::TurnsWithin { weight, .. } => *weight,
-        Scorer::FileContains { weight, .. } => *weight,
-        Scorer::JsonSchema { weight, .. } => *weight,
-        Scorer::CitationFaithful { weight, .. } => *weight,
-        Scorer::CitationJudged { weight, .. } => *weight,
-    }
 }
 
 #[cfg(test)]
@@ -1781,6 +1691,7 @@ mod tests {
         let run_req = CreateEvalRunRequest {
             target: None,
             model_override: None,
+            trials: None,
         };
 
         let mut tasks = Vec::new();
@@ -2096,6 +2007,7 @@ mod tests {
         let run_req = CreateEvalRunRequest {
             target: None,
             model_override: None,
+            trials: None,
         };
 
         let err = svc

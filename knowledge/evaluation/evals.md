@@ -77,6 +77,13 @@ test harness.
 A run executes all selected cases under one resolved configuration. It records
 source, trigger, lifecycle, aggregate metrics, and results.
 
+A run repeats every case `trials` times (1 by default, at most 20). Each
+repetition is its own result, numbered by `trial`. The summary reports the
+per-trial pass rate plus, grouped back by case, how many cases passed in every
+trial (pass^k) and in at least one (pass@k). pass^k is the bar for an agent
+that must work every time; a single trial cannot tell a flaky case from a
+broken one.
+
 Internal runs create sessions and score them. External runs are imported
 observations and are never re-executed or silently rescored by Everruns.
 
@@ -121,23 +128,35 @@ without pretending Everruns computed it.
 
 Triggering an internal run:
 
-1. validates org scope, limits, target overrides, and selected cases;
-2. creates the run and pending results with frozen resolved targets;
-3. schedules durable bounded-concurrency case work;
-4. creates one session per case;
-5. sends conversation and verification messages in order, waiting for idle
-   between messages;
+1. validates org scope, limits (every trial counts), target overrides, and
+   selected cases;
+2. creates the run and one pending result per case and trial, with frozen
+   resolved targets;
+3. enqueues one durable task per result on the server's eval pool;
+4. creates one session per result;
+5. sends conversation and verification messages in order, waiting for each
+   turn to settle;
 6. reads canonical session outcomes and configured artifacts;
 7. evaluates scorers and records result metrics;
-8. aggregates the terminal run summary.
+8. lets the last result to settle complete the run, with a summary rebuilt
+   from the stored results.
+
+Case work survives restarts and deploys. A replica that stops mid-case leaves
+a stale claim that the reaper hands to another replica; that task resumes the
+same session from the messages already delivered instead of starting over.
+Cancelling a run marks unfinished results skipped and running cases stop
+within seconds. Deployments without a durable store run the same case code on
+local tasks, without that recovery. Source:
+[`runner.rs`](../../crates/server/src/domains/evals/runner.rs),
+[`summary.rs`](../../crates/server/src/domains/evals/summary.rs).
 
 Eval sessions use ordinary session capabilities, events, authorization, and
 resource limits. Eval execution must not call storage or tools through a
 special privileged path.
 
-The runner owns exact concurrency, timeout, tag-filter behavior, and error
-decision. Operator configuration and defaults live in the eval limits
-source rather than this spec.
+The runner owns exact concurrency (`EVAL_MAX_CONCURRENT_CASES` per replica),
+timeout, tag-filter behavior, and error decision. Operator configuration and
+defaults live in the eval limits source rather than this spec.
 
 ## Limits
 

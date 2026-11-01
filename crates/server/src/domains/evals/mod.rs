@@ -9,6 +9,7 @@ pub mod record;
 pub mod runner;
 pub mod scoring;
 pub mod service;
+pub mod summary;
 pub mod types;
 
 pub use commands::*;

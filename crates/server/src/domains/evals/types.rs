@@ -157,8 +157,13 @@ pub struct CreateEvalRunRequest {
     pub target: Option<EvalTarget>,
     /// Model override for this run.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "gpt-5.1")]
+    #[schema(example = "gpt-6-luna")]
     pub model_override: Option<String>,
+    /// How many times to run each case, 1 to 20 (default 1). Repeated trials
+    /// report pass@k and pass^k in the run summary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 3, minimum = 1, maximum = 20)]
+    pub trials: Option<u32>,
 }
 
 /// Result status reported alongside externally computed scores.

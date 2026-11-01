@@ -674,6 +674,7 @@ async fn eval_run_creation_requires_session_permission() {
         req: CreateEvalRunRequest {
             target: None,
             model_override: None,
+            trials: None,
         },
     }
     .run(&ctx)
