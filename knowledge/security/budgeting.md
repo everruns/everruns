@@ -40,7 +40,7 @@ See source files for full definitions:
 - Typed IDs: `crates/contracts/src/typed_id.rs` (`BudgetId`, `LedgerEntryId`)
 - Events: `crates/core/src/events.rs` (budget event constants and `BudgetEventData`)
 - Storage: `crates/server/src/storage/repositories/budgets/`
-- Service: `crates/server/src/domains/budgets/service.rs`
+- Service: `crates/server/src/domains/budgets/service/mod.rs`
 - API: `crates/server/src/api/budgets.rs`
 - Capability: `crates/core/src/builtins/budgeting.rs`
 - Loop gate: `crates/core/src/host/budget_gate.rs` (applied in `execute_reason_activity_with_prompt_messages`, `crates/core/src/host/host.rs`)
@@ -162,7 +162,7 @@ Immutable raw activity fact, written for every usage whether or not a policy cov
 
 The journal stores scope (`org_id`, `user_id`, `principal_id`, `session_id`, `agent_id`, `harness_id`) plus raw `measures` and free-form `metadata`.
 
-A generation can declare billable components beyond its tokens (`cost_components` on `llm.generation`, used by the OpenAI Agents API backend for hosted tools and containers). The meter debits the priced ones and records every component whose amount is unknown in the journal metadata and the ledger's rating metadata as `cost_unknown_components`, so a total never silently treats an unknown amount as zero. A generation whose token usage is unknown but declares components still journals, with zero tokens ([meter](../../crates/server/src/domains/budgets/service.rs), `GenerationMeter`). When the provider reports that usage later (an Agents API turn, EVE-1145), the late tokens are metered once more as their own journal entry, sourced `llm_generation_late_usage` with the generation record's id, so the unique `(source_type, source_id)` index refuses a second late debit of the same generation ([late usage](../execution/openai-agents-api-runtime.md#observability-and-cost)).
+A generation can declare billable components beyond its tokens (`cost_components` on `llm.generation`, used by the OpenAI Agents API backend for hosted tools and containers). The meter debits the priced ones and records every component whose amount is unknown in the journal metadata and the ledger's rating metadata as `cost_unknown_components`, so a total never silently treats an unknown amount as zero. A generation whose token usage is unknown but declares components still journals, with zero tokens ([meter](../../crates/server/src/domains/budgets/service/mod.rs), `GenerationMeter`). When the provider reports that usage later (an Agents API turn, EVE-1145), the late tokens are metered once more as their own journal entry, sourced `llm_generation_late_usage` with the generation record's id, so the unique `(source_type, source_id)` index refuses a second late debit of the same generation ([late usage](../execution/openai-agents-api-runtime.md#observability-and-cost)).
 
 ### Usage Ledger
 

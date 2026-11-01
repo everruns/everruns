@@ -69,7 +69,7 @@ the session.
   one-shot waits for midnight UTC.
 - Both fail open when the budget store is unreachable, like the loop gate.
 
-Source: `crates/server/src/domains/budgets/service.rs` (`attach_unattended`,
+Source: `crates/server/src/domains/budgets/service/mod.rs` (`attach_unattended`,
 `unattended_fire_gate`), `crates/server/src/storage/background_limits.rs`.
 
 ## Detection
