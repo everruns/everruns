@@ -144,3 +144,87 @@ it("shows credential destination and owner with only exact-request consent", asy
     ]),
   );
 });
+
+it("reveals bidi in names and nested arguments without changing the submitted decision", async () => {
+  const pending = {
+    id: "tool_approval_bidi",
+    arguments: {
+      tool: "shell",
+      display_name: "Run\u202Eshell",
+      arguments: { "file\u2066": ["report\u202Etxt.exe", "می‌خواهم 👩‍💻"] },
+      risk: "destructive",
+    },
+  };
+  const original = JSON.stringify(pending);
+  const { container } = render(
+    <ToolApprovalRequests sessionId="session_1" requests={[pending]} toolResultsMap={new Map()} />,
+  );
+  expect(container.textContent).not.toMatch(/[\u202E\u2066]/u);
+  expect(screen.getAllByRole("img", { name: "Unicode control character U+202E" })).toHaveLength(2);
+  expect(container.querySelector("pre")).toHaveTextContent("می‌خواهم 👩‍💻");
+  fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
+  await waitFor(() =>
+    expect(submitToolApprovals).toHaveBeenCalledWith("session_1", [
+      { tool_call_id: "tool_approval_bidi", decision: "allow" },
+    ]),
+  );
+  expect(JSON.stringify(pending)).toBe(original);
+  expect(container.textContent).not.toContain("\u202E");
+  expect(
+    await screen.findByRole("img", { name: "Unicode control character U+202E" }),
+  ).toBeInTheDocument();
+});
+
+it("reveals controls in raw arguments and fallback tool names", () => {
+  const { container } = render(
+    <ToolApprovalRequests
+      sessionId="session_1"
+      requests={[
+        {
+          id: "raw",
+          arguments: { tool: "shell\u200F", arguments: "echo safe\r\u001b\u202Eevil" },
+        },
+      ]}
+      toolResultsMap={new Map()}
+    />,
+  );
+  expect(container.textContent).not.toMatch(/[\u200F\r\u001b\u202E]/u);
+  expect(container.querySelector("pre")?.textContent).toBe("echo safe\\u000D\\u001B\\u202Eevil");
+});
+
+it("reveals controls in credential consent fields and the exact request", () => {
+  const { container } = render(
+    <ToolApprovalRequests
+      sessionId="session_1"
+      requests={[
+        {
+          id: "credential",
+          arguments: {
+            risk: "credential:ticket",
+            arguments: {
+              source: "https://auth.example/\u202Etoken",
+              method: "GET\u200F",
+              request: { path: "\u2066" },
+              credentials: [
+                {
+                  name: "TOKEN\u202C",
+                  from: "token\u2069",
+                  scope: "custom\u061C",
+                  owner_label: "Alice\u202E",
+                  binding: {
+                    url: "https://example.com/\u202Eapi",
+                    auth: { type: "header", name: "X-Key\u2068" },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ]}
+      toolResultsMap={new Map()}
+    />,
+  );
+  expect(container.textContent).not.toMatch(/[\u061C\u200F\u202C\u202E\u2066\u2068\u2069]/u);
+  expect(container.querySelector("pre")?.textContent).toContain("\\u2066");
+  expect(screen.getAllByRole("img", { name: "Unicode control character U+202E" })).toHaveLength(3);
+});

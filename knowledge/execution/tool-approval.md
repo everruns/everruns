@@ -123,6 +123,21 @@ submission. A request left out of the submission is *not approved*, and
 nothing is recorded for it: silence never approves, and a retry simply asks
 again.
 
+## Approval display
+
+The UI renders bidi controls and non-layout control characters as visible,
+labelled Unicode escapes in hosted tool approvals, credential consent summaries,
+and OpenAI remote MCP approval cards, including their tool/server names and
+completed receipts. The [shared display renderer](../../apps/ui/src/components/chat/approval-display-text.tsx)
+runs after argument formatting, so nested JSON keys and values receive the same
+protection as raw strings. Highlighting distinguishes actual controls from literal
+escape text, and assistive technology receives the code point label.
+
+This is a presentation boundary only: original arguments, fingerprints, stored
+requests and decision payloads stay unchanged. Ordinary RTL letters, Persian
+joiners, emoji variation selectors, tabs and newlines retain their normal display.
+It does not attempt general Unicode normalization or confusable detection.
+
 ## Timeout
 
 Each request carries a deadline, configurable per agent (`timeout_seconds`,
