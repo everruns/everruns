@@ -78,6 +78,8 @@ chrono-tz = "0.10"
 dotenvy.workspace = true
 clap.workspace = true
 jsonwebtoken.workspace = true
+# Validates `json_schema` eval scorers (already linked through everruns-core).
+jsonschema = { version = "0.60.1", default-features = false }
 rand.workspace = true
 sha2.workspace = true
 hmac.workspace = true
@@ -166,7 +168,6 @@ everruns-sdk.workspace = true
 everruns-test-support = { path = "../test-support", default-features = false }
 # Template tests check the `github` capability enforces template settings.
 wiremock = "0.6"
-jsonschema = { version = "0.60.1", default-features = false }
 flate2.workspace = true
 tar.workspace = true
 # Mints ES256 personal-agent keys for the PACT tests (already linked via rustls).

@@ -110,6 +110,8 @@ fn validate(sampling_rate: f64, scorers: &[ObserverScorerConfig]) -> Result<()> 
                         "file_contains scorer is not supported by observers"
                     ));
                 }
+                rule.validate()
+                    .map_err(|reason| anyhow::Error::new(BadRequestError::new(reason)))?;
             }
             ScorerMethod::LlmJudge(judge) => {
                 if judge.rubric.trim().is_empty() {

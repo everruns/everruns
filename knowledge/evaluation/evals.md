@@ -117,8 +117,27 @@ enum in `crates/server/src/domains/evals/record.rs`. Adding a scorer requires:
 - UI authoring/rendering support where applicable.
 
 Do not keep an exhaustive scorer list here. The source currently includes
-output, tool-use, filesystem, schema, and citation-oriented scoring families;
-the enum and tests are authoritative as that set evolves.
+output, tool-use, budget (turns, tokens), filesystem, schema, citation, and
+model-graded families; the enum and tests are authoritative as that set
+evolves.
+
+Eval cases and observers grade through one entry point,
+[`graders`](../../crates/server/src/domains/evals/graders/mod.rs), so a scorer
+works the same in an offline run and on production traffic. Model-graded
+scorers come in two forms:
+
+- `decision` asks a decision model one yes/no question about the exchange and
+  scores the probability of yes. It is the default for any check with a yes/no
+  shape: typed, cheaper than a chat model, and honest about calibration.
+- `judge` asks the org's chat model to grade against a free-form rubric, for
+  checks that need a graded judgment.
+
+Which decision model answers follows the org's `system_decisions` setting, the
+same rule other platform checks follow; an org that selects its own model is
+never graded by the deployment's service instead. A model-graded scorer that
+cannot run says why: an eval case records a failing score with that reason,
+an observer skips the score. What grading cost is recorded with each result
+(`grader_usage` in result metadata, judge columns on trace scores).
 
 External score write-back is allowed only through the explicit result/run
 commands. Provenance belongs in result metadata so a score can be audited
@@ -152,7 +171,11 @@ local tasks, without that recovery. Source:
 
 Eval sessions use ordinary session capabilities, events, authorization, and
 resource limits. Eval execution must not call storage or tools through a
-special privileged path.
+special privileged path: each case runs with the authority of whoever started
+the run. A person's run resolves their current membership for every case, so
+removing them from the org stops their run; a run started by a credential
+without a person keeps that credential's role. The case session is owned by
+that person, which keeps it inside their usage and visibility.
 
 The runner owns exact concurrency (`EVAL_MAX_CONCURRENT_CASES` per replica),
 timeout, tag-filter behavior, and error decision. Operator configuration and

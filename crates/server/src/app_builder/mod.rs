@@ -689,20 +689,19 @@ impl ServerAppBuilder {
         };
 
         // Now that the LLM stack exists, spawn the observer scoring worker with
-        // an LLM-judge client backed by the org's own configured providers.
+        // the graders eval runs use (the org's own models and decision model).
         if let Some(observer_wake) = observer_wake {
-            let judge: Arc<dyn crate::domains::observers::JudgeClient> =
-                Arc::new(crate::domains::observers::LlmJudgeClient::new(
-                    background_db.clone(),
-                    driver_registry.clone(),
-                    provider_resolver.clone(),
-                ));
             supervisor.track(
                 "observer_scoring",
                 crate::domains::observers::spawn_observer_worker(
                     crate::domains::observers::ObserverWorkerDeps {
                         db: background_db.clone(),
-                        judge: Some(judge),
+                        graders: crate::domains::evals::graders::Graders::for_host(
+                            background_db.clone(),
+                            &host_composition,
+                            driver_registry.clone(),
+                            provider_resolver.clone(),
+                        ),
                     },
                     observer_wake,
                     crate::domains::observers::ObserverWorkerConfig::default(),
@@ -825,13 +824,13 @@ impl ServerAppBuilder {
                 runner.clone(),
                 event_delivery.clone(),
             )),
-            // Judged scorers (citation_judged) use the org's own configured model,
-            // mirroring the observer LLM judge.
-            judge: Some(Arc::new(crate::domains::observers::LlmJudgeClient::new(
+            // Model-backed scorers use the org's own models, as observers do.
+            graders: crate::domains::evals::graders::Graders::for_host(
                 db.clone(),
+                &host_composition,
                 driver_registry.clone(),
                 provider_resolver.clone(),
-            ))),
+            ),
             queue: Default::default(),
         });
         let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone())

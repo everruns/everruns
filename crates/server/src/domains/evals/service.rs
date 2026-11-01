@@ -84,23 +84,8 @@ pub struct EvalService {
     limits: EvalLimits,
 }
 
-/// Validates an EvalTarget if present. Returns error on invalid combinations.
 /// Upper bound on repetitions per case in one run.
 pub const MAX_TRIALS: u32 = 20;
-
-fn validate_target(target: &Option<EvalTarget>) -> Result<()> {
-    if let Some(EvalTarget::Session {
-        harness_id,
-        harness_name,
-        ..
-    }) = target
-        && harness_id.is_some()
-        && harness_name.is_some()
-    {
-        anyhow::bail!("harness_id and harness_name are mutually exclusive in eval target");
-    }
-    Ok(())
-}
 
 impl EvalService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
@@ -252,6 +237,7 @@ impl EvalService {
             .map(serde_json::to_value)
             .transpose()?;
 
+        validate_scorers(&req.scorers)?;
         let input = CreateEvalCaseRow {
             public_id: case_public_id.to_string(),
             name: req.name,
@@ -327,6 +313,7 @@ impl EvalService {
         let post_json = req.post.map(serde_json::to_value).transpose()?;
         let artifacts_json = req.artifacts.map(serde_json::to_value).transpose()?;
 
+        req.scorers.as_deref().map(validate_scorers).transpose()?;
         let input = UpdateEvalCaseRow {
             name: req.name,
             description: req.description,
@@ -404,6 +391,8 @@ impl EvalService {
             filter_tags: None, // Phase 2: tag-based partial runs
             triggered_by: "user".to_string(),
             trials: trials as i32,
+            started_by_user_id: caller.user_id,
+            started_by_role: crate::domains::evals::runner::started_by_role(caller),
         };
 
         // Load eval-level target for resolution

@@ -21,6 +21,7 @@
 // persisted by whichever replica the worker reports to, so an in-process
 // listener cannot see them all; a 1 s poll on an indexed count is cheap.
 
+use crate::domains::evals::graders::{GradeInput, GraderUsage, Graders};
 use crate::domains::evals::record::*;
 use crate::domains::messages::types::{CreateMessageRequest, InputMessage};
 use crate::domains::messages::{CreateMessageContext, MessageService};
@@ -31,7 +32,7 @@ use crate::storage::UpdateEvalCaseResultRow;
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{INPUT_MESSAGE, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED};
-use everruns_core::message::{TextAnnotation, VerificationStatus};
+use everruns_core::message::TextAnnotation;
 use everruns_durable::{ActivityOptions, TaskDefinition, WorkflowEventStore};
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
@@ -56,10 +57,9 @@ pub struct EvalRunContext {
     pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
-    /// LLM judge for judged scorers (e.g. `citation_judged`). `None` when the
-    /// deployment has no model provider stack; judged scorers then report the
-    /// judge as unavailable rather than erroring the run.
-    pub judge: Option<Arc<dyn crate::domains::observers::JudgeClient>>,
+    /// Scoring services shared with observers. Model-backed scorers report
+    /// themselves unavailable when the deployment has no model stack.
+    pub graders: Graders,
     /// Durable queue for case tasks, set once the server's store exists.
     /// Unset means local execution (dev mode, tests).
     pub queue: OnceLock<Arc<dyn WorkflowEventStore + Send + Sync>>,
@@ -260,16 +260,21 @@ async fn run_case_task_inner(ctx: &EvalRunContext, task: &EvalCaseTask) -> Resul
     }
 
     let start = Instant::now();
-    let outcome = execute_case_inner(
-        ctx,
-        task.org_id,
-        result.id,
-        result.eval_case_id,
-        &result.target,
-        result.session_id,
-        run.model_override.as_deref(),
-    )
-    .await;
+    let outcome = match run_caller(ctx, &run).await {
+        Ok(caller) => {
+            execute_case_inner(
+                ctx,
+                &caller,
+                result.id,
+                result.eval_case_id,
+                &result.target,
+                result.session_id,
+                run.model_override.as_deref(),
+            )
+            .await
+        }
+        Err(error) => Err(CaseError::Failed(error)),
+    };
     let latency_ms = start.elapsed().as_millis() as i64;
 
     match outcome {
@@ -300,6 +305,44 @@ async fn run_case_task_inner(ctx: &EvalRunContext, task: &EvalCaseTask) -> Resul
         }
     }
     Ok(())
+}
+
+/// The role recorded for a run started by a credential without a person;
+/// `None` when a person started it (their live membership is used instead).
+pub(crate) fn started_by_role(caller: &everruns_core::Caller) -> Option<String> {
+    caller.user_id.is_none().then(|| caller.role.to_string())
+}
+
+/// Whose authority a run's cases use.
+///
+/// A run a person started runs as that person, resolved again for every case
+/// so a member removed mid-run stops getting sessions. A run started by a
+/// credential without a person runs with the role it had, never as the
+/// internal caller. Only runs created before this was recorded fall back to
+/// the internal caller.
+async fn run_caller(
+    ctx: &EvalRunContext,
+    run: &crate::storage::EvalRunRow,
+) -> Result<everruns_core::Caller> {
+    if let Some(user_id) = run.started_by_user_id {
+        return crate::auth::caller_resolution::caller_for_user(&ctx.db, run.org_id, user_id)
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!("the person who started this run can no longer run it: {error}")
+            });
+    }
+    let Some(role) = run.started_by_role.as_deref() else {
+        return Ok(everruns_core::Caller::internal(run.org_id));
+    };
+    Ok(everruns_core::Caller {
+        org_id: run.org_id,
+        org_public_id: everruns_core::org_public_id_from_internal(run.org_id),
+        user_id: None,
+        role: role.parse().unwrap_or(everruns_core::OrgRole::Member),
+        is_platform_user: false,
+        is_internal: false,
+        read_only: false,
+    })
 }
 
 async fn record_case_error(
@@ -378,13 +421,14 @@ impl<E: Into<anyhow::Error>> From<E> for CaseError {
 #[allow(clippy::too_many_arguments)]
 async fn execute_case_inner(
     ctx: &EvalRunContext,
-    org_id: i64,
+    caller: &everruns_core::Caller,
     result_id: Uuid,
     case_id: Uuid,
     target_json: &Option<serde_json::Value>,
     existing_session: Option<Uuid>,
     run_model_override: Option<&str>,
 ) -> std::result::Result<(), CaseError> {
+    let org_id = caller.org_id;
     let case_row = ctx
         .db
         .get_eval_case(case_id)
@@ -458,12 +502,10 @@ async fn execute_case_inner(
     let session_uuid = match existing_session {
         Some(id) => id,
         None => {
-            // Eval execution is system-initiated on the org's behalf.
-            let caller = everruns_core::Caller::internal(org_id);
             let session = ctx
                 .session_service
                 .create(
-                    &caller,
+                    caller,
                     harness_id,
                     agent_id,
                     agent_id.map(everruns_contracts::typed_id::AgentId::from_uuid),
@@ -517,6 +559,7 @@ async fn execute_case_inner(
 
     let sctx = SessionCtx {
         org_id,
+        user_id: caller.user_id,
         result_id,
         session_uuid,
         session_id,
@@ -579,17 +622,17 @@ async fn execute_case_inner(
     let (input_tokens, output_tokens) = extract_token_usage(&turn_events);
 
     // Run scorers
-    let scores = run_scorers(
-        &scorers,
-        &final_assistant_content,
-        &final_annotations,
-        &tool_calls,
-        turn_count,
-        ctx,
-        org_id,
-        session_uuid,
-    )
-    .await;
+    let input_message = messages.last().map(|m| m.content.as_str()).unwrap_or("");
+    let grade_input = GradeInput {
+        input_message,
+        final_answer: &final_assistant_content,
+        annotations: &final_annotations,
+        tool_calls: &tool_calls,
+        turns: turn_count,
+        tokens: input_tokens + output_tokens,
+        session_id: Some(session_uuid),
+    };
+    let (scores, grader_usage) = run_scorers(&ctx.graders, org_id, &scorers, &grade_input).await;
     let all_passed = scores.iter().all(|s| s.pass);
 
     // Calculate weighted average score
@@ -603,6 +646,9 @@ async fn execute_case_inner(
             UpdateEvalCaseResultRow {
                 status: Some(status.to_string()),
                 scores: Some(serde_json::to_value(&scores)?),
+                // What grading cost, so judge and decision spend is visible
+                // per case.
+                metadata: grader_usage.map(|usage| serde_json::json!({ "grader_usage": usage })),
                 turns: Some(turn_count as i32),
                 latency_ms: None, // Set by caller
                 input_tokens: Some(input_tokens as i64),
@@ -618,6 +664,7 @@ async fn execute_case_inner(
 
 struct SessionCtx {
     org_id: i64,
+    user_id: Option<Uuid>,
     result_id: Uuid,
     session_uuid: Uuid,
     session_id: SessionId,
@@ -654,7 +701,7 @@ async fn send_message(ctx: &EvalRunContext, sctx: &SessionCtx, content: &str) ->
     let msg_ctx = CreateMessageContext {
         runtime_subject_principal_id: None,
         org_id: sctx.org_id,
-        user_id: None,
+        user_id: sctx.user_id,
         harness_id: sctx.harness_id,
         agent_id: sctx.agent_id,
         session_id: sctx.session_uuid,
@@ -829,7 +876,7 @@ pub(crate) fn extract_tool_calls(events: &[crate::storage::EventRow]) -> Vec<Str
         .collect()
 }
 
-fn extract_token_usage(events: &[crate::storage::EventRow]) -> (u64, u64) {
+pub(crate) fn extract_token_usage(events: &[crate::storage::EventRow]) -> (u64, u64) {
     let mut input = 0u64;
     let mut output = 0u64;
     for event in events {
@@ -849,319 +896,35 @@ fn extract_token_usage(events: &[crate::storage::EventRow]) -> (u64, u64) {
     (input, output)
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Grade every scorer of a case. A scorer that cannot run records a failing
+/// score with the reason; it never errors the case. Returns the scores in
+/// scorer order and the model usage of grading, when any.
 async fn run_scorers(
+    graders: &Graders,
+    org_id: i64,
     scorers: &[Scorer],
-    final_content: &str,
-    annotations: &[TextAnnotation],
-    tool_calls: &[String],
-    turns: u32,
-    ctx: &EvalRunContext,
-    org_id: i64,
-    session_uuid: Uuid,
-) -> Vec<Score> {
+    input: &GradeInput<'_>,
+) -> (Vec<Score>, Option<GraderUsage>) {
     let mut scores = Vec::with_capacity(scorers.len());
+    let mut usage: Option<GraderUsage> = None;
     for scorer in scorers {
-        let score = run_single_scorer(
-            scorer,
-            final_content,
-            annotations,
-            tool_calls,
-            turns,
-            ctx,
-            org_id,
-            session_uuid,
-        )
-        .await;
-        scores.push(score);
-    }
-    scores
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn run_single_scorer(
-    scorer: &Scorer,
-    final_content: &str,
-    annotations: &[TextAnnotation],
-    tool_calls: &[String],
-    turns: u32,
-    ctx: &EvalRunContext,
-    org_id: i64,
-    session_uuid: Uuid,
-) -> Score {
-    if let Some(score) =
-        crate::domains::evals::scoring::score_rule(scorer, final_content, tool_calls, turns)
-    {
-        return score;
-    }
-    match scorer {
-        Scorer::CitationFaithful {
-            min_citations,
-            pass_threshold,
-            ..
-        } => score_citation_faithful(annotations, *min_citations, *pass_threshold),
-        Scorer::CitationJudged {
-            rubric,
-            model_id,
-            pass_threshold,
-            ..
-        } => {
-            score_citation_judged(
-                ctx,
-                org_id,
-                final_content,
-                annotations,
-                rubric.as_deref(),
-                *model_id,
-                *pass_threshold,
-            )
-            .await
-        }
-        Scorer::FileContains { path, text, .. } => {
-            let file = ctx.db.get_session_file(session_uuid, path).await;
-            let pass = match file {
-                Ok(Some(f)) => {
-                    let content_str = f
-                        .content
-                        .as_deref()
-                        .and_then(|bytes| std::str::from_utf8(bytes).ok())
-                        .unwrap_or("");
-                    content_str.contains(text.as_str())
+        match graders.grade(org_id, scorer, input).await {
+            Ok(graded) => {
+                if let Some(spent) = graded.usage {
+                    usage.get_or_insert_with(GraderUsage::default).add(&spent);
                 }
-                _ => false,
-            };
-            Score {
-                pass,
-                value: if pass { 1.0 } else { 0.0 },
-                reason: if pass {
-                    format!("File '{path}' contains '{text}'")
-                } else {
-                    format!("File '{path}' does not contain '{text}' or not found")
-                },
+                scores.push(graded.score);
             }
+            Err(error) => scores.push(error.into_score()),
         }
-        // score_rule covers every other variant.
-        _ => unreachable!("score_rule handles all non-file scorer rules"),
     }
-}
-
-/// Grade citation faithfulness from the answer's annotations: coverage (enough
-/// citations) plus faithfulness (fraction verified `entailed`). Verdicts are
-/// stamped by the `citation_verification` capability; without it, citations
-/// are unverified and score 0 — the reason string says so.
-fn score_citation_faithful(
-    annotations: &[TextAnnotation],
-    min_citations: u32,
-    pass_threshold: f64,
-) -> Score {
-    let total = annotations.len();
-    if total < min_citations as usize {
-        return Score {
-            pass: false,
-            value: 0.0,
-            reason: format!("{total} citations (min {min_citations})"),
-        };
-    }
-    if total == 0 {
-        // min_citations is 0 here, so coverage is satisfied vacuously.
-        return Score {
-            pass: true,
-            value: 1.0,
-            reason: "no citations required or present".to_string(),
-        };
-    }
-    let with_verdict = annotations.iter().filter(|a| a.verified.is_some()).count();
-    let entailed = annotations
-        .iter()
-        .filter(|a| {
-            a.verified
-                .as_ref()
-                .is_some_and(|v| v.status == VerificationStatus::Entailed)
-        })
-        .count();
-    let fraction = entailed as f64 / total as f64;
-    let pass = fraction >= pass_threshold;
-    let reason = if with_verdict == 0 {
-        format!(
-            "{entailed}/{total} citations entailed — none verified (enable citation_verification)"
-        )
-    } else {
-        format!(
-            "{entailed}/{total} citations entailed ({with_verdict} verified); \
-             faithfulness {fraction:.2} (threshold {pass_threshold:.2})"
-        )
-    };
-    Score {
-        pass,
-        value: fraction,
-        reason,
-    }
-}
-
-const CITATION_JUDGE_RUBRIC: &str = "You are judging citation faithfulness. Each numbered item is a CLAIM the agent \
-     made and the SOURCE it cited. Decisions whether each SOURCE actually supports its \
-     CLAIM. `value` is the fraction of items whose source supports the claim \
-     (1.0 = all supported, 0.0 = none). Penalize claims whose source is unrelated \
-     or contradicts them.";
-
-/// Grade citation faithfulness with the org's LLM judge, reusing the observer
-/// judge (`observers::judge::JudgeClient`). Fails open to a clear reason when no
-/// judge/model is available so a judge outage never errors the whole run.
-async fn score_citation_judged(
-    ctx: &EvalRunContext,
-    org_id: i64,
-    final_content: &str,
-    annotations: &[TextAnnotation],
-    rubric: Option<&str>,
-    model_id: Option<everruns_contracts::typed_id::ModelId>,
-    pass_threshold: f64,
-) -> Score {
-    if annotations.is_empty() {
-        return Score {
-            pass: true,
-            value: 1.0,
-            reason: "no citations to judge".to_string(),
-        };
-    }
-    let Some(judge) = ctx.judge.as_ref() else {
-        return Score {
-            pass: false,
-            value: 0.0,
-            reason: "citation judge unavailable (no model provider)".to_string(),
-        };
-    };
-    let evidence = crate::domains::observers::TurnEvidence {
-        input_message: String::new(),
-        final_answer: build_citation_pairs(final_content, annotations),
-        tool_names: Vec::new(),
-    };
-    let rubric = rubric.unwrap_or(CITATION_JUDGE_RUBRIC);
-    match judge.judge(org_id, model_id, rubric, &evidence).await {
-        Ok(Some(result)) => Score {
-            pass: result.value >= pass_threshold,
-            value: result.value,
-            reason: result.reasoning,
-        },
-        Ok(None) => Score {
-            pass: false,
-            value: 0.0,
-            reason: "no judge model configured for org".to_string(),
-        },
-        Err(e) => Score {
-            pass: false,
-            value: 0.0,
-            reason: format!("citation judge error: {e}"),
-        },
-    }
-}
-
-/// Render each annotation as a numbered CLAIM/SOURCE pair for the judge. The
-/// claim is the answer span the citation is attached to; the source is the
-/// cited snippet (and uri).
-fn build_citation_pairs(text: &str, annotations: &[TextAnnotation]) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    let mut out = String::new();
-    for (i, ann) in annotations.iter().enumerate() {
-        let claim: String = chars
-            .get(ann.start..ann.end.min(chars.len()))
-            .map(|s| s.iter().collect())
-            .unwrap_or_default();
-        let source = ann.source.snippet.as_deref().unwrap_or("(no snippet)");
-        out.push_str(&format!(
-            "[{}] CLAIM: {}\n    SOURCE ({}): {}\n",
-            i + 1,
-            claim.trim(),
-            ann.source.uri,
-            source.trim(),
-        ));
-    }
-    out
+    (scores, usage)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::storage::{CreateSessionFileRow, StorageBackend};
-    use everruns_core::message::{AnnotationSource, VerificationVerdict};
-
-    fn verified_annotation(status: VerificationStatus) -> TextAnnotation {
-        TextAnnotation {
-            start: 0,
-            end: 5,
-            origin: "citation_retrieval".to_string(),
-            source: AnnotationSource {
-                uri: "u".to_string(),
-                title: None,
-                snippet: None,
-                location: None,
-            },
-            external_id: None,
-            verified: Some(VerificationVerdict {
-                status,
-                score: Some(0.9),
-            }),
-        }
-    }
-
-    #[test]
-    fn citation_faithful_passes_when_all_entailed() {
-        let anns = vec![
-            verified_annotation(VerificationStatus::Entailed),
-            verified_annotation(VerificationStatus::Entailed),
-        ];
-        let score = score_citation_faithful(&anns, 1, 0.8);
-        assert!(score.pass);
-        assert!((score.value - 1.0).abs() < 1e-9);
-    }
-
-    #[test]
-    fn citation_faithful_fails_below_threshold() {
-        let anns = vec![
-            verified_annotation(VerificationStatus::Entailed),
-            verified_annotation(VerificationStatus::Unsupported),
-        ];
-        let score = score_citation_faithful(&anns, 1, 0.8);
-        assert!(!score.pass);
-        assert!((score.value - 0.5).abs() < 1e-9);
-    }
-
-    #[test]
-    fn citation_faithful_fails_on_insufficient_coverage() {
-        let anns = vec![verified_annotation(VerificationStatus::Entailed)];
-        let score = score_citation_faithful(&anns, 3, 0.5);
-        assert!(!score.pass);
-        assert_eq!(score.value, 0.0);
-    }
-
-    #[test]
-    fn citation_faithful_notes_missing_verdicts() {
-        let mut ann = verified_annotation(VerificationStatus::Entailed);
-        ann.verified = None;
-        let score = score_citation_faithful(&[ann], 1, 0.8);
-        assert!(!score.pass);
-        assert!(score.reason.contains("enable citation_verification"));
-    }
-
-    #[test]
-    fn citation_pairs_render_claim_and_source() {
-        let text = "The sky is blue. Grass is green.";
-        let anns = vec![TextAnnotation {
-            start: 0,
-            end: 16,
-            origin: "citation_retrieval".to_string(),
-            source: AnnotationSource {
-                uri: "doc://a".to_string(),
-                title: None,
-                snippet: Some("The sky appears blue due to Rayleigh scattering.".to_string()),
-                location: None,
-            },
-            external_id: None,
-            verified: None,
-        }];
-        let pairs = build_citation_pairs(text, &anns);
-        assert!(pairs.contains("[1] CLAIM: The sky is blue."));
-        assert!(pairs.contains("SOURCE (doc://a): The sky appears blue"));
-    }
 
     #[tokio::test]
     async fn collect_case_artifacts_reads_named_files() {

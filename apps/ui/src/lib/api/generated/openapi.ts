@@ -26491,6 +26491,17 @@ export interface components {
           weight?: number;
         }
       | {
+          /**
+           * Format: int64
+           * @example 20000
+           */
+          max: number;
+          /** @enum {string} */
+          type: "tokens_within";
+          /** Format: double */
+          weight?: number;
+        }
+      | {
           path: string;
           text: string;
           /** @enum {string} */
@@ -26548,6 +26559,46 @@ export interface components {
            * @example 1
            */
           weight?: number;
+        }
+      | {
+          model_id?: components["schemas"]["modelId"] | null;
+          /**
+           * Format: double
+           * @description Minimum judged value to pass.
+           * @example 0.5
+           */
+          pass_threshold?: number;
+          /**
+           * @description What a good answer does and what a bad one does.
+           * @example Score 1 when the answer resolves the refund request with the policy's actual terms; 0 when it invents terms or deflects.
+           */
+          rubric: string;
+          /** @enum {string} */
+          type: "judge";
+          /** Format: double */
+          weight?: number;
+        }
+      | {
+          /** @description What a no means. */
+          no?: string | null;
+          /**
+           * Format: double
+           * @description Minimum probability of yes to pass.
+           * @example 0.5
+           */
+          pass_threshold?: number;
+          /**
+           * @description The yes/no question, asked about the user message, the answer and
+           *     the tools used.
+           * @example Does the answer stay within the published refund policy?
+           */
+          question: string;
+          /** @enum {string} */
+          type: "decision";
+          /** Format: double */
+          weight?: number;
+          /** @description What a yes means, when the question alone is ambiguous. */
+          yes?: string | null;
         };
     /**
      * @description How a scorer grades a trace slice: a deterministic `rule` (reusing the
