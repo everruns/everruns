@@ -127,7 +127,7 @@ External-service capabilities and blueprint-backed workflows.
 |---|---|---|
 | [GitHub](/capabilities/github/) | `github` | 6 (7 with `allow_pull_requests`) |
 | [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
-| [Slack](/capabilities/slack/) | `slack` | 4 |
+| [Slack](/capabilities/slack/) | `slack` | 5 |
 | Cursor | `cursor` | 9 |
 | [Agentic Resource Discovery](/integrations/ard/) | `resource_discovery` | 3 |
 | [AgentID Sign-In](/integrations/agentid/) | `agentid` | 1 |

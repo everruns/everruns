@@ -8,6 +8,10 @@ use serde_json::json;
 fn slack_narration_shows_the_action_and_safe_detail_in_every_phase() {
     for tool in SlackCapability.tools() {
         let (arguments, expected) = match tool.name() {
+            "slack_code_task" => (
+                json!({"summary":"PRIVATE_BODY", "diff_path":"PRIVATE_BODY"}),
+                "Published Slack Code task",
+            ),
             "slack_add_reaction" => (json!({"name":"thumbsup"}), "Added Slack reaction: thumbsup"),
             "slack_update_message" => (
                 json!({"text":"The report\nis ready."}),

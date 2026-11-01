@@ -161,10 +161,18 @@ bot-authored origin; they do not establish requester authorization or human
 collaboration. Conversation inspection requires query parameters: Slack rejects
 JSON bodies for `conversations.info` with `invalid_arguments`.
 
-Diff removal remains blocked by a live contract mismatch: publication returns a
-singleton session view with ID `code`, listed under `session_views`, but removing
-that returned ID produces `view_not_found`. Do not treat this as successful
-removal or delete another agent's view. Full runtime, private-origin, stop,
-approval and two-person UI qualification remain required. Hosted SaaS
+Slack's built-in Code tab is permanent: removing its returned identifier produces
+`view_not_found`. Live checks confirm that a newline-only diff empties the backing
+file. The projection uses this empty snapshot for clearing, guarded by the exact
+file and content revision from its own publication receipt. A changed receipt
+preserves the newer content. Encoded, removable tabs retain owner-scoped removal.
+A live runtime run with a real model and managed Daytona sandbox now verifies
+repository creation after requester-fixture approvals, publication of the actual
+Git diff, same-session thread steering, sandbox continuity, empty-diff clearing,
+and final-summary-before-archive. Stopped tasks remain stopped with unchanged
+Slack output after a full local-stack restart. Signed actor/click fixtures exercise
+the real ingress and approval resolver; they are not human Slack UI actions.
+Private-origin, two-person UI, provider-delivered webhook and live reopen
+qualification remain required. Hosted SaaS
 adoption remains a separate pinned-OSS rollout and must not replace its submodule
 with the sibling checkout.

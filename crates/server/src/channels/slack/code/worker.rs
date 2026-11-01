@@ -145,7 +145,7 @@ async fn process(
         }
         return Ok(None);
     }
-    // THREAT[TM-SLACK-014]: all routing stays within the signed endpoint/workspace.
+    // THREAT[TM-SLACK-018]: all routing stays within the signed endpoint/workspace.
     let channel = event["channel"].as_str().context("Missing Slack channel")?;
     let ts = event["ts"].as_str().unwrap_or_default();
     let root = event["thread_ts"].as_str().unwrap_or(ts);

@@ -44,6 +44,8 @@ The agent uses `slack_code_task` to publish complete context snapshots, a summar
 and a unified diff read from a session file. The context bar includes an Everruns
 session link. Large diffs must be shared through review links; Slack's diff limit
 is 1,000,000 bytes. Stale revisions are rejected, and rate limits retry durably.
+An empty diff clears the Code tab's content. The tab itself remains present;
+clearing an older snapshot preserves a newer published diff.
 
 The agent can mark its final summary complete. Once execution finishes, Everruns
 posts that summary, closes the Slack session, and archives the channel. Unarchiving

@@ -23,6 +23,8 @@ CREATE TABLE slack_code_tasks (
     ready BOOLEAN NOT NULL DEFAULT FALSE,
     summary_ts TEXT,
     diff_view_id TEXT,
+    diff_file_id TEXT,
+    diff_content_version BIGINT,
     next_attempt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(endpoint_id, team_id, origin_channel, origin_ts),
     UNIQUE(endpoint_id, team_id, slack_channel)

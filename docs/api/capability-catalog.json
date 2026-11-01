@@ -1469,6 +1469,7 @@
       "status": "available",
       "tools": [
         "slack_add_reaction",
+        "slack_code_task",
         "slack_lookup_user",
         "slack_update_message",
         "slack_upload_file"

@@ -2,6 +2,12 @@
 
 ## 2026-10-31
 
+- Fail closed for every line of a Daytona command when its requested working directory is missing, and preserve trailing shell comments. Read Slack Code review diffs from the active sandbox or attached workspace instead of a stale VFS copy. See [managed sandbox runtime](runtime-resources/session-sandbox.md).
+
+- Qualified real-model/Daytona Slack Code diff publication, clearing and completion/archive through signed test inputs, plus stopped delivery across restart. Human/private-origin qualification remains outstanding. See [Slack Code](integrations/slack-code.md#qualification).
+
+- Completed Slack Code backend narration and catalog integration; live Slack accepts an empty diff snapshot for clearing the permanent Code tab. Preserve newer content through exact publication receipts. See [Slack Code](integrations/slack-code.md).
+
 - Add bounded exact-edit recovery hints from the authorized read snapshot, with conservative per-hunk already-applied evidence and unchanged atomic editing. See [Session Filesystem](runtime-resources/file-store.md#exact-edit-recovery-diagnostics).
 - Normalize canonical Unicode and segment multilingual words in the shared scoped discovery index. See [Tool Search](execution/tool-search.md).
 
