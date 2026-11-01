@@ -419,6 +419,7 @@ pub(super) async fn start_maintenance(
             deps.connection_resolver.clone(),
         ),
         crate::background::session_trace_backfill::backfill_job(deps.background_db.clone()),
+        crate::background::stranded_actor_sweep::sweep_job(deps.background_db.clone()),
         crate::domains::memory::source_sync::memory_source_sync_job(
             deps.background_db.clone(),
             deps.connection_resolver.clone(),

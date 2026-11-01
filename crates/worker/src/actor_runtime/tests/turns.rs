@@ -1084,6 +1084,50 @@ async fn a_holder_that_dies_before_idling_leaves_the_next_holder_to_idle_the_ses
     }
 }
 
+// Production, 2026-10-29 (yolop#889 review session): rolling deploys killed
+// the turn's holder twice mid-turn, then a third time between `turn.completed`
+// and `session.idled`. The fourth lease counted past the poison threshold, and
+// the guard ran before the closed-turn check: with no open turn and no fresh
+// input it sealed nothing, idled nothing and released, leaving the session
+// `active` with no actor runnable, for days. The idle a closed turn is owed
+// comes first, poisoned or not.
+#[tokio::test]
+async fn a_poisoned_lease_still_idles_a_turn_whose_holder_died_before_idling() {
+    for terminal in ["turn.completed", "turn.failed"] {
+        let mut fixture = Fixture::new(model("Never.", vec![])).await;
+        // The dead holder's lease and the survivor's: two attempts, past one.
+        fixture.poison_attempts = 1;
+        died_before_idling(&fixture, terminal, true).await;
+
+        let (survivor, _) = fixture.worker("w2");
+        assert_eq!(run_until_idle(&survivor).await, 1, "{terminal}");
+        let types = fixture.types().await;
+        assert_eq!(
+            fixture.count("session.idled").await,
+            1,
+            "{terminal}: the session is idled: {types:?}"
+        );
+        assert_eq!(fixture.count("turn.sealed").await, 0, "{types:?}");
+        assert_eq!(fixture.count("turn.started").await, 1, "{types:?}");
+        fixture.assert_idle();
+        assert_eq!(fixture.store.row(fixture.session_id).attempts, 0);
+
+        // The guard still seals a fresh input whose holders keep dying: the
+        // closed turn's idle does not use up the poisoned lease.
+        let mut fixture = Fixture::new(model("Never.", vec![])).await;
+        fixture.poison_attempts = 1;
+        died_before_idling(&fixture, terminal, true).await;
+        fixture.send("Next.").await;
+        let (survivor, _) = fixture.worker("w2");
+        assert_eq!(run_until_idle(&survivor).await, 1, "{terminal}");
+        let types = fixture.types().await;
+        assert_eq!(fixture.count("turn.sealed").await, 1, "{types:?}");
+        assert_eq!(fixture.count("session.idled").await, 2, "{types:?}");
+        assert!(fixture.answers().await.iter().all(|text| text != "Never."));
+        fixture.assert_idle();
+    }
+}
+
 /// A draining worker hands the lease back between steps instead of holding
 /// the turn until its lease runs out: the next worker leases the actor at once
 /// and finishes the same turn, without running the finished act again.
