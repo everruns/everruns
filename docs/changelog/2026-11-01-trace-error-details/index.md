@@ -7,7 +7,7 @@ significance: minor
 products: [platform, cloud]
 surfaces: [ui]
 links:
-  prs: []
+  prs: [everruns/everruns#5133]
 ---
 
 Selecting a failed model call in the session trace now opens its error in the
