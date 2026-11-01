@@ -79,16 +79,10 @@ JSON or SSE parser. `worker/provider.js` supplies endpoint and credential policy
 `crates/durable-object`. Each conversation and search child has its own SQLite
 journal, Framework binding, execution epoch and durable alarm.
 
-The source-only DO adapter implements Framework's public hosting SPI. One Engine
-Wasm module also exports the shared command reducer used inside the authority's
-storage transaction. The Worker imports `service.js` and installs those exports;
-it does not upload a second copy of the reducer. The application does not prepare
-trusted command effects.
+The DO adapter connects Framework to SQLite storage and Durable Object alarms.
+Engine and session command handling run in the same WebAssembly module.
 Each session retains its model at creation. Changing the host's `MODEL` default
 affects new sessions; recovery of existing sessions uses their original model.
-Pre-pinning memberships use `LEGACY_MODEL`, defaulting to the original Muse
-model. Set it to the historical model before upgrading an older custom
-deployment; `MODEL` selects the default for new sessions.
 
 ## What belongs to the application
 
@@ -120,21 +114,9 @@ npm test
 npm run check:bundle
 ```
 
-Tests use actual workerd, SQLite, hibernatable WebSockets and alarms. They kill
-workerd while a search is in flight, restart it without reconnecting clients, and
-check recovery. A separate restart before a timer deadline checks one reminder
-admission. Synthetic model responses exist only in tests. The hosting audit checks
-resolved dependencies and requires Framework Engine, ObjectHosting and the shared
-driver while refusing a custom runner or sibling-example dependency.
-
-To qualify an Engine upgrade, save the previous build's generated `pkg/` outside
-the checkout before building the new revision. Run
-`EVERRUNS_CHAT_UPGRADE_FROM=/absolute/path/to/previous-pkg npm test`.
-The suite creates journals with that package and switches to the current package
-when it restarts the interrupted search. It checks retained history, models,
-registrations, child recovery and subsequent reminders. Run this mode separately
-from bundle checks because it temporarily swaps generated package files and
-restores them on exit.
+Tests run in workerd with SQLite, WebSockets, alarms and simulated model
+responses. They cover shared rooms, forks, recovery of interrupted searches and
+scheduled reminders after a restart.
 
 ## Deploy
 
