@@ -7,6 +7,7 @@ slug: framework/examples/durable-chat
 
 import desktopDiagram from "./durable-chat.svg?url&no-inline";
 import mobileDiagram from "./durable-chat-mobile.svg?url&no-inline";
+import { Aside } from "@astrojs/starlight/components";
 
 This walkthrough recreates
 [Earendil's multiplayer chat tutorial](https://earendil.com/posts/pi-durable-on-cloudflare/)
@@ -186,11 +187,13 @@ The public Worker handles browser requests. Room and session Durable Objects
 communicate through private bindings, and the OpenRouter API key stays on the
 server.
 
-:::caution[Public access and model costs]
+<Aside type="caution" title="Public access and model costs">
+
 This example has no sign-in, room access controls or per-user quotas. Anyone with
 its URL can open rooms and send messages using the configured model budget.
 Add access and usage controls before sharing your own deployment.
-:::
+
+</Aside>
 
 The test suite covers shared conversations, forks, interrupted history searches
 and scheduled reminders across Worker restarts. It runs locally with workerd
