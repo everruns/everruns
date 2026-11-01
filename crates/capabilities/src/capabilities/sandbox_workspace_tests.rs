@@ -21,6 +21,7 @@ const SECRET: &str = "ghs_supersecret";
 enum Event {
     Exec(String),
     Write(String, String),
+    Read(String),
     /// Secret files still present when the workspace was checkpointed.
     Checkpoint(Vec<String>),
 }
@@ -30,6 +31,9 @@ struct Sandbox {
     events: Vec<Event>,
     files: BTreeSet<String>,
     fail_command: bool,
+    review_content: String,
+    review_encoding: Option<String>,
+    reported_size: Option<usize>,
 }
 
 /// Per-sandbox record, keyed by external id so parallel tests stay apart.
@@ -123,7 +127,14 @@ impl SessionSandboxProvider for SecretFileTestProvider {
         });
         Ok(SessionSandboxExecResponse {
             exit_code,
-            stdout: format!("token={SECRET} in /home/sandbox/workspace"),
+            stdout: if command.contains("wc -c") {
+                with_sandbox(&instance.external_id, |s| {
+                    s.reported_size.unwrap_or(s.review_content.len())
+                })
+                .to_string()
+            } else {
+                format!("token={SECRET} in /home/sandbox/workspace")
+            },
             stderr: String::new(),
             success: exit_code == 0,
             truncated: false,
@@ -137,14 +148,17 @@ impl SessionSandboxProvider for SecretFileTestProvider {
         &self,
         _context: &dyn SessionSandboxContext,
         _config: &SessionSandboxConfig,
-        _instance: &SessionSandboxInstance,
+        instance: &SessionSandboxInstance,
         path: &str,
     ) -> Result<SessionSandboxReadFileResponse, ToolExecutionResult> {
-        Ok(SessionSandboxReadFileResponse {
-            path: path.to_string(),
-            content: String::new(),
-            encoding: "text".to_string(),
-        })
+        Ok(with_sandbox(&instance.external_id, |s| {
+            s.events.push(Event::Read(path.into()));
+            SessionSandboxReadFileResponse {
+                path: path.to_string(),
+                content: s.review_content.clone(),
+                encoding: s.review_encoding.clone().unwrap_or_else(|| "text".into()),
+            }
+        }))
     }
 
     async fn write_file(
@@ -211,6 +225,77 @@ fn workspace() -> (ManagedSandboxWorkspace, ToolContext, String) {
         context,
         session_id.to_string(),
     )
+}
+
+#[tokio::test]
+async fn slack_review_prefers_the_sandbox_and_never_falls_back_on_read_failure() {
+    use crate::slack_action::{
+        SlackAction, SlackActionError, SlackActionInvoker, SlackActionInvokerExt,
+        SlackActionOutcome,
+    };
+    use everruns_core::capabilities::Capability;
+    use everruns_core::host::InMemorySessionFileStore;
+    use everruns_core::session_files::SessionFileSystem;
+    struct Recorder(Mutex<Vec<SlackAction>>);
+    #[async_trait]
+    impl SlackActionInvoker for Recorder {
+        async fn invoke(
+            &self,
+            action: SlackAction,
+        ) -> Result<SlackActionOutcome, SlackActionError> {
+            self.0.lock().unwrap().push(action);
+            Ok(SlackActionOutcome::CodeTaskUpdated { revision: 1 })
+        }
+    }
+    for oversized in [false, true] {
+        let (workspace, mut context, id) = workspace();
+        let files = Arc::new(InMemorySessionFileStore::new());
+        files
+            .write_file(
+                context.workspace_fs_key(),
+                "/workspace/review.diff",
+                "STALE",
+                "text",
+            )
+            .await
+            .unwrap();
+        context.file_store = Some(files);
+        let diff = "diff --git a/a b/a\n--- a/a\n+++ b/a\n";
+        with_sandbox(&id, |s| {
+            s.review_content = diff.into();
+            s.reported_size = oversized.then_some(1_000_001);
+        });
+        context.extensions.insert(Arc::new(workspace));
+        let invoker = Arc::new(Recorder(Mutex::new(Vec::new())));
+        context
+            .extensions
+            .insert(Arc::new(SlackActionInvokerExt(invoker.clone())));
+        let tool = crate::capabilities::SlackCapability
+            .tools()
+            .into_iter()
+            .find(|tool| tool.name() == "slack_code_task")
+            .unwrap();
+        let result = tool.execute_with_context(json!({
+            "expected_revision":0,"context":[],"summary":"Review","diff_path":"/workspace/review.diff"
+        }), &context).await;
+        let seen = invoker.0.lock().unwrap();
+        if oversized {
+            assert!(matches!(result, ToolExecutionResult::ToolError(_)));
+            assert!(seen.is_empty(), "must not publish a stale VFS copy");
+        } else {
+            assert!(
+                matches!(result, ToolExecutionResult::Success(_)),
+                "{result:?}"
+            );
+            let SlackAction::CodeTask { request } = &seen[0] else {
+                panic!("wrong action")
+            };
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(request).unwrap()["diff"],
+                diff
+            );
+        }
+    }
 }
 
 #[tokio::test]
@@ -315,4 +400,52 @@ async fn rejects_a_cwd_outside_the_workspace() {
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn review_read_uses_the_primary_workspace_and_quotes_the_path() {
+    let (workspace, context, id) = workspace();
+    let diff = "diff --git a/a b/a\n--- a/a\n+++ b/a\n";
+    with_sandbox(&id, |s| s.review_content = diff.into());
+    let read = workspace
+        .read_review_file(&context, "/workspace/o'wn.diff", 1_000_000)
+        .await
+        .unwrap();
+    assert_eq!(read, diff);
+    let events = with_sandbox(&id, |s| s.events.clone());
+    assert!(events.contains(&Event::Read("/home/sandbox/workspace/o'wn.diff".into())));
+    let quoted = shell_escape("/home/sandbox/workspace/o'wn.diff");
+    assert!(events.iter().any(
+        |e| matches!(e, Event::Exec(c) if c == &format!("test -f {quoted} && wc -c < {quoted}"))
+    ));
+    assert!(!events.iter().any(|e| matches!(e, Event::Checkpoint(_))));
+}
+
+#[tokio::test]
+async fn review_read_refuses_oversize_growth_and_binary_content() {
+    for (reported, content, encoding, should_read) in [
+        (11, "short", "text", false),
+        (1, "grown beyond limit", "text", true),
+        (1, "YmluYXJ5", "base64", true),
+    ] {
+        let (workspace, context, id) = workspace();
+        with_sandbox(&id, |s| {
+            s.reported_size = Some(reported);
+            s.review_content = content.into();
+            s.review_encoding = Some(encoding.into());
+        });
+        assert!(
+            workspace
+                .read_review_file(&context, "/workspace/review.diff", 10)
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            with_sandbox(&id, |s| s
+                .events
+                .iter()
+                .any(|e| matches!(e, Event::Read(_)))),
+            should_read
+        );
+    }
 }

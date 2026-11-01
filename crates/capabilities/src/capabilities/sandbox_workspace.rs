@@ -42,6 +42,58 @@ impl ManagedSandboxWorkspace {
     pub fn new(config: SessionSandboxConfig) -> Self {
         Self { config }
     }
+
+    /// Read review content from the same filesystem as the coding tools.
+    /// Never fall back to a possibly stale virtual-workspace copy.
+    pub(crate) async fn read_review_file(
+        &self,
+        context: &ToolContext,
+        path: &str,
+        max_bytes: usize,
+    ) -> Result<String, ToolExecutionResult> {
+        let provider = provider_for_config(&self.config)?;
+        let state = ensure_session_sandbox_running(context, &self.config).await?;
+        let path = resolve_workspace_path(&state.instance, path)
+            .map_err(ToolExecutionResult::tool_error)?;
+        let quoted = shell_escape(&path);
+        let size = provider
+            .exec(
+                context,
+                &self.config,
+                &state.instance,
+                &SessionSandboxExecRequest {
+                    command: format!("test -f {quoted} && wc -c < {quoted}"),
+                    cwd: None,
+                    timeout_ms: Some(5_000),
+                    output_mode: "concise".into(),
+                },
+            )
+            .await?;
+        if size.exit_code != 0 || size.truncated {
+            return Err(ToolExecutionResult::tool_error(
+                "Could not inspect sandbox diff file",
+            ));
+        }
+        let bytes = size
+            .stdout
+            .trim()
+            .parse::<usize>()
+            .map_err(|_| ToolExecutionResult::tool_error("Invalid sandbox diff file size"))?;
+        if bytes > max_bytes {
+            return Err(ToolExecutionResult::tool_error(
+                "Diff exceeds Slack's byte limit; publish a review URL instead",
+            ));
+        }
+        let file = provider
+            .read_file(context, &self.config, &state.instance, &path)
+            .await?;
+        if file.encoding != "text" || file.content.len() > max_bytes {
+            return Err(ToolExecutionResult::tool_error(
+                "Diff is oversized or is not UTF-8; publish a review URL instead",
+            ));
+        }
+        Ok(file.content)
+    }
 }
 
 /// Install the sandbox workspace when the session has a managed sandbox.
@@ -49,6 +101,13 @@ pub fn install_sandbox_workspace(
     extensions: &mut ToolContextExtensions,
     resolved_capabilities: &[CapabilityRef],
 ) {
+    #[cfg(feature = "container-sandbox")]
+    if resolved_capabilities
+        .iter()
+        .any(|capability| capability.capability_id() == "container_sandbox")
+    {
+        extensions.insert(Arc::new(crate::container_sandbox::ContainerWorkspaceFiles));
+    }
     if !resolved_capabilities
         .iter()
         .any(|capability| capability.capability_id() == SESSION_SANDBOX_CAPABILITY_ID)
@@ -56,9 +115,11 @@ pub fn install_sandbox_workspace(
         return;
     }
     match session_sandbox_config_from_capabilities(resolved_capabilities) {
-        Ok(Some(config)) => extensions.insert(Arc::new(SandboxWorkspaceExt(Arc::new(
-            ManagedSandboxWorkspace::new(config),
-        )))),
+        Ok(Some(config)) => {
+            let workspace = Arc::new(ManagedSandboxWorkspace::new(config));
+            extensions.insert(Arc::new(SandboxWorkspaceExt(workspace.clone())));
+            extensions.insert(workspace);
+        }
         Ok(None) => {}
         Err(error) => {
             tracing::debug!(%error, "no sandbox workspace: invalid session_sandbox config")

@@ -729,6 +729,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn code_review_reads_the_attached_workspace_not_the_session_keyspace() {
+        use everruns_core::host::InMemorySessionFileStore;
+        use everruns_core::session_files::SessionFileSystem;
+        let invoker = Arc::new(RecordingInvoker::new(SlackActionOutcome::CodeTaskUpdated {
+            revision: 1,
+        }));
+        let mut context = context_with(invoker.clone())
+            .with_workspace_id(everruns_contracts::typed_id::WorkspaceId::new());
+        let files = Arc::new(InMemorySessionFileStore::new());
+        files
+            .write_file(context.session_id, "/review.diff", "STALE", "text")
+            .await
+            .unwrap();
+        let diff = "diff --git a/a b/a\n--- a/a\n+++ b/a\n";
+        files
+            .write_file(context.workspace_fs_key(), "/review.diff", diff, "text")
+            .await
+            .unwrap();
+        context.file_store = Some(files);
+        let result = code_task::SlackCodeTaskTool
+            .execute_with_context(
+                json!({
+                    "expected_revision":0,"context":[],"summary":"Review","diff_path":"/review.diff"
+                }),
+                &context,
+            )
+            .await;
+        assert!(
+            matches!(result, ToolExecutionResult::Success(_)),
+            "{result:?}"
+        );
+        let seen = invoker.seen.lock().unwrap();
+        let SlackAction::CodeTask { request } = &seen[0] else {
+            panic!("wrong action")
+        };
+        let request: Value = serde_json::from_str(request).unwrap();
+        assert_eq!(request["diff"], diff);
+        assert!(request.get("diff_path").is_none());
+    }
+
+    #[tokio::test]
     async fn add_reaction_forwards_the_action() {
         let invoker = Arc::new(RecordingInvoker::new(SlackActionOutcome::ReactionAdded {
             already_reacted: false,

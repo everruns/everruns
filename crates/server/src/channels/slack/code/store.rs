@@ -26,6 +26,8 @@ pub(super) struct Task {
     pub lifecycle: String,
     pub summary_ts: Option<String>,
     pub diff_view_id: Option<String>,
+    pub diff_file_id: Option<String>,
+    pub diff_content_version: Option<i64>,
 }
 
 #[derive(sqlx::FromRow)]

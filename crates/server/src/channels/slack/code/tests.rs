@@ -71,7 +71,7 @@ impl Fixture {
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(json!({"ok":true,"view_id":"V_OWN_DIFF"})),
             )
-            .with_priority(1)
+            .with_priority(2)
             .mount(&api)
             .await;
         Mock::given(method("POST"))
@@ -752,6 +752,108 @@ async fn view_cleanup_removes_only_the_view_our_upsert_created() {
             .await
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn builtin_diff_clears_only_the_exact_snapshot_we_published() {
+    for (current_file, current_version, should_clear) in [
+        ("F_OWN", 1, true),
+        ("F_OTHER", 1, false),
+        ("F_OWN", 2, false),
+    ] {
+        let f = Fixture::new().await;
+        let task = f.start().await;
+        let session = SessionId::from_uuid(task.session_id.unwrap());
+        Mock::given(method("POST"))
+            .and(path("/agents.conversations.setView"))
+            .and(body_partial_json(json!({"type":"diff"})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "ok":true,"view_id":"code","file_id":"F_OWN","content_version":1
+            })))
+            .with_priority(1)
+            .mount(&f.api)
+            .await;
+        request(
+            &f.slack.db,
+            task.org_id,
+            session,
+            &json!({
+                "expected_revision":0,"context":[],"summary":"Diff",
+                "diff":"diff --git a/a b/a\n--- a/a\n+++ b/a\n"
+            })
+            .to_string(),
+        )
+        .await
+        .unwrap();
+        f.project().await;
+        assert_eq!(f.task().await.diff_file_id.as_deref(), Some("F_OWN"));
+        let mut info = code_info("B_AGENT");
+        info["properties"]["code_channel"] = json!({
+            "diff_file_id":current_file,"diff_file_version":current_version
+        });
+        Mock::given(method("GET"))
+            .and(path("/conversations.info"))
+            .and(query_param("channel", "C_CODE"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({"ok":true,"channel":info})),
+            )
+            .with_priority(1)
+            .mount(&f.api)
+            .await;
+        request(
+            &f.slack.db,
+            task.org_id,
+            session,
+            &json!({
+                "expected_revision":1,"context":[],"summary":"No diff"
+            })
+            .to_string(),
+        )
+        .await
+        .unwrap();
+        f.project().await;
+        let cleared = f
+            .requests("agents.conversations.setView")
+            .await
+            .iter()
+            .any(|v| v["type"] == "diff" && v["content"] == "\n");
+        assert_eq!(cleared, should_clear);
+        assert!(
+            f.requests("agents.conversations.removeView")
+                .await
+                .is_empty()
+        );
+        let task = f.task().await;
+        assert_eq!(task.published, 2);
+        assert!(task.diff_view_id.is_none());
+        assert!(!task.disabled);
+    }
+}
+
+#[tokio::test]
+async fn empty_git_diff_is_published_as_an_empty_code_tab() {
+    let f = Fixture::new().await;
+    let task = f.start().await;
+    let session = SessionId::from_uuid(task.session_id.unwrap());
+    request(
+        &f.slack.db,
+        task.org_id,
+        session,
+        &json!({
+            "expected_revision":0,"context":[],"summary":"No changes","diff":""
+        })
+        .to_string(),
+    )
+    .await
+    .unwrap();
+    f.project().await;
+    assert!(
+        f.requests("agents.conversations.setView")
+            .await
+            .iter()
+            .any(|v| v["type"] == "diff" && v["content"] == "\n")
+    );
+    assert_eq!(f.task().await.published, 1);
 }
 
 #[tokio::test]

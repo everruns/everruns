@@ -258,27 +258,52 @@ async fn project(
                 || desired.base_branch != previous.base_branch
                 || desired.head_branch != previous.head_branch
             {
-                let response=view(state,&config,task,json!({"channel_id":channel,"type":"diff","content":diff,"base_branch":desired.base_branch,"head_branch":desired.head_branch})).await?;
+                // Slack requires nonempty content even for an empty git diff.
+                let content = if diff.is_empty() { "\n" } else { diff };
+                let response=view(state,&config,task,json!({"channel_id":channel,"type":"diff","content":content,"base_branch":desired.base_branch,"head_branch":desired.head_branch})).await?;
                 if let Some(view) = response["view_id"].as_str() {
-                    sqlx::query("UPDATE slack_code_tasks SET diff_view_id=$2 WHERE id=$1")
+                    sqlx::query("UPDATE slack_code_tasks SET diff_view_id=$2,diff_file_id=$3,diff_content_version=$4 WHERE id=$1")
                         .bind(task.id)
                         .bind(view)
+                        .bind(response["file_id"].as_str())
+                        .bind(response["content_version"].as_i64())
                         .execute(&mut **tx)
                         .await?;
                 }
             }
         } else if let Some(view) = &task.diff_view_id {
-            // Remove only a view whose identity our own successful upsert
-            // persisted, never a different assigned agent's singleton view.
-            call(
-                state,
-                &config,
-                task,
-                "agents.conversations.removeView",
-                json!({"channel_id":channel,"view_id":view}),
-            )
-            .await?;
-            sqlx::query("UPDATE slack_code_tasks SET diff_view_id=NULL WHERE id=$1")
+            if view == "code" {
+                // The built-in Code tab cannot be removed. Clear its content
+                // only while Slack still exposes our exact published receipt;
+                // a newer snapshot, including another bot's, must survive.
+                let info = call(
+                    state,
+                    &config,
+                    task,
+                    "conversations.info",
+                    json!({"channel":channel}),
+                )
+                .await?;
+                let current = &info["channel"]["properties"]["code_channel"];
+                if task.diff_file_id.is_some()
+                    && task.diff_content_version.is_some()
+                    && current["diff_file_id"].as_str() == task.diff_file_id.as_deref()
+                    && current["diff_file_version"].as_i64() == task.diff_content_version
+                {
+                    call(state, &config, task, "agents.conversations.setView", json!({"channel_id":channel,"type":"diff","content":"\n","base_branch":"","head_branch":""})).await?;
+                }
+            } else {
+                // Encoded tabs can be removed by their own persisted identity.
+                call(
+                    state,
+                    &config,
+                    task,
+                    "agents.conversations.removeView",
+                    json!({"channel_id":channel,"view_id":view}),
+                )
+                .await?;
+            }
+            sqlx::query("UPDATE slack_code_tasks SET diff_view_id=NULL,diff_file_id=NULL,diff_content_version=NULL WHERE id=$1")
                 .bind(task.id)
                 .execute(&mut **tx)
                 .await?;

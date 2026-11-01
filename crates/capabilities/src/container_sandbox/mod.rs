@@ -14,6 +14,7 @@ pub mod client;
 pub mod config;
 pub mod state;
 mod tools;
+pub(crate) use tools::ContainerWorkspaceFiles;
 
 use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{
