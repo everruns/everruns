@@ -6,6 +6,7 @@
 
 use crate::api::command_http::CommandRouterExt;
 use crate::api::state::ApiState;
+use crate::domains::session_cost::GetSessionCost;
 use crate::domains::session_trace::{
     GetSessionTrace, GetSessionTraceStep, ListSessionTraceRequest, ListSessionTraceSteps,
     ListSessionTraceTurnEvents, ListSessionTraceTurns,
@@ -20,5 +21,7 @@ pub fn routes(state: ApiState) -> Router {
         .command::<GetSessionTraceStep>()
         .command::<ListSessionTraceRequest>()
         .command::<ListSessionTraceTurnEvents>()
+        // The Cost tab's read shares the trace index, so it mounts here.
+        .command::<GetSessionCost>()
         .with_state(state)
 }

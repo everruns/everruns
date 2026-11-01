@@ -207,6 +207,24 @@ View raw session events for debugging:
 - Timestamp
 - JSON data payload
 
+#### Cost Tab
+
+See what a session spent and why:
+
+- **Where the money went**: total spend split into uncached prompt, prompt read from cache,
+  prompt written to cache, and output, with tokens, average rate and share for each. The
+  cost of each model call is the provider-reported cost where there is one, otherwise the
+  model's price-table estimate.
+- **Spend per day** in your timezone, or **per turn**, which shows each turn's cost and
+  marks failed turns.
+- **Tool calls**: calls, failures and running time per tool.
+- **Sandbox**: running and paused time, with a timeline.
+- **Who started the turns**: people, schedules, agent triggers or channels, with their spend.
+- **Context now**: what the next model call will send, by section, with the sources folded.
+
+A notice appears when most spend is prompt that was not read from cache. The same data is
+available from `GET /v1/sessions/{session_id}/cost` and `everruns sessions cost get`.
+
 ### Session Status
 
 Sessions display their current status:

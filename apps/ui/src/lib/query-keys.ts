@@ -87,6 +87,7 @@ export const queryKeys = {
     detail: (org?: string, sessionId?: string) => ["session", org, sessionId] as const,
     contextReport: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "context-report"] as const,
+    cost: (org?: string, sessionId?: string) => ["session", org, sessionId, "cost"] as const,
     work: (org?: string, sessionId?: string, turnId?: string) =>
       ["session", org, sessionId, "work", turnId ?? "latest"] as const,
     resolvedModel: (org?: string, sessionId?: string) =>

@@ -10,6 +10,7 @@ import {
   getSession,
   getSessionResolvedModel,
   getSessionContextReport,
+  getSessionCost,
   getSessionFacets,
   getSessionStats,
   listSessions,
@@ -173,6 +174,24 @@ export function useSession(
   return {
     ...query,
     isLoading: orgLoading || query.isLoading || fallback.isCheckingOtherOrgs,
+  };
+}
+
+/** What the session spent; refreshed while the Cost tab is open and the session runs. */
+export function useSessionCost(sessionId: string | undefined, live = false) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const query = useQuery({
+    queryKey: queryKeys.sessions.cost(org, sessionId),
+    queryFn: () => getSessionCost(sessionId!),
+    enabled: !!org && !!sessionId,
+    refetchInterval: live ? 15_000 : false,
+  });
+
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
   };
 }
 

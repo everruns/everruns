@@ -345,7 +345,9 @@ fn empty_timeline(from: DateTime<Utc>, to: DateTime<Utc>) -> SandboxTimeline {
 
 /// Group lifecycle rows into displayable spans. Spans where the Sandbox did not
 /// exist at its provider (not started, deleted) are not drawn.
-fn spans_by_sandbox(rows: Vec<SandboxTransitionRow>) -> HashMap<uuid::Uuid, Vec<SandboxStateSpan>> {
+pub(crate) fn spans_by_sandbox(
+    rows: Vec<SandboxTransitionRow>,
+) -> HashMap<uuid::Uuid, Vec<SandboxStateSpan>> {
     let mut grouped: HashMap<uuid::Uuid, Vec<SandboxStateSpan>> = HashMap::new();
     for row in rows {
         let sandbox_id = row.sandbox_id;
@@ -358,7 +360,7 @@ fn spans_by_sandbox(rows: Vec<SandboxTransitionRow>) -> HashMap<uuid::Uuid, Vec<
     grouped
 }
 
-fn running_seconds(spans: &[SandboxStateSpan]) -> i64 {
+pub(crate) fn running_seconds(spans: &[SandboxStateSpan]) -> i64 {
     spans
         .iter()
         .filter(|span| span.state == "running")

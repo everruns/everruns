@@ -11443,6 +11443,23 @@
     "read_only": true
   },
   {
+    "description": "Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time.",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_session_cost",
+    "read_only": true
+  },
+  {
     "description": "Get metadata for a session SQL database.",
     "input_schema": {
       "properties": {

@@ -11,6 +11,7 @@
 * [Agents Home](agents-home.md) - Why the Agents page shows what each agent is doing, how it is reached and what needs attention, with channels replacing Exposures.
 * [Knowledge Pages](knowledge-pages.md) - Why Knowledge is tabbed like Sandboxes and a collection is browsed with the session file browser.
 * [Models and Providers](models-and-providers.md) - Why providers live under Library → Models with Models, Providers and Defaults tabs and share the models permission.
+* [Session Cost Tab](session-cost.md) - Why the Cost tab leads with spend by cost category and how the split is derived from a call's total.
 * [Session Trace](session-trace.md) - One Trace view of turns and steps, and the trace index that keeps it fast for very large sessions.
 * [Chat Experience](chat-experience.md) - Why chat is a centered reading column with one turn status row from Enter to answer, and the send/turn state contracts behind it.
 * [Chat Recovery and Live Transport](chat-recovery.md) - Tab-local drafts and pending sends, safe reconnection and shared SSE subscriptions.

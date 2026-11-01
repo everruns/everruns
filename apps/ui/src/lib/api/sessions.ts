@@ -11,6 +11,7 @@ import type {
   ForkSessionRequest,
   UpdateSessionRequest,
   SessionContextReport,
+  SessionCost,
   SessionResolvedModelResponse,
   SessionFacetsResponse,
   SessionWorkResult,
@@ -142,6 +143,12 @@ export async function getSessionResolvedModel(
 
 export async function getSessionContextReport(sessionId: string): Promise<SessionContextReport> {
   const response = await api.get<SessionContextReport>(`/v1/sessions/${sessionId}/context-report`);
+  return response.data;
+}
+
+/** What the session spent, by cost category, over time, by origin, tool and sandbox. */
+export async function getSessionCost(sessionId: string): Promise<SessionCost> {
+  const response = await api.get<SessionCost>(`/v1/sessions/${sessionId}/cost`);
   return response.data;
 }
 

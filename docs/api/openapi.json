@@ -25825,6 +25825,45 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/cost": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Show what a session spent",
+        "description": "Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time.",
+        "operationId": "get_session_cost",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCost"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sessions/{session_id}/databases": {
       "get": {
         "tags": [
@@ -40081,6 +40120,120 @@
           }
         }
       },
+      "CostCategory": {
+        "type": "object",
+        "description": "Spend and tokens of one cost category.",
+        "required": [
+          "key",
+          "tokens",
+          "usd"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "`uncached_input`, `cache_read`, `cache_write` or `output`.",
+            "example": "uncached_input"
+          },
+          "tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tokens in this category across every model call.",
+            "example": 1060877013
+          },
+          "usd": {
+            "type": "number",
+            "format": "double",
+            "description": "USD, from each call's cost split by the model's price table.",
+            "example": 106.09
+          }
+        }
+      },
+      "CostHour": {
+        "type": "object",
+        "description": "Spend in one UTC hour, by category.",
+        "required": [
+          "hour",
+          "uncached_input_usd",
+          "cache_read_usd",
+          "cache_write_usd",
+          "output_usd",
+          "unattributed_usd",
+          "model_calls"
+        ],
+        "properties": {
+          "cache_read_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "USD of prompt tokens read from cache."
+          },
+          "cache_write_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "USD of prompt tokens written to cache."
+          },
+          "hour": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Start of the hour (UTC)."
+          },
+          "model_calls": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Model calls made in the hour."
+          },
+          "output_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "USD of output tokens."
+          },
+          "unattributed_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Spend with no category split (see `SessionCost.unattributed_usd`)."
+          },
+          "uncached_input_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "USD of prompt tokens not read from cache."
+          }
+        }
+      },
+      "CostModel": {
+        "type": "object",
+        "description": "Spend of one model.",
+        "required": [
+          "model",
+          "calls",
+          "usd"
+        ],
+        "properties": {
+          "calls": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Model calls made with this model.",
+            "example": 3811
+          },
+          "model": {
+            "type": "string",
+            "description": "Model id as the provider reported it.",
+            "example": "meta/muse-spark-1.3-contributor"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider driver that served the model, when known.",
+            "example": "openrouter"
+          },
+          "usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Spend in USD on this model.",
+            "example": 106.26
+          }
+        }
+      },
       "CostPlanTask": {
         "type": "object",
         "description": "One illustrative task and its editable token and model-call assumptions.",
@@ -40133,6 +40286,120 @@
         },
         "additionalProperties": false
       },
+      "CostSandbox": {
+        "type": "object",
+        "description": "A sandbox the session ran and how long it ran.",
+        "required": [
+          "sandbox_id",
+          "provider",
+          "created_at",
+          "running_seconds",
+          "paused_seconds",
+          "spans"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the sandbox was created."
+          },
+          "paused_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds the sandbox spent paused.",
+            "example": 1860
+          },
+          "profile_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Sandbox template profile, when one was used."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Sandbox provider, e.g. `daytona` or `e2b`.",
+            "example": "daytona"
+          },
+          "running_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds the sandbox spent running.",
+            "example": 4320
+          },
+          "sandbox_id": {
+            "type": "string",
+            "description": "Sandbox's prefixed public identifier.",
+            "example": "sandbox_01a1510c99c8714eabb22a463e7c1fa1"
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxStateSpan"
+            },
+            "description": "Lifecycle spans, oldest first."
+          }
+        }
+      },
+      "CostSource": {
+        "type": "object",
+        "description": "Turns and spend of one origin.",
+        "required": [
+          "kind",
+          "turns",
+          "usd"
+        ],
+        "properties": {
+          "active": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The schedule still fires: enabled and not deleted."
+          },
+          "cron": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cron expression of a recurring schedule.",
+            "example": "*/5 * * * *"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`user`, `schedule`, `agent_trigger`, `channel`, ...",
+            "example": "schedule"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The schedule's description, when it is a session schedule.",
+            "example": "Shipmail claim poll"
+          },
+          "source_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The schedule, trigger or channel, when there is one.",
+            "example": "sched_01a1510ebffc7370a495ed68cc7f9ab3"
+          },
+          "turns": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns this origin started.",
+            "example": 1845
+          },
+          "usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Spend in USD on those turns.",
+            "example": 106.11
+          }
+        }
+      },
       "CostTier": {
         "type": "object",
         "description": "A pricing tier that activates above a context token threshold.\nFor example, OpenAI charges higher rates for prompts exceeding 200K tokens.",
@@ -40172,6 +40439,131 @@
             "type": "number",
             "format": "double",
             "description": "Output cost per million tokens (USD) for this tier"
+          }
+        }
+      },
+      "CostTool": {
+        "type": "object",
+        "description": "Calls, failures and running time of one tool.",
+        "required": [
+          "name",
+          "calls",
+          "failed",
+          "duration_ms"
+        ],
+        "properties": {
+          "calls": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Calls of this tool.",
+            "example": 1180
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Summed running time of its calls.",
+            "example": 627000
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Calls of this tool that ended in an error.",
+            "example": 13
+          },
+          "name": {
+            "type": "string",
+            "description": "Tool name.",
+            "example": "web_fetch"
+          }
+        }
+      },
+      "CostTools": {
+        "type": "object",
+        "description": "Tool calls across the session, from the trace index.",
+        "required": [
+          "calls",
+          "failed",
+          "duration_ms",
+          "items"
+        ],
+        "properties": {
+          "calls": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tool calls across the session.",
+            "example": 1977
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Summed running time of every call.",
+            "example": 645000
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tool calls that ended in an error.",
+            "example": 14
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostTool"
+            },
+            "description": "Per tool, most calls first."
+          }
+        }
+      },
+      "CostTurn": {
+        "type": "object",
+        "description": "Spend of one turn.",
+        "required": [
+          "turn",
+          "turn_id",
+          "started_at",
+          "status",
+          "usd",
+          "prompt_tokens",
+          "source_kind"
+        ],
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Prompt tokens of the turn, cached and uncached.",
+            "example": 2034790
+          },
+          "source_kind": {
+            "type": "string",
+            "description": "What started the turn: `user`, `schedule`, `agent_trigger`, `channel`, ...",
+            "example": "schedule"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the turn started."
+          },
+          "status": {
+            "type": "string",
+            "description": "`running`, `completed`, `failed`, `cancelled` or `sealed`.",
+            "example": "completed"
+          },
+          "turn": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Per-session turn number, 1-based.",
+            "example": 1162
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn's prefixed public identifier.",
+            "example": "turn_01a124cd7e9571ac95c312b3c6d0cd82"
+          },
+          "usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Spend in USD on the model calls of the turn.",
+            "example": 0.2
           }
         }
       },
@@ -65738,6 +66130,106 @@
           "session_id": {
             "type": "string",
             "description": "Prefixed session identifier this report describes."
+          }
+        }
+      },
+      "SessionCost": {
+        "type": "object",
+        "description": "What a session spent, split by cost category, over time, by what started\neach turn, by tool, and by sandbox.",
+        "required": [
+          "session_id",
+          "total_usd",
+          "model_calls",
+          "unpriced_calls",
+          "categories",
+          "unattributed_usd",
+          "models",
+          "hours",
+          "turns",
+          "turns_truncated",
+          "sources",
+          "tools",
+          "sandboxes"
+        ],
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostCategory"
+            },
+            "description": "Spend and tokens per cost category, in a fixed order: `uncached_input`,\n`cache_read`, `cache_write`, `output`."
+          },
+          "hours": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostHour"
+            },
+            "description": "Spend per UTC hour that had model calls, oldest first."
+          },
+          "model_calls": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Model calls recorded for the session.",
+            "example": 3811
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostModel"
+            },
+            "description": "Spend per model, largest first."
+          },
+          "sandboxes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSandbox"
+            },
+            "description": "Sandboxes the session ran, oldest first."
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Session's prefixed public identifier.",
+            "example": "session_01a1510c99c8714eabb22a463e7c1fa1"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSource"
+            },
+            "description": "Turns and spend by what started them, largest spend first."
+          },
+          "tools": {
+            "$ref": "#/components/schemas/CostTools",
+            "description": "Tool calls across the session."
+          },
+          "total_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Total spend in USD: the provider-reported cost of each model call where\nreported, otherwise the price-table estimate.",
+            "example": 106.26
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostTurn"
+            },
+            "description": "Spend per turn, oldest first; the newest turns when `turns_truncated`."
+          },
+          "turns_truncated": {
+            "type": "boolean",
+            "description": "Older turns were left out of `turns`."
+          },
+          "unattributed_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Spend of model calls whose split by category is unknown: the provider\nreported a cost but the model has no price table.",
+            "example": 0
+          },
+          "unpriced_calls": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Model calls with no reported cost and no price-table estimate. They count\ntokens but add nothing to `total_usd`.",
+            "example": 0
           }
         }
       },

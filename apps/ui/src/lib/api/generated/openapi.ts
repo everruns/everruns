@@ -6561,6 +6561,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/cost": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Show what a session spent
+     * @description Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time.
+     */
+    get: operations["get_session_cost"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/databases": {
     parameters: {
       query?: never;
@@ -12087,6 +12107,89 @@ export interface components {
        */
       src_path: string;
     };
+    /** @description Spend and tokens of one cost category. */
+    CostCategory: {
+      /**
+       * @description `uncached_input`, `cache_read`, `cache_write` or `output`.
+       * @example uncached_input
+       */
+      key: string;
+      /**
+       * Format: int64
+       * @description Tokens in this category across every model call.
+       * @example 1060877013
+       */
+      tokens: number;
+      /**
+       * Format: double
+       * @description USD, from each call's cost split by the model's price table.
+       * @example 106.09
+       */
+      usd: number;
+    };
+    /** @description Spend in one UTC hour, by category. */
+    CostHour: {
+      /**
+       * Format: double
+       * @description USD of prompt tokens read from cache.
+       */
+      cache_read_usd: number;
+      /**
+       * Format: double
+       * @description USD of prompt tokens written to cache.
+       */
+      cache_write_usd: number;
+      /**
+       * Format: date-time
+       * @description Start of the hour (UTC).
+       */
+      hour: string;
+      /**
+       * Format: int64
+       * @description Model calls made in the hour.
+       */
+      model_calls: number;
+      /**
+       * Format: double
+       * @description USD of output tokens.
+       */
+      output_usd: number;
+      /**
+       * Format: double
+       * @description Spend with no category split (see `SessionCost.unattributed_usd`).
+       */
+      unattributed_usd: number;
+      /**
+       * Format: double
+       * @description USD of prompt tokens not read from cache.
+       */
+      uncached_input_usd: number;
+    };
+    /** @description Spend of one model. */
+    CostModel: {
+      /**
+       * Format: int64
+       * @description Model calls made with this model.
+       * @example 3811
+       */
+      calls: number;
+      /**
+       * @description Model id as the provider reported it.
+       * @example meta/muse-spark-1.3-contributor
+       */
+      model: string;
+      /**
+       * @description Provider driver that served the model, when known.
+       * @example openrouter
+       */
+      provider?: string | null;
+      /**
+       * Format: double
+       * @description Spend in USD on this model.
+       * @example 106.26
+       */
+      usd: number;
+    };
     /** @description One illustrative task and its editable token and model-call assumptions. */
     CostPlanTask: {
       /** @description Expected steps and the main uncertainty behind the workload estimate. */
@@ -12115,6 +12218,77 @@ export interface components {
        * @description New tool-result tokens added at each step of the task.
        */
       tool_result_tokens: number;
+    };
+    /** @description A sandbox the session ran and how long it ran. */
+    CostSandbox: {
+      /**
+       * Format: date-time
+       * @description When the sandbox was created.
+       */
+      created_at: string;
+      /**
+       * Format: int64
+       * @description Seconds the sandbox spent paused.
+       * @example 1860
+       */
+      paused_seconds: number;
+      /** @description Sandbox template profile, when one was used. */
+      profile_name?: string | null;
+      /**
+       * @description Sandbox provider, e.g. `daytona` or `e2b`.
+       * @example daytona
+       */
+      provider: string;
+      /**
+       * Format: int64
+       * @description Seconds the sandbox spent running.
+       * @example 4320
+       */
+      running_seconds: number;
+      /**
+       * @description Sandbox's prefixed public identifier.
+       * @example sandbox_01a1510c99c8714eabb22a463e7c1fa1
+       */
+      sandbox_id: string;
+      /** @description Lifecycle spans, oldest first. */
+      spans: components["schemas"]["SandboxStateSpan"][];
+    };
+    /** @description Turns and spend of one origin. */
+    CostSource: {
+      /** @description The schedule still fires: enabled and not deleted. */
+      active?: boolean | null;
+      /**
+       * @description Cron expression of a recurring schedule.
+       * @example *\/5 * * * *
+       */
+      cron?: string | null;
+      /**
+       * @description `user`, `schedule`, `agent_trigger`, `channel`, ...
+       * @example schedule
+       */
+      kind: string;
+      /**
+       * @description The schedule's description, when it is a session schedule.
+       * @example Shipmail claim poll
+       */
+      name?: string | null;
+      /**
+       * @description The schedule, trigger or channel, when there is one.
+       * @example sched_01a1510ebffc7370a495ed68cc7f9ab3
+       */
+      source_id?: string | null;
+      /**
+       * Format: int64
+       * @description Turns this origin started.
+       * @example 1845
+       */
+      turns: number;
+      /**
+       * Format: double
+       * @description Spend in USD on those turns.
+       * @example 106.11
+       */
+      usd: number;
     };
     /**
      * @description A pricing tier that activates above a context token threshold.
@@ -12146,6 +12320,96 @@ export interface components {
        * @description Output cost per million tokens (USD) for this tier
        */
       output: number;
+    };
+    /** @description Calls, failures and running time of one tool. */
+    CostTool: {
+      /**
+       * Format: int64
+       * @description Calls of this tool.
+       * @example 1180
+       */
+      calls: number;
+      /**
+       * Format: int64
+       * @description Summed running time of its calls.
+       * @example 627000
+       */
+      duration_ms: number;
+      /**
+       * Format: int64
+       * @description Calls of this tool that ended in an error.
+       * @example 13
+       */
+      failed: number;
+      /**
+       * @description Tool name.
+       * @example web_fetch
+       */
+      name: string;
+    };
+    /** @description Tool calls across the session, from the trace index. */
+    CostTools: {
+      /**
+       * Format: int64
+       * @description Tool calls across the session.
+       * @example 1977
+       */
+      calls: number;
+      /**
+       * Format: int64
+       * @description Summed running time of every call.
+       * @example 645000
+       */
+      duration_ms: number;
+      /**
+       * Format: int64
+       * @description Tool calls that ended in an error.
+       * @example 14
+       */
+      failed: number;
+      /** @description Per tool, most calls first. */
+      items: components["schemas"]["CostTool"][];
+    };
+    /** @description Spend of one turn. */
+    CostTurn: {
+      /**
+       * Format: int64
+       * @description Prompt tokens of the turn, cached and uncached.
+       * @example 2034790
+       */
+      prompt_tokens: number;
+      /**
+       * @description What started the turn: `user`, `schedule`, `agent_trigger`, `channel`, ...
+       * @example schedule
+       */
+      source_kind: string;
+      /**
+       * Format: date-time
+       * @description When the turn started.
+       */
+      started_at: string;
+      /**
+       * @description `running`, `completed`, `failed`, `cancelled` or `sealed`.
+       * @example completed
+       */
+      status: string;
+      /**
+       * Format: int32
+       * @description Per-session turn number, 1-based.
+       * @example 1162
+       */
+      turn: number;
+      /**
+       * @description Turn's prefixed public identifier.
+       * @example turn_01a124cd7e9571ac95c312b3c6d0cd82
+       */
+      turn_id: string;
+      /**
+       * Format: double
+       * @description Spend in USD on the model calls of the turn.
+       * @example 0.2
+       */
+      usd: number;
     };
     /** @description Request to create an ingress channel owned by an Agent. */
     CreateAgentChannelRequest: {
@@ -26478,6 +26742,63 @@ export interface components {
       sections: components["schemas"]["ContextReportSection"][];
       /** @description Prefixed session identifier this report describes. */
       session_id: string;
+    };
+    /**
+     * @description What a session spent, split by cost category, over time, by what started
+     *     each turn, by tool, and by sandbox.
+     */
+    SessionCost: {
+      /**
+       * @description Spend and tokens per cost category, in a fixed order: `uncached_input`,
+       *     `cache_read`, `cache_write`, `output`.
+       */
+      categories: components["schemas"]["CostCategory"][];
+      /** @description Spend per UTC hour that had model calls, oldest first. */
+      hours: components["schemas"]["CostHour"][];
+      /**
+       * Format: int64
+       * @description Model calls recorded for the session.
+       * @example 3811
+       */
+      model_calls: number;
+      /** @description Spend per model, largest first. */
+      models: components["schemas"]["CostModel"][];
+      /** @description Sandboxes the session ran, oldest first. */
+      sandboxes: components["schemas"]["CostSandbox"][];
+      /**
+       * @description Session's prefixed public identifier.
+       * @example session_01a1510c99c8714eabb22a463e7c1fa1
+       */
+      session_id: string;
+      /** @description Turns and spend by what started them, largest spend first. */
+      sources: components["schemas"]["CostSource"][];
+      /** @description Tool calls across the session. */
+      tools: components["schemas"]["CostTools"];
+      /**
+       * Format: double
+       * @description Total spend in USD: the provider-reported cost of each model call where
+       *     reported, otherwise the price-table estimate.
+       * @example 106.26
+       */
+      total_usd: number;
+      /** @description Spend per turn, oldest first; the newest turns when `turns_truncated`. */
+      turns: components["schemas"]["CostTurn"][];
+      /** @description Older turns were left out of `turns`. */
+      turns_truncated: boolean;
+      /**
+       * Format: double
+       * @description Spend of model calls whose split by category is unknown: the provider
+       *     reported a cost but the model has no price table.
+       * @example 0
+       */
+      unattributed_usd: number;
+      /**
+       * Format: int64
+       * @description Model calls with no reported cost and no price-table estimate. They count
+       *     tokens but add nothing to `total_usd`.
+       * @example 0
+       */
+      unpriced_calls: number;
     };
     /** @description One bucket of a sessions facet dimension. */
     SessionFacetCount: {
@@ -49774,6 +50095,29 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  get_session_cost: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionCost"];
+        };
       };
     };
   };

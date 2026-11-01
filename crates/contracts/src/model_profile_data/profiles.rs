@@ -655,6 +655,49 @@ pub fn estimate_cost_usd(
     cache_read_tokens: u32,
     cache_creation_tokens: u32,
 ) -> Option<f64> {
+    estimate_cost_breakdown_usd(
+        provider_type,
+        model_id,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+    )
+    .map(|breakdown| breakdown.total())
+}
+
+/// Price-table cost of one generation, split by token bucket.
+///
+/// Each field is the USD amount for that bucket at the rate
+/// [`estimate_cost_usd`] applies; [`CostBreakdown::total`] equals it.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct CostBreakdown {
+    /// Non-cached prompt tokens.
+    pub uncached_input: f64,
+    /// Prompt tokens read from cache.
+    pub cache_read: f64,
+    /// Prompt tokens written to cache.
+    pub cache_write: f64,
+    /// Output tokens, reasoning included.
+    pub output: f64,
+}
+
+impl CostBreakdown {
+    pub fn total(&self) -> f64 {
+        self.uncached_input + self.cache_read + self.cache_write + self.output
+    }
+}
+
+/// [`estimate_cost_usd`], split by token bucket. `None` under the same
+/// conditions: no profile or no cost data for the model.
+pub fn estimate_cost_breakdown_usd(
+    provider_type: &str,
+    model_id: &str,
+    input_tokens: u32,
+    output_tokens: u32,
+    cache_read_tokens: u32,
+    cache_creation_tokens: u32,
+) -> Option<CostBreakdown> {
     let cost = get_model_profile(provider_type, model_id)?.cost?;
     let prompt_tokens = input_tokens
         .saturating_add(cache_read_tokens)
@@ -677,12 +720,12 @@ pub fn estimate_cost_usd(
     };
     let per_million = |tokens: u32, rate: f64| (tokens as f64 / 1_000_000.0) * rate;
 
-    Some(
-        per_million(input_tokens, input_rate)
-            + per_million(cache_read_tokens, cache_read_rate)
-            + per_million(cache_creation_tokens, cache_write_rate)
-            + per_million(output_tokens, output_rate),
-    )
+    Some(CostBreakdown {
+        uncached_input: per_million(input_tokens, input_rate),
+        cache_read: per_million(cache_read_tokens, cache_read_rate),
+        cache_write: per_million(cache_creation_tokens, cache_write_rate),
+        output: per_million(output_tokens, output_rate),
+    })
 }
 
 /// Extra cost of cache writes made with a 1 hour retention, on top of what

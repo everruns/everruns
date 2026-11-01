@@ -319,6 +319,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     ("sessions budgets", "Budgets attached to a session."),
     (
+        "sessions cost",
+        "Where a session's spend went: categories, days, turns, tools.",
+    ),
+    (
         "sessions databases",
         "SQL databases created inside a session.",
     ),
