@@ -4,7 +4,7 @@
 // server-side turn buckets, and the list of loaded turns.
 //
 // Decision: a minimap cell keeps its activity or error colour at all times and
-// the cells whose turns are on screen get an ink outline, so the map
+// the cells whose turns are on screen get the gold active ring, so the map
 // answers "where am I" and a click visibly moves the ring. Cells used to turn
 // solid black when their turns were merely loaded, which hid their errors and
 // read as a selection that did nothing.
@@ -127,7 +127,7 @@ export function TurnRail({
                   className={cn(
                     "aspect-square outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     inView
-                      ? "relative z-10 ring-2 ring-foreground ring-offset-1 ring-offset-background"
+                      ? "relative z-10 ring-2 ring-ring ring-offset-2 ring-offset-background"
                       : "hover:ring-1 hover:ring-foreground/40",
                   )}
                   style={{
@@ -148,7 +148,7 @@ export function TurnRail({
             <span className="flex items-center gap-2">
               <span className="flex items-center gap-1">
                 <span
-                  className="mr-1 size-2 ring-2 ring-foreground ring-offset-1 ring-offset-background"
+                  className="mr-1 size-2 ring-2 ring-ring ring-offset-2 ring-offset-background"
                   aria-hidden
                 />
                 {ui("in view")}
