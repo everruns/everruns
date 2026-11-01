@@ -13505,6 +13505,34 @@
         }
       }
     },
+    "/v1/evals/experiments": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "List experiments across evals",
+        "description": "List the organization's experiments across evals, newest first.",
+        "operationId": "list_all_eval_experiments",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_EvalExperiment"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/evals/import": {
       "post": {
         "tags": [
@@ -13983,6 +14011,199 @@
           },
           "404": {
             "description": "Eval case not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/experiments": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "List an eval's experiments, newest first",
+        "operationId": "list_eval_experiments",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_EvalExperiment"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Start an eval experiment",
+        "description": "Start an experiment: run an eval's cases against one to four variants and compare them case by case.",
+        "operationId": "create_eval_experiment",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEvalExperimentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalExperiment"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/experiments/{experiment_id}": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Get an eval experiment with its comparison",
+        "description": "Get an experiment with its case-by-case comparison and verdicts.",
+        "operationId": "get_eval_experiment",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "experiment_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalExperiment"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experiment not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/experiments/{experiment_id}/gate": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Check an experiment's variant against a bar, for CI",
+        "description": "Check an experiment's variant against a bar, for CI. Answers 409 while runs are going and 422 when the variant misses the bar, so the command exits non-zero.",
+        "operationId": "gate_eval_experiment",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "experiment_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentGateResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experiment not found"
+          },
+          "409": {
+            "description": "Some variant's run is still going"
+          },
+          "422": {
+            "description": "The variant missed the bar"
           }
         },
         "x-docs": {
@@ -38747,6 +38968,72 @@
           }
         }
       },
+      "CaseCell": {
+        "type": "object",
+        "description": "One case under one variant.",
+        "required": [
+          "label",
+          "passed",
+          "trials",
+          "cost_usd"
+        ],
+        "properties": {
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "What the case cost, all its trials together.",
+            "example": 0.05
+          },
+          "label": {
+            "type": "string",
+            "example": "candidate"
+          },
+          "passed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Trials that passed, of `trials` that finished.",
+            "example": 3,
+            "minimum": 0
+          },
+          "trials": {
+            "type": "integer",
+            "format": "int32",
+            "example": 3,
+            "minimum": 0
+          }
+        }
+      },
+      "CaseComparison": {
+        "type": "object",
+        "description": "One case across the variants.",
+        "required": [
+          "case_id",
+          "case_name",
+          "changed",
+          "cells"
+        ],
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "example": "evalcase_01933b5a000070008000000000000001"
+          },
+          "case_name": {
+            "type": "string",
+            "example": "Refund request, angry customer"
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CaseCell"
+            },
+            "description": "One cell per variant, in variant order."
+          },
+          "changed": {
+            "type": "boolean",
+            "description": "Some variant's pass rate on this case differs from the baseline's."
+          }
+        }
+      },
       "CaseResultStatus": {
         "type": "string",
         "description": "Status of an individual eval case result.",
@@ -42207,6 +42494,50 @@
           }
         }
       },
+      "CreateEvalExperimentRequest": {
+        "type": "object",
+        "description": "Request to start an experiment.",
+        "required": [
+          "variants"
+        ],
+        "properties": {
+          "max_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Spending cap in USD for the whole experiment, split evenly between\nthe variants' runs.",
+            "example": 10
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name. Defaults to the variant labels joined with \"vs\".",
+            "example": "Luna vs Sol"
+          },
+          "trials": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Trials per case and variant, 1 to 20 (default 3).",
+            "example": 3,
+            "maximum": 20,
+            "minimum": 1
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExperimentVariantSpec"
+            },
+            "description": "One to four variants. The first is the baseline the others are\ncompared against."
+          }
+        }
+      },
       "CreateEvalRequest": {
         "type": "object",
         "description": "Request to create a new eval",
@@ -45213,6 +45544,13 @@
             "format": "date-time",
             "description": "When the eval was last updated.",
             "example": "2026-01-15T10:30:00Z"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Version of the cases (the eval's dataset). Every case change bumps it;\nruns and experiments record the version they ran.",
+            "example": 7,
+            "minimum": 0
           }
         }
       },
@@ -45529,6 +45867,86 @@
           "failed"
         ]
       },
+      "EvalExperiment": {
+        "type": "object",
+        "description": "An experiment: one dataset version against several variants.",
+        "required": [
+          "id",
+          "eval_id",
+          "name",
+          "dataset_version",
+          "trials",
+          "baseline",
+          "status",
+          "variants",
+          "created_at"
+        ],
+        "properties": {
+          "baseline": {
+            "type": "string",
+            "description": "Label of the variant the others are compared against.",
+            "example": "baseline"
+          },
+          "comparison": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExperimentComparison",
+                "description": "Paired comparison by case (detail view)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dataset_version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The eval's `version` the experiment ran.",
+            "example": 7,
+            "minimum": 0
+          },
+          "eval_id": {
+            "type": "string",
+            "description": "The eval whose cases are the dataset.",
+            "example": "eval_01933b5a000070008000000000000001"
+          },
+          "id": {
+            "type": "string",
+            "example": "evalexp_01933b5a000070008000000000000001"
+          },
+          "max_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "example": 10
+          },
+          "name": {
+            "type": "string",
+            "example": "Luna vs Sol"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExperimentStatus"
+          },
+          "trials": {
+            "type": "integer",
+            "format": "int32",
+            "example": 3,
+            "minimum": 0
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExperimentVariant"
+            }
+          }
+        }
+      },
       "EvalImportPreflight": {
         "type": "object",
         "description": "Preflight capability report so optional-feature clients (e.g. Mira) can\ncheck before publishing instead of failing mid-import.",
@@ -45591,6 +46009,24 @@
             "format": "date-time",
             "description": "When the run was created.",
             "example": "2026-01-15T10:30:00Z"
+          },
+          "dataset_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Dataset version (the eval's `version`) the run was created from.",
+            "example": 7,
+            "minimum": 0
+          },
+          "experiment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The experiment this run is a variant of.",
+            "example": "evalexp_01933b5a000070008000000000000001"
           },
           "filter_tags": {
             "type": [
@@ -45691,6 +46127,14 @@
             "format": "date-time",
             "description": "When the run was last updated.",
             "example": "2026-01-15T10:30:00Z"
+          },
+          "variant_label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The variant's label within its experiment.",
+            "example": "candidate"
           }
         }
       },
@@ -46489,6 +46933,179 @@
           "commentary",
           "final_answer"
         ]
+      },
+      "ExperimentComparison": {
+        "type": "object",
+        "description": "Variants compared case by case against the baseline.",
+        "required": [
+          "baseline",
+          "verdicts",
+          "cases"
+        ],
+        "properties": {
+          "baseline": {
+            "type": "string",
+            "example": "baseline"
+          },
+          "cases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CaseComparison"
+            },
+            "description": "Cases whose result changed come first."
+          },
+          "verdicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VariantVerdict"
+            },
+            "description": "One verdict per variant other than the baseline."
+          }
+        }
+      },
+      "ExperimentGateResult": {
+        "type": "object",
+        "description": "Result of an experiment gate that passed.",
+        "required": [
+          "passed",
+          "variant",
+          "pass_rate",
+          "passed_every_trial"
+        ],
+        "properties": {
+          "pass_rate": {
+            "type": "number",
+            "format": "double",
+            "example": 0.93
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "passed_every_trial": {
+            "type": "number",
+            "format": "double",
+            "description": "Share of cases passed in every trial (pass^k).",
+            "example": 0.9
+          },
+          "variant": {
+            "type": "string",
+            "description": "The variant the gate judged.",
+            "example": "candidate"
+          },
+          "verdict": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Verdict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ExperimentStatus": {
+        "type": "string",
+        "description": "Where an experiment is: running until every variant's run finished.",
+        "enum": [
+          "running",
+          "completed",
+          "failed",
+          "cancelled"
+        ]
+      },
+      "ExperimentVariant": {
+        "type": "object",
+        "description": "One variant of an experiment and how its run went.",
+        "required": [
+          "label",
+          "run_id",
+          "status"
+        ],
+        "properties": {
+          "cost_per_case_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "What one case cost on average, all its trials together.",
+            "example": 0.031
+          },
+          "label": {
+            "type": "string",
+            "example": "candidate"
+          },
+          "model_override": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "gpt-6.1-sol"
+          },
+          "run_id": {
+            "type": "string",
+            "description": "The variant's run.",
+            "example": "evalrun_01933b5a000070008000000000000001"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvalRunStatus"
+          },
+          "summary": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunSummary",
+                "description": "Set once the run finished."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ExperimentVariantSpec": {
+        "type": "object",
+        "description": "One configuration an experiment runs the dataset against.",
+        "required": [
+          "label"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Short name shown in comparisons, unique within the experiment.",
+            "example": "candidate"
+          },
+          "model_override": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for this variant, beating the target's model.",
+            "example": "gpt-6.1-sol"
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget",
+                "description": "Session setup for this variant. Omitted: the eval's own target."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
       },
       "ExportEvalRunDatasetRequest": {
         "type": "object",
@@ -50962,6 +51579,13 @@
                   "format": "date-time",
                   "description": "When the eval was last updated.",
                   "example": "2026-01-15T10:30:00Z"
+                },
+                "version": {
+                  "type": "integer",
+                  "format": "int32",
+                  "description": "Version of the cases (the eval's dataset). Every case change bumps it;\nruns and experiments record the version they ran.",
+                  "example": 7,
+                  "minimum": 0
                 }
               }
             },
@@ -51298,6 +51922,99 @@
           }
         }
       },
+      "ListResponse_EvalExperiment": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "An experiment: one dataset version against several variants.",
+              "required": [
+                "id",
+                "eval_id",
+                "name",
+                "dataset_version",
+                "trials",
+                "baseline",
+                "status",
+                "variants",
+                "created_at"
+              ],
+              "properties": {
+                "baseline": {
+                  "type": "string",
+                  "description": "Label of the variant the others are compared against.",
+                  "example": "baseline"
+                },
+                "comparison": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ExperimentComparison",
+                      "description": "Paired comparison by case (detail view)."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "dataset_version": {
+                  "type": "integer",
+                  "format": "int32",
+                  "description": "The eval's `version` the experiment ran.",
+                  "example": 7,
+                  "minimum": 0
+                },
+                "eval_id": {
+                  "type": "string",
+                  "description": "The eval whose cases are the dataset.",
+                  "example": "eval_01933b5a000070008000000000000001"
+                },
+                "id": {
+                  "type": "string",
+                  "example": "evalexp_01933b5a000070008000000000000001"
+                },
+                "max_cost_usd": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "example": 10
+                },
+                "name": {
+                  "type": "string",
+                  "example": "Luna vs Sol"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/ExperimentStatus"
+                },
+                "trials": {
+                  "type": "integer",
+                  "format": "int32",
+                  "example": 3,
+                  "minimum": 0
+                },
+                "variants": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExperimentVariant"
+                  }
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
       "ListResponse_EvalRun": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -51335,6 +52052,24 @@
                   "format": "date-time",
                   "description": "When the run was created.",
                   "example": "2026-01-15T10:30:00Z"
+                },
+                "dataset_version": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "Dataset version (the eval's `version`) the run was created from.",
+                  "example": 7,
+                  "minimum": 0
+                },
+                "experiment_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The experiment this run is a variant of.",
+                  "example": "evalexp_01933b5a000070008000000000000001"
                 },
                 "filter_tags": {
                   "type": [
@@ -51435,6 +52170,14 @@
                   "format": "date-time",
                   "description": "When the run was last updated.",
                   "example": "2026-01-15T10:30:00Z"
+                },
+                "variant_label": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The variant's label within its experiment.",
+                  "example": "candidate"
                 }
               }
             },
@@ -75672,6 +76415,73 @@
           }
         }
       },
+      "VariantVerdict": {
+        "type": "object",
+        "description": "A variant against the baseline.",
+        "required": [
+          "label",
+          "paired_cases",
+          "fixed",
+          "broke",
+          "verdict"
+        ],
+        "properties": {
+          "broke": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cases the baseline passes every trial of and this variant does not.",
+            "example": 1,
+            "minimum": 0
+          },
+          "fixed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cases this variant passes every trial of and the baseline did not.",
+            "example": 4,
+            "minimum": 0
+          },
+          "interval_high_points": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "example": 9
+          },
+          "interval_low_points": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "95% interval of that difference (paired bootstrap), in points.",
+            "example": 1
+          },
+          "label": {
+            "type": "string",
+            "example": "candidate"
+          },
+          "paired_cases": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cases both ran.",
+            "example": 42,
+            "minimum": 0
+          },
+          "pass_rate_delta_points": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Mean per-case pass rate difference, in percentage points.",
+            "example": 5
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/Verdict"
+          }
+        }
+      },
       "Verbosity": {
         "type": "string",
         "description": "Verbosity level for models that support output-length control.\nWire values map 1:1 to the OpenAI `verbosity` request parameter:\n`low` (terse), `medium` (balanced, provider default), `high`\n(comprehensive). Independent of `ReasoningEffort`, which tunes the\namount of reasoning rather than the length of the final answer.",
@@ -75719,6 +76529,16 @@
             "description": "The API value (e.g., \"low\", \"high\")"
           }
         }
+      },
+      "Verdict": {
+        "type": "string",
+        "description": "How a variant compares with the baseline.",
+        "enum": [
+          "improvement",
+          "regression",
+          "within_noise",
+          "not_enough_data"
+        ]
       },
       "VerificationStatus": {
         "type": "string",

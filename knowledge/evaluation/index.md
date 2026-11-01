@@ -1,6 +1,7 @@
 # Evaluation, testing, and reporting
 
 * [Evals](evals.md) - User-facing behavioral evals.
+* [Eval experiments](experiments.md) - Datasets with versions, experiments over variants, paired comparison, and the CI gate.
 * [External Evaluation Results Publishing](external-results-publishing.md) - Publishing externally executed eval results into Everruns and remaining reporting work.
 * [Agent Checks](agent-checks.md) - Advisory agent config checks (lint, LLM analysis, health checks).
 * [Online Evals (Observers)](online-evals.md) - Online evals (Observers) over production sessions (proposed).

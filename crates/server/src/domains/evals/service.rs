@@ -4,6 +4,7 @@
 // Decision: EvalTarget replaces harness_id + agent_id. Resolution: run → case → eval → org default.
 
 use crate::auth::share_token::{SHARE_PREFIX, generate_share_token, hash_share_token};
+use crate::domains::evals::convert::{case_row_to_case, run_row_to_run};
 use crate::domains::evals::limits::EvalLimits;
 use crate::domains::evals::record::*;
 use crate::domains::evals::runner::{EvalRunContext, dispatch_eval_run};
@@ -96,6 +97,10 @@ impl EvalService {
     pub fn with_limits(mut self, limits: EvalLimits) -> Self {
         self.limits = limits;
         self
+    }
+
+    pub fn limits(&self) -> EvalLimits {
+        self.limits
     }
 
     pub fn with_run_context(mut self, ctx: Arc<EvalRunContext>) -> Self {
@@ -1204,71 +1209,13 @@ impl EvalService {
             tags: row.tags,
             status: EvalStatus::from(row.status.as_str()),
             case_count,
+            version: row.version.max(1) as u32,
             last_run: last_run_view,
             created_at: row.created_at,
             updated_at: row.updated_at,
             archived_at: row.archived_at,
             deleted_at: row.deleted_at,
         })
-    }
-}
-
-fn case_row_to_case(row: crate::storage::EvalCaseRow) -> EvalCase {
-    let target: Option<EvalTarget> = row
-        .target
-        .as_ref()
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
-
-    EvalCase {
-        public_id: row
-            .public_id
-            .parse()
-            .unwrap_or_else(|_| EvalCaseId::from_uuid(row.id)),
-        internal_id: row.id,
-        name: row.name,
-        description: row.description,
-        target,
-        tags: row.tags,
-        conversation: serde_json::from_value(row.conversation).unwrap_or_default(),
-        post: row.post.and_then(|v| serde_json::from_value(v).ok()),
-        artifacts: row.artifacts.and_then(|v| serde_json::from_value(v).ok()),
-        scorers: serde_json::from_value(row.scorers).unwrap_or_default(),
-        max_turns: row.max_turns.map(|v| v as u32),
-        timeout_seconds: row.timeout_seconds.map(|v| v as u32),
-        position: row.position,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    }
-}
-
-fn run_row_to_run(row: crate::storage::EvalRunRow, results: Vec<EvalCaseResult>) -> EvalRun {
-    let target: Option<EvalTarget> = row
-        .target
-        .as_ref()
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
-
-    EvalRun {
-        public_id: row
-            .public_id
-            .parse()
-            .unwrap_or_else(|_| EvalRunId::from_uuid(row.id)),
-        internal_id: row.id,
-        org_id: row.org_id,
-        target,
-        model_override: row.model_override,
-        filter_tags: row.filter_tags,
-        status: EvalRunStatus::from(row.status.as_str()),
-        source: EvalRunSource::from(row.source.as_str()),
-        attribution: row.attribution,
-        triggered_by: row.triggered_by,
-        trials: row.trials.max(1) as u32,
-        max_cost_usd: row.max_cost_usd,
-        started_at: row.started_at,
-        completed_at: row.completed_at,
-        summary: row.summary.and_then(|s| serde_json::from_value(s).ok()),
-        results,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
     }
 }
 

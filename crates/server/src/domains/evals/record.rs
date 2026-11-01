@@ -702,6 +702,11 @@ pub struct Eval {
     #[serde(default)]
     #[schema(example = 12)]
     pub case_count: i64,
+    /// Version of the cases (the eval's dataset). Every case change bumps it;
+    /// runs and experiments record the version they ran.
+    #[serde(default = "default_one_trial")]
+    #[schema(example = 7)]
+    pub version: u32,
     /// Last run summary (if any).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_run: Option<EvalRunSummaryView>,
@@ -841,6 +846,18 @@ pub struct EvalRun {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = 5.0)]
     pub max_cost_usd: Option<f64>,
+    /// Dataset version (the eval's `version`) the run was created from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 7)]
+    pub dataset_version: Option<u32>,
+    /// The experiment this run is a variant of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "evalexp_01933b5a000070008000000000000001")]
+    pub experiment_id: Option<String>,
+    /// The variant's label within its experiment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "candidate")]
+    pub variant_label: Option<String>,
     /// When the run started executing.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "2026-01-15T10:30:00Z")]
@@ -1103,6 +1120,7 @@ mod tests {
             tags: vec![],
             status: EvalStatus::Active,
             case_count: 0,
+            version: 1,
             last_run: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
