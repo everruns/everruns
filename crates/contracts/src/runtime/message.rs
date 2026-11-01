@@ -829,6 +829,9 @@ pub fn task_wake_message_metadata() -> std::collections::HashMap<String, serde_j
     MessageOrigin::new(MessageOriginKind::TaskWake).into_metadata()
 }
 
+/// Runtime-owned snapshot for replaying changed capability reference data.
+pub const CONVERSATION_CONTEXT_UPDATE_METADATA_KEY: &str = "capability_context_update";
+
 /// Remove reserved platform keys from caller-supplied message metadata, so a
 /// client cannot make its own text look like a platform notice or start a
 /// script run that skips the model.
@@ -837,6 +840,7 @@ pub fn strip_reserved_message_metadata(
 ) {
     super::causal::sanitize_input_metadata(metadata);
     if let Some(map) = metadata.as_mut() {
+        map.remove(CONVERSATION_CONTEXT_UPDATE_METADATA_KEY);
         map.remove(MESSAGE_ORIGIN_METADATA_KEY);
         map.remove(CLIENT_MESSAGE_ID_METADATA_KEY);
         map.remove(super::saved_scripts::SCRIPT_RUN_METADATA_KEY);

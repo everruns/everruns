@@ -622,6 +622,26 @@ pub trait Capability: Send + Sync {
         self.conversation_context_contribution(ctx).await
     }
 
+    /// Current capability reference data, delivered as a user-role update only
+    /// when it changes. The engine records it on the completed assistant message
+    /// and replays it at that position, preserving the earlier prompt prefix.
+    /// Use this for mutable inventories, not system instructions or authority.
+    async fn conversation_context_update_contribution(
+        &self,
+        _ctx: &SystemPromptContext,
+    ) -> Option<String> {
+        None
+    }
+
+    /// Config-aware counterpart of `conversation_context_update_contribution`.
+    async fn conversation_context_update_contribution_with_config(
+        &self,
+        ctx: &SystemPromptContext,
+        _config: &serde_json::Value,
+    ) -> Option<String> {
+        self.conversation_context_update_contribution(ctx).await
+    }
+
     /// Returns tool definitions for the agent config
     /// By default, converts tools() to definitions
     fn tool_definitions(&self) -> Vec<ToolDefinition> {

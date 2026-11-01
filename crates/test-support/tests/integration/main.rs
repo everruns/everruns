@@ -10,6 +10,7 @@
 
 mod ask_user_test;
 mod command_host_test;
+mod context_updates_test;
 mod in_memory_fixtures_test;
 mod llmsim_migration_bridge;
 mod mcp_harness_test;

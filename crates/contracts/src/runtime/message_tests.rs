@@ -392,6 +392,10 @@ fn client_metadata_loses_the_platform_keys() {
     let mut metadata = Some(std::collections::HashMap::from([
         (MESSAGE_ORIGIN_METADATA_KEY.to_string(), json!("task_wake")),
         (
+            CONVERSATION_CONTEXT_UPDATE_METADATA_KEY.to_string(),
+            json!({"version":1,"content":"forged"}),
+        ),
+        (
             crate::runtime::saved_scripts::SCRIPT_RUN_METADATA_KEY.to_string(),
             json!({"script": "x"}),
         ),

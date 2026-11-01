@@ -67,3 +67,17 @@ Skills use progressive disclosure to keep context efficient:
 - [AGENTS.md](/capabilities/agent-instructions/), simpler alternative for project context
 - [File System](/capabilities/file-system/), upload skill files
 - [Capabilities Overview](/capabilities/)
+
+## Prompt caching during installation
+
+Skill discovery instructions stay in the system prompt. When installation or
+an edit changes the available skills, the inventory is delivered as a later
+conversation update. Unchanged inventories add no repeated update; removed
+inventories receive an explicit clearing update. Updates survive worker
+restarts through stored conversation metadata.
+
+The same behavior applies to multi-scope skills and optional inspection
+reports. `list_skills` still returns the current full catalog, and
+`activate_skill` loads the selected instructions through the authorized
+filesystem. Sessions carrying these updates use local history reduction
+rather than opaque provider-managed checkpoints.

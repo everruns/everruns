@@ -50,7 +50,7 @@ use std::sync::Arc;
 use super::artifact_inspection::{
     self, ArtifactInspection, ArtifactKind, ArtifactProvenance, inspect_artifact,
 };
-use super::skills::SKILLS_CAPABILITY_ID;
+use super::skills::{EMPTY_SKILL_INVENTORY, SKILLS_CAPABILITY_ID};
 
 /// Default VFS root for the workspace scope.
 const DEFAULT_WORKSPACE_ROOT: &str = "/.agents/skills";
@@ -265,13 +265,13 @@ impl Capability for ScopedSkillsCapability {
         self.configured(config).tools()
     }
 
-    async fn system_prompt_contribution_with_config(
+    async fn conversation_context_update_contribution_with_config(
         &self,
         ctx: &SystemPromptContext,
         config: &Value,
     ) -> Option<String> {
         self.configured(config)
-            .system_prompt_contribution(ctx)
+            .conversation_context_update_contribution(ctx)
             .await
     }
 
@@ -312,57 +312,59 @@ impl Capability for ScopedSkillsCapability {
         Some(SCOPED_SKILLS_SYSTEM_PROMPT)
     }
 
-    async fn system_prompt_contribution(&self, ctx: &SystemPromptContext) -> Option<String> {
-        let mut prompt = String::from(SCOPED_SKILLS_SYSTEM_PROMPT);
+    async fn conversation_context_update_contribution(
+        &self,
+        ctx: &SystemPromptContext,
+    ) -> Option<String> {
+        let file_store = ctx.file_store.as_ref()?;
+        let mut prompt = String::new();
 
-        if let Some(file_store) = ctx.file_store.as_ref() {
-            let discovered = discover_skills(
-                &self.config,
-                file_store.as_ref(),
-                ctx.session_id,
-                Some(MAX_SKILLS_SCAN_PER_SCOPE),
-                self.report_only_inspection,
-            )
-            .await;
-            let visible: Vec<&DiscoveredSkill> = discovered
-                .iter()
-                .filter(|s| s.error.is_none() && !s.disable_model_invocation)
-                .collect();
+        let discovered = discover_skills(
+            &self.config,
+            file_store.as_ref(),
+            ctx.session_id,
+            Some(MAX_SKILLS_SCAN_PER_SCOPE),
+            self.report_only_inspection,
+        )
+        .await;
+        let visible: Vec<&DiscoveredSkill> = discovered
+            .iter()
+            .filter(|s| s.error.is_none() && !s.disable_model_invocation)
+            .collect();
 
-            if !visible.is_empty() {
-                prompt.push_str("\n\nAvailable skills:\n");
-                for skill in visible.iter().take(MAX_SKILLS_IN_PROMPT) {
-                    let desc = truncate_description(&skill.description, MAX_DESCRIPTION_CHARS);
-                    let invocable = if skill.user_invocable {
-                        format!(" (/{})", skill.name)
-                    } else {
-                        String::new()
-                    };
+        if !visible.is_empty() {
+            prompt.push_str("\n\nAvailable skills:\n");
+            for skill in visible.iter().take(MAX_SKILLS_IN_PROMPT) {
+                let desc = truncate_description(&skill.description, MAX_DESCRIPTION_CHARS);
+                let invocable = if skill.user_invocable {
+                    format!(" (/{})", skill.name)
+                } else {
+                    String::new()
+                };
+                prompt.push_str(&format!(
+                    "- **{}** [{}]: {}{}\n",
+                    skill.name, skill.scope_label, desc, invocable
+                ));
+                if let Some(report) = &skill.inspection {
                     prompt.push_str(&format!(
-                        "- **{}** [{}]: {}{}\n",
-                        skill.name, skill.scope_label, desc, invocable
-                    ));
-                    if let Some(report) = &skill.inspection {
-                        prompt.push_str(&format!(
                             "  Inspection: {} heuristic findings{}; use list_skills for the version-bound report. This is not a safety verdict.\n",
                             report.findings.len(), if report.truncated { " (incomplete scan)" } else { "" },
                         ));
-                    }
                 }
-                if visible.len() > MAX_SKILLS_IN_PROMPT {
-                    prompt.push_str(&format!(
-                        "\n({} more — use `list_skills` to see all)\n",
-                        visible.len() - MAX_SKILLS_IN_PROMPT
-                    ));
-                }
+            }
+            if visible.len() > MAX_SKILLS_IN_PROMPT {
+                prompt.push_str(&format!(
+                    "\n({} more — use `list_skills` to see all)\n",
+                    visible.len() - MAX_SKILLS_IN_PROMPT
+                ));
             }
         }
 
-        Some(format!(
-            "<capability id=\"{}\">\n{}\n</capability>",
-            self.id(),
+        Some(if prompt.is_empty() {
+            EMPTY_SKILL_INVENTORY.to_string()
+        } else {
             prompt
-        ))
+        })
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {

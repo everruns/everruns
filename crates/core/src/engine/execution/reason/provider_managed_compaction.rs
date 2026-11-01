@@ -316,6 +316,11 @@ fn preflight_fallback_reason(
         .conversation_context
         .as_deref()
         .is_some_and(|context| !context.is_empty())
+        || assembled
+            .runtime_agent
+            .conversation_context_update
+            .is_some()
+        || super::context_updates::has_history(&assembled.messages)
     {
         return Some("dynamic_conversation_context");
     }
