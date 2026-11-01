@@ -4,7 +4,8 @@ description: Installing or editing skills appends a recorded inventory update in
 date: 2026-10-31
 kind: fix
 significance: notable
-products: [platform, framework]
+products: [platform, framework, cloud]
+cloud: 2026-11-01
 surfaces: [agent, code]
 links:
   docs: [/capabilities/agent-skills/]
