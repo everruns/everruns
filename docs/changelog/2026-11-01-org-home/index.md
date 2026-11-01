@@ -10,7 +10,7 @@ links:
   docs: [/features/ui/]
 ---
 
-**Home** is a new page above Chat. It starts with **Needs attention**: one
+**Home** is a new page above Chat ([UI guide](/features/ui/)). It starts with **Needs attention**: one
 ranked list built from every place that already tracks a problem. That covers
 agent setup problems, open health issues such as the active-turn limit, agents
 whose recent turns mostly failed, sessions paused at their budget limit,
