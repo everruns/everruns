@@ -68,6 +68,8 @@ pub(super) async fn run(doctor: &SystemDoctor) -> Findings {
         )
     });
 
+    found.check(detection_check(doctor));
+
     let logs = DoctorCheck::new(AREA, "observability.log_level", "Log level");
     let verbose = env
         .rust_log
@@ -84,4 +86,48 @@ pub(super) async fn run(doctor: &SystemDoctor) -> Findings {
         ))
     });
     found
+}
+
+/// The built-in detectors' sweep runs every 15 minutes on each server; this
+/// long without one means detection stopped.
+const DETECTION_SILENCE: Duration = Duration::from_secs(40 * 60);
+
+/// Whether the built-in detectors (runaway schedules, tool loops, spend
+/// spikes) are still sweeping on this server.
+fn detection_check(doctor: &SystemDoctor) -> DoctorCheck {
+    let check = DoctorCheck::new(AREA, "observability.detection", "Built-in detection");
+    if doctor.preflight {
+        return check.info("Detection runs inside the server; a command-line run cannot see it.");
+    }
+    match crate::domains::health_issues::behavior::last_sweep() {
+        Some(sweep) => {
+            let ago = (Utc::now() - sweep.at).to_std().unwrap_or_default();
+            if let Some(error) = sweep.error {
+                check
+                    .warning(format!("The last detection sweep failed: {error}."))
+                    .why("Runaway sessions and tool loops go unreported until it works again.")
+                    .fix(
+                        "Check the server log for \"health sweep failed\" and the database's load.",
+                    )
+            } else if ago > DETECTION_SILENCE {
+                check
+                    .warning(format!(
+                        "No detection sweep has finished for {} minutes.",
+                        ago.as_secs() / 60
+                    ))
+                    .why("Runaway sessions and tool loops go unreported while it is stuck.")
+                    .fix("Restart the server; check its log for the sweep's errors.")
+            } else {
+                check.ok(format!(
+                    "Detection last swept {} minutes ago.",
+                    ago.as_secs() / 60
+                ))
+            }
+        }
+        None if doctor.uptime() > DETECTION_SILENCE => check
+            .warning("No detection sweep has finished since the server started.")
+            .why("Runaway sessions and tool loops go unreported.")
+            .fix("Check the server log for \"health sweep failed\"."),
+        None => check.info("Detection has not swept yet since the server started."),
+    }
 }

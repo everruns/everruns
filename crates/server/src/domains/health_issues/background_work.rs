@@ -63,7 +63,7 @@ pub fn owns(code: &str) -> bool {
     matches!(
         code,
         SCHEDULE_RUNAWAY | SCHEDULE_BUDGET | ORG_UNATTENDED_BUDGET | SPEND_SPIKE | CONTEXT_BLOAT
-    )
+    ) || super::behavior::owns(code)
 }
 
 /// The final answer's text, normalized and hashed: equal for answers that
@@ -252,7 +252,7 @@ async fn report_schedule(
 
 /// Record an observation and tell `recipients` when it opened an issue (or,
 /// with `resurface`, made an open one worse).
-async fn record(
+pub(super) async fn record(
     db: &StorageBackend,
     issue: SubjectHealthIssue<'_>,
     recipients: Vec<Uuid>,
@@ -318,7 +318,11 @@ async fn schedule_recipients(db: &StorageBackend, watch: &ScheduleWatchRow) -> V
     with_owner_fallback(db, watch.org_id, users).await
 }
 
-async fn agent_recipients(db: &StorageBackend, org_id: i64, agent_id: Option<Uuid>) -> Vec<Uuid> {
+pub(super) async fn agent_recipients(
+    db: &StorageBackend,
+    org_id: i64,
+    agent_id: Option<Uuid>,
+) -> Vec<Uuid> {
     let users = match agent_id {
         Some(agent) => db
             .agent_author_user_ids(org_id, agent)
@@ -359,6 +363,9 @@ fn copy_for(
     evidence: &serde_json::Value,
     agent: Option<&str>,
 ) -> (String, String) {
+    if super::behavior::owns(code) {
+        return super::behavior::copy_for(code, status, evidence, agent);
+    }
     let agent = agent.unwrap_or("An agent");
     let task = evidence["description"]
         .as_str()
@@ -441,6 +448,7 @@ pub async fn recheck(db: &StorageBackend, row: &HealthIssueRow) -> anyhow::Resul
         ORG_UNATTENDED_BUDGET => sweep_org_budgets(db).await,
         SPEND_SPIKE => sweep_spend_spikes(db).await,
         CONTEXT_BLOAT => sweep_context_bloat(db).await,
+        code if super::behavior::owns(code) => super::behavior::sweep(db).await,
         _ => Ok(()),
     }
 }
@@ -468,7 +476,7 @@ async fn recheck_schedule(db: &StorageBackend, row: &HealthIssueRow) -> anyhow::
     Ok(())
 }
 
-async fn resolve(db: &StorageBackend, row: &HealthIssueRow) -> anyhow::Result<()> {
+pub(super) async fn resolve(db: &StorageBackend, row: &HealthIssueRow) -> anyhow::Result<()> {
     let Some(subject) = row.subject_id.as_deref() else {
         return Ok(());
     };
@@ -608,6 +616,11 @@ pub async fn sweep(db: &StorageBackend) {
     if let Err(error) = sweep_context_bloat(db).await {
         tracing::warn!(%error, "Context size health sweep failed");
     }
+    let behavior = super::behavior::sweep(db).await;
+    if let Err(error) = &behavior {
+        tracing::warn!(%error, "Session behavior health sweep failed");
+    }
+    super::behavior::record_sweep(behavior.err().map(|error| error.to_string()));
 }
 
 /// Run [`sweep`] every 15 minutes.
