@@ -10044,6 +10044,13 @@
     "http_path": "/v1/providers",
     "args": [
       {
+        "field": "api",
+        "long": "api",
+        "kind": "string",
+        "required": false,
+        "help": "Chat API declared by the provider driver; \"default\" restores its default."
+      },
+      {
         "field": "api_key",
         "long": "api-key",
         "kind": "string",
@@ -10322,6 +10329,13 @@
     "method": "PATCH",
     "http_path": "/v1/providers/{id}",
     "args": [
+      {
+        "field": "api",
+        "long": "api",
+        "kind": "string",
+        "required": false,
+        "help": "Chat API declared by the provider driver; \"default\" restores its default."
+      },
       {
         "field": "api_key",
         "long": "api-key",
