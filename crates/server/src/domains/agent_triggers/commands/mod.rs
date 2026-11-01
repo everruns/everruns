@@ -1356,6 +1356,7 @@ pub(super) async fn dispatch_trigger_message(
     org_id: i64,
     agent: &AgentRow,
     trigger_id: TriggerId,
+    trigger_type: &str,
     session_id: SessionId,
     harness_id: everruns_contracts::typed_id::HarnessId,
     owner_principal_id: everruns_contracts::typed_id::PrincipalId,
@@ -1407,11 +1408,34 @@ pub(super) async fn dispatch_trigger_message(
         external_actor: None,
         client_message_id: None,
     };
-    match script {
-        Some(run) => message_service.create_script_run(ctx, req, run).await?,
-        None => message_service.create(ctx, req).await?,
-    };
+    message_service
+        .create_with_origin(ctx, req, trigger_origin(trigger_id, trigger_type), script)
+        .await?;
     Ok(())
+}
+
+/// Who wrote a trigger's message. Triggers have no name of their own, so the
+/// kind of trigger ("GitHub", "Schedule") names it.
+fn trigger_origin(
+    trigger_id: TriggerId,
+    trigger_type: &str,
+) -> everruns_core::message::MessageOrigin {
+    let name = match trigger_type {
+        "github" => "GitHub".to_string(),
+        "mcp_event" => "MCP event".to_string(),
+        other => {
+            let mut chars = other.replace('_', " ").chars().collect::<Vec<_>>();
+            if let Some(first) = chars.first_mut() {
+                *first = first.to_ascii_uppercase();
+            }
+            chars.into_iter().collect()
+        }
+    };
+    everruns_core::message::MessageOrigin::new(
+        everruns_core::message::MessageOriginKind::AgentTrigger,
+    )
+    .with_source_id(trigger_id.to_string())
+    .with_name(name)
 }
 
 #[allow(clippy::too_many_arguments)]

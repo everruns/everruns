@@ -28,6 +28,7 @@ async fn an_answered_turn_retains_its_completion_metadata_after_a_crash() {
                 agent_id: None,
                 agent_name: None,
                 agent_description: None,
+                origin: None,
             },
         )];
         if tool_rounds {

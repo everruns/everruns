@@ -36,6 +36,17 @@ pub fn event(value: &Value) -> Value {
     if let Some(value) = value.get("initiator").filter(|v| v.is_object()) {
         public.insert("initiator".into(), identity(value));
     }
+    // One normalized shape whatever marker the row was written with, so every
+    // client reads origins the same way (knowledge/execution/message-origin.md).
+    if let Some(origin) = value
+        .as_object()
+        .and_then(crate::runtime::message_origin::MessageOrigin::from_metadata)
+    {
+        public.insert(
+            crate::runtime::message_origin::MESSAGE_ORIGIN_METADATA_KEY.into(),
+            origin.to_value(),
+        );
+    }
     Value::Object(public)
 }
 
@@ -70,7 +81,6 @@ pub fn message(value: &Value) -> Value {
         value,
         &[
             "everruns_client_message_id",
-            "everruns_origin",
             "source",
             "locale",
             "thread_ts",

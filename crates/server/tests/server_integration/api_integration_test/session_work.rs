@@ -54,6 +54,7 @@ async fn test_session_work_report_reads_the_latest_turn() {
             agent_id: None,
             agent_name: Some("Work Report Agent".into()),
             agent_description: None,
+            origin: None,
         }
         .into(),
     )

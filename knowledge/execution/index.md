@@ -12,6 +12,7 @@
 * [Execution Phases Specification](execution-phases.md) - Execution phases (Commentary/FinalAnswer) for multi-step tool flows.
 * [Tool Execution Specification](tool-execution.md) - Tool types and execution flow.
 * [Tool narration](tool-narration.md) - Backend-authored, argument-aware narration for common tool families.
+* [Message origin](message-origin.md) - One platform-only marker on every user-role message no person wrote, read the same way by Chat, Work Chat, the session trace and the model.
 * [Work reports](work-reports.md) - One runtime-built record of what a piece of work is doing now and what it got done, read by every surface.
 * [Tool Output Distillation](tool-output-distillation.md) - Content-aware distillation of large non-exec tool results at capture time.
 * [Capabilities Specification](capabilities.md) - Agent capabilities system.

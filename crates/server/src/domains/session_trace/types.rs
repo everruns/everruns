@@ -86,6 +86,13 @@ pub struct TraceTurn {
     /// The user message that started the turn.
     #[schema(example = "Check the links on the docs site")]
     pub prompt: Option<String>,
+    /// Who wrote the input when no person did: `kind` (`schedule`,
+    /// `agent_trigger`, `channel_schedule`, `webhook`, `task_wake`, `system`),
+    /// and when known `source_id`, `name` and `run` (`number`, `limit`,
+    /// `ends_at`, `stop_when`). Absent when a person started the turn.
+    #[schema(value_type = Option<Object>, example = json!({"kind": "schedule", "source_id": "sched_01a124cd7e9571ac95c312b3c6d0cd82", "name": "Shipmail claim poll", "run": {"number": 12, "limit": 96}}))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<serde_json::Value>,
     /// Why the turn failed, when it did.
     pub error: Option<String>,
     /// Classified failure (`provider_quota_exhausted`, `provider_rate_limited`,

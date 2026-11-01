@@ -164,24 +164,33 @@ impl MessageService {
     ) -> Result<Message> {
         // Keep the intake future off nested HTTP handler stacks. Agent API
         // sends add enough wrappers to overflow a default debug worker stack.
-        Box::pin(self.create_inner(ctx, req, prefetch, None)).await
+        Box::pin(self.create_inner(ctx, req, prefetch, Vec::new())).await
     }
 
-    /// [`Self::create`] for a message whose turn runs a saved script instead
-    /// of the model (Tools in Shell D9). The marker is reserved metadata a
-    /// client cannot set, so it is added after the client's keys are cleaned.
-    pub async fn create_script_run(
+    /// [`Self::create`] for a message the platform writes on someone's behalf
+    /// (a trigger or channel schedule firing), marked with who wrote it. The
+    /// origin is reserved metadata a client cannot set, so it is added after
+    /// the client's keys are cleaned. A trigger that targets a saved script also
+    /// carries the script-run marker, so its turn runs the script instead of
+    /// the model (Tools in Shell D9).
+    pub async fn create_with_origin(
         &self,
         ctx: CreateMessageContext,
         req: CreateMessageRequest,
-        run: &everruns_contracts::runtime::saved_scripts::ScriptRun,
+        origin: everruns_core::message::MessageOrigin,
+        script: Option<&everruns_contracts::runtime::saved_scripts::ScriptRun>,
     ) -> Result<Message> {
-        let marker = (
-            everruns_contracts::runtime::saved_scripts::SCRIPT_RUN_METADATA_KEY.to_string(),
-            serde_json::to_value(run)?,
-        );
-        self.create_inner(ctx, req, CreateMessagePrefetch::default(), Some(marker))
-            .await
+        let mut platform = vec![(
+            everruns_core::message::MESSAGE_ORIGIN_METADATA_KEY.to_string(),
+            origin.to_value(),
+        )];
+        if let Some(run) = script {
+            platform.push((
+                everruns_contracts::runtime::saved_scripts::SCRIPT_RUN_METADATA_KEY.to_string(),
+                serde_json::to_value(run)?,
+            ));
+        }
+        Box::pin(self.create_inner(ctx, req, CreateMessagePrefetch::default(), platform)).await
     }
 
     async fn create_inner(
@@ -189,7 +198,7 @@ impl MessageService {
         ctx: CreateMessageContext,
         req: CreateMessageRequest,
         prefetch: CreateMessagePrefetch,
-        platform_metadata: Option<(String, serde_json::Value)>,
+        platform_metadata: Vec<(String, serde_json::Value)>,
     ) -> Result<Message> {
         tracing::info!(
             session_id = %ctx.session_id,
@@ -353,7 +362,7 @@ impl MessageService {
         // dress its own text up as a platform notice.
         let mut metadata = req.metadata.clone();
         everruns_core::message::strip_reserved_message_metadata(&mut metadata);
-        if let Some((key, value)) = platform_metadata {
+        for (key, value) in platform_metadata {
             metadata.get_or_insert_default().insert(key, value);
         }
         if let Some(client_message_id) = req.client_message_id {

@@ -22,6 +22,8 @@ pub struct TraceTurnRow {
     pub error_count: i32,
     pub input_tokens: i64,
     pub output_tokens: i64,
+    /// Who wrote the turn's input when no person did (`MessageOrigin`).
+    pub origin: Option<serde_json::Value>,
 }
 
 /// One step (model call, tool call, approval, sub-agent, message) of a turn.

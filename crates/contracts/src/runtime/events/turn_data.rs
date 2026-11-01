@@ -41,6 +41,13 @@ pub struct TurnStartedData {
     /// Agent description snapshot at turn start.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_description: Option<String>,
+
+    /// Who wrote the input message when no person did (a schedule run, a
+    /// trigger, a thread wake-up, a platform notice). Absent when a person
+    /// started the turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>, example = json!({"kind": "schedule", "source_id": "sched_01933b5a00007000800000000000001", "name": "Shipmail claim poll"})))]
+    pub origin: Option<crate::runtime::message_origin::MessageOrigin>,
 }
 
 /// Data for turn.completed event

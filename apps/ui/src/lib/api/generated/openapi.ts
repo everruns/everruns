@@ -28902,6 +28902,13 @@ export interface components {
        */
       model_calls: number;
       /**
+       * @description Who wrote the input when no person did: `kind` (`schedule`,
+       *     `agent_trigger`, `channel_schedule`, `webhook`, `task_wake`, `system`),
+       *     and when known `source_id`, `name` and `run` (`number`, `limit`,
+       *     `ends_at`, `stop_when`). Absent when a person started the turn.
+       */
+      origin?: Record<string, unknown> | null;
+      /**
        * Format: int64
        * @description Completion tokens across the turn's model calls.
        * @example 129
@@ -29242,6 +29249,12 @@ export interface components {
        * @example message_01933b5a00007000800000000000001
        */
       input_message_id: string;
+      /**
+       * @description Who wrote the input message when no person did (a schedule run, a
+       *     trigger, a thread wake-up, a platform notice). Absent when a person
+       *     started the turn.
+       */
+      origin?: Record<string, unknown> | null;
       /**
        * @description Turn identifier
        * @example turn_01933b5a00007000800000000000001

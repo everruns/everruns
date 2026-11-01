@@ -262,6 +262,22 @@ h1 {
 .assistant {
   padding: 6px 0;
 }
+/* A message the platform wrote (schedule run, trigger, update): a muted
+   line with a rule, never a user bubble. */
+.automatic {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.automatic::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
 .message pre {
   overflow: auto;
   max-width: 100%;

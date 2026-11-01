@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { StepRow } from "@/components/session/trace/trace-rows";
+import { StepRow, TurnHeader } from "@/components/session/trace/trace-rows";
 import type { TraceStep, TraceTurn } from "@/lib/api/types";
 
 jest.mock("@/components/chat/streamdown-message", () => ({
@@ -69,4 +69,31 @@ it("switches between Markdown and the original text without selecting the row wh
   expect(screen.getByText("# Answer **Hello**").textContent).toBe(step.narration);
   fireEvent.click(screen.getByRole("button"));
   expect(onSelect).toHaveBeenCalledTimes(1);
+});
+
+it("names who started an automatic turn instead of calling it a user turn", () => {
+  const scheduled: TraceTurn = {
+    ...turn,
+    prompt: "Shipmail claim poll. Read the state file.",
+    origin: {
+      kind: "schedule",
+      source_id: "sched_01a124cd7e9571ac",
+      name: "Shipmail claim poll",
+      run: { number: 12, limit: 96 },
+    },
+  };
+  const { rerender } = render(
+    <TurnHeader turn={scheduled} collapsed={false} onToggle={() => {}} showScale={false} />,
+  );
+  expect(screen.queryByText(/· user/)).not.toBeInTheDocument();
+  expect(screen.getByText("Scheduled")).toBeInTheDocument();
+  expect(screen.getByText("· Shipmail claim poll")).toBeInTheDocument();
+  expect(screen.getByText("run 12 of 96")).toBeInTheDocument();
+  expect(screen.getByTitle("sched_01a124cd7e9571ac")).toBeInTheDocument();
+  // Every turn stays a turn: an automatic one is gray, not folded away.
+  expect(screen.getByRole("button")).toHaveClass("bg-muted/70");
+
+  rerender(<TurnHeader turn={turn} collapsed={false} onToggle={() => {}} showScale={false} />);
+  expect(screen.getByText(/· user/)).toBeInTheDocument();
+  expect(screen.getByRole("button")).toHaveClass("bg-accent/9");
 });

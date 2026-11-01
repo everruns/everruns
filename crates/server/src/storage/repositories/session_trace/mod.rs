@@ -40,7 +40,7 @@ macro_rules! turn_columns {
     () => {
         "turn_no, turn_id, start_sequence, end_sequence, started_at, ended_at, \
      status, prompt_preview, error, step_count, model_calls, tool_calls, subagent_calls, \
-     error_count, input_tokens, output_tokens, error_code"
+     error_count, input_tokens, output_tokens, error_code, origin"
     };
 }
 
@@ -421,7 +421,8 @@ async fn upsert_turns(
                 .push_bind(t.error_count)
                 .push_bind(t.input_tokens)
                 .push_bind(t.output_tokens)
-                .push_bind(&t.error_code);
+                .push_bind(&t.error_code)
+                .push_bind(&t.origin);
         });
         qb.push(
             " ON CONFLICT (session_id, turn_no) DO UPDATE SET \

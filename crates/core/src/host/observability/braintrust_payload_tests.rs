@@ -24,6 +24,7 @@ fn test_is_merge_serialization_started_events() {
         agent_id: None,
         agent_name: None,
         agent_description: None,
+        origin: None,
     };
     let event = Event::new(
         SessionId::new(),
@@ -399,6 +400,7 @@ fn test_turn_started_metadata_includes_session_grouping_fields() {
             agent_id: None,
             agent_name: None,
             agent_description: None,
+            origin: None,
         }),
     )
     .with_sequence(42);
@@ -518,6 +520,7 @@ fn test_turn_started_without_content_recording_omits_input_preview() {
         agent_id: None,
         agent_name: None,
         agent_description: None,
+        origin: None,
     };
     let event = Event::new(
         SessionId::new(),
@@ -778,6 +781,7 @@ async fn test_on_event_batches_multiple_events_into_one_request() {
             agent_id: None,
             agent_name: None,
             agent_description: None,
+            origin: None,
         }),
     );
     let completed = Event::new(
@@ -846,6 +850,7 @@ async fn test_permanent_rejection_is_reported_once_within_the_interval() {
                     agent_id: None,
                     agent_name: None,
                     agent_description: None,
+                    origin: None,
                 }),
             ))
             .await;
@@ -906,6 +911,7 @@ async fn test_on_event_retries_after_429() {
             agent_id: None,
             agent_name: None,
             agent_description: None,
+            origin: None,
         }),
     );
     listener.on_event(&event).await;
@@ -954,6 +960,7 @@ async fn test_on_event_retries_after_timeout() {
             agent_id: None,
             agent_name: None,
             agent_description: None,
+            origin: None,
         }),
     );
     listener.on_event(&event).await;

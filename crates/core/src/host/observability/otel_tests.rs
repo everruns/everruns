@@ -85,6 +85,7 @@ impl OtelHarness {
             agent_id: Some(AgentId::new()),
             agent_name: Some("Weather Helper".to_string()),
             agent_description: Some("Answers weather questions".to_string()),
+            origin: None,
         }
     }
 }

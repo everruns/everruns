@@ -305,6 +305,13 @@ async fn poll_and_trigger(
                 "budget": fired.budget,
             }),
         );
+        // Who wrote this message (knowledge/execution/message-origin.md). The
+        // schedule has no name of its own, so its prompt names it.
+        metadata.insert(
+            everruns_core::message::MESSAGE_ORIGIN_METADATA_KEY.to_string(),
+            everruns_core::message::MessageOrigin::schedule(schedule_id.to_string(), &fired.description)
+                .to_value(),
+        );
 
         let core_message = RuntimeMessage {
             id: message_id_typed,
