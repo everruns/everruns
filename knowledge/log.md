@@ -2,6 +2,8 @@
 
 ## 2026-11-01
 
+- Reveal bidi/control characters in tool approval displays without changing approval authority or arguments. See [Tool Approval](execution/tool-approval.md#approval-display).
+
 - Require hosted and embedded session cron triggers to advance in UTC through
   repeated daylight-saving hours. See [Runtime](foundations/runtime.md).
 
