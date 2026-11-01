@@ -35,9 +35,15 @@ def verify(metadata, rows, sarif):
         failures.append("SARIF has no runs")
     warnings = []
     for run in runs:
-        driver = run.get("tool", {}).get("driver", {})
+        tool = run.get("tool", {})
+        driver = tool.get("driver", {})
+        # The Action groups query rules under tool.extensions by QL pack;
+        # ungrouped CLI output keeps them directly on the driver.
+        components = [driver, *tool.get("extensions", [])]
         if driver.get("name") != "CodeQL" or not any(
-            rule.get("id", "").startswith("rust/") for rule in driver.get("rules", [])
+            rule.get("id", "").startswith("rust/")
+            for component in components
+            for rule in component.get("rules", [])
         ):
             failures.append("Missing CodeQL Rust query rules")
         invocations = run.get("invocations", [])

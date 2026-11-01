@@ -61,7 +61,8 @@ coverage gate.
 The candidate is not active and has not established production Code Scanning
 coverage. Local CodeQL 2.27.3 extraction of the complete checkout succeeded on a
 4-CPU, 16 GiB cgroup with disk-backed scratch, one Cargo build job, and no swap.
-It processed 3,518 Rust files and finalized the database in about 28 minutes.
+It processed 3,518 Rust files and finalized the database in about 28 minutes
+using the Rust source tree at `0974319cc0515c2fcea00cd90448e0c367bdc7bc`.
 The workspace inventory contains 49 packages and 296 target roots. All 296
 target roots have semantic AST and crate records in the finalized database.
 Of 3,469 tracked Rust files, 3,444 have semantic AST evidence. The complete
@@ -70,14 +71,25 @@ partitioning away cross-component relationships. Extraction and AST evidence
 alone are not the success bar: the standard query suite must also pass before
 results can be published.
 
-An earlier attempt exited 137 with one OOM kill because approximately 6.3 GiB of
-bundle, database, and build files lived on RAM-backed `/tmp`. Moving this scratch
-to disk allowed the complete extraction without another OOM. Sampled aggregate
+An earlier two-thread/two-Cargo-job attempt exited 137 with one OOM kill while
+approximately 6.3 GiB of bundle, database, and build files lived on RAM-backed
+`/tmp`. The retry moved this scratch to disk, requested one extraction thread,
+and used one Cargo job; it completed without another OOM. These changes were tested
+together, so the experiment does not isolate their individual contribution. Sampled aggregate
 anonymous memory peaked at approximately 12.15 GiB; total cgroup usage also
 includes reclaimable disk cache and is not a process-memory requirement.
 `--ram` is a suggestion to the Rust extractor, not a hard memory cap. The
 candidate rejects tmpfs/ramfs scratch, keeps Cargo build output on disk, records
-resource evidence, and uses the CodeQL bundle linked to the pinned action.
+resource evidence, and uses the CodeQL bundle linked to the pinned action. It
+finalizes extraction before releasing only that run's Cargo build cache (about
+5.1 GiB in the local experiment), so build and query caches need not coexist.
+Extraction/finalization failures stop the job before cleanup or publication.
+The database reached approximately 13 GiB during query evaluation, so the
+candidate also reuses
+the repository's [runner disk preparation](../../scripts/ci-prepare-disk.sh)
+before initialization. Its default mode removes unused SDKs and preserves the
+CodeQL tool cache. This changes only the ephemeral job filesystem, not runner
+size or billing settings.
 This is evidence for the tested environment, not a measured minimum capacity or
 a guarantee for every hosted runner image.
 
@@ -101,10 +113,11 @@ AST evidence also include 12 trybuild fixtures, two executable demonstration
 fixtures, a historical source without a Cargo manifest, two `include!` test
 fragments, and the shared eval usage module. Macro expansion nodes may be
 associated with the including file; this inventory alone cannot prove the
-semantic completeness of those fragments or the shared module. A file present in the source archive or a
-native Cargo check is insufficient evidence. The candidate must remain draft
-until extraction evidence is reviewed and this target gap has an explicit
-resolution; do not describe it as complete Rust coverage.
+semantic completeness of those fragments or the shared module. A file present
+in the source archive or a native Cargo check is insufficient evidence. These
+are explicit limits of the native analysis; additional target/feature analyses
+need their own semantic validation before any broader coverage claim. The
+candidate remains inactive pending the settings migration described above.
 
 ## Related
 

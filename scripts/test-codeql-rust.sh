@@ -48,6 +48,15 @@ class CoverageTest(unittest.TestCase):
     def test_wrong_language(self):
         self.sarif['runs'][0]['tool']['driver']['rules'] = [{'id': 'py/sql-injection'}]
         self.assertTrue(self.errors())
+    def test_action_rules_grouped_by_pack(self):
+        tool = self.sarif['runs'][0]['tool']
+        tool['extensions'] = [{'name': 'codeql/rust-queries', 'rules': tool['driver'].pop('rules')}]
+        self.assertEqual([], self.errors())
+    def test_grouped_wrong_language(self):
+        tool = self.sarif['runs'][0]['tool']
+        tool['driver'].pop('rules')
+        tool['extensions'] = [{'rules': [{'id': 'py/sql-injection'}]}]
+        self.assertTrue(self.errors())
     def test_extraction_error_even_with_successful_execution(self):
         self.sarif['runs'][0]['invocations'][0]['toolExecutionNotifications'] = [
             {'level': 'error', 'message': {'text': 'workspace loading failed'}}]
@@ -103,6 +112,38 @@ class StorageTest(unittest.TestCase):
         upload = next(step for step in self.steps if step.get('uses', '').startswith('actions/upload-artifact@'))
         self.assertEqual(set(upload['with']['path'].splitlines()),
                          {'evidence/workspace.json', 'evidence/files.csv', 'evidence/resources.txt'})
+
+    def extract(self, fail_stage=''):
+        script = next(step['run'] for step in self.steps if step.get('id') == 'extract')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = root / 'codeql-rust-123-2/cargo-target'
+            cache.mkdir(parents=True)
+            (cache / 'compiled').write_text('build cache')
+            other = root / 'another-run/cargo-target'
+            other.mkdir(parents=True)
+            codeql = root / 'codeql'
+            codeql.write_text('#!/bin/sh\n[ "$2" != "$FAIL_STAGE" ]\n')
+            codeql.chmod(0o755)
+            env = dict(os.environ, CODEQL=str(codeql), DATABASE=str(root/'databases/rust'),
+                       RUNNER_TEMP=directory, GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='2',
+                       FAIL_STAGE=fail_stage)
+            result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script],
+                                    env=env, capture_output=True)
+            return result.returncode, cache.exists(), other.exists()
+
+    def test_success_releases_only_this_runs_build_cache(self):
+        self.assertEqual(self.extract(), (0, False, True))
+
+    def test_extraction_failure_keeps_cache_and_fails_step(self):
+        status, cache, other = self.extract('trace-command')
+        self.assertNotEqual(status, 0)
+        self.assertTrue(cache and other)
+
+    def test_finalization_failure_keeps_cache_and_fails_step(self):
+        status, cache, other = self.extract('finalize')
+        self.assertNotEqual(status, 0)
+        self.assertTrue(cache and other)
 
 unittest.main()
 PY

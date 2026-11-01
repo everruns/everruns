@@ -55,12 +55,18 @@ jobs:
       security-events: write
     env:
       CARGO_BUILD_JOBS: '1'
+      # The coverage gate needs extraction diagnostics in the generated SARIF.
+      CODEQL_ACTION_EXPORT_DIAGNOSTICS: 'true'
       CODEQL_EXTRACTOR_RUST_OPTION_LOGGING_VERBOSITY: progress
       CODEQL_EXTRACTOR_RUST_OPTION_CARGO_TARGET: x86_64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      - name: Prepare runner disk
+        # Reclaim unused SDKs with the existing helper. Its default mode keeps
+        # the CodeQL tool cache; do not use --extended for this job.
+        run: bash scripts/ci-prepare-disk.sh
       - name: Prepare disk-backed analysis storage
         id: storage
         run: |
@@ -92,6 +98,17 @@ jobs:
           threads: 1
           ram: 10000
           # No paths-ignore, feature reduction, or workspace pruning.
+      - name: Extract and finalize before releasing build cache
+        id: extract
+        env:
+          CODEQL: ${{ steps.init.outputs.codeql-path }}
+          DATABASE: ${{ steps.storage.outputs.database }}/rust
+        run: |
+          "$CODEQL" database trace-command "$DATABASE" --use-build-mode --threads=1 --ram=10000
+          "$CODEQL" database finalize "$DATABASE" --threads=1 --ram=10000
+          # Finalization archives extracted sources. Queries use the database,
+          # so release only this run's build cache before query caching grows.
+          rm -rf -- "${RUNNER_TEMP:?}/codeql-rust-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/cargo-target"
       - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         id: analyze
         with:
