@@ -6,7 +6,8 @@ use serde_json::{Value, json};
 use super::*;
 use crate::channel::{
     ApprovalPrompt, ChannelAgentSurface, ChannelApprovalPrompt, ChannelProgressSurface,
-    ChannelStreamDelivery, DeliveryContext, DeliveryResult, DeliveryTarget, OutboundChannelMessage,
+    ChannelSessionState, ChannelStreamDelivery, DeliveryContext, DeliveryResult, DeliveryTarget,
+    OutboundChannelMessage,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +27,7 @@ enum Call {
 #[derive(Default)]
 struct Recorder {
     calls: Mutex<Vec<Call>>,
+    states: Mutex<Vec<ChannelSessionState>>,
     stream: bool,
     surface: bool,
     approvals: bool,
@@ -123,6 +125,14 @@ impl ChannelStreamDelivery for Recorder {
 
 #[async_trait]
 impl ChannelAgentSurface for Recorder {
+    async fn set_session_state(
+        &self,
+        state: ChannelSessionState,
+        _: &DeliveryContext,
+    ) -> DeliveryResult {
+        self.states.lock().unwrap().push(state);
+        DeliveryResult::Ok
+    }
     async fn set_status(&self, status: &str, _: &DeliveryContext) -> DeliveryResult {
         self.push(Call::Status(status.into()));
         DeliveryResult::Ok
@@ -172,6 +182,62 @@ fn delta(id: &str, text: &str) -> DeliveryEvent {
         OUTPUT_MESSAGE_DELTA,
         json!({"message_id": id, "delta": text}),
     )
+}
+
+#[tokio::test]
+async fn session_lifecycle_distinguishes_a_parked_turn_from_a_finished_turn() {
+    let recorder = Arc::new(Recorder {
+        surface: true,
+        ..Recorder::default()
+    });
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
+    delivery.observe(&event(TURN_STARTED, json!({}))).await;
+    delivery
+        .observe(&event(
+            everruns_contracts::runtime::events::TOOL_CALL_REQUESTED,
+            json!({}),
+        ))
+        .await;
+    assert!(!delivery.is_finished(), "a parked turn remains open");
+    assert!(
+        !recorder
+            .calls()
+            .iter()
+            .any(|call| matches!(call, Call::Post(_)))
+    );
+    delivery.observe(&event(TOOL_STARTED, json!({}))).await;
+    delivery.observe(&event(TOOL_COMPLETED, json!({}))).await;
+    delivery.observe(&event(TURN_COMPLETED, json!({}))).await;
+    assert_eq!(
+        *recorder.states.lock().unwrap(),
+        vec![
+            ChannelSessionState::Processing,
+            ChannelSessionState::Suspended,
+            ChannelSessionState::Processing,
+            ChannelSessionState::Active,
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_soft_approval_waits_for_input_but_cancellation_makes_the_session_available() {
+    for (terminal, expected) in [
+        (TURN_COMPLETED, ChannelSessionState::Suspended),
+        (TURN_CANCELLED, ChannelSessionState::Active),
+    ] {
+        let recorder = Arc::new(Recorder {
+            surface: true,
+            ..Recorder::default()
+        });
+        let mut delivery = delivery(&recorder, DeliveryOptions::default());
+        delivery.observe(&event(TURN_STARTED, json!({}))).await;
+        delivery.observe(&approval_completed("Deploy")).await;
+        delivery.observe(&event(terminal, json!({}))).await;
+        assert_eq!(
+            *recorder.states.lock().unwrap(),
+            vec![ChannelSessionState::Processing, expected]
+        );
+    }
 }
 
 #[tokio::test]

@@ -655,6 +655,24 @@ impl DockerClient {
         extract_file_from_tar(&tar_bytes, MAX_ARCHIVE_FILE_BYTES)
     }
 
+    /// Read one review file without buffering a full-size general archive.
+    pub(crate) async fn get_review_file(
+        &self,
+        container_id: &str,
+        path: &str,
+        max_bytes: usize,
+    ) -> Result<Vec<u8>, String> {
+        let encoded_path = urlencoding::encode(path);
+        let tar_bytes = self
+            .request_bytes_limited(
+                reqwest::Method::GET,
+                &format!("/containers/{container_id}/archive?path={encoded_path}"),
+                max_bytes.saturating_add(64 * 1024),
+            )
+            .await?;
+        extract_review_file_from_tar(&tar_bytes, max_bytes)
+    }
+
     /// Write a file to a container via the archive API.
     /// Content is wrapped in a tar archive and PUT to the container.
     pub async fn put_archive(
@@ -814,6 +832,20 @@ fn demux_docker_stream(raw: &[u8]) -> String {
 
 /// Extract the first regular file's content from a tar archive (Docker GET /archive response).
 /// Skips directory entries to find the actual file content.
+fn extract_review_file_from_tar(tar_bytes: &[u8], max_bytes: usize) -> Result<Vec<u8>, String> {
+    let mut archive = tar::Archive::new(tar_bytes);
+    let mut entries = archive.entries().map_err(|e| e.to_string())?;
+    let regular = entries
+        .next()
+        .transpose()
+        .map_err(|e| e.to_string())?
+        .is_some_and(|entry| entry.header().entry_type().is_file());
+    if !regular || entries.next().is_some() {
+        return Err("Review path must name one regular file".into());
+    }
+    extract_file_from_tar(tar_bytes, max_bytes)
+}
+
 fn extract_file_from_tar(tar_bytes: &[u8], max_bytes: usize) -> Result<Vec<u8>, String> {
     let mut archive = tar::Archive::new(tar_bytes);
     let entries = archive
@@ -995,6 +1027,40 @@ mod tests {
         assert_eq!(extracted, content);
     }
 
+    #[tokio::test]
+    async fn review_archive_enforces_file_and_transport_limits() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        for (body, expected) in [
+            (
+                create_tar_with_file("review.diff", b"small").unwrap(),
+                Some(b"small".to_vec()),
+            ),
+            (
+                create_tar_with_file("review.diff", &[b'x'; 11]).unwrap(),
+                None,
+            ),
+            (vec![b'x'; 70_000], None),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path(format!("{API_VERSION}/containers/owned/archive")))
+                .and(query_param("path", "/workspace/review.diff"))
+                .respond_with(ResponseTemplate::new(200).set_body_bytes(body))
+                .mount(&server)
+                .await;
+            let client = DockerClient::with_base_url(server.uri());
+            let result = client
+                .get_review_file("owned", "/workspace/review.diff", 10)
+                .await;
+            match expected {
+                Some(content) => assert_eq!(result.unwrap(), content),
+                None => assert!(result.is_err()),
+            }
+        }
+    }
+
     #[test]
     fn test_map_docker_error_not_found() {
         let msg = map_docker_error(404, r#"{"message":"No such container: abc123"}"#);
@@ -1128,5 +1194,25 @@ mod tests {
         let tar_bytes = create_tar_with_file("large.txt", &content).unwrap();
         let err = extract_file_from_tar(&tar_bytes, 16).unwrap_err();
         assert!(err.contains("exceeds maximum size"));
+    }
+
+    #[test]
+    fn review_archive_refuses_directory_and_symlink_entries() {
+        for kind in [tar::EntryType::Directory, tar::EntryType::Symlink] {
+            let mut builder = tar::Builder::new(Vec::new());
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(kind);
+            header.set_size(0);
+            header.set_mode(0o644);
+            if kind.is_symlink() {
+                header.set_link_name("other.diff").unwrap();
+            }
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "review", std::io::empty())
+                .unwrap();
+            let bytes = builder.into_inner().unwrap();
+            assert!(extract_review_file_from_tar(&bytes, 100).is_err());
+        }
     }
 }

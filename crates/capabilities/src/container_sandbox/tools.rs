@@ -54,6 +54,30 @@ async fn load_owned_sandbox(
     Ok((state, client))
 }
 
+/// Uses the same ownership proof and filesystem as container file tools.
+pub(crate) struct ContainerWorkspaceFiles;
+
+impl ContainerWorkspaceFiles {
+    pub(crate) async fn read_review_file(
+        &self,
+        context: &ToolContext,
+        path: &str,
+        max_bytes: usize,
+    ) -> Result<String, ToolExecutionResult> {
+        let (state, client) = load_owned_sandbox(context).await?;
+        let path = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("{}/{}", state.working_dir.trim_end_matches('/'), path)
+        };
+        let bytes = client
+            .get_review_file(&state.container_id, &path, max_bytes)
+            .await
+            .map_err(ToolExecutionResult::tool_error)?;
+        String::from_utf8(bytes).map_err(|_| ToolExecutionResult::tool_error("Diff is not UTF-8"))
+    }
+}
+
 // ============================================================================
 // sandbox_create
 // ============================================================================

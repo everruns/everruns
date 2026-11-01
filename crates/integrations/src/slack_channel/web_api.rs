@@ -14,9 +14,17 @@ use std::sync::OnceLock;
 
 use tracing::{Level, debug, error, warn};
 
-fn client() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(reqwest::Client::new)
+fn client() -> Result<&'static reqwest::Client, SlackApiError> {
+    static CLIENT: OnceLock<Result<reqwest::Client, reqwest::Error>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(5))
+                .timeout(std::time::Duration::from_secs(15))
+                .build()
+        })
+        .as_ref()
+        .map_err(|error| SlackApiError::Transient(error.to_string()))
 }
 
 /// Slack API error codes that retrying cannot fix.
@@ -24,6 +32,13 @@ fn client() -> &'static reqwest::Client {
 /// The single source of truth for transient-vs-permanent (EVE-972), matched as
 /// exact codes rather than substrings of a formatted message (EVE-968).
 pub const PERMANENT_SLACK_ERRORS: &[&str] = &[
+    "feature_disabled",
+    "not_agent_channel",
+    "not_authorized",
+    "not_in_channel",
+    "content_too_large",
+    "too_many_views",
+    "already_archived",
     "channel_not_found",
     "token_expired",
     "not_authed",
@@ -245,11 +260,16 @@ pub async fn slack_api_call(
     method: &str,
     payload: serde_json::Value,
 ) -> Result<serde_json::Value, SlackApiError> {
-    let response = client()
-        .post(format!("{}/{}", base_url, method))
+    // Slack's conversation lookup does not consume JSON request bodies. Live
+    // Slack returns invalid_arguments unless the channel is a query parameter.
+    let url = format!("{}/{}", base_url, method);
+    let request = if method == "conversations.info" {
+        client()?.get(url).query(&payload)
+    } else {
+        client()?.post(url).json(&payload)
+    };
+    let response = request
         .header("Authorization", format!("Bearer {}", bot_token))
-        .header("Content-Type", "application/json")
-        .json(&payload)
         .send()
         .await
         .map_err(|e| SlackApiError::Transient(e.to_string()))?;
@@ -354,6 +374,34 @@ pub async fn update_slack_message_blocks(
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[tokio::test]
+    async fn conversation_lookup_uses_query_parameters() {
+        use wiremock::matchers::{header, method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/conversations.info"))
+            .and(query_param("channel", "C_TEST"))
+            .and(header("authorization", "Bearer test-bot"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"ok":true,"channel":{"id":"C_TEST"}})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let response = slack_api_call(
+            &server.uri(),
+            "test-bot",
+            "conversations.info",
+            serde_json::json!({"channel":"C_TEST"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response["channel"]["id"], "C_TEST");
+    }
 
     #[test]
     fn actionable_slack_failures_are_not_internal_errors() {

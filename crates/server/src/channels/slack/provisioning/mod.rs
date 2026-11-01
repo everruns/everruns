@@ -716,8 +716,50 @@ impl SlackAppProvisioner for SlackApiProvisioner {
             }
         }
         // The update API replaces the manifest. Preserve the exported configuration
-        // and add scopes only, including settings changed in Slack itself.
+        // while adding required permissions, including settings changed in Slack itself.
         manifest["oauth_config"]["scopes"]["bot"] = serde_json::Value::Array(required);
+        if scopes.contains(&"code_channels:manage") {
+            // The Code permission also requires its manifest feature and events.
+            // Preserve user-managed settings instead of replacing the app manifest.
+            for pointer in [
+                "/features",
+                "/features/code_channels",
+                "/settings",
+                "/settings/event_subscriptions",
+            ] {
+                if manifest.pointer(pointer).is_some_and(|v| !v.is_object()) {
+                    return Err(malformed_response("apps.manifest.export"));
+                }
+            }
+            if manifest
+                .pointer("/settings/event_subscriptions/bot_events")
+                .is_some_and(|v| !v.is_array())
+            {
+                return Err(malformed_response("apps.manifest.export"));
+            }
+            manifest["features"]["code_channels"]["enabled"] = serde_json::json!(true);
+            let mut events = manifest
+                .pointer("/settings/event_subscriptions/bot_events")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            for name in [
+                "agent_session_stopped",
+                "agent_session_title_changed",
+                "channel_archive",
+                "channel_unarchive",
+                "group_archive",
+                "group_unarchive",
+                "app_uninstalled",
+                "tokens_revoked",
+            ] {
+                let name = serde_json::json!(name);
+                if !events.contains(&name) {
+                    events.push(name);
+                }
+            }
+            manifest["settings"]["event_subscriptions"]["bot_events"] = serde_json::json!(events);
+        }
         let manifest = serde_json::to_string(&manifest)
             .map_err(|_| malformed_response("apps.manifest.export"))?;
         let row = self.connection_for(org_id, team_id).await?;

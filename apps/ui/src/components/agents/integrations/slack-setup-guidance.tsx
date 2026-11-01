@@ -14,6 +14,7 @@ import type { AgentChannel, SlackChannelConfig } from "@/lib/api/types";
 export type SlackChannelSetupConfig = SlackChannelConfig & {
   slack_app_id?: string;
   agent_surface_enabled?: boolean;
+  code_channels_enabled?: boolean;
 };
 
 export function hasSlackCredentials(config: SlackChannelConfig): boolean {

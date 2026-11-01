@@ -1059,19 +1059,18 @@ fn snapshot_info(snapshot: management::types::SnapshotDto) -> SnapshotInfo {
 }
 
 fn format_exec_command(command: &str, cwd: Option<&str>) -> String {
-    // Wrap the user command in a subshell `( ... )` so that `exit`,
-    // SIGPIPE, SIGHUP, and other signals only terminate the subshell,
-    // not the persistent session shell. Without this, commands like
-    // `bash -lc '...; exit'`, pipes to `head`/`sed` (SIGPIPE), and
-    // long `&&` chains that call `exit` would kill the entire session
-    // and force expensive re-establishment. See EVE-251.
+    // Run the program inside a subshell so exit/signals stay local to this
+    // command rather than killing the persistent session shell (EVE-251).
+    // Quote it as eval's literal argument: its raw syntax cannot close our
+    // wrapper, and no command line is interpreted before the cwd succeeds.
+    let program = command.replace('\'', "'\"'\"'");
+    // THREAT[TM-DAYTONA-016]: a rejected cwd gates every command line.
     match cwd {
         Some(c) => {
-            // Cwd is a literal path, even when it contains shell metacharacters.
             let quoted = c.replace('\'', "'\"'\"'");
-            format!("{SHELL_PROFILE_PREAMBLE}( cd '{quoted}' && {command} )")
+            format!("{SHELL_PROFILE_PREAMBLE}( cd '{quoted}' && eval '{program}' )")
         }
-        None => format!("{SHELL_PROFILE_PREAMBLE}( {command} )"),
+        None => format!("{SHELL_PROFILE_PREAMBLE}( eval '{program}' )"),
     }
 }
 

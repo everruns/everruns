@@ -351,6 +351,19 @@ message.
 
 Content is capped at 8 MiB.
 
+#### `slack_code_task`
+
+Publish a complete review snapshot to the current Slack Code task: up to four
+context items, a summary, and a unified diff read from `diff_path` in the session
+filesystem. Use the returned revision as the next `expected_revision`; stale
+snapshots are rejected. The tool cannot select another channel or override its
+privacy. Code sessions receive this tool automatically.
+
+Omitting the diff clears the last snapshot this task published. Slack's built-in
+Code tab stays present with empty content; a newer diff is preserved. Set
+`complete: true` with a final summary to archive the task after execution ends.
+See [shared coding tasks in Slack](/how-to/slack-code/) for setup and lifecycle.
+
 ### Notes
 
 - Posting to an arbitrary channel is deliberately not offered. The blast radius of "anywhere the bot

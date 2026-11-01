@@ -169,6 +169,25 @@ async fn handle_slack_interactivity(
         ErrorResponse::new("Invalid signature").into_response(StatusCode::UNAUTHORIZED)
     })?;
 
+    if let Ok(form) = std::str::from_utf8(&body)
+        && let Some((_, raw)) =
+            url::form_urlencoded::parse(form.as_bytes()).find(|(key, _)| key == "payload")
+        && let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw)
+        && crate::channels::slack::code::interaction::enqueue(
+            &state,
+            &slack_channel,
+            &slack_config,
+            &value,
+        )
+        .await
+        .map_err(|error| {
+            tracing::warn!(%error,"Code approval processing failed");
+            ErrorResponse::new("Approval temporarily unavailable")
+                .into_response(StatusCode::SERVICE_UNAVAILABLE)
+        })?
+    {
+        return Ok(ack());
+    }
     let Some(payload) = parse_interaction(&body) else {
         tracing::warn!(app_id = %app_id, "Failed to parse Slack interactivity payload");
         return Err(
