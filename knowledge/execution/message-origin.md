@@ -23,7 +23,7 @@ thing 288 times.
 
 One reserved metadata key, `everruns_origin`, names who wrote the message.
 The shape and the reader live in
-[`message_origin.rs`](../../crates/contracts/src/runtime/message_origin.rs).
+[`message_origin.rs`](../../crates/contracts/src/message_origin.rs).
 
 - **No origin means a person wrote it.** That is the rule every surface uses.
 - **Platform-only.** `strip_reserved_message_metadata` drops the key from

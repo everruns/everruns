@@ -40,10 +40,10 @@ pub fn event(value: &Value) -> Value {
     // client reads origins the same way (knowledge/execution/message-origin.md).
     if let Some(origin) = value
         .as_object()
-        .and_then(crate::runtime::message_origin::MessageOrigin::from_metadata)
+        .and_then(crate::message_origin::MessageOrigin::from_metadata)
     {
         public.insert(
-            crate::runtime::message_origin::MESSAGE_ORIGIN_METADATA_KEY.into(),
+            crate::message_origin::MESSAGE_ORIGIN_METADATA_KEY.into(),
             origin.to_value(),
         );
     }

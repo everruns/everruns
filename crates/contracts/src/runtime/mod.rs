@@ -54,7 +54,7 @@ pub mod mcp_resources;
 pub mod mcp_server;
 pub mod message;
 pub mod message_filter;
-pub mod message_origin;
+pub use crate::message_origin;
 pub mod message_retriever;
 pub mod mount_fs;
 pub mod network_access;

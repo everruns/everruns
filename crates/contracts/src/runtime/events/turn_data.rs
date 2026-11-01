@@ -47,7 +47,7 @@ pub struct TurnStartedData {
     /// started the turn.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>, example = json!({"kind": "schedule", "source_id": "sched_01933b5a00007000800000000000001", "name": "Shipmail claim poll"})))]
-    pub origin: Option<crate::runtime::message_origin::MessageOrigin>,
+    pub origin: Option<crate::message_origin::MessageOrigin>,
 }
 
 /// Data for turn.completed event
