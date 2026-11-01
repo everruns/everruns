@@ -2,6 +2,7 @@ import { messages as sandboxBuilds } from "./es/sandbox-builds";
 import { messages as agentCost } from "./es/agent-cost";
 import { messages as sharedControls } from "./es/shared-controls";
 import { messages as tracing } from "./es/tracing";
+import { messages as backgroundLimits } from "./es/background-limits";
 import { messages as catalog0 } from "./es/agents-01";
 import { messages as catalog1 } from "./es/agents-02";
 import { messages as catalog2 } from "./es/agents-03";
@@ -52,4 +53,5 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   tracing,
   sharedControls,
   agentCost,
+  backgroundLimits,
 );

@@ -11,7 +11,7 @@ import {
   TokenIcon,
   VirtualUserIcon,
 } from "@/components/icons/facet-icons";
-import { Activity } from "lucide-react";
+import { Activity, Gauge } from "lucide-react";
 import { SlackIcon } from "@/components/icons/slack-icon";
 import type { NavigationSection } from "@/lib/navigation";
 import { registryDomainIcons } from "@/lib/registry-navigation";
@@ -78,6 +78,13 @@ export const settingsNavigationSections: NavigationSection[] = [
         href: "/settings/health",
         icon: HealthIcon,
         description: "Review pending integration issues and recovery actions",
+      },
+      {
+        name: "Limits",
+        href: "/settings/limits",
+        keywords: ["budget", "schedule", "unattended", "spend", "cap", "runaway"],
+        icon: Gauge,
+        description: "Limit what schedules and other unattended work may run and spend",
       },
       {
         name: "Features",
