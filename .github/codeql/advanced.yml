@@ -97,6 +97,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: codeql-rust-native-${{ github.run_attempt }}
-          path: evidence/
+          # Findings belong in Code Scanning, not public workflow artifacts.
+          path: |
+            evidence/workspace.json
+            evidence/files.csv
           retention-days: 14
           if-no-files-found: error

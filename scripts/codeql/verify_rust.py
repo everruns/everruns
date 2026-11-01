@@ -2,7 +2,7 @@
 """Reject empty/failed Rust analysis and missing workspace target roots.
 
 Native semantic coverage is not evidence for wasm-only code. Retain the complete
-CSV and SARIF diagnostics so warnings and files without semantics remain visible.
+CSV and report SARIF diagnostics so warnings and files without semantics remain visible.
 """
 import csv
 import json

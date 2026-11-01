@@ -56,6 +56,22 @@ complete per-file inventory remain available for review; success does not mean
 all macro expansions were complete. Findings are retained, not dismissed by the
 coverage gate.
 
+## Validation status
+
+The candidate has not established production Rust coverage. A local CodeQL
+2.27.3 extraction of the full checkout at `b4873b90` (49 workspace packages,
+296 Cargo targets) exited 137 after about 11 minutes 48 seconds during extraction.
+The environment recorded one OOM kill and a 16 GiB cgroup memory peak/limit.
+No finalized database or OSS SARIF resulted. Do not finalize the partial database
+or shrink the workspace to conceal this failure. A supported runner/resource
+configuration must demonstrate complete extraction before activation; the
+candidate's hosted-runner budget is not yet validated.
+
+The coverage query and validator were separately exercised end to end on a tiny
+Rust fixture with CodeQL 2.27.3: one semantic source file, all 37 default-suite
+queries completed, valid SARIF, and no extraction errors/warnings. This proves
+the validation plumbing, not coverage of Everruns.
+
 ## Target limits
 
 The candidate is explicitly **native Linux** coverage. Native semantic extraction
