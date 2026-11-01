@@ -35,6 +35,13 @@ The [Platform Chat](/built-ins/harnesses/platform-chat/) harness includes it.
 | OpenRouter, Claude models | A top-level `cache_control`, which turns on Anthropic's automatic caching through OpenRouter. Other OpenRouter models keep their vendor's implicit caching | Nothing extra: automatic caching cannot exclude the conversation |
 | Mistral | A `prompt_cache_key` derived from the session (or agent, harness, or organization) and model, so requests sharing a prefix reach the same cache | Same as `auto` |
 
+Requests through the OpenAI Responses protocol (OpenAI, OpenRouter, Meta,
+Vercel AI Gateway) carry that `prompt_cache_key` even when an agent does not
+use this capability, because those providers cache on their own and the key is
+what sends a session's calls to the same cache. Without it, Muse Spark misses
+the cache on every prompt above roughly 100k tokens. Setting `enabled: false`
+removes the key.
+
 On Gemini, setting `gemini_cached_content` sends that existing cached content
 resource in the request's `cachedContent` field.
 

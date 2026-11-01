@@ -144,7 +144,14 @@ mod driver_tests {
                     } else {
                         json!({"model":"gpt-5.4","input":[{"type":"message","role":"user","content":"new"}],"previous_response_id":"prior-response","stream":true,"parallel_tool_calls":false})
                     };
-                    assert_eq!(requests[0].body_json::<Value>().unwrap(), expected);
+                    let mut body = requests[0].body_json::<Value>().unwrap();
+                    // Responses requests always carry the session cache routing key.
+                    let cache_key = body.as_object_mut().unwrap().remove("prompt_cache_key");
+                    assert_eq!(
+                        cache_key.and_then(|key| key.as_str().map(str::len)),
+                        (!completions).then_some(64)
+                    );
+                    assert_eq!(body, expected);
                 }
             }
         }

@@ -354,8 +354,15 @@ mod tests {
                 assert!(response.reasoning.is_empty());
                 let requests = server.received_requests().await.unwrap();
                 assert_eq!(requests.len(), 1);
+                let mut body = requests[0].body_json::<Value>().unwrap();
+                // Responses requests always carry the session cache routing key.
+                let cache_key = body.as_object_mut().unwrap().remove("prompt_cache_key");
                 assert_eq!(
-                    requests[0].body_json::<Value>().unwrap(),
+                    cache_key.and_then(|key| key.as_str().map(str::len)),
+                    Some(64)
+                );
+                assert_eq!(
+                    body,
                     json!({"model":"vendor/model","input":[{"type":"message","role":"user","content":"hello"}],"stream":true,"parallel_tool_calls":false,"reasoning":{"exclude":true}})
                 );
             }
