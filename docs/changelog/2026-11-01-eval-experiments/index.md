@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api, cli]
 links:
   docs: [/features/evals/]
-  prs: [everruns/everruns#5154]
+  prs: [everruns/everruns#5154, everruns/everruns#5159]
 ---
 
 **In the UI:** Quality → Evals now opens on an overview of every agent with a
