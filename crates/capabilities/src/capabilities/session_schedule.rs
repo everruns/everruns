@@ -62,7 +62,7 @@ impl Capability for SessionScheduleCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "When a schedule fires, you will receive a message with the task description and should execute it. Maximum 5 active schedules per session. A recurring schedule has an end (ends_at or max_runs) and a stop_when condition; cancel it with cancel_schedule as soon as the condition is met, and do not keep polling for something that can no longer happen.",
+            "When a schedule fires, you will receive a message with the task description and should execute it. A scheduled run sees that task, the latest conversation summary and the last messages of the schedule's earlier runs, not the rest of the session, so write the description as a complete, self-contained instruction. Maximum 5 active schedules per session. A recurring schedule has an end (ends_at or max_runs) and a stop_when condition; cancel it with cancel_schedule as soon as the condition is met, and do not keep polling for something that can no longer happen.",
         )
     }
 
@@ -120,7 +120,7 @@ impl Tool for CreateScheduleTool {
             "properties": {
                 "description": {
                     "type": "string",
-                    "description": "What the agent should do when the schedule fires"
+                    "description": "What the agent should do when the schedule fires. Make it self-contained: a scheduled run sees this text and the schedule's recent runs, not the rest of the conversation."
                 },
                 "cron_expression": {
                     "type": "string",

@@ -19,16 +19,15 @@ use crate::builtins::message_filter::MessageFilterProvider;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-
 #[path = "compaction/cost_control.rs"]
 mod cost_control;
 use cost_control::*;
-
+#[path = "compaction/scheduled_view.rs"]
+mod scheduled_view;
 use crate::compaction_policy::{
     CompactionPolicy, CompactionSettings, CompactionStrategy as ExecutionCompactionStrategy,
     ObservationMaskingResult as ExecutionObservationMaskingResult,
 };
-
 /// Capability ID for compaction.
 pub const COMPACTION_CAPABILITY_ID: &str = "compaction";
 const MAX_RELATED_RECENT_READ_RESULTS: usize = 4;
@@ -525,6 +524,7 @@ impl ModelViewProvider for CompactionModelViewProvider {
             return messages;
         }
         let config = RuntimeCompactionConfig::from_json(config);
+        let messages = scheduled_view::apply(messages);
         let masking = build_model_view_messages_owned(messages, &config, context.prior_usage);
         if masking.masked_count > 0 {
             tracing::info!(

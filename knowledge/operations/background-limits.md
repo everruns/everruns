@@ -18,9 +18,8 @@ approval that never came. It fired 3,766 times over 13 days and spent about
 $106 before a person noticed. Five safeguards were missing: schedules had no
 end, unattended work had no default spend cap, every fire ran on the whole
 session history, nothing noticed the runs achieved nothing, and nobody was
-told. This concept owns the first two, detection, polling without the model
-and the limits table; a small model view for scheduled turns follows (see
-Rollout).
+told. This concept owns the first two, detection, polling without the model,
+the short model view for scheduled runs and the limits table.
 
 ## Lifetime
 
@@ -135,6 +134,31 @@ For the Shipmail case: 3,766 fetches, no model tokens, and one turn when the
 approval arrives. Source: `crates/contracts/src/runtime/monitor_probe.rs`,
 `crates/server/src/background/monitor_probe.rs`.
 
+## Short model view for scheduled runs
+
+A fire that does need the model should not pay for the whole session. The
+Shipmail poll sent about 380k prompt tokens per fire because each fire ran on
+2,349 earlier messages.
+
+- When a turn's input is a fire of a recurring session schedule (the reserved
+  message origin, kind `schedule` with a run counter), the compaction
+  capability's model view shows the model only: the leading system messages
+  (the latest checkpoint summary, when one exists), the last 10 messages of the
+  same schedule's earlier fires, kept as whole fires, newest first, and the
+  current fire with this turn's work. The system prompt is added as usual.
+- Everything else, the chat around the schedule and other schedules' fires, is
+  left out of the prompt only. Storage stays lossless, and the fire message
+  says that older messages are stored but not shown.
+- One-shot fires and every other turn keep the full history: a reminder fires
+  once and usually depends on the conversation that set it. Clients cannot
+  label their own messages as fires, because the origin key is stripped from
+  caller metadata.
+- Because the view hides the conversation, the schedule tools tell the agent
+  to write a self-contained description.
+
+The window is fixed at 10 messages. Source:
+`crates/core/src/builtins/compaction/scheduled_view.rs`.
+
 ## Limits
 
 | Limit | Default | Org may set |
@@ -164,8 +188,8 @@ records them, but does not meter spend.
 1. Lifetime, `stop_when`, schedule and org unattended budgets, Settings →
    Limits (this concept).
 2. Detection (this concept).
-3. Lean runs: `web_fetch` probe monitors with a wake condition (this concept),
-   then a small model view for scheduled turns. The Muse cache fix shipped
+3. Lean runs: `web_fetch` probe monitors with a wake condition, and the short
+   model view for scheduled runs (this concept). The Muse cache fix shipped
    separately.
 
 Related: [Budgeting](../security/budgeting.md),

@@ -105,6 +105,12 @@ budget:
 - All unattended work in an organization, schedule runs and sessions an
   [agent trigger](/features/agent-triggers/) started, may spend $20 per day.
   When that is spent, schedules skip their runs until the next day.
+- A recurring schedule's run shows the model a short history: the latest
+  conversation summary, the last 10 messages of the schedule's earlier runs,
+  and the run itself. The rest of the session stays stored but is not sent, so
+  a long session does not make every run expensive. Write the schedule's
+  description as a complete instruction. One-shot schedules see the full
+  history.
 - Every run's message tells the agent which run it is, when the schedule ends,
   its stop condition and what it has spent, so it can cancel the schedule once
   the work is done.

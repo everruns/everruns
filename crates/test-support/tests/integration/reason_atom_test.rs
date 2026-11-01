@@ -25,7 +25,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::sync::Mutex;
 use uuid::Uuid;
-
 #[path = "reason_atom/native_compact_failure_test.rs"]
 mod native_compact_failure_test;
 #[path = "reason_atom/output_guardrails_test.rs"]
@@ -36,11 +35,12 @@ mod output_streaming_test;
 mod provider_managed_checkpoint_test;
 #[path = "reason_atom/provider_managed_fallback_test.rs"]
 mod provider_managed_fallback_test;
-#[path = "reason_atom/stream_retry_test.rs"]
-mod stream_retry_test;
-
+#[path = "reason_atom/scheduled_view_test.rs"]
+mod scheduled_view_test;
 #[path = "reason_atom/setup.rs"]
 mod setup;
+#[path = "reason_atom/stream_retry_test.rs"]
+mod stream_retry_test;
 pub(crate) use setup::{set_default_test_model, setup_test_environment};
 
 /// Create a custom driver registry with a specific LlmSim configuration
