@@ -25,7 +25,6 @@ Agent definitions and their configuration.
 | [`agents destroy`](#agents-destroy) | Permanently delete an archived agent. |
 | [`agents draft`](#agents-draft) | Revise an agent draft from a conversation with the agent builder. |
 | [`agents get`](#agents-get) | Get a single agent by ID or name. |
-| [`agents costs get`](#agents-costs-get) | What one agent cost the organization this month, in the org's timezone. |
 | [`agents list`](#agents-list) | List all active agents. |
 | [`agents cost-plan`](#agents-cost-plan) | Suggest editable typical task workloads for agent cost planning. |
 | [`agents preview`](#agents-preview) | Preview the final agent shape with capabilities applied. |
@@ -47,6 +46,7 @@ Agent definitions and their configuration.
 | [`agents check-rules delete`](#agents-check-rules-delete) | Delete an agent check rule (built-in override or custom rule). |
 | [`agents check-rules list`](#agents-check-rules-list) | List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules. |
 | [`agents check-rules upsert`](#agents-check-rules-upsert) | Create or update an agent check rule (built-in override or custom rule). |
+| [`agents costs get`](#agents-costs-get) | What one agent cost the organization this month. |
 | [`agents credentials create`](#agents-credentials-create) | Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). |
 | [`agents examples adopt`](#agents-examples-adopt) | Create an agent from an agent example by name (see list_agent_examples). |
 | [`agents examples list`](#agents-examples-list) | List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). |
@@ -325,25 +325,6 @@ Example:
 ```bash
 # Show one agent's full configuration
 everruns agents get agent_01h9
-```
-
-## agents costs get
-
-What one agent cost the organization this month, in the org's timezone.
-
-```bash
-everruns agents costs get [OPTIONS] [AGENT_ID]
-```
-
-| Flag | Description |
-|---|---|
-| `--agent-id <AGENT_ID>` | Agent's prefixed public identifier. |
-
-Example:
-
-```bash
-# See what an agent cost this month
-everruns agents costs get agent_01h9
 ```
 
 ## agents list
@@ -803,6 +784,25 @@ Example:
 ```bash
 # Add an LLM-judged rule that flags prompts handling personal data
 everruns agents check-rules upsert --rule-id custom.no-pii --kind nl_rubric --enabled true --category safety --severity warning --rubric 'Flag prompts that tell the agent to store customer personal data' --reason 'Privacy review requirement'
+```
+
+## agents costs get
+
+What one agent cost the organization this month.
+
+```bash
+everruns agents costs get [OPTIONS] [AGENT_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Agent's prefixed public identifier. |
+
+Example:
+
+```bash
+# See what an agent cost this month
+everruns agents costs get agent_01h9
 ```
 
 ## agents credentials create

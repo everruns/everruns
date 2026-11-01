@@ -1,6 +1,6 @@
 ---
 title: everruns costs
-description: "Costs commands. CLI reference for everruns costs: usage, flags and examples."
+description: "What usage cost the organization, its price list and cost settings. CLI reference for everruns costs: usage, flags and examples."
 sidebar:
   label: costs
 appliesTo: [platform, cloud]
@@ -8,37 +8,16 @@ appliesTo: [platform, cloud]
 
 <!-- Generated from the everruns CLI by `UPDATE_CLI_REFERENCE=1 cargo test -p everruns-cli the_cli_reference`. Edit command descriptions and examples in the code, not here. -->
 
-Costs commands.
+What usage cost the organization, its price list and cost settings.
 
 | Command | What it does |
 |---|---|
-| [`costs summary get`](#costs-summary-get) | What usage cost the organization over a window, by where each number came from, source, agent, person, who started the work, and day. |
 | [`costs rates create`](#costs-rates-create) | Add a rate to the organization's price list. |
-| [`costs rates list`](#costs-rates-list) | List the organization's price list: the rates it uses to account its own costs, history included. |
+| [`costs rates list`](#costs-rates-list) | List the organization's price list, history included. |
 | [`costs rates retire`](#costs-rates-retire) | End a rate from a date. |
-| [`costs settings get`](#costs-settings-get) | Read the organization's cost settings: the timezone calendar windows use. |
+| [`costs settings get`](#costs-settings-get) | Read the organization's cost settings. |
 | [`costs settings update`](#costs-settings-update) | Set the timezone daily, weekly and monthly usage policies reset in. |
-
-## costs summary get
-
-What usage cost the organization over a window, by where each number came from, source, agent, person, who started the work, and day.
-
-```bash
-everruns costs summary get [OPTIONS]
-```
-
-| Flag | Description |
-|---|---|
-| `--agent-id <AGENT_ID>` | Only this agent (`agent_...`). |
-| `--from <FROM>` | Window start (inclusive). |
-| `--to <TO>` | Window end (exclusive). |
-
-Example:
-
-```bash
-# See this month's cost by agent and source
-everruns costs summary get
-```
+| [`costs summary get`](#costs-summary-get) | Summarize what usage cost the organization. |
 
 ## costs rates create
 
@@ -65,7 +44,7 @@ everruns costs rates create --meter model.tokens --match '{"provider":"openai"}'
 
 ## costs rates list
 
-List the organization's price list: the rates it uses to account its own costs, history included.
+List the organization's price list, history included.
 
 ```bash
 everruns costs rates list [OPTIONS]
@@ -100,7 +79,7 @@ everruns costs rates retire --rate-id rate_01h9 --reason 'Contract ended'
 
 ## costs settings get
 
-Read the organization's cost settings: the timezone calendar windows use.
+Read the organization's cost settings.
 
 ```bash
 everruns costs settings get [OPTIONS]
@@ -130,4 +109,25 @@ Example:
 ```bash
 # Reset monthly limits at midnight in Austin
 everruns costs settings update --timezone America/Chicago --reason 'Team is in Austin'
+```
+
+## costs summary get
+
+Summarize what usage cost the organization.
+
+```bash
+everruns costs summary get [OPTIONS]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Only this agent (`agent_...`). |
+| `--from <FROM>` | Window start (inclusive). |
+| `--to <TO>` | Window end (exclusive). |
+
+Example:
+
+```bash
+# See this month's cost by agent and source
+everruns costs summary get
 ```

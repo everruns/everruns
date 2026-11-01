@@ -817,7 +817,7 @@
       "costs"
     ],
     "verb": "get",
-    "description": "What one agent cost the organization this month, in the org's timezone.",
+    "description": "What one agent cost the organization this month.",
     "method": "GET",
     "http_path": "/v1/agents/{agent_id}/costs",
     "args": [
@@ -4247,7 +4247,7 @@
       "rates"
     ],
     "verb": "list",
-    "description": "List the organization's price list: the rates it uses to account its own costs, history included.",
+    "description": "List the organization's price list, history included.",
     "method": "GET",
     "http_path": "/v1/cost-rates",
     "args": [],
@@ -4304,7 +4304,7 @@
       "settings"
     ],
     "verb": "get",
-    "description": "Read the organization's cost settings: the timezone calendar windows use.",
+    "description": "Read the organization's cost settings.",
     "method": "GET",
     "http_path": "/v1/costs/settings",
     "args": [],
@@ -4348,7 +4348,7 @@
       "summary"
     ],
     "verb": "get",
-    "description": "What usage cost the organization over a window, by where each number came from, source, agent, person, who started the work, and day.",
+    "description": "Summarize what usage cost the organization.",
     "method": "GET",
     "http_path": "/v1/costs/summary",
     "args": [
@@ -13760,7 +13760,7 @@
       "sessions"
     ],
     "verb": "resume",
-    "description": "Continue a session past the \"ask to continue\" step of the usage policies that stopped it, for each policy's current window.",
+    "description": "Continue a session past a usage policy's ask step.",
     "method": "POST",
     "http_path": "/v1/sessions/{session_id}/resume",
     "args": [

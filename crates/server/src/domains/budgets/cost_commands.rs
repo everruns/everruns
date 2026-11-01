@@ -80,7 +80,7 @@ pub struct ListCostRates {}
 #[command(
     name = "list_cost_rates",
     category = "budgets",
-    description = "List the organization's price list: the rates it uses to account its own costs, history included.",
+    description = "List the organization's price list, history included.",
     method = "GET",
     path = "/v1/cost-rates",
     policy = BUDGET_VIEW,
@@ -347,7 +347,7 @@ pub(crate) fn month_start(now: DateTime<Utc>, tz: chrono_tz::Tz) -> DateTime<Utc
 #[command(
     name = "get_cost_summary",
     category = "budgets",
-    description = "What usage cost the organization over a window, by where each number came from, source, agent, person, who started the work, and day.",
+    description = "Summarize what usage cost the organization.",
     method = "GET",
     path = "/v1/costs/summary",
     policy = BUDGET_VIEW,
@@ -425,7 +425,7 @@ pub struct GetAgentCost {
 #[command(
     name = "get_agent_cost",
     category = "budgets",
-    description = "What one agent cost the organization this month, in the org's timezone.",
+    description = "What one agent cost the organization this month.",
     method = "GET",
     path = "/v1/agents/{agent_id}/costs",
     policy = BUDGET_VIEW,
@@ -475,7 +475,7 @@ pub struct GetCostSettings {}
 #[command(
     name = "get_cost_settings",
     category = "budgets",
-    description = "Read the organization's cost settings: the timezone calendar windows use.",
+    description = "Read the organization's cost settings.",
     method = "GET",
     path = "/v1/costs/settings",
     policy = BUDGET_VIEW,

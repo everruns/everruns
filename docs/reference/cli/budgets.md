@@ -1,6 +1,6 @@
 ---
 title: everruns budgets
-description: "Spending limits for sessions, agents, users and organizations. CLI reference for everruns budgets: usage, flags and examples."
+description: "Usage policies: limits on what sessions, agents, people and the organization use. CLI reference for everruns budgets: usage, flags and examples."
 sidebar:
   label: budgets
 appliesTo: [platform, cloud]
@@ -8,7 +8,7 @@ appliesTo: [platform, cloud]
 
 <!-- Generated from the everruns CLI by `UPDATE_CLI_REFERENCE=1 cargo test -p everruns-cli the_cli_reference`. Edit command descriptions and examples in the code, not here. -->
 
-Spending limits for sessions, agents, users and organizations.
+Usage policies: limits on what sessions, agents, people and the organization use.
 
 | Command | What it does |
 |---|---|

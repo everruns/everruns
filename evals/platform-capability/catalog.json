@@ -11682,7 +11682,7 @@
   {
     "category": "budgets",
     "cli": "agents costs get",
-    "description": "What one agent cost the organization this month, in the org's timezone.",
+    "description": "What one agent cost the organization this month.",
     "input_schema": {
       "properties": {
         "agent_id": {
@@ -11962,7 +11962,7 @@
   {
     "category": "budgets",
     "cli": "costs settings get",
-    "description": "Read the organization's cost settings: the timezone calendar windows use.",
+    "description": "Read the organization's cost settings.",
     "input_schema": {
       "type": "object"
     },
@@ -11976,7 +11976,7 @@
   {
     "category": "budgets",
     "cli": "costs summary get",
-    "description": "What usage cost the organization over a window, by where each number came from, source, agent, person, who started the work, and day.",
+    "description": "Summarize what usage cost the organization.",
     "input_schema": {
       "description": "Org cost over a window. Defaults to this month in the org's timezone.",
       "properties": {
@@ -14887,7 +14887,7 @@
   {
     "category": "budgets",
     "cli": "costs rates list",
-    "description": "List the organization's price list: the rates it uses to account its own costs, history included.",
+    "description": "List the organization's price list, history included.",
     "input_schema": {
       "description": "List the org's price list, history included, newest first.",
       "type": "object"
@@ -19145,7 +19145,7 @@
   {
     "category": "budgets",
     "cli": "sessions resume",
-    "description": "Continue a session past the \"ask to continue\" step of the usage policies that stopped it, for each policy's current window.",
+    "description": "Continue a session past a usage policy's ask step.",
     "input_schema": {
       "properties": {
         "session_id": {

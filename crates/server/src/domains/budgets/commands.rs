@@ -532,7 +532,7 @@ pub struct ResumeSessionBudgets {
 #[command(
     name = "resume_session_budgets",
     category = "budgets",
-    description = "Continue a session past the \"ask to continue\" step of the usage policies that stopped it, for each policy's current window.",
+    description = "Continue a session past a usage policy's ask step.",
     method = "POST",
     path = "/v1/sessions/{session_id}/resume",
     policy = BUDGET_VIEW,

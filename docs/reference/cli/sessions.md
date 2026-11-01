@@ -25,7 +25,7 @@ Running and archived sessions, their state and participants.
 | [`sessions stats`](#sessions-stats) | Get session counts by status. |
 | [`sessions list`](#sessions-list) | List sessions. |
 | [`sessions pin`](#sessions-pin) | Pin a session for the current user. |
-| [`sessions resume`](#sessions-resume) | Continue a session past the "ask to continue" step of the usage policies that stopped it, for each policy's current window. |
+| [`sessions resume`](#sessions-resume) | Continue a session past a usage policy's ask step. |
 | [`sessions unarchive`](#sessions-unarchive) | Restore an archived session to default lists. |
 | [`sessions unpin`](#sessions-unpin) | Unpin a session for the current user. |
 | [`sessions update`](#sessions-update) | Update session title, tags, locale, or model. |
@@ -356,7 +356,7 @@ everruns sessions pin session_01h9 --reason 'Active incident'
 
 ## sessions resume
 
-Continue a session past the "ask to continue" step of the usage policies that stopped it, for each policy's current window.
+Continue a session past a usage policy's ask step.
 
 ```bash
 everruns sessions resume [OPTIONS] [SESSION_ID]
