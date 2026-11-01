@@ -8,7 +8,8 @@ with shared conversations, forks, reminders and a recoverable history-search chi
 [Open the Cloudflare demo](https://everruns-durable-chat.everruns.workers.dev/)
 · [Read the walkthrough](../../docs/framework/examples/durable-chat.mdx)
 
-[Watch the 55-second demo](https://everruns-durable-chat-video.everruns.workers.dev/)
+[Watch the 55-second demo on YouTube](https://www.youtube.com/watch?v=eFmwod7GTrY)
+· [Cloudflare player](https://everruns-durable-chat-video.everruns.workers.dev/)
 · [Download the MP4](https://everruns-durable-chat-video.everruns.workers.dev/walkthrough.mp4)
 
 The recording shows shared chat, a committed fork, cited history search and a
