@@ -5,7 +5,10 @@
 use crate::kernel_imports::{
     contracts::typed_id::ScheduleId,
     contracts::typed_id::SessionId,
-    session_schedule::{MAX_ACTIVE_SCHEDULES_PER_SESSION, SessionSchedule, parse_session_cron},
+    session_schedule::{
+        MAX_ACTIVE_SCHEDULES_PER_SESSION, ScheduleBudget, SessionSchedule, parse_session_cron,
+        stop_reason,
+    },
 };
 use crate::storage::UpdateField;
 use anyhow::{Context, Result, anyhow};
@@ -64,6 +67,15 @@ fn next_cron_occurrence(
 
 use std::str::FromStr;
 
+/// What a person changes on a schedule. `Some(None)` clears an end.
+#[derive(Debug, Clone, Default)]
+pub struct ScheduleChange {
+    pub enabled: Option<bool>,
+    pub ends_at: Option<Option<DateTime<Utc>>>,
+    pub max_runs: Option<Option<u32>>,
+    pub budget_usd: Option<f64>,
+}
+
 /// Service for managing session schedules.
 pub struct SessionScheduleService {
     db: Arc<StorageBackend>,
@@ -117,6 +129,9 @@ impl SessionScheduleService {
                 scheduled_at,
                 timezone,
                 next_trigger_at: next_trigger,
+                ends_at: None,
+                max_runs: None,
+                stop_when: None,
             })
             .await?;
 
@@ -132,11 +147,7 @@ impl SessionScheduleService {
     ) -> Result<Option<SessionSchedule>> {
         let row = self.db.get_session_schedule(org_id, schedule_id).await?;
         match row {
-            Some(row) => {
-                let mut schedule = row_to_domain(&row);
-                self.hydrate_ownership(org_id, &mut schedule).await?;
-                Ok(Some(schedule))
-            }
+            Some(row) => Ok(Some(self.to_domain(org_id, &row).await?)),
             None => Ok(None),
         }
     }
@@ -154,42 +165,118 @@ impl SessionScheduleService {
             self.hydrate_ownership(org_id, &mut schedule).await?;
             schedules.push(schedule);
         }
+        self.hydrate_budgets(org_id, &mut schedules).await?;
         Ok(schedules)
     }
 
-    pub async fn update_enabled(
+    /// A person's change to a schedule: pause or resume it, and extend its
+    /// end, run count or budget. Unlike an agent, a person is not held to the
+    /// org's agent limits. Resuming clears why it stopped. Errors in
+    /// `Err(Ok(message))` are the caller's input; `Err(Err(_))` is a failure.
+    pub async fn update(
         &self,
         org_id: i64,
         schedule_id: ScheduleId,
-        enabled: bool,
-    ) -> Result<Option<SessionSchedule>> {
-        // If re-enabling, recompute next trigger
+        change: ScheduleChange,
+    ) -> std::result::Result<Option<SessionSchedule>, std::result::Result<String, anyhow::Error>>
+    {
+        let Some(row) = self
+            .db
+            .get_session_schedule(org_id, schedule_id)
+            .await
+            .map_err(Err)?
+        else {
+            return Ok(None);
+        };
+        let now = Utc::now();
+        if change.ends_at.flatten().is_some_and(|at| at <= now) {
+            return Err(Ok("ends_at must be in the future".to_string()));
+        }
+        if change.max_runs.flatten().is_some_and(|runs| runs < 1) {
+            return Err(Ok("max_runs must be at least 1".to_string()));
+        }
+        if let Some(limit) = change.budget_usd
+            && (!limit.is_finite() || limit <= 0.0)
+        {
+            return Err(Ok("budget_usd must be a positive amount in USD".to_string()));
+        }
+
         let mut input = UpdateSessionScheduleRow {
-            enabled: Some(enabled),
+            enabled: change.enabled,
+            ends_at: change
+                .ends_at
+                .map_or(UpdateField::Unchanged, UpdateField::from_option),
+            max_runs: change.max_runs.map_or(UpdateField::Unchanged, |runs| {
+                UpdateField::from_option(runs.map(|runs| runs.min(i32::MAX as u32) as i32))
+            }),
             ..Default::default()
         };
-
-        if enabled && let Some(row) = self.db.get_session_schedule(org_id, schedule_id).await? {
-            let next = compute_next_trigger(
-                row.cron_expression.as_deref(),
-                row.scheduled_at,
-                &row.timezone,
-            )?;
-            input.next_trigger_at = UpdateField::from_option(next);
+        if change.enabled == Some(true) {
+            input.stop_reason = UpdateField::Clear;
+            input.next_trigger_at = UpdateField::from_option(
+                compute_next_trigger(row.cron_expression.as_deref(), row.scheduled_at, &row.timezone)
+                    .map_err(Err)?,
+            );
         }
-
-        let row = self
+        if let Some(limit) = change.budget_usd {
+            self.db
+                .set_schedule_budget_limit(org_id, &row.public_id, limit)
+                .await
+                .map_err(Err)?;
+        }
+        let updated = self
             .db
             .update_session_schedule(org_id, schedule_id, input)
-            .await?;
-        match row {
-            Some(row) => {
-                let mut schedule = row_to_domain(&row);
-                self.hydrate_ownership(org_id, &mut schedule).await?;
-                Ok(Some(schedule))
-            }
+            .await
+            .map_err(Err)?;
+        match updated {
+            Some(row) => Ok(Some(self.to_domain(org_id, &row).await.map_err(Err)?)),
             None => Ok(None),
         }
+    }
+
+    /// Stop a schedule on its own: it reached its end or its budget.
+    pub async fn stop(&self, org_id: i64, schedule_id: ScheduleId, reason: &str) -> Result<()> {
+        self.db
+            .update_session_schedule(
+                org_id,
+                schedule_id,
+                UpdateSessionScheduleRow {
+                    enabled: Some(false),
+                    next_trigger_at: UpdateField::Clear,
+                    stop_reason: UpdateField::Set(reason.to_string()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Skip this fire without counting it, because the org's unattended spend
+    /// for today is used up. A recurring schedule moves to its next time; a
+    /// one-shot waits for the daily cap to reset at midnight UTC.
+    pub async fn defer(&self, org_id: i64, schedule_id: ScheduleId) -> Result<()> {
+        let Some(row) = self.db.get_session_schedule(org_id, schedule_id).await? else {
+            return Ok(());
+        };
+        let next = match row.cron_expression.as_deref() {
+            Some(cron) => next_cron_occurrence(cron, &row.timezone, Utc::now())?,
+            None => (Utc::now() + chrono::Duration::days(1))
+                .date_naive()
+                .and_hms_opt(0, 0, 0)
+                .map(|midnight| midnight.and_utc()),
+        };
+        self.db
+            .update_session_schedule(
+                org_id,
+                schedule_id,
+                UpdateSessionScheduleRow {
+                    next_trigger_at: UpdateField::from_option(next),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        Ok(())
     }
 
     pub async fn delete(&self, org_id: i64, schedule_id: ScheduleId) -> Result<bool> {
@@ -198,7 +285,9 @@ impl SessionScheduleService {
 
     /// Mark a schedule as triggered and compute next run.
     /// For one-shot: disables after trigger.
-    /// For recurring: computes next trigger from cron.
+    /// For recurring: computes next trigger from cron, and disables the
+    /// schedule with `stop_reason = ended` when this was its last run (its
+    /// `max_runs` reached, or its next time past `ends_at`).
     pub async fn mark_triggered(
         &self,
         org_id: i64,
@@ -213,12 +302,30 @@ impl SessionScheduleService {
         } else {
             None // One-shot: no next trigger
         };
+        let runs_after = row.trigger_count + 1;
+        let ended = is_recurring
+            && (row.max_runs.is_some_and(|max| runs_after >= max)
+                || matches!((row.ends_at, next_trigger), (Some(end), Some(next)) if next > end));
 
         let input = UpdateSessionScheduleRow {
-            enabled: if is_recurring { None } else { Some(false) },
-            next_trigger_at: UpdateField::from_option(next_trigger),
+            enabled: if !is_recurring || ended {
+                Some(false)
+            } else {
+                None
+            },
+            next_trigger_at: if ended {
+                UpdateField::Clear
+            } else {
+                UpdateField::from_option(next_trigger)
+            },
             last_triggered_at: Some(Utc::now()),
             trigger_count_increment: true,
+            stop_reason: if ended {
+                UpdateField::Set(stop_reason::ENDED.to_string())
+            } else {
+                UpdateField::Unchanged
+            },
+            ..Default::default()
         };
 
         let updated = self
@@ -226,13 +333,38 @@ impl SessionScheduleService {
             .update_session_schedule(org_id, schedule_id, input)
             .await?;
         match updated {
-            Some(row) => {
-                let mut schedule = row_to_domain(&row);
-                self.hydrate_ownership(org_id, &mut schedule).await?;
-                Ok(Some(schedule))
-            }
+            Some(row) => Ok(Some(self.to_domain(org_id, &row).await?)),
             None => Ok(None),
         }
+    }
+
+    async fn to_domain(
+        &self,
+        org_id: i64,
+        row: &crate::storage::SessionScheduleRow,
+    ) -> Result<SessionSchedule> {
+        let mut schedules = vec![row_to_domain(row)];
+        self.hydrate_ownership(org_id, &mut schedules[0]).await?;
+        self.hydrate_budgets(org_id, &mut schedules).await?;
+        Ok(schedules.remove(0))
+    }
+
+    /// Fill each schedule's budget from its `session_schedule` budget row.
+    async fn hydrate_budgets(&self, org_id: i64, schedules: &mut [SessionSchedule]) -> Result<()> {
+        let ids: Vec<String> = schedules.iter().map(|s| s.id.to_string()).collect();
+        let budgets = self.db.schedule_budgets(org_id, &ids).await?;
+        for schedule in schedules {
+            let id = schedule.id.to_string();
+            schedule.budget = budgets
+                .iter()
+                .find(|budget| budget.subject_id == id)
+                .map(|budget| ScheduleBudget {
+                    limit_usd: budget.limit,
+                    spent_usd: (budget.limit - budget.balance).max(0.0),
+                    status: budget.status.clone(),
+                });
+        }
+        Ok(())
     }
 
     async fn hydrate_ownership(&self, org_id: i64, schedule: &mut SessionSchedule) -> Result<()> {

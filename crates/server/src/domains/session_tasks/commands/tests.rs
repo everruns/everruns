@@ -347,6 +347,9 @@ async fn cancel_monitor_task_cancels_linked_schedule() {
             scheduled_at: None,
             timezone: "UTC".to_string(),
             next_trigger_at: None,
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
         })
         .await
         .unwrap();
@@ -751,6 +754,9 @@ async fn cancel_terminal_monitor_task_skips_executor() {
             scheduled_at: None,
             timezone: "UTC".to_string(),
             next_trigger_at: None,
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
         })
         .await
         .unwrap();

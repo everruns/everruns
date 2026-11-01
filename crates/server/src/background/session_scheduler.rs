@@ -19,7 +19,9 @@
 // active. This closes the gap where the schedule is canceled/deleted directly
 // (not via cancel_task) so the monitor would otherwise stay `running` forever.
 
+use crate::domains::budgets::FireGate;
 use crate::domains::session_schedules::SessionScheduleService;
+use everruns_core::session_schedule::stop_reason;
 use crate::execution_metadata;
 use crate::services::EventService;
 use crate::storage::{DbSessionTaskRegistry, StorageBackend};
@@ -157,22 +159,65 @@ async fn poll_and_trigger(
 
     tracing::info!(count = due.len(), "Claimed due session schedules");
 
+    let budgets = crate::domains::budgets::BudgetService::new(db.clone());
+
     for row in due {
         let schedule_id = row.id;
         let session_id = row.session_id;
         let org_id = row.org_id;
-        let description = row.description.clone();
 
-        // Mark triggered (updates next_trigger, disables one-shot, etc.)
-        let is_one_shot = row.cron_expression.is_none();
-        if let Err(e) = schedule_service.mark_triggered(org_id, schedule_id).await {
-            tracing::error!(
-                schedule_id = %schedule_id,
-                error = %e,
-                "Failed to mark schedule as triggered"
-            );
+        // Limits on unattended work (knowledge/operations/background-limits.md):
+        // a schedule past its end, or whose budget is spent, stops without
+        // firing; when the org's unattended spend for today is used up, the
+        // fire is skipped until the next time.
+        if row.ends_at.is_some_and(|end| end <= Utc::now()) {
+            stop_schedule(schedule_service, org_id, schedule_id, stop_reason::ENDED).await;
             continue;
         }
+        match budgets
+            .unattended_fire_gate(org_id, &row.public_id)
+            .await
+        {
+            FireGate::Fire => {}
+            FireGate::ScheduleBudgetSpent => {
+                stop_schedule(
+                    schedule_service,
+                    org_id,
+                    schedule_id,
+                    stop_reason::BUDGET_EXHAUSTED,
+                )
+                .await;
+                continue;
+            }
+            FireGate::OrgUnattendedSpent => {
+                tracing::info!(
+                    schedule_id = %schedule_id,
+                    org_id,
+                    "Org's unattended budget for today is spent; skipping this schedule fire"
+                );
+                if let Err(error) = schedule_service.defer(org_id, schedule_id).await {
+                    tracing::error!(schedule_id = %schedule_id, error = %error, "Failed to defer schedule");
+                }
+                continue;
+            }
+        }
+
+        // Mark triggered (updates next_trigger, disables one-shot, ends a
+        // schedule on its last run).
+        let is_one_shot = row.cron_expression.is_none();
+        let fired = match schedule_service.mark_triggered(org_id, schedule_id).await {
+            Ok(Some(fired)) => fired,
+            Ok(None) => continue,
+            Err(e) => {
+                tracing::error!(
+                    schedule_id = %schedule_id,
+                    error = %e,
+                    "Failed to mark schedule as triggered"
+                );
+                continue;
+            }
+        };
+        let description = fire_message(&fired);
 
         // Update linked monitor tasks (best-effort; never fail the fire loop).
         // Returns true when a probe ran — in that case the monitor is autonomous
@@ -237,6 +282,9 @@ async fn poll_and_trigger(
             session.agent_id.map(|id| id.uuid()),
         )
         .await?;
+        // Metering charges this turn to the schedule's budget through it.
+        db.set_invocation_schedule(message_id, schedule_id.uuid())
+            .await?;
         let now = Utc::now();
 
         let mut metadata = HashMap::new();
@@ -302,6 +350,55 @@ async fn poll_and_trigger(
     }
 
     Ok(())
+}
+
+async fn stop_schedule(
+    schedule_service: &SessionScheduleService,
+    org_id: i64,
+    schedule_id: everruns_contracts::typed_id::ScheduleId,
+    reason: &str,
+) {
+    tracing::info!(schedule_id = %schedule_id, org_id, reason, "Stopping schedule");
+    if let Err(error) = schedule_service.stop(org_id, schedule_id, reason).await {
+        tracing::error!(schedule_id = %schedule_id, error = %error, "Failed to stop schedule");
+    }
+}
+
+/// The message a fire injects: the schedule's task, then where the schedule
+/// stands, so the agent is reminded every run how long it has left, when it
+/// is done, what it spent, and how to stop (2026-11-01: a test poll ran 13
+/// days because nothing reminded the agent to give up).
+pub(crate) fn fire_message(schedule: &everruns_core::session_schedule::SessionSchedule) -> String {
+    // A one-shot fires once; its task is the whole message.
+    if schedule.cron_expression.is_none() {
+        return schedule.description.clone();
+    }
+    let mut lines = Vec::new();
+    match schedule.max_runs {
+        Some(max) => lines.push(format!("Scheduled run {} of {max}.", schedule.trigger_count)),
+        None => lines.push(format!("Scheduled run {}.", schedule.trigger_count)),
+    }
+    if let Some(end) = schedule.ends_at {
+        lines.push(format!("The schedule ends at {}.", end.to_rfc3339()));
+    }
+    if let Some(stop_when) = &schedule.stop_when {
+        lines.push(format!("Stop when: {stop_when}"));
+    }
+    if let Some(budget) = &schedule.budget {
+        lines.push(format!(
+            "Its runs have spent ${:.2} of its ${:.2} budget.",
+            budget.spent_usd, budget.limit_usd
+        ));
+    }
+    if schedule.stop_reason.as_deref() == Some(stop_reason::ENDED) {
+        lines.push("This is its last run: the schedule has ended. Create a new schedule only if the work still needs it.".to_string());
+    } else {
+        lines.push(format!(
+            "When the stop condition is met, or can no longer be met, call cancel_schedule with schedule_id {}.",
+            schedule.id
+        ));
+    }
+    format!("{}\n\n---\n{}", schedule.description, lines.join(" "))
 }
 
 /// Record a fire event on linked monitor tasks and, for one-shot schedules,
@@ -664,6 +761,9 @@ mod tests {
                 cron_expression,
                 timezone: "UTC".to_string(),
                 next_trigger_at: None,
+                ends_at: None,
+                max_runs: None,
+                stop_when: None,
             })
             .await
             .unwrap();

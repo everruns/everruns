@@ -38,6 +38,7 @@ pub use everruns_durable::UpdateField;
 pub mod agentid;
 pub mod org_egress_allowlist;
 pub mod org_slack_connections;
+pub mod background_limits;
 pub mod org_web_search;
 pub mod pact_delegation;
 pub mod password;

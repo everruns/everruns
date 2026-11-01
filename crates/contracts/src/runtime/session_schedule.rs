@@ -22,6 +22,309 @@ pub const DEFAULT_MIN_INTERVAL_SECONDS: i64 = 300;
 /// Default maximum number of active (enabled) schedules per org.
 pub const DEFAULT_MAX_SCHEDULES_PER_ORG: i64 = 100;
 
+/// Ceiling on how long a schedule an agent creates may run (2026-11-01, after a
+/// test agent's poll ran unattended for 13 days). An org may lower it in
+/// Settings → Limits; only a person can extend one schedule past it.
+pub const AGENT_SCHEDULE_MAX_LIFETIME_DAYS: u32 = 7;
+
+/// Ceiling on runs for a schedule an agent creates. At the 5 minute minimum
+/// interval this is 8 hours, so a longer wait needs a longer interval.
+pub const AGENT_SCHEDULE_MAX_RUNS: u32 = 96;
+
+/// Default spend cap of one schedule's turns, in USD.
+pub const DEFAULT_SCHEDULE_BUDGET_USD: f64 = 2.0;
+
+/// Largest budget an agent may give one schedule, in USD.
+pub const DEFAULT_SCHEDULE_MAX_BUDGET_USD: f64 = 10.0;
+
+/// Default daily cap on unattended work in an org (schedule fires, agent
+/// trigger sessions, automatic retries), in USD.
+pub const DEFAULT_ORG_UNATTENDED_DAILY_USD: f64 = 20.0;
+
+/// Longest `stop_when` an agent may store.
+pub const MAX_STOP_WHEN_CHARS: usize = 500;
+
+/// Limits on background work an org can tune in Settings → Limits.
+///
+/// Defaults are code constants rather than environment variables, so every
+/// deployment starts safe. The lifetime and run limits can only be lowered:
+/// [`BackgroundLimits::validate`] rejects values above the agent ceilings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(default)]
+pub struct BackgroundLimits {
+    /// Longest an agent-created recurring schedule may run, in days (1-7).
+    pub schedule_max_lifetime_days: u32,
+    /// Most runs an agent-created recurring schedule may have (1-96).
+    pub schedule_max_runs: u32,
+    /// Budget a schedule gets when the agent does not pass one, in USD.
+    pub schedule_budget_usd: f64,
+    /// Largest budget an agent may give a schedule, in USD.
+    pub schedule_max_budget_usd: f64,
+    /// Daily cap on unattended work across the org, in USD. `None` is no cap.
+    pub org_unattended_daily_usd: Option<f64>,
+}
+
+impl Default for BackgroundLimits {
+    fn default() -> Self {
+        Self {
+            schedule_max_lifetime_days: AGENT_SCHEDULE_MAX_LIFETIME_DAYS,
+            schedule_max_runs: AGENT_SCHEDULE_MAX_RUNS,
+            schedule_budget_usd: DEFAULT_SCHEDULE_BUDGET_USD,
+            schedule_max_budget_usd: DEFAULT_SCHEDULE_MAX_BUDGET_USD,
+            org_unattended_daily_usd: Some(DEFAULT_ORG_UNATTENDED_DAILY_USD),
+        }
+    }
+}
+
+impl BackgroundLimits {
+    /// Reject values outside what an org may set.
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        if !(1..=AGENT_SCHEDULE_MAX_LIFETIME_DAYS).contains(&self.schedule_max_lifetime_days) {
+            return Err(format!(
+                "schedule_max_lifetime_days must be between 1 and {AGENT_SCHEDULE_MAX_LIFETIME_DAYS}"
+            ));
+        }
+        if !(1..=AGENT_SCHEDULE_MAX_RUNS).contains(&self.schedule_max_runs) {
+            return Err(format!(
+                "schedule_max_runs must be between 1 and {AGENT_SCHEDULE_MAX_RUNS}"
+            ));
+        }
+        let positive = |value: f64| value.is_finite() && value > 0.0;
+        if !positive(self.schedule_budget_usd) || !positive(self.schedule_max_budget_usd) {
+            return Err("Schedule budgets must be positive amounts in USD".to_string());
+        }
+        if self.schedule_budget_usd > self.schedule_max_budget_usd {
+            return Err(
+                "schedule_budget_usd cannot be larger than schedule_max_budget_usd".to_string(),
+            );
+        }
+        if self.org_unattended_daily_usd.is_some_and(|cap| !positive(cap)) {
+            return Err(
+                "org_unattended_daily_usd must be a positive amount in USD, or null for no cap"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+}
+
+/// How long a schedule may run and what it may spend.
+///
+/// Passed to [`crate::runtime::session_services::SessionScheduleStore`]: as
+/// requested by the agent to `create_schedule_enforcing_limits`, and resolved
+/// (every field the schedule needs filled) to `create_schedule`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ScheduleBounds {
+    /// The schedule stops firing after this time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ends_at: Option<DateTime<Utc>>,
+    /// The schedule stops after this many fires.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_runs: Option<u32>,
+    /// When the work is done, in the agent's words; repeated on every fire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_when: Option<String>,
+    /// Spend cap of this schedule's turns, in USD.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_usd: Option<f64>,
+}
+
+/// Resolve what an agent asked for against the org's limits.
+///
+/// A recurring schedule must say how long it runs (`ends_at` or `max_runs`)
+/// and when it is done (`stop_when`); there is no silent default, so the agent
+/// states what it needs. The result always carries both an end time and a run
+/// count, whichever comes first stops the schedule. A one-shot schedule fires
+/// once, so only its budget is resolved. Every rejection names the limit.
+pub fn resolve_agent_schedule_bounds(
+    requested: &ScheduleBounds,
+    limits: &BackgroundLimits,
+    recurring: bool,
+    now: DateTime<Utc>,
+) -> std::result::Result<ScheduleBounds, String> {
+    let budget_usd = match requested.budget_usd {
+        None => limits.schedule_budget_usd,
+        Some(budget) if !budget.is_finite() || budget <= 0.0 => {
+            return Err("budget_usd must be a positive amount in USD".to_string());
+        }
+        Some(budget) if budget > limits.schedule_max_budget_usd => {
+            return Err(format!(
+                "budget_usd ${budget:.2} exceeds this org's limit of ${:.2} per schedule. Pass a smaller budget, or ask the user to raise it in Settings → Limits.",
+                limits.schedule_max_budget_usd
+            ));
+        }
+        Some(budget) => budget,
+    };
+    let stop_when = requested
+        .stop_when
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string);
+    if stop_when
+        .as_ref()
+        .is_some_and(|text| text.chars().count() > MAX_STOP_WHEN_CHARS)
+    {
+        return Err(format!(
+            "stop_when must be at most {MAX_STOP_WHEN_CHARS} characters"
+        ));
+    }
+    if !recurring {
+        return Ok(ScheduleBounds {
+            ends_at: None,
+            max_runs: Some(1),
+            stop_when,
+            budget_usd: Some(budget_usd),
+        });
+    }
+
+    let max_days = limits.schedule_max_lifetime_days;
+    let max_runs = limits.schedule_max_runs;
+    if requested.ends_at.is_none() && requested.max_runs.is_none() {
+        return Err(format!(
+            "A recurring schedule must say how long it runs: pass ends_at, max_runs, or both (this org allows at most {max_days} days and {max_runs} runs)."
+        ));
+    }
+    let Some(stop_when) = stop_when else {
+        return Err(
+            "A recurring schedule must pass stop_when: one sentence on when the work is done, so you can cancel the schedule then."
+                .to_string(),
+        );
+    };
+    let latest_end = now + chrono::Duration::days(i64::from(max_days));
+    let ends_at = match requested.ends_at {
+        Some(ends_at) if ends_at <= now => {
+            return Err("ends_at must be in the future".to_string());
+        }
+        Some(ends_at) if ends_at > latest_end => {
+            return Err(format!(
+                "ends_at {} is past this org's limit of {max_days} days ({}). Pass an earlier end, or ask the user to raise it in Settings → Limits.",
+                ends_at.to_rfc3339(),
+                latest_end.to_rfc3339()
+            ));
+        }
+        Some(ends_at) => ends_at,
+        None => latest_end,
+    };
+    let runs = match requested.max_runs {
+        Some(0) => return Err("max_runs must be at least 1".to_string()),
+        Some(runs) if runs > max_runs => {
+            return Err(format!(
+                "max_runs {runs} exceeds this org's limit of {max_runs} runs. Use a longer interval or fewer runs, or ask the user to raise it in Settings → Limits."
+            ));
+        }
+        Some(runs) => runs,
+        None => max_runs,
+    };
+    Ok(ScheduleBounds {
+        ends_at: Some(ends_at),
+        max_runs: Some(runs),
+        stop_when: Some(stop_when),
+        budget_usd: Some(budget_usd),
+    })
+}
+
+impl ScheduleBounds {
+    /// Read `ends_at`, `max_runs`, `stop_when` and `budget_usd` from a tool
+    /// call's arguments. Absent fields stay `None`; resolution decides
+    /// whether they were required.
+    pub fn from_tool_args(
+        args: &serde_json::Map<String, serde_json::Value>,
+    ) -> std::result::Result<Self, String> {
+        let ends_at = match args.get("ends_at") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::String(value)) if value.trim().is_empty() => None,
+            Some(serde_json::Value::String(value)) => Some(
+                DateTime::parse_from_rfc3339(value.trim())
+                    .map_err(|_| "ends_at must be an RFC3339 datetime".to_string())?
+                    .with_timezone(&Utc),
+            ),
+            Some(_) => return Err("ends_at must be an RFC3339 datetime string".to_string()),
+        };
+        let max_runs = match args.get("max_runs") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(value) => Some(
+                value
+                    .as_u64()
+                    .and_then(|runs| u32::try_from(runs).ok())
+                    .ok_or_else(|| "max_runs must be a positive whole number".to_string())?,
+            ),
+        };
+        let stop_when = match args.get("stop_when") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::String(text)) => Some(text.clone()),
+            Some(_) => return Err("stop_when must be a string".to_string()),
+        };
+        let budget_usd = match args.get("budget_usd") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(value) => Some(
+                value
+                    .as_f64()
+                    .ok_or_else(|| "budget_usd must be a number in USD".to_string())?,
+            ),
+        };
+        Ok(Self {
+            ends_at,
+            max_runs,
+            stop_when,
+            budget_usd,
+        })
+    }
+
+    /// JSON-schema properties for the bounds arguments, with the platform
+    /// ceilings as `maximum` so the model sees them before it calls.
+    pub fn tool_schema_properties() -> serde_json::Map<String, serde_json::Value> {
+        let serde_json::Value::Object(properties) = serde_json::json!({
+            "ends_at": {
+                "type": "string",
+                "description": format!(
+                    "RFC3339 time after which a recurring schedule stops. At most {AGENT_SCHEDULE_MAX_LIFETIME_DAYS} days ahead. A recurring schedule needs ends_at, max_runs, or both."
+                )
+            },
+            "max_runs": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": AGENT_SCHEDULE_MAX_RUNS,
+                "description": format!(
+                    "Most times a recurring schedule fires, at most {AGENT_SCHEDULE_MAX_RUNS}. Whichever of ends_at and max_runs comes first stops it."
+                )
+            },
+            "stop_when": {
+                "type": "string",
+                "maxLength": MAX_STOP_WHEN_CHARS,
+                "description": "Required for a recurring schedule: one sentence on when the work is done (e.g. 'the claim is approved, or the claim token has expired'). Repeated on every run so you cancel the schedule then."
+            },
+            "budget_usd": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": format!(
+                    "Spend cap for this schedule's runs in USD. Default ${DEFAULT_SCHEDULE_BUDGET_USD:.2}, at most ${DEFAULT_SCHEDULE_MAX_BUDGET_USD:.2} unless the org changed it. The schedule stops when it is spent."
+                )
+            }
+        }) else {
+            unreachable!("literal object")
+        };
+        properties
+    }
+}
+
+/// One sentence stating the default limits, for tool descriptions.
+pub fn schedule_limits_summary() -> String {
+    format!(
+        "Limits: a recurring schedule must pass stop_when and ends_at or max_runs, up to {AGENT_SCHEDULE_MAX_LIFETIME_DAYS} days and {AGENT_SCHEDULE_MAX_RUNS} runs (at the 5 minute minimum interval that is 8 hours, so wait longer with a longer interval). Each schedule's runs may spend ${DEFAULT_SCHEDULE_BUDGET_USD:.2} unless you pass budget_usd (up to ${DEFAULT_SCHEDULE_MAX_BUDGET_USD:.2}). An org may set lower limits in Settings → Limits; an error names the limit that was hit."
+    )
+}
+
+/// Why a schedule stopped on its own.
+pub mod stop_reason {
+    /// It reached `ends_at` or `max_runs`.
+    pub const ENDED: &str = "ended";
+    /// Its budget ran out.
+    pub const BUDGET_EXHAUSTED: &str = "budget_exhausted";
+}
+
 /// Normalize a session-schedule cron expression to the seconds-aware form the
 /// `cron` crate parses, or `None` when it has the wrong number of fields.
 ///
@@ -276,6 +579,33 @@ pub struct SessionSchedule {
     /// show it; a deleted schedule does not fire and is hidden from the agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deleted_at: Option<DateTime<Utc>>,
+    /// The schedule stops firing after this time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ends_at: Option<DateTime<Utc>>,
+    /// The schedule stops after this many fires.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_runs: Option<u32>,
+    /// When the work is done, in the agent's words.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_when: Option<String>,
+    /// Why the schedule stopped on its own (`ended`, `budget_exhausted`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<String>,
+    /// This schedule's spend cap and what its turns spent so far.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget: Option<ScheduleBudget>,
+}
+
+/// A schedule's spend cap, read from its `session_schedule` budget.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ScheduleBudget {
+    /// Cap in USD.
+    pub limit_usd: f64,
+    /// Spent so far in USD.
+    pub spent_usd: f64,
+    /// `active`, `paused`, `exhausted` or `disabled`.
+    pub status: String,
 }
 
 impl SessionSchedule {
@@ -593,5 +923,188 @@ mod limit_tests {
         assert!(
             matches!(validate_schedule_create_limits(&store, session, None).await, Err(ScheduleLimitError::Rejected(message)) if message == "Maximum 5 active schedules per session. Cancel an existing schedule first.")
         );
+    }
+}
+
+#[cfg(test)]
+mod bounds_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn now() -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).unwrap()
+    }
+
+    fn recurring(bounds: ScheduleBounds) -> std::result::Result<ScheduleBounds, String> {
+        resolve_agent_schedule_bounds(&bounds, &BackgroundLimits::default(), true, now())
+    }
+
+    #[test]
+    fn recurring_schedule_must_state_its_end_and_stop_condition() {
+        let error = recurring(ScheduleBounds {
+            stop_when: Some("done".into()),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert!(error.contains("7 days and 96 runs"), "{error}");
+
+        let error = recurring(ScheduleBounds {
+            max_runs: Some(10),
+            stop_when: Some("   ".into()),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert!(error.contains("stop_when"), "{error}");
+    }
+
+    #[test]
+    fn recurring_schedule_gets_both_ends_and_the_default_budget() {
+        let bounds = recurring(ScheduleBounds {
+            max_runs: Some(24),
+            stop_when: Some(" the claim is approved ".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(bounds.max_runs, Some(24));
+        assert_eq!(bounds.ends_at, Some(now() + chrono::Duration::days(7)));
+        assert_eq!(bounds.stop_when.as_deref(), Some("the claim is approved"));
+        assert_eq!(bounds.budget_usd, Some(DEFAULT_SCHEDULE_BUDGET_USD));
+
+        let end = now() + chrono::Duration::hours(3);
+        let bounds = recurring(ScheduleBounds {
+            ends_at: Some(end),
+            stop_when: Some("done".into()),
+            budget_usd: Some(5.0),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(bounds.ends_at, Some(end));
+        assert_eq!(bounds.max_runs, Some(AGENT_SCHEDULE_MAX_RUNS));
+        assert_eq!(bounds.budget_usd, Some(5.0));
+    }
+
+    #[test]
+    fn requests_over_the_limits_name_the_limit() {
+        let error = recurring(ScheduleBounds {
+            max_runs: Some(500),
+            stop_when: Some("done".into()),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert!(error.contains("limit of 96 runs"), "{error}");
+        assert!(error.contains("Settings → Limits"), "{error}");
+
+        let error = recurring(ScheduleBounds {
+            ends_at: Some(now() + chrono::Duration::days(8)),
+            stop_when: Some("done".into()),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert!(error.contains("7 days"), "{error}");
+
+        let error = recurring(ScheduleBounds {
+            max_runs: Some(3),
+            stop_when: Some("done".into()),
+            budget_usd: Some(11.0),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert!(error.contains("$10.00"), "{error}");
+
+        assert!(
+            recurring(ScheduleBounds {
+                ends_at: Some(now() - chrono::Duration::minutes(1)),
+                stop_when: Some("done".into()),
+                ..Default::default()
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn org_limits_apply_instead_of_the_defaults() {
+        let limits = BackgroundLimits {
+            schedule_max_runs: 10,
+            schedule_budget_usd: 1.0,
+            ..Default::default()
+        };
+        let request = ScheduleBounds {
+            max_runs: Some(20),
+            stop_when: Some("done".into()),
+            ..Default::default()
+        };
+        let error = resolve_agent_schedule_bounds(&request, &limits, true, now()).unwrap_err();
+        assert!(error.contains("limit of 10 runs"), "{error}");
+        let bounds = resolve_agent_schedule_bounds(
+            &ScheduleBounds {
+                max_runs: Some(5),
+                ..request
+            },
+            &limits,
+            true,
+            now(),
+        )
+        .unwrap();
+        assert_eq!(bounds.budget_usd, Some(1.0));
+    }
+
+    #[test]
+    fn one_shot_fires_once_without_a_stop_condition() {
+        let bounds =
+            resolve_agent_schedule_bounds(&ScheduleBounds::default(), &BackgroundLimits::default(), false, now())
+                .unwrap();
+        assert_eq!(bounds.max_runs, Some(1));
+        assert_eq!(bounds.budget_usd, Some(DEFAULT_SCHEDULE_BUDGET_USD));
+    }
+
+    #[test]
+    fn org_limits_cannot_exceed_the_ceilings() {
+        assert!(BackgroundLimits::default().validate().is_ok());
+        for limits in [
+            BackgroundLimits {
+                schedule_max_lifetime_days: 8,
+                ..Default::default()
+            },
+            BackgroundLimits {
+                schedule_max_runs: 97,
+                ..Default::default()
+            },
+            BackgroundLimits {
+                schedule_budget_usd: 20.0,
+                ..Default::default()
+            },
+            BackgroundLimits {
+                org_unattended_daily_usd: Some(0.0),
+                ..Default::default()
+            },
+        ] {
+            assert!(limits.validate().is_err(), "{limits:?}");
+        }
+        assert!(
+            BackgroundLimits {
+                org_unattended_daily_usd: None,
+                ..Default::default()
+            }
+            .validate()
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn tool_args_parse_and_reject_bad_types() {
+        let args = serde_json::json!({
+            "ends_at": "2026-11-02T00:00:00Z",
+            "max_runs": 12,
+            "stop_when": "done",
+            "budget_usd": 3.5
+        });
+        let bounds = ScheduleBounds::from_tool_args(args.as_object().unwrap()).unwrap();
+        assert_eq!(bounds.max_runs, Some(12));
+        assert_eq!(bounds.budget_usd, Some(3.5));
+        assert!(bounds.ends_at.is_some());
+        let bad = serde_json::json!({"max_runs": -1});
+        assert!(ScheduleBounds::from_tool_args(bad.as_object().unwrap()).is_err());
+        let bad = serde_json::json!({"ends_at": "tomorrow"});
+        assert!(ScheduleBounds::from_tool_args(bad.as_object().unwrap()).is_err());
     }
 }

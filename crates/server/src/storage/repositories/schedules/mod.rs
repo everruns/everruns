@@ -20,7 +20,7 @@ use everruns_contracts::typed_id::{LeasedResourceId, ScheduleId, SessionId};
 const SESSION_SCHEDULE_COLUMNS: &str = "id, public_id, org_id, session_id, owner_principal_id, \
      resolved_owner_user_id, description, cron_expression, scheduled_at, timezone, enabled, \
      next_trigger_at, last_triggered_at, trigger_count, claimed_by, claimed_at, created_at, \
-     updated_at, deleted_at";
+     updated_at, deleted_at, ends_at, max_runs, stop_when, stop_reason";
 
 const LEASED_RESOURCE_COLUMNS: &str = "id, public_id, org_id, session_id, provider, \
      resource_type, external_id, display_name, status, owner_user_id, connection_id, \
@@ -41,8 +41,8 @@ impl Database {
 
         let row = sqlx::query_as::<_, SessionScheduleRow>(sqlx::AssertSqlSafe(format!(
             r#"
-            INSERT INTO session_schedules (id, public_id, org_id, session_id, owner_principal_id, resolved_owner_user_id, description, cron_expression, scheduled_at, timezone, next_trigger_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            INSERT INTO session_schedules (id, public_id, org_id, session_id, owner_principal_id, resolved_owner_user_id, description, cron_expression, scheduled_at, timezone, next_trigger_at, ends_at, max_runs, stop_when)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING {SESSION_SCHEDULE_COLUMNS}
             "#
         )))
@@ -57,6 +57,9 @@ impl Database {
         .bind(input.scheduled_at)
         .bind(&input.timezone)
         .bind(input.next_trigger_at)
+        .bind(input.ends_at)
+        .bind(input.max_runs)
+        .bind(&input.stop_when)
         .fetch_one(&self.pool)
         .await?;
 
@@ -100,8 +103,8 @@ impl Database {
         let public_id = id.to_string();
         let row = sqlx::query_as::<_, SessionScheduleRow>(sqlx::AssertSqlSafe(format!(
             r#"
-            INSERT INTO session_schedules (id, public_id, org_id, session_id, owner_principal_id, resolved_owner_user_id, description, cron_expression, scheduled_at, timezone, next_trigger_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            INSERT INTO session_schedules (id, public_id, org_id, session_id, owner_principal_id, resolved_owner_user_id, description, cron_expression, scheduled_at, timezone, next_trigger_at, ends_at, max_runs, stop_when)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING {SESSION_SCHEDULE_COLUMNS}
             "#
         )))
@@ -116,6 +119,9 @@ impl Database {
         .bind(input.scheduled_at)
         .bind(&input.timezone)
         .bind(input.next_trigger_at)
+        .bind(input.ends_at)
+        .bind(input.max_runs)
+        .bind(&input.stop_when)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -187,6 +193,9 @@ impl Database {
                 next_trigger_at = CASE WHEN $4 THEN $5 ELSE next_trigger_at END,
                 last_triggered_at = COALESCE($6, last_triggered_at),
                 trigger_count = trigger_count + CASE WHEN $7 THEN 1 ELSE 0 END,
+                ends_at = CASE WHEN $8 THEN $9 ELSE ends_at END,
+                max_runs = CASE WHEN $10 THEN $11 ELSE max_runs END,
+                stop_reason = CASE WHEN $12 THEN $13 ELSE stop_reason END,
                 updated_at = NOW()
             WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
             RETURNING {SESSION_SCHEDULE_COLUMNS}
@@ -199,6 +208,12 @@ impl Database {
         .bind(input.next_trigger_at.into_value()) // value (may be NULL for one-shot)
         .bind(input.last_triggered_at)
         .bind(input.trigger_count_increment)
+        .bind(input.ends_at.is_changed())
+        .bind(input.ends_at.into_value())
+        .bind(input.max_runs.is_changed())
+        .bind(input.max_runs.into_value())
+        .bind(input.stop_reason.is_changed())
+        .bind(input.stop_reason.into_value())
         .fetch_optional(&self.pool)
         .await?;
 

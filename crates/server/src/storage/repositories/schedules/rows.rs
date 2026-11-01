@@ -47,6 +47,18 @@ pub struct SessionScheduleRow {
     /// Set when the schedule was deleted. The row is kept for the session
     /// recording; live queries exclude it.
     pub deleted_at: Option<DateTime<Utc>>,
+    /// The schedule stops firing after this time.
+    #[sqlx(default)]
+    pub ends_at: Option<DateTime<Utc>>,
+    /// The schedule stops after this many fires.
+    #[sqlx(default)]
+    pub max_runs: Option<i32>,
+    /// When the work is done, in the agent's words.
+    #[sqlx(default)]
+    pub stop_when: Option<String>,
+    /// Why the schedule stopped on its own.
+    #[sqlx(default)]
+    pub stop_reason: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +72,9 @@ pub struct CreateSessionScheduleRow {
     pub scheduled_at: Option<DateTime<Utc>>,
     pub timezone: String,
     pub next_trigger_at: Option<DateTime<Utc>>,
+    pub ends_at: Option<DateTime<Utc>>,
+    pub max_runs: Option<i32>,
+    pub stop_when: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -68,6 +83,10 @@ pub struct UpdateSessionScheduleRow {
     pub next_trigger_at: UpdateField<DateTime<Utc>>,
     pub last_triggered_at: Option<DateTime<Utc>>,
     pub trigger_count_increment: bool,
+    pub ends_at: UpdateField<DateTime<Utc>>,
+    pub max_runs: UpdateField<i32>,
+    /// Why the schedule stopped, or `Clear` when a person resumes it.
+    pub stop_reason: UpdateField<String>,
 }
 
 #[derive(Debug, Clone, FromRow)]

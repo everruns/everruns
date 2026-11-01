@@ -53,6 +53,7 @@ pub async fn build_organization_response(
             .unwrap_or_default(),
         agentid_agents_per_owner: db.agentid_agents_per_owner_setting(org_id).await?,
         web_search_defaults: db.org_web_search_defaults(org_id).await?,
+        background_limits: db.org_background_limits(org_id).await?,
         created_at: row.created_at,
         updated_at: row.updated_at,
         onboarding_completed_at: row.onboarding_completed_at,

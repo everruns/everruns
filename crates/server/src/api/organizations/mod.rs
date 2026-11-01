@@ -656,6 +656,10 @@ async fn build_organization_response(
         .org_web_search_defaults(org_id)
         .await
         .log_internal_error_json("get web search defaults")?;
+    let background_limits = db
+        .org_background_limits(org_id)
+        .await
+        .log_internal_error_json("get background limits")?;
 
     let onboarding_completed_at = row.onboarding_completed_at;
     let org = Organization {
@@ -683,6 +687,7 @@ async fn build_organization_response(
             .unwrap_or_default(),
         agentid_agents_per_owner,
         web_search_defaults,
+        background_limits,
         created_at: org.created_at,
         updated_at: org.updated_at,
         onboarding_completed_at,

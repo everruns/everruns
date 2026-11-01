@@ -154,6 +154,7 @@ struct BackgroundScheduleRequest {
     cron_expression: Option<String>,
     scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
     timezone: String,
+    bounds: everruns_core::session_schedule::ScheduleBounds,
 }
 
 fn parse_background_schedule(
@@ -212,10 +213,13 @@ fn parse_background_schedule(
         .unwrap_or("UTC")
         .to_string();
 
+    let bounds = everruns_core::session_schedule::ScheduleBounds::from_tool_args(schedule)?;
+
     Ok(Some(BackgroundScheduleRequest {
         cron_expression,
         scheduled_at,
         timezone,
+        bounds,
     }))
 }
 
@@ -312,6 +316,7 @@ impl Tool for SpawnBackgroundTool {
     }
 
     fn parameters_schema(&self) -> Value {
+        let bounds = everruns_core::session_schedule::ScheduleBounds::tool_schema_properties();
         json!({
             "type": "object",
             "properties": {
@@ -342,7 +347,11 @@ impl Tool for SpawnBackgroundTool {
                         "timezone": {
                             "type": "string",
                             "description": "IANA timezone for the schedule. Default: UTC"
-                        }
+                        },
+                        "ends_at": bounds["ends_at"],
+                        "max_runs": bounds["max_runs"],
+                        "stop_when": bounds["stop_when"],
+                        "budget_usd": bounds["budget_usd"]
                     },
                     "additionalProperties": false
                 },
@@ -481,6 +490,7 @@ impl Tool for SpawnBackgroundTool {
                     schedule_request.cron_expression.clone(),
                     schedule_request.scheduled_at,
                     schedule_request.timezone.clone(),
+                    schedule_request.bounds.clone(),
                 )
                 .await
             {
@@ -541,6 +551,10 @@ impl Tool for SpawnBackgroundTool {
                         "timezone": schedule.timezone,
                         "next_trigger_at": schedule.next_trigger_at,
                         "enabled": schedule.enabled,
+                        "ends_at": schedule.ends_at,
+                        "max_runs": schedule.max_runs,
+                        "stop_when": schedule.stop_when,
+                        "budget": schedule.budget,
                         "task_id": monitor_task_id,
                     }))
                 }
