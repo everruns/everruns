@@ -1,6 +1,6 @@
 ---
-title: "Agent schedules now have an end, a budget, a daily cap and health alerts"
-description: "Recurring schedules an agent creates must state when they stop and have a spend cap, unattended work has a daily limit, and repeating schedules are stopped and reported."
+title: "Agent schedules get an end, a budget, a daily cap and health alerts"
+description: "Agent-created recurring schedules must say when they stop and carry a spend cap, unattended work has a daily limit, and repeating schedules are stopped."
 date: 2026-11-01
 kind: improvement
 significance: notable
