@@ -67,10 +67,5 @@ embed the public YouTube video alongside the feature instructions and screenshot
 Keep the narrated video binary outside Git.
 
 The [Cloudflare durable-chat walkthrough](https://www.youtube.com/watch?v=eFmwod7GTrY)
-is a 55-second public recording with English captions and synthesized Sarah
-narration. It shows real Muse replies, shared participation, a committed fork,
-cited history search and a reminder completed before clients reopened. Chat and
-reminder scenes use separate fresh rooms, and provider/timer waits are shortened.
-The example README and Framework walkthrough link or embed the recording.
-The [static Cloudflare player](https://everruns-durable-chat-video.everruns.workers.dev/)
-remains available as a fallback.
+is embedded in the [Framework tutorial](../../docs/framework/examples/durable-chat.mdx)
+and linked from the [example README](../../examples/cloudflare-durable-chat/README.md).

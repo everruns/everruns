@@ -14,11 +14,10 @@ with ordinary Everruns Framework Agents. Conversations and search children run
 inside native Cloudflare Durable Objects. SQLite journals and durable alarms keep
 their work independent of connected browsers.
 
-The independently built
-[chat example](https://github.com/everruns/everruns/tree/main/examples/cloudflare-durable-chat)
-uses the shared Engine session-hosting profile and OpenRouter driver. It has no
-celld dependency, external executor or container. This is experimental hosting;
-read [Durable Object hosting](/framework/durable-objects/) for its guarantees.
+The [chat example](https://github.com/everruns/everruns/tree/main/examples/cloudflare-durable-chat)
+uses the shared Engine session-hosting profile and OpenRouter driver. This is
+experimental hosting; read [Durable Object hosting](/framework/durable-objects/)
+for its guarantees.
 
 ## See the demo
 
@@ -35,18 +34,12 @@ create a conversation, and copy the room link into a second browser.
   allowfullscreen
 ></iframe>
 
-[Watch the 55-second walkthrough on YouTube](https://www.youtube.com/watch?v=eFmwod7GTrY)
-or use the [Cloudflare player and MP4 download](https://everruns-durable-chat-video.everruns.workers.dev/).
-It shows real Muse replies in two fresh demo rooms, with shared chat, a committed
-fork, cited history search and a reminder running with browsers closed. Model and
-timer waits are shortened; Sarah narration is synthesized and English captions are
-included.
+[Watch on YouTube](https://www.youtube.com/watch?v=eFmwod7GTrY).
 
 ![Alice and Bob share a launch-planning room. The assistant recalls their PostgreSQL decision, both participants are present, and committed messages have Fork here controls.](./durable-chat-shared.png)
 
 Alice and Bob see the same committed conversation. **Copy room link** invites
 another browser; **Fork here** starts a new conversation from a committed message.
-This is the deployed demo with real Muse Spark 1.3 Contributor responses.
 
 ## Run the chat
 
@@ -89,33 +82,25 @@ Ask for a reminder in 30 seconds, close the browsers, and return after the deadl
   />
 </picture>
 
-A room is addressed through `/rooms/<name>/...`. Its conversation directory,
-receipts and reminder outbox live in the room DO. Each conversation is a separate
-Framework session DO with its own authority journal, immutable agent/build
-binding, execution epoch and alarm.
+A room is addressed through `/rooms/<name>/...`. It stores the conversation list,
+command receipts and reminders. Each conversation and history-search child has
+its own Durable Object, SQLite journal and alarm.
 
 The app registers two ordinary Agents: `durable-chat` and `history-search`.
 Both use `Engine::builder().hosting(ObjectHosting::new(...))`. The child has only
 the search tool; the main agent has scheduling and history-search tools.
 Framework owns the model/tool loop, lifecycle, event history, interruption
-recovery, iteration limits and completion metadata. The application does not
-assemble core runtime backends or author canonical agent events.
+recovery, iteration limits and completion metadata.
 
-`ObjectHosting` is a source-only adapter implementing Framework's public hosting
-SPI. The Engine Wasm module also exports the shared Rust command reducer. The
-authority installs those exports and invokes them inside its SQLite transaction for admission,
-history seeding and other session commands; JavaScript only supplies storage and
-activation glue. Command validation and idempotency rules stay in shared Rust.
-The session also retains its model at creation, so changing the host's `MODEL`
-default does not change an existing session's behavior during recovery.
-For older memberships that predate model pinning, `LEGACY_MODEL` supplies the
-historical selection and defaults to the original Muse model. Set it explicitly
-before upgrading an old custom deployment that used another model.
+`ObjectHosting` connects Engine to the Durable Object's storage and alarms.
+Engine runs as WebAssembly, with the Worker providing storage, network requests
+and wakeups. Each session keeps the model selected when it was created;
+changing `MODEL` affects new sessions.
 
 The shared OpenRouter driver handles Responses request encoding, streaming,
 provider options, retries, error mapping and usage metadata. The host adapter
 supplies `fetch`, bounded response bytes, cancellation, endpoint policy and the
-server-side credential. No example-local provider protocol is maintained.
+server-side credential.
 
 ## Accept commands without losing work
 
@@ -190,60 +175,27 @@ search evidence. Retrieved transcripts are untrusted evidence, not instructions.
 ```sh
 npm run build
 npm test
+npm run check:bundle
 npx wrangler deploy --dry-run
 npx wrangler login
 npm run deploy
 npx wrangler secret put OPENROUTER_API_KEY
 ```
 
-Internal room/session calls use private Cloudflare Durable Object bindings.
-No internal service token is needed in this example. The public gateway forwards
-only the explicit chat routes and returns 404 for internal tool and session
-authority endpoints. Keep these DO fetch handlers private to their bindings;
-do not mount them behind another public route. The shared HTTP authority adapter
-continues to authenticate deployments that expose an authority service.
-The provider credential stays server-side.
+The public Worker handles browser requests. Room and session Durable Objects
+communicate through private bindings, and the OpenRouter API key stays on the
+server.
 
-The demo has no browser access gate. Anyone with its URL can open rooms and send
-messages; room links need no access key or cookie. To disable the old gate on an
-existing deployment, run `npx wrangler secret delete CHAT_ACCESS_TOKEN`.
+:::caution[Public access and model costs]
+This example has no sign-in, room access controls or per-user quotas. Anyone with
+its URL can open rooms and send messages using the configured model budget.
+Add access and usage controls before sharing your own deployment.
+:::
 
-The tests use real workerd and synthetic provider responses, confined to tests.
-They cover shared sockets, receipts, forks and isolation, process death during
-search, and scheduled wakeup after restart without reconnecting a client.
-A separate audit checks resolved dependencies and requires shared Framework
-hosting and driver code.
+The test suite covers shared conversations, forks, interrupted history searches
+and scheduled reminders across Worker restarts. It runs locally with workerd
+and simulated model responses.
 
-## Storage and deployment limits
-
-Measure the complete upload with `npm run check:bundle`.
-Cloudflare's [current size limit](https://developers.cloudflare.com/workers/platform/limits/#worker-size)
-is 64 MiB uncompressed on Free and Paid, with no compressed-size cap. The bundle
-contains one Engine Wasm module, including the authority's command exports.
-Startup time, CPU, memory and usage limits must be checked separately.
-
-An existing deployment retains its ChatRoom namespace. On first access the old
-room payload is backed up, settled user/assistant text is imported through
-Framework, and queued messages retain their original identities. Unfinished
-legacy tool calls are not replayed under the new runtime. Room receipts and
-schedule metadata remain available.
-
-A build ID identifies immutable Agent policy, independently of compatible
-Framework rebuilds. The Engine registers the current policy and the older live
-and review keys in `retained-builds.json`. A digest check prevents those keys
-from silently referring to changed Agent code. Future behavior changes must
-retain the old factory and compatible host services alongside the new one.
-
-Engine checks the persisted runtime format and exact registration before
-execution. Missing or unsupported implementations suspend without hiding
-history; snapshots expose compatibility diagnostics and the UI shows a paused
-state. After restoring the code, Framework's explicit `Engine::retry_session`
-checks the binding and absence of a live epoch before clearing a compatibility
-suspension. It does not clear uncertain effects. The chat has no browser retry
-control or automatic binding-rewrite migration.
-
-Rooms use a JSON metadata document without automatic compaction. The public demo
-has no individual identity or room authorization, and deployers own production
-access and budget controls. Additional external tools need idempotency or
-reconciliation.
-The browser displays committed snapshots; it does not render token streaming.
+See [Durable Object hosting](/framework/durable-objects/) for hosting guarantees
+and upgrade compatibility, and [Cloudflare's platform limits](https://developers.cloudflare.com/workers/platform/limits/)
+for deployment constraints.

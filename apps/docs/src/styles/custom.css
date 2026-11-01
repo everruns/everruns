@@ -19,6 +19,14 @@
   margin-inline: auto;
 }
 
+/* Center standalone SVG diagrams at their intrinsic width. */
+.sl-markdown-content :is(p, picture) > img[src$=".svg"]:only-child:not(:where(.not-content *)),
+.sl-markdown-content :is(p, picture) > img[src*=".svg?"]:only-child:not(:where(.not-content *)) {
+  display: block;
+  margin-inline: auto;
+  height: auto;
+}
+
 .sl-markdown-content .er-mermaid-source {
   margin: 0;
   padding: 1rem;
