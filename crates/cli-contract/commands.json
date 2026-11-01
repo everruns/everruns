@@ -8998,6 +8998,12 @@
         "help": "How many agents one AgentID owner may sign in to this organization's Public Chat channels."
       },
       {
+        "field": "background_limits",
+        "long": "background-limits",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "base_harness_id",
         "long": "base-harness-id",
         "kind": "string",

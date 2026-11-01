@@ -19,6 +19,7 @@
 // active. This closes the gap where the schedule is canceled/deleted directly
 // (not via cancel_task) so the monitor would otherwise stay `running` forever.
 
+use crate::domains::budgets::FireGate;
 use crate::domains::session_schedules::SessionScheduleService;
 use crate::execution_metadata;
 use crate::services::EventService;
@@ -27,6 +28,7 @@ use chrono::Utc;
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::host::TurnBackend;
+use everruns_core::session_schedule::stop_reason;
 use everruns_core::session_task::{
     NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState, SessionTaskUpdate,
     TASK_KIND_MONITOR,
@@ -157,22 +159,62 @@ async fn poll_and_trigger(
 
     tracing::info!(count = due.len(), "Claimed due session schedules");
 
+    let budgets = crate::domains::budgets::BudgetService::new(db.clone());
+
     for row in due {
         let schedule_id = row.id;
         let session_id = row.session_id;
         let org_id = row.org_id;
-        let description = row.description.clone();
 
-        // Mark triggered (updates next_trigger, disables one-shot, etc.)
-        let is_one_shot = row.cron_expression.is_none();
-        if let Err(e) = schedule_service.mark_triggered(org_id, schedule_id).await {
-            tracing::error!(
-                schedule_id = %schedule_id,
-                error = %e,
-                "Failed to mark schedule as triggered"
-            );
+        // Limits on unattended work (knowledge/operations/background-limits.md):
+        // a schedule past its end, or whose budget is spent, stops without
+        // firing; when the org's unattended spend for today is used up, the
+        // fire is skipped until the next time.
+        if row.ends_at.is_some_and(|end| end <= Utc::now()) {
+            stop_schedule(schedule_service, org_id, schedule_id, stop_reason::ENDED).await;
             continue;
         }
+        match budgets.unattended_fire_gate(org_id, &row.public_id).await {
+            FireGate::Fire => {}
+            FireGate::ScheduleBudgetSpent => {
+                stop_schedule(
+                    schedule_service,
+                    org_id,
+                    schedule_id,
+                    stop_reason::BUDGET_EXHAUSTED,
+                )
+                .await;
+                continue;
+            }
+            FireGate::OrgUnattendedSpent => {
+                tracing::info!(
+                    schedule_id = %schedule_id,
+                    org_id,
+                    "Org's unattended budget for today is spent; skipping this schedule fire"
+                );
+                if let Err(error) = schedule_service.defer(org_id, schedule_id).await {
+                    tracing::error!(schedule_id = %schedule_id, error = %error, "Failed to defer schedule");
+                }
+                continue;
+            }
+        }
+
+        // Mark triggered (updates next_trigger, disables one-shot, ends a
+        // schedule on its last run).
+        let is_one_shot = row.cron_expression.is_none();
+        let fired = match schedule_service.mark_triggered(org_id, schedule_id).await {
+            Ok(Some(fired)) => fired,
+            Ok(None) => continue,
+            Err(e) => {
+                tracing::error!(
+                    schedule_id = %schedule_id,
+                    error = %e,
+                    "Failed to mark schedule as triggered"
+                );
+                continue;
+            }
+        };
+        let description = fire_message(&fired);
 
         // Update linked monitor tasks (best-effort; never fail the fire loop).
         // Returns true when a probe ran — in that case the monitor is autonomous
@@ -237,6 +279,9 @@ async fn poll_and_trigger(
             session.agent_id.map(|id| id.uuid()),
         )
         .await?;
+        // Metering charges this turn to the schedule's budget through it.
+        db.set_invocation_schedule(message_id, schedule_id.uuid())
+            .await?;
         let now = Utc::now();
 
         let mut metadata = HashMap::new();
@@ -247,6 +292,18 @@ async fn poll_and_trigger(
         metadata.insert(
             "schedule_id".to_string(),
             serde_json::Value::String(schedule_id.to_string()),
+        );
+        // The run's counters as data, so a later model-view header (message
+        // origin) can render them instead of the text footer fire_message adds.
+        metadata.insert(
+            "schedule_run".to_string(),
+            serde_json::json!({
+                "number": fired.trigger_count,
+                "limit": fired.max_runs,
+                "ends_at": fired.ends_at,
+                "stop_when": fired.stop_when,
+                "budget": fired.budget,
+            }),
         );
 
         let core_message = RuntimeMessage {
@@ -302,6 +359,58 @@ async fn poll_and_trigger(
     }
 
     Ok(())
+}
+
+async fn stop_schedule(
+    schedule_service: &SessionScheduleService,
+    org_id: i64,
+    schedule_id: everruns_contracts::typed_id::ScheduleId,
+    reason: &str,
+) {
+    tracing::info!(schedule_id = %schedule_id, org_id, reason, "Stopping schedule");
+    if let Err(error) = schedule_service.stop(org_id, schedule_id, reason).await {
+        tracing::error!(schedule_id = %schedule_id, error = %error, "Failed to stop schedule");
+    }
+}
+
+/// The message a fire injects: the schedule's task, then where the schedule
+/// stands, so the agent is reminded every run how long it has left, when it
+/// is done, what it spent, and how to stop (2026-11-01: a test poll ran 13
+/// days because nothing reminded the agent to give up).
+pub(crate) fn fire_message(schedule: &everruns_core::session_schedule::SessionSchedule) -> String {
+    // A one-shot fires once; its task is the whole message.
+    if schedule.cron_expression.is_none() {
+        return schedule.description.clone();
+    }
+    let mut lines = Vec::new();
+    match schedule.max_runs {
+        Some(max) => lines.push(format!(
+            "Scheduled run {} of {max}.",
+            schedule.trigger_count
+        )),
+        None => lines.push(format!("Scheduled run {}.", schedule.trigger_count)),
+    }
+    if let Some(end) = schedule.ends_at {
+        lines.push(format!("The schedule ends at {}.", end.to_rfc3339()));
+    }
+    if let Some(stop_when) = &schedule.stop_when {
+        lines.push(format!("Stop when: {stop_when}"));
+    }
+    if let Some(budget) = &schedule.budget {
+        lines.push(format!(
+            "Its runs have spent ${:.2} of its ${:.2} budget.",
+            budget.spent_usd, budget.limit_usd
+        ));
+    }
+    if schedule.stop_reason.as_deref() == Some(stop_reason::ENDED) {
+        lines.push("This is its last run: the schedule has ended. Create a new schedule only if the work still needs it.".to_string());
+    } else {
+        lines.push(format!(
+            "When the stop condition is met, or can no longer be met, call cancel_schedule with schedule_id {}.",
+            schedule.id
+        ));
+    }
+    format!("{}\n\n---\n{}", schedule.description, lines.join(" "))
 }
 
 /// Record a fire event on linked monitor tasks and, for one-shot schedules,
@@ -664,6 +773,9 @@ mod tests {
                 cron_expression,
                 timezone: "UTC".to_string(),
                 next_trigger_at: None,
+                ends_at: None,
+                max_runs: None,
+                stop_when: None,
             })
             .await
             .unwrap();
@@ -1078,6 +1190,195 @@ mod tests {
         assert!(
             message_text(&messages[0]).contains("Monitor fired at"),
             "must fall back to placeholder when registry is absent"
+        );
+    }
+}
+
+#[cfg(test)]
+mod limits_tests {
+    use super::*;
+    use crate::domains::budgets::{BudgetService, FireGate};
+    use crate::storage::CreateSessionScheduleRow;
+    use everruns_contracts::typed_id::{PrincipalId, SessionId};
+    use everruns_core::DEFAULT_ORG_ID;
+
+    async fn bounded_schedule(
+        db: &Arc<StorageBackend>,
+        max_runs: Option<i32>,
+        ends_at: Option<chrono::DateTime<Utc>>,
+    ) -> crate::storage::SessionScheduleRow {
+        let session_id: SessionId = db.create_test_session().await;
+        db.create_session_schedule(CreateSessionScheduleRow {
+            org_id: DEFAULT_ORG_ID,
+            session_id,
+            owner_principal_id: PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            description: "Poll the claim".to_string(),
+            scheduled_at: None,
+            cron_expression: Some("*/5 * * * *".to_string()),
+            timezone: "UTC".to_string(),
+            next_trigger_at: Some(Utc::now()),
+            ends_at,
+            max_runs,
+            stop_when: Some("the claim is approved".to_string()),
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn schedule_ends_on_its_last_run_and_says_so() {
+        let db = Arc::new(StorageBackend::test_database());
+        let service = SessionScheduleService::new(db.clone());
+        let row = bounded_schedule(&db, Some(2), None).await;
+
+        let first = service
+            .mark_triggered(DEFAULT_ORG_ID, row.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(first.enabled);
+        assert_eq!(first.stop_reason, None);
+        let text = fire_message(&first);
+        assert!(text.starts_with("Poll the claim"), "{text}");
+        assert!(text.contains("Scheduled run 1 of 2."), "{text}");
+        assert!(text.contains("Stop when: the claim is approved"), "{text}");
+        assert!(text.contains("cancel_schedule"), "{text}");
+
+        let last = service
+            .mark_triggered(DEFAULT_ORG_ID, row.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!last.enabled);
+        assert_eq!(last.next_trigger_at, None);
+        assert_eq!(last.stop_reason.as_deref(), Some(stop_reason::ENDED));
+        assert!(fire_message(&last).contains("last run"));
+    }
+
+    #[tokio::test]
+    async fn schedule_ends_when_its_next_time_is_past_its_end() {
+        let db = Arc::new(StorageBackend::test_database());
+        let service = SessionScheduleService::new(db.clone());
+        let row =
+            bounded_schedule(&db, None, Some(Utc::now() + chrono::Duration::seconds(1))).await;
+        let fired = service
+            .mark_triggered(DEFAULT_ORG_ID, row.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!fired.enabled);
+        assert_eq!(fired.stop_reason.as_deref(), Some(stop_reason::ENDED));
+    }
+
+    #[tokio::test]
+    async fn a_person_can_extend_and_resume_an_ended_schedule() {
+        let db = Arc::new(StorageBackend::test_database());
+        let service = SessionScheduleService::new(db.clone());
+        let row = bounded_schedule(&db, Some(1), None).await;
+        service
+            .mark_triggered(DEFAULT_ORG_ID, row.id)
+            .await
+            .unwrap();
+
+        let resumed = service
+            .update(
+                DEFAULT_ORG_ID,
+                row.id,
+                crate::domains::session_schedules::ScheduleChange {
+                    enabled: Some(true),
+                    // Beyond the agent ceiling: a person may.
+                    max_runs: Some(Some(500)),
+                    budget_usd: Some(25.0),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(resumed.enabled);
+        assert_eq!(resumed.stop_reason, None);
+        assert_eq!(resumed.max_runs, Some(500));
+        assert_eq!(resumed.budget.unwrap().limit_usd, 25.0);
+
+        let rejected = service
+            .update(
+                DEFAULT_ORG_ID,
+                row.id,
+                crate::domains::session_schedules::ScheduleChange {
+                    ends_at: Some(Some(Utc::now() - chrono::Duration::hours(1))),
+                    ..Default::default()
+                },
+            )
+            .await;
+        assert!(matches!(rejected, Err(Ok(_))));
+    }
+
+    #[tokio::test]
+    async fn spent_budgets_hold_the_fire() {
+        let db = Arc::new(StorageBackend::test_database());
+        let budgets = BudgetService::new(db.clone());
+        let row = bounded_schedule(&db, Some(10), None).await;
+        assert_eq!(
+            budgets
+                .unattended_fire_gate(DEFAULT_ORG_ID, &row.public_id)
+                .await,
+            FireGate::Fire
+        );
+
+        let budget = db
+            .create_schedule_budget(DEFAULT_ORG_ID, &row.public_id, 2.0)
+            .await
+            .unwrap();
+        db.set_budget_status(budget.id, "exhausted").await.unwrap();
+        assert_eq!(
+            budgets
+                .unattended_fire_gate(DEFAULT_ORG_ID, &row.public_id)
+                .await,
+            FireGate::ScheduleBudgetSpent
+        );
+
+        // Raising the schedule's budget frees it; the org's daily cap still binds.
+        db.set_schedule_budget_limit(DEFAULT_ORG_ID, &row.public_id, 4.0)
+            .await
+            .unwrap();
+        let org_budget = db
+            .ensure_org_unattended_budget(DEFAULT_ORG_ID)
+            .await
+            .unwrap()
+            .expect("default limits have a daily cap");
+        assert_eq!(org_budget.limit, 20.0);
+        db.set_budget_status(org_budget.id, "exhausted")
+            .await
+            .unwrap();
+        assert_eq!(
+            budgets
+                .unattended_fire_gate(DEFAULT_ORG_ID, &row.public_id)
+                .await,
+            FireGate::OrgUnattendedSpent
+        );
+
+        // Removing the cap in Settings → Limits disables the daily budget.
+        db.set_org_background_limits(
+            DEFAULT_ORG_ID,
+            &everruns_core::session_schedule::BackgroundLimits {
+                org_unattended_daily_usd: None,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            db.org_unattended_budget(DEFAULT_ORG_ID)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            budgets
+                .unattended_fire_gate(DEFAULT_ORG_ID, &row.public_id)
+                .await,
+            FireGate::Fire
         );
     }
 }

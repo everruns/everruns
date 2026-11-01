@@ -15,6 +15,8 @@ fn validate_subject_type(subject_type: &str) -> Result<(), CommandError> {
         "org",
         "agent_trigger",
         "agent_channel",
+        "session_schedule",
+        "org_unattended",
     ];
     if SUPPORTED.contains(&subject_type) {
         return Ok(());

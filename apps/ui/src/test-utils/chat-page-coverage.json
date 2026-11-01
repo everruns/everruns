@@ -32,6 +32,7 @@
     "sandboxes/templates/[sandboxTemplateId]/page.tsx",
     "sandboxes/templates/new/page.tsx",
     "settings/chat/page.tsx",
+    "settings/limits/page.tsx",
     "settings/mcp-catalog/page.tsx",
     "settings/mcp-servers/page.tsx",
     "settings/members/page.tsx",

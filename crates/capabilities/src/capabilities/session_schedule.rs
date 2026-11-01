@@ -14,6 +14,16 @@ use serde_json::{Value, json};
 
 pub const SESSION_SCHEDULE_CAPABILITY_ID: &str = "session_schedule";
 
+/// The limits are stated in the description itself, so the model knows them
+/// before it calls (2026-11-01 decision: limits must be visible to the agent in
+/// the description, the argument schema, validation errors and the result).
+static CREATE_SCHEDULE_DESCRIPTION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    format!(
+        "Schedule a future task in this session. Provide description and either scheduled_at (one-shot) or cron_expression (recurring). {} Cancel the schedule as soon as stop_when is met.",
+        everruns_core::session_schedule::schedule_limits_summary()
+    )
+});
+
 /// Session schedule capability — lets the agent schedule future work.
 pub struct SessionScheduleCapability;
 
@@ -52,7 +62,7 @@ impl Capability for SessionScheduleCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "When a schedule fires, you will receive a message with the task description and should execute it. Maximum 5 active schedules per session.",
+            "When a schedule fires, you will receive a message with the task description and should execute it. Maximum 5 active schedules per session. A recurring schedule has an end (ends_at or max_runs) and a stop_when condition; cancel it with cancel_schedule as soon as the condition is met, and do not keep polling for something that can no longer happen.",
         )
     }
 
@@ -101,11 +111,11 @@ impl Tool for CreateScheduleTool {
     }
 
     fn description(&self) -> &str {
-        "Schedule a future task in this session. Provide description and either scheduled_at (one-shot) or cron_expression (recurring)."
+        CREATE_SCHEDULE_DESCRIPTION.as_str()
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
+        let mut schema = json!({
             "type": "object",
             "properties": {
                 "description": {
@@ -127,7 +137,12 @@ impl Tool for CreateScheduleTool {
             },
             "required": ["description"],
             "additionalProperties": false
-        })
+        });
+        if let Some(properties) = schema["properties"].as_object_mut() {
+            properties
+                .extend(everruns_core::session_schedule::ScheduleBounds::tool_schema_properties());
+        }
+        schema
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -170,6 +185,15 @@ impl Tool for CreateScheduleTool {
             .unwrap_or("UTC")
             .to_string();
 
+        let bounds = match arguments
+            .as_object()
+            .map(everruns_core::session_schedule::ScheduleBounds::from_tool_args)
+            .transpose()
+        {
+            Ok(bounds) => bounds.unwrap_or_default(),
+            Err(message) => return ToolExecutionResult::tool_error(message),
+        };
+
         let Some(store) = &context.schedule_store else {
             return ToolExecutionResult::tool_error("Schedule store not available in this context");
         };
@@ -181,9 +205,12 @@ impl Tool for CreateScheduleTool {
                 cron_expression,
                 scheduled_at,
                 timezone,
+                bounds,
             )
             .await
         {
+            // Echo what was granted, so the transcript shows the end, the run
+            // count and the budget the schedule actually has.
             Ok(schedule) => ToolExecutionResult::success(json!({
                 "schedule_id": schedule.id.to_string(),
                 "description": schedule.description,
@@ -193,6 +220,10 @@ impl Tool for CreateScheduleTool {
                 "timezone": schedule.timezone,
                 "next_trigger_at": schedule.next_trigger_at,
                 "enabled": schedule.enabled,
+                "ends_at": schedule.ends_at,
+                "max_runs": schedule.max_runs,
+                "stop_when": schedule.stop_when,
+                "budget": schedule.budget,
                 "created": true,
             })),
             Err(everruns_core::session_schedule::ScheduleLimitError::Store(e)) => {
@@ -380,6 +411,11 @@ impl Tool for ListSchedulesTool {
                             "next_trigger_at": s.next_trigger_at,
                             "last_triggered_at": s.last_triggered_at,
                             "trigger_count": s.trigger_count,
+                            "ends_at": s.ends_at,
+                            "max_runs": s.max_runs,
+                            "stop_when": s.stop_when,
+                            "stop_reason": s.stop_reason,
+                            "budget": s.budget,
                         })
                     })
                     .collect();
@@ -468,6 +504,11 @@ mod tests {
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
                 deleted_at: None,
+                ends_at: None,
+                max_runs: None,
+                stop_when: None,
+                stop_reason: None,
+                budget: None,
             };
             self.schedules.lock().unwrap().push(schedule.clone());
             Ok(schedule)
@@ -558,7 +599,9 @@ mod tests {
             .execute_with_context(
                 json!({
                     "description": "Check logs",
-                    "cron_expression": "0 3 * * *"
+                    "cron_expression": "0 3 * * *",
+                    "max_runs": 5,
+                    "stop_when": "the logs show the deploy finished"
                 }),
                 &context,
             )
@@ -572,6 +615,49 @@ mod tests {
             }
             other => panic!("expected success, got: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn create_schedule_requires_an_end_and_stop_condition_for_recurring() {
+        let store = MockScheduleStore::new();
+        let mut context = ToolContext::new(SessionId::new());
+        context.schedule_store = Some(Arc::new(store));
+
+        for (args, expected) in [
+            (
+                json!({"description": "Poll", "cron_expression": "*/5 * * * *", "stop_when": "done"}),
+                "7 days and 96 runs",
+            ),
+            (
+                json!({"description": "Poll", "cron_expression": "*/5 * * * *", "max_runs": 10}),
+                "stop_when",
+            ),
+            (
+                json!({"description": "Poll", "cron_expression": "*/5 * * * *", "max_runs": 500, "stop_when": "done"}),
+                "limit of 96 runs",
+            ),
+        ] {
+            match CreateScheduleTool
+                .execute_with_context(args, &context)
+                .await
+            {
+                ToolExecutionResult::ToolError(msg) => {
+                    assert!(msg.contains(expected), "unexpected msg: {msg}");
+                }
+                other => panic!("expected tool error, got: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn create_schedule_states_its_limits_to_the_model() {
+        let tool = CreateScheduleTool;
+        assert!(tool.description().contains("96 runs"));
+        assert!(tool.description().contains("$2.00"));
+        let schema = tool.parameters_schema();
+        assert_eq!(schema["properties"]["max_runs"]["maximum"], 96);
+        assert!(schema["properties"]["stop_when"].is_object());
+        assert!(schema["properties"]["budget_usd"].is_object());
     }
 
     #[tokio::test]
@@ -640,7 +726,9 @@ mod tests {
             .execute_with_context(
                 json!({
                     "description": "Too frequent",
-                    "cron_expression": "* * * * *"
+                    "cron_expression": "* * * * *",
+                    "max_runs": 3,
+                    "stop_when": "done"
                 }),
                 &context,
             )

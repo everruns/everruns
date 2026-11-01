@@ -1,27 +1,43 @@
 "use client";
 
-// Read-only schedules for a session recording. Registered schedules stay
-// listed after they are canceled or deleted, so the recording shows what was
-// set up and what was removed.
+// Schedules for a session recording. Registered schedules stay listed after
+// they are canceled or deleted, so the recording shows what was set up and what
+// was removed. Live schedules show their limits (end time, run count, budget)
+// and let a person extend them or re-enable one the platform stopped.
 
 import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
 
+import { useState } from "react";
 import { AlertCircle, CalendarClock, Repeat } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatRelativeTime } from "@/lib/formatting";
+import { formatCostUsd, formatRelativeTime } from "@/lib/formatting";
 import {
   formatScheduleCadence,
   formatScheduledDateTime,
   getScheduleDisplayTitle,
 } from "@/lib/schedule-display";
 import type { SessionSchedule } from "@/lib/api/types";
-import { useSessionSchedules } from "@/hooks/use-session-schedules";
+import { useSessionSchedules, useUpdateSessionSchedule } from "@/hooks/use-session-schedules";
+import { SessionScheduleExtendDialog } from "./session-schedule-extend-dialog";
 
-function scheduleStatus(schedule: SessionSchedule): "Active" | "Disabled" | "Deleted" {
+type ScheduleStatus = "Active" | "Disabled" | "Deleted" | "Ended" | "Budget used up";
+
+function scheduleStatus(schedule: SessionSchedule): ScheduleStatus {
   if (schedule.deleted_at) return "Deleted";
+  if (!schedule.enabled && schedule.stop_reason === "ended") return "Ended";
+  if (!schedule.enabled && schedule.stop_reason === "budget_exhausted") return "Budget used up";
   return schedule.enabled ? "Active" : "Disabled";
 }
+
+const STATUS_BADGE: Record<ScheduleStatus, "default" | "secondary" | "outline" | "destructive"> = {
+  Active: "default",
+  Disabled: "secondary",
+  Deleted: "secondary",
+  Ended: "outline",
+  "Budget used up": "destructive",
+};
 
 export function SessionScheduleList({ schedules }: { schedules: SessionSchedule[] }) {
   const { displayLocale } = useFormattingLocale();
@@ -68,8 +84,24 @@ export function SessionScheduleList({ schedules }: { schedules: SessionSchedule[
                         ),
                       })
                     : ""}
-                  {schedule.trigger_count > 0
-                    ? ui(" · fired {value0}×", { value0: schedule.trigger_count })
+                  {schedule.max_runs != null
+                    ? ui(" · Run {value0} of {value1}", {
+                        value0: schedule.trigger_count,
+                        value1: schedule.max_runs,
+                      })
+                    : schedule.trigger_count > 0
+                      ? ui(" · fired {value0}×", { value0: schedule.trigger_count })
+                      : ""}
+                  {schedule.ends_at && !schedule.deleted_at
+                    ? ui(" · Ends {value0}", {
+                        value0: formatScheduledDateTime(schedule.ends_at, schedule.timezone),
+                      })
+                    : ""}
+                  {schedule.budget
+                    ? ui(" · {value0} of {value1}", {
+                        value0: formatCostUsd(schedule.budget.spent_usd),
+                        value1: formatCostUsd(schedule.budget.limit_usd),
+                      })
                     : ""}
                   {ui(" · registered {value0}", {
                     value0: formatRelativeTime(schedule.created_at, displayLocale),
@@ -80,13 +112,75 @@ export function SessionScheduleList({ schedules }: { schedules: SessionSchedule[
                       })
                     : ""}
                 </div>
+                {schedule.stop_when && (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {ui("Stops when: {value0}", { value0: schedule.stop_when })}
+                  </div>
+                )}
               </div>
             </div>
-            <Badge variant={status === "Active" ? "default" : "secondary"}>{status}</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant={STATUS_BADGE[status]}>{ui(status)}</Badge>
+              {hasLimits(schedule) && !schedule.deleted_at && (
+                <ScheduleActions schedule={schedule} />
+              )}
+            </div>
           </div>
         );
       })}
     </div>
+  );
+}
+
+/** Only limited schedules can end or run out; an open-ended one has nothing to extend. */
+function hasLimits(schedule: SessionSchedule): boolean {
+  return (
+    schedule.ends_at != null ||
+    schedule.max_runs != null ||
+    schedule.budget != null ||
+    schedule.stop_reason != null
+  );
+}
+
+function ScheduleActions({ schedule }: { schedule: SessionSchedule }) {
+  const ui = useUiTranslations();
+  const update = useUpdateSessionSchedule();
+  const [extending, setExtending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function reEnable() {
+    setError(null);
+    try {
+      await update.mutateAsync({
+        sessionId: schedule.session_id,
+        scheduleId: schedule.id,
+        request: { enabled: true },
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : ui("Could not re-enable the schedule."));
+    }
+  }
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setExtending(true)}>
+        {ui("Extend")}
+      </Button>
+      {!schedule.enabled && (
+        <Button size="sm" variant="outline" onClick={reEnable} disabled={update.isPending}>
+          {ui("Re-enable")}
+        </Button>
+      )}
+      {error && (
+        <span role="alert" className="text-xs text-destructive">
+          {error}
+        </span>
+      )}
+      {/* Mounted only while open, so each opening starts from the current values. */}
+      {extending && (
+        <SessionScheduleExtendDialog schedule={schedule} open onOpenChange={setExtending} />
+      )}
+    </>
   );
 }
 

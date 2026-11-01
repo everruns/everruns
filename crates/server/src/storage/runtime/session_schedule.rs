@@ -11,8 +11,9 @@ use crate::kernel_imports::{
     contracts::typed_id::SessionId,
     session_schedule::{
         DEFAULT_MAX_SCHEDULES_PER_ORG, DEFAULT_MIN_INTERVAL_SECONDS,
-        MAX_ACTIVE_SCHEDULES_PER_SESSION, ScheduleLimitError, SessionSchedule,
-        validate_cron_min_interval_with, validate_schedule_create_limits,
+        MAX_ACTIVE_SCHEDULES_PER_SESSION, ScheduleBounds, ScheduleBudget, ScheduleLimitError,
+        SessionSchedule, resolve_agent_schedule_bounds, validate_cron_min_interval_with,
+        validate_schedule_create_limits,
     },
     session_services::SessionScheduleStore,
 };
@@ -60,6 +61,12 @@ pub fn row_to_domain(row: &SessionScheduleRow) -> SessionSchedule {
         created_at: row.created_at,
         updated_at: row.updated_at,
         deleted_at: row.deleted_at,
+        ends_at: row.ends_at,
+        max_runs: row.max_runs.and_then(|runs| u32::try_from(runs).ok()),
+        stop_when: row.stop_when.clone(),
+        stop_reason: row.stop_reason.clone(),
+        // Filled by the schedule service from the schedule's budget row.
+        budget: None,
     }
 }
 
@@ -111,6 +118,9 @@ impl SessionScheduleStore for DbSessionScheduleStore {
                 scheduled_at,
                 timezone,
                 next_trigger_at: next_trigger,
+                ends_at: None,
+                max_runs: None,
+                stop_when: None,
             })
             .await
             .store_err()?;
@@ -125,11 +135,23 @@ impl SessionScheduleStore for DbSessionScheduleStore {
         cron_expression: Option<String>,
         scheduled_at: Option<DateTime<Utc>>,
         timezone: String,
+        bounds: ScheduleBounds,
     ) -> std::result::Result<SessionSchedule, ScheduleLimitError> {
         if let Some(cron) = cron_expression.as_deref() {
             validate_cron_min_interval_with(cron, schedule_limits().0)
                 .map_err(ScheduleLimitError::Rejected)?;
         }
+        // The agent states how long the schedule runs and when it is done,
+        // within the org's Settings → Limits (knowledge/operations/background-limits.md).
+        let limits = self
+            .db
+            .org_background_limits(self.org_id)
+            .await
+            .store_err()
+            .map_err(ScheduleLimitError::Store)?;
+        let bounds =
+            resolve_agent_schedule_bounds(&bounds, &limits, cron_expression.is_some(), Utc::now())
+                .map_err(ScheduleLimitError::Rejected)?;
 
         // compute_next_trigger fails only on an invalid cron or timezone: the
         // caller's input, which the tool reports back so the model can fix it.
@@ -158,6 +180,9 @@ impl SessionScheduleStore for DbSessionScheduleStore {
                     scheduled_at,
                     timezone,
                     next_trigger_at: next_trigger,
+                    ends_at: bounds.ends_at,
+                    max_runs: bounds.max_runs.map(|runs| runs.min(i32::MAX as u32) as i32),
+                    stop_when: bounds.stop_when.clone(),
                 },
                 MAX_ACTIVE_SCHEDULES_PER_SESSION,
                 max_per_org,
@@ -167,7 +192,32 @@ impl SessionScheduleStore for DbSessionScheduleStore {
             .map_err(ScheduleLimitError::Store)?;
 
         match row {
-            Some(row) => Ok(row_to_domain(&row)),
+            Some(row) => {
+                let mut schedule = row_to_domain(&row);
+                let limit_usd = bounds.budget_usd.unwrap_or(limits.schedule_budget_usd);
+                // A schedule without its budget would spend without limit, so
+                // a failed budget means no schedule.
+                match self
+                    .db
+                    .create_schedule_budget(self.org_id, &row.public_id, limit_usd)
+                    .await
+                {
+                    Ok(budget) => {
+                        schedule.budget = Some(ScheduleBudget {
+                            limit_usd: budget.limit,
+                            spent_usd: 0.0,
+                            status: budget.status,
+                        });
+                        Ok(schedule)
+                    }
+                    Err(error) => {
+                        let _ = self.db.delete_session_schedule(self.org_id, row.id).await;
+                        Err(ScheduleLimitError::Store(AgentLoopError::store(format!(
+                            "Failed to create the schedule's budget: {error}"
+                        ))))
+                    }
+                }
+            }
             None => validate_schedule_create_limits(self, session_id, None).await.and_then(|()| {
                 Err(ScheduleLimitError::Rejected(format!(
                     "Maximum {max_per_org} active schedules per org reached. Cancel an existing schedule first."

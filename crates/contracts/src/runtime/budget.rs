@@ -69,6 +69,12 @@ pub enum BudgetSubjectType {
     /// the webhook triggers migration 138 moved off endpoints.
     #[serde(alias = "agent_endpoint")]
     AgentChannel,
+    /// Bound to one session schedule (`sched_` id): the turns its fires
+    /// start. Created with every schedule an agent makes (2026-11-01).
+    SessionSchedule,
+    /// An org's daily cap on unattended turns: schedule fires and sessions an
+    /// agent trigger started. Keyed by the org's public id; one per org.
+    OrgUnattended,
 }
 
 impl BudgetSubjectType {
@@ -81,6 +87,8 @@ impl BudgetSubjectType {
             BudgetSubjectType::Organization => "org",
             BudgetSubjectType::AgentTrigger => "agent_trigger",
             BudgetSubjectType::AgentChannel => "agent_channel",
+            BudgetSubjectType::SessionSchedule => "session_schedule",
+            BudgetSubjectType::OrgUnattended => "org_unattended",
         }
     }
 }
@@ -100,6 +108,8 @@ impl From<&str> for BudgetSubjectType {
             "org" | "organization" => BudgetSubjectType::Organization,
             "agent_trigger" => BudgetSubjectType::AgentTrigger,
             "agent_channel" | "agent_endpoint" => BudgetSubjectType::AgentChannel,
+            "session_schedule" => BudgetSubjectType::SessionSchedule,
+            "org_unattended" => BudgetSubjectType::OrgUnattended,
             // Unknown wire strings, including the retired "app" and
             // "app_channel", fall back to the narrowest subject rather than the
             // widest. Migrations 151 and 153 left no such rows, so this is

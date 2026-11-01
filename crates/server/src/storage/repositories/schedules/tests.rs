@@ -16,6 +16,9 @@ fn schedule_input(session_id: SessionId) -> CreateSessionScheduleRow {
         scheduled_at: None,
         timezone: "UTC".to_string(),
         next_trigger_at: Some(Utc::now() - chrono::Duration::days(1)),
+        ends_at: None,
+        max_runs: None,
+        stop_when: None,
     }
 }
 

@@ -10424,6 +10424,45 @@ export interface components {
         use?: components["schemas"]["McpServerPresetRef"] | null;
       };
     };
+    /**
+     * @description Limits on background work an org can tune in Settings → Limits.
+     *
+     *     Defaults are code constants rather than environment variables, so every
+     *     deployment starts safe. The lifetime and run limits can only be lowered:
+     *     [`BackgroundLimits::validate`] rejects values above the agent ceilings.
+     */
+    BackgroundLimits: {
+      /**
+       * Format: double
+       * @description Daily cap on unattended work across the org, in USD. `None` is no cap.
+       * @default 20
+       */
+      org_unattended_daily_usd: number | null;
+      /**
+       * Format: double
+       * @description Budget a schedule gets when the agent does not pass one, in USD.
+       * @default 2
+       */
+      schedule_budget_usd: number;
+      /**
+       * Format: double
+       * @description Largest budget an agent may give a schedule, in USD.
+       * @default 10
+       */
+      schedule_max_budget_usd: number;
+      /**
+       * Format: int32
+       * @description Longest an agent-created recurring schedule may run, in days (1-7).
+       * @default 7
+       */
+      schedule_max_lifetime_days: number;
+      /**
+       * Format: int32
+       * @description Most runs an agent-created recurring schedule may have (1-96).
+       * @default 96
+       */
+      schedule_max_runs: number;
+    };
     /** @description Structured progress reported by background tools. */
     BackgroundProgress: {
       /** Format: int64 */
@@ -10619,7 +10658,9 @@ export interface components {
       | "user"
       | "organization"
       | "agent_trigger"
-      | "agent_channel";
+      | "agent_channel"
+      | "session_schedule"
+      | "org_unattended";
     /** @description A provider that needs no setup. */
     BuiltInSearchProvider: {
       description: string;
@@ -18408,6 +18449,13 @@ export interface components {
          *     default.
          */
         agentid_agents_per_owner?: number | null;
+        /**
+         * @description Limits on unattended background work (Settings → Limits): schedule
+         *     lifetime and run cap for agent-created schedules, the default and
+         *     largest schedule budget, and the daily unattended spend cap. Code
+         *     defaults when the organization never set any.
+         */
+        background_limits: components["schemas"]["BackgroundLimits"];
         /** @description Base harness used when session creation omits harness_id. */
         base_harness_id?: string | null;
         /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
@@ -21864,6 +21912,13 @@ export interface components {
        *     default.
        */
       agentid_agents_per_owner?: number | null;
+      /**
+       * @description Limits on unattended background work (Settings → Limits): schedule
+       *     lifetime and run cap for agent-created schedules, the default and
+       *     largest schedule budget, and the daily unattended spend cap. Code
+       *     defaults when the organization never set any.
+       */
+      background_limits: components["schemas"]["BackgroundLimits"];
       /** @description Base harness used when session creation omits harness_id. */
       base_harness_id?: string | null;
       /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
@@ -29928,6 +29983,7 @@ export interface components {
        * @example 5
        */
       agentid_agents_per_owner?: number | null;
+      background_limits?: components["schemas"]["BackgroundLimits"] | null;
       /**
        * @description Base harness to use when a session is started without an explicit harness_id.
        * @example harness_01933b5a000070008000000000000601

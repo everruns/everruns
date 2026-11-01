@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use everruns_contracts::model_profiles::estimate_cost_usd;
 use everruns_contracts::provider::DriverId;
-use everruns_contracts::typed_id::{AgentId, BudgetId, SessionId, TriggerId};
+use everruns_contracts::typed_id::{AgentId, BudgetId, ScheduleId, SessionId, TriggerId};
 use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
 use everruns_core::EventListener;
 use everruns_core::budget::{BudgetAction, BudgetCheckResult, BudgetPeriod};
@@ -29,6 +29,16 @@ use crate::storage::{BudgetRow, CreateUsageJournalRow, CreateUsageLedgerRow};
 
 pub struct BudgetService {
     db: Arc<StorageBackend>,
+}
+
+/// What the session scheduler does with a due schedule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FireGate {
+    Fire,
+    /// The schedule's own budget is spent: stop the schedule.
+    ScheduleBudgetSpent,
+    /// The org's unattended spend for today is used up: skip this fire.
+    OrgUnattendedSpent,
 }
 
 struct BudgetScope {
@@ -53,11 +63,18 @@ struct BudgetScope {
     principal_id: Option<uuid::Uuid>,
     agent_id: Option<uuid::Uuid>,
     harness_id: Option<uuid::Uuid>,
+    /// Public id (`sched_`) of the schedule whose fire started the turn.
+    schedule_subject_id: Option<String>,
+    /// No person started this turn: a schedule fired it, or an agent trigger
+    /// started the session. The org's daily unattended budget binds it.
+    unattended: bool,
 }
 
 impl BudgetScope {
     fn lookup(&self) -> BudgetSubjectLookup<'_> {
         BudgetSubjectLookup {
+            schedule_id: self.schedule_subject_id.as_deref(),
+            org_unattended_id: self.unattended.then_some(self.org_subject_id.as_str()),
             session_id: Some(self.session_subject_id.as_str()),
             agent_id: self.agent_subject_id.as_deref(),
             user_id: self.user_subject_id.as_deref(),
@@ -101,6 +118,8 @@ impl BudgetService {
                 .and_then(|id| AgentId::parse(id).ok())
                 .map(|id| id.uuid()),
             harness_id: None,
+            schedule_subject_id: None,
+            unattended: false,
         })
     }
 
@@ -187,7 +206,44 @@ impl BudgetService {
             principal_id: Some(session.owner_principal_id.uuid()),
             agent_id: session.agent_id.map(|id| id.uuid()),
             harness_id: session.harness_id.map(|id| id.uuid()),
+            schedule_subject_id: None,
+            unattended: session.trigger_id.is_some(),
         })
+    }
+
+    /// Add the schedule level when a schedule fired the turn: the turn whose
+    /// input is `input_message_id`, or the session's latest input when the
+    /// caller has no turn context (the loop gate). Also makes sure the org's
+    /// daily unattended budget exists before an unattended turn is checked
+    /// or metered (it is created lazily from Settings → Limits).
+    async fn attach_unattended(
+        &self,
+        scope: &mut BudgetScope,
+        org_id: i64,
+        input_message_id: Option<uuid::Uuid>,
+    ) {
+        let schedule = match (input_message_id, scope.session_id) {
+            (Some(message_id), _) => self.db.invocation_schedule(message_id).await,
+            (None, Some(session_id)) => {
+                self.db.latest_invocation_schedule(org_id, session_id).await
+            }
+            (None, None) => Ok(None),
+        };
+        match schedule {
+            Ok(Some(schedule_id)) => {
+                scope.schedule_subject_id = Some(ScheduleId::from_uuid(schedule_id).to_string());
+                scope.unattended = true;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                error!(org_id, error = %error, "Failed to resolve the schedule of a turn for budgets")
+            }
+        }
+        if scope.unattended
+            && let Err(error) = self.db.ensure_org_unattended_budget(org_id).await
+        {
+            error!(org_id, error = %error, "Failed to create the org's unattended budget");
+        }
     }
 
     pub async fn list_budgets_for_session_hierarchy(
@@ -196,7 +252,7 @@ impl BudgetService {
         session_id: &str,
         agent_id: Option<&str>,
     ) -> Vec<BudgetRow> {
-        let scope = match self.resolve_scope(org_id, session_id, agent_id).await {
+        let mut scope = match self.resolve_scope(org_id, session_id, agent_id).await {
             Ok(scope) => scope,
             Err(error) => {
                 error!(
@@ -208,6 +264,7 @@ impl BudgetService {
             }
         };
 
+        self.attach_unattended(&mut scope, org_id, None).await;
         let rows = match self
             .db
             .list_budgets_for_subjects(org_id, scope.lookup())
@@ -273,7 +330,7 @@ impl BudgetService {
         };
 
         let session_public_id = source.session_id.to_string();
-        let scope = match self
+        let mut scope = match self
             .scope_from_session(&session, &session_public_id, None)
             .await
         {
@@ -287,6 +344,9 @@ impl BudgetService {
                 return;
             }
         };
+
+        self.attach_unattended(&mut scope, session.org_id, source.input_message_id)
+            .await;
 
         // Find all active budgets in the subject hierarchy
         let budgets = match self
@@ -495,6 +555,7 @@ impl BudgetService {
                 source_id: generation_id.to_string(),
                 event_id: None,
                 turn_id,
+                input_message_id: None,
                 ref_id: event_id.unwrap_or(generation_id),
             },
             model,
@@ -720,6 +781,43 @@ impl BudgetService {
         most_restrictive
     }
 
+    /// Whether a schedule may fire now: its own budget and the org's daily
+    /// unattended budget must both have room. Checked by the session
+    /// scheduler before it starts a turn, so a spent schedule stops instead of
+    /// starting turns the loop gate would end at once. Fails open, like the
+    /// loop gate, when the budgets cannot be read.
+    pub async fn unattended_fire_gate(&self, org_id: i64, schedule_public_id: &str) -> FireGate {
+        let spent = |budget: &BudgetRow| budget.status == "exhausted" || budget.balance <= 0.0;
+        match self
+            .db
+            .schedule_budgets(org_id, &[schedule_public_id.to_string()])
+            .await
+        {
+            Ok(rows) => {
+                for row in rows {
+                    if spent(&self.maybe_reset_period(row).await) {
+                        return FireGate::ScheduleBudgetSpent;
+                    }
+                }
+            }
+            Err(error) => error!(org_id, error = %error, "Failed to read a schedule's budget"),
+        }
+        match self.db.org_unattended_budget(org_id).await {
+            Ok(Some(row)) => {
+                if spent(&self.maybe_reset_period(row).await) {
+                    FireGate::OrgUnattendedSpent
+                } else {
+                    FireGate::Fire
+                }
+            }
+            Ok(None) => FireGate::Fire,
+            Err(error) => {
+                error!(org_id, error = %error, "Failed to read the org's unattended budget");
+                FireGate::Fire
+            }
+        }
+    }
+
     fn spent_amount(&self, budget: &BudgetRow) -> f64 {
         (budget.limit - budget.balance).max(0.0)
     }
@@ -820,6 +918,8 @@ pub(crate) struct GenerationSource {
     /// FK to the persisted event, when there is one.
     pub event_id: Option<uuid::Uuid>,
     pub turn_id: Option<uuid::Uuid>,
+    /// Input message of the turn, which says whether a schedule fired it.
+    pub input_message_id: Option<uuid::Uuid>,
     /// Ledger `ref_id` (`ref_type` is `llm_generation`).
     pub ref_id: uuid::Uuid,
 }
@@ -835,6 +935,7 @@ impl GenerationSource {
             // source_id but must not write an FK to usage_journal.event_id.
             event_id: event.sequence.map(|_| event.id.uuid()),
             turn_id: event.context.turn_id.as_ref().map(|id| id.uuid()),
+            input_message_id: event.context.input_message_id.as_ref().map(|id| id.uuid()),
             ref_id: event.id.uuid(),
         }
     }

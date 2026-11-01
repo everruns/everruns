@@ -28,6 +28,11 @@ pub struct BudgetSubjectLookup<'a> {
     /// when it was re-parented (EVE-1004) — under the subject type that
     /// replaced it.
     pub channel_id: Option<&'a str>,
+    /// Public id (`sched_`) of the schedule whose fire started the turn.
+    pub schedule_id: Option<&'a str>,
+    /// The org's public id, set only for unattended turns (a schedule fire or
+    /// a trigger-started session), so the daily unattended cap binds them.
+    pub org_unattended_id: Option<&'a str>,
 }
 
 impl<'a> BudgetSubjectLookup<'a> {
@@ -35,6 +40,9 @@ impl<'a> BudgetSubjectLookup<'a> {
     /// order from most specific (session) to most general (org).
     pub fn to_pairs(&self) -> Vec<(&'a str, &'a str)> {
         let mut pairs = Vec::new();
+        if let Some(id) = self.schedule_id {
+            pairs.push(("session_schedule", id));
+        }
         if let Some(id) = self.session_id {
             pairs.push(("session", id));
         }
@@ -52,6 +60,9 @@ impl<'a> BudgetSubjectLookup<'a> {
         }
         if let Some(id) = self.org_public_id {
             pairs.push(("org", id));
+        }
+        if let Some(id) = self.org_unattended_id {
+            pairs.push(("org_unattended", id));
         }
         pairs
     }
@@ -188,6 +199,8 @@ impl Database {
                 user_id,
                 org_public_id,
                 channel_id: None,
+                schedule_id: None,
+                org_unattended_id: None,
             },
         )
         .await

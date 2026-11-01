@@ -3091,19 +3091,25 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
 
     let session_id = session.id;
 
+    // The fixtures below differ only in description and timing.
+    let row = |description: &str, cron: Option<&str>, scheduled_at| CreateSessionScheduleRow {
+        org_id: TEST_ORG_ID,
+        session_id,
+        owner_principal_id,
+        resolved_owner_user_id: None,
+        description: description.to_string(),
+        cron_expression: cron.map(str::to_string),
+        scheduled_at,
+        timezone: "UTC".to_string(),
+        next_trigger_at: None,
+        ends_at: None,
+        max_runs: None,
+        stop_when: None,
+    };
+
     // Fixture: a recurring session schedule, enabled by default.
     let schedule = backend
-        .create_session_schedule(CreateSessionScheduleRow {
-            org_id: TEST_ORG_ID,
-            session_id,
-            owner_principal_id,
-            resolved_owner_user_id: None,
-            description: "monitor-inactive-sched-test".to_string(),
-            cron_expression: Some("0 * * * *".to_string()),
-            scheduled_at: None,
-            timezone: "UTC".to_string(),
-            next_trigger_at: None,
-        })
+        .create_session_schedule(row("monitor-inactive-sched-test", Some("0 * * * *"), None))
         .await
         .expect("Failed to create test schedule");
 
@@ -3112,17 +3118,11 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     // Fixture: a directly canceled one-shot schedule. It should be considered
     // inactive because it has no trigger metadata.
     let one_shot_schedule = backend
-        .create_session_schedule(CreateSessionScheduleRow {
-            org_id: TEST_ORG_ID,
-            session_id,
-            owner_principal_id,
-            resolved_owner_user_id: None,
-            description: "monitor-canceled-one-shot-test".to_string(),
-            cron_expression: None,
-            scheduled_at: Some(Utc::now()),
-            timezone: "UTC".to_string(),
-            next_trigger_at: None,
-        })
+        .create_session_schedule(row(
+            "monitor-canceled-one-shot-test",
+            None,
+            Some(Utc::now()),
+        ))
         .await
         .expect("Failed to create one-shot test schedule");
 
@@ -3131,17 +3131,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     // Fixture: a fired one-shot schedule. It is disabled before its linked
     // monitor is marked Succeeded, so it should not be an orphan candidate.
     let fired_one_shot_schedule = backend
-        .create_session_schedule(CreateSessionScheduleRow {
-            org_id: TEST_ORG_ID,
-            session_id,
-            owner_principal_id,
-            resolved_owner_user_id: None,
-            description: "monitor-fired-one-shot-test".to_string(),
-            cron_expression: None,
-            scheduled_at: Some(Utc::now()),
-            timezone: "UTC".to_string(),
-            next_trigger_at: None,
-        })
+        .create_session_schedule(row("monitor-fired-one-shot-test", None, Some(Utc::now())))
         .await
         .expect("Failed to create fired one-shot test schedule");
 
@@ -3927,6 +3917,9 @@ async fn seed_overdue_schedules(
                 scheduled_at: None,
                 timezone: "UTC".to_string(),
                 next_trigger_at: Some(Utc::now() - chrono::Duration::days(3650)),
+                ends_at: None,
+                max_runs: None,
+                stop_when: None,
             })
             .await
             .expect("Failed to create overdue schedule");

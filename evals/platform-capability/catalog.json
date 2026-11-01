@@ -24805,6 +24805,47 @@
     "description": "Update the active organization's name and defaults.",
     "input_schema": {
       "$defs": {
+        "BackgroundLimits": {
+          "description": "Limits on background work an org can tune in Settings → Limits.\n\nDefaults are code constants rather than environment variables, so every\ndeployment starts safe. The lifetime and run limits can only be lowered:\n[`BackgroundLimits::validate`] rejects values above the agent ceilings.",
+          "properties": {
+            "org_unattended_daily_usd": {
+              "default": 20.0,
+              "description": "Daily cap on unattended work across the org, in USD. `None` is no cap.",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "schedule_budget_usd": {
+              "default": 2.0,
+              "description": "Budget a schedule gets when the agent does not pass one, in USD.",
+              "format": "double",
+              "type": "number"
+            },
+            "schedule_max_budget_usd": {
+              "default": 10.0,
+              "description": "Largest budget an agent may give a schedule, in USD.",
+              "format": "double",
+              "type": "number"
+            },
+            "schedule_max_lifetime_days": {
+              "default": 7,
+              "description": "Longest an agent-created recurring schedule may run, in days (1-7).",
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "schedule_max_runs": {
+              "default": 96,
+              "description": "Most runs an agent-created recurring schedule may have (1-96).",
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
         "SearchFallbackMode": {
           "description": "What happens when a provider cannot answer.",
           "enum": [
@@ -24845,6 +24886,17 @@
               "type": [
                 "integer",
                 "null"
+              ]
+            },
+            "background_limits": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/BackgroundLimits",
+                  "description": "Limits on unattended background work; replaces the stored limits as a\nwhole. Omitted fields take the code default. Lifetime is 1 to 7 days,\nruns 1 to 96, budgets positive with the default not above the largest,\nand `org_unattended_daily_usd` positive or null for no daily cap."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "base_harness_id": {

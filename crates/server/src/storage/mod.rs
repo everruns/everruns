@@ -36,6 +36,7 @@ mod system_decisions;
 // depends on `everruns-durable` and passes these fields to its schedule store.
 pub use everruns_durable::UpdateField;
 pub mod agentid;
+pub mod background_limits;
 pub mod org_egress_allowlist;
 pub mod org_slack_connections;
 pub mod org_web_search;

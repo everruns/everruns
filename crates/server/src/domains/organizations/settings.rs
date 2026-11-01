@@ -88,7 +88,11 @@ impl Command for UpdateOrg {
             system_decisions,
             agentid_agents_per_owner,
             web_search_defaults,
+            background_limits,
         } = self.request;
+        if let Some(limits) = &background_limits {
+            limits.validate().map_err(CommandError::bad_request)?;
+        }
         if let Some(name) = &name {
             if name.trim().is_empty() || name.len() > 255 {
                 return Err(CommandError::bad_request(
@@ -239,6 +243,11 @@ impl Command for UpdateOrg {
         if let Some(defaults) = web_search_defaults {
             ctx.db
                 .set_org_web_search_defaults(row.org_id, &defaults)
+                .await?;
+        }
+        if let Some(limits) = background_limits {
+            ctx.db
+                .set_org_background_limits(row.org_id, &limits)
                 .await?;
         }
         if let Some(cap) = agentid_agents_per_owner {

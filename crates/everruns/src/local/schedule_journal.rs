@@ -141,6 +141,11 @@ impl JournalTimer {
             created_at: self.set_at,
             updated_at: last_triggered_at.unwrap_or(self.set_at),
             deleted_at: None,
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
+            stop_reason: None,
+            budget: None,
         })
     }
 
