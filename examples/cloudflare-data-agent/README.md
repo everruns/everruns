@@ -10,6 +10,14 @@ Requires an Everruns installation with `EXTERNAL_AGENTS_ENABLED=true`, encryptio
 configured, and an outbound network policy that permits your HTTPS endpoint. This is opt-in experimental functionality;
 verify that your Cloud installation has enabled it before deploying.
 
+| File | What it owns |
+| --- | --- |
+| `src/tool.js` | The `sales_summary` tool definition and its bound D1 query. |
+| `src/model.js` | One OpenAI Responses call and its `llm.generation` trace event. |
+| `src/agent.js` | Conversation rebuild from the journal and the model/tool loop. |
+| `src/index.js` | Worker entry point: authentication, ownership challenge, event stream. |
+| `src/protocol.js` | The `everruns-worker/v1` request contract and event writer. |
+
 ## Deploy
 
 ```bash
