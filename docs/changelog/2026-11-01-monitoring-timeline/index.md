@@ -16,10 +16,13 @@ yesterday, and what happened to their turns". Pick a range from 15 minutes to
 outcome, the longest wait for a worker, tool calls, model spend, errors and
 model latency. Deploys are marked on the charts.
 
+![Parallel sessions by phase over 24 hours, with a selected window and its totals](./timeline@2x.png)
+
 Click a bucket or drag across a chart to see that window's numbers, its busiest
 agents and why turns failed, then zoom in. The platform view adds total worker
 slots, a load strip per worker and lease takeovers.
 
 The server records a sample every 10 seconds and keeps history permanently.
 History from before the upgrade is rebuilt from turn records, without the phase
-split. `GET /api/v1/monitoring/timeline` returns the same data.
+split. `GET /api/v1/monitoring/timeline` returns the same data. See
+[Monitoring](/observability/monitoring/) for what each chart counts.
