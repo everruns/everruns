@@ -253,7 +253,7 @@ plugins patch	--context-revision --id --mcp-server-identities --reason --status 
 plugins uninstall	--context-revision --id --reason <id>
 plugins update	--context-revision --id --reason <id>
 providers check-credentials check	--api-key! --base-url --context-revision --provider-type! --reason
-providers create	--api-key --base-url --context-revision --name! --provider-type! --reason --request-options --trace
+providers create	--api --api-key --base-url --context-revision --name! --provider-type! --reason --request-options --trace
 providers delete	--context-revision --id --reason <id>
 providers get	--context-revision --id --reason <id>
 providers list	--context-revision --reason
@@ -261,7 +261,7 @@ providers models create	--capabilities... --context-revision --display-name! --e
 providers models list	--context-revision --provider-id! --reason
 providers models review	--context-revision --id! --reason
 providers sync-models sync	--context-revision --id! --reason
-providers update	--api-key --base-url --context-revision --id! --name --provider-type --reason --request-options --status --trace
+providers update	--api --api-key --base-url --context-revision --id! --name --provider-type --reason --request-options --status --trace
 reports admin backfill	--context-revision --limit --reason
 reports admin diagnostics get	--context-revision --reason
 reports catalog get	--context-revision --reason

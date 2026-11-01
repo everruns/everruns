@@ -33,6 +33,7 @@ everruns providers create [OPTIONS] --name <name> --provider-type <provider_type
 
 | Flag | Description |
 |---|---|
+| `--api <API>` | Chat API declared by the provider driver; "default" restores its default. |
 | `--api-key <API_KEY>` | Credential for the provider. |
 | `--base-url <BASE_URL>` | Custom API endpoint. |
 | `--name <NAME>` | Required. Human-readable name. |
@@ -110,6 +111,7 @@ everruns providers update [OPTIONS] --id <id>
 
 | Flag | Description |
 |---|---|
+| `--api <API>` | Chat API declared by the provider driver; "default" restores its default. |
 | `--api-key <API_KEY>` | Replacement credential. |
 | `--base-url <BASE_URL>` | Replacement API endpoint. |
 | `--id <ID>` | Required. Prefixed public identifier. |
