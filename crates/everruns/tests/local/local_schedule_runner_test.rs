@@ -338,6 +338,11 @@ async fn create_reads_unix_weekdays_and_rejects_bad_input() {
             Some(cron.into()),
             None,
             timezone.into(),
+            everruns_core::session_schedule::ScheduleBounds {
+                max_runs: Some(4),
+                stop_when: Some("the weekly report is sent".into()),
+                ..Default::default()
+            },
         )
     };
 
@@ -379,6 +384,11 @@ async fn rejects_unknown_cron_interval_before_local_storage() {
                 Some(expression.into()),
                 None,
                 "UTC".into(),
+                everruns_core::session_schedule::ScheduleBounds {
+                    max_runs: Some(4),
+                    stop_when: Some("done".into()),
+                    ..Default::default()
+                },
             )
             .await;
         assert!(matches!(result, Err(ScheduleLimitError::Rejected(_))));

@@ -3103,6 +3103,9 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
             scheduled_at: None,
             timezone: "UTC".to_string(),
             next_trigger_at: None,
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
         })
         .await
         .expect("Failed to create test schedule");
@@ -3122,6 +3125,9 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
             scheduled_at: Some(Utc::now()),
             timezone: "UTC".to_string(),
             next_trigger_at: None,
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
         })
         .await
         .expect("Failed to create one-shot test schedule");
@@ -3141,6 +3147,9 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
             scheduled_at: Some(Utc::now()),
             timezone: "UTC".to_string(),
             next_trigger_at: None,
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
         })
         .await
         .expect("Failed to create fired one-shot test schedule");
@@ -3927,6 +3936,9 @@ async fn seed_overdue_schedules(
                 scheduled_at: None,
                 timezone: "UTC".to_string(),
                 next_trigger_at: Some(Utc::now() - chrono::Duration::days(3650)),
+                ends_at: None,
+                max_runs: None,
+                stop_when: None,
             })
             .await
             .expect("Failed to create overdue schedule");

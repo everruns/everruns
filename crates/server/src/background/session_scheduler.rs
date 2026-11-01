@@ -296,6 +296,18 @@ async fn poll_and_trigger(
             "schedule_id".to_string(),
             serde_json::Value::String(schedule_id.to_string()),
         );
+        // The run's counters as data, so a later model-view header (message
+        // origin) can render them instead of the text footer fire_message adds.
+        metadata.insert(
+            "schedule_run".to_string(),
+            serde_json::json!({
+                "number": fired.trigger_count,
+                "limit": fired.max_runs,
+                "ends_at": fired.ends_at,
+                "stop_when": fired.stop_when,
+                "budget": fired.budget,
+            }),
+        );
 
         let core_message = RuntimeMessage {
             id: message_id_typed,

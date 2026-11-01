@@ -249,6 +249,9 @@ async fn run_background_sweep_regression(database_url: &str) {
             scheduled_at: Some(Utc::now() - chrono::Duration::minutes(1)),
             timezone: "UTC".to_string(),
             next_trigger_at: Some(Utc::now() - chrono::Duration::days(3650)),
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
         })
         .await
         .expect("create overdue schedule");

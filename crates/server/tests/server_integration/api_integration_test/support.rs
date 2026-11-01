@@ -88,6 +88,9 @@ pub(crate) async fn seed_session_schedule(server: &TestServer, session: &Session
             scheduled_at: Some(scheduled_at),
             timezone: "UTC".to_string(),
             next_trigger_at: Some(scheduled_at),
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
         })
         .await
         .unwrap();

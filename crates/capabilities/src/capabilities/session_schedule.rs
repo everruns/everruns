@@ -599,7 +599,9 @@ mod tests {
             .execute_with_context(
                 json!({
                     "description": "Check logs",
-                    "cron_expression": "0 3 * * *"
+                    "cron_expression": "0 3 * * *",
+                    "max_runs": 5,
+                    "stop_when": "the logs show the deploy finished"
                 }),
                 &context,
             )
@@ -613,6 +615,46 @@ mod tests {
             }
             other => panic!("expected success, got: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn create_schedule_requires_an_end_and_stop_condition_for_recurring() {
+        let store = MockScheduleStore::new();
+        let mut context = ToolContext::new(SessionId::new());
+        context.schedule_store = Some(Arc::new(store));
+
+        for (args, expected) in [
+            (
+                json!({"description": "Poll", "cron_expression": "*/5 * * * *", "stop_when": "done"}),
+                "7 days and 96 runs",
+            ),
+            (
+                json!({"description": "Poll", "cron_expression": "*/5 * * * *", "max_runs": 10}),
+                "stop_when",
+            ),
+            (
+                json!({"description": "Poll", "cron_expression": "*/5 * * * *", "max_runs": 500, "stop_when": "done"}),
+                "limit of 96 runs",
+            ),
+        ] {
+            match CreateScheduleTool.execute_with_context(args, &context).await {
+                ToolExecutionResult::ToolError(msg) => {
+                    assert!(msg.contains(expected), "unexpected msg: {msg}");
+                }
+                other => panic!("expected tool error, got: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn create_schedule_states_its_limits_to_the_model() {
+        let tool = CreateScheduleTool;
+        assert!(tool.description().contains("96 runs"));
+        assert!(tool.description().contains("$2.00"));
+        let schema = tool.parameters_schema();
+        assert_eq!(schema["properties"]["max_runs"]["maximum"], 96);
+        assert!(schema["properties"]["stop_when"].is_object());
+        assert!(schema["properties"]["budget_usd"].is_object());
     }
 
     #[tokio::test]
@@ -681,7 +723,9 @@ mod tests {
             .execute_with_context(
                 json!({
                     "description": "Too frequent",
-                    "cron_expression": "* * * * *"
+                    "cron_expression": "* * * * *",
+                    "max_runs": 3,
+                    "stop_when": "done"
                 }),
                 &context,
             )
