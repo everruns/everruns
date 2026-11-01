@@ -14,6 +14,8 @@ import type {
   EvalRunShareLink,
   EvalRunShareStatus,
   PublicEvalRun,
+  EvalExperiment,
+  CreateEvalExperimentRequest,
 } from "./types";
 
 export const evalsCrudApi = createCrudApi<Eval, CreateEvalRequest, UpdateEvalRequest>("/v1/evals");
@@ -102,4 +104,34 @@ export async function getPublicEvalRun(token: string): Promise<PublicEvalRun> {
     throw new Error(res.status === 404 ? "not_found" : `request failed (${res.status})`);
   }
   return (await res.json()) as PublicEvalRun;
+}
+
+// Experiments: one dataset version against several variants (Evals rebuild
+// step 3). Each variant is an ordinary run tagged with the experiment.
+export async function listEvalExperiments(evalId: string): Promise<EvalExperiment[]> {
+  const response = await api.get<{ data: EvalExperiment[] }>(`${evalPath(evalId)}/experiments`);
+  return response.data.data;
+}
+
+export async function listAllEvalExperiments(): Promise<EvalExperiment[]> {
+  const response = await api.get<{ data: EvalExperiment[] }>(`/v1/evals/experiments`);
+  return response.data.data;
+}
+
+export async function getEvalExperiment(
+  evalId: string,
+  experimentId: string,
+): Promise<EvalExperiment> {
+  const response = await api.get<EvalExperiment>(
+    `${evalPath(evalId)}/experiments/${encodeURIComponent(experimentId)}`,
+  );
+  return response.data;
+}
+
+export async function createEvalExperiment(
+  evalId: string,
+  request: CreateEvalExperimentRequest,
+): Promise<EvalExperiment> {
+  const response = await api.post<EvalExperiment>(`${evalPath(evalId)}/experiments`, request);
+  return response.data;
 }

@@ -25,7 +25,7 @@ use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::storage::{CreateEvalExperimentRow, EvalExperimentRow, EvalRunRow, StorageBackend};
 use anyhow::Result;
 use compare::{VariantResults, compare};
-use everruns_contracts::typed_id::{EvalId, IdMarker, TypedId};
+use everruns_contracts::typed_id::{IdMarker, TypedId};
 use everruns_core::Caller;
 use types::*;
 use uuid::Uuid;
@@ -205,15 +205,21 @@ pub async fn list(
         .await?;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
     let runs = db.list_runs_of_eval_experiments(&ids).await?;
+    let mut eval_ids: Vec<Uuid> = rows.iter().map(|r| r.eval_id).collect();
+    eval_ids.sort_unstable();
+    eval_ids.dedup();
+    let eval_public_ids = db.eval_public_ids(caller.org_id, &eval_ids).await?;
     Ok(rows
         .iter()
-        .map(|row| {
+        .filter_map(|row| {
             let mine: Vec<EvalRunRow> = runs
                 .iter()
                 .filter(|run| run.experiment_id == Some(row.id))
                 .cloned()
                 .collect();
-            to_experiment(row, &EvalId::from_uuid(row.eval_id).to_string(), &mine)
+            // An eval deleted since keeps no route to its experiments.
+            let eval_public_id = eval_public_ids.get(&row.eval_id)?;
+            Some(to_experiment(row, eval_public_id, &mine))
         })
         .collect())
 }

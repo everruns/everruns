@@ -1464,6 +1464,8 @@ export interface Eval {
   tags: string[];
   status: "active" | "archived" | "deleted";
   case_count: number;
+  /** Counts changes to the cases (the dataset); runs record the one they ran. */
+  version?: number;
   last_run?: EvalRunSummaryView;
   created_at: string;
   updated_at: string;
@@ -1473,6 +1475,7 @@ export interface EvalRunSummaryView {
   id: string;
   status: EvalRunStatus;
   summary?: RunSummary;
+  trials?: number;
   created_at: string;
 }
 
@@ -1489,6 +1492,12 @@ export interface RunSummary {
   avg_latency_ms: number;
   total_input_tokens: number;
   total_output_tokens: number;
+  /** Trials per case; cases and the pass^k / pass@k counts below. */
+  trials?: number;
+  cases?: number;
+  cases_passed_any_trial?: number;
+  cases_passed_every_trial?: number;
+  total_cost_usd?: number | null;
 }
 
 export interface EvalCase {
@@ -1585,6 +1594,9 @@ export interface EvalRun {
   target?: EvalTarget;
   model_override?: string;
   filter_tags?: string[];
+  /** The experiment this run is a variant of. */
+  experiment_id?: string | null;
+  variant_label?: string | null;
   status: EvalRunStatus;
   triggered_by: string;
   started_at?: string;

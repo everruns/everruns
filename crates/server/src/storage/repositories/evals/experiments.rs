@@ -75,6 +75,22 @@ impl Database {
         .await?)
     }
 
+    /// Public ids of the given evals, keyed by row id. Lists span evals, and
+    /// an experiment row only carries the eval's row id.
+    pub async fn eval_public_ids(
+        &self,
+        org_id: i64,
+        eval_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, String>> {
+        let rows: Vec<(Uuid, String)> =
+            sqlx::query_as("SELECT id, public_id FROM evals WHERE org_id = $1 AND id = ANY($2)")
+                .bind(org_id)
+                .bind(eval_ids)
+                .fetch_all(&self.pool)
+                .await?;
+        Ok(rows.into_iter().collect())
+    }
+
     /// Tag a run as one variant of an experiment.
     pub async fn tag_eval_run_variant(
         &self,

@@ -22,8 +22,12 @@ jest.mock("next/link", () => ({
 }));
 
 let pathname = "/evals";
+let search = "";
+const mockReplace = jest.fn();
 jest.mock("next/navigation", () => ({
   usePathname: () => pathname,
+  useSearchParams: () => new URLSearchParams(search),
+  useRouter: () => ({ replace: mockReplace, push: jest.fn() }),
 }));
 
 const mockUseEvals = jest.fn();
@@ -34,7 +38,31 @@ jest.mock("@/hooks", () => ({
   useEvals: (...args: unknown[]) => mockUseEvals(...args),
   useAgents: (...args: unknown[]) => mockUseAgents(...args),
   useObservers: (...args: unknown[]) => mockUseObservers(...args),
+  useAllEvalExperiments: () => ({ data: [] }),
+  useEvalRunsMany: () => new Map(),
+  useCreateEvalExperiment: () => ({ mutateAsync: jest.fn(), isPending: false }),
   usePageTitle: () => undefined,
+}));
+
+jest.mock("@/hooks/use-health-issues", () => ({
+  useEvalFindings: () => ({
+    data: {
+      data: [
+        {
+          id: "issue_1",
+          code: "session.suspected_abuse",
+          status: "open",
+          title: "Session looks like abuse",
+          body: "",
+          missing_scopes: [],
+          first_detected_at: "2026-11-01T00:00:00Z",
+          last_checked_at: "2026-11-01T00:00:00Z",
+          stale: false,
+          href: "/health/issue_1",
+        },
+      ],
+    },
+  }),
 }));
 
 jest.mock("@/providers/feature-flags-provider", () => ({
@@ -81,27 +109,39 @@ beforeEach(() => {
   mockUseAgents.mockReturnValue({ data: [] });
 });
 
-it("uses the shared masthead and status tabs for evals", () => {
+it("opens the Evals section on the overview and switches tabs through the URL", () => {
   pathname = "/evals";
-  mockUseEvals.mockReturnValue({
-    data: [activeEval, archivedEval],
-    isLoading: false,
-    error: null,
-  });
+  search = "";
+  mockUseEvals.mockReturnValue({ data: [activeEval, archivedEval], isLoading: false, error: null });
+  mockUseObservers.mockReturnValue({ data: [activeObserver] });
 
   render(<EvalsPage />);
 
   expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent("Quality/Evals");
   expect(screen.getByRole("heading", { name: "Evals" })).toBeInTheDocument();
   expect(
-    screen.getByText("Define, run, and track behavioral tests for your agents."),
+    screen.getByText("How your agents do on test datasets and on real traffic."),
   ).toBeInTheDocument();
-  const evalsMasthead = document.querySelector<HTMLElement>('[data-slot="page-masthead"]');
-  expect(evalsMasthead).not.toBeNull();
-  expect(within(evalsMasthead!).queryByText("2")).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+  // The abuse finding is the one thing that needs a look.
+  expect(screen.getByText("Session looks like abuse")).toBeInTheDocument();
+  expect(screen.getByText("High")).toBeInTheDocument();
+  expect(mockUseEvals).toHaveBeenCalledWith({ includeArchived: true });
+
+  fireEvent.click(screen.getByRole("tab", { name: "Datasets" }));
+  expect(mockReplace).toHaveBeenCalledWith("/evals?tab=datasets", { scroll: false });
+});
+
+it("lists active and archived datasets on the Datasets tab", () => {
+  pathname = "/evals";
+  search = "tab=datasets";
+  mockUseEvals.mockReturnValue({ data: [activeEval, archivedEval], isLoading: false, error: null });
+  mockUseObservers.mockReturnValue({ data: [] });
+
+  render(<EvalsPage />);
+
   expect(within(screen.getByRole("tab", { name: "Active" })).getByText("1")).toBeInTheDocument();
   expect(within(screen.getByRole("tab", { name: "Archived" })).getByText("1")).toBeInTheDocument();
-  expect(mockUseEvals).toHaveBeenCalledWith({ includeArchived: true });
   expect(screen.getByText("Active eval")).toBeInTheDocument();
   expect(screen.queryByText("Archived eval")).not.toBeInTheDocument();
 

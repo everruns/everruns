@@ -29,11 +29,6 @@ const rawPaletteExceptions: Record<string, Record<string, number>> = {
     "text-red-600": 1,
     "text-yellow-600": 1,
   },
-  "app/(main)/evals/page.tsx": {
-    "text-green-600": 1,
-    "text-red-600": 1,
-    "text-yellow-600": 1,
-  },
   "app/dev/file-tree/page.tsx": {
     "dark:text-amber-400": 1,
     "dark:text-sky-400": 1,

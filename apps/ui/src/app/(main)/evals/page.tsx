@@ -1,21 +1,28 @@
 "use client";
 
-import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
+// The Evals section (approved mockup 01): one place for how agents do on test
+// datasets and on real traffic. Tabs live in `?tab=` so links and refreshes
+// land on the same view. Observers keep their own pages; the tab lists them so
+// tests and live scoring sit side by side.
 
+import { Suspense, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Play, Plus } from "lucide-react";
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
-
 import { EvalsIcon } from "@/components/icons/facet-icons";
-import { EntityStatus } from "@/components/ui/entity-status";
-import { useMemo, useState } from "react";
-import { useEvals } from "@/hooks";
-import { useAgents, usePageTitle } from "@/hooks";
-import { LinkButton } from "@/components/ui/button";
-import { EntityCard, EntityCardDescription } from "@/components/ui/entity-card";
-import { Badge } from "@/components/ui/badge";
-import { Plus } from "lucide-react";
-import { QueryStateWrapper } from "@/components/query-state-wrapper";
-import type { Eval, EvalTarget } from "@/lib/api/types";
-import { getDisplayName, isArchivedStatus } from "@/lib/entity-lifecycle";
+import {
+  useAgents,
+  useAllEvalExperiments,
+  useEvalRunsMany,
+  useEvals,
+  useObservers,
+  usePageTitle,
+} from "@/hooks";
+import { useEvalFindings } from "@/hooks/use-health-issues";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
+import { Button, LinkButton } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   PageBreadcrumb,
   PageContainer,
@@ -24,105 +31,84 @@ import {
   PageMasthead,
   SectionTabs,
 } from "@/components/layout";
+import { getDisplayName, isArchivedStatus } from "@/lib/entity-lifecycle";
+import { buildEvalsOverview, evalAgentId } from "@/components/evals/evals-overview-data";
+import { EvalsOverviewPanel } from "@/components/evals/section/evals-overview";
+import { DatasetsGrid } from "@/components/evals/section/datasets-grid";
+import { ExperimentsTable } from "@/components/evals/section/experiments-table";
+import { FindingsList } from "@/components/evals/section/findings-list";
+import { GradersList } from "@/components/evals/section/graders-list";
+import { RunExperimentDialog } from "@/components/evals/run-experiment-dialog";
+import { ObserverCard } from "@/components/observers/observer-card";
+import { resolveEvalsTab } from "@/components/evals/section/tabs";
 
-type StatusTab = "active" | "archived";
-
-function passRateColor(rate: number): string {
-  if (rate >= 0.9) return "text-green-600";
-  if (rate >= 0.7) return "text-yellow-600";
-  return "text-red-600";
-}
-
-function targetLabel(target?: EvalTarget, agentMap?: Map<string, string>): string | undefined {
-  if (!target) return undefined;
-  switch (target.type) {
-    case "session": {
-      const agentName = target.agent_id ? agentMap?.get(target.agent_id) : undefined;
-      return agentName ?? target.agent_id ?? undefined;
-    }
-    case "app":
-      return `App: ${target.app_id}`;
-    default:
-      return undefined;
-  }
-}
-
-function EvalCard({ eval: ev, agentMap }: { eval: Eval; agentMap: Map<string, string> }) {
+function EvalsSection() {
   const ui = useUiTranslations();
-  const label = targetLabel(ev.target, agentMap);
-
-  return (
-    <EntityCard
-      className="h-full"
-      title={ev.name}
-      href={`/evals/${ev.id}`}
-      headerActions={<EntityStatus status={ev.status} />}
-    >
-      <div className="space-y-2">
-        {ev.description && <EntityCardDescription>{ev.description}</EntityCardDescription>}
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          {label && <span>{label}</span>}
-          {ev.target?.type && (
-            <Badge variant="outline" className="text-xs">
-              {ev.target.type}
-            </Badge>
-          )}
-          <span>
-            {ev.case_count} {ui("cases")}
-          </span>
-        </div>
-        {ev.last_run && (
-          <div className="flex items-center gap-3 text-xs">
-            <Badge variant={ev.last_run.status === "completed" ? "default" : "outline"}>
-              {ev.last_run.status}
-            </Badge>
-            {ev.last_run.summary && (
-              <span className={passRateColor(ev.last_run.summary.pass_rate)}>
-                {(ev.last_run.summary.pass_rate * 100).toFixed(0)}
-                {ui("% pass rate")}
-              </span>
-            )}
-          </div>
-        )}
-        {ev.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {ev.tags.map((tag) => (
-              <Badge key={tag} variant="outline" className="text-xs">
-                {tag}
-              </Badge>
-            ))}
-          </div>
-        )}
-      </div>
-    </EntityCard>
-  );
-}
-
-export default function EvalsPage() {
-  const { displayLocale } = useDisplayLocale();
-  const ui = useUiTranslations();
+  const { displayLocale } = useLocale();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab = resolveEvalsTab(searchParams.get("tab"));
   usePageTitle(ui("Evals"));
-  const [statusTab, setStatusTab] = useState<StatusTab>("active");
-  useChatPageFilters({ status: statusTab });
+  useChatPageFilters({ tab });
+  const observersEnabled = useFeatureFlag("observers");
+  const [runOpen, setRunOpen] = useState(false);
+
   const { data: evals, isLoading, error } = useEvals({ includeArchived: true });
   const { data: agents } = useAgents({ includeArchived: false });
+  const { data: experiments } = useAllEvalExperiments();
+  const { data: findingsPage } = useEvalFindings();
+  const { data: observers } = useObservers({
+    includeArchived: false,
+    enabled: observersEnabled,
+  });
+  const findings = useMemo(() => findingsPage?.data ?? [], [findingsPage]);
 
-  const agentMap = new Map((agents ?? []).map((a) => [a.id, getDisplayName(a, displayLocale)]));
-  const counts = useMemo(() => {
-    const list = evals ?? [];
-    const archived = list.filter((ev) => isArchivedStatus(ev.status)).length;
-    return { all: list.length, active: list.length - archived, archived };
-  }, [evals]);
-  const filteredEvals = useMemo(
-    () =>
-      (evals ?? []).filter((ev) =>
-        statusTab === "archived" ? isArchivedStatus(ev.status) : !isArchivedStatus(ev.status),
-      ),
-    [evals, statusTab],
+  const activeEvals = useMemo(
+    () => (evals ?? []).filter((ev) => !isArchivedStatus(ev.status)),
+    [evals],
   );
-  const statusItems = [
-    { value: "active" as const, label: ui("Active") },
-    { value: "archived" as const, label: ui("Archived") },
+  const agentEvalIds = activeEvals.filter((ev) => evalAgentId(ev)).map((ev) => ev.id);
+  const runsByEval = useEvalRunsMany(tab === "overview" ? agentEvalIds : []);
+  const overview = useMemo(
+    () =>
+      buildEvalsOverview({
+        evals: activeEvals,
+        agents: agents ?? [],
+        findings,
+        experiments: experiments ?? [],
+        runsByEval,
+        agentName: (agent) => getDisplayName(agent, displayLocale),
+      }),
+    [activeEvals, agents, findings, experiments, runsByEval, displayLocale],
+  );
+
+  const selectTab = (next: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "overview") params.delete("tab");
+    else params.set("tab", next);
+    const query = params.toString();
+    router.replace(query ? `/evals?${query}` : "/evals", { scroll: false });
+  };
+
+  const items = [
+    { value: "overview", label: ui("Overview") },
+    { value: "datasets", label: ui("Datasets"), count: activeEvals.length },
+    {
+      value: "experiments",
+      label: ui("Experiments"),
+      count: experiments?.length,
+    },
+    ...(observersEnabled
+      ? [
+          {
+            value: "observers",
+            label: ui("Observers"),
+            count: observers?.length,
+          },
+        ]
+      : []),
+    { value: "findings", label: ui("Findings"), count: overview.openFindings },
+    { value: "graders", label: ui("Graders") },
   ];
 
   return (
@@ -132,48 +118,87 @@ export default function EvalsPage() {
       <PageMasthead
         icon={<EvalsIcon />}
         title={ui("Evals")}
-        description={ui("Define, run, and track behavioral tests for your agents.")}
+        description={ui("How your agents do on test datasets and on real traffic.")}
         actions={
-          <LinkButton variant="accent" href="/evals/new">
-            <Plus className="size-4" />
-            {ui("New Eval")}
-          </LinkButton>
+          <>
+            <LinkButton variant="outline" href="/evals/new">
+              <Plus className="size-4" />
+              {ui("New dataset")}
+            </LinkButton>
+            <Button variant="accent" onClick={() => setRunOpen(true)}>
+              <Play className="size-4" />
+              {ui("Run experiment")}
+            </Button>
+          </>
         }
       />
 
-      <PageControlStrip className="flex justify-end">
-        <SectionTabs
-          value={statusTab}
-          onValueChange={(value) => setStatusTab(value as StatusTab)}
-          items={statusItems.map((item) => ({ ...item, count: counts[item.value] }))}
-        />
+      <PageControlStrip>
+        <SectionTabs value={tab} onValueChange={selectTab} items={items} />
       </PageControlStrip>
 
       <PageMain>
-        <QueryStateWrapper
-          isLoading={isLoading}
-          error={error}
-          data={filteredEvals}
-          errorMessagePrefix="Failed to load evals"
-          emptyState={
-            <div className="py-12 text-center">
-              <p className="mb-4 text-muted-foreground">{ui("No evals yet")}</p>
-              <LinkButton href="/evals/new">
-                <Plus className="mr-2 size-4" />
-                {ui("Create your first eval")}
+        {tab === "overview" && <EvalsOverviewPanel overview={overview} findings={findings} />}
+        {tab === "datasets" && (
+          <DatasetsGrid evals={evals} agents={agents} isLoading={isLoading} error={error} />
+        )}
+        {tab === "experiments" && (
+          <Card>
+            <CardContent className="p-0">
+              <ExperimentsTable
+                experiments={experiments ?? []}
+                evals={evals ?? []}
+                emptyText={ui("No experiments yet. Run one to compare models on the same cases.")}
+              />
+            </CardContent>
+          </Card>
+        )}
+        {tab === "observers" && observersEnabled && (
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <LinkButton variant="outline" href="/observers/new">
+                <Plus className="size-4" />
+                {ui("New Observer")}
               </LinkButton>
             </div>
-          }
-        >
-          {(items) => (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {items.map((ev) => (
-                <EvalCard key={ev.id} eval={ev} agentMap={agentMap} />
-              ))}
-            </div>
-          )}
-        </QueryStateWrapper>
+            {(observers ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {ui("No observers yet. An observer scores a sample of live sessions.")}
+              </p>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {(observers ?? []).map((observer) => (
+                  <ObserverCard key={observer.id} observer={observer} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {tab === "findings" && (
+          <Card>
+            <CardContent className="p-0">
+              <FindingsList
+                issues={findings}
+                showTime
+                emptyText={ui("No open findings. Detectors and classifiers found no problems.")}
+              />
+            </CardContent>
+          </Card>
+        )}
+        {tab === "graders" && <GradersList />}
       </PageMain>
+
+      {runOpen && (
+        <RunExperimentDialog open={runOpen} onOpenChange={setRunOpen} evals={activeEvals} />
+      )}
     </PageContainer>
+  );
+}
+
+export default function EvalsPage() {
+  return (
+    <Suspense>
+      <EvalsSection />
+    </Suspense>
   );
 }
