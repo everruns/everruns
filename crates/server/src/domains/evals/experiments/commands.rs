@@ -31,6 +31,7 @@ pub struct CreateEvalExperiment {
 #[command(
     name = "create_eval_experiment",
     category = "evals",
+    summary = "Start an eval experiment",
     description = "Start an experiment: run an eval's cases against one to four variants and compare them case by case.",
     method = "POST",
     cli = CliRoute::new(&["evals", "experiments"], "create").with_examples(&[CliExample::new("Compare two models on the same cases, three trials each, within $10", "everruns evals experiments create --eval-id eval_01h9 --variants '[{\"label\":\"luna\",\"model_override\":\"gpt-6-luna\"},{\"label\":\"sol\",\"model_override\":\"gpt-6.1-sol\"}]' --max-cost-usd 10 --reason 'Pick the model for the support agent'")]),
@@ -91,6 +92,7 @@ pub struct ListAllEvalExperiments {}
 #[command(
     name = "list_all_eval_experiments",
     category = "evals",
+    summary = "List experiments across evals",
     description = "List the organization's experiments across evals, newest first.",
     method = "GET",
     cli = CliRoute::new(&["evals", "experiments"], "recent").with_examples(&[CliExample::new("See what experiments ran lately", "everruns evals experiments recent")]),
@@ -120,6 +122,7 @@ pub struct GetEvalExperiment {
 #[command(
     name = "get_eval_experiment",
     category = "evals",
+    summary = "Get an eval experiment with its comparison",
     description = "Get an experiment with its case-by-case comparison and verdicts.",
     method = "GET",
     cli = CliRoute::new(&["evals", "experiments"], "get").with_examples(&[CliExample::new("See which cases a candidate fixed or broke", "everruns evals experiments get --eval-id eval_01h9 --experiment-id evalexp_01h9")]),

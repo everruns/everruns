@@ -3376,7 +3376,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List the organization's experiments across evals, newest first */
+    /**
+     * List experiments across evals
+     * @description List the organization's experiments across evals, newest first.
+     */
     get: operations["list_all_eval_experiments"];
     put?: never;
     post?: never;
@@ -3503,7 +3506,10 @@ export interface paths {
     /** List an eval's experiments, newest first */
     get: operations["list_eval_experiments"];
     put?: never;
-    /** Start an experiment: run an eval's cases against one to four variants and compare them case by case */
+    /**
+     * Start an eval experiment
+     * @description Start an experiment: run an eval's cases against one to four variants and compare them case by case.
+     */
     post: operations["create_eval_experiment"];
     delete?: never;
     options?: never;
@@ -3518,7 +3524,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get an experiment with its case-by-case comparison and verdicts */
+    /**
+     * Get an eval experiment with its comparison
+     * @description Get an experiment with its case-by-case comparison and verdicts.
+     */
     get: operations["get_eval_experiment"];
     put?: never;
     post?: never;

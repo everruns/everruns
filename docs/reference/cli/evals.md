@@ -17,11 +17,6 @@ Evaluation cases, runs, results and scores.
 | [`evals import-preflight`](#evals-import-preflight) | Report whether the caller can import eval results. |
 | [`evals get`](#evals-get) | Get a single eval. |
 | [`evals import`](#evals-import) | Import externally-executed eval results. |
-| [`evals experiments create`](#evals-experiments-create) | Start an experiment: run an eval's cases against one to four variants and compare them case by case. |
-| [`evals experiments gate`](#evals-experiments-gate) | Check an experiment's variant against a bar, for CI. |
-| [`evals experiments get`](#evals-experiments-get) | Get an experiment with its case-by-case comparison and verdicts. |
-| [`evals experiments recent`](#evals-experiments-recent) | List the organization's experiments across evals, newest first. |
-| [`evals experiments list`](#evals-experiments-list) | List an eval's experiments, newest first. |
 | [`evals list`](#evals-list) | List evals. |
 | [`evals update`](#evals-update) | Update an eval. |
 | [`evals atif-import import`](#evals-atif-import-import) | Import ATIF trajectories as eval cases (upserted by name). |
@@ -30,6 +25,11 @@ Evaluation cases, runs, results and scores.
 | [`evals cases get`](#evals-cases-get) | Get an eval case. |
 | [`evals cases list`](#evals-cases-list) | List eval cases. |
 | [`evals cases update`](#evals-cases-update) | Update an eval case. |
+| [`evals experiments create`](#evals-experiments-create) | Start an experiment: run an eval's cases against one to four variants and compare them case by case. |
+| [`evals experiments gate`](#evals-experiments-gate) | Check an experiment's variant against a bar, for CI. |
+| [`evals experiments get`](#evals-experiments-get) | Get an experiment with its case-by-case comparison and verdicts. |
+| [`evals experiments recent`](#evals-experiments-recent) | List the organization's experiments across evals, newest first. |
+| [`evals experiments list`](#evals-experiments-list) | List an eval's experiments, newest first. |
 | [`evals runs cancel`](#evals-runs-cancel) | Cancel an eval run. |
 | [`evals runs create`](#evals-runs-create) | Create an eval run. |
 | [`evals runs get`](#evals-runs-get) | Get an eval run. |
@@ -137,107 +137,6 @@ Example:
 ```bash
 # Record results from an eval harness that ran outside Everruns
 everruns evals import --source '{"system":"mira","run_id":"run-42"}' --evals '[{"name":"support","cases":[{"name":"refund","target":{"provider":"openai","model":"gpt-5.1"},"status":"passed"}]}]' --reason 'Publish the nightly Mira run'
-```
-
-## evals experiments create
-
-Start an experiment: run an eval's cases against one to four variants and compare them case by case.
-
-```bash
-everruns evals experiments create [OPTIONS] --eval-id <eval_id> --variants <variants>
-```
-
-| Flag | Description |
-|---|---|
-| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier; its cases are the dataset. |
-| `--max-cost-usd <MAX_COST_USD>` | Spending cap in USD for the whole experiment, split evenly between the variants' runs. |
-| `--name <NAME>` | Display name. |
-| `--trials <TRIALS>` | Trials per case and variant, 1 to 20 (default 3). |
-| `--variants <VARIANTS>` | Required. One to four variants. |
-
-Example:
-
-```bash
-# Compare two models on the same cases, three trials each, within $10
-everruns evals experiments create --eval-id eval_01h9 --variants '[{"label":"luna","model_override":"gpt-6-luna"},{"label":"sol","model_override":"gpt-6.1-sol"}]' --max-cost-usd 10 --reason 'Pick the model for the support agent'
-```
-
-## evals experiments gate
-
-Check an experiment's variant against a bar, for CI. Answers 409 while runs are going and 422 when the variant misses the bar, so the command exits non-zero.
-
-```bash
-everruns evals experiments gate [OPTIONS] --eval-id <eval_id> --experiment-id <experiment_id>
-```
-
-| Flag | Description |
-|---|---|
-| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
-| `--experiment-id <EXPERIMENT_ID>` | Required. Experiment's prefixed public identifier. |
-| `--min-pass-rate <MIN_PASS_RATE>` | Minimum pass rate over all trials, 0 to 1. |
-| `--min-passed-every-trial <MIN_PASSED_EVERY_TRIAL>` | Minimum share of cases passed in every trial, 0 to 1. |
-| `--no-regression` | Fail when the variant is a regression against the baseline. |
-| `--variant <VARIANT>` | Variant to judge; the last one when omitted. |
-
-Example:
-
-```bash
-# Block a merge unless the candidate passes 90% and is no regression
-everruns evals experiments gate --eval-id eval_01h9 --experiment-id evalexp_01h9 --min-pass-rate 0.9 --no-regression true
-```
-
-## evals experiments get
-
-Get an experiment with its case-by-case comparison and verdicts.
-
-```bash
-everruns evals experiments get [OPTIONS] --eval-id <eval_id> --experiment-id <experiment_id>
-```
-
-| Flag | Description |
-|---|---|
-| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
-| `--experiment-id <EXPERIMENT_ID>` | Required. Experiment's prefixed public identifier. |
-
-Example:
-
-```bash
-# See which cases a candidate fixed or broke
-everruns evals experiments get --eval-id eval_01h9 --experiment-id evalexp_01h9
-```
-
-## evals experiments recent
-
-List the organization's experiments across evals, newest first.
-
-```bash
-everruns evals experiments recent [OPTIONS]
-```
-
-Example:
-
-```bash
-# See what experiments ran lately
-everruns evals experiments recent
-```
-
-## evals experiments list
-
-List an eval's experiments, newest first.
-
-```bash
-everruns evals experiments list [OPTIONS] --eval-id <eval_id>
-```
-
-| Flag | Description |
-|---|---|
-| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
-
-Example:
-
-```bash
-# Find the last experiment on an eval
-everruns evals experiments list --eval-id eval_01h9
 ```
 
 ## evals list
@@ -422,6 +321,107 @@ Example:
 ```bash
 # Give a slow case more turns
 everruns evals cases update --eval-id eval_01h9 --case-id evalcase_01h9 --max-turns 20 --reason 'Case timed out at the old limit'
+```
+
+## evals experiments create
+
+Start an experiment: run an eval's cases against one to four variants and compare them case by case.
+
+```bash
+everruns evals experiments create [OPTIONS] --eval-id <eval_id> --variants <variants>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier; its cases are the dataset. |
+| `--max-cost-usd <MAX_COST_USD>` | Spending cap in USD for the whole experiment, split evenly between the variants' runs. |
+| `--name <NAME>` | Display name. |
+| `--trials <TRIALS>` | Trials per case and variant, 1 to 20 (default 3). |
+| `--variants <VARIANTS>` | Required. One to four variants. |
+
+Example:
+
+```bash
+# Compare two models on the same cases, three trials each, within $10
+everruns evals experiments create --eval-id eval_01h9 --variants '[{"label":"luna","model_override":"gpt-6-luna"},{"label":"sol","model_override":"gpt-6.1-sol"}]' --max-cost-usd 10 --reason 'Pick the model for the support agent'
+```
+
+## evals experiments gate
+
+Check an experiment's variant against a bar, for CI. Answers 409 while runs are going and 422 when the variant misses the bar, so the command exits non-zero.
+
+```bash
+everruns evals experiments gate [OPTIONS] --eval-id <eval_id> --experiment-id <experiment_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+| `--experiment-id <EXPERIMENT_ID>` | Required. Experiment's prefixed public identifier. |
+| `--min-pass-rate <MIN_PASS_RATE>` | Minimum pass rate over all trials, 0 to 1. |
+| `--min-passed-every-trial <MIN_PASSED_EVERY_TRIAL>` | Minimum share of cases passed in every trial, 0 to 1. |
+| `--no-regression` | Fail when the variant is a regression against the baseline. |
+| `--variant <VARIANT>` | Variant to judge; the last one when omitted. |
+
+Example:
+
+```bash
+# Block a merge unless the candidate passes 90% and is no regression
+everruns evals experiments gate --eval-id eval_01h9 --experiment-id evalexp_01h9 --min-pass-rate 0.9 --no-regression true
+```
+
+## evals experiments get
+
+Get an experiment with its case-by-case comparison and verdicts.
+
+```bash
+everruns evals experiments get [OPTIONS] --eval-id <eval_id> --experiment-id <experiment_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+| `--experiment-id <EXPERIMENT_ID>` | Required. Experiment's prefixed public identifier. |
+
+Example:
+
+```bash
+# See which cases a candidate fixed or broke
+everruns evals experiments get --eval-id eval_01h9 --experiment-id evalexp_01h9
+```
+
+## evals experiments recent
+
+List the organization's experiments across evals, newest first.
+
+```bash
+everruns evals experiments recent [OPTIONS]
+```
+
+Example:
+
+```bash
+# See what experiments ran lately
+everruns evals experiments recent
+```
+
+## evals experiments list
+
+List an eval's experiments, newest first.
+
+```bash
+everruns evals experiments list [OPTIONS] --eval-id <eval_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+
+Example:
+
+```bash
+# Find the last experiment on an eval
+everruns evals experiments list --eval-id eval_01h9
 ```
 
 ## evals runs cancel

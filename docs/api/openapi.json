@@ -13510,7 +13510,8 @@
         "tags": [
           "evals"
         ],
-        "summary": "List the organization's experiments across evals, newest first",
+        "summary": "List experiments across evals",
+        "description": "List the organization's experiments across evals, newest first.",
         "operationId": "list_all_eval_experiments",
         "responses": {
           "200": {
@@ -14061,7 +14062,8 @@
         "tags": [
           "evals"
         ],
-        "summary": "Start an experiment: run an eval's cases against one to four variants and compare them case by case",
+        "summary": "Start an eval experiment",
+        "description": "Start an experiment: run an eval's cases against one to four variants and compare them case by case.",
         "operationId": "create_eval_experiment",
         "parameters": [
           {
@@ -14109,7 +14111,8 @@
         "tags": [
           "evals"
         ],
-        "summary": "Get an experiment with its case-by-case comparison and verdicts",
+        "summary": "Get an eval experiment with its comparison",
+        "description": "Get an experiment with its case-by-case comparison and verdicts.",
         "operationId": "get_eval_experiment",
         "parameters": [
           {
