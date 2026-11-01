@@ -19,6 +19,12 @@
 
 ## 2026-10-30
 
+- Live [Slack Code](integrations/slack-code.md#qualification) API smoke verifies
+  creation reuse, public-origin privacy, assignment, status/context/diff and
+  archive. Correct conversation inspection to use query parameters. Diff
+  singleton removal remains a live Slack contract blocker; full runtime and
+  collaboration qualification are pending.
+
 * **Chat pre-merge security pins.** Carry the latest ZIP and Undici fixes into
   the example's independent lockfiles while retaining its qualified Worker
   toolchain. See [The isolate host](framework/wasm-kernel.md).
