@@ -42,6 +42,7 @@ export const messages: Readonly<Record<string, string>> = {
   "≈ cached prefix ends here": "≈ кешований префікс закінчується тут",
   "⌘G": "⌘G",
   "■ errors": "■ помилки",
+  "in view": "на екрані",
   "✗": "✗",
   "0s": "0с",
   "1 cell =": "1 клітинка =",

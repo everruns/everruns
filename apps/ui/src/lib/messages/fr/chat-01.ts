@@ -42,6 +42,7 @@ export const messages: Readonly<Record<string, string>> = {
   "≈ cached prefix ends here": "≈ le préfixe mis en cache se termine ici",
   "⌘G": "⌘G",
   "■ errors": "■ erreurs",
+  "in view": "visible",
   "✗": "✗",
   "0s": "0s",
   "1 cell =": "1 cellule =",

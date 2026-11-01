@@ -41,6 +41,7 @@ export const messages: Readonly<Record<string, string>> = {
   "≈ cached prefix ends here": "≈ 缓存前缀在此结束",
   "⌘G": "⌘G",
   "■ errors": "■ 错误",
+  "in view": "可见",
   "✗": "✗",
   "0s": "0s",
   "1 cell =": "1 个单元 =",
