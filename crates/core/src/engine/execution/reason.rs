@@ -46,6 +46,7 @@ use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
 mod background_call;
 mod causal;
 mod compaction;
+mod context_updates;
 mod error_policy;
 mod facts;
 mod file_resolution;
@@ -537,19 +538,9 @@ impl ReasonAtom {
             facts::interleave_facts(context_messages, render_facts, supports_clear_at);
         let mut context_messages = context_messages;
 
-        // 9d. Prepend conversation context (e.g. hierarchical AGENTS.md) as
-        // the leading user-role message.
-        //
-        // Project instructions ride here: model-visible on every turn and
-        // re-resolved alongside the system prompt, but never folded into the
-        // cached system prompt. Untrusted workspace content must stay below
-        // harness safety instructions in the instruction hierarchy, and file
-        // edits must not invalidate the cache-stable system prefix.
-        if let Some(context) = runtime_agent.conversation_context.as_ref()
-            && !context.is_empty()
-        {
-            context_messages.insert(0, RuntimeMessage::user(context.clone()));
-        }
+        // 9d. Replay reference-data changes at their recorded positions.
+        let context_updates = context_updates::apply(&mut context_messages, &runtime_agent);
+        let volatile_suffix_len = context_updates.volatile_suffix_len(volatile_suffix_len);
 
         // 10. Resolve images from image_file references (if any)
         //
@@ -1972,6 +1963,7 @@ impl ReasonAtom {
         );
         truncation.stamp(&mut metadata);
         tool_changes.stamp(&mut metadata);
+        context_updates.stamp(&mut metadata);
 
         // 18. Store and emit output.message.completed event with metadata and usage.
         // Apply capability-owned response filters before persisting/returning

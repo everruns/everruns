@@ -2,6 +2,8 @@
 
 ## 2026-10-31
 
+- Preserve cached prompt prefixes during skill installation with recorded inventory updates, bounded stable discovery, explicit removals and transcript-based replay. See [Skills Registry](project/skills-registry.md#cache-stable-inventory-disclosure).
+
 - Add bounded exact-edit recovery hints from the authorized read snapshot, with conservative per-hunk already-applied evidence and unchanged atomic editing. See [Session Filesystem](runtime-resources/file-store.md#exact-edit-recovery-diagnostics).
 - Normalize canonical Unicode and segment multilingual words in the shared scoped discovery index. See [Tool Search](execution/tool-search.md).
 
