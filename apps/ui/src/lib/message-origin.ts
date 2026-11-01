@@ -17,6 +17,7 @@ export type MessageOriginKind =
   | "channel_schedule"
   | "webhook"
   | "task_wake"
+  | "reaction"
   | "system";
 
 export interface MessageOriginRun {
@@ -39,6 +40,7 @@ const KINDS: readonly MessageOriginKind[] = [
   "channel_schedule",
   "webhook",
   "task_wake",
+  "reaction",
   "system",
 ];
 
@@ -107,5 +109,6 @@ export const ORIGIN_LABEL_KEY = {
   agent_trigger: "origin_trigger",
   webhook: "origin_webhook",
   task_wake: "automatic_update",
+  reaction: "origin_reaction",
   system: "origin_system",
 } as const satisfies Record<MessageOriginKind, string>;
