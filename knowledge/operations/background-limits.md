@@ -84,6 +84,9 @@ for unattended work that goes wrong. Each is about one subject, kept in
 | `org.unattended_budget` | org | today's unattended budget is spent | the next day, or the cap is raised |
 | `agent.unattended_spend_spike` | agent | its unattended spend over 24 hours passed $5 and 3× its average day over the six days before | the condition no longer holds |
 | `session.context_bloat` | session | its last 20 model calls averaged more than 200k prompt tokens with under 10% cached | the condition no longer holds, or it has no calls for an hour |
+| `session.tool_error_loop` | session | among its last 40 tool calls of the last hour, the same call (tool and target) failed 8 times | the condition no longer holds |
+| `session.repeated_tool_calls` | session | among those calls, the same call was made 20 times | the condition no longer holds |
+| `session.spend_spike` | session | it spent more than $2 in the last hour and 10× its agent's median session-hour over the week before (judged once the agent has 12 such hours) | the condition no longer holds |
 
 - **Runaway schedules.** Before each fire the scheduler fingerprints the
   previous fire's final answer (lowercased, digits and spacing collapsed, so a
@@ -103,8 +106,20 @@ for unattended work that goes wrong. Each is about one subject, kept in
   **Check again** runs the issue's part of it. Only the runaway stop pauses
   anything; the rest report.
 
+- The three `session.*` behavior detectors apply to every session, attended
+  or not, except eval sessions. The spend baseline is the agent's own median,
+  not a fixed bar, so an agent that is always expensive is not flagged and a
+  cheap one that suddenly is, is. They report to the agent's authors and stop
+  nothing. The notification names the tool and amounts, never the call's
+  target.
+- **System doctor** reports `observability.detection`: a warning when the
+  sweep failed or has not finished for 40 minutes, so a detector that stopped
+  is visible.
+
 Source: `crates/server/src/domains/health_issues/background_work.rs`,
-`crates/server/src/storage/background_work.rs`.
+`crates/server/src/domains/health_issues/behavior.rs`,
+`crates/server/src/storage/background_work.rs`,
+`crates/server/src/storage/behavior_detectors.rs`.
 
 ## Polling without the model
 
