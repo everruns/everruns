@@ -69909,7 +69909,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "Attempts a model call took when it was retried.",
+            "description": "Retries a model call made before it succeeded or gave up.",
             "example": 3
           },
           "retry_wait_ms": {
@@ -69918,7 +69918,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "Time spent waiting between retried attempts.",
+            "description": "Time spent waiting between those retries.",
             "example": 42000
           },
           "start_sequence": {

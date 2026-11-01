@@ -28709,13 +28709,13 @@ export interface components {
       result?: string | null;
       /**
        * Format: int32
-       * @description Attempts a model call took when it was retried.
+       * @description Retries a model call made before it succeeded or gave up.
        * @example 3
        */
       retry_attempts?: number | null;
       /**
        * Format: int64
-       * @description Time spent waiting between retried attempts.
+       * @description Time spent waiting between those retries.
        * @example 42000
        */
       retry_wait_ms?: number | null;
