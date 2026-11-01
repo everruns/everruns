@@ -78,6 +78,7 @@ jest.mock("@/providers/notifications-provider", () => ({
 
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlag: () => false,
+  useFeatureFlagsState: () => ({ flags: {}, isLoading: false }),
 }));
 
 // The resume-onboarding hook issues a react-query fetch; these auth-availability

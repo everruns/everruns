@@ -12,11 +12,16 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ArrowLeft, Eye, Maximize2, Search, X } from "lucide-react";
 import { Sidebar, MobileSidebar } from "@/components/layout/sidebar";
-import { useFeatureFlag, useFeatureFlags } from "@/providers/feature-flags-provider";
+import {
+  useFeatureFlag,
+  useFeatureFlags,
+  useFeatureFlagsState,
+} from "@/providers/feature-flags-provider";
+import { OPEN_CHAT_PARAM, useLandingRedirect, withoutOpenChat } from "./landing";
 import { useOrg } from "@/providers/org-provider";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
 import { useCommandPalette } from "@/hooks/use-command-palette";
@@ -63,7 +68,9 @@ export function ChatModeShell({
   const enabled = useFeatureFlag("chat_mode");
   const confirmationPath = usePathname();
   const confirmationSearch = useSearchParams();
-  const { currentOrg } = useOrg();
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const { isLoading: flagsLoading } = useFeatureFlagsState();
+  useLandingRedirect(enabled, !orgLoading && !flagsLoading && !!currentOrg);
   if (!enabled) {
     return (
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
@@ -210,6 +217,14 @@ function EnabledShell({
     },
     [page],
   );
+
+  const router = useRouter();
+  const openOnArrival = searchParams.get(OPEN_CHAT_PARAM) === "open" && !chatRoute;
+  useEffect(() => {
+    if (!openOnArrival) return;
+    changeOpen(true);
+    router.replace(withoutOpenChat(pathname, searchParams), { scroll: false });
+  }, [openOnArrival, changeOpen, router, pathname, searchParams]);
 
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {

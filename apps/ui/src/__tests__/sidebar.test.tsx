@@ -525,8 +525,10 @@ describe("Sidebar", () => {
 
     const navigation = screen.getByRole("navigation");
     const links = within(navigation).getAllByRole("link");
-    expect(links[0]).toHaveAttribute("href", "/chats");
-    expect(links[1]).toHaveAttribute("href", "/chats/sess_1");
+    // Home sits above Chat; the thread list hangs under Chat.
+    expect(links[0]).toHaveAttribute("href", "/home");
+    expect(links[1]).toHaveAttribute("href", "/chats");
+    expect(links[2]).toHaveAttribute("href", "/chats/sess_1");
   });
 
   it("hides System navigation items by default (collapsed)", () => {

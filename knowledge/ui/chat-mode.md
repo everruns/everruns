@@ -48,6 +48,8 @@ recent subchats remain discoverable regardless of either Adoption flag. An empty
 draft creates its session only on first send; a failed first send reuses that
 session. Ordinary subchats keep normal pin/archive behavior.
 
+Arriving at the app (`/`) opens Chat beside [Home](org-home.md) rather than full width;
+`?chat=open` on any app page opens the page-side Chat the same way.
 Command/Ctrl-J on an app page opens the selected personal Chat instance beside
 that page, defaulting to permanent Chat. The shell retains one mounted conversation
 and its composer when moving between full Chat and the page workspace. Back to
