@@ -1,6 +1,6 @@
 ---
 title: See what agents cost and limit usage with usage policies
-description: Settings → Costs shows every usage with its cost and where that cost came from, holds your own price list, and replaces budgets with usage policies that notify, ask to continue, or stop.
+description: Settings → Costs shows each usage's cost and where it came from, keeps your own price list, and turns budgets into usage policies that notify, ask or stop.
 date: 2026-11-01
 kind: feature
 significance: major
@@ -10,24 +10,22 @@ links:
   docs: [/features/costs/]
 ---
 
-**Settings → Costs** is new. It records every model call and every stretch of
-sandbox running time with a cost, and every amount says where its number came
-from: your rate, the provider, the model catalog, or "not priced". Unknown
-costs are shown as unknown, never as $0 and never as a token count read as
-dollars, which a dollar budget used to do for models without a catalog price.
+**Settings → Costs** records every model call and sandbox run with a cost, and
+says where each number came from: your rate, the provider, the model catalog,
+or "not priced". An unknown cost stays unknown instead of a token count read as
+dollars.
 
-**Price list:** set your own internal rates per provider, model or sandbox
-size, as a fixed price or a multiple of the provider's price. Sandboxes are
-priced only by your rates.
+Your **price list** sets internal rates per provider, model or sandbox size.
+**Usage policies** replace budgets: as usage grows they notify owners and
+admins, ask the person in chat to continue, or stop. Days, weeks and months
+follow a new organization timezone. Credit budgets were converted to tokens.
 
-**Usage policies** replace budgets. A policy covers the organization, a person,
-an agent, a channel or unattended work, and runs steps as usage grows: notify
-owners and admins, ask the person using the agent before continuing (a
-**Continue this turn** button in chat, for that session), or stop. Days, weeks
-and months follow a new organization timezone setting.
+```bash
+curl -X POST "$EVERRUNS_URL/v1/budgets" -H "Authorization: Bearer $EVERRUNS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"subject_type":"agent","subject_id":"agt_…","currency":"usd","limit":20,
+       "period":{"type":"calendar","unit":"day"},
+       "policy":{"steps":[{"at_percent":75,"action":"ask"},{"at_percent":100,"action":"stop"}]}}'
+```
 
-**In the API:** `/v1/budgets` accepts a `policy` object with `steps`;
-`/v1/cost-rates` holds the price list; `GET /v1/costs/summary` returns cost by
-where it came from, source, agent, person and day. The `credits` budget
-currency is gone: existing credit budgets were converted to tokens (× 1,000).
 See [Costs and Usage Policies](/features/costs/).
