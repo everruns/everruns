@@ -18,8 +18,8 @@ approval that never came. It fired 3,766 times over 13 days and spent about
 $106 before a person noticed. Five safeguards were missing: schedules had no
 end, unattended work had no default spend cap, every fire ran on the whole
 session history, nothing noticed the runs achieved nothing, and nobody was
-told. This concept owns the first two and the limits table; detection and
-lean runs follow in later changes (see Rollout).
+told. This concept owns the first two, detection and the limits table; lean
+runs follow in a later change (see Rollout).
 
 ## Lifetime
 
@@ -71,6 +71,41 @@ the session.
 Source: `crates/server/src/domains/budgets/service.rs` (`attach_unattended`,
 `unattended_fire_gate`), `crates/server/src/storage/background_limits.rs`.
 
+## Detection
+
+Health issues in **Settings → Health** (see [Actionable Health Issues](health-issues.md))
+for unattended work that goes wrong. Each is about one subject, kept in
+`health_issues.subject_id`, with the numbers in `evidence`.
+
+| Code | Subject | Opens when | Resolves when |
+|---|---|---|---|
+| `schedule.runaway` | schedule | its runs ended the same way 24 times in a row | a run ends differently, or a person resumes or cancels it |
+| `schedule.budget_exhausted` | schedule | the scheduler stops it at its budget | a person resumes or cancels it |
+| `org.unattended_budget` | org | today's unattended budget is spent | the next day, or the cap is raised |
+| `agent.unattended_spend_spike` | agent | its unattended spend over 24 hours passed $5 and 3× its average day over the six days before | the condition no longer holds |
+| `session.context_bloat` | session | its last 20 model calls averaged more than 200k prompt tokens with under 10% cached | the condition no longer holds, or it has no calls for an hour |
+
+- **Runaway schedules.** Before each fire the scheduler fingerprints the
+  previous fire's final answer (lowercased, digits and spacing collapsed, so a
+  changing timestamp still matches) and counts identical answers in a row on
+  the schedule (`same_outcome_runs`). A fire whose turn has not finished is not
+  counted. From 24 on, each fire's message warns the agent how many identical
+  runs are left and around when it stops, and suggests cancelling or a longer
+  interval. At 48 the schedule stops with `stop_reason = runaway` and no turn
+  starts. A person resuming the schedule resets the count.
+- **Who is told.** An issue opening sends a notification (kind `health.issue`)
+  to the schedule's owner and the agent's authors, the members who changed the
+  agent in its history; the org's owners for the org budget, and whenever no
+  owner or author is known. A warned schedule that is then stopped shows its
+  notification again. Notifications carry no text from the agent's answers.
+- A 15 minute sweep (`background_work_health_sweep`) resolves schedule issues,
+  and opens and resolves the org budget, spend spike and context bloat issues.
+  **Check again** runs the issue's part of it. Only the runaway stop pauses
+  anything; the rest report.
+
+Source: `crates/server/src/domains/health_issues/background_work.rs`,
+`crates/server/src/storage/background_work.rs`.
+
 ## Limits
 
 | Limit | Default | Org may set |
@@ -82,6 +117,9 @@ Source: `crates/server/src/domains/budgets/service.rs` (`attach_unattended`,
 | Default schedule budget | $2 | any positive, not above the largest |
 | Largest schedule budget an agent may set | $10 | any positive |
 | Unattended spend per org per day | $20 | any positive, or no cap |
+| Identical runs before warning / stop | 24 / 48 | no |
+| Spend spike floor / factor | $5 / 3× | no |
+| Context bloat: calls / tokens / cached | 20 / 200k / 10% | no |
 
 Defaults are constants in code, not environment variables, so every
 deployment starts safe. Org admins change them in **Settings → Limits**
@@ -96,13 +134,9 @@ records them, but does not meter spend.
 
 1. Lifetime, `stop_when`, schedule and org unattended budgets, Settings →
    Limits (this concept).
-2. Detection: a schedule whose runs end the same way is warned in context
-   after 24 runs and paused after 48; health issues for runaway schedules,
-   budget stops, spend spikes and context bloat, notifying the schedule's
-   owner and the agent's authors (org owners for the org budget).
+2. Detection (this concept).
 3. Lean runs: `web_fetch` probe monitors with a wake condition, a small model
-   view for scheduled turns, and the cache telemetry fix for Muse via
-   OpenRouter.
+   view for scheduled turns. The Muse cache fix shipped separately.
 
 Related: [Budgeting](../security/budgeting.md),
 [Actionable Health Issues](health-issues.md),

@@ -1,5 +1,5 @@
 use super::{
-    active_turns,
+    active_turns, background_work,
     service::{SlackHealthService, issue_copy},
     types::{HealthIssue, HealthIssueList},
 };
@@ -106,6 +106,10 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
         notification_id,
         snoozed_until,
         href,
+        subject_id: row.subject_id,
+        session_id: row
+            .session_id
+            .map(|id| everruns_contracts::typed_id::SessionId::from_uuid(id).to_string()),
     })
 }
 
@@ -236,6 +240,10 @@ impl Command for CheckHealthIssue {
             None if Utc::now() - row.last_checked_at < chrono::Duration::seconds(15) => false,
             None if row.code == crate::domains::trace_exports::health::CODE => {
                 crate::domains::trace_exports::health::refresh(&ctx.db, ctx.org_id()).await?;
+                true
+            }
+            None if background_work::owns(&row.code) => {
+                background_work::recheck(&ctx.db, &row).await?;
                 true
             }
             None if row.code == active_turns::ACTIVE_TURN_LIMIT => {

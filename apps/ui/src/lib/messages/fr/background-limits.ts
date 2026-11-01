@@ -43,6 +43,7 @@ export const messages: Readonly<Record<string, string>> = {
     "Le plafond quotidien doit être supérieur à 0 $, ou activez Aucun plafond.",
   "Unattended work (daily)": "Travail sans surveillance (quotidien)",
   "Budget used up": "Budget épuisé",
+  "Stopped: repeating": "Arrêté : se répète",
   " · Run {value0} of {value1}": " · Exécution {value0} sur {value1}",
   " · Ends {value0}": " · Se termine {value0}",
   " · {value0} of {value1}": " · {value0} sur {value1}",

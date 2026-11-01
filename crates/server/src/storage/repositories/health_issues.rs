@@ -79,7 +79,7 @@ impl Database {
         let changed = sqlx::query_as::<_, (Uuid, Uuid, String)>(
             "INSERT INTO health_issues (org_id, code, status, last_checked_at)
              VALUES ($1, $2, $3, $4)
-             ON CONFLICT (org_id, code) WHERE channel_id IS NULL DO UPDATE SET
+             ON CONFLICT (org_id, code) WHERE channel_id IS NULL AND subject_id IS NULL DO UPDATE SET
                 episode_id = CASE WHEN health_issues.status IN ('resolved', 'inapplicable')
                     AND EXCLUDED.status IN ('open', 'needs_check') THEN uuidv7()
                     ELSE health_issues.episode_id END,
@@ -117,7 +117,8 @@ impl Database {
     pub async fn orgs_with_open_org_health_issue(&self, code: &str) -> Result<Vec<i64>> {
         sqlx::query_scalar(
             "SELECT org_id FROM health_issues
-             WHERE channel_id IS NULL AND code = $1 AND status IN ('open', 'needs_check')",
+             WHERE channel_id IS NULL AND subject_id IS NULL AND code = $1
+               AND status IN ('open', 'needs_check')",
         )
         .bind(code)
         .fetch_all(&self.pool)
@@ -144,7 +145,7 @@ impl Database {
         limit: i64,
         channel_public_id: Option<&str>,
     ) -> Result<Vec<HealthIssueRow>> {
-        sqlx::query_as("SELECT h.*, ae.public_id AS channel_public_id, a.public_id AS agent_public_id, COALESCE(a.display_name, a.name) AS agent_name FROM health_issues h LEFT JOIN agent_channels ae ON ae.id = h.channel_id LEFT JOIN agents a ON a.id = ae.agent_id WHERE h.org_id = $1
+        sqlx::query_as("SELECT h.*, ae.public_id AS channel_public_id, a.public_id AS agent_public_id, COALESCE(a.display_name, a.name) AS agent_name FROM health_issues h LEFT JOIN agent_channels ae ON ae.id = h.channel_id LEFT JOIN agents a ON a.id = COALESCE(ae.agent_id, h.agent_id) WHERE h.org_id = $1
             AND ($4::text IS NULL OR ae.public_id = $4) AND h.status IN ('open', 'needs_check')
             AND (h.channel_id IS NULL OR (ae.enabled AND ae.status <> 'disabled' AND a.status = 'active'))
             ORDER BY h.first_detected_at DESC, h.id DESC OFFSET $2 LIMIT $3")
@@ -152,7 +153,7 @@ impl Database {
     }
 
     pub async fn get_health_issue(&self, org_id: i64, id: Uuid) -> Result<Option<HealthIssueRow>> {
-        sqlx::query_as("SELECT h.*, ae.public_id AS channel_public_id, a.public_id AS agent_public_id, COALESCE(a.display_name, a.name) AS agent_name FROM health_issues h LEFT JOIN agent_channels ae ON ae.id = h.channel_id LEFT JOIN agents a ON a.id = ae.agent_id WHERE h.org_id = $1 AND h.id = $2
+        sqlx::query_as("SELECT h.*, ae.public_id AS channel_public_id, a.public_id AS agent_public_id, COALESCE(a.display_name, a.name) AS agent_name FROM health_issues h LEFT JOIN agent_channels ae ON ae.id = h.channel_id LEFT JOIN agents a ON a.id = COALESCE(ae.agent_id, h.agent_id) WHERE h.org_id = $1 AND h.id = $2
             AND (h.channel_id IS NULL OR a.status = 'active')")
             .bind(org_id).bind(id).fetch_optional(&self.pool).await.map_err(Into::into)
     }
@@ -164,7 +165,7 @@ impl Database {
     ) -> Result<i64> {
         sqlx::query_scalar(
             "SELECT COUNT(*) FROM health_issues h
-            LEFT JOIN agent_channels ae ON ae.id = h.channel_id LEFT JOIN agents a ON a.id = ae.agent_id
+            LEFT JOIN agent_channels ae ON ae.id = h.channel_id LEFT JOIN agents a ON a.id = COALESCE(ae.agent_id, h.agent_id)
             WHERE h.org_id = $1 AND ($2::text IS NULL OR ae.public_id = $2) AND h.status IN ('open', 'needs_check')
             AND (h.channel_id IS NULL OR (ae.enabled AND ae.status <> 'disabled' AND a.status = 'active'))",
         )

@@ -206,6 +206,9 @@ pub fn issue_copy(row: &HealthIssueRow) -> (String, String) {
     if row.code == super::active_turns::ACTIVE_TURN_LIMIT {
         return super::active_turns::copy(&row.status);
     }
+    if super::background_work::owns(&row.code) {
+        return super::background_work::copy(row);
+    }
     if row.status == "needs_check" {
         return ("Slack permissions need a check".into(),"Everruns could not verify this installation. Check again before assuming it is healthy.".into());
     }

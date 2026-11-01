@@ -16603,6 +16603,11 @@ export interface components {
        */
       notification_id?: string | null;
       /**
+       * @description Public identifier of the session the issue points at, when it has one.
+       * @example session_550e8400e29b41d4a716446655440000
+       */
+      session_id?: string | null;
+      /**
        * Format: date-time
        * @description Current user's reminder suppression deadline, if snoozed.
        * @example 2026-10-04T12:00:00Z
@@ -16618,6 +16623,12 @@ export interface components {
        * @example open
        */
       status: string;
+      /**
+       * @description What a background-work issue is about: a schedule (`sched_…`), an agent
+       *     (`agent_…`), a session (`session_…`) or the organization (`org_…`).
+       * @example sched_550e8400e29b41d4a716446655440000
+       */
+      subject_id?: string | null;
       /**
        * @description Human-readable summary of the required action.
        * @example Slack permissions need updating

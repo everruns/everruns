@@ -19,6 +19,16 @@ pub struct HealthIssueRow {
     pub channel_revision: Option<DateTime<Utc>>,
     pub first_detected_at: DateTime<Utc>,
     pub last_checked_at: DateTime<Utc>,
+    /// What a background-work issue is about (`sched_…`, `agent_…`,
+    /// `session_…`); `None` for channel and organization-level issues.
+    #[sqlx(default)]
+    pub subject_id: Option<String>,
+    /// Session the issue points at, for schedule and session issues.
+    #[sqlx(default)]
+    pub session_id: Option<Uuid>,
+    /// Numbers the issue's copy is built from.
+    #[sqlx(default)]
+    pub evidence: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]

@@ -112,6 +112,11 @@ export function HealthIssueDetails({
       )}
       {!resolved && orgIssue && canManage && (
         <div className="flex flex-wrap gap-2">
+          {issue.session_id && (
+            <LinkButton href={`/sessions/${issue.session_id}`} size="sm">
+              {ui("Open session")}
+            </LinkButton>
+          )}
           <Button
             type="button"
             variant="outline"

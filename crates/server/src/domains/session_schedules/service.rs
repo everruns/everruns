@@ -212,6 +212,12 @@ impl SessionScheduleService {
             ..Default::default()
         };
         if change.enabled == Some(true) {
+            // A person resuming a schedule starts its repeated-outcome count
+            // over, so a runaway stop does not trip again on the next run.
+            self.db
+                .reset_schedule_outcomes(schedule_id.uuid())
+                .await
+                .map_err(Err)?;
             input.stop_reason = UpdateField::Clear;
             input.next_trigger_at = UpdateField::from_option(
                 compute_next_trigger(

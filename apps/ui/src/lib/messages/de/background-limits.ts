@@ -43,6 +43,7 @@ export const messages: Readonly<Record<string, string>> = {
     "Das Tageslimit muss über 0 $ liegen, oder schalten Sie Kein Limit ein.",
   "Unattended work (daily)": "Unbeaufsichtigte Arbeit (täglich)",
   "Budget used up": "Budget aufgebraucht",
+  "Stopped: repeating": "Gestoppt: wiederholt sich",
   " · Run {value0} of {value1}": " · Lauf {value0} von {value1}",
   " · Ends {value0}": " · Endet {value0}",
   " · {value0} of {value1}": " · {value0} von {value1}",

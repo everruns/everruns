@@ -42,6 +42,7 @@ export const messages: Readonly<Record<string, string>> = {
     "Денний ліміт має бути більшим за $0, або увімкніть «Без ліміту».",
   "Unattended work (daily)": "Робота без нагляду (за день)",
   "Budget used up": "Бюджет вичерпано",
+  "Stopped: repeating": "Зупинено: повторюється",
   " · Run {value0} of {value1}": " · запуск {value0} з {value1}",
   " · Ends {value0}": " · завершується {value0}",
   " · {value0} of {value1}": " · {value0} з {value1}",
