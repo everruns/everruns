@@ -17,3 +17,8 @@ Muse Spark caches a short prompt without that key but misses every call once
 the prompt passes about 100k tokens, so a long Muse session paid full price
 for its whole history on each model call. The key now goes out on every
 request unless caching is turned off with `enabled: false`.
+
+Agents with Infinity Context also moved the start of their history window on
+every call once a session outgrew its budget, which changed the front of the
+prompt each time. The window start now advances in steps of about a quarter of
+the budget, so calls in between read the history from cache.
