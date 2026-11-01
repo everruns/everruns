@@ -180,6 +180,7 @@ async fn run_blocks_member_from_creating_a_provider() {
         Arc::new(DefaultPermissionResolver),
     );
     let err = CreateProvider {
+        api: None,
         name: "member-denied".to_string(),
         provider_type: DriverId::OpenAI,
         base_url: None,

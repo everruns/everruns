@@ -651,6 +651,53 @@ async fn test_provider_request_options_round_trip_and_validation() {
 }
 
 #[tokio::test]
+async fn test_provider_chat_api_rest_round_trip_and_validation() {
+    let server = TestServer::in_memory().await;
+    let provider: Provider = server
+        .post(
+            "/v1/providers",
+            json!({
+                "name":"OpenAI compatibility", "provider_type":"openai", "api":"chat_completions"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    assert_eq!(provider.api.as_deref(), Some("chat_completions"));
+    let url = format!("/v1/providers/{}", provider.id);
+    let fetched: Provider = server.get(&url).await.assert_status(StatusCode::OK).json();
+    assert_eq!(fetched.api, provider.api);
+    server
+        .patch(&url, json!({"api":"invalid"}))
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    let updated: Provider = server
+        .patch(&url, json!({"name":"renamed"}))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(updated.api, provider.api);
+    let reset: Provider = server
+        .patch(&url, json!({"api":"default"}))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(reset.api.as_deref(), Some("default"));
+    let catalog: Value = server
+        .get("/v1/providers/config")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let openai = catalog["drivers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|driver| driver["driver"] == "openai")
+        .unwrap();
+    assert_eq!(openai["apis"], json!(["responses", "chat_completions"]));
+}
+
+#[tokio::test]
 async fn test_create_model_missing_provider_returns_not_found() {
     let server = TestServer::in_memory().await;
 

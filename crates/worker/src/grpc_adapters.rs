@@ -44,6 +44,7 @@ mod connect;
 mod event_batch;
 mod history_cache;
 mod load_messages;
+mod provider_config;
 mod shared_client;
 use checkpoint_availability::CheckpointAvailability;
 pub use connect::DEFAULT_GRPC_REQUEST_TIMEOUT;
@@ -242,26 +243,7 @@ impl GrpcClient {
             .await
             .map_err(grpc_status_to_error)?
             .into_inner();
-        if !response.found {
-            return Ok(None);
-        }
-        let provider_type = response
-            .provider_type
-            .parse()
-            .unwrap_or_else(|_| unreachable!());
-        // A connection with no options (or an older server that does not send
-        // the field) yields the empty options, which changes nothing.
-        let request_options = non_empty_string(response.request_options_json)
-            .and_then(|json| serde_json::from_str(&json).ok())
-            .unwrap_or_default();
-        let mut config = everruns_contracts::driver_registry::ProviderConfig::for_provider(
-            everruns_contracts::runtime_provider::ProviderKey::new(provider_id),
-            provider_type,
-        );
-        config.api_key = non_empty_string(response.api_key);
-        config.base_url = non_empty_string(response.base_url);
-        config.request_options = request_options;
-        Ok(Some(config))
+        Ok(provider_config::from_response(provider_id, response))
     }
 
     /// Get MCP server info by name prefix (for MCP tool execution)

@@ -484,6 +484,8 @@ pub struct ProviderConfig {
     pub api_key: Option<String>,
     /// Base URL override (optional)
     pub base_url: Option<String>,
+    /// Optional chat API selection; validated against the driver descriptor.
+    pub api: Option<String>,
     /// Extra provider-specific metadata (OAuth tokens, account ids, etc.).
     pub metadata: ProviderMetadata,
     /// Connection-level request options (extra headers, diagnostics opt-in)
@@ -500,6 +502,7 @@ impl ProviderConfig {
             provider_type,
             api_key: None,
             base_url: None,
+            api: None,
             metadata: ProviderMetadata::default(),
             request_options: Default::default(),
         }
@@ -516,9 +519,16 @@ impl ProviderConfig {
             provider_type,
             api_key: None,
             base_url: None,
+            api: None,
             metadata: ProviderMetadata::default(),
             request_options: Default::default(),
         }
+    }
+
+    /// Select a connection-level chat API declared by the driver.
+    pub fn with_api(mut self, api: impl Into<String>) -> Self {
+        self.api = Some(api.into());
+        self
     }
 
     /// Set the API key
@@ -589,6 +599,8 @@ pub struct DriverConfig {
     pub credentials: std::collections::BTreeMap<String, String>,
     /// Base URL override, when configured.
     pub base_url: Option<String>,
+    /// Optional chat API selection; validated against the driver descriptor.
+    pub api: Option<String>,
     /// Extra provider-specific metadata.
     pub metadata: ProviderMetadata,
 }
@@ -608,6 +620,7 @@ impl DriverConfig {
             ),
             api_key: config.api_key.clone(),
             base_url: config.base_url.clone(),
+            api: config.api.clone(),
             metadata: config.metadata.clone(),
         }
     }
@@ -975,6 +988,8 @@ pub struct DriverDescriptor {
     pub display_name: String,
     /// Services this driver's providers can power. Declared, not stored.
     pub services: Vec<ServiceKind>,
+    /// Supported explicit chat API selections; empty means the driver has no selector.
+    pub apis: Vec<String>,
     /// Credential fields a provider instance must supply.
     pub credential_schema: CredentialFormSchema,
     /// Environment variable that overrides this driver's default endpoint in
@@ -1014,12 +1029,27 @@ impl DriverDescriptor {
             credential_schema: default_credential_schema(&id),
             base_url_env: None,
             services: vec![ServiceKind::Chat],
+            apis: Vec::new(),
             oauth: None,
             chat: Some(Arc::new(factory)),
             embeddings: None,
             provider: None,
             id,
         }
+    }
+
+    /// Reject unsupported connection-level API selections before any network I/O.
+    pub fn validate_api(&self, api: Option<&str>) -> Result<()> {
+        if let Some(api) = api
+            && api != "default"
+            && !self.apis.iter().any(|supported| supported == api)
+        {
+            return Err(AgentLoopError::Configuration(format!(
+                "Unsupported chat API '{api}' for provider '{}'",
+                self.id
+            )));
+        }
+        Ok(())
     }
 
     /// Declare the environment variable that overrides the default endpoint.
@@ -1229,6 +1259,7 @@ impl DriverRegistry {
         let descriptor = self.descriptors.get(&config.provider_type).ok_or_else(|| {
             AgentLoopError::driver_not_registered(config.provider_type.to_string())
         })?;
+        descriptor.validate_api(config.api.as_deref())?;
         // Look up the descriptor and its chat factory for this provider type
         let factory = descriptor.chat.as_ref().ok_or_else(|| {
             AgentLoopError::llm(format!(
@@ -1319,6 +1350,7 @@ impl DriverRegistry {
         let descriptor = self.descriptor(&config.provider_type).ok_or_else(|| {
             AgentLoopError::driver_not_registered(config.provider_type.to_string())
         })?;
+        descriptor.validate_api(config.api.as_deref())?;
         let headers = config.request_options.headers.clone();
         let config = DriverConfig::from_provider_config(config);
         let errors = descriptor.credential_schema.validate(&config.credentials);

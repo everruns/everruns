@@ -60,10 +60,82 @@ Large 4, Mistral Medium 3.5 (`mistral-medium-2604`, also
 
 ```rust
 // Reads MISTRAL_API_KEY, and MISTRAL_BASE_URL when set.
-let provider = everruns_drivers::mistral::from_env("mistral")?;
+let provider = everruns::Mistral::from_env()?;
 ```
 
-Enable the `mistral` feature of `everruns-drivers`.
+Enable the `mistral` feature of `everruns`.
+
+## Responses API preview
+
+The existing Mistral provider can opt into Mistral's stateless
+[Responses API](https://docs.mistral.ai/studio/conversations/responses) per connection.
+Chat Completions remains the default. Select Responses when constructing the
+provider connection (enable the `mistral` feature of `everruns`):
+
+```rust
+use everruns::{Agent, Mistral, MistralApi};
+
+let agent = Agent::builder()
+    .provider(Mistral::from_env()?.api(MistralApi::Responses))
+    .model("mistral-large-4")
+    .instructions("Be concise.")
+    .build()?;
+```
+
+For a direct call, convert the same configuration into `everruns::Provider`:
+
+```rust
+use everruns::{Mistral, MistralApi, Provider};
+
+let provider: Provider = Mistral::from_env()?
+    .api(MistralApi::Responses)
+    .into();
+```
+
+Use the same API key and `/v1` base URL. `MistralApi::ChatCompletions` selects
+`/v1/chat/completions`; `MistralApi::Responses` selects `/v1/responses`.
+Shared call configuration carries the model and generation settings, not the protocol.
+The runnable `mistral_responses` example uses this configuration:
+`cargo run -p everruns --features mistral --example mistral_responses`.
+Low-level hosts can use `everruns_drivers::mistral::provider_with_api(id, key, api)`.
+
+Hosted REST clients select the same API when creating or updating a provider:
+
+```json
+{
+  "name": "Mistral Responses",
+  "provider_type": "mistral",
+  "api": "responses"
+}
+```
+
+Configure credentials through the normal provider credential fields. `api` may be
+`responses`, `chat_completions`, or `default`. Omitting it on create preserves the
+existing default; omitting it on PATCH preserves the stored selection. PATCH
+`"api": "default"` restores the default. The server validates choices against the
+driver catalog. API reads return the stored selection, and `/v1/providers/config`
+returns supported choices in each driver's `apis` field. Server and worker must
+both run a version supporting this field. The Settings UI has no selector yet.
+
+Responses supports streamed text and reasoning, client-executed function calls,
+parallel tool calls, JSON Schema output, token usage, prompt-cache routing, and
+HTTP retries. Pass the full message history on every call: Everruns replays
+messages, function calls and results, and Mistral plaintext reasoning. It sends
+`store: false` and ignores `previous_response_id` because Mistral stores no
+response chain. Reasoning from another provider is not replayed to Mistral.
+
+User messages and function results can contain image URLs/data URLs and files
+as HTTPS URLs or data URLs, subject to the selected model's capabilities.
+Uploaded file IDs are not exposed by Everruns' portable message contract.
+Audio and opaque provider content are rejected before sending a request.
+
+Non-streaming callers receive a collected SSE response; native Responses JSON
+transport is not implemented. Failed, incomplete, or prematurely closed streams
+fail the call rather than reporting a successful partial answer. Background
+responses, WebSockets, server-side compaction, hosted tools, token-counting,
+function namespaces, and forced tool selection are not exposed by this
+integration. OpenAI-only service-tier and verbosity settings are omitted.
+The existing Mistral feature flag and model discovery behavior are unchanged.
 
 ## Links
 

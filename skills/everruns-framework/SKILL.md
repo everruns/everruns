@@ -5,7 +5,7 @@ license: MIT
 compatibility: Rust 1.94+ (edition 2024)
 metadata:
   category: agent-framework
-  version: "3.3"
+  version: "3.4"
   homepage: https://everruns.com
   docs: https://everruns.com/docs/framework/
   api-reference: https://docs.rs/everruns
@@ -50,6 +50,20 @@ println!("{}", turn.response);
 lives in `everruns_core::engine`; do not add retired host, engine, or MCP crates.
 
 ## Common Framework tasks
+
+- Configure vendors with typed values from `everruns`, such as
+  `Anthropic::from_env()`, `Meta::new(key)` or `OpenRouter::from_env()`; enable
+  the corresponding facade feature. Pass the value to `.provider(...)` or
+  convert it into `Provider` for a low-level host. Ordinary applications do
+  not need a direct `everruns-drivers` dependency.
+- Select a chat protocol on the connection:
+  `OpenAI::from_env()?.api(OpenAIApi::ChatCompletions)` or
+  `Mistral::from_env()?.api(MistralApi::Responses)`. Import the types from
+  `everruns`. Defaults remain OpenAI Responses and Mistral Chat Completions.
+  Do not put API selection in shared `LlmCallConfig` or raw driver options.
+  Providers with a single supported chat API need no selector. Use the
+  [provider setup guide](https://everruns.com/docs/framework/models-and-providers/)
+  for account, endpoint, AWS and host-owned OAuth configuration.
 
 - Use `Model::simulated` or `Model::simulated_with_config` for deterministic,
   credential-free tests. Examples and real workflows use a live provider.

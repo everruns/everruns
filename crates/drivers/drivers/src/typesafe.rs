@@ -31,6 +31,7 @@ pub fn descriptor() -> DriverDescriptor {
         id: DriverId::external("typesafe"),
         display_name: "TypeSafe".into(),
         services: vec![ServiceKind::Decisions],
+        apis: Vec::new(),
         credential_schema: everruns_contracts::credential_schema::CredentialFormSchema::api_key(
             "TYPESAFE_API_KEY",
             "Create an API key in your TypeSafe account.",

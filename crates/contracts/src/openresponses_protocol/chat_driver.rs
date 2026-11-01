@@ -123,8 +123,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 .as_deref()
                 .filter(|_| inline_tool_changes.is_some()),
         );
-        let (instructions, transcript_input_items) =
-            Self::build_input_with_changes(&sent, supports_phases, inline_tool_changes);
+        let (instructions, transcript_input_items) = Self::build_input_with_reasoning(
+            &sent,
+            supports_phases,
+            inline_tool_changes,
+            self.plaintext_reasoning_provider,
+        );
         let computer_call_ids = if native_computer.is_some() {
             super::computer::computer_call_ids(&transcript_input_items)
         } else {
@@ -439,6 +443,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             None
         };
 
+        let plaintext_reasoning_provider = self.plaintext_reasoning_provider;
         let required_completion = self.required_completion;
         let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let observed_completion = completed.clone();
@@ -505,6 +510,19 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                         if let Ok(streaming_event) =
                             serde_json::from_str::<StreamingEvent>(event_data)
                         {
+                            if let Some(provider) = plaintext_reasoning_provider
+                                && let StreamingEvent::OutputItemDone { item: Some(crate::openresponses_types::OutputItem::Reasoning { id, content, .. }), .. } = &streaming_event
+                            {
+                                let text = content.as_deref().unwrap_or_default().iter().filter_map(|part| match part {
+                                    crate::openresponses_types::ContentPart::ReasoningText { text } => Some(text.as_str()),
+                                    _ => None,
+                                }).collect::<String>();
+                                return Ok(LlmStreamEvent::ReasoningItem(
+                                    crate::reasoning::ReasoningContentPart::opaque(provider)
+                                        .with_item_id(id)
+                                        .with_text(crate::reasoning::ReasoningText::Plain { text }),
+                                ));
+                            }
                             return Ok(handle_streaming_event(
                                 streaming_event,
                                 &input_tokens,

@@ -143,6 +143,7 @@ pub async fn create_provider(
             api_key,
             trace: req.trace,
             request_options: req.request_options,
+            api: req.api,
         })
         .await
 }
@@ -346,6 +347,7 @@ pub async fn update_provider(
             status: req.status,
             trace: req.trace,
             request_options: req.request_options,
+            api: req.api,
         })
         .await
 }
@@ -441,6 +443,8 @@ pub struct DriverCredentialInfo {
     /// Whether the driver declares an interactive "Connect with …" OAuth flow.
     pub supports_oauth: bool,
     pub services: Vec<everruns_contracts::ServiceKind>,
+    /// Supported explicit chat APIs; "default" is also accepted.
+    pub apis: Vec<String>,
 }
 
 /// Provider resource config: caller policies plus the credential schemas the UI
@@ -490,6 +494,7 @@ pub async fn provider_config(
             Some(DriverCredentialInfo {
                 driver: id.to_string(),
                 credential_schema: descriptor.credential_schema.clone(),
+                apis: descriptor.apis.clone(),
                 supports_oauth: descriptor.oauth.is_some(),
                 services: descriptor.services.clone(),
             })
@@ -678,6 +683,7 @@ pub async fn oauth_callback(
             &caller,
             provider.id.uuid(),
             UpdateProviderRequest {
+                api: None,
                 name: None,
                 provider_type: None,
                 base_url: None,
@@ -1254,6 +1260,7 @@ mod creation_tests {
                 org.clone(),
                 State(state.clone()),
                 Json(CreateProviderRequest {
+                    api: None,
                     name: "Unsafe provider".into(),
                     provider_type,
                     base_url: base_url.map(str::to_string),

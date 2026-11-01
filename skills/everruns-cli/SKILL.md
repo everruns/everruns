@@ -4,7 +4,7 @@ description: Use the everruns command tree to inspect and manage agents, session
 license: MIT
 metadata:
   category: platform
-  version: "1.0"
+  version: "1.1"
   docs: https://everruns.com/docs/features/cli/
 ---
 
@@ -75,6 +75,14 @@ write failure, inspect current state before repeating it.
 
 ## Common workflows
 
+- **Configure an LLM provider:** inspect `everruns providers --help` and the
+  current create/update schema. Select the chat API on the provider connection
+  using `api` (`--api` in CLI commands), rather than agent model settings or raw
+  driver options. Supported choices come from `GET /v1/providers/config`;
+  OpenAI and Mistral support `responses` and `chat_completions`. Omit the field
+  on update to retain the choice, or use `default` to restore the driver default.
+  Verify the saved provider after the authorized change. Keep credentials in
+  the existing secure setup flow. Older deployments may not expose this field.
 - **Create or change an agent:** activate `everruns-agent-authoring`. Use the
   current host's command surface for its examples. In Platform Chat, its MCP
   transport instructions apply only to external clients: keep using the bound

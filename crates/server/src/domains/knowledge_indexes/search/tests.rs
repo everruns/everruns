@@ -63,6 +63,7 @@ impl EmbeddingsDriver for DeterministicEmbeddingsDriver {
 fn test_driver_registry() -> Arc<DriverRegistry> {
     let mut registry = DriverRegistry::new();
     registry.register_descriptor(DriverDescriptor {
+        apis: Vec::new(),
         id: DriverId::external("test-embeddings"),
         display_name: "Test Embeddings".into(),
         services: vec![ServiceKind::Embeddings],

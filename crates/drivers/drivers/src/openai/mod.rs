@@ -40,8 +40,9 @@ mod types;
 mod tests;
 
 pub use driver::{
-    OpenAIChatDriver, OpenAICompletionsChatDriver, azure_descriptor, azure_provider,
-    completions_descriptor, completions_provider, descriptor, from_env, provider, register_driver,
+    OpenAIApi, OpenAIChatDriver, OpenAICompletionsChatDriver, azure_descriptor, azure_provider,
+    completions_descriptor, completions_provider, descriptor, from_env, provider,
+    provider_with_api, register_driver,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use embeddings::OpenAIEmbeddingsDriver;

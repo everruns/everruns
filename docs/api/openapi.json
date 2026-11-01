@@ -42308,6 +42308,13 @@
           "provider_type"
         ],
         "properties": {
+          "api": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Chat API declared by the provider driver; \"default\" restores its default."
+          },
           "api_key": {
             "type": [
               "string",
@@ -43899,9 +43906,17 @@
           "driver",
           "credential_schema",
           "supports_oauth",
-          "services"
+          "services",
+          "apis"
         ],
         "properties": {
+          "apis": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Supported explicit chat APIs; \"default\" is also accepted."
+          },
           "credential_schema": {
             "$ref": "#/components/schemas/CredentialFormSchema",
             "description": "The fields and instructions to render for this driver's credential."
@@ -53086,6 +53101,13 @@
                     "updated_at"
                   ],
                   "properties": {
+                    "api": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Chat API declared by the provider driver; \"default\" restores its default."
+                    },
                     "api_key_set": {
                       "type": "boolean",
                       "description": "Whether an API key is configured. The key itself is never returned."
@@ -60708,6 +60730,13 @@
           "updated_at"
         ],
         "properties": {
+          "api": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Chat API declared by the provider driver; \"default\" restores its default."
+          },
           "api_key_set": {
             "type": "boolean",
             "description": "Whether an API key is configured. The key itself is never returned."
@@ -73154,6 +73183,13 @@
         "type": "object",
         "description": "Request to update an LLM provider. Only provided fields will be updated.",
         "properties": {
+          "api": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Chat API declared by the provider driver; \"default\" restores its default."
+          },
           "api_key": {
             "type": [
               "string",
@@ -76187,6 +76223,13 @@
               "updated_at"
             ],
             "properties": {
+              "api": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Chat API declared by the provider driver; \"default\" restores its default."
+              },
               "api_key_set": {
                 "type": "boolean",
                 "description": "Whether an API key is configured. The key itself is never returned."

@@ -75,6 +75,7 @@ async fn assert_embedding_attribution(managed: bool, query: bool) {
     collection.embedding_model_id = Some(model.id.uuid());
     let mut registry = DriverRegistry::new();
     registry.register_descriptor(DriverDescriptor {
+        apis: Vec::new(),
         id: DriverId::external("billing-embedding-fixture"),
         display_name: "Embedding billing fixture".into(),
         services: vec![ServiceKind::Embeddings],

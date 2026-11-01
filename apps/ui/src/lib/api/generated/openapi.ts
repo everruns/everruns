@@ -13432,6 +13432,8 @@ export interface components {
     };
     /** @description Request to create a new LLM provider */
     CreateProviderRequest: {
+      /** @description Chat API declared by the provider driver; "default" restores its default. */
+      api?: string | null;
       /**
        * @description API key for authenticating with the provider.
        *     Will be encrypted at rest if encryption is configured.
@@ -14339,6 +14341,8 @@ export interface components {
      *     one opaque password field.
      */
     DriverCredentialInfo: {
+      /** @description Supported explicit chat APIs; "default" is also accepted. */
+      apis: string[];
       /** @description The fields and instructions to render for this driver's credential. */
       credential_schema: components["schemas"]["CredentialFormSchema"];
       /** @description Driver id (e.g. `openai`, `bedrock`, `mai`). */
@@ -19460,6 +19464,8 @@ export interface components {
     ListResponse_WithUrls_Provider: {
       /** @description Array of items returned by the list operation. */
       data: ({
+        /** @description Chat API declared by the provider driver; "default" restores its default. */
+        api?: string | null;
         /** @description Whether an API key is configured. The key itself is never returned. */
         api_key_set: boolean;
         /** @description Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint. */
@@ -23754,6 +23760,8 @@ export interface components {
      *     This is the persisted provider entity, separate from the runtime provider trait.
      */
     Provider: {
+      /** @description Chat API declared by the provider driver; "default" restores its default. */
+      api?: string | null;
       /** @description Whether an API key is configured. The key itself is never returned. */
       api_key_set: boolean;
       /** @description Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint. */
@@ -30482,6 +30490,8 @@ export interface components {
     };
     /** @description Request to update an LLM provider. Only provided fields will be updated. */
     UpdateProviderRequest: {
+      /** @description Chat API declared by the provider driver; "default" restores its default. */
+      api?: string | null;
       /**
        * @description API key for authenticating with the provider.
        *     Will be encrypted at rest if encryption is configured.
@@ -32208,6 +32218,8 @@ export interface components {
      *     into the convention by overriding `ResourceUrlable::allowed_actions`.
      */
     WithUrls_Provider: {
+      /** @description Chat API declared by the provider driver; "default" restores its default. */
+      api?: string | null;
       /** @description Whether an API key is configured. The key itself is never returned. */
       api_key_set: boolean;
       /** @description Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint. */

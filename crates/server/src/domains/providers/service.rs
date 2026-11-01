@@ -67,6 +67,23 @@ impl ProviderService {
         self.provider_resolver.clone()
     }
 
+    fn validate_api(&self, driver: &DriverId, api: Option<&str>) -> Result<()> {
+        let Some(api) = api.filter(|api| *api != "default") else {
+            return Ok(());
+        };
+        let result = if let Some(resolver) = &self.provider_resolver {
+            resolver.validate_api(driver, api)
+        } else {
+            let registry = everruns_worker::create_driver_registry();
+            registry
+                .descriptor(driver)
+                .ok_or_else(|| BadRequestError::new("Provider driver is not registered"))?
+                .validate_api(Some(api))
+                .map_err(Into::into)
+        };
+        result.map_err(|error| BadRequestError::new(error.to_string()).into())
+    }
+
     /// Invalidate resolver cache after provider mutation.
     async fn invalidate_resolver_cache(&self, org_id: i64) {
         if let Some(ref resolver) = self.provider_resolver {
@@ -76,6 +93,7 @@ impl ProviderService {
 
     pub async fn create(&self, caller: &Caller, req: CreateProviderRequest) -> Result<Provider> {
         validate_provider_type(&req.provider_type)?;
+        self.validate_api(&req.provider_type, req.api.as_deref())?;
         validate_provider_base_url(req.provider_type.clone(), req.base_url.as_deref())?;
         validate_trace_config(req.trace.as_ref())?;
         validate_request_options(req.request_options.as_ref())?;
@@ -95,6 +113,9 @@ impl ProviderService {
         // Persist only the explicit overrides; driver defaults are applied on
         // read.
         let mut settings_map = serde_json::Map::new();
+        if let Some(api) = &req.api {
+            settings_map.insert("api".into(), serde_json::json!(api));
+        }
         if let Some(trace) = req.trace.as_ref() {
             settings_map.insert("trace".to_string(), serde_json::to_value(trace)?);
         }
@@ -260,6 +281,8 @@ impl ProviderService {
             .clone()
             .unwrap_or_else(|| existing.provider_type.parse().unwrap_or(DriverId::OpenAI));
         validate_provider_type(&provider_type)?;
+        let stored_api = crate::services::provider_resolver::provider_api(&existing.settings)?;
+        self.validate_api(&provider_type, req.api.as_deref().or(stored_api.as_deref()))?;
         let base_url = req.base_url.as_deref().or(existing.base_url.as_deref());
         validate_provider_base_url(provider_type, base_url)?;
         validate_trace_config(req.trace.as_ref())?;
@@ -282,24 +305,29 @@ impl ProviderService {
         // Merge the supplied overrides into existing settings, preserving any
         // other settings keys. `None` on both leaves settings untouched
         // (COALESCE in storage).
-        let settings = (req.trace.is_some() || req.request_options.is_some()).then(|| {
-            let mut merged = existing.settings.clone();
-            if !merged.is_object() {
-                merged = serde_json::json!({});
-            }
-            if let Some(trace) = req.trace.as_ref() {
-                merged["trace"] = serde_json::to_value(trace).unwrap_or(serde_json::Value::Null);
-            }
-            if let Some(request_options) = req.request_options.as_ref() {
-                let stored = crate::services::provider_resolver::provider_request_options(
-                    &existing.settings,
-                );
-                let options = merge_request_options(&stored, request_options);
-                merged["request_options"] =
-                    serde_json::to_value(&options).unwrap_or(serde_json::Value::Null);
-            }
-            merged
-        });
+        let settings = (req.trace.is_some() || req.request_options.is_some() || req.api.is_some())
+            .then(|| {
+                let mut merged = existing.settings.clone();
+                if !merged.is_object() {
+                    merged = serde_json::json!({});
+                }
+                if let Some(api) = &req.api {
+                    merged["api"] = serde_json::json!(api);
+                }
+                if let Some(trace) = req.trace.as_ref() {
+                    merged["trace"] =
+                        serde_json::to_value(trace).unwrap_or(serde_json::Value::Null);
+                }
+                if let Some(request_options) = req.request_options.as_ref() {
+                    let stored = crate::services::provider_resolver::provider_request_options(
+                        &existing.settings,
+                    );
+                    let options = merge_request_options(&stored, request_options);
+                    merged["request_options"] =
+                        serde_json::to_value(&options).unwrap_or(serde_json::Value::Null);
+                }
+                merged
+            });
 
         let input = UpdateProvider {
             name: req.name,
@@ -401,6 +429,11 @@ impl ProviderService {
         let request_options = (!request_options.is_empty()).then_some(request_options);
 
         Provider {
+            api: row
+                .settings
+                .get("api")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
             id: row.id,
             name: row.name.clone(),
             provider_type,
@@ -1090,6 +1123,7 @@ mod tests {
 
         fn name_update(name: &str) -> UpdateProviderRequest {
             UpdateProviderRequest {
+                api: None,
                 name: Some(name.to_string()),
                 provider_type: None,
                 base_url: None,
@@ -1205,6 +1239,7 @@ mod tests {
 
         fn create(name: &str) -> CreateProviderRequest {
             CreateProviderRequest {
+                api: None,
                 name: name.to_string(),
                 provider_type: DriverId::OpenAI,
                 base_url: None,
@@ -1217,6 +1252,7 @@ mod tests {
 
         fn rename(name: &str) -> UpdateProviderRequest {
             UpdateProviderRequest {
+                api: None,
                 name: Some(name.to_string()),
                 provider_type: None,
                 base_url: None,

@@ -20,7 +20,12 @@ The loopback helper returns a plain-text completion message by default. A host
 can call `LoginAttempt::with_success_page_html` before `finish` to show its own
 branded completion page after a valid callback.
 
-In code, `everruns_drivers::codex::driver(store)` builds one provider for chat
+When the host already supplies authentication implementing `ProviderAuth`, use
+`everruns::ChatGpt::new(auth)` (`chatgpt` feature), or `everruns::Codex::new(auth)`
+for the legacy Codex route (`codex` feature), and pass the value to `.provider(...)`.
+The host continues to own sign-in, token storage and refresh.
+
+For token-store composition, `everruns_drivers::codex::driver(store)` builds one provider for chat
 and model listing from a host token store, and
 `codex::driver::ephemeral(grant)` does the same for a grant held only in
 memory. Select the grant's route with `TokenRoute::Codex` or

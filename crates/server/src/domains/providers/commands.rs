@@ -99,6 +99,9 @@ const PROVISION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateProvider {
+    /// Chat API declared by the provider driver; "default" restores its default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     /// Provider driver, e.g. `openai` or `anthropic`.
@@ -145,6 +148,7 @@ impl Command for CreateProvider {
                     credentials: None,
                     trace: self.trace,
                     request_options: self.request_options,
+                    api: self.api,
                 },
             )
             .await?;
@@ -262,6 +266,9 @@ impl Command for GetProvider {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateProvider {
+    /// Chat API declared by the provider driver; "default" restores its default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
     /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
@@ -312,6 +319,7 @@ impl Command for UpdateProvider {
                     status: self.status,
                     trace: self.trace,
                     request_options: self.request_options,
+                    api: self.api,
                 },
             )
             .await?

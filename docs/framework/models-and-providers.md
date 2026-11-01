@@ -18,6 +18,74 @@ that ship today, the environment variables each driver reads, provider model
 catalogs, and writing your own driver. To call a model once without building an
 agent, see [Direct model calls](/framework/direct-model-calls/).
 
+## Provider configuration
+
+Each production provider has a typed configuration under `everruns::providers`,
+also re-exported at the crate root. Enable its Cargo feature. Configuration owns
+credentials, endpoint and protocol; `Model` and `LlmCallConfig` own the model and
+per-call generation settings. Pass a configuration to `.provider(...)`, or
+convert it into `Provider` with `.into()` for direct calls.
+
+| Feature | Configuration | Credential setup |
+| --- | --- | --- |
+| `openai` | `OpenAI` | `new(key)` or `from_env()` |
+| `openai` | `AzureOpenAI` | `new(versioned_url, key)` or `from_env(versioned_url)` |
+| `anthropic` | `Anthropic` | `new(key)` or `from_env()` |
+| `gemini` | `Gemini` | `new(key)` or `from_env()` |
+| `openrouter` | `OpenRouter` | `new(key)` or `from_env()` |
+| `mistral` | `Mistral` | `new(key)` or `from_env()` |
+| `groq` | `Groq` | `new(key)` or `from_env()` |
+| `fireworks` | `Fireworks` | `new(key)` or `from_env()`; `.batch(config)` enables native batches |
+| `meta` | `Meta` | `new(key)` or `from_env()` |
+| `vercel` | `Vercel` | `new(key_or_oidc_token)` or `from_env()` |
+| `typesafe` | `TypeSafe` | `new(key)` or `from_env()`; Decisions service only |
+| `mai` | `Mai` | `new(url, MaiAuth)` or `from_env()`; API key or Entra auth |
+| `cloudflare` | `Cloudflare` | `new(account, token)` or `from_env()`; `.gateway(id)` selects a gateway |
+| `bedrock` | `Bedrock` | `new(access, secret, region)` or `default_chain()` |
+| `chatgpt` | `ChatGpt` | `new(auth)` with host-managed OAuth and refresh |
+| `codex` | `Codex` | `new(auth)` with host-managed legacy Codex authentication |
+
+HTTP wrappers offer `.base_url(...)`. Bedrock uses `.region(...)` instead.
+ChatGPT and Codex intentionally have no environment credential loader: the host
+owns login and token storage. Azure keeps its versioned resource URL explicit.
+The offline test double remains `Model::simulated(...)`.
+
+OpenAI and Mistral expose the same protocol selection method with provider-owned
+choice types:
+
+```rust
+use everruns::{OpenAI, OpenAIApi, Mistral, MistralApi};
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let openai = OpenAI::from_env()?.api(OpenAIApi::ChatCompletions);
+let mistral = Mistral::from_env()?.api(MistralApi::Responses);
+# Ok(())
+# }
+```
+
+Without `.api(...)`, OpenAI uses Responses and Mistral uses Chat Completions.
+The selection affects chat only; OpenAI's other services remain available.
+Providers with one supported chat API need no selector. No provider-specific
+extension methods are added to shared call configuration.
+
+Hosted provider create/update requests use the same connection setting:
+
+```json
+{
+  "name": "OpenAI Chat Completions",
+  "provider_type": "openai",
+  "api": "chat_completions"
+}
+```
+
+Supply credentials through the normal `api_key` or `credentials` fields.
+`GET /v1/providers/config` advertises each driver's supported `apis`; unsupported
+choices return a validation error. Omit `api` on creation to use the driver
+default, omit it on PATCH to keep the current choice, or PATCH `"api": "default"`
+to reset it. The setting follows the connection through hosted workers and does
+not change other model services. Upgrade both server and workers before using
+the selector. The Settings UI does not expose the selector yet.
+
 ## OpenAI convenience
 
 With the `openai` feature, `OpenAI::from_env` reads `OPENAI_API_KEY` and the
@@ -122,7 +190,7 @@ The set below is what ships today. The boundary is open, so a
 | Microsoft MAI | `everruns-drivers` (`mai`) | OpenAI Chat Completions, System One (Azure AI Foundry) | chat, decisions | yes |
 | Fireworks AI | `everruns-drivers` (`fireworks`) | OpenAI Chat Completions-compatible | chat | yes |
 | Meta | `everruns-drivers` (`meta`) | OpenAI Responses-compatible | chat | yes |
-| Mistral AI | `everruns-drivers` (`mistral`) | OpenAI Chat Completions-compatible | chat | yes |
+| Mistral AI | `everruns-drivers` (`mistral`) | Chat Completions; connection-selected stateless Responses | chat | yes |
 | Cloudflare AI Gateway | `everruns-drivers` (`cloudflare`) | OpenAI Chat Completions-compatible | chat | Workers AI only |
 | Vercel AI Gateway | `everruns-drivers` (`vercel`) | Open Responses | chat | yes |
 | LLM Simulator | `everruns-llmsim` | none — in-process test double | chat, realtime (simulated) | no |
@@ -182,12 +250,10 @@ CLI, or an Azure service principal, it already configures the matching driver. `
 example above reads `OPENAI_API_KEY`, and `OPENAI_BASE_URL` when set.
 
 Each driver crate offers the same entry point, returning a ready `Provider`.
-The facade bundles OpenAI, Anthropic, Gemini and OpenRouter behind the
-`openai`, `anthropic`, `gemini` and `openrouter` features (`Anthropic::from_env`
-and friends), and AWS Bedrock behind `bedrock`, where
+The facade exposes the typed configurations listed above. AWS Bedrock uses `bedrock`, where
 `Bedrock::default_chain()` resolves credentials the way the AWS SDK does (an
 IAM role, SSO or a profile, or the `AWS_*` variables) instead of reading
-declared names; any other driver is a separate crate you add as a dependency:
+declared names. Application code uses the same typed setup for other vendors:
 
 ```rust
 use everruns::{Agent, Model};
@@ -196,7 +262,7 @@ use everruns::{Agent, Model};
 // Reads FIREWORKS_API_KEY, and FIREWORKS_BASE_URL when set.
 let model = Model::new(
     "accounts/fireworks/models/llama-v3p1-70b-instruct",
-    everruns_drivers::fireworks::from_env("fireworks")?,
+    everruns::Fireworks::from_env()?,
 );
 # let _ = model;
 # Ok(())

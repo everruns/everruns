@@ -6858,6 +6858,13 @@
         }
       },
       "properties": {
+        "api": {
+          "description": "Chat API declared by the provider driver; \"default\" restores its default.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "api_key": {
           "description": "Credential for the provider.",
           "type": [
@@ -23052,6 +23059,13 @@
         }
       },
       "properties": {
+        "api": {
+          "description": "Chat API declared by the provider driver; \"default\" restores its default.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "api_key": {
           "description": "Replacement credential.",
           "type": [

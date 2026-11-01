@@ -25,3 +25,6 @@ pub const LLM_PROVIDER_MANAGE: Policy = Policy {
     id: "provider.manage",
     rules: &[Rule::UserHasPermission(Permission::OrgModelsManage)],
 };
+
+#[cfg(test)]
+mod api_selection_tests;
