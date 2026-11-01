@@ -12075,6 +12075,7 @@ export interface components {
       key: string;
       /**
        * Format: int64
+       * @description Tokens in this category across every model call.
        * @example 1060877013
        */
       tokens: number;
@@ -12087,40 +12088,63 @@ export interface components {
     };
     /** @description Spend in one UTC hour, by category. */
     CostHour: {
-      /** Format: double */
+      /**
+       * Format: double
+       * @description USD of prompt tokens read from cache.
+       */
       cache_read_usd: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @description USD of prompt tokens written to cache.
+       */
       cache_write_usd: number;
       /**
        * Format: date-time
        * @description Start of the hour (UTC).
        */
       hour: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Model calls made in the hour.
+       */
       model_calls: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @description USD of output tokens.
+       */
       output_usd: number;
       /**
        * Format: double
        * @description Spend with no category split (see `SessionCost.unattributed_usd`).
        */
       unattributed_usd: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @description USD of prompt tokens not read from cache.
+       */
       uncached_input_usd: number;
     };
     /** @description Spend of one model. */
     CostModel: {
       /**
        * Format: int64
+       * @description Model calls made with this model.
        * @example 3811
        */
       calls: number;
-      /** @example meta/muse-spark-1.3-contributor */
+      /**
+       * @description Model id as the provider reported it.
+       * @example meta/muse-spark-1.3-contributor
+       */
       model: string;
-      /** @example openrouter */
+      /**
+       * @description Provider driver that served the model, when known.
+       * @example openrouter
+       */
       provider?: string | null;
       /**
        * Format: double
+       * @description Spend in USD on this model.
        * @example 106.26
        */
       usd: number;
@@ -12156,22 +12180,34 @@ export interface components {
     };
     /** @description A sandbox the session ran and how long it ran. */
     CostSandbox: {
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the sandbox was created.
+       */
       created_at: string;
       /**
        * Format: int64
+       * @description Seconds the sandbox spent paused.
        * @example 1860
        */
       paused_seconds: number;
+      /** @description Sandbox template profile, when one was used. */
       profile_name?: string | null;
-      /** @example daytona */
+      /**
+       * @description Sandbox provider, e.g. `daytona` or `e2b`.
+       * @example daytona
+       */
       provider: string;
       /**
        * Format: int64
+       * @description Seconds the sandbox spent running.
        * @example 4320
        */
       running_seconds: number;
-      /** @example sandbox_01a1510c99c8714eabb22a463e7c1fa1 */
+      /**
+       * @description Sandbox's prefixed public identifier.
+       * @example sandbox_01a1510c99c8714eabb22a463e7c1fa1
+       */
       sandbox_id: string;
       /** @description Lifecycle spans, oldest first. */
       spans: components["schemas"]["SandboxStateSpan"][];
@@ -12202,11 +12238,13 @@ export interface components {
       source_id?: string | null;
       /**
        * Format: int64
+       * @description Turns this origin started.
        * @example 1845
        */
       turns: number;
       /**
        * Format: double
+       * @description Spend in USD on those turns.
        * @example 106.11
        */
       usd: number;
@@ -12246,26 +12284,33 @@ export interface components {
     CostTool: {
       /**
        * Format: int64
+       * @description Calls of this tool.
        * @example 1180
        */
       calls: number;
       /**
        * Format: int64
+       * @description Summed running time of its calls.
        * @example 627000
        */
       duration_ms: number;
       /**
        * Format: int64
+       * @description Calls of this tool that ended in an error.
        * @example 13
        */
       failed: number;
-      /** @example web_fetch */
+      /**
+       * @description Tool name.
+       * @example web_fetch
+       */
       name: string;
     };
     /** @description Tool calls across the session, from the trace index. */
     CostTools: {
       /**
        * Format: int64
+       * @description Tool calls across the session.
        * @example 1977
        */
       calls: number;
@@ -12277,6 +12322,7 @@ export interface components {
       duration_ms: number;
       /**
        * Format: int64
+       * @description Tool calls that ended in an error.
        * @example 14
        */
       failed: number;
@@ -12296,7 +12342,10 @@ export interface components {
        * @example schedule
        */
       source_kind: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the turn started.
+       */
       started_at: string;
       /**
        * @description `running`, `completed`, `failed`, `cancelled` or `sealed`.
@@ -12309,10 +12358,14 @@ export interface components {
        * @example 1162
        */
       turn: number;
-      /** @example turn_01a124cd7e9571ac95c312b3c6d0cd82 */
+      /**
+       * @description Turn's prefixed public identifier.
+       * @example turn_01a124cd7e9571ac95c312b3c6d0cd82
+       */
       turn_id: string;
       /**
        * Format: double
+       * @description Spend in USD on the model calls of the turn.
        * @example 0.2
        */
       usd: number;

@@ -53,6 +53,7 @@ pub struct CostCategory {
     /// `uncached_input`, `cache_read`, `cache_write` or `output`.
     #[schema(example = "uncached_input")]
     pub key: String,
+    /// Tokens in this category across every model call.
     #[schema(example = 1_060_877_013_i64)]
     pub tokens: i64,
     /// USD, from each call's cost split by the model's price table.
@@ -63,12 +64,16 @@ pub struct CostCategory {
 /// Spend of one model.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CostModel {
+    /// Model id as the provider reported it.
     #[schema(example = "meta/muse-spark-1.3-contributor")]
     pub model: String,
+    /// Provider driver that served the model, when known.
     #[schema(example = "openrouter")]
     pub provider: Option<String>,
+    /// Model calls made with this model.
     #[schema(example = 3811)]
     pub calls: i64,
+    /// Spend in USD on this model.
     #[schema(example = 106.26)]
     pub usd: f64,
 }
@@ -78,12 +83,17 @@ pub struct CostModel {
 pub struct CostHour {
     /// Start of the hour (UTC).
     pub hour: DateTime<Utc>,
+    /// USD of prompt tokens not read from cache.
     pub uncached_input_usd: f64,
+    /// USD of prompt tokens read from cache.
     pub cache_read_usd: f64,
+    /// USD of prompt tokens written to cache.
     pub cache_write_usd: f64,
+    /// USD of output tokens.
     pub output_usd: f64,
     /// Spend with no category split (see `SessionCost.unattributed_usd`).
     pub unattributed_usd: f64,
+    /// Model calls made in the hour.
     pub model_calls: i64,
 }
 
@@ -93,12 +103,15 @@ pub struct CostTurn {
     /// Per-session turn number, 1-based.
     #[schema(example = 1162)]
     pub turn: i32,
+    /// Turn's prefixed public identifier.
     #[schema(example = "turn_01a124cd7e9571ac95c312b3c6d0cd82")]
     pub turn_id: String,
+    /// When the turn started.
     pub started_at: DateTime<Utc>,
     /// `running`, `completed`, `failed`, `cancelled` or `sealed`.
     #[schema(example = "completed")]
     pub status: String,
+    /// Spend in USD on the model calls of the turn.
     #[schema(example = 0.2)]
     pub usd: f64,
     /// Prompt tokens of the turn, cached and uncached.
@@ -126,8 +139,10 @@ pub struct CostSource {
     pub cron: Option<String>,
     /// The schedule still fires: enabled and not deleted.
     pub active: Option<bool>,
+    /// Turns this origin started.
     #[schema(example = 1845)]
     pub turns: i64,
+    /// Spend in USD on those turns.
     #[schema(example = 106.11)]
     pub usd: f64,
 }
@@ -135,8 +150,10 @@ pub struct CostSource {
 /// Tool calls across the session, from the trace index.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct CostTools {
+    /// Tool calls across the session.
     #[schema(example = 1977)]
     pub calls: i64,
+    /// Tool calls that ended in an error.
     #[schema(example = 14)]
     pub failed: i64,
     /// Summed running time of every call.
@@ -149,12 +166,16 @@ pub struct CostTools {
 /// Calls, failures and running time of one tool.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CostTool {
+    /// Tool name.
     #[schema(example = "web_fetch")]
     pub name: String,
+    /// Calls of this tool.
     #[schema(example = 1180)]
     pub calls: i64,
+    /// Calls of this tool that ended in an error.
     #[schema(example = 13)]
     pub failed: i64,
+    /// Summed running time of its calls.
     #[schema(example = 627000)]
     pub duration_ms: i64,
 }
@@ -162,14 +183,20 @@ pub struct CostTool {
 /// A sandbox the session ran and how long it ran.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct CostSandbox {
+    /// Sandbox's prefixed public identifier.
     #[schema(example = "sandbox_01a1510c99c8714eabb22a463e7c1fa1")]
     pub sandbox_id: String,
+    /// Sandbox provider, e.g. `daytona` or `e2b`.
     #[schema(example = "daytona")]
     pub provider: String,
+    /// Sandbox template profile, when one was used.
     pub profile_name: Option<String>,
+    /// When the sandbox was created.
     pub created_at: DateTime<Utc>,
+    /// Seconds the sandbox spent running.
     #[schema(example = 4320)]
     pub running_seconds: i64,
+    /// Seconds the sandbox spent paused.
     #[schema(example = 1860)]
     pub paused_seconds: i64,
     /// Lifecycle spans, oldest first.

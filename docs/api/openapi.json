@@ -40094,6 +40094,7 @@
           "tokens": {
             "type": "integer",
             "format": "int64",
+            "description": "Tokens in this category across every model call.",
             "example": 1060877013
           },
           "usd": {
@@ -40119,11 +40120,13 @@
         "properties": {
           "cache_read_usd": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "USD of prompt tokens read from cache."
           },
           "cache_write_usd": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "USD of prompt tokens written to cache."
           },
           "hour": {
             "type": "string",
@@ -40132,11 +40135,13 @@
           },
           "model_calls": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Model calls made in the hour."
           },
           "output_usd": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "USD of output tokens."
           },
           "unattributed_usd": {
             "type": "number",
@@ -40145,7 +40150,8 @@
           },
           "uncached_input_usd": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "USD of prompt tokens not read from cache."
           }
         }
       },
@@ -40161,10 +40167,12 @@
           "calls": {
             "type": "integer",
             "format": "int64",
+            "description": "Model calls made with this model.",
             "example": 3811
           },
           "model": {
             "type": "string",
+            "description": "Model id as the provider reported it.",
             "example": "meta/muse-spark-1.3-contributor"
           },
           "provider": {
@@ -40172,11 +40180,13 @@
               "string",
               "null"
             ],
+            "description": "Provider driver that served the model, when known.",
             "example": "openrouter"
           },
           "usd": {
             "type": "number",
             "format": "double",
+            "description": "Spend in USD on this model.",
             "example": 106.26
           }
         }
@@ -40247,30 +40257,36 @@
         "properties": {
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the sandbox was created."
           },
           "paused_seconds": {
             "type": "integer",
             "format": "int64",
+            "description": "Seconds the sandbox spent paused.",
             "example": 1860
           },
           "profile_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Sandbox template profile, when one was used."
           },
           "provider": {
             "type": "string",
+            "description": "Sandbox provider, e.g. `daytona` or `e2b`.",
             "example": "daytona"
           },
           "running_seconds": {
             "type": "integer",
             "format": "int64",
+            "description": "Seconds the sandbox spent running.",
             "example": 4320
           },
           "sandbox_id": {
             "type": "string",
+            "description": "Sandbox's prefixed public identifier.",
             "example": "sandbox_01a1510c99c8714eabb22a463e7c1fa1"
           },
           "spans": {
@@ -40330,11 +40346,13 @@
           "turns": {
             "type": "integer",
             "format": "int64",
+            "description": "Turns this origin started.",
             "example": 1845
           },
           "usd": {
             "type": "number",
             "format": "double",
+            "description": "Spend in USD on those turns.",
             "example": 106.11
           }
         }
@@ -40394,20 +40412,24 @@
           "calls": {
             "type": "integer",
             "format": "int64",
+            "description": "Calls of this tool.",
             "example": 1180
           },
           "duration_ms": {
             "type": "integer",
             "format": "int64",
+            "description": "Summed running time of its calls.",
             "example": 627000
           },
           "failed": {
             "type": "integer",
             "format": "int64",
+            "description": "Calls of this tool that ended in an error.",
             "example": 13
           },
           "name": {
             "type": "string",
+            "description": "Tool name.",
             "example": "web_fetch"
           }
         }
@@ -40425,6 +40447,7 @@
           "calls": {
             "type": "integer",
             "format": "int64",
+            "description": "Tool calls across the session.",
             "example": 1977
           },
           "duration_ms": {
@@ -40436,6 +40459,7 @@
           "failed": {
             "type": "integer",
             "format": "int64",
+            "description": "Tool calls that ended in an error.",
             "example": 14
           },
           "items": {
@@ -40473,7 +40497,8 @@
           },
           "started_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the turn started."
           },
           "status": {
             "type": "string",
@@ -40488,11 +40513,13 @@
           },
           "turn_id": {
             "type": "string",
+            "description": "Turn's prefixed public identifier.",
             "example": "turn_01a124cd7e9571ac95c312b3c6d0cd82"
           },
           "usd": {
             "type": "number",
             "format": "double",
+            "description": "Spend in USD on the model calls of the turn.",
             "example": 0.2
           }
         }
