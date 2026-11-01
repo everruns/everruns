@@ -78,6 +78,11 @@ setup and `.deepsec/AGENTS.md` for agent usage.
 
 ### 4. Supply chain and platform scanning
 
+- **CodeQL**: default setup currently scans Actions, C/C++ and Python. Rust/UI
+  coverage must not be inferred from a green overall check. See
+  [CodeQL coverage and cadence](codeql.md) for the inactive advanced-setup
+  candidate, settings prerequisite, and native/WASM limits.
+
 - **Licenses & advisories**: `cargo deny check licenses` and
   `cargo deny check advisories` (config in `deny.toml`), enforced by
   `.github/workflows/licenses.yml` on PRs that touch Cargo or crate files. The
