@@ -4,6 +4,7 @@ import { messages as agentCost } from "./messages/uk/agent-cost";
 import { messages as sharedControls } from "./messages/uk/shared-controls";
 import { messages as tracing } from "./messages/uk/tracing";
 import { messages as backgroundLimits } from "./messages/uk/background-limits";
+import { messages as monitoringTimeline } from "./messages/uk/monitoring-timeline";
 import { messages as zh } from "./messages/zh-CN";
 import { messages as es } from "./messages/es";
 import { messages as de } from "./messages/de";
@@ -59,6 +60,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   agentCost,
   externalWorker,
   backgroundLimits,
+  monitoringTimeline,
 );
 
 /** Product catalogs use null-prototype maps so hostile lookup keys fall back safely. */

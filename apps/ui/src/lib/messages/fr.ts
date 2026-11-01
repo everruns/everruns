@@ -3,6 +3,7 @@ import { messages as agentCost } from "./fr/agent-cost";
 import { messages as sharedControls } from "./fr/shared-controls";
 import { messages as tracing } from "./fr/tracing";
 import { messages as backgroundLimits } from "./fr/background-limits";
+import { messages as monitoringTimeline } from "./fr/monitoring-timeline";
 import { messages as catalog0 } from "./fr/agents-01";
 import { messages as catalog1 } from "./fr/agents-02";
 import { messages as catalog2 } from "./fr/agents-03";
@@ -54,4 +55,5 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   sharedControls,
   agentCost,
   backgroundLimits,
+  monitoringTimeline,
 );

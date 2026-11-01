@@ -40,6 +40,32 @@ this view is open. History starts at the first successful snapshot; it does not
 invent earlier data. Historical worker maps are not inferred from today's
 ownership. Return to **Live** for worker and actor inspection.
 
+## Timeline
+
+**Timeline** shows recorded history instead of the current moment. Pick a range
+from 15 minutes to 30 days; the server records a sample every 10 seconds and
+keeps it permanently, so history exists before you open the page.
+
+- **Parallel sessions**: sessions with an active turn, averaged per bucket and
+  split by phase, with a dashed line for the bucket's peak. Deploys are marked.
+- **Turns** finished per bucket by outcome, and **Waiting for a worker**: the
+  longest time a ready turn waited for a lease.
+- **Tool calls**, **Model spend**, **Errors**, and **Model latency** (p95).
+
+Click a bucket to see its numbers, or drag across any chart to select a range
+and zoom into it. The side panel lists the busiest agents and failed turns by
+cause for the selection. Each summary tile compares with the previous period of
+the same length.
+
+The platform view adds worker capacity on the parallel sessions chart, a load
+strip per worker (red above 90% of its slots), lease takeovers, and worker
+joins and departures. It ranks organizations by ID only.
+
+History from before recording started is rebuilt from turn records and drawn in
+grey: it has running turns and outcomes, but no phase split, queue, or worker
+load. Samples are taken every 10 seconds, so a spike shorter than that can be
+missed; turn counts are exact.
+
 ## Workers and actors
 
 **Workers** groups execution by worker, with organization-to-worker ownership
@@ -66,7 +92,9 @@ Use `GET /api/v1/monitoring` for an enrolled organization's summary and
 Use browser credentials or a full-access personal token; scoped personal tokens
 remain denied. Organization adoption and read permissions still apply, and fleet
 access still requires platform authority. The adjacent `/actors` endpoints provide
-bounded, filtered pages and actor detail. The [API reference](/api/) owns the request and response contracts.
+bounded, filtered pages and actor detail, and `/timeline` returns recorded
+history in buckets (`range` or `from`/`to`, optional `bucket` seconds) with
+`/timeline/window` for a selection's busiest agents and failure causes. The [API reference](/api/) owns the request and response contracts.
 
 Monitoring complements [OpenTelemetry](/observability/opentelemetry/) and
 [Braintrust](/observability/braintrust/), which provide trace exports and
