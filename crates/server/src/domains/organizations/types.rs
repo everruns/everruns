@@ -148,8 +148,7 @@ pub struct UpdateOrganizationRequest {
     /// runs 1 to 96, budgets positive with the default not above the largest,
     /// and `org_unattended_daily_usd` positive or null for no daily cap.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub background_limits:
-        Option<everruns_contracts::runtime::session_schedule::BackgroundLimits>,
+    pub background_limits: Option<everruns_contracts::runtime::session_schedule::BackgroundLimits>,
 }
 
 fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>

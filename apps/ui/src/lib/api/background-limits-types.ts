@@ -2,21 +2,7 @@
 // org's daily unattended cap). Augments the interfaces legacy-api-types.ts
 // exports (including the organization types it re-exports) rather than growing
 // it: that file is on the source-size ratchet.
-import type { BudgetStatus, BudgetSubjectType } from "./schema-types";
-
-/** Org-level limits on unattended work. PATCH replaces the whole object. */
-export interface BackgroundLimits {
-  /** Longest an agent-created schedule may run, in days (1..7). */
-  schedule_max_lifetime_days: number;
-  /** Most runs an agent-created schedule may have (1..96). */
-  schedule_max_runs: number;
-  /** Budget a schedule gets when the agent passes none, in USD. */
-  schedule_budget_usd: number;
-  /** Largest budget an agent may give a schedule, in USD. */
-  schedule_max_budget_usd: number;
-  /** Daily cap on all unattended work in the org, in USD; null means no cap. */
-  org_unattended_daily_usd: number | null;
-}
+import type { BackgroundLimits, BudgetStatus, BudgetSubjectType } from "./schema-types";
 
 /** Why the platform stopped a schedule; null while it runs or after a person re-enables it. */
 export type ScheduleStopReason = "ended" | "budget_exhausted";
@@ -28,7 +14,7 @@ export interface ScheduleBudget {
   status: BudgetStatus;
 }
 
-/** Budget subjects, including the background-limit ones the generated enum may not list yet. */
+/** Budget subjects the limits page labels. */
 export type BackgroundBudgetSubjectType = BudgetSubjectType | "session_schedule" | "org_unattended";
 
 declare module "./legacy-api-types" {

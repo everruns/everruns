@@ -17,13 +17,12 @@ pub const SESSION_SCHEDULE_CAPABILITY_ID: &str = "session_schedule";
 /// The limits are stated in the description itself, so the model knows them
 /// before it calls (2026-11-01 decision: limits must be visible to the agent in
 /// the description, the argument schema, validation errors and the result).
-static CREATE_SCHEDULE_DESCRIPTION: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| {
-        format!(
-            "Schedule a future task in this session. Provide description and either scheduled_at (one-shot) or cron_expression (recurring). {} Cancel the schedule as soon as stop_when is met.",
-            everruns_core::session_schedule::schedule_limits_summary()
-        )
-    });
+static CREATE_SCHEDULE_DESCRIPTION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    format!(
+        "Schedule a future task in this session. Provide description and either scheduled_at (one-shot) or cron_expression (recurring). {} Cancel the schedule as soon as stop_when is met.",
+        everruns_core::session_schedule::schedule_limits_summary()
+    )
+});
 
 /// Session schedule capability — lets the agent schedule future work.
 pub struct SessionScheduleCapability;
@@ -140,7 +139,8 @@ impl Tool for CreateScheduleTool {
             "additionalProperties": false
         });
         if let Some(properties) = schema["properties"].as_object_mut() {
-            properties.extend(everruns_core::session_schedule::ScheduleBounds::tool_schema_properties());
+            properties
+                .extend(everruns_core::session_schedule::ScheduleBounds::tool_schema_properties());
         }
         schema
     }
@@ -637,7 +637,10 @@ mod tests {
                 "limit of 96 runs",
             ),
         ] {
-            match CreateScheduleTool.execute_with_context(args, &context).await {
+            match CreateScheduleTool
+                .execute_with_context(args, &context)
+                .await
+            {
                 ToolExecutionResult::ToolError(msg) => {
                     assert!(msg.contains(expected), "unexpected msg: {msg}");
                 }

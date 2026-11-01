@@ -214,8 +214,12 @@ impl SessionScheduleService {
         if change.enabled == Some(true) {
             input.stop_reason = UpdateField::Clear;
             input.next_trigger_at = UpdateField::from_option(
-                compute_next_trigger(row.cron_expression.as_deref(), row.scheduled_at, &row.timezone)
-                    .map_err(Err)?,
+                compute_next_trigger(
+                    row.cron_expression.as_deref(),
+                    row.scheduled_at,
+                    &row.timezone,
+                )
+                .map_err(Err)?,
             );
         }
         if let Some(limit) = change.budget_usd {

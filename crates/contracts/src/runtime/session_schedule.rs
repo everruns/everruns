@@ -99,7 +99,10 @@ impl BackgroundLimits {
                 "schedule_budget_usd cannot be larger than schedule_max_budget_usd".to_string(),
             );
         }
-        if self.org_unattended_daily_usd.is_some_and(|cap| !positive(cap)) {
+        if self
+            .org_unattended_daily_usd
+            .is_some_and(|cap| !positive(cap))
+        {
             return Err(
                 "org_unattended_daily_usd must be a positive amount in USD, or null for no cap"
                     .to_string(),
@@ -1050,9 +1053,13 @@ mod bounds_tests {
 
     #[test]
     fn one_shot_fires_once_without_a_stop_condition() {
-        let bounds =
-            resolve_agent_schedule_bounds(&ScheduleBounds::default(), &BackgroundLimits::default(), false, now())
-                .unwrap();
+        let bounds = resolve_agent_schedule_bounds(
+            &ScheduleBounds::default(),
+            &BackgroundLimits::default(),
+            false,
+            now(),
+        )
+        .unwrap();
         assert_eq!(bounds.max_runs, Some(1));
         assert_eq!(bounds.budget_usd, Some(DEFAULT_SCHEDULE_BUDGET_USD));
     }

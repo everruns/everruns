@@ -224,7 +224,9 @@ impl BudgetService {
     ) {
         let schedule = match (input_message_id, scope.session_id) {
             (Some(message_id), _) => self.db.invocation_schedule(message_id).await,
-            (None, Some(session_id)) => self.db.latest_invocation_schedule(org_id, session_id).await,
+            (None, Some(session_id)) => {
+                self.db.latest_invocation_schedule(org_id, session_id).await
+            }
             (None, None) => Ok(None),
         };
         match schedule {
@@ -233,7 +235,9 @@ impl BudgetService {
                 scope.unattended = true;
             }
             Ok(None) => {}
-            Err(error) => error!(org_id, error = %error, "Failed to resolve the schedule of a turn for budgets"),
+            Err(error) => {
+                error!(org_id, error = %error, "Failed to resolve the schedule of a turn for budgets")
+            }
         }
         if scope.unattended
             && let Err(error) = self.db.ensure_org_unattended_budget(org_id).await

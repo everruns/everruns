@@ -37009,6 +37009,47 @@
           "type": "string"
         }
       },
+      "BackgroundLimits": {
+        "type": "object",
+        "description": "Limits on background work an org can tune in Settings → Limits.\n\nDefaults are code constants rather than environment variables, so every\ndeployment starts safe. The lifetime and run limits can only be lowered:\n[`BackgroundLimits::validate`] rejects values above the agent ceilings.",
+        "properties": {
+          "org_unattended_daily_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Daily cap on unattended work across the org, in USD. `None` is no cap.",
+            "default": 20
+          },
+          "schedule_budget_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Budget a schedule gets when the agent does not pass one, in USD.",
+            "default": 2
+          },
+          "schedule_max_budget_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Largest budget an agent may give a schedule, in USD.",
+            "default": 10
+          },
+          "schedule_max_lifetime_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Longest an agent-created recurring schedule may run, in days (1-7).",
+            "default": 7,
+            "minimum": 0
+          },
+          "schedule_max_runs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Most runs an agent-created recurring schedule may have (1-96).",
+            "default": 96,
+            "minimum": 0
+          }
+        }
+      },
       "BackgroundProgress": {
         "type": "object",
         "description": "Structured progress reported by background tools.",
@@ -37439,7 +37480,9 @@
           "user",
           "organization",
           "agent_trigger",
-          "agent_channel"
+          "agent_channel",
+          "session_schedule",
+          "org_unattended"
         ]
       },
       "BuiltInSearchProvider": {
@@ -51214,6 +51257,7 @@
                 "default_provider_per_service",
                 "system_decisions",
                 "web_search_defaults",
+                "background_limits",
                 "created_at",
                 "updated_at"
               ],
@@ -51225,6 +51269,10 @@
                   ],
                   "format": "int32",
                   "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault."
+                },
+                "background_limits": {
+                  "$ref": "#/components/schemas/BackgroundLimits",
+                  "description": "Limits on unattended background work (Settings → Limits): schedule\nlifetime and run cap for agent-created schedules, the default and\nlargest schedule budget, and the daily unattended spend cap. Code\ndefaults when the organization never set any."
                 },
                 "base_harness_id": {
                   "type": [
@@ -57599,6 +57647,7 @@
           "default_provider_per_service",
           "system_decisions",
           "web_search_defaults",
+          "background_limits",
           "created_at",
           "updated_at"
         ],
@@ -57610,6 +57659,10 @@
             ],
             "format": "int32",
             "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault."
+          },
+          "background_limits": {
+            "$ref": "#/components/schemas/BackgroundLimits",
+            "description": "Limits on unattended background work (Settings → Limits): schedule\nlifetime and run cap for agent-created schedules, the default and\nlargest schedule budget, and the daily unattended spend cap. Code\ndefaults when the organization never set any."
           },
           "base_harness_id": {
             "type": [
@@ -72279,6 +72332,17 @@
             "description": "How many agents one AgentID owner may sign in to this organization's\nPublic Chat channels. Pass null to use the platform default (5).",
             "example": 5,
             "minimum": 0
+          },
+          "background_limits": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BackgroundLimits",
+                "description": "Limits on unattended background work; replaces the stored limits as a\nwhole. Omitted fields take the code default. Lifetime is 1 to 7 days,\nruns 1 to 96, budgets positive with the default not above the largest,\nand `org_unattended_daily_usd` positive or null for no daily cap."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "base_harness_id": {
             "type": [

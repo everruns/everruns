@@ -181,9 +181,7 @@ impl SessionScheduleStore for DbSessionScheduleStore {
                     timezone,
                     next_trigger_at: next_trigger,
                     ends_at: bounds.ends_at,
-                    max_runs: bounds
-                        .max_runs
-                        .map(|runs| runs.min(i32::MAX as u32) as i32),
+                    max_runs: bounds.max_runs.map(|runs| runs.min(i32::MAX as u32) as i32),
                     stop_when: bounds.stop_when.clone(),
                 },
                 MAX_ACTIVE_SCHEDULES_PER_SESSION,

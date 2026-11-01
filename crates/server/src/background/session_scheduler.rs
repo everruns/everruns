@@ -21,7 +21,6 @@
 
 use crate::domains::budgets::FireGate;
 use crate::domains::session_schedules::SessionScheduleService;
-use everruns_core::session_schedule::stop_reason;
 use crate::execution_metadata;
 use crate::services::EventService;
 use crate::storage::{DbSessionTaskRegistry, StorageBackend};
@@ -29,6 +28,7 @@ use chrono::Utc;
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::host::TurnBackend;
+use everruns_core::session_schedule::stop_reason;
 use everruns_core::session_task::{
     NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState, SessionTaskUpdate,
     TASK_KIND_MONITOR,
@@ -174,10 +174,7 @@ async fn poll_and_trigger(
             stop_schedule(schedule_service, org_id, schedule_id, stop_reason::ENDED).await;
             continue;
         }
-        match budgets
-            .unattended_fire_gate(org_id, &row.public_id)
-            .await
-        {
+        match budgets.unattended_fire_gate(org_id, &row.public_id).await {
             FireGate::Fire => {}
             FireGate::ScheduleBudgetSpent => {
                 stop_schedule(
@@ -387,7 +384,10 @@ pub(crate) fn fire_message(schedule: &everruns_core::session_schedule::SessionSc
     }
     let mut lines = Vec::new();
     match schedule.max_runs {
-        Some(max) => lines.push(format!("Scheduled run {} of {max}.", schedule.trigger_count)),
+        Some(max) => lines.push(format!(
+            "Scheduled run {} of {max}.",
+            schedule.trigger_count
+        )),
         None => lines.push(format!("Scheduled run {}.", schedule.trigger_count)),
     }
     if let Some(end) = schedule.ends_at {
@@ -1260,7 +1260,8 @@ mod limits_tests {
     async fn schedule_ends_when_its_next_time_is_past_its_end() {
         let db = Arc::new(StorageBackend::test_database());
         let service = SessionScheduleService::new(db.clone());
-        let row = bounded_schedule(&db, None, Some(Utc::now() + chrono::Duration::seconds(1))).await;
+        let row =
+            bounded_schedule(&db, None, Some(Utc::now() + chrono::Duration::seconds(1))).await;
         let fired = service
             .mark_triggered(DEFAULT_ORG_ID, row.id)
             .await
@@ -1319,7 +1320,9 @@ mod limits_tests {
         let budgets = BudgetService::new(db.clone());
         let row = bounded_schedule(&db, Some(10), None).await;
         assert_eq!(
-            budgets.unattended_fire_gate(DEFAULT_ORG_ID, &row.public_id).await,
+            budgets
+                .unattended_fire_gate(DEFAULT_ORG_ID, &row.public_id)
+                .await,
             FireGate::Fire
         );
 
@@ -1329,7 +1332,9 @@ mod limits_tests {
             .unwrap();
         db.set_budget_status(budget.id, "exhausted").await.unwrap();
         assert_eq!(
-            budgets.unattended_fire_gate(DEFAULT_ORG_ID, &row.public_id).await,
+            budgets
+                .unattended_fire_gate(DEFAULT_ORG_ID, &row.public_id)
+                .await,
             FireGate::ScheduleBudgetSpent
         );
 
@@ -1343,9 +1348,13 @@ mod limits_tests {
             .unwrap()
             .expect("default limits have a daily cap");
         assert_eq!(org_budget.limit, 20.0);
-        db.set_budget_status(org_budget.id, "exhausted").await.unwrap();
+        db.set_budget_status(org_budget.id, "exhausted")
+            .await
+            .unwrap();
         assert_eq!(
-            budgets.unattended_fire_gate(DEFAULT_ORG_ID, &row.public_id).await,
+            budgets
+                .unattended_fire_gate(DEFAULT_ORG_ID, &row.public_id)
+                .await,
             FireGate::OrgUnattendedSpent
         );
 
@@ -1359,9 +1368,16 @@ mod limits_tests {
         )
         .await
         .unwrap();
-        assert!(db.org_unattended_budget(DEFAULT_ORG_ID).await.unwrap().is_none());
+        assert!(
+            db.org_unattended_budget(DEFAULT_ORG_ID)
+                .await
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(
-            budgets.unattended_fire_gate(DEFAULT_ORG_ID, &row.public_id).await,
+            budgets
+                .unattended_fire_gate(DEFAULT_ORG_ID, &row.public_id)
+                .await,
             FireGate::Fire
         );
     }
