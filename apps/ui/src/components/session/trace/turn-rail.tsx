@@ -2,6 +2,12 @@
 
 // Left rail of the Trace tab: go-to-turn, the session minimap built from
 // server-side turn buckets, and the list of loaded turns.
+//
+// Decision: a minimap cell keeps its activity or error colour at all times and
+// the cells whose turns are on screen get an ink outline, so the map
+// answers "where am I" and a click visibly moves the ring. Cells used to turn
+// solid black when their turns were merely loaded, which hid their errors and
+// read as a selection that did nothing.
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
@@ -41,6 +47,7 @@ export function TurnRail({
   overview,
   turns,
   activeTurn,
+  visibleTurns,
   onJump,
   onScrollTo,
   goToRef,
@@ -48,6 +55,8 @@ export function TurnRail({
   overview: TraceOverview | undefined;
   turns: TraceTurn[];
   activeTurn: number | null;
+  /** Turns with rows on screen in the trace list. */
+  visibleTurns: ReadonlySet<number>;
   onJump: (turn: number) => void;
   onScrollTo: (turn: number) => void;
   goToRef: React.RefObject<HTMLInputElement | null>;
@@ -56,7 +65,7 @@ export function TurnRail({
   const [goTo, setGoTo] = useState("");
   const turnCount = overview?.turn_count ?? 0;
   const bucketSize = overview?.bucket_size ?? 1;
-  const loadedBuckets = new Set(turns.map((t) => bucketIndex(t.turn, bucketSize)));
+  const inViewBuckets = new Set([...visibleTurns].map((turn) => bucketIndex(turn, bucketSize)));
   const maxSteps = Math.max(0, ...(overview?.buckets.map((b) => b.steps) ?? [0]));
 
   return (
@@ -97,7 +106,7 @@ export function TurnRail({
           <div className="grid grid-cols-14 gap-0.5" role="list" aria-label={ui("Session minimap")}>
             {overview.buckets.map((bucket) => {
               const index = bucketIndex(bucket.from_turn, bucketSize);
-              const loaded = loadedBuckets.has(index);
+              const inView = inViewBuckets.has(index);
               const opacity = 0.12 + 0.45 * bucketIntensity(bucket.steps, maxSteps);
               return (
                 <button
@@ -113,12 +122,17 @@ export function TurnRail({
                     value1: bucket.to_turn,
                     value2: bucket.errors ? ", has errors" : "",
                   })}
+                  aria-current={inView ? "true" : undefined}
                   onClick={() => onJump(bucket.from_turn)}
-                  className="aspect-square"
+                  className={cn(
+                    "aspect-square outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    inView
+                      ? "relative z-10 ring-2 ring-foreground ring-offset-1 ring-offset-background"
+                      : "hover:ring-1 hover:ring-foreground/40",
+                  )}
                   style={{
-                    background: loaded
-                      ? "hsl(var(--primary))"
-                      : bucket.errors > 0
+                    background:
+                      bucket.errors > 0
                         ? "hsl(var(--destructive) / 0.75)"
                         : `hsl(var(--accent) / ${opacity.toFixed(2)})`,
                   }}
@@ -131,7 +145,16 @@ export function TurnRail({
               {ui("1 cell =")} {formatCount(bucketSize)} {ui("turn")}
               {bucketSize === 1 ? "" : "s"}
             </span>
-            <span className="text-destructive">{ui("■ errors")}</span>
+            <span className="flex items-center gap-2">
+              <span className="flex items-center gap-1">
+                <span
+                  className="mr-1 size-2 ring-2 ring-foreground ring-offset-1 ring-offset-background"
+                  aria-hidden
+                />
+                {ui("in view")}
+              </span>
+              <span className="text-destructive">{ui("■ errors")}</span>
+            </span>
           </div>
         </div>
       )}

@@ -179,16 +179,32 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   }, [data.loading, rows.length, pending, virtualizer, linkedFailure]);
 
   // Scroll to a turn (or a step in it) once its rows exist.
+  //
+  // Decision: the scroll waits one frame. When a far jump replaces the loaded
+  // window, the list's height changes in the same commit; scrolling before the
+  // browser lays that out leaves the reader where they were, clamped to the
+  // old height, so a minimap click looked like it did nothing.
+  const scrollFrameRef = useRef<number | null>(null);
   useEffect(() => {
     if (!pending) return;
     const headerIndex = rows.findIndex((r) => r.key === `t${pending.turn}`);
     if (headerIndex === -1) return;
     const stepIndex =
       pending.step !== undefined ? rowIndexOfStep(rows, pending.turn, pending.step) : -1;
-    if (stepIndex !== -1) virtualizer.scrollToIndex(stepIndex, { align: "center" });
-    else virtualizer.scrollToIndex(headerIndex, { align: "start" });
+    if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current);
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      if (stepIndex !== -1) virtualizer.scrollToIndex(stepIndex, { align: "center" });
+      else virtualizer.scrollToIndex(headerIndex, { align: "start" });
+    });
     setPending(null);
   }, [pending, rows, virtualizer]);
+  useEffect(
+    () => () => {
+      if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current);
+    },
+    [],
+  );
 
   // Live: refresh the tail when new trace events arrive and the tail is loaded.
   const lastLoaded = data.turns[data.turns.length - 1]?.turn ?? 0;
@@ -340,6 +356,16 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   }, [overview.data, data.turns, firstLoaded, tailLoaded]);
 
   const activeTurn = (childStep ? null : selectedStep?.turn) ?? batch?.turn ?? null;
+  // Turns with rows on screen, for the minimap's "in view" marker.
+  const visibleItems = virtualizer.getVirtualItems();
+  const scrollTop = virtualizer.scrollOffset ?? 0;
+  const viewportHeight = virtualizer.scrollRect?.height ?? 0;
+  const visibleTurns = new Set<number>();
+  for (const item of visibleItems) {
+    if (item.end <= scrollTop || item.start >= scrollTop + viewportHeight) continue;
+    const row = rows[item.index];
+    if (row && row.type !== "unloaded") visibleTurns.add(row.turn.turn);
+  }
   const totals = overview.data;
 
   return (
@@ -424,6 +450,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
             overview={overview.data}
             turns={data.turns}
             activeTurn={activeTurn}
+            visibleTurns={visibleTurns}
             onJump={jump}
             onScrollTo={(turn) => {
               const index = rows.findIndex((r) => r.key === `t${turn}`);
@@ -436,6 +463,8 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
 
         <div
           ref={scrollRef}
+          data-trace-list="true"
+          data-trace-list="true"
           className="min-h-0 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5"
           onScroll={(e) => {
             const el = e.currentTarget;
