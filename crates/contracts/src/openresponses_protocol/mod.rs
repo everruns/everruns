@@ -876,7 +876,7 @@ impl OpenResponsesProtocolChatDriver {
         // whole history at full price on every call.
         let strategy = match config.prompt_cache.as_ref() {
             Some(cache) if !cache.enabled => return None,
-            Some(cache) => cache.strategy.clone(),
+            Some(cache) => cache.strategy,
             None => crate::driver_registry::PromptCacheStrategy::default(),
         };
         let cache_family = config
