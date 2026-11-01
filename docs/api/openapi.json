@@ -10011,6 +10011,167 @@
         }
       }
     },
+    "/v1/durable/monitoring/timeline": {
+      "get": {
+        "tags": [
+          "durable"
+        ],
+        "summary": "Get recorded execution history across all organizations",
+        "description": "Get recorded execution history across all organizations. Requires platform-user access.",
+        "operationId": "get_fleet_monitoring_timeline",
+        "parameters": [
+          {
+            "name": "range",
+            "in": "query",
+            "description": "Range ending now: 15m, 1h, 6h, 24h, 7d, or 30d. Ignored when `from` is set. Defaults to 24h.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "24h"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive UTC start; use with `to` for a custom range of up to 31 days.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive UTC end; defaults to now.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "description": "Bucket size in seconds: 60, 300, 900, 3600, 21600, or 86400. Chosen from the range when omitted.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "example": 300
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Platform execution history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringTimeline"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid range",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Platform access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "internal",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/durable/monitoring/timeline/window": {
+      "get": {
+        "tags": [
+          "durable"
+        ],
+        "summary": "Break down a selected window across organizations",
+        "description": "Break down a selected window across organizations. Requires platform-user access.",
+        "operationId": "get_fleet_monitoring_timeline_window",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive UTC start of the selected window.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive UTC end of the selected window; at most 7 days after `from`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Platform window breakdown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringTimelineWindow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Platform access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "internal",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/durable/schedules": {
       "get": {
         "tags": [
@@ -19315,6 +19476,185 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ResourceConfigResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the monitoring feature flag",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/monitoring/timeline": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Get recorded execution history for the organization",
+        "operationId": "get_monitoring_timeline",
+        "parameters": [
+          {
+            "name": "range",
+            "in": "query",
+            "description": "Range ending now: 15m, 1h, 6h, 24h, 7d, or 30d. Ignored when `from` is set. Defaults to 24h.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "24h"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive UTC start; use with `to` for a custom range of up to 31 days.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive UTC end; defaults to now.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "description": "Bucket size in seconds: 60, 300, 900, 3600, 21600, or 86400. Chosen from the range when omitted.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "example": 300
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization execution history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringTimeline"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid range",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not enrolled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the monitoring feature flag",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/monitoring/timeline/window": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Break down a selected window: busiest agents and failure causes",
+        "operationId": "get_monitoring_timeline_window",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive UTC start of the selected window.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive UTC end of the selected window; at most 7 days after `from`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization window breakdown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringTimelineWindow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not enrolled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -57281,6 +57621,108 @@
           }
         }
       },
+      "MonitoringTimeline": {
+        "type": "object",
+        "description": "Recorded execution history for one organization or the platform.",
+        "required": [
+          "generated_at",
+          "scope",
+          "from",
+          "to",
+          "bucket_seconds",
+          "buckets",
+          "summary",
+          "previous",
+          "markers"
+        ],
+        "properties": {
+          "bucket_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Bucket size in seconds.",
+            "example": 300,
+            "minimum": 0
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineBucket"
+            },
+            "description": "Every bucket in the range, oldest first; buckets without history are zero."
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive UTC start, aligned to the bucket size."
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC time of this read."
+          },
+          "markers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineMarker"
+            },
+            "description": "Deploys and worker changes inside the range."
+          },
+          "previous": {
+            "$ref": "#/components/schemas/TimelineSummary",
+            "description": "Totals for the same length of time immediately before."
+          },
+          "scope": {
+            "type": "string",
+            "description": "organization or fleet.",
+            "example": "organization"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/TimelineSummary",
+            "description": "Totals for this range."
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exclusive UTC end."
+          }
+        }
+      },
+      "MonitoringTimelineWindow": {
+        "type": "object",
+        "description": "Breakdown of a selected window.",
+        "required": [
+          "from",
+          "to",
+          "busiest",
+          "failures"
+        ],
+        "properties": {
+          "busiest": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineRank"
+            },
+            "description": "Up to 5 busiest agents (organization) or organizations (platform)."
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineFailure"
+            },
+            "description": "Up to 6 failure codes, most frequent first."
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive UTC start."
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exclusive UTC end."
+          }
+        }
+      },
       "MonitoringWorker": {
         "type": "object",
         "description": "Scope-aware actor ownership with platform-only worker telemetry.",
@@ -68523,6 +68965,440 @@
           },
           "text": {
             "type": "string"
+          }
+        }
+      },
+      "TimelineBucket": {
+        "type": "object",
+        "description": "One time bucket. Averages are over 10-second samples; counters are exact.",
+        "required": [
+          "start",
+          "sampled",
+          "backfilled",
+          "active_avg",
+          "active_peak",
+          "model_avg",
+          "tools_avg",
+          "waiting_avg",
+          "runnable_avg",
+          "setup_avg",
+          "runnable_peak",
+          "leases_peak",
+          "lease_takeovers",
+          "turns_started",
+          "turns_completed",
+          "turns_failed",
+          "turns_cancelled",
+          "model_calls",
+          "tool_calls",
+          "tool_failures",
+          "input_tokens",
+          "output_tokens",
+          "cost_usd",
+          "worker_loads"
+        ],
+        "properties": {
+          "active_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average sessions with an active, runnable, or held actor.",
+            "example": 96.4
+          },
+          "active_peak": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest sampled count of such sessions.",
+            "example": 112,
+            "minimum": 0
+          },
+          "backfilled": {
+            "type": "boolean",
+            "description": "Whether this bucket includes history rebuilt from turn records (no phase split or queue data)."
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Model spend in USD, actual where reconciled, otherwise estimated.",
+            "example": 0.29
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Model input tokens.",
+            "minimum": 0
+          },
+          "lease_takeovers": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Expired leases another worker took over.",
+            "minimum": 0
+          },
+          "leases_peak": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest sampled count of valid actor leases.",
+            "minimum": 0
+          },
+          "model_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average sessions in a model phase."
+          },
+          "model_calls": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Model calls started.",
+            "minimum": 0
+          },
+          "model_latency_p95_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Highest per-minute p95 model call duration in the bucket, in milliseconds.",
+            "minimum": 0
+          },
+          "oldest_runnable_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Longest wait for a worker lease observed in the bucket, in milliseconds.",
+            "minimum": 0
+          },
+          "organizations_peak": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: highest number of organizations with active sessions at once.",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Model output tokens.",
+            "minimum": 0
+          },
+          "runnable_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average sessions ready and waiting for a worker lease."
+          },
+          "runnable_peak": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest sampled count of sessions waiting for a worker.",
+            "minimum": 0
+          },
+          "sampled": {
+            "type": "boolean",
+            "description": "Whether population was sampled; false for empty buckets and history rebuilt from turn records."
+          },
+          "setup_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average sessions in turn setup or a phase handoff."
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC start of the bucket.",
+            "example": "2026-11-01T05:00:00Z"
+          },
+          "tool_calls": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tool calls started.",
+            "minimum": 0
+          },
+          "tool_failures": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tool calls that ended in an error or timeout.",
+            "minimum": 0
+          },
+          "tools_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average sessions running tools."
+          },
+          "turns_cancelled": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns cancelled.",
+            "minimum": 0
+          },
+          "turns_completed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns completed.",
+            "minimum": 0
+          },
+          "turns_failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns failed.",
+            "minimum": 0
+          },
+          "turns_started": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns started.",
+            "minimum": 0
+          },
+          "waiting_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average sessions waiting for input or external tool results."
+          },
+          "worker_capacity": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: total worker slots.",
+            "minimum": 0
+          },
+          "worker_load_avg": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Platform only: average reported worker load across all workers."
+          },
+          "worker_load_peak": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: highest reported total worker load.",
+            "minimum": 0
+          },
+          "worker_loads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineWorkerLoad"
+            },
+            "description": "Platform only: per-worker average load."
+          },
+          "workers": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: registered workers with a fresh heartbeat.",
+            "minimum": 0
+          }
+        }
+      },
+      "TimelineFailure": {
+        "type": "object",
+        "description": "Failed turns of one classified error code.",
+        "required": [
+          "code",
+          "turns"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Classified error code, or other.",
+            "example": "provider_rate_limited"
+          },
+          "turns": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Failed turns with this code.",
+            "minimum": 0
+          }
+        }
+      },
+      "TimelineMarker": {
+        "type": "object",
+        "description": "Deploy or worker change on the timeline.",
+        "required": [
+          "at",
+          "kind",
+          "label"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC time of the change."
+          },
+          "kind": {
+            "type": "string",
+            "description": "deploy, worker_joined, or worker_left (worker changes are platform only).",
+            "example": "deploy"
+          },
+          "label": {
+            "type": "string",
+            "description": "Server version for a deploy, worker id otherwise.",
+            "example": "0.50.1"
+          }
+        }
+      },
+      "TimelineRank": {
+        "type": "object",
+        "description": "One agent (organization) or organization (platform) ranked in a window.",
+        "required": [
+          "sessions",
+          "turns"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent or organization public identifier; null for sessions without an agent."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent name; null in platform scope."
+          },
+          "sessions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions that started a turn in the window.",
+            "minimum": 0
+          },
+          "turns": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns started in the window.",
+            "minimum": 0
+          }
+        }
+      },
+      "TimelineSummary": {
+        "type": "object",
+        "description": "Totals over a range, for the summary row and the previous-period comparison.",
+        "required": [
+          "peak_active",
+          "turns_started",
+          "turns_finished",
+          "turns_failed",
+          "tool_calls",
+          "cost_usd"
+        ],
+        "properties": {
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Model spend in USD."
+          },
+          "failure_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Failed turns divided by finished turns; null when none finished."
+          },
+          "longest_wait_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Start of the bucket with the longest wait."
+          },
+          "longest_wait_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Longest wait for a worker lease, in milliseconds.",
+            "minimum": 0
+          },
+          "peak_active": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest sampled parallel sessions.",
+            "minimum": 0
+          },
+          "peak_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Minute of that peak."
+          },
+          "seconds_above_90": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: seconds of buckets whose peak load exceeded 90% of capacity.",
+            "minimum": 0
+          },
+          "tool_calls": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tool calls started.",
+            "minimum": 0
+          },
+          "turns_failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns failed.",
+            "minimum": 0
+          },
+          "turns_finished": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns that finished: completed, failed, or cancelled.",
+            "minimum": 0
+          },
+          "turns_started": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns started.",
+            "minimum": 0
+          }
+        }
+      },
+      "TimelineWorkerLoad": {
+        "type": "object",
+        "description": "Load of one worker over a bucket (platform scope).",
+        "required": [
+          "worker_id",
+          "load_avg",
+          "capacity"
+        ],
+        "properties": {
+          "capacity": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Reported maximum concurrency.",
+            "example": 50,
+            "minimum": 0
+          },
+          "load_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average reported load over the bucket's samples.",
+            "example": 31.5
+          },
+          "worker_id": {
+            "type": "string",
+            "description": "Worker identifier from the registry.",
+            "example": "worker-01"
           }
         }
       },

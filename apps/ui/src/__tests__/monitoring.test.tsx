@@ -28,6 +28,8 @@ jest.mock("@/lib/api/monitoring", () => ({
   getMonitoring: jest.fn(),
   getMonitoringActor: jest.fn(),
   getMonitoringActors: jest.fn(),
+  getMonitoringTimeline: jest.fn(),
+  getMonitoringTimelineWindow: jest.fn(),
 }));
 jest.mock("next/navigation", () => ({ usePathname: () => "/durable" }));
 

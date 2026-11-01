@@ -2524,6 +2524,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/durable/monitoring/timeline": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get recorded execution history across all organizations
+     * @description Get recorded execution history across all organizations. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring_timeline"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/durable/monitoring/timeline/window": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Break down a selected window across organizations
+     * @description Break down a selected window across organizations. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring_timeline_window"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/durable/schedules": {
     parameters: {
       query?: never;
@@ -4844,6 +4884,40 @@ export interface paths {
     };
     /** Resolve organization monitoring read authority */
     get: operations["monitoring_config"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/monitoring/timeline": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get recorded execution history for the organization */
+    get: operations["get_monitoring_timeline"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/monitoring/timeline/window": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Break down a selected window: busiest agents and failure causes */
+    get: operations["get_monitoring_timeline_window"];
     put?: never;
     post?: never;
     delete?: never;
@@ -21736,6 +21810,60 @@ export interface components {
        */
       turn_no: number;
     };
+    /** @description Recorded execution history for one organization or the platform. */
+    MonitoringTimeline: {
+      /**
+       * Format: int32
+       * @description Bucket size in seconds.
+       * @example 300
+       */
+      bucket_seconds: number;
+      /** @description Every bucket in the range, oldest first; buckets without history are zero. */
+      buckets: components["schemas"]["TimelineBucket"][];
+      /**
+       * Format: date-time
+       * @description Inclusive UTC start, aligned to the bucket size.
+       */
+      from: string;
+      /**
+       * Format: date-time
+       * @description UTC time of this read.
+       */
+      generated_at: string;
+      /** @description Deploys and worker changes inside the range. */
+      markers: components["schemas"]["TimelineMarker"][];
+      /** @description Totals for the same length of time immediately before. */
+      previous: components["schemas"]["TimelineSummary"];
+      /**
+       * @description organization or fleet.
+       * @example organization
+       */
+      scope: string;
+      /** @description Totals for this range. */
+      summary: components["schemas"]["TimelineSummary"];
+      /**
+       * Format: date-time
+       * @description Exclusive UTC end.
+       */
+      to: string;
+    };
+    /** @description Breakdown of a selected window. */
+    MonitoringTimelineWindow: {
+      /** @description Up to 5 busiest agents (organization) or organizations (platform). */
+      busiest: components["schemas"]["TimelineRank"][];
+      /** @description Up to 6 failure codes, most frequent first. */
+      failures: components["schemas"]["TimelineFailure"][];
+      /**
+       * Format: date-time
+       * @description Inclusive UTC start.
+       */
+      from: string;
+      /**
+       * Format: date-time
+       * @description Exclusive UTC end.
+       */
+      to: string;
+    };
     /** @description Scope-aware actor ownership with platform-only worker telemetry. */
     MonitoringWorker: {
       /**
@@ -27948,6 +28076,285 @@ export interface components {
        */
       annotations?: components["schemas"]["TextAnnotation"][];
       text: string;
+    };
+    /** @description One time bucket. Averages are over 10-second samples; counters are exact. */
+    TimelineBucket: {
+      /**
+       * Format: double
+       * @description Average sessions with an active, runnable, or held actor.
+       * @example 96.4
+       */
+      active_avg: number;
+      /**
+       * Format: int64
+       * @description Highest sampled count of such sessions.
+       * @example 112
+       */
+      active_peak: number;
+      /** @description Whether this bucket includes history rebuilt from turn records (no phase split or queue data). */
+      backfilled: boolean;
+      /**
+       * Format: double
+       * @description Model spend in USD, actual where reconciled, otherwise estimated.
+       * @example 0.29
+       */
+      cost_usd: number;
+      /**
+       * Format: int64
+       * @description Model input tokens.
+       */
+      input_tokens: number;
+      /**
+       * Format: int64
+       * @description Expired leases another worker took over.
+       */
+      lease_takeovers: number;
+      /**
+       * Format: int64
+       * @description Highest sampled count of valid actor leases.
+       */
+      leases_peak: number;
+      /**
+       * Format: double
+       * @description Average sessions in a model phase.
+       */
+      model_avg: number;
+      /**
+       * Format: int64
+       * @description Model calls started.
+       */
+      model_calls: number;
+      /**
+       * Format: int64
+       * @description Highest per-minute p95 model call duration in the bucket, in milliseconds.
+       */
+      model_latency_p95_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Longest wait for a worker lease observed in the bucket, in milliseconds.
+       */
+      oldest_runnable_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Platform only: highest number of organizations with active sessions at once.
+       */
+      organizations_peak?: number | null;
+      /**
+       * Format: int64
+       * @description Model output tokens.
+       */
+      output_tokens: number;
+      /**
+       * Format: double
+       * @description Average sessions ready and waiting for a worker lease.
+       */
+      runnable_avg: number;
+      /**
+       * Format: int64
+       * @description Highest sampled count of sessions waiting for a worker.
+       */
+      runnable_peak: number;
+      /** @description Whether population was sampled; false for empty buckets and history rebuilt from turn records. */
+      sampled: boolean;
+      /**
+       * Format: double
+       * @description Average sessions in turn setup or a phase handoff.
+       */
+      setup_avg: number;
+      /**
+       * Format: date-time
+       * @description UTC start of the bucket.
+       * @example 2026-11-01T05:00:00Z
+       */
+      start: string;
+      /**
+       * Format: int64
+       * @description Tool calls started.
+       */
+      tool_calls: number;
+      /**
+       * Format: int64
+       * @description Tool calls that ended in an error or timeout.
+       */
+      tool_failures: number;
+      /**
+       * Format: double
+       * @description Average sessions running tools.
+       */
+      tools_avg: number;
+      /**
+       * Format: int64
+       * @description Turns cancelled.
+       */
+      turns_cancelled: number;
+      /**
+       * Format: int64
+       * @description Turns completed.
+       */
+      turns_completed: number;
+      /**
+       * Format: int64
+       * @description Turns failed.
+       */
+      turns_failed: number;
+      /**
+       * Format: int64
+       * @description Turns started.
+       */
+      turns_started: number;
+      /**
+       * Format: double
+       * @description Average sessions waiting for input or external tool results.
+       */
+      waiting_avg: number;
+      /**
+       * Format: int64
+       * @description Platform only: total worker slots.
+       */
+      worker_capacity?: number | null;
+      /**
+       * Format: double
+       * @description Platform only: average reported worker load across all workers.
+       */
+      worker_load_avg?: number | null;
+      /**
+       * Format: int64
+       * @description Platform only: highest reported total worker load.
+       */
+      worker_load_peak?: number | null;
+      /** @description Platform only: per-worker average load. */
+      worker_loads: components["schemas"]["TimelineWorkerLoad"][];
+      /**
+       * Format: int64
+       * @description Platform only: registered workers with a fresh heartbeat.
+       */
+      workers?: number | null;
+    };
+    /** @description Failed turns of one classified error code. */
+    TimelineFailure: {
+      /**
+       * @description Classified error code, or other.
+       * @example provider_rate_limited
+       */
+      code: string;
+      /**
+       * Format: int64
+       * @description Failed turns with this code.
+       */
+      turns: number;
+    };
+    /** @description Deploy or worker change on the timeline. */
+    TimelineMarker: {
+      /**
+       * Format: date-time
+       * @description UTC time of the change.
+       */
+      at: string;
+      /**
+       * @description deploy, worker_joined, or worker_left (worker changes are platform only).
+       * @example deploy
+       */
+      kind: string;
+      /**
+       * @description Server version for a deploy, worker id otherwise.
+       * @example 0.50.1
+       */
+      label: string;
+    };
+    /** @description One agent (organization) or organization (platform) ranked in a window. */
+    TimelineRank: {
+      /** @description Agent or organization public identifier; null for sessions without an agent. */
+      id?: string | null;
+      /** @description Agent name; null in platform scope. */
+      name?: string | null;
+      /**
+       * Format: int64
+       * @description Sessions that started a turn in the window.
+       */
+      sessions: number;
+      /**
+       * Format: int64
+       * @description Turns started in the window.
+       */
+      turns: number;
+    };
+    /** @description Totals over a range, for the summary row and the previous-period comparison. */
+    TimelineSummary: {
+      /**
+       * Format: double
+       * @description Model spend in USD.
+       */
+      cost_usd: number;
+      /**
+       * Format: double
+       * @description Failed turns divided by finished turns; null when none finished.
+       */
+      failure_rate?: number | null;
+      /**
+       * Format: date-time
+       * @description Start of the bucket with the longest wait.
+       */
+      longest_wait_at?: string | null;
+      /**
+       * Format: int64
+       * @description Longest wait for a worker lease, in milliseconds.
+       */
+      longest_wait_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Highest sampled parallel sessions.
+       */
+      peak_active: number;
+      /**
+       * Format: date-time
+       * @description Minute of that peak.
+       */
+      peak_at?: string | null;
+      /**
+       * Format: int64
+       * @description Platform only: seconds of buckets whose peak load exceeded 90% of capacity.
+       */
+      seconds_above_90?: number | null;
+      /**
+       * Format: int64
+       * @description Tool calls started.
+       */
+      tool_calls: number;
+      /**
+       * Format: int64
+       * @description Turns failed.
+       */
+      turns_failed: number;
+      /**
+       * Format: int64
+       * @description Turns that finished: completed, failed, or cancelled.
+       */
+      turns_finished: number;
+      /**
+       * Format: int64
+       * @description Turns started.
+       */
+      turns_started: number;
+    };
+    /** @description Load of one worker over a bucket (platform scope). */
+    TimelineWorkerLoad: {
+      /**
+       * Format: int64
+       * @description Reported maximum concurrency.
+       * @example 50
+       */
+      capacity: number;
+      /**
+       * Format: double
+       * @description Average reported load over the bucket's samples.
+       * @example 31.5
+       */
+      load_avg: number;
+      /**
+       * @description Worker identifier from the registry.
+       * @example worker-01
+       */
+      worker_id: string;
     };
     /** @description Data for `timer.cancelled`. */
     TimerCancelledData: {
@@ -39781,6 +40188,102 @@ export interface operations {
       };
     };
   };
+  get_fleet_monitoring_timeline: {
+    parameters: {
+      query?: {
+        /**
+         * @description Range ending now: 15m, 1h, 6h, 24h, 7d, or 30d. Ignored when `from` is set. Defaults to 24h.
+         * @example 24h
+         */
+        range?: string;
+        /** @description Inclusive UTC start; use with `to` for a custom range of up to 31 days. */
+        from?: string;
+        /** @description Exclusive UTC end; defaults to now. */
+        to?: string;
+        /**
+         * @description Bucket size in seconds: 60, 300, 900, 3600, 21600, or 86400. Chosen from the range when omitted.
+         * @example 300
+         */
+        bucket?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Platform execution history */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringTimeline"];
+        };
+      };
+      /** @description Invalid range */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Platform access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_fleet_monitoring_timeline_window: {
+    parameters: {
+      query: {
+        /** @description Inclusive UTC start of the selected window. */
+        from: string;
+        /** @description Exclusive UTC end of the selected window; at most 7 days after `from`. */
+        to: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Platform window breakdown */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringTimelineWindow"];
+        };
+      };
+      /** @description Invalid window */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Platform access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_schedules: {
     parameters: {
       query?: {
@@ -45789,6 +46292,120 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ResourceConfigResponse"];
+        };
+      };
+    };
+  };
+  get_monitoring_timeline: {
+    parameters: {
+      query?: {
+        /**
+         * @description Range ending now: 15m, 1h, 6h, 24h, 7d, or 30d. Ignored when `from` is set. Defaults to 24h.
+         * @example 24h
+         */
+        range?: string;
+        /** @description Inclusive UTC start; use with `to` for a custom range of up to 31 days. */
+        from?: string;
+        /** @description Exclusive UTC end; defaults to now. */
+        to?: string;
+        /**
+         * @description Bucket size in seconds: 60, 300, 900, 3600, 21600, or 86400. Chosen from the range when omitted.
+         * @example 300
+         */
+        bucket?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Organization execution history */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringTimeline"];
+        };
+      };
+      /** @description Invalid range */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not enrolled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_monitoring_timeline_window: {
+    parameters: {
+      query: {
+        /** @description Inclusive UTC start of the selected window. */
+        from: string;
+        /** @description Exclusive UTC end of the selected window; at most 7 days after `from`. */
+        to: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Organization window breakdown */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringTimelineWindow"];
+        };
+      };
+      /** @description Invalid window */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not enrolled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
     };

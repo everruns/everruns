@@ -56,6 +56,7 @@ import { ExecutionDensity } from "./execution-density";
 import { WorkerGrid, groupWorkers } from "./worker-grid";
 import { ActorTable, ActorDetail } from "./actors";
 import { MonitoringMetrics } from "./metrics";
+import { MonitoringTimelineView } from "./timeline";
 
 export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   const ui = useUiTranslations();
@@ -328,6 +329,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           aria-label={ui("Monitoring sections")}
           items={[
             { value: "execution", label: ui("Execution") },
+            { value: "timeline", label: ui("Timeline") },
             { value: "workers", label: ui("Workers"), disabled: !!replay },
             { value: "actors", label: ui("Actors"), disabled: !!replay },
             { value: "metrics", label: ui("Metrics") },
@@ -349,6 +351,10 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                 </Button>
               ))}
             </div>
+          ) : tab === "timeline" ? (
+            <span className="text-xs text-muted-foreground">
+              {ui("Recorded history, kept permanently")}
+            </span>
           ) : tab === "workers" ? (
             <label className="text-xs text-muted-foreground">
               {ui("Group size")}{" "}
@@ -465,7 +471,9 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           </Button>
         </div>
       )}
-      {!data ? (
+      {tab === "timeline" ? (
+        <MonitoringTimelineView scope={scope} />
+      ) : !data ? (
         snapshot.error ? (
           <EmptyState
             icon={<AlertTriangle />}

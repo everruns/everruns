@@ -22,7 +22,7 @@ WITH candidates AS MATERIALIZED (
     SELECT session_id FROM session_actors WHERE ($1::bigint IS NULL OR org_id = $1) AND ($3::uuid IS NULL OR session_id = $3)
       AND (runnable_since IS NOT NULL OR lease_holder IS NOT NULL OR $3::uuid IS NOT NULL)
 ), population AS MATERIALIZED (
-    SELECT s.id AS session_id, o.public_id::text AS org_id, s.status AS session_status,
+    SELECT s.id AS session_id, o.public_id::text AS org_id, s.org_id AS org_key, s.status AS session_status,
         a.lease_holder, a.lease_fence, a.lease_expires_at, a.lease_renewed_at,
         a.runnable_since, a.inbox_seq, a.consumed_seq, a.next_input_seq,
         a.attempts, a.cancel_requested_at,
@@ -302,6 +302,9 @@ impl Database {
         .await?)
     }
 }
+
+mod timeline;
+pub use timeline::*;
 
 #[cfg(test)]
 mod tests;

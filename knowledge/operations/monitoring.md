@@ -33,6 +33,14 @@ secondary. Agent names and conversation content are excluded from the overview.
 - Reacquisition continues an actor under a new fence. It is never counted as a
   new turn. Renewal acknowledgements do not add ownership-history noise.
 
+- Timeline shows recorded history over a chosen range (15 minutes to 30
+  days): parallel sessions by phase with peaks, turns by outcome, wait for a
+  worker, tool calls, spend, errors, and model latency; the platform view adds
+  worker capacity and per-worker load. History is recorded server-side, so it
+  exists before the page opens, and is never purged.
+- Timeline drill-down names the busiest agents of the organization's own
+  sessions; the platform view ranks organizations by public ID only.
+
 ## Decisions
 
 Agent semantics remain above `everruns-durable`; its dependency isolation guard
@@ -47,6 +55,24 @@ reads are bounded. State classification and SQL bounds belong to
 [the repository](../../crates/server/src/storage/repositories/monitoring/mod.rs);
 authorization, response shapes, and caching belong to
 [the API](../../crates/server/src/api/monitoring/mod.rs).
+
+Timeline history lives in `monitoring_minutes`: one row per organization per
+minute plus a platform row, because peaks do not add up across organizations.
+A cluster-once job runs each minute, folds up to five 10-second population
+samples into their minute, and recloses the last finished minutes from
+committed events, lease history, and model generations, so late writes and
+reconciled costs land. Firing a durable schedule every 10 seconds was rejected:
+it would create a durable task per sample. Short peaks between samples are
+missed; turn counters are exact. Organization rows exist only for active
+minutes, so averages divide by the platform row's sample count. History from
+before recording began is rebuilt a week per run from projected turn intervals
+and committed events, marked `backfilled` (no phase split, queue, or worker
+data). Reads aggregate minutes into the requested bucket. The sampling and
+read rules live in [the timeline repository](../../crates/server/src/storage/repositories/monitoring/timeline.rs)
+and [the timeline API](../../crates/server/src/api/monitoring/timeline.rs).
+Timeline endpoints follow the other Monitoring endpoints: scoped personal
+access tokens are denied, browser sessions and full-access tokens are not.
+Like the rest of Monitoring, Timeline has no CLI command.
 
 The UI reuses Slate's page layout and canonical navigation. The default is Flow,
 with Density available alongside it; Workers, Actors, and Metrics are separate

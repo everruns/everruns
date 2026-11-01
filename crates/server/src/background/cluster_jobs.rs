@@ -325,6 +325,8 @@ mod tests {
             crate::background::sandbox_orphan_scan::SANDBOX_ORPHAN_SCAN_ACTIVITY,
             crate::background::session_trace_backfill::SESSION_TRACE_BACKFILL_ACTIVITY,
             crate::background::stranded_actor_sweep::STRANDED_ACTOR_SWEEP_ACTIVITY,
+            crate::background::monitoring_timeline::MONITORING_TIMELINE_ACTIVITY,
+            crate::background::monitoring_timeline::MONITORING_TIMELINE_BACKFILL_ACTIVITY,
             crate::domains::memory::source_sync::MEMORY_SOURCE_SYNC_ACTIVITY,
             crate::domains::knowledge_indexes::source_sync::KNOWLEDGE_INDEX_SYNC_ACTIVITY,
             crate::background::tool_result_timeout::TOOL_RESULT_TIMEOUT_SWEEP_ACTIVITY,
