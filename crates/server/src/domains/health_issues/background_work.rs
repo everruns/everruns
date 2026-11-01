@@ -64,6 +64,7 @@ pub fn owns(code: &str) -> bool {
         code,
         SCHEDULE_RUNAWAY | SCHEDULE_BUDGET | ORG_UNATTENDED_BUDGET | SPEND_SPIKE | CONTEXT_BLOAT
     ) || super::behavior::owns(code)
+        || super::classifiers::owns(code)
 }
 
 /// The final answer's text, normalized and hashed: equal for answers that
@@ -365,6 +366,9 @@ fn copy_for(
 ) -> (String, String) {
     if super::behavior::owns(code) {
         return super::behavior::copy_for(code, status, evidence, agent);
+    }
+    if super::classifiers::owns(code) {
+        return super::classifiers::copy_for(code, status, evidence, agent);
     }
     let agent = agent.unwrap_or("An agent");
     let task = evidence["description"]

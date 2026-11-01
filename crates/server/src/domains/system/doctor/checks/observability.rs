@@ -69,6 +69,7 @@ pub(super) async fn run(doctor: &SystemDoctor) -> Findings {
     });
 
     found.check(detection_check(doctor));
+    found.check(classifier_check(doctor));
 
     let logs = DoctorCheck::new(AREA, "observability.log_level", "Log level");
     let verbose = env
@@ -130,4 +131,48 @@ fn detection_check(doctor: &SystemDoctor) -> DoctorCheck {
             .fix("Check the server log for \"health sweep failed\"."),
         None => check.info("Detection has not swept yet since the server started."),
     }
+}
+
+/// Whether the built-in session classifiers are reading sessions on this
+/// server, and how many sessions are suspected of abusing the platform.
+fn classifier_check(doctor: &SystemDoctor) -> DoctorCheck {
+    use crate::domains::health_issues::classifiers::last_sweep;
+    let check = DoctorCheck::new(AREA, "observability.classifiers", "Session classifiers");
+    if doctor.preflight {
+        return check
+            .info("Classifiers run inside the server; a command-line run cannot see them.");
+    }
+    let Some(sweep) = last_sweep() else {
+        return check.info("The session classifiers have not swept yet since the server started.");
+    };
+    if sweep.open_abuse > 0 {
+        return check
+            .warning(format!(
+                "{} sessions are suspected of abusing the platform.",
+                sweep.open_abuse
+            ))
+            .why("A decision model judged them likely spam, scraping, credential attacks or similar.")
+            .fix(
+                "Review each one from its organization's Health page. Nothing is stopped \
+                 automatically; stop or suspend only after a person confirms.",
+            );
+    }
+    if sweep.failed > 0 && sweep.classified == 0 {
+        return check
+            .warning(format!(
+                "The last classifier sweep could not read any session: {}.",
+                sweep.last_error.unwrap_or_default()
+            ))
+            .why("Abuse, stuck agents and injected instructions go unreported until it works.")
+            .fix("Check the decision service's configuration and the server log.");
+    }
+    if sweep.classified == 0 && sweep.unavailable > 0 {
+        return check
+            .info("No decision model answers session classification for the sessions read.")
+            .fix("Configure the deployment's decision service to turn the classifiers on.");
+    }
+    check.ok(format!(
+        "The last sweep classified {} sessions.",
+        sweep.classified
+    ))
 }

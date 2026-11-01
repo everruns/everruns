@@ -46,12 +46,12 @@ pub const SPEND_FACTOR: f64 = 10.0;
 /// Session-hours of history an agent needs before it is judged.
 pub const SPEND_MIN_SAMPLES: i64 = 12;
 
+/// Every code these detectors open.
+pub const CODES: [&str; 3] = [TOOL_ERROR_LOOP, REPEATED_TOOL_CALLS, SESSION_SPEND_SPIKE];
+
 /// Whether `code` is one of these detectors.
 pub fn owns(code: &str) -> bool {
-    matches!(
-        code,
-        TOOL_ERROR_LOOP | REPEATED_TOOL_CALLS | SESSION_SPEND_SPIKE
-    )
+    CODES.contains(&code)
 }
 
 /// Which issue a session's most repeated tool call is, if any.
@@ -174,7 +174,7 @@ async fn sweep_spend(db: &StorageBackend) -> anyhow::Result<()> {
 
 /// Record an open observation about one session and tell the agent's
 /// authors (or the org's owners) when it opened an issue. Returns the subject.
-async fn observe_session(
+pub(super) async fn observe_session(
     db: &StorageBackend,
     code: &'static str,
     org_id: i64,

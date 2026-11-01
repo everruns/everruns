@@ -51,6 +51,7 @@ pub mod repositories;
 pub mod repository;
 pub mod runtime;
 pub mod runtime_identity;
+pub mod session_classifications;
 mod session_turn_claim;
 pub use session_turn_claim::*;
 pub mod test_database;
