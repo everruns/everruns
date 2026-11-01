@@ -61,6 +61,9 @@
 //   the next fresh turn's input alone: it continues the open turn.
 // - `attempts` counts leases since the last release; the worker seals a turn
 //   whose holders keep dying instead of running it again (poison guard).
+// - A session `active` with no live lease and no runnable marker has nothing
+//   to idle it. The stranded actor sweep re-marks such an actor resumable
+//   (`recover_stranded_session_actors`) so a worker folds the log again.
 // - The journal read starts at the session's latest `turn.started` (the turn
 //   a fold resumes) or after a given sequence, and returns at most
 //   `MAX_ACTOR_JOURNAL_LIMIT` events per call; the caller pages with
@@ -184,6 +187,67 @@ impl Database {
     /// current command transaction when one is open.
     pub async fn mark_session_actor_resumable(&self, session_id: SessionId) -> Result<()> {
         mark_session_actor_resumable(&self.pool, session_id).await
+    }
+
+    /// Re-mark the actors of sessions stranded `active`: no live lease, not
+    /// runnable, no detached call that will resume them, the session's latest
+    /// `turn.started` not followed by `session.idled`, and neither the
+    /// session nor its actor touched for `grace`. Up to `limit` actors are
+    /// marked resumable (the inbox at the log's head, as for a resolution),
+    /// so a worker leases each one and folds its log: an open turn resumes,
+    /// a closed one gets its owed `session.idled`. The ids it marked.
+    ///
+    /// Decision: resume, never mark idle here. The log decides (see the
+    /// header): only a holder folding it can tell an open turn, which must
+    /// run on, from a closed one still owed its idle. The idle condition
+    /// leaves out sessions that already logged their `session.idled`, so a
+    /// mismatch the fold cannot fix is not re-marked every sweep.
+    pub async fn recover_stranded_session_actors(
+        &self,
+        grace: Duration,
+        limit: i64,
+    ) -> Result<Vec<SessionId>> {
+        Ok(sqlx::query_scalar::<_, SessionId>(
+            r#"
+            WITH stranded AS (
+                SELECT a.session_id
+                FROM sessions s
+                JOIN session_actors a ON a.session_id = s.id
+                WHERE s.status = 'active'
+                  AND s.updated_at < NOW() - $1::float8 * INTERVAL '1 millisecond'
+                  AND a.updated_at < NOW() - $1::float8 * INTERVAL '1 millisecond'
+                  AND a.runnable_since IS NULL
+                  AND (a.lease_holder IS NULL OR a.lease_expires_at <= NOW())
+                  AND NOT EXISTS (
+                      SELECT 1 FROM detached_tool_calls d WHERE d.session_id = a.session_id
+                  )
+                  AND (
+                      SELECT e.event_type FROM events e
+                      WHERE e.session_id = a.session_id
+                        AND e.event_type IN ('turn.started', 'session.idled')
+                      ORDER BY e.sequence DESC
+                      LIMIT 1
+                  ) = 'turn.started'
+                ORDER BY s.updated_at
+                LIMIT $2
+                FOR UPDATE OF a SKIP LOCKED
+            )
+            UPDATE session_actors a SET
+                inbox_seq = GREATEST(a.inbox_seq, COALESCE(
+                    (SELECT MAX(e.sequence) FROM events e WHERE e.session_id = a.session_id),
+                    0
+                )),
+                runnable_since = NOW()
+            FROM stranded
+            WHERE a.session_id = stranded.session_id
+              AND a.runnable_since IS NULL
+            RETURNING a.session_id
+            "#,
+        )
+        .bind(i64::try_from(grace.as_millis()).unwrap_or(i64::MAX) as f64)
+        .bind(limit.max(0))
+        .fetch_all(&self.pool)
+        .await?)
     }
 
     /// [`mark_session_actor_runnable`] on the request pool, which joins the

@@ -375,9 +375,18 @@ production and DEV_MODE alike; the worker side is
   (`WORKER_GRPC_REQUEST_TIMEOUT_SECS`, default 120 s,
   [`connect/mod.rs`](../../crates/worker/src/grpc_adapters/connect/mod.rs)), so a call
   nobody answers fails as a retryable store error instead of hanging the turn.
-  The task subscription stream has its own channel and no deadline. Not yet
-  covered: a sweep for an `active` session whose actor is neither leased nor
-  runnable.
+  The task subscription stream has its own channel and no deadline.
+- **A stranded `active` session is resumed.** Only a leased or runnable actor
+  writes `session.idled`, so an actor released or withdrawn without it left
+  the session `active` for good: no lease would ever come. A cluster-once
+  sweep ([`stranded_actor_sweep.rs`](../../crates/server/src/background/stranded_actor_sweep.rs),
+  every minute) finds `active` sessions whose actor has no live lease, is not
+  runnable, has no detached call, and whose latest `turn.started` has no
+  `session.idled` after it, with neither row touched for 5 minutes, and marks
+  the actor resumable. It resumes rather than idles: the worker that leases it
+  folds the log, so an open turn runs on and a closed one gets its owed idle.
+  Sessions that already logged `session.idled` are left out, so a mismatch
+  the fold cannot fix is not re-marked every minute.
 - **Every log append is fenced.** Stopping on a lost renew leaves a window: a
   write already in flight when the lease ran out could land after another
   holder took the session. So every event a leased turn appends carries its
@@ -445,8 +454,13 @@ production and DEV_MODE alike; the worker side is
   failures outlast a lease's retries still lets the lease expire and counts
   an attempt, so the seal stays the bound. Releasing instead of expiring was
   rejected: release resets the count, so such a turn would never be sealed,
-  and it leaves an open turn with no pending input unrunnable. The reasoning
-  is next to the code in
+  and it leaves an open turn with no pending input unrunnable. A closed turn
+  still owed its `session.idled` gets it before the guard runs. The guard
+  used to run first, and a turn whose holders a rolling deploy killed twice
+  mid-turn and once more between `turn.completed` and the idle reached a
+  poisoned lease with no open turn and no fresh input: it sealed nothing,
+  idled nothing and released, so the session stayed `active` for days
+  (production, 2026-10-29). The reasoning is next to the code in
   [`turn.rs`](../../crates/core/src/host/session_actor/turn.rs).
 - **Per-org fairness order.** A lease call counts each org's held leases and
   takes actors of orgs under the cap (default 32) first, oldest first; an

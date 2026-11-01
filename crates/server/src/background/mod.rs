@@ -27,6 +27,9 @@ pub mod sandbox_orphan_scan;
 // Projects sessions whose trace index is behind their events
 pub mod session_trace_backfill;
 
+// Resumes sessions left active with no actor leased or runnable
+pub mod stranded_actor_sweep;
+
 // Session schedule poller
 pub mod session_scheduler;
 
