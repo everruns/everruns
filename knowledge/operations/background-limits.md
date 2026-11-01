@@ -87,6 +87,9 @@ for unattended work that goes wrong. Each is about one subject, kept in
 | `session.tool_error_loop` | session | among its last 40 tool calls of the last hour, the same call (tool and target) failed 8 times | the condition no longer holds |
 | `session.repeated_tool_calls` | session | among those calls, the same call was made 20 times | the condition no longer holds |
 | `session.spend_spike` | session | it spent more than $2 in the last hour and 10× its agent's median session-hour over the week before (judged once the agent has 12 such hours) | the condition no longer holds |
+| `session.suspected_abuse` | session | a decision model answered yes, with probability 0.85 or more, that the session is used for spam, scraping at scale, credential attacks, crypto mining, phishing or malware | a later read answers no, or the session makes no model call for a day |
+| `session.agent_stuck` | session | the same, at 0.8, that the agent repeats itself without progress | as above |
+| `session.followed_injection` | session | the same, at 0.8, that the agent acted on instructions from a tool result or fetched content rather than its user | as above |
 
 - **Runaway schedules.** Before each fire the scheduler fingerprints the
   previous fire's final answer (lowercased, digits and spacing collapsed, so a
@@ -112,14 +115,31 @@ for unattended work that goes wrong. Each is about one subject, kept in
   cheap one that suddenly is, is. They report to the agent's authors and stop
   nothing. The notification names the tool and amounts, never the call's
   target.
+- **Session classifiers** (layer 2) read every session a behavior detector or
+  classifier flagged, every 6 hours while it stays flagged, plus a random 10
+  active sessions per sweep, each read at most once a day. A claim row per
+  session (`session_classifications`) keeps replicas from reading a session
+  twice. The model is the one the org's `system_decisions` setting selects.
+  Sampling covers only orgs on the deployment's decision service, and only
+  when the deployment has one: an org that answers decisions on its own
+  provider account pays per call, so it is read only when flagged. The
+  classifier reads the last six messages (1,500 characters each) and the
+  tools and targets of the last 40 tool calls; nothing of that is stored. The
+  issue keeps the probability and the model, and the notification says which
+  question was answered yes. Findings notify only: nothing is stopped or
+  suspended on a classifier's word, and a person confirms anything further.
 - **System doctor** reports `observability.detection`: a warning when the
   sweep failed or has not finished for 40 minutes, so a detector that stopped
-  is visible.
+  is visible. `observability.classifiers` warns while any session is
+  suspected of abuse, so a deployment's operator hears of it, and when the
+  last classifier sweep could not read any session.
 
 Source: `crates/server/src/domains/health_issues/background_work.rs`,
 `crates/server/src/domains/health_issues/behavior.rs`,
+`crates/server/src/domains/health_issues/classifiers.rs`,
 `crates/server/src/storage/background_work.rs`,
-`crates/server/src/storage/behavior_detectors.rs`.
+`crates/server/src/storage/behavior_detectors.rs`,
+`crates/server/src/storage/session_classifications.rs`.
 
 ## Polling without the model
 

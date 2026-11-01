@@ -185,6 +185,11 @@ impl Graders {
         self
     }
 
+    /// Who answers decision questions for an org, when the host has one.
+    pub fn decisions(&self) -> Option<Arc<dyn DecisionResolver>> {
+        self.decisions.clone()
+    }
+
     pub fn judge(&self) -> Option<&Arc<dyn JudgeClient>> {
         self.judge.as_ref()
     }

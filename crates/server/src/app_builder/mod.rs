@@ -688,27 +688,20 @@ impl ServerAppBuilder {
             auth: auth_state.clone(),
         };
 
-        // Now that the LLM stack exists, spawn the observer scoring worker with
-        // the graders eval runs use (the org's own models and decision model).
-        if let Some(observer_wake) = observer_wake {
-            supervisor.track(
-                "observer_scoring",
-                crate::domains::observers::spawn_observer_worker(
-                    crate::domains::observers::ObserverWorkerDeps {
-                        db: background_db.clone(),
-                        graders: crate::domains::evals::graders::Graders::for_host(
-                            background_db.clone(),
-                            &host_composition,
-                            driver_registry.clone(),
-                            provider_resolver.clone(),
-                        ),
-                    },
-                    observer_wake,
-                    crate::domains::observers::ObserverWorkerConfig::default(),
-                ),
-            );
-            tracing::info!("Observers enabled: scoring worker started");
-        }
+        // Now that the LLM stack exists, start what grades sessions with the
+        // org's models: Observers scoring and the built-in session classifiers.
+        health::start_session_graders(
+            &mut supervisor,
+            background_db.clone(),
+            crate::domains::evals::graders::Graders::for_host(
+                background_db.clone(),
+                &host_composition,
+                driver_registry.clone(),
+                provider_resolver.clone(),
+            ),
+            observer_wake,
+            host_composition.decisions().is_configured(),
+        );
 
         let providers_state = api::providers::AppState::new(
             db.clone(),
