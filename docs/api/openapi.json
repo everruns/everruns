@@ -41481,7 +41481,7 @@
               "null"
             ],
             "description": "Model override for this run.",
-            "example": "gpt-5.1"
+            "example": "gpt-6-luna"
           },
           "target": {
             "oneOf": [
@@ -41493,6 +41493,17 @@
                 "type": "null"
               }
             ]
+          },
+          "trials": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "How many times to run each case, 1 to 20 (default 1). Repeated trials\nreport pass@k and pass^k in the run summary.",
+            "example": 3,
+            "maximum": 20,
+            "minimum": 1
           }
         }
       },
@@ -44683,6 +44694,13 @@
               }
             ]
           },
+          "trial": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Which repetition of the case this result is, from 0.",
+            "example": 0,
+            "minimum": 0
+          },
           "turns": {
             "type": [
               "integer",
@@ -44846,6 +44864,13 @@
                 "type": "null"
               }
             ]
+          },
+          "trials": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many times each case runs; results carry their `trial` number.",
+            "example": 3,
+            "minimum": 0
           },
           "triggered_by": {
             "type": "string",
@@ -50429,6 +50454,13 @@
                     }
                   ]
                 },
+                "trial": {
+                  "type": "integer",
+                  "format": "int32",
+                  "description": "Which repetition of the case this result is, from 0.",
+                  "example": 0,
+                  "minimum": 0
+                },
                 "turns": {
                   "type": [
                     "integer",
@@ -50561,6 +50593,13 @@
                       "type": "null"
                     }
                   ]
+                },
+                "trials": {
+                  "type": "integer",
+                  "format": "int32",
+                  "description": "How many times each case runs; results carry their `trial` number.",
+                  "example": 3,
+                  "minimum": 0
                 },
                 "triggered_by": {
                   "type": "string",
@@ -62478,6 +62517,27 @@
             "description": "Mean agent turns per case.",
             "example": 3.2
           },
+          "cases": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Distinct cases in the run.",
+            "example": 4,
+            "minimum": 0
+          },
+          "cases_passed_any_trial": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cases that passed in at least one trial (pass@k).",
+            "example": 4,
+            "minimum": 0
+          },
+          "cases_passed_every_trial": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cases that passed in every trial (pass^k).",
+            "example": 3,
+            "minimum": 0
+          },
           "errored": {
             "type": "integer",
             "format": "int32",
@@ -62524,6 +62584,13 @@
             "format": "int64",
             "description": "Total output tokens across cases.",
             "example": 10200,
+            "minimum": 0
+          },
+          "trials": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Repetitions per case. `total` counts every repetition.",
+            "example": 3,
             "minimum": 0
           }
         }

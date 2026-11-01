@@ -12966,10 +12966,17 @@ export interface components {
     CreateEvalRunRequest: {
       /**
        * @description Model override for this run.
-       * @example gpt-5.1
+       * @example gpt-6-luna
        */
       model_override?: string | null;
       target?: components["schemas"]["EvalTarget"] | null;
+      /**
+       * Format: int32
+       * @description How many times to run each case, 1 to 20 (default 1). Repeated trials
+       *     report pass@k and pass^k in the run summary.
+       * @example 3
+       */
+      trials?: number | null;
     };
     /** @description Request to create a file */
     CreateFileRequest: {
@@ -14800,6 +14807,12 @@ export interface components {
       target_snapshot?: components["schemas"]["EvalTarget"] | null;
       /**
        * Format: int32
+       * @description Which repetition of the case this result is, from 0.
+       * @example 0
+       */
+      trial?: number;
+      /**
+       * Format: int32
        * @description Turn count.
        * @example 3
        */
@@ -14895,6 +14908,12 @@ export interface components {
       status: components["schemas"]["EvalRunStatus"];
       summary?: components["schemas"]["RunSummary"] | null;
       target?: components["schemas"]["EvalTarget"] | null;
+      /**
+       * Format: int32
+       * @description How many times each case runs; results carry their `trial` number.
+       * @example 3
+       */
+      trials?: number;
       /**
        * @description What triggered this run.
        * @example manual
@@ -18044,6 +18063,12 @@ export interface components {
         target_snapshot?: components["schemas"]["EvalTarget"] | null;
         /**
          * Format: int32
+         * @description Which repetition of the case this result is, from 0.
+         * @example 0
+         */
+        trial?: number;
+        /**
+         * Format: int32
          * @description Turn count.
          * @example 3
          */
@@ -18116,6 +18141,12 @@ export interface components {
         status: components["schemas"]["EvalRunStatus"];
         summary?: components["schemas"]["RunSummary"] | null;
         target?: components["schemas"]["EvalTarget"] | null;
+        /**
+         * Format: int32
+         * @description How many times each case runs; results carry their `trial` number.
+         * @example 3
+         */
+        trials?: number;
         /**
          * @description What triggered this run.
          * @example manual
@@ -24805,6 +24836,24 @@ export interface components {
       avg_turns: number;
       /**
        * Format: int32
+       * @description Distinct cases in the run.
+       * @example 4
+       */
+      cases?: number;
+      /**
+       * Format: int32
+       * @description Cases that passed in at least one trial (pass@k).
+       * @example 4
+       */
+      cases_passed_any_trial?: number;
+      /**
+       * Format: int32
+       * @description Cases that passed in every trial (pass^k).
+       * @example 3
+       */
+      cases_passed_every_trial?: number;
+      /**
+       * Format: int32
        * @description Number of cases that errored.
        * @example 1
        */
@@ -24845,6 +24894,12 @@ export interface components {
        * @example 10200
        */
       total_output_tokens: number;
+      /**
+       * Format: int32
+       * @description Repetitions per case. `total` counts every repetition.
+       * @example 3
+       */
+      trials?: number;
     };
     /** @description A message in the conversation */
     RuntimeMessage: {

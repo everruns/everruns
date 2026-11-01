@@ -5376,6 +5376,13 @@
         "long": "target",
         "kind": "json",
         "required": false
+      },
+      {
+        "field": "trials",
+        "long": "trials",
+        "kind": "integer",
+        "required": false,
+        "help": "How many times to run each case, 1 to 20 (default 1)."
       }
     ],
     "examples": [
