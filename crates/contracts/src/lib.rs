@@ -64,6 +64,7 @@ pub mod llm_retry;
 pub mod llm_telemetry;
 pub mod message;
 pub mod message_origin;
+pub mod message_reactions;
 pub mod model;
 pub mod model_discovery;
 pub mod model_profiles;

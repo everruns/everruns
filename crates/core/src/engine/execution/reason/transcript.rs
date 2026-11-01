@@ -18,8 +18,23 @@ pub(super) fn label_speaker(llm_msg: &mut crate::driver_registry::Message, msg: 
     if let Some(ref actor) = msg.external_actor {
         llm_msg.prepend_text_prefix(&format!("[{}] ", actor.display_label()));
     }
-    if let Some(origin) = msg.origin() {
-        llm_msg.prepend_text_prefix(&origin.model_header());
+    let origin = msg.origin();
+    if let Some(header) = origin.as_ref().map(|origin| origin.model_header())
+        && !header.is_empty()
+    {
+        llm_msg.prepend_text_prefix(&header);
+    }
+    // Reactions that waited for this message come first, on their own lines,
+    // so they never read as part of what the person typed. A reaction-origin
+    // message already is the note.
+    if origin.is_none_or(|origin| {
+        origin.kind != everruns_contracts::message_origin::MessageOriginKind::Reaction
+    }) && let Some(note) =
+        everruns_contracts::message_reactions::ReactionNote::from_message_metadata(
+            msg.metadata.as_ref(),
+        )
+    {
+        llm_msg.prepend_text_prefix(&format!("{}\n\n", note.render()));
     }
 }
 
@@ -279,6 +294,54 @@ pub(super) async fn repair_dangling_tool_calls(
 #[cfg(test)]
 mod native_tests {
     use super::*;
+
+    fn labeled(msg: &RuntimeMessage) -> String {
+        let mut llm = crate::driver_registry::Message::text(
+            crate::driver_registry::MessageRole::User,
+            msg.text().unwrap_or_default().to_string(),
+        );
+        label_speaker(&mut llm, msg);
+        llm.content_as_text()
+    }
+
+    fn reaction_note() -> everruns_contracts::message_reactions::ReactionNote {
+        everruns_contracts::message_reactions::ReactionNote {
+            through_sequence: 9,
+            items: vec![everruns_contracts::message_reactions::ReactionNoteItem {
+                message_id: "message_1".into(),
+                emoji: "👍".into(),
+                actor_name: "Mykhailo".into(),
+                removed: false,
+                on_agent_message: true,
+                excerpt: Some("Deployed.".into()),
+            }],
+        }
+    }
+
+    #[test]
+    fn waiting_reactions_come_before_the_message_text() {
+        let mut msg = RuntimeMessage::user("Post the release card too.");
+        let mut metadata = std::collections::HashMap::new();
+        reaction_note().write(&mut metadata);
+        msg.metadata = Some(metadata);
+        assert_eq!(
+            labeled(&msg),
+            "[Reactions, not typed messages]\nMykhailo reacted 👍 on your reply \"Deployed.\" (message_1)\n\nPost the release card too."
+        );
+    }
+
+    #[test]
+    fn a_reaction_message_is_the_note_alone() {
+        let note = reaction_note();
+        let mut msg = RuntimeMessage::user(note.render());
+        let mut metadata = everruns_contracts::message_origin::MessageOrigin::new(
+            everruns_contracts::message_origin::MessageOriginKind::Reaction,
+        )
+        .into_metadata();
+        note.write(&mut metadata);
+        msg.metadata = Some(metadata);
+        assert_eq!(labeled(&msg), note.render());
+    }
     #[test]
     fn early_native_result_replays_after_its_call_without_synthetic_failure() {
         let native = everruns_contracts::native_async::NativeToolCall::Function {

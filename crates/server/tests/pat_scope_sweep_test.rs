@@ -168,6 +168,16 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     ("POST", "/v1/channels/{}/sessions/{}/cancel", INGRESS),
     ("POST", "/v1/channels/{}/sessions/{}/messages", INGRESS),
     (
+        "PUT",
+        "/v1/channels/{}/sessions/{}/messages/{}/reactions/{}",
+        INGRESS,
+    ),
+    (
+        "DELETE",
+        "/v1/channels/{}/sessions/{}/messages/{}/reactions/{}",
+        INGRESS,
+    ),
+    (
         "POST",
         "/v1/channels/{}/sessions/{}/question-answers",
         INGRESS,

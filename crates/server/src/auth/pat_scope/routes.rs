@@ -339,6 +339,21 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
         Write,
     ),
     (
+        "PUT",
+        "/v1/channels/{channel_id}/sessions/{session_id}/messages/{message_id}/reactions/{emoji}",
+        Write,
+    ),
+    (
+        "DELETE",
+        "/v1/channels/{channel_id}/sessions/{session_id}/messages/{message_id}/reactions/{emoji}",
+        Write,
+    ),
+    (
+        "GET",
+        "/v1/channels/{channel_id}/sessions/{session_id}/reactions",
+        Read,
+    ),
+    (
         "POST",
         "/v1/channels/{channel_id}/sessions/{session_id}/question-answers",
         Write,

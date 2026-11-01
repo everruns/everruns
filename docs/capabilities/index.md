@@ -33,6 +33,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 | [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 (Framework-only) |
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Automatic session titles](/capabilities/automatic-session-titles/) | `automatic_session_titles` | 0 |
+| Reactions | `reactions` | 1 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
 | [Web Search](/capabilities/web-search/) | `web_search` | 1 |

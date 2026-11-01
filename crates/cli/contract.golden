@@ -327,6 +327,9 @@ sessions messages create	--addressed-participant-id --client-message-id --contex
 sessions messages list	--context-revision --limit --reason --session-id <session_id>
 sessions messages rate	--comment --context-revision --message-id --rating --reason --session <message_id> <session_id>
 sessions messages ratings	--context-revision --reason --session <session_id>
+sessions messages react	--context-revision --emoji --message-id --reason --session <emoji> <message_id> <session_id>
+sessions messages reactions	--context-revision --message-id --reason --session <session_id>
+sessions messages unreact	--context-revision --emoji --message-id --reason --session <emoji> <message_id> <session_id>
 sessions participants add	--agent-id --context-revision --kind! --reason --role --session!
 sessions participants leave	--context-revision --participant-id! --reason --session!
 sessions participants list	--context-revision --reason --session!

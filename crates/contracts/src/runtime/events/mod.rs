@@ -13,6 +13,7 @@ pub mod correlation;
 mod file_voice_data;
 mod llm_data;
 mod message_data;
+mod reaction_data;
 mod reason_data;
 mod sandbox_lifecycle_data;
 mod severity;
@@ -25,6 +26,7 @@ pub use compaction_data::*;
 pub use file_voice_data::*;
 pub use llm_data::*;
 pub use message_data::*;
+pub use reaction_data::*;
 pub use reason_data::*;
 pub use sandbox_lifecycle_data::*;
 pub use severity::*;
@@ -249,6 +251,8 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     VOICE_OUTPUT_INTERRUPTED,
     FILE_WRITTEN,
     CAPABILITY_USAGE,
+    MESSAGE_REACTION_ADDED,
+    MESSAGE_REACTION_REMOVED,
 ];
 
 // ============================================================================
@@ -615,6 +619,7 @@ pub const FILE_OP_CREATE: &str = "create";
 /// - `timer.cancelled` → TimerCancelledData
 /// - `file.written` → FileWrittenData
 /// - `conversation.message` → ConversationMessageData
+/// - `message.reaction.added` / `message.reaction.removed` → MessageReactionData
 // `untagged` is retained ONLY for encoding and schema, not decoding:
 //   - `Serialize` emits the payload inline (the event `type` lives as a sibling
 //     field on `Event`/`EventRequest`, never inside `data`), and
@@ -641,6 +646,10 @@ pub enum EventData {
     OutputMessageReplaced(OutputMessageReplacedData),
     ConversationMessage(ConversationMessageData),
     OutputMessageCompleted(OutputMessageCompletedData),
+
+    // Reactions on messages (both share MessageReactionData)
+    MessageReactionAdded(MessageReactionData),
+    MessageReactionRemoved(MessageReactionData),
 
     // Turn lifecycle events
     TurnStarted(TurnStartedData),
@@ -888,6 +897,10 @@ event_data_kinds! {
     // Conversation events
     ConversationMessage(ConversationMessageData) = CONVERSATION_MESSAGE,
 
+    // Reactions on messages
+    MessageReactionAdded(MessageReactionData) = MESSAGE_REACTION_ADDED,
+    MessageReactionRemoved(MessageReactionData) = MESSAGE_REACTION_REMOVED,
+
     // Turn lifecycle events
     TurnStarted(TurnStartedData) = TURN_STARTED,
     TurnCompleted(TurnCompletedData) = TURN_COMPLETED,
@@ -1053,6 +1066,18 @@ impl EventData {
                 event_type.to_string(),
                 serde_json::to_value(&data).unwrap_or(serde_json::Value::Null),
             ),
+        }
+    }
+}
+
+// Both reaction events share MessageReactionData, so they get a named
+// constructor instead of a `From` impl.
+impl EventData {
+    pub fn message_reaction(data: MessageReactionData, added: bool) -> Self {
+        if added {
+            EventData::MessageReactionAdded(data)
+        } else {
+            EventData::MessageReactionRemoved(data)
         }
     }
 }

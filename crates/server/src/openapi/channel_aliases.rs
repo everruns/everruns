@@ -11,6 +11,9 @@ const NO_LEGACY_ALIAS: &[&str] = &[
     "create_agent_key",
     "rotate_agent_key",
     "revoke_agent_key",
+    "agent_api_add_reaction",
+    "agent_api_remove_reaction",
+    "agent_api_list_reactions",
 ];
 
 pub(super) fn add_route_aliases(openapi: &mut OpenApi) {
@@ -38,6 +41,7 @@ pub(super) fn add_route_aliases(openapi: &mut OpenApi) {
             for slot in [
                 &mut item.get,
                 &mut item.post,
+                &mut item.put,
                 &mut item.patch,
                 &mut item.delete,
             ] {
@@ -60,6 +64,7 @@ pub(super) fn add_route_aliases(openapi: &mut OpenApi) {
             for operation in [
                 &mut item.get,
                 &mut item.post,
+                &mut item.put,
                 &mut item.patch,
                 &mut item.delete,
             ]

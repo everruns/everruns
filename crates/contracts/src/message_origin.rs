@@ -49,6 +49,10 @@ pub enum MessageOriginKind {
     TaskWake,
     /// A platform notice, such as a cancellation.
     System,
+    /// Someone reacted to a message while the agent was working, or the
+    /// agent asked to be woken by reactions. The message text is the
+    /// rendered reaction note (`message_reactions::ReactionNote`).
+    Reaction,
 }
 
 impl MessageOriginKind {
@@ -61,6 +65,7 @@ impl MessageOriginKind {
             Self::Webhook => "webhook",
             Self::TaskWake => "task_wake",
             Self::System => "system",
+            Self::Reaction => "reaction",
         }
     }
 
@@ -72,6 +77,7 @@ impl MessageOriginKind {
             Self::Webhook => "Webhook",
             Self::TaskWake => "Automatic update",
             Self::System => "System",
+            Self::Reaction => "Reaction",
         }
     }
 }
@@ -259,6 +265,8 @@ impl MessageOrigin {
             // Kept word for word from before origins existed, so coordinator
             // sessions keep their cached prompt prefix.
             MessageOriginKind::TaskWake => return TASK_WAKE_HEADER.to_string(),
+            // The text is the reaction note itself; it carries its own label.
+            MessageOriginKind::Reaction => return String::new(),
             kind => format!("{} message", kind.label()),
         };
         if let Some(name) = &self.name

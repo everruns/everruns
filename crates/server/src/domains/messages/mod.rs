@@ -7,6 +7,7 @@ pub mod commands;
 pub mod feedback;
 pub(crate) mod intake;
 pub mod queries;
+pub mod reactions;
 pub mod service;
 pub mod types;
 
