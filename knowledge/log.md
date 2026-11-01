@@ -3,6 +3,7 @@
 ## 2026-11-01
 
 - Reveal bidi/control characters in tool approval displays without changing approval authority or arguments. See [Tool Approval](execution/tool-approval.md#approval-display).
+- Stage a weekly/manual Rust CodeQL migration while preserving default scans; document activation prerequisites and native/WASM evidence limits. See [CodeQL](security/codeql.md).
 
 - Require hosted and embedded session cron triggers to advance in UTC through
   repeated daylight-saving hours. See [Runtime](foundations/runtime.md).
