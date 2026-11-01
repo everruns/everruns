@@ -119,6 +119,8 @@ pub struct EvalRunRow {
     pub source_run_id: Option<String>,
     /// Open-vocab provenance for external runs (system, version, url, labels).
     pub attribution: Option<serde_json::Value>,
+    /// How many times each case runs (pass@k / pass^k); 1 for older runs.
+    pub trials: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -161,6 +163,8 @@ pub struct CreateEvalRunRow {
     pub model_override: Option<String>,
     pub filter_tags: Option<Vec<String>>,
     pub triggered_by: String,
+    /// Repetitions per case, at least 1.
+    pub trials: i32,
 }
 
 /// Typed failures from `create_eval_run_with_case_results`. Returned (boxed in
@@ -170,7 +174,7 @@ pub struct CreateEvalRunRow {
 pub enum CreateEvalRunError {
     #[error("Too many concurrent eval runs: org has {active} active runs (limit {limit})")]
     TooManyConcurrentRuns { active: i64, limit: usize },
-    #[error("Eval run too large: {cases} cases exceeds the per-run limit of {limit}")]
+    #[error("Eval run too large: {cases} case runs exceeds the per-run limit of {limit}")]
     TooManyCases { cases: usize, limit: usize },
     #[error("no eval target configured — set a target on the eval, case, or run")]
     NoTarget,
@@ -195,6 +199,8 @@ pub struct EvalCaseResultRow {
     pub output_tokens: Option<i64>,
     pub error_message: Option<String>,
     pub artifacts: Option<serde_json::Value>,
+    /// Which repetition of the case this is, from 0.
+    pub trial: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

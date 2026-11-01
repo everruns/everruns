@@ -385,6 +385,23 @@ impl Scorer {
             Scorer::CitationJudged { .. } => "citation_judged",
         }
     }
+
+    /// Relative weight of this scorer in the case's weighted score.
+    pub fn weight(&self) -> f64 {
+        match self {
+            Scorer::Contains { weight, .. }
+            | Scorer::NotContains { weight, .. }
+            | Scorer::Regex { weight, .. }
+            | Scorer::ToolCalled { weight, .. }
+            | Scorer::ToolNotCalled { weight, .. }
+            | Scorer::ToolCallCount { weight, .. }
+            | Scorer::TurnsWithin { weight, .. }
+            | Scorer::FileContains { weight, .. }
+            | Scorer::JsonSchema { weight, .. }
+            | Scorer::CitationFaithful { weight, .. }
+            | Scorer::CitationJudged { weight, .. } => *weight,
+        }
+    }
 }
 
 fn default_weight() -> f64 {
@@ -450,6 +467,26 @@ pub struct RunSummary {
     /// Total output tokens across cases.
     #[schema(example = 10200)]
     pub total_output_tokens: u64,
+    /// Repetitions per case. `total` counts every repetition.
+    #[serde(default = "default_one_trial")]
+    #[schema(example = 3)]
+    pub trials: u32,
+    /// Distinct cases in the run.
+    #[serde(default)]
+    #[schema(example = 4)]
+    pub cases: u32,
+    /// Cases that passed in every trial (pass^k).
+    #[serde(default)]
+    #[schema(example = 3)]
+    pub cases_passed_every_trial: u32,
+    /// Cases that passed in at least one trial (pass@k).
+    #[serde(default)]
+    #[schema(example = 4)]
+    pub cases_passed_any_trial: u32,
+}
+
+fn default_one_trial() -> u32 {
+    1
 }
 
 // ============================================
@@ -635,6 +672,10 @@ pub struct EvalRun {
     /// What triggered this run.
     #[schema(example = "manual")]
     pub triggered_by: String,
+    /// How many times each case runs; results carry their `trial` number.
+    #[serde(default = "default_one_trial")]
+    #[schema(example = 3)]
+    pub trials: u32,
     /// When the run started executing.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "2026-01-15T10:30:00Z")]
@@ -759,6 +800,10 @@ pub struct EvalCaseResult {
     pub target_snapshot: Option<EvalTarget>,
     /// Execution status of the case.
     pub status: CaseResultStatus,
+    /// Which repetition of the case this result is, from 0.
+    #[serde(default)]
+    #[schema(example = 0)]
+    pub trial: u32,
     /// Per-scorer results.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!([{"pass": true, "value": 1.0, "reason": "Output contains expected text"}]))]

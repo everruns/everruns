@@ -130,7 +130,7 @@ evals import-preflight	--context-revision --reason
 evals list	--context-revision --include-archived --reason --search
 evals runs artifacts export	--context-revision --eval-id! --reason --run-id!
 evals runs cancel	--context-revision --eval-id! --reason --run-id!
-evals runs create	--context-revision --eval-id! --model-override --reason --target
+evals runs create	--context-revision --eval-id! --model-override --reason --target --trials
 evals runs dataset export	--context-revision --eval-id! --filters --format --reason --redaction --run-id!
 evals runs dataset get	--context-revision --dataset-id! --eval-id! --reason --run-id!
 evals runs get	--context-revision --eval-id! --reason --run-id!

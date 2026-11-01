@@ -868,7 +868,17 @@ impl TestServer {
             db.clone(),
             auth_state.clone(),
         );
-        let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone());
+        // Eval runs execute locally here (no durable queue), so a created run
+        // actually dispatches its cases like production does.
+        let eval_run_ctx = Arc::new(everruns_server::domains::evals::EvalRunContext {
+            db: db.clone(),
+            session_service: messages_state.session_service.clone(),
+            message_service: messages_state.message_service.clone(),
+            judge: None,
+            queue: Default::default(),
+        });
+        let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone())
+            .with_run_context(eval_run_ctx);
         let durable_state = api::durable::AppState::new(
             Some(durable_store.clone()),
             auth_state.clone(),

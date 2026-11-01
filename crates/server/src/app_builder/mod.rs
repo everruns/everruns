@@ -832,9 +832,10 @@ impl ServerAppBuilder {
                 driver_registry.clone(),
                 provider_resolver.clone(),
             ))),
+            queue: Default::default(),
         });
         let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone())
-            .with_run_context(eval_run_ctx);
+            .with_run_context(eval_run_ctx.clone());
         // Agent health checks are shared by HTTP and MCP (knowledge/evaluation/agent-checks.md).
         // They need a utility LLM to generate/judge cases and a default harness to host sessions.
         let utility_llm = host_composition.utility_llm_service();
@@ -1430,6 +1431,11 @@ impl ServerAppBuilder {
             );
         }
 
+        // Eval cases run as durable tasks on this replica's eval pool.
+        if let Some(store) = background_scheduler_store.clone() {
+            let pool = crate::domains::evals::start_case_pool(store, eval_run_ctx).await;
+            supervisor.track_optional("eval_cases", pool);
+        }
         // -- Durable task scheduler (both prod and dev) --
         let cluster_jobs_store = background_scheduler_store.clone();
         if let Some(store) = background_scheduler_store {

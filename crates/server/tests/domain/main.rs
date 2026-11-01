@@ -57,6 +57,7 @@ mod concurrent_session_create_test;
 mod db_pool_isolation_test;
 mod dev_grade;
 mod evals_integration_test;
+mod evals_trials_test;
 mod fcp_integration_test;
 mod github_person_installs_migration_test;
 mod guardrails_integration_test;

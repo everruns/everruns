@@ -351,6 +351,7 @@ everruns evals runs create [OPTIONS] --eval-id <eval_id>
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 | `--model-override <MODEL_OVERRIDE>` | Model override for this run. |
 | `--target <TARGET>` |  |
+| `--trials <TRIALS>` | How many times to run each case, 1 to 20 (default 1). |
 
 Example:
 

@@ -4607,7 +4607,7 @@
           "properties": {
             "model_override": {
               "description": "Model override for this run.",
-              "example": "gpt-5.1",
+              "example": "gpt-6-luna",
               "type": [
                 "string",
                 "null"
@@ -4622,6 +4622,17 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "trials": {
+              "description": "How many times to run each case, 1 to 20 (default 1). Repeated trials\nreport pass@k and pass^k in the run summary.",
+              "example": 3,
+              "format": "int32",
+              "maximum": 20,
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
               ]
             }
           },
