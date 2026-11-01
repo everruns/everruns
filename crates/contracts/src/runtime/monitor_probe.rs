@@ -1,6 +1,5 @@
 //! Scheduled monitors that run their own probe and wake the agent only when
-//! something it cares about happens (knowledge/operations/background-limits.md,
-//! "Lean scheduled runs").
+//! something it cares about happens, so polling costs no model tokens.
 //!
 //! A monitor created with `spawn_background` and a `schedule` names a tool and
 //! its arguments. When that tool is one the scheduler can run itself (see

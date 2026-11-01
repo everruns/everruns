@@ -1363,5 +1363,4 @@ mod limits_tests {
 }
 
 #[cfg(test)]
-#[path = "monitor_probe_tests.rs"]
 mod monitor_probe_tests;
