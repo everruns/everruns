@@ -27,11 +27,13 @@ import { StreamdownMessage } from "@/components/chat/streamdown-message";
 import type { TraceBatch, TraceGap, TraceStep, TraceTurn } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import {
+  errorCodeLabel,
   formatClock,
   formatCount,
   formatDuration,
   formatOffset,
   isSimulatedResult,
+  retrySummary,
   turnSpanMs,
   turnSummary,
   waterfallBar,
@@ -149,7 +151,13 @@ export function TurnHeader({
             )
           )}
           <span>{turnSummary(turn)}</span>
-          {turn.error_count > 0 && (
+          {errorCodeLabel(turn.error_code) && (
+            <span className="inline-flex items-center gap-1 border border-destructive/35 bg-destructive/8 px-1.5 text-[11px] leading-5 font-medium text-destructive">
+              <CircleAlert className="size-3" aria-hidden />
+              {errorCodeLabel(turn.error_code)}
+            </span>
+          )}
+          {turn.error_count > (errorCodeLabel(turn.error_code) ? 1 : 0) && (
             <span className="inline-flex items-center gap-1 text-destructive">
               <CircleAlert className="size-3.5" aria-hidden />
               {formatCount(turn.error_count)} {ui("error")}
@@ -159,9 +167,12 @@ export function TurnHeader({
         </div>
       </button>
       {!collapsed && showScale && (
-        <div className="hidden justify-end px-0 pt-1 min-[1100px]:flex">
-          <div className="flex w-40 justify-between pr-4 font-mono text-[10px] tracking-[0.08em] text-muted-foreground">
+        <div className="relative hidden items-center justify-end pt-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground min-[1100px]:flex">
+          <span className="absolute inset-y-0 left-[67px] w-px bg-border" aria-hidden />
+          <span className="mr-3 uppercase">{ui("Timeline")}</span>
+          <div className="flex w-40 justify-between pr-4">
             <span>{ui("0s")}</span>
+            <span>{formatDuration(turnSpanMs(turn) / 2)}</span>
             <span>{formatDuration(turnSpanMs(turn))}</span>
           </div>
         </div>
@@ -179,15 +190,21 @@ export function TurnFooter({ turn }: { turn: TraceTurn }) {
       : turn.status === "completed"
         ? "Turn completed"
         : `Turn ${turn.status}`;
+  const failed = turn.status === "failed";
+  // Step errors in a turn that still completed; a failed turn's header already counts them.
+  const stepErrors = failed ? 0 : turn.error_count;
   return (
     <div className="border border-t-0 bg-card">
-      <div
-        className={cn(
-          "flex flex-wrap gap-x-2 border-t border-border/60 py-2.5 pr-4 pl-[84px] text-xs text-muted-foreground",
-          turn.status === "failed" && "text-destructive",
-        )}
-      >
-        <span className="font-medium">{label}</span>
+      <div className="relative flex flex-wrap gap-x-2 pt-3 pr-4 pb-2.5 pl-[84px] text-xs text-muted-foreground">
+        <span className="absolute top-0 left-[67px] h-[18px] w-px bg-border" aria-hidden />
+        <span
+          className={cn(
+            "absolute top-[16px] left-[63px] size-[9px] rounded-full border",
+            failed ? "border-destructive bg-destructive" : "border-muted-foreground/60 bg-card",
+          )}
+          aria-hidden
+        />
+        <span className={cn("font-medium", failed && "text-destructive")}>{label}</span>
         <span>
           {formatCount(turn.step_count)} {ui("step")}
           {turn.step_count === 1 ? "" : "s"}
@@ -196,7 +213,17 @@ export function TurnFooter({ turn }: { turn: TraceTurn }) {
             ? ui(" · {value0}", { value0: formatDuration(turn.duration_ms) })
             : ""}
         </span>
-        {turn.error && <span className="w-full truncate text-destructive">{turn.error}</span>}
+        {stepErrors > 0 && (
+          <span className="text-destructive">
+            {formatCount(stepErrors)} {ui("error")}
+            {stepErrors === 1 ? "" : "s"}
+          </span>
+        )}
+        {turn.error && (
+          <span className="mt-0.5 line-clamp-2 w-full break-words text-foreground/80">
+            {turn.error}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -228,6 +255,7 @@ function Waterfall({
   return (
     <div className="hidden w-40 shrink-0 pt-4 pr-4 min-[1100px]:block" aria-hidden>
       <div className="relative h-1.5 bg-muted">
+        <span className="absolute inset-y-0 left-1/2 w-px bg-border" />
         <div
           className={cn("absolute inset-y-0", color, running && "animate-tool-progress-active")}
           style={{ left: `${left * 100}%`, width: `max(2px, ${width * 100}%)` }}
@@ -280,7 +308,6 @@ function RowShell({
       className={cn(
         "relative flex border-x bg-card",
         onSelect && "cursor-pointer hover:bg-muted/70",
-        error && "bg-destructive/4",
         selected && "bg-primary/5",
         nested && "pl-6",
       )}
@@ -370,7 +397,7 @@ export function StepRow({
   const ui = useUiTranslations();
   const error = step.status === "error";
   const running = step.status === "running";
-  const Icon = error ? CircleAlert : (KIND_ICON[step.kind] ?? Wrench);
+  const Icon = KIND_ICON[step.kind] ?? Wrench;
   return (
     <RowShell
       label={ui("#{value0}", { value0: step.step })}
@@ -392,7 +419,7 @@ export function StepRow({
         />
       }
     >
-      <StepContent step={step} view={view} plainText={plainText} />
+      <StepContent step={step} view={view} plainText={plainText} onShowError={onSelect} />
     </RowShell>
   );
 }
@@ -401,13 +428,18 @@ function StepContent({
   step,
   view,
   plainText,
+  onShowError,
 }: {
   step: TraceStep;
   view: "all" | "messages" | "tools";
   plainText: boolean;
+  onShowError: () => void;
 }) {
   const ui = useUiTranslations();
   const error = step.status === "error";
+  const errorQuote = error && step.result && (
+    <ErrorQuote text={step.result} onShowFull={onShowError} />
+  );
   switch (step.kind) {
     case "model":
     case "answer": {
@@ -433,9 +465,11 @@ function StepContent({
                   {requested === 1 ? "" : "s"}
                 </span>
               )}
-              {error && step.result && <span className="text-destructive">{step.result}</span>}
+              {retrySummary(step) && <span className="text-warning">{retrySummary(step)}</span>}
+              {error && <FailedBadge />}
             </div>
           )}
+          {errorQuote}
           {step.narration && (
             <div
               className={cn(
@@ -463,6 +497,7 @@ function StepContent({
             {step.target && (
               <span className="truncate text-[13px] font-semibold">{step.target}</span>
             )}
+            {error && <FailedBadge />}
             {step.child_session_id && (
               <Link
                 href={`/sessions/${step.child_session_id}/trace`}
@@ -476,11 +511,13 @@ function StepContent({
               {formatDuration(step.duration_ms)}
             </span>
           </div>
-          {step.result && (
-            <ResultLine error={error}>
-              <span className="break-words">{step.result}</span>
-            </ResultLine>
-          )}
+          {error
+            ? errorQuote
+            : step.result && (
+                <ResultLine error={false}>
+                  <span className="break-words">{step.result}</span>
+                </ResultLine>
+              )}
         </>
       );
     case "approval":
@@ -502,6 +539,7 @@ function StepContent({
             <span className="shrink-0 font-mono text-[13px] font-semibold whitespace-nowrap">
               {step.name ?? step.kind}
             </span>
+            {error && <FailedBadge />}
             {step.target && (
               <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
                 {step.target}
@@ -516,14 +554,51 @@ function StepContent({
               {step.status === "running" ? ui("running") : formatDuration(step.duration_ms)}
             </span>
           </div>
-          {step.result && (
-            <ResultLine error={error}>
-              <span className="truncate">{step.result}</span>
-            </ResultLine>
-          )}
+          {error
+            ? errorQuote
+            : step.result && (
+                <ResultLine error={false}>
+                  <span className="truncate">{step.result}</span>
+                </ResultLine>
+              )}
         </>
       );
   }
+}
+
+function FailedBadge() {
+  const ui = useUiTranslations();
+  return (
+    <span className="shrink-0 self-center border border-destructive/35 bg-destructive/8 px-1.5 font-sans text-[11px] leading-4 font-medium text-destructive">
+      {ui("Failed")}
+    </span>
+  );
+}
+
+/**
+ * A step's error, set off like the final answer's quote but with a red edge, so it
+ * reads as the step's outcome rather than a banner. Three lines here; the inspector
+ * holds the full error.
+ */
+function ErrorQuote({ text, onShowFull }: { text: string; onShowFull: () => void }) {
+  const ui = useUiTranslations();
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-1">
+      <p className="line-clamp-3 border-l-2 border-destructive/70 pl-3 font-mono text-xs leading-normal break-words text-foreground/85">
+        {text}
+      </p>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onShowFull();
+        }}
+        className="pl-3.5 text-xs font-medium text-primary underline underline-offset-2 hover:no-underline"
+      >
+        {ui("Show full error")}
+      </button>
+    </div>
+  );
 }
 
 function ResultLine({ error, children }: { error: boolean; children: React.ReactNode }) {

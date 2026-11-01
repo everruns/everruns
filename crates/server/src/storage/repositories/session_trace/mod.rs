@@ -40,7 +40,7 @@ macro_rules! turn_columns {
     () => {
         "turn_no, turn_id, start_sequence, end_sequence, started_at, ended_at, \
      status, prompt_preview, error, step_count, model_calls, tool_calls, subagent_calls, \
-     error_count, input_tokens, output_tokens"
+     error_count, input_tokens, output_tokens, error_code"
     };
 }
 
@@ -48,11 +48,12 @@ macro_rules! step_columns {
     () => {
         "turn_no, step_no, kind, status, start_sequence, end_sequence, \
      started_at, duration_ms, name, target, result, narration, tool_call_id, model, \
-     input_tokens, output_tokens, message_count, requested_tool_call_ids"
+     input_tokens, output_tokens, message_count, requested_tool_call_ids, \
+     retry_attempts, retry_wait_ms"
     };
 }
 
-/// Rows per upsert statement; 18 bind parameters per row stays far under the
+/// Rows per upsert statement; 20 bind parameters per row stays far under the
 /// 65535 PostgreSQL allows.
 const UPSERT_CHUNK: usize = 1_000;
 
@@ -345,7 +346,8 @@ async fn load_event_slices(
                         'success', data->'metadata'->'success',
                         'error', data->'metadata'->'error',
                         'duration_ms', data->'metadata'->'duration_ms',
-                        'usage', data->'metadata'->'usage'),
+                        'usage', data->'metadata'->'usage',
+                        'retry', data->'metadata'->'retry'),
                     'message_count', CASE jsonb_typeof(data->'messages')
                         WHEN 'array' THEN jsonb_array_length(data->'messages') END)
                 WHEN 'tool.started' THEN jsonb_build_object(
@@ -370,6 +372,7 @@ async fn load_event_slices(
                 ELSE jsonb_build_object(
                     'turn_id', data->'turn_id',
                     'error', LEFT(data->>'error', 301),
+                    'error_code', data->'error_code',
                     'usage', data->'usage')
             END AS data
         FROM events
@@ -417,12 +420,14 @@ async fn upsert_turns(
                 .push_bind(t.subagent_calls)
                 .push_bind(t.error_count)
                 .push_bind(t.input_tokens)
-                .push_bind(t.output_tokens);
+                .push_bind(t.output_tokens)
+                .push_bind(&t.error_code);
         });
         qb.push(
             " ON CONFLICT (session_id, turn_no) DO UPDATE SET \
              end_sequence = EXCLUDED.end_sequence, ended_at = EXCLUDED.ended_at, \
              status = EXCLUDED.status, error = EXCLUDED.error, \
+             error_code = EXCLUDED.error_code, \
              step_count = EXCLUDED.step_count, model_calls = EXCLUDED.model_calls, \
              tool_calls = EXCLUDED.tool_calls, subagent_calls = EXCLUDED.subagent_calls, \
              error_count = EXCLUDED.error_count, input_tokens = EXCLUDED.input_tokens, \
@@ -463,7 +468,9 @@ async fn upsert_steps(
                 .push_bind(s.input_tokens)
                 .push_bind(s.output_tokens)
                 .push_bind(s.message_count)
-                .push_bind(&s.requested_tool_call_ids);
+                .push_bind(&s.requested_tool_call_ids)
+                .push_bind(s.retry_attempts)
+                .push_bind(s.retry_wait_ms);
         });
         qb.push(
             " ON CONFLICT (session_id, turn_no, step_no) DO UPDATE SET \

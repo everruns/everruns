@@ -69903,6 +69903,24 @@
             ],
             "description": "Short result or error."
           },
+          "retry_attempts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Retries a model call made before it succeeded or gave up.",
+            "example": 3
+          },
+          "retry_wait_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Time spent waiting between those retries.",
+            "example": 42000
+          },
           "start_sequence": {
             "type": "integer",
             "format": "int32",
@@ -70119,6 +70137,14 @@
               "null"
             ],
             "description": "Why the turn failed, when it did."
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Classified failure (`provider_quota_exhausted`, `provider_rate_limited`,\n`provider_unavailable`, ...), when the turn failed with one.",
+            "example": "provider_quota_exhausted"
           },
           "error_count": {
             "type": "integer",

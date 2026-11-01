@@ -439,3 +439,88 @@ export function searchSnippet(data: unknown, query: string, width = 90): string 
   const end = Math.min(text.length, start + width);
   return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
 }
+
+/** A step error split into what a person reads first and what it came from. */
+export interface ParsedTraceError {
+  /** The provider's own message when the error embeds one, else the whole text. */
+  message: string;
+  /** Who reported it, such as "OpenAI Responses API". */
+  source?: string;
+  /** HTTP status, such as "402 Payment Required". */
+  status?: string;
+  /** The JSON body the error embeds, parsed. */
+  body?: unknown;
+}
+
+/**
+ * Provider errors arrive as one string, for example
+ * `LLM error: provider 'p': OpenAI Responses API error (402 Payment Required): {"error":{"message":".."}}`.
+ * Pull out the readable message, the source and the status so the inspector can lead
+ * with them; anything that does not match falls back to the text as is.
+ */
+export function parseTraceError(raw: unknown): ParsedTraceError | null {
+  const text =
+    typeof raw === "string"
+      ? raw
+      : raw && typeof raw === "object" && typeof (raw as { error?: unknown }).error === "string"
+        ? (raw as { error: string }).error
+        : null;
+  if (!text?.trim()) return null;
+  const head = /(?:^|:\s)([^:']+?) error \((\d{3}[^)]*)\)/.exec(text);
+  const source = head?.[1]?.trim();
+  const status = head?.[2]?.trim();
+  let body: unknown;
+  let message: string | undefined;
+  const brace = text.indexOf("{", head ? head.index + head[0].length : 0);
+  if (brace >= 0) {
+    try {
+      body = JSON.parse(text.slice(brace));
+      const inner = (body as { error?: { message?: unknown }; message?: unknown }) ?? {};
+      const candidate = inner.error?.message ?? inner.message;
+      if (typeof candidate === "string" && candidate.trim()) message = candidate.trim();
+    } catch {
+      body = undefined;
+    }
+  }
+  return { message: message ?? text.trim(), source, status, body };
+}
+
+/**
+ * Short labels for a turn's classified failure (`error_code` from the server's
+ * user-facing error codes). `processing_error` is the generic fallback and gets no
+ * label: the error text says more than "Processing error" would.
+ */
+const ERROR_CODE_LABEL: Record<string, string> = {
+  provider_quota_exhausted: "Out of credits",
+  provider_rate_limited: "Rate limited",
+  provider_usage_limit_reached: "Usage limit reached",
+  provider_unavailable: "Provider down",
+  provider_misconfigured: "Provider misconfigured",
+  provider_attestation_required: "Provider needs confirmation",
+  provider_session_unavailable: "Provider session lost",
+  model_unavailable: "Model unavailable",
+  model_not_configured: "Model not configured",
+  request_too_large: "Request too large",
+  budget_exhausted: "Budget exhausted",
+  budget_paused: "Budget paused",
+  dependency_unavailable: "Dependency unavailable",
+  invalid_tool_schema: "Invalid tool schema",
+  max_iterations: "Step limit reached",
+  soft_limit_reached: "Soft limit reached",
+  blocked_by_hook: "Blocked by hook",
+};
+
+export function errorCodeLabel(code: string | null | undefined): string | null {
+  return (code && ERROR_CODE_LABEL[code]) || null;
+}
+
+/** "Retried 3× · waited 42s" for a model call that needed retries, else null. */
+export function retrySummary(step: {
+  retry_attempts?: number | null;
+  retry_wait_ms?: number | null;
+}): string | null {
+  const attempts = step.retry_attempts ?? 0;
+  if (attempts <= 0) return null;
+  const wait = step.retry_wait_ms ? ` · waited ${formatDuration(step.retry_wait_ms)}` : "";
+  return `Retried ${formatCount(attempts)}×${wait}`;
+}
