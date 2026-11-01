@@ -658,48 +658,6 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             decisions: None,
         }),
 
-        // Claude 4 series
-        "claude-opus-4" => Some(ModelProfile {
-            name: "Claude Opus 4".into(),
-            family: "claude-opus-4".into(),
-            description: None,
-            release_date: Some("2025-05-14".into()),
-            last_updated: Some("2025-05-14".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: true,
-            knowledge: Some("2025-03-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 15.00,
-                output: 75.00,
-                cache_read: Some(1.50),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 32_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-            supports_server_compaction: false,
-            model_card_url: None,
-            decisions: None,
-        }),
-
         _ => None,
     }
 }

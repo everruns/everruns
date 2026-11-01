@@ -21,7 +21,6 @@ fn versioned_and_canonical_aliases_resolve_to_the_same_profile() {
         ("anthropic", "claude-sonnet-5-5", "claude-sonnet-5-5"),
         ("anthropic", "claude-sonnet-5-5-latest", "claude-sonnet-5-5"),
         ("anthropic", "claude-haiku-5-5", "claude-haiku-5-5"),
-        ("gemini", "gemini-2.0-flash", "gemini-2.0-flash"),
         (
             "gemini",
             "gemini-2.5-flash-preview-04-17",
@@ -37,20 +36,14 @@ fn versioned_and_canonical_aliases_resolve_to_the_same_profile() {
         ("openai", "gpt-4.1", "gpt-4.1"),
         ("openai", "gpt-4.1-2025-04-14", "gpt-4.1"),
         ("openai", "gpt-4.1-mini", "gpt-4.1-mini"),
-        ("openai", "gpt-4.1-nano", "gpt-4.1-nano"),
         ("openai", "gpt-5", "gpt-5"),
         ("openai", "gpt-5-2025-08-07", "gpt-5"),
-        ("openai", "gpt-5-codex", "gpt-5-codex"),
         ("openai", "gpt-5-mini", "gpt-5-mini"),
         ("openai", "gpt-5-nano", "gpt-5-nano"),
         ("openai", "gpt-5-pro", "gpt-5-pro"),
         ("openai", "gpt-5.1", "gpt-5.1"),
-        ("openai", "gpt-5.1-codex", "gpt-5.1-codex"),
-        ("openai", "gpt-5.1-codex-max", "gpt-5.1-codex-max"),
-        ("openai", "gpt-5.1-codex-mini", "gpt-5.1-codex-mini"),
         ("openai", "gpt-5.2", "gpt-5.2"),
         ("openai", "gpt-5.2-2025-12-11", "gpt-5.2"),
-        ("openai", "gpt-5.2-codex", "gpt-5.2-codex"),
         ("openai", "gpt-5.2-pro", "gpt-5.2-pro"),
         ("openai", "gpt-5.3-codex", "gpt-5.3-codex"),
         ("openai", "gpt-5.4", "gpt-5.4"),
@@ -75,7 +68,6 @@ fn versioned_and_canonical_aliases_resolve_to_the_same_profile() {
         ("openai", "o3", "o3"),
         ("openai", "o3-2025-04-16", "o3"),
         ("openai", "o3-pro", "o3-pro"),
-        ("openai", "o4-mini", "o4-mini"),
     ] {
         let vendor = if provider == "gemini" {
             "google"
@@ -280,6 +272,31 @@ fn test_profile_keys_and_service_kinds() {
 fn test_retired_semantic_variants_do_not_resolve_to_parent_profiles() {
     assert!(get_model_profile("openai", "o3-mini").is_none());
     assert!(get_model_profile("anthropic", "claude-opus-4-1").is_none());
+}
+
+/// Models past their vendor shutdown date leave the registry (OpenAI
+/// deprecations of 2026-04-22, Anthropic's 2026-06-15 retirement, Gemini's
+/// 2026-06-01 shutdown).
+#[test]
+fn test_models_past_vendor_shutdown_have_no_profile() {
+    for model in [
+        "gpt-5-chat-latest",
+        "gpt-5-codex",
+        "gpt-5.1-chat-latest",
+        "gpt-5.1-codex",
+        "gpt-5.1-codex-mini",
+        "gpt-5.1-codex-max",
+        "gpt-5.2-chat-latest",
+        "gpt-5.2-codex",
+        "o3-deep-research",
+        "o4-mini",
+        "o4-mini-deep-research",
+        "gpt-4.1-nano",
+    ] {
+        assert!(get_model_profile("openai", model).is_none(), "{model}");
+    }
+    assert!(get_model_profile("anthropic", "claude-opus-4").is_none());
+    assert!(get_model_profile("gemini", "gemini-2.0-flash").is_none());
 }
 
 // Speed (service tier) availability follows OpenAI's official tier tables;

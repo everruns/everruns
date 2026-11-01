@@ -81,27 +81,15 @@ mod seed_ids {
     // OpenAI Models (0x200-0x2FF)
     pub const GPT_5_2: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000201);
     pub const GPT_5_2_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000202);
-    pub const GPT_5_2_CODEX: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000203);
-    pub const GPT_5_2_CHAT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000204);
     pub const GPT_5_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000205);
-    pub const GPT_5_1_CODEX: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000206);
-    pub const GPT_5_1_CODEX_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000207);
-    pub const GPT_5_1_CODEX_MAX: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000208);
-    pub const GPT_5_1_CHAT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000209);
     pub const GPT_5_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020a);
     pub const GPT_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020b);
     pub const GPT_5_NANO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020c);
     pub const GPT_5_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020d);
-    pub const GPT_5_CODEX: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020e);
-    pub const GPT_5_CHAT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020f);
     pub const GPT_4_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000210);
     pub const GPT_4_1_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000211);
-    pub const GPT_4_1_NANO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000212);
-    pub const O4_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000215);
-    pub const O4_MINI_DEEP_RESEARCH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000216);
     pub const O3: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000217);
     pub const O3_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000219);
-    pub const O3_DEEP_RESEARCH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021a);
     pub const GPT_5_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021f);
     pub const GPT_5_4_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000220);
     pub const GPT_5_4_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000221);
@@ -118,6 +106,7 @@ mod seed_ids {
     pub const GPT_6_SOL: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022b);
     pub const GPT_6_LUNA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022c);
     pub const GPT_6_1_SOL: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022d);
+    pub const GPT_6_1_TERRA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022e);
 
     // Anthropic Models (0x300-0x3FF)
     pub const CLAUDE_FABLE_5_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030f);
@@ -133,7 +122,6 @@ mod seed_ids {
     pub const CLAUDE_OPUS_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000301);
     // 0x…0302: retired Claude Sonnet 4.5 (sunset by Anthropic). Do not reuse.
     pub const CLAUDE_HAIKU_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000303);
-    pub const CLAUDE_OPUS_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000304);
     // 1M-context variants (`[1m]` model ids), 0x3a0+ sub-range.
     pub const CLAUDE_FABLE_5_1_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a9);
     pub const CLAUDE_OPUS_5_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003aa);
@@ -157,7 +145,6 @@ mod seed_ids {
     pub const GEMINI_38_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000060a);
     pub const GEMINI_25_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
     pub const GEMINI_25_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
-    pub const GEMINI_20_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
     pub const GEMINI_4_ARGON: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000060b);
     // Bedrock Models (0x700-0x7FF)
     pub const BEDROCK_CLAUDE_OPUS_5_5: Uuid =
