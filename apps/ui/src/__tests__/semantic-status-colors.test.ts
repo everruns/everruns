@@ -34,15 +34,6 @@ const rawPaletteExceptions: Record<string, Record<string, number>> = {
     "text-red-600": 1,
     "text-yellow-600": 1,
   },
-  "app/(main)/sessions/[sessionId]/cost/page.tsx": {
-    "bg-amber-500": 1,
-    "bg-cyan-600": 1,
-    "bg-emerald-600": 1,
-    "bg-orange-500": 1,
-    "bg-pink-500": 1,
-    "bg-sky-500": 1,
-    "bg-violet-500": 1,
-  },
   "app/dev/file-tree/page.tsx": {
     "dark:text-amber-400": 1,
     "dark:text-sky-400": 1,
@@ -87,6 +78,15 @@ const rawPaletteExceptions: Record<string, Record<string, number>> = {
     "text-green-600": 1,
     "text-red-600": 1,
     "text-yellow-600": 1,
+  },
+  "components/session/cost/context-card.tsx": {
+    "bg-amber-500": 1,
+    "bg-cyan-600": 1,
+    "bg-emerald-600": 1,
+    "bg-orange-500": 1,
+    "bg-pink-500": 1,
+    "bg-sky-500": 1,
+    "bg-violet-500": 1,
   },
 };
 
