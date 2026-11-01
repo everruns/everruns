@@ -867,7 +867,18 @@ impl OpenResponsesProtocolChatDriver {
         _instructions: &Option<String>,
         _tools: &Option<Vec<ResponsesTool>>,
     ) -> Option<String> {
-        let prompt_cache = config.prompt_cache.as_ref().filter(|cfg| cfg.enabled)?;
+        // Send the routing key unless caching is explicitly turned off. Gateway
+        // providers cache implicitly whether or not the agent has Prompt Caching:
+        // Meta's Muse (direct or through OpenRouter) caches a ~10k-token prompt
+        // without a key but misses every time from ~100k tokens up, while the
+        // same 126k and 379k prompts are fully cached once they carry one
+        // (probed 2026-11-01). Without the key a long session re-reads its
+        // whole history at full price on every call.
+        let strategy = match config.prompt_cache.as_ref() {
+            Some(cache) if !cache.enabled => return None,
+            Some(cache) => cache.strategy.clone(),
+            None => crate::driver_registry::PromptCacheStrategy::default(),
+        };
         let cache_family = config
             .metadata
             .get("session_id")
@@ -879,7 +890,7 @@ impl OpenResponsesProtocolChatDriver {
         // prompt note keeps the session on the cache that holds everything
         // before the change.
         let fingerprint = json!({
-            "strategy": prompt_cache.strategy,
+            "strategy": strategy,
             "model": config.model,
             "cache_family": cache_family,
         });
