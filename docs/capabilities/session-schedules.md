@@ -13,6 +13,11 @@ appliesTo: [platform, cloud]
 
 Schedule future tasks within the current session. Supports one-shot (run once at a specific time) and recurring (cron expression) schedules.
 
+Recurring cron is interpreted in the schedule's IANA timezone. The next trigger
+must be in the future in UTC, including when daylight-saving time repeats a
+local hour; an already-past occurrence cannot make the schedule immediately due
+again.
+
 ## Tools
 
 ### `create_schedule`

@@ -59,9 +59,11 @@ fn next_cron_occurrence(
         chrono_tz::Tz::from_str(timezone)
             .map_err(|e| anyhow!("Invalid IANA timezone '{timezone}': {e}"))?
     };
+    // The ambiguous wall-time iterator may first return the other offset's
+    // already-past UTC instant. A recurring trigger must strictly advance.
     Ok(schedule
         .after(&after.with_timezone(&tz))
-        .next()
+        .find(|next| next.with_timezone(&Utc) > after)
         .map(|next| next.with_timezone(&Utc)))
 }
 
@@ -393,6 +395,19 @@ impl SessionScheduleService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recurring_cron_stays_in_future_during_repeated_hour() {
+        for timestamp in ["2026-11-01T06:02:07Z", "2026-11-01T07:02:07Z"] {
+            let after = DateTime::parse_from_rfc3339(timestamp)
+                .unwrap()
+                .with_timezone(&Utc);
+            assert_eq!(
+                next_cron_occurrence("*/1 * * * * *", "America/Chicago", after).unwrap(),
+                Some(after + chrono::Duration::seconds(1))
+            );
+        }
+    }
     use chrono::TimeZone;
 
     #[test]
