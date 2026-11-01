@@ -2377,8 +2377,8 @@ export interface paths {
     options?: never;
     head?: never;
     /**
-     * Set the timezone daily, weekly and monthly usage policies reset in
-     * @description Set the timezone daily, weekly and monthly usage policies reset in. Windows already running keep their start; the next boundary uses the new timezone.
+     * Set the timezone usage policy windows reset in
+     * @description Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.
      */
     patch: operations["update_cost_settings"];
     trace?: never;
@@ -13231,8 +13231,6 @@ export interface components {
       match?: Record<string, unknown> | null;
       /** @description `model.tokens` or `sandbox.time`. */
       meter: string;
-      /** @description Why, shown in the price list history. */
-      reason?: string | null;
       /**
        * Format: double
        * @description Fixed USD per million tokens (model tokens) or per hour (sandboxes).

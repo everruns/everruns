@@ -2,6 +2,7 @@
 // timezone. Policy management (what used to be budgets) stays on
 // `/v1/budgets`; the UI calls them usage policies.
 
+import { changeReasonOptions } from "./change-history";
 import { api } from "./client";
 
 /** Where an amount came from. `mixed` only appears on grouped lines. */
@@ -28,7 +29,6 @@ export interface CreateCostRateRequest {
   unit_price_usd?: number;
   list_price_multiplier?: number;
   effective_from?: string;
-  reason?: string;
 }
 
 export interface CostSummaryLine {
@@ -70,12 +70,19 @@ export async function listCostRates(): Promise<CostRate[]> {
   return (await api.get<CostRate[]>("/v1/cost-rates")).data;
 }
 
-export async function createCostRate(input: CreateCostRateRequest): Promise<CostRate> {
-  return (await api.post<CostRate>("/v1/cost-rates", input)).data;
+// A rate's "why" is the ordinary change reason (the Everruns-Change-Reason
+// header), which the server stores on the price list row.
+export async function createCostRate(
+  input: CreateCostRateRequest,
+  reason?: string,
+): Promise<CostRate> {
+  return (await api.post<CostRate>("/v1/cost-rates", input, changeReasonOptions(reason))).data;
 }
 
 export async function retireCostRate(rateId: string, reason?: string): Promise<CostRate> {
-  return (await api.post<CostRate>(`/v1/cost-rates/${rateId}/retire`, { reason })).data;
+  return (
+    await api.post<CostRate>(`/v1/cost-rates/${rateId}/retire`, {}, changeReasonOptions(reason))
+  ).data;
 }
 
 export async function getCostSummary(params?: {

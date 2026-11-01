@@ -72,7 +72,7 @@ function AddRateForm({ onDone }: { onDone: () => void }) {
   const [starts, setStarts] = useState("");
   const [reason, setReason] = useState("");
   const create = useMutation({
-    mutationFn: (input: CreateCostRateRequest) => createCostRate(input),
+    mutationFn: (input: CreateCostRateRequest) => createCostRate(input, reason),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["costs"] });
       onDone();
@@ -94,7 +94,6 @@ function AddRateForm({ onDone }: { onDone: () => void }) {
         ? { list_price_multiplier: amount }
         : { unit_price_usd: amount }),
       effective_from: starts ? new Date(`${starts}T00:00:00`).toISOString() : undefined,
-      reason: reason.trim() || undefined,
     });
   };
 

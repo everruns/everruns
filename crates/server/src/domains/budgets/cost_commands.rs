@@ -66,6 +66,13 @@ impl From<&CostRateRow> for CostRate {
     }
 }
 
+// Decision: a rate's "why" is the change reason every mutating call already
+// carries (`--reason`, the `Everruns-Change-Reason` header), not a param of its
+// own; the price list shows it beside the row it explains.
+fn change_reason(ctx: &Ctx) -> Option<String> {
+    crate::domains::change_history::effective_intent(ctx).reason
+}
+
 fn require_manage(ctx: &Ctx) -> Result<(), CommandError> {
     BUDGET_MANAGE
         .evaluate(&ctx.caller)
@@ -115,9 +122,6 @@ pub struct CreateCostRate {
     /// When it starts; now when absent.
     #[serde(default)]
     pub effective_from: Option<DateTime<Utc>>,
-    /// Why, shown in the price list history.
-    #[serde(default)]
-    pub reason: Option<String>,
 }
 
 const MATCH_KEYS_MODEL: &[&str] = &["provider", "model", "source"];
@@ -192,15 +196,6 @@ impl Command for CreateCostRate {
                 ));
             }
         }
-        if self
-            .reason
-            .as_ref()
-            .is_some_and(|r| r.chars().count() > 500)
-        {
-            return Err(CommandError::bad_request(
-                "reason must be at most 500 characters",
-            ));
-        }
         let row = ctx
             .db
             .create_cost_rate(CreateCostRateRow {
@@ -212,7 +207,7 @@ impl Command for CreateCostRate {
                 unit: unit.into(),
                 effective_from: self.effective_from.unwrap_or_else(Utc::now),
                 retired: false,
-                reason: self.reason,
+                reason: change_reason(ctx),
                 created_by: ctx.caller.user_id,
             })
             .await?;
@@ -228,8 +223,6 @@ pub struct RetireCostRate {
     /// When it ends; now when absent.
     #[serde(default)]
     pub effective_from: Option<DateTime<Utc>>,
-    #[serde(default)]
-    pub reason: Option<String>,
 }
 
 #[command(
@@ -264,7 +257,7 @@ impl Command for RetireCostRate {
                 unit: existing.unit,
                 effective_from: self.effective_from.unwrap_or_else(Utc::now),
                 retired: true,
-                reason: self.reason,
+                reason: change_reason(ctx),
                 created_by: ctx.caller.user_id,
             })
             .await?;
@@ -501,7 +494,7 @@ pub struct UpdateCostSettings {
 #[command(
     name = "update_cost_settings",
     category = "budgets",
-    description = "Set the timezone daily, weekly and monthly usage policies reset in. Windows already running keep their start; the next boundary uses the new timezone.",
+    description = "Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.",
     method = "PATCH",
     path = "/v1/costs/settings",
     policy = BUDGET_MANAGE,

@@ -4219,13 +4219,6 @@
         "help": "`model.tokens` or `sandbox.time`."
       },
       {
-        "field": "reason",
-        "long": "reason",
-        "kind": "string",
-        "required": false,
-        "help": "Why, shown in the price list history."
-      },
-      {
         "field": "unit_price_usd",
         "long": "unit-price-usd",
         "kind": "number",
@@ -4282,12 +4275,6 @@
         "kind": "string",
         "required": true,
         "help": "Rate id (`rate_...`) whose match to retire."
-      },
-      {
-        "field": "reason",
-        "long": "reason",
-        "kind": "string",
-        "required": false
       }
     ],
     "examples": [
@@ -4322,7 +4309,7 @@
       "settings"
     ],
     "verb": "update",
-    "description": "Set the timezone daily, weekly and monthly usage policies reset in. Windows already running keep their start; the next boundary uses the new timezone.",
+    "description": "Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.",
     "method": "PATCH",
     "http_path": "/v1/costs/settings",
     "args": [

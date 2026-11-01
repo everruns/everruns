@@ -3909,13 +3909,6 @@
           "description": "`model.tokens` or `sandbox.time`.",
           "type": "string"
         },
-        "reason": {
-          "description": "Why, shown in the price list history.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "unit_price_usd": {
           "description": "Fixed USD per million tokens (model tokens) or per hour (sandboxes).",
           "format": "double",
@@ -19183,12 +19176,6 @@
         "rate_id": {
           "description": "Rate id (`rate_...`) whose match to retire.",
           "type": "string"
-        },
-        "reason": {
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "required": [
@@ -22753,7 +22740,7 @@
   {
     "category": "budgets",
     "cli": "costs settings update",
-    "description": "Set the timezone daily, weekly and monthly usage policies reset in. Windows already running keep their start; the next boundary uses the new timezone.",
+    "description": "Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.",
     "input_schema": {
       "properties": {
         "timezone": {

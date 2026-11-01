@@ -16,7 +16,7 @@ What usage cost the organization, its price list and cost settings.
 | [`costs rates list`](#costs-rates-list) | List the organization's price list, history included. |
 | [`costs rates retire`](#costs-rates-retire) | End a rate from a date. |
 | [`costs settings get`](#costs-settings-get) | Read the organization's cost settings. |
-| [`costs settings update`](#costs-settings-update) | Set the timezone daily, weekly and monthly usage policies reset in. |
+| [`costs settings update`](#costs-settings-update) | Set the timezone usage policy windows reset in. |
 | [`costs summary get`](#costs-summary-get) | Summarize what usage cost the organization. |
 
 ## costs rates create
@@ -94,7 +94,7 @@ everruns costs settings get
 
 ## costs settings update
 
-Set the timezone daily, weekly and monthly usage policies reset in. Windows already running keep their start; the next boundary uses the new timezone.
+Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.
 
 ```bash
 everruns costs settings update [OPTIONS]

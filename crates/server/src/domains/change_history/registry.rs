@@ -678,6 +678,12 @@ pub fn declared(name: &str) -> Change {
         "delete_budget" => on(K::Budget, Deleted, Param("budget_id")),
         "top_up_budget" => Change::Exempt("a balance movement, recorded in the budget ledger"),
         "resume_session_budgets" => Change::Exempt("resumes sessions a budget paused"),
+        "create_cost_rate" | "retire_cost_rate" => Change::Exempt(
+            "the price list is append-only; each row keeps its own reason and author",
+        ),
+        "update_cost_settings" => {
+            Change::Exempt("an organization setting with no entity history of its own")
+        }
 
         "create_payment_account" => on(K::PaymentAccount, Created, ID),
         "update_payment_account" => on(K::PaymentAccount, Updated, ID),

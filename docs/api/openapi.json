@@ -9627,8 +9627,8 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Set the timezone daily, weekly and monthly usage policies reset in",
-        "description": "Set the timezone daily, weekly and monthly usage policies reset in. Windows already running keep their start; the next boundary uses the new timezone.",
+        "summary": "Set the timezone usage policy windows reset in",
+        "description": "Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.",
         "operationId": "update_cost_settings",
         "requestBody": {
           "content": {
@@ -42595,13 +42595,6 @@
           "meter": {
             "type": "string",
             "description": "`model.tokens` or `sandbox.time`."
-          },
-          "reason": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Why, shown in the price list history."
           },
           "unit_price_usd": {
             "type": [
