@@ -204,6 +204,7 @@ pub enum PolicyStepAction {
 pub struct PolicyStep {
     /// Percent of the limit at which the step applies (1 to 100).
     pub at_percent: f64,
+    /// What happens when usage reaches the step.
     pub action: PolicyStepAction,
 }
 
@@ -228,10 +229,14 @@ pub enum PolicySource {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct UsagePolicy {
+    /// Display name of the policy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Steps by percent of the limit. Empty: notify at 80%, ask at the soft
+    /// limit, stop at the limit.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<PolicyStep>,
+    /// Which usage the policy counts.
     #[serde(default, skip_serializing_if = "is_all_sources")]
     pub source: PolicySource,
 }

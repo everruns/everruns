@@ -3539,7 +3539,8 @@
           "description": "One step of a usage policy, at a percent of the limit.",
           "properties": {
             "action": {
-              "$ref": "#/$defs/PolicyStepAction"
+              "$ref": "#/$defs/PolicyStepAction",
+              "description": "What happens when usage reaches the step."
             },
             "at_percent": {
               "description": "Percent of the limit at which the step applies (1 to 100).",
@@ -3566,15 +3567,18 @@
           "description": "Name, steps and filter of a usage policy, stored on `budgets.policy`.\n\nDecision: steps are data on the existing budget row rather than a new\ntable, so the hierarchy lookup, period rollover and gate keep working\nunchanged. Empty steps mean the legacy shape (see [`UsagePolicy::effective_steps`]).",
           "properties": {
             "name": {
+              "description": "Display name of the policy.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "source": {
-              "$ref": "#/$defs/PolicySource"
+              "$ref": "#/$defs/PolicySource",
+              "description": "Which usage the policy counts."
             },
             "steps": {
+              "description": "Steps by percent of the limit. Empty: notify at 80%, ask at the soft\nlimit, stop at the limit.",
               "items": {
                 "$ref": "#/$defs/PolicyStep"
               },
@@ -20518,7 +20522,8 @@
           "description": "One step of a usage policy, at a percent of the limit.",
           "properties": {
             "action": {
-              "$ref": "#/$defs/PolicyStepAction"
+              "$ref": "#/$defs/PolicyStepAction",
+              "description": "What happens when usage reaches the step."
             },
             "at_percent": {
               "description": "Percent of the limit at which the step applies (1 to 100).",
@@ -20545,15 +20550,18 @@
           "description": "Name, steps and filter of a usage policy, stored on `budgets.policy`.\n\nDecision: steps are data on the existing budget row rather than a new\ntable, so the hierarchy lookup, period rollover and gate keep working\nunchanged. Empty steps mean the legacy shape (see [`UsagePolicy::effective_steps`]).",
           "properties": {
             "name": {
+              "description": "Display name of the policy.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "source": {
-              "$ref": "#/$defs/PolicySource"
+              "$ref": "#/$defs/PolicySource",
+              "description": "Which usage the policy counts."
             },
             "steps": {
+              "description": "Steps by percent of the limit. Empty: notify at 80%, ask at the soft\nlimit, stop at the limit.",
               "items": {
                 "$ref": "#/$defs/PolicyStep"
               },

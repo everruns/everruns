@@ -9524,12 +9524,22 @@ export interface components {
     };
     /** @description An agent's cost this month, for the agent page. */
     AgentCost: {
+      /** @description Agent's prefixed public identifier. */
       agent_id: string;
-      /** Format: double */
+      /**
+       * Format: double
+       * @description Priced cost in USD since `from`.
+       */
       cost_usd: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Start of this month in the org's timezone.
+       */
       from: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Usage records since `from` with no price.
+       */
       unpriced_records: number;
     };
     /** @description Three representative workload hypotheses; prices and usage frequency are set separately. */
@@ -12612,9 +12622,15 @@ export interface components {
     };
     /** @description One row of the org's price list. */
     CostRate: {
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the rate was added.
+       */
       created_at: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the rate starts to apply.
+       */
       effective_from: string;
       /** @description Rate id (`rate_...`). */
       id: string;
@@ -12632,6 +12648,7 @@ export interface components {
       match: Record<string, unknown>;
       /** @description What it prices: `model.tokens` or `sandbox.time`. */
       meter: string;
+      /** @description Why the rate was added: the change reason given with it. */
       reason?: string | null;
       /** @description This row ends the rates it matches from `effective_from`. */
       retired: boolean;
@@ -12725,21 +12742,42 @@ export interface components {
     };
     /** @description Org cost over a window, grouped several ways. */
     CostSummary: {
+      /** @description Totals by agent. */
       by_agent: components["schemas"]["CostSummaryLine"][];
+      /** @description Totals by where the amount came from. */
       by_basis: components["schemas"]["CostSummaryLine"][];
+      /** @description Totals by day, in the org's timezone. */
       by_day: components["schemas"]["CostSummaryLine"][];
+      /** @description Totals by what was used, such as a provider and model. */
       by_source: components["schemas"]["CostSummaryLine"][];
+      /**
+       * @description Totals by who started the work: `person`, or `unattended` (schedules
+       *     and other runs nobody watches).
+       */
       by_started_by: components["schemas"]["CostSummaryLine"][];
+      /** @description Totals by the person the usage counts for. */
       by_user: components["schemas"]["CostSummaryLine"][];
-      /** Format: double */
+      /**
+       * Format: double
+       * @description Priced cost in USD over the window. Unpriced usage is not in it.
+       */
       cost_usd: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Window start (inclusive).
+       */
       from: string;
       /** @description The org's timezone; calendar windows and days use it. */
       timezone: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Window end (exclusive).
+       */
       to: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Usage records over the window with no price.
+       */
       unpriced_records: number;
     };
     /** @description One line of the costs summary. */
@@ -12756,13 +12794,17 @@ export interface components {
       cost_usd: number;
       /** @description Group key: an agent id, a user id, a source key, a basis, a day. */
       key?: string | null;
+      /** @description Display name for the key, such as the agent's name. */
       label?: string | null;
       /**
        * Format: double
        * @description Tokens for models, hours for sandboxes, summed as recorded.
        */
       quantity: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Usage records in the group, priced or not.
+       */
       records: number;
       /**
        * Format: int64
@@ -24484,6 +24526,7 @@ export interface components {
     PolicySource: "all" | "managed" | "own_keys";
     /** @description One step of a usage policy, at a percent of the limit. */
     PolicyStep: {
+      /** @description What happens when usage reaches the step. */
       action: components["schemas"]["PolicyStepAction"];
       /**
        * Format: double
@@ -31991,8 +32034,14 @@ export interface components {
      *     unchanged. Empty steps mean the legacy shape (see [`UsagePolicy::effective_steps`]).
      */
     UsagePolicy: {
+      /** @description Display name of the policy. */
       name?: string | null;
+      /** @description Which usage the policy counts. */
       source?: components["schemas"]["PolicySource"];
+      /**
+       * @description Steps by percent of the limit. Empty: notify at 80%, ask at the soft
+       *     limit, stop at the limit.
+       */
       steps?: components["schemas"]["PolicyStep"][];
     };
     /** @description Which org link to act through. */

@@ -31,11 +31,14 @@ pub struct CostRate {
     pub list_price_multiplier: Option<f64>,
     /// Unit of `unit_price_usd`: `1m_tokens` or `hour`.
     pub unit: String,
+    /// When the rate starts to apply.
     pub effective_from: DateTime<Utc>,
     /// This row ends the rates it matches from `effective_from`.
     pub retired: bool,
+    /// Why the rate was added: the change reason given with it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// When the rate was added.
     pub created_at: DateTime<Utc>,
 }
 
@@ -271,6 +274,7 @@ pub struct CostSummaryLine {
     /// Group key: an agent id, a user id, a source key, a basis, a day.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+    /// Display name for the key, such as the agent's name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     /// Where the amounts came from: host, rate, provider, list_price,
@@ -280,6 +284,7 @@ pub struct CostSummaryLine {
     pub cost_usd: f64,
     /// Usage records with no price.
     pub unpriced_records: i64,
+    /// Usage records in the group, priced or not.
     pub records: i64,
     /// Tokens for models, hours for sandboxes, summed as recorded.
     pub quantity: f64,
@@ -302,17 +307,28 @@ impl From<CostSummaryRow> for CostSummaryLine {
 /// Org cost over a window, grouped several ways.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct CostSummary {
+    /// Window start (inclusive).
     pub from: DateTime<Utc>,
+    /// Window end (exclusive).
     pub to: DateTime<Utc>,
     /// The org's timezone; calendar windows and days use it.
     pub timezone: String,
+    /// Priced cost in USD over the window. Unpriced usage is not in it.
     pub cost_usd: f64,
+    /// Usage records over the window with no price.
     pub unpriced_records: i64,
+    /// Totals by where the amount came from.
     pub by_basis: Vec<CostSummaryLine>,
+    /// Totals by what was used, such as a provider and model.
     pub by_source: Vec<CostSummaryLine>,
+    /// Totals by agent.
     pub by_agent: Vec<CostSummaryLine>,
+    /// Totals by the person the usage counts for.
     pub by_user: Vec<CostSummaryLine>,
+    /// Totals by who started the work: `person`, or `unattended` (schedules
+    /// and other runs nobody watches).
     pub by_started_by: Vec<CostSummaryLine>,
+    /// Totals by day, in the org's timezone.
     pub by_day: Vec<CostSummaryLine>,
 }
 
@@ -403,9 +419,13 @@ impl Command for GetCostSummary {
 /// An agent's cost this month, for the agent page.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentCost {
+    /// Agent's prefixed public identifier.
     pub agent_id: String,
+    /// Start of this month in the org's timezone.
     pub from: DateTime<Utc>,
+    /// Priced cost in USD since `from`.
     pub cost_usd: f64,
+    /// Usage records since `from` with no price.
     pub unpriced_records: i64,
 }
 

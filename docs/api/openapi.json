@@ -35918,19 +35918,23 @@
         ],
         "properties": {
           "agent_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Agent's prefixed public identifier."
           },
           "cost_usd": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Priced cost in USD since `from`."
           },
           "from": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Start of this month in the org's timezone."
           },
           "unpriced_records": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Usage records since `from` with no price."
           }
         }
       },
@@ -41682,11 +41686,13 @@
         "properties": {
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the rate was added."
           },
           "effective_from": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the rate starts to apply."
           },
           "id": {
             "type": "string",
@@ -41712,7 +41718,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Why the rate was added: the change reason given with it."
           },
           "retired": {
             "type": "boolean",
@@ -41880,45 +41887,53 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CostSummaryLine"
-            }
+            },
+            "description": "Totals by agent."
           },
           "by_basis": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CostSummaryLine"
-            }
+            },
+            "description": "Totals by where the amount came from."
           },
           "by_day": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CostSummaryLine"
-            }
+            },
+            "description": "Totals by day, in the org's timezone."
           },
           "by_source": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CostSummaryLine"
-            }
+            },
+            "description": "Totals by what was used, such as a provider and model."
           },
           "by_started_by": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CostSummaryLine"
-            }
+            },
+            "description": "Totals by who started the work: `person`, or `unattended` (schedules\nand other runs nobody watches)."
           },
           "by_user": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CostSummaryLine"
-            }
+            },
+            "description": "Totals by the person the usage counts for."
           },
           "cost_usd": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Priced cost in USD over the window. Unpriced usage is not in it."
           },
           "from": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Window start (inclusive)."
           },
           "timezone": {
             "type": "string",
@@ -41926,11 +41941,13 @@
           },
           "to": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Window end (exclusive)."
           },
           "unpriced_records": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Usage records over the window with no price."
           }
         }
       },
@@ -41965,7 +41982,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Display name for the key, such as the agent's name."
           },
           "quantity": {
             "type": "number",
@@ -41974,7 +41992,8 @@
           },
           "records": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Usage records in the group, priced or not."
           },
           "unpriced_records": {
             "type": "integer",
@@ -62785,7 +62804,8 @@
         ],
         "properties": {
           "action": {
-            "$ref": "#/components/schemas/PolicyStepAction"
+            "$ref": "#/components/schemas/PolicyStepAction",
+            "description": "What happens when usage reaches the step."
           },
           "at_percent": {
             "type": "number",
@@ -76713,16 +76733,19 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Display name of the policy."
           },
           "source": {
-            "$ref": "#/components/schemas/PolicySource"
+            "$ref": "#/components/schemas/PolicySource",
+            "description": "Which usage the policy counts."
           },
           "steps": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PolicyStep"
-            }
+            },
+            "description": "Steps by percent of the limit. Empty: notify at 80%, ask at the soft\nlimit, stop at the limit."
           }
         }
       },
