@@ -296,6 +296,7 @@ sessions budget-check check	--context-revision --reason --session-id <session_id
 sessions budgets list	--context-revision --reason --session-id <session_id>
 sessions cancel	--context-revision --reason --session <session_id>
 sessions context	--context-revision --reason --session <session_id>
+sessions cost get	--context-revision --reason --session-id <session_id>
 sessions create	--agent/-a --budget-limit... --budget-soft-limit... --capability... --harness/-H --hint... --hints-json --locale --max-iterations --model --network-allow... --network-block... --reason --secret... --system-prompt --tag/-t... --title --virtual-user
 sessions databases create	--context-revision --name! --reason --session-id!
 sessions databases delete	--context-revision --name! --reason --session-id!
