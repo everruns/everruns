@@ -58,6 +58,7 @@
     "durable/workers/page.tsx",
     "durable/workflows/[workflowId]/page.tsx",
     "durable/workflows/page.tsx",
+    "evals/[evalId]/cases/[caseId]/page.tsx",
     "evals/[evalId]/compare/page.tsx",
     "evals/[evalId]/experiments/[experimentId]/page.tsx",
     "evals/[evalId]/runs/[runId]/page.tsx",
