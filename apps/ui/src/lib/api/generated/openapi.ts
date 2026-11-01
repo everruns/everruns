@@ -587,7 +587,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** What one agent cost the organization this month, in the org's timezone */
+    /** What one agent cost the organization this month */
     get: operations["get_agent_cost"];
     put?: never;
     post?: never;
@@ -2328,7 +2328,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List the organization's price list: the rates it uses to account its own costs, history included */
+    /** List the organization's price list, history included */
     get: operations["list_cost_rates"];
     put?: never;
     /**
@@ -2369,7 +2369,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Read the organization's cost settings: the timezone calendar windows use */
+    /** Read the organization's cost settings */
     get: operations["get_cost_settings"];
     put?: never;
     post?: never;
@@ -2390,7 +2390,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** What usage cost the organization over a window, by where each number came from, source, agent, person, who started the work, and day */
+    /** Summarize what usage cost the organization */
     get: operations["get_cost_summary"];
     put?: never;
     post?: never;
@@ -7337,7 +7337,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Continue a session past the "ask to continue" step of the usage policies that stopped it, for each policy's current window */
+    /** Continue a session past a usage policy's ask step */
     post: operations["resume_session_budgets"];
     delete?: never;
     options?: never;

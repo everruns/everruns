@@ -2262,7 +2262,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "What one agent cost the organization this month, in the org's timezone",
+        "summary": "What one agent cost the organization this month",
         "operationId": "get_agent_cost",
         "parameters": [
           {
@@ -9492,7 +9492,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "List the organization's price list: the rates it uses to account its own costs, history included",
+        "summary": "List the organization's price list, history included",
         "operationId": "list_cost_rates",
         "parameters": [],
         "responses": {
@@ -9601,7 +9601,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Read the organization's cost settings: the timezone calendar windows use",
+        "summary": "Read the organization's cost settings",
         "operationId": "get_cost_settings",
         "parameters": [],
         "responses": {
@@ -9665,7 +9665,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "What usage cost the organization over a window, by where each number came from, source, agent, person, who started the work, and day",
+        "summary": "Summarize what usage cost the organization",
         "operationId": "get_cost_summary",
         "parameters": [
           {
@@ -28781,7 +28781,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Continue a session past the \"ask to continue\" step of the usage policies that stopped it, for each policy's current window",
+        "summary": "Continue a session past a usage policy's ask step",
         "operationId": "resume_session_budgets",
         "parameters": [
           {
