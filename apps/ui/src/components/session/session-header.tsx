@@ -32,7 +32,7 @@ import {
   getEntityReferenceClassName,
   getEntityReferenceLabel,
 } from "@/lib/entity-lifecycle";
-import { formatCompactNumber, formatTokens } from "@/lib/formatting";
+import { formatCompactNumber, formatCostUsd, formatTokens } from "@/lib/formatting";
 import { cn, shortenId } from "@/lib/utils";
 import { sessionOutcome } from "@/lib/session-outcome";
 import {
@@ -66,6 +66,7 @@ export interface SessionNavItem {
 
 export function SessionUsageBadge({ usage }: { usage: TokenUsage }) {
   const { displayLocale } = useLocale();
+  const cost = usage.effective_cost_usd ?? usage.actual_cost_usd ?? usage.estimated_cost_usd;
 
   const ui = useUiTranslations();
   return (
@@ -74,6 +75,7 @@ export function SessionUsageBadge({ usage }: { usage: TokenUsage }) {
         <TooltipTrigger>
           <Badge variant="outline" className="cursor-help gap-1">
             <Zap className="icon-sharp h-3 w-3" />
+            {cost != null ? `${formatCostUsd(cost)} · ` : ""}
             {formatTokens(usage.input_tokens)} / {formatTokens(usage.output_tokens)}
           </Badge>
         </TooltipTrigger>

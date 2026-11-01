@@ -7,7 +7,7 @@ use crate::model::{ModelProfile, ModelVendor};
 use crate::provider::DriverId;
 
 pub use crate::model_profile_data::{
-    ModelProfileEntry, all_profile_entries, all_profiles, selected_profiles,
+    CostBreakdown, ModelProfileEntry, all_profile_entries, all_profiles, selected_profiles,
 };
 
 /// Enumerate profiles for a driver with the same capability masks as lookup.
@@ -43,6 +43,26 @@ pub fn estimate_cost_usd(
     cache_creation_tokens: u32,
 ) -> Option<f64> {
     crate::model_profile_data::estimate_cost_usd(
+        provider_type.as_str(),
+        model_id,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+    )
+}
+
+/// [`estimate_cost_usd`] split by token bucket. See
+/// `crate::model_profile_data::estimate_cost_breakdown_usd`.
+pub fn estimate_cost_breakdown_usd(
+    provider_type: &DriverId,
+    model_id: &str,
+    input_tokens: u32,
+    output_tokens: u32,
+    cache_read_tokens: u32,
+    cache_creation_tokens: u32,
+) -> Option<CostBreakdown> {
+    crate::model_profile_data::estimate_cost_breakdown_usd(
         provider_type.as_str(),
         model_id,
         input_tokens,
