@@ -150,6 +150,8 @@ async fn an_experiment_runs_each_variant_and_gates_on_the_comparison() {
     for list in [&mine, &all] {
         let items = list["data"].as_array().unwrap_or_else(|| panic!("{list}"));
         assert_eq!(items[0]["id"], experiment_id.as_str());
+        // The public eval id, the one its routes take, not the row id.
+        assert_eq!(items[0]["eval_id"], eval_id.as_str());
         assert!(items[0].get("comparison").is_none());
     }
 

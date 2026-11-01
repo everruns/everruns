@@ -1,3 +1,5 @@
+import type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
+export type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
 export type {
   Organization,
   UpdateOrganizationRequest,
@@ -1464,31 +1466,11 @@ export interface Eval {
   tags: string[];
   status: "active" | "archived" | "deleted";
   case_count: number;
+  /** Counts changes to the cases (the dataset); runs record the one they ran. */
+  version?: number;
   last_run?: EvalRunSummaryView;
   created_at: string;
   updated_at: string;
-}
-
-export interface EvalRunSummaryView {
-  id: string;
-  status: EvalRunStatus;
-  summary?: RunSummary;
-  created_at: string;
-}
-
-export type EvalRunStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
-
-export interface RunSummary {
-  total: number;
-  passed: number;
-  failed: number;
-  errored: number;
-  pass_rate: number;
-  avg_score: number;
-  avg_turns: number;
-  avg_latency_ms: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
 }
 
 export interface EvalCase {
@@ -1585,6 +1567,9 @@ export interface EvalRun {
   target?: EvalTarget;
   model_override?: string;
   filter_tags?: string[];
+  /** The experiment this run is a variant of. */
+  experiment_id?: string | null;
+  variant_label?: string | null;
   status: EvalRunStatus;
   triggered_by: string;
   started_at?: string;

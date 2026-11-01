@@ -51,3 +51,16 @@ export function useHealthIssueAction(action: "check" | "snooze") {
     },
   });
 }
+
+// Findings for the Evals section: open behavior and classifier issues. The
+// list holds pending issues only; one page of 100 covers what a person reads.
+export function useEvalFindings(enabled = true) {
+  const { currentOrg } = useOrg();
+  return useQuery({
+    queryKey: ["health-issues", currentOrg?.public_id, "findings"],
+    queryFn: () => listHealthIssues(undefined, 0, 100),
+    enabled: enabled && !!currentOrg,
+    refetchInterval: 60_000,
+    retry: false,
+  });
+}
