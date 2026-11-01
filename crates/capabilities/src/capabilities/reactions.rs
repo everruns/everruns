@@ -171,7 +171,9 @@ impl Tool for ReactTool {
     }
 
     fn hints(&self) -> ToolHints {
-        ToolHints::default().with_idempotent(true)
+        ToolHints::default()
+            .with_idempotent(true)
+            .with_narration_noun("reaction")
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

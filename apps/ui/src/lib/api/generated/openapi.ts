@@ -2044,7 +2044,7 @@ export interface paths {
     };
     get?: never;
     /**
-     * React to a message
+     * Add a reaction
      * @description Put an emoji reaction on a message of one of the caller's sessions. Adding one already there changes nothing. A reaction on the agent's reply reaches the agent as a short note.
      */
     put: operations["agent_api_add_reaction"];

@@ -458,7 +458,7 @@ fn agent_summary(id: &str) -> Option<&'static str> {
         "agent_api_answer_questions" => "Answer questions",
         "agent_api_submit_tool_approvals" => "Approve tool calls",
         "agent_api_cancel" => "Cancel a turn",
-        "agent_api_add_reaction" => "React to a message",
+        "agent_api_add_reaction" => "Add a reaction",
         "agent_api_remove_reaction" => "Remove a reaction",
         "agent_api_list_reactions" => "List reactions",
         "exchange" | "exchange_legacy" => "Create a runtime token",
