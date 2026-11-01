@@ -1,5 +1,10 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-01
+
+- Require hosted and embedded session cron triggers to advance in UTC through
+  repeated daylight-saving hours. See [Runtime](foundations/runtime.md).
+
 ## 2026-10-31
 
 - Preserve cached prompt prefixes during skill installation with recorded inventory updates, bounded stable discovery, explicit removals and transcript-based replay. See [Skills Registry](project/skills-registry.md#cache-stable-inventory-disclosure).

@@ -726,8 +726,10 @@ fn next_cron_trigger(schedule: &SessionSchedule, after: DateTime<Utc>) -> Result
         ))
     })?;
     let local_after = after.with_timezone(&timezone);
+    // cron yields both offsets of an ambiguous wall time, including an earlier
+    // UTC instant when starting in the repeated hour. Never schedule the past.
     cron.after(&local_after)
-        .next()
+        .find(|next| next.with_timezone(&Utc) > after)
         .map(|next| next.with_timezone(&Utc))
         .ok_or_else(|| AgentLoopError::config("cron expression has no future occurrence"))
 }
@@ -941,6 +943,31 @@ impl SessionScheduleStore for LocalScheduleStore {
 #[cfg(test)]
 mod retry_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn recurring_cron_stays_in_future_during_repeated_hour() -> Result<()> {
+        let store =
+            LocalScheduleStore::new(SqliteDb::open_in_memory()?, 1, PrincipalId::from_seed(1))?;
+        let schedule = store
+            .create_schedule(
+                SessionId::new(),
+                "tick".into(),
+                Some("*/1 * * * * *".into()),
+                None,
+                "America/Chicago".into(),
+            )
+            .await?;
+        for timestamp in ["2026-11-01T06:02:07Z", "2026-11-01T07:02:07Z"] {
+            let after = DateTime::parse_from_rfc3339(timestamp)
+                .unwrap()
+                .with_timezone(&Utc);
+            assert_eq!(
+                next_cron_trigger(&schedule, after)?,
+                after + chrono::Duration::seconds(1)
+            );
+        }
+        Ok(())
+    }
 
     #[tokio::test]
     async fn failed_delivery_keeps_retry_exclusive_until_timeout() -> Result<()> {

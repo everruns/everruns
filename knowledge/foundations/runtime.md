@@ -432,6 +432,13 @@ cause poll-rate claim churn. Shutdown stops new claims and waits for an active
 delivery; forced abort leaves the lease for stale recovery. See `crates/everruns/src/local/`
 for the public lifecycle API and tests.
 
+Hosted and embedded recurring session schedules discard cron candidates at or
+before the reference UTC instant. During a repeated IANA wall-clock hour, the
+cron iterator may yield the other offset's already-past instant first; accepting
+it would immediately make the schedule due again. The timezone still determines
+the cron's wall-clock fields. Fixed-time regressions cover both occurrences of
+the repeated hour in the hosted service and local store.
+
 The session log is the record of a schedule: creating one appends `timer.set`
 to the session, each delivered occurrence `timer.fired`, cancelling
 `timer.cancelled`. `local_schedules` is the index the runner polls, and the
