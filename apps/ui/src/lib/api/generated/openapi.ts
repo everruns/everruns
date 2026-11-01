@@ -2035,6 +2035,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}/sessions/{session_id}/messages/{message_id}/reactions/{emoji}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * React to a message
+     * @description Put an emoji reaction on a message of one of the caller's sessions. Adding one already there changes nothing. A reaction on the agent's reply reaches the agent as a short note.
+     */
+    put: operations["agent_api_add_reaction"];
+    post?: never;
+    /**
+     * Remove a reaction
+     * @description Take the caller's emoji reaction off a message. Removing one that is not there changes nothing.
+     */
+    delete: operations["agent_api_remove_reaction"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/sessions/{session_id}/question-answers": {
     parameters: {
       query?: never;
@@ -2049,6 +2073,26 @@ export interface paths {
      * @description Answer the question set the agent asked with `ask_user`, and resume the turn.
      */
     post: operations["agent_api_answer_questions"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/reactions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List reactions
+     * @description Reactions on the messages of one of the caller's sessions, the agent's included. `me` marks the caller's own.
+     */
+    get: operations["agent_api_list_reactions"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -6959,6 +7003,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/messages/{message_id}/reactions/{emoji}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * React to a message
+     * @description Put an emoji reaction on a user or agent message. Adding one you already put there changes nothing. Reactions on the agent's replies reach the agent as a short note, by default with its next turn.
+     */
+    put: operations["add_message_reaction"];
+    post?: never;
+    /**
+     * Remove your reaction from a message
+     * @description Take your emoji reaction off a message. Removing one that is not there changes nothing. The history is kept in the session's events.
+     */
+    delete: operations["remove_message_reaction"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/participants": {
     parameters: {
       query?: never;
@@ -7027,6 +7095,26 @@ export interface paths {
      *     paused turn.
      */
     post: operations["submit_question_answers"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/reactions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List reactions in a session
+     * @description List the emoji reactions on the messages of a session, from people and from the agent, with who reacted and whether you did.
+     */
+    get: operations["list_message_reactions"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -15181,6 +15269,8 @@ export interface components {
       | components["schemas"]["OutputMessageReplacedData"]
       | components["schemas"]["ConversationMessageData"]
       | components["schemas"]["OutputMessageCompletedData"]
+      | components["schemas"]["MessageReactionData"]
+      | components["schemas"]["MessageReactionData"]
       | components["schemas"]["TurnStartedData"]
       | components["schemas"]["TurnCompletedData"]
       | components["schemas"]["DreamingActivityData"]
@@ -20962,6 +21052,31 @@ export interface components {
      * @enum {string}
      */
     MessageRating: "good" | "bad";
+    /** @description Data for `message.reaction.added` and `message.reaction.removed`. */
+    MessageReactionData: {
+      actor: components["schemas"]["ReactionActor"];
+      /**
+       * @description One Unicode emoji, or a platform custom emoji as `:name:`.
+       * @example 👍
+       */
+      emoji: string;
+      /**
+       * @description Message the reaction is on (`message_...`).
+       * @example message_01933b5a00007000800000000000001
+       */
+      message_id: string;
+      /**
+       * @description Where the reaction was made: `console`, `api`, `work_chat`, `agent`,
+       *     `slack`, `ag_ui`, `a2a`.
+       */
+      source?: string | null;
+    };
+    /** @description The reactions on one message. */
+    MessageReactions: {
+      /** @example message_01933b5a00007000800000000000001 */
+      message_id: string;
+      reactions: components["schemas"]["ReactionSummary"][];
+    };
     /**
      * @description Message role (API layer)
      *
@@ -24012,6 +24127,57 @@ export interface components {
        * @example answered
        */
       status: string;
+    };
+    /** @description Who put a reaction on a message. */
+    ReactionActor: {
+      /**
+       * @description Stable id of the actor: a user, principal, agent or platform user id.
+       * @example user_01933b5a00007000800000000000001
+       */
+      id: string;
+      kind: components["schemas"]["ReactionActorKind"];
+      /** @description Display name at the time of the reaction. */
+      name?: string | null;
+    };
+    /**
+     * @description Who reacted.
+     * @enum {string}
+     */
+    ReactionActorKind: "user" | "consumer" | "agent" | "external";
+    /** @description One person or agent who reacted. */
+    ReactionActorView: {
+      /** @description User, principal, agent or platform user id. */
+      id: string;
+      kind: components["schemas"]["ReactionActorKind"];
+      name?: string | null;
+      /** Format: date-time */
+      reacted_at: string;
+    };
+    /** @description Result of adding or removing a reaction. */
+    ReactionChange: {
+      /** @description False when the message already was in that state. */
+      changed: boolean;
+      /** @example 👍 */
+      emoji: string;
+      /**
+       * @description Message the reaction is on (`message_...`).
+       * @example message_01933b5a00007000800000000000001
+       */
+      message_id: string;
+      /** @description Whether the reaction is on the message now. */
+      reacted: boolean;
+    };
+    /** @description One emoji on a message. */
+    ReactionSummary: {
+      /** @description Who reacted, earliest first. */
+      actors: components["schemas"]["ReactionActorView"][];
+      /** @description The agent is among those who reacted. */
+      agent: boolean;
+      count: number;
+      /** @example 👍 */
+      emoji: string;
+      /** @description The caller is among those who reacted. */
+      me: boolean;
     };
     /** @description Data for reason.completed event */
     ReasonCompletedData: {
@@ -38515,6 +38681,118 @@ export interface operations {
       };
     };
   };
+  agent_api_add_reaction: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+        /** @description Message ID */
+        message_id: string;
+        /** @description One emoji (URL-encoded), or a custom emoji as :name: */
+        emoji: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The reaction is on the message */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReactionChange"];
+        };
+      };
+      /** @description Not one emoji */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or message not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_remove_reaction: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+        /** @description Message ID */
+        message_id: string;
+        /** @description One emoji (URL-encoded), or a custom emoji as :name: */
+        emoji: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The reaction is off the message */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReactionChange"];
+        };
+      };
+      /** @description Not one emoji */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or message not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   agent_api_answer_questions: {
     parameters: {
       query?: never;
@@ -38571,6 +38849,52 @@ export interface operations {
       };
       /** @description Not waiting, or already answered */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_list_reactions: {
+    parameters: {
+      query?: {
+        /** @description Only this message's reactions. */
+        message_id?: string | null;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Reactions by message */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MessageReactions"][];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -51148,6 +51472,74 @@ export interface operations {
       };
     };
   };
+  add_message_reaction: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+        /** @description Prefixed public identifier */
+        emoji: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReactionChange"];
+        };
+      };
+      /** @description Session or message not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  remove_message_reaction: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+        /** @description Prefixed public identifier */
+        emoji: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReactionChange"];
+        };
+      };
+      /** @description Session or message not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_session_participants: {
     parameters: {
       query?: never;
@@ -51446,6 +51838,36 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_message_reactions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MessageReactions"][];
+        };
+      };
+      /** @description Session not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };

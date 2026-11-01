@@ -842,6 +842,7 @@ pub fn strip_reserved_message_metadata(
     if let Some(map) = metadata.as_mut() {
         map.remove(CONVERSATION_CONTEXT_UPDATE_METADATA_KEY);
         map.remove(MESSAGE_ORIGIN_METADATA_KEY);
+        map.remove(crate::message_reactions::MESSAGE_REACTIONS_METADATA_KEY);
         map.remove(CLIENT_MESSAGE_ID_METADATA_KEY);
         map.remove(super::saved_scripts::SCRIPT_RUN_METADATA_KEY);
         if map.is_empty() {

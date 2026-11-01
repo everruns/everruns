@@ -7992,6 +7992,206 @@
         }
       }
     },
+    "/v1/channels/{channel_id}/sessions/{session_id}/messages/{message_id}/reactions/{emoji}": {
+      "put": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "React to a message",
+        "description": "Put an emoji reaction on a message of one of the caller's sessions. Adding one already there changes nothing. A reaction on the agent's reply reaches the agent as a short note.",
+        "operationId": "agent_api_add_reaction",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Message ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "emoji",
+            "in": "path",
+            "description": "One emoji (URL-encoded), or a custom emoji as :name:",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reaction is on the message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReactionChange"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not one emoji",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel, session or message not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Remove a reaction",
+        "description": "Take the caller's emoji reaction off a message. Removing one that is not there changes nothing.",
+        "operationId": "agent_api_remove_reaction",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Message ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "emoji",
+            "in": "path",
+            "description": "One emoji (URL-encoded), or a custom emoji as :name:",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reaction is off the message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReactionChange"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not one emoji",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel, session or message not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/channels/{channel_id}/sessions/{session_id}/question-answers": {
       "post": {
         "tags": [
@@ -8073,6 +8273,94 @@
           },
           "409": {
             "description": "Not waiting, or already answered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/sessions/{session_id}/reactions": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "List reactions",
+        "description": "Reactions on the messages of one of the caller's sessions, the agent's included. `me` marks the caller's own.",
+        "operationId": "agent_api_list_reactions",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "query",
+            "description": "Only this message's reactions.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reactions by message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MessageReactions"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel or session not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -27320,6 +27608,124 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/messages/{message_id}/reactions/{emoji}": {
+      "put": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "React to a message",
+        "description": "Put an emoji reaction on a user or agent message. Adding one you already put there changes nothing. Reactions on the agent's replies reach the agent as a short note, by default with its next turn.",
+        "operationId": "add_message_reaction",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "emoji",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReactionChange"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session or message not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Remove your reaction from a message",
+        "description": "Take your emoji reaction off a message. Removing one that is not there changes nothing. The history is kept in the session's events.",
+        "operationId": "remove_message_reaction",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "emoji",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReactionChange"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session or message not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sessions/{session_id}/participants": {
       "get": {
         "tags": [
@@ -27622,6 +28028,51 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/reactions": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "List reactions in a session",
+        "description": "List the emoji reactions on the messages of a session, from people and from the agent, with who reacted and whether you did.",
+        "operationId": "list_message_reactions",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MessageReactions"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
           }
         },
         "x-docs": {
@@ -45295,6 +45746,12 @@
             "$ref": "#/components/schemas/OutputMessageCompletedData"
           },
           {
+            "$ref": "#/components/schemas/MessageReactionData"
+          },
+          {
+            "$ref": "#/components/schemas/MessageReactionData"
+          },
+          {
             "$ref": "#/components/schemas/TurnStartedData"
           },
           {
@@ -55938,6 +56395,57 @@
           "bad"
         ]
       },
+      "MessageReactionData": {
+        "type": "object",
+        "description": "Data for `message.reaction.added` and `message.reaction.removed`.",
+        "required": [
+          "message_id",
+          "emoji",
+          "actor"
+        ],
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/ReactionActor"
+          },
+          "emoji": {
+            "type": "string",
+            "description": "One Unicode emoji, or a platform custom emoji as `:name:`.",
+            "example": "👍"
+          },
+          "message_id": {
+            "type": "string",
+            "description": "Message the reaction is on (`message_...`).",
+            "example": "message_01933b5a00007000800000000000001"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the reaction was made: `console`, `api`, `work_chat`, `agent`,\n`slack`, `ag_ui`, `a2a`."
+          }
+        }
+      },
+      "MessageReactions": {
+        "type": "object",
+        "description": "The reactions on one message.",
+        "required": [
+          "message_id",
+          "reactions"
+        ],
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "example": "message_01933b5a00007000800000000000001"
+          },
+          "reactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReactionSummary"
+            }
+          }
+        }
+      },
       "MessageRole": {
         "type": "string",
         "description": "Message role (API layer)\n\nSimplified to only user and agent messages.\nTool results are conveyed via `tool.completed` events.\nSystem messages are internal and not exposed via API.",
@@ -61108,6 +61616,134 @@
             "type": "string",
             "description": "Outcome recorded against the call.",
             "example": "answered"
+          }
+        }
+      },
+      "ReactionActor": {
+        "type": "object",
+        "description": "Who put a reaction on a message.",
+        "required": [
+          "kind",
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable id of the actor: a user, principal, agent or platform user id.",
+            "example": "user_01933b5a00007000800000000000001"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ReactionActorKind"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name at the time of the reaction."
+          }
+        }
+      },
+      "ReactionActorKind": {
+        "type": "string",
+        "description": "Who reacted.",
+        "enum": [
+          "user",
+          "consumer",
+          "agent",
+          "external"
+        ]
+      },
+      "ReactionActorView": {
+        "type": "object",
+        "description": "One person or agent who reacted.",
+        "required": [
+          "kind",
+          "id",
+          "reacted_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "User, principal, agent or platform user id."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ReactionActorKind"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reacted_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ReactionChange": {
+        "type": "object",
+        "description": "Result of adding or removing a reaction.",
+        "required": [
+          "message_id",
+          "emoji",
+          "reacted",
+          "changed"
+        ],
+        "properties": {
+          "changed": {
+            "type": "boolean",
+            "description": "False when the message already was in that state."
+          },
+          "emoji": {
+            "type": "string",
+            "example": "👍"
+          },
+          "message_id": {
+            "type": "string",
+            "description": "Message the reaction is on (`message_...`).",
+            "example": "message_01933b5a00007000800000000000001"
+          },
+          "reacted": {
+            "type": "boolean",
+            "description": "Whether the reaction is on the message now."
+          }
+        }
+      },
+      "ReactionSummary": {
+        "type": "object",
+        "description": "One emoji on a message.",
+        "required": [
+          "emoji",
+          "count",
+          "me",
+          "agent",
+          "actors"
+        ],
+        "properties": {
+          "actors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReactionActorView"
+            },
+            "description": "Who reacted, earliest first."
+          },
+          "agent": {
+            "type": "boolean",
+            "description": "The agent is among those who reacted."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "emoji": {
+            "type": "string",
+            "example": "👍"
+          },
+          "me": {
+            "type": "boolean",
+            "description": "The caller is among those who reacted."
           }
         }
       },

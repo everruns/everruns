@@ -233,6 +233,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         | EventData::BudgetExhausted(d)
         | EventData::BudgetResumed(d) => to_json(d),
         EventData::FileWritten(d) => to_json(d),
+        EventData::MessageReactionAdded(d) | EventData::MessageReactionRemoved(d) => to_json(d),
         EventData::VoiceSessionStarted(d) => to_json(d),
         EventData::VoiceInputTranscriptDelta(d)
         | EventData::VoiceInputTranscriptCompleted(d)

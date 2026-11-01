@@ -531,6 +531,8 @@ pub fn visible_event_types(visibility: ApiVisibility) -> Option<Vec<String>> {
         TURN_FAILED,
         TURN_CANCELLED,
         TOOL_CALL_REQUESTED,
+        everruns_core::MESSAGE_REACTION_ADDED,
+        everruns_core::MESSAGE_REACTION_REMOVED,
     ];
     match visibility {
         ApiVisibility::Full => return None,
@@ -580,6 +582,13 @@ pub fn project_event(mut event: Value, config: &AgentApiChannelConfig) -> Option
         TOOL_COMPLETED if config.visibility == ApiVisibility::Activity => json!({
             "tool_call_id": raw["tool_call_id"],
             "success": raw["success"],
+        }),
+        // Who reacted is shown by kind and name only: a caller never learns
+        // another person's ids from a reaction.
+        everruns_core::MESSAGE_REACTION_ADDED | everruns_core::MESSAGE_REACTION_REMOVED => json!({
+            "message_id": raw["message_id"],
+            "emoji": raw["emoji"],
+            "actor": {"kind": raw["actor"]["kind"], "name": raw["actor"]["name"]},
         }),
         TOOL_CALL_REQUESTED => {
             let pending = pending_input(raw);

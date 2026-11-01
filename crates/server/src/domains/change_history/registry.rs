@@ -733,6 +733,9 @@ pub fn declared(name: &str) -> Change {
         "set_message_feedback" => {
             Change::Exempt("a person's rating of a reply, not a change to the session")
         }
+        "add_message_reaction" | "remove_message_reaction" => {
+            Change::Exempt("conversation traffic, kept in the session's events")
+        }
         "cancel_session_task"
         | "post_session_task_message"
         | "create_task_push_config"

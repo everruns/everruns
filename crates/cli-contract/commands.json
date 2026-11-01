@@ -13207,6 +13207,126 @@
     ]
   },
   {
+    "wire_name": "add_message_reaction",
+    "path": [
+      "sessions",
+      "messages"
+    ],
+    "verb": "react",
+    "description": "Put an emoji reaction on a user or agent message. Adding one you already put there changes nothing. Reactions on the agent's replies reach the agent as a short note, by default with its next turn.",
+    "method": "PUT",
+    "http_path": "/v1/sessions/{session_id}/messages/{message_id}/reactions/{emoji}",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "message_id",
+        "long": "message-id",
+        "position": 2,
+        "kind": "string",
+        "required": true,
+        "help": "Message to react to (`message_...`), a user or agent message of the session."
+      },
+      {
+        "field": "emoji",
+        "long": "emoji",
+        "position": 3,
+        "kind": "string",
+        "required": true,
+        "help": "One emoji, or a custom emoji as `:name:`."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Give an agent reply a thumbs up",
+        "command": "everruns sessions messages react session_01h9 message_01h9 👍"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_message_reactions",
+    "path": [
+      "sessions",
+      "messages"
+    ],
+    "verb": "reactions",
+    "description": "List the emoji reactions on the messages of a session, from people and from the agent, with who reacted and whether you did.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/reactions",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "message_id",
+        "long": "message-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only this message's reactions."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See who reacted to what in a session",
+        "command": "everruns sessions messages reactions session_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "remove_message_reaction",
+    "path": [
+      "sessions",
+      "messages"
+    ],
+    "verb": "unreact",
+    "description": "Take your emoji reaction off a message. Removing one that is not there changes nothing. The history is kept in the session's events.",
+    "method": "DELETE",
+    "http_path": "/v1/sessions/{session_id}/messages/{message_id}/reactions/{emoji}",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "message_id",
+        "long": "message-id",
+        "position": 2,
+        "kind": "string",
+        "required": true,
+        "help": "Message the reaction is on (`message_...`)."
+      },
+      {
+        "field": "emoji",
+        "long": "emoji",
+        "position": 3,
+        "kind": "string",
+        "required": true,
+        "help": "The emoji to take off."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Take back a thumbs up",
+        "command": "everruns sessions messages unreact session_01h9 message_01h9 👍"
+      }
+    ]
+  },
+  {
     "wire_name": "add_session_participant",
     "path": [
       "sessions",

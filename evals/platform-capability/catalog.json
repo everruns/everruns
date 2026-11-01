@@ -60,6 +60,40 @@
     "read_only": false
   },
   {
+    "category": "messages",
+    "cli": "sessions messages react",
+    "description": "Put an emoji reaction on a user or agent message. Adding one you already put there changes nothing. Reactions on the agent's replies reach the agent as a short note, by default with its next turn.",
+    "input_schema": {
+      "description": "Put an emoji reaction on a message.",
+      "properties": {
+        "emoji": {
+          "description": "One emoji, or a custom emoji as `:name:`.",
+          "type": "string"
+        },
+        "message_id": {
+          "description": "Message to react to (`message_...`), a user or agent message of the session.",
+          "type": "string"
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "message_id",
+        "emoji"
+      ],
+      "type": "object"
+    },
+    "method": "PUT",
+    "name": "add_message_reaction",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/messages/{message_id}/reactions/{emoji}",
+    "positional_arg": "session_id",
+    "read_only": false
+  },
+  {
     "category": "sessions",
     "cli": "sessions participants add",
     "description": "Add a member participant to a session.",
@@ -15089,6 +15123,37 @@
   },
   {
     "category": "messages",
+    "cli": "sessions messages reactions",
+    "description": "List the emoji reactions on the messages of a session, from people and from the agent, with who reacted and whether you did.",
+    "input_schema": {
+      "description": "List the reactions in a session.",
+      "properties": {
+        "message_id": {
+          "description": "Only this message's reactions.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_message_reactions",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/reactions",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "messages",
     "cli": "sessions messages list",
     "description": "List materialized messages in a session, optionally limited to the most recent N.",
     "input_schema": {
@@ -18427,6 +18492,40 @@
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/channels/{channel_id}/publish",
     "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "messages",
+    "cli": "sessions messages unreact",
+    "description": "Take your emoji reaction off a message. Removing one that is not there changes nothing. The history is kept in the session's events.",
+    "input_schema": {
+      "description": "Take your emoji reaction off a message.",
+      "properties": {
+        "emoji": {
+          "description": "The emoji to take off.",
+          "type": "string"
+        },
+        "message_id": {
+          "description": "Message the reaction is on (`message_...`).",
+          "type": "string"
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "message_id",
+        "emoji"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "remove_message_reaction",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/messages/{message_id}/reactions/{emoji}",
+    "positional_arg": "session_id",
     "read_only": false
   },
   {

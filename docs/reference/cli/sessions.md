@@ -51,9 +51,12 @@ Running and archived sessions, their state and participants.
 | [`sessions fs - stat`](#sessions-fs---stat) | Get file metadata in the session filesystem. |
 | [`sessions mcp-servers list`](#sessions-mcp-servers-list) | List the MCP servers added to one chat only. |
 | [`sessions mcp-servers remove`](#sessions-mcp-servers-remove) | Remove an MCP server added to one chat only. |
+| [`sessions messages react`](#sessions-messages-react) | Put an emoji reaction on a user or agent message. |
 | [`sessions messages create`](#sessions-messages-create) | Create a user message in a session and start the next run. |
 | [`sessions messages ratings`](#sessions-messages-ratings) | List your good and bad ratings of the messages in a session. |
+| [`sessions messages reactions`](#sessions-messages-reactions) | List the emoji reactions on the messages of a session, from people and from the agent, with who reacted and whether you did. |
 | [`sessions messages list`](#sessions-messages-list) | List materialized messages in a session, optionally limited to the most recent N. |
+| [`sessions messages unreact`](#sessions-messages-unreact) | Take your emoji reaction off a message. |
 | [`sessions messages rate`](#sessions-messages-rate) | Rate one message in a session good or bad, with an optional comment. |
 | [`sessions participants add`](#sessions-participants-add) | Add a member participant to a session. |
 | [`sessions participants leave`](#sessions-participants-leave) | Mark a session member participant as having left. |
@@ -909,6 +912,27 @@ Example:
 everruns sessions mcp-servers remove --session-id session_01h9 --name github --reason 'No longer needed in this chat'
 ```
 
+## sessions messages react
+
+Put an emoji reaction on a user or agent message. Adding one you already put there changes nothing. Reactions on the agent's replies reach the agent as a short note, by default with its next turn.
+
+```bash
+everruns sessions messages react [OPTIONS] [SESSION] [MESSAGE_ID] [EMOJI]
+```
+
+| Flag | Description |
+|---|---|
+| `--session <SESSION_ID>` | Session's prefixed public identifier. |
+| `--message-id <MESSAGE_ID>` | Message to react to (`message_...`), a user or agent message of the session. |
+| `--emoji <EMOJI>` | One emoji, or a custom emoji as `:name:`. |
+
+Example:
+
+```bash
+# Give an agent reply a thumbs up
+everruns sessions messages react session_01h9 message_01h9 👍
+```
+
 ## sessions messages create
 
 Create a user message in a session and start the next run. Pass the message as one JSON object whose `content` is an array of content parts (there is no separate --content flag), e.g. --message '{"content":[{"type":"text","text":"Tell me a short, family-friendly joke."}]}'.
@@ -955,6 +979,26 @@ Example:
 everruns sessions messages ratings session_01h9
 ```
 
+## sessions messages reactions
+
+List the emoji reactions on the messages of a session, from people and from the agent, with who reacted and whether you did.
+
+```bash
+everruns sessions messages reactions [OPTIONS] [SESSION]
+```
+
+| Flag | Description |
+|---|---|
+| `--session <SESSION_ID>` | Session's prefixed public identifier. |
+| `--message-id <MESSAGE_ID>` | Only this message's reactions. |
+
+Example:
+
+```bash
+# See who reacted to what in a session
+everruns sessions messages reactions session_01h9
+```
+
 ## sessions messages list
 
 List materialized messages in a session, optionally limited to the most recent N.
@@ -973,6 +1017,27 @@ Example:
 ```bash
 # Read the latest messages of a session
 everruns sessions messages list session_01h9 --limit 20
+```
+
+## sessions messages unreact
+
+Take your emoji reaction off a message. Removing one that is not there changes nothing. The history is kept in the session's events.
+
+```bash
+everruns sessions messages unreact [OPTIONS] [SESSION] [MESSAGE_ID] [EMOJI]
+```
+
+| Flag | Description |
+|---|---|
+| `--session <SESSION_ID>` | Session's prefixed public identifier. |
+| `--message-id <MESSAGE_ID>` | Message the reaction is on (`message_...`). |
+| `--emoji <EMOJI>` | The emoji to take off. |
+
+Example:
+
+```bash
+# Take back a thumbs up
+everruns sessions messages unreact session_01h9 message_01h9 👍
 ```
 
 ## sessions messages rate

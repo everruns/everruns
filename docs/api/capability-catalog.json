@@ -1177,6 +1177,23 @@
       "tools": []
     },
     {
+      "category": "Session",
+      "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "reactions",
+      "name": "Reactions",
+      "status": "available",
+      "tools": [
+        "react"
+      ]
+    },
+    {
       "category": "AI",
       "dependencies": [],
       "docs_slug": null,

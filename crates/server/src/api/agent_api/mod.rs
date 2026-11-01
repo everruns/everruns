@@ -14,7 +14,10 @@
 // Domain rules (caller confinement, visibility) live in
 // `domains::agent_channels::api_sessions`.
 
+pub mod reactions;
 pub(crate) mod work_chat;
+
+use reactions::{agent_api_add_reaction, agent_api_list_reactions, agent_api_remove_reaction};
 
 use axum::{
     Extension, Json, Router,
@@ -120,6 +123,14 @@ pub fn routes(state: ChannelApiState) -> Router {
         .route(
             "/v1/channels/{channel_id}/sessions/{session_id}/tool-approvals",
             post(agent_api_submit_tool_approvals),
+        )
+        .route(
+            "/v1/channels/{channel_id}/sessions/{session_id}/messages/{message_id}/reactions/{emoji}",
+            axum::routing::put(agent_api_add_reaction).delete(agent_api_remove_reaction),
+        )
+        .route(
+            "/v1/channels/{channel_id}/sessions/{session_id}/reactions",
+            get(agent_api_list_reactions),
         )
         .layer(axum::extract::DefaultBodyLimit::max(6 * 1024 * 1024))
         .with_state(state)

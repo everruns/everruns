@@ -55,6 +55,7 @@ pub mod mcp_server;
 pub mod message;
 pub mod message_filter;
 pub use crate::message_origin;
+pub use crate::message_reactions;
 pub mod message_retriever;
 pub mod monitor_probe;
 pub mod mount_fs;
@@ -169,21 +170,23 @@ pub use self::events::{
     ContextCompactionSkippedData, Event, EventBuilder, EventContext, EventData, EventRequest,
     FILE_WRITTEN, FileWrittenData, INPUT_MESSAGE, InputMessageData, LLM_GENERATION,
     LlmCompactionInfo, LlmCostComponent, LlmGenerationData, LlmGenerationMetadata,
-    LlmGenerationOutput, LlmRetryInfo, ModelMetadata, OUTPUT_MESSAGE_COMPLETED,
+    LlmGenerationOutput, LlmRetryInfo, MAX_REACTION_EMOJI_BYTES, MESSAGE_REACTION_ADDED,
+    MESSAGE_REACTION_REMOVED, MessageReactionData, ModelMetadata, OUTPUT_MESSAGE_COMPLETED,
     OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED, OUTPUT_MESSAGE_STARTED,
     OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageReplacedData,
     OutputMessageStartedData, REASON_COMPLETED, REASON_ITEM, REASON_RECOVERED, REASON_STARTED,
-    REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED, ReasonCompletedData,
-    ReasonItemData, ReasonRecoveredData, ReasonStartedData, ReasonThinkingCompletedData,
-    ReasonThinkingDeltaData, ReasonThinkingStartedData, RecoveryMode, SESSION_ACTIVATED,
-    SESSION_IDLED, SESSION_MODEL_CHANGED, SESSION_STARTED, SESSION_TITLE_UPDATED,
-    SessionActivatedData, SessionIdledData, SessionModelChangedData, SessionStartedData,
-    SessionTitleUpdatedData, TIMER_CANCELLED, TIMER_FIRED, TIMER_SET, TOOL_CALL_REQUESTED,
-    TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,
-    TURN_FAILED, TURN_SEALED, TURN_STARTED, TimerCancelledData, TimerFiredData, TimerPurpose,
-    TimerSetData, TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData,
-    ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData,
-    TurnFailedData, TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
+    REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED, ReactionActor,
+    ReactionActorKind, ReasonCompletedData, ReasonItemData, ReasonRecoveredData, ReasonStartedData,
+    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, RecoveryMode,
+    SESSION_ACTIVATED, SESSION_IDLED, SESSION_MODEL_CHANGED, SESSION_STARTED,
+    SESSION_TITLE_UPDATED, SessionActivatedData, SessionIdledData, SessionModelChangedData,
+    SessionStartedData, SessionTitleUpdatedData, TIMER_CANCELLED, TIMER_FIRED, TIMER_SET,
+    TOOL_CALL_REQUESTED, TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED,
+    TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_SEALED, TURN_STARTED, TimerCancelledData,
+    TimerFiredData, TimerPurpose, TimerSetData, TokenUsage, ToolCallRequestedData, ToolCallSummary,
+    ToolCompletedData, ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData,
+    TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
+    normalize_reaction_emoji,
 };
 pub use self::execution_context::ExecutionContext;
 pub use self::execution_features::{

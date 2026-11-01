@@ -193,6 +193,45 @@ impl MessageService {
         Box::pin(self.create_inner(ctx, req, CreateMessagePrefetch::default(), platform)).await
     }
 
+    /// Tell the agent about reactions now, as a message whose text is the
+    /// reaction note (origin `reaction`). It starts a turn, or joins the one
+    /// running. The client message id is derived from the note's last
+    /// reaction event, so two reactions racing to tell the same note store it
+    /// once.
+    pub async fn create_reaction_message(
+        &self,
+        ctx: CreateMessageContext,
+        note: everruns_contracts::message_reactions::ReactionNote,
+    ) -> Result<Message> {
+        let client_message_id = Uuid::new_v5(
+            &ctx.session_id,
+            format!("everruns.reactions.{}", note.through_sequence).as_bytes(),
+        );
+        let req = CreateMessageRequest {
+            message: crate::domains::messages::types::InputMessage {
+                role: crate::domains::messages::types::MessageRole::User,
+                content: vec![everruns_core::InputContentPart::text(note.render())],
+            },
+            addressed_participant_id: None,
+            controls: None,
+            metadata: None,
+            tags: None,
+            external_actor: None,
+            client_message_id: Some(client_message_id),
+        };
+        let mut note_metadata = std::collections::HashMap::new();
+        note.write(&mut note_metadata);
+        let mut platform = vec![(
+            everruns_core::message::MESSAGE_ORIGIN_METADATA_KEY.to_string(),
+            everruns_core::message::MessageOrigin::new(
+                everruns_core::message::MessageOriginKind::Reaction,
+            )
+            .to_value(),
+        )];
+        platform.extend(note_metadata);
+        Box::pin(self.create_inner(ctx, req, CreateMessagePrefetch::default(), platform)).await
+    }
+
     async fn create_inner(
         &self,
         ctx: CreateMessageContext,
@@ -362,8 +401,31 @@ impl MessageService {
         // dress its own text up as a platform notice.
         let mut metadata = req.metadata.clone();
         everruns_core::message::strip_reserved_message_metadata(&mut metadata);
+        let carries_note = platform_metadata.iter().any(|(key, _)| {
+            key == everruns_contracts::message_reactions::MESSAGE_REACTIONS_METADATA_KEY
+        });
         for (key, value) in platform_metadata {
             metadata.get_or_insert_default().insert(key, value);
+        }
+        // Reactions that waited for the agent's next turn ride on this
+        // message (knowledge/execution/message-reactions.md). Best-effort: a
+        // failed lookup must never stop a send.
+        if !carries_note {
+            match crate::domains::messages::reactions::pending_reaction_note(
+                &self.db,
+                ctx.session_id,
+                ctx.agent_id,
+            )
+            .await
+            {
+                Ok(Some(note)) => note.write(metadata.get_or_insert_default()),
+                Ok(None) => {}
+                Err(error) => tracing::warn!(
+                    session_id = %ctx.session_id,
+                    error = %error,
+                    "Could not read pending reactions; they wait for the next message"
+                ),
+            }
         }
         if let Some(client_message_id) = req.client_message_id {
             metadata.get_or_insert_default().insert(
@@ -685,6 +747,10 @@ impl MessageService {
 
     /// Access the underlying event service. Used by sibling callers that
     /// need to emit lifecycle events outside of `MessageService::create`.
+    pub fn db(&self) -> &StorageBackend {
+        &self.db
+    }
+
     pub fn event_service(&self) -> &EventService {
         &self.event_service
     }
