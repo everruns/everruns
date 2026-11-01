@@ -464,7 +464,6 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
         <div
           ref={scrollRef}
           data-trace-list="true"
-          data-trace-list="true"
           className="min-h-0 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5"
           onScroll={(e) => {
             const el = e.currentTarget;
