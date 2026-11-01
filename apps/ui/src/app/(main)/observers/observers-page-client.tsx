@@ -1,21 +1,18 @@
 "use client";
 
-import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { ObserverIcon } from "@/components/icons/facet-icons";
-import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useObservers, usePageTitle } from "@/hooks";
 import { LinkButton } from "@/components/ui/button";
-import { EntityCard, EntityCardDescription } from "@/components/ui/entity-card";
+import { ObserverCard } from "@/components/observers/observer-card";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { isArchivedStatus } from "@/lib/entity-lifecycle";
-import { pluralize } from "@/lib/formatting";
-import type { Observer } from "@/lib/api/types";
 import {
   PageBreadcrumb,
   PageContainer,
@@ -26,35 +23,6 @@ import {
 } from "@/components/layout";
 
 type StatusTab = "active" | "archived";
-
-function ObserverCard({ observer }: { observer: Observer }) {
-  const { displayLocale } = useFormattingLocale();
-  const ui = useUiTranslations();
-  return (
-    <EntityCard
-      className="h-full"
-      title={observer.name}
-      href={`/observers/${observer.id}`}
-      headerActions={<EntityStatus status={observer.status} />}
-    >
-      <div className="space-y-2">
-        {observer.description && (
-          <EntityCardDescription>{observer.description}</EntityCardDescription>
-        )}
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span>
-            {Math.round(observer.sampling_rate * 100)}
-            {ui("% sampled")}
-          </span>
-          <span>
-            {observer.scorers.length}{" "}
-            {pluralize(observer.scorers.length, "scorer", undefined, displayLocale)}
-          </span>
-        </div>
-      </div>
-    </EntityCard>
-  );
-}
 
 export default function ObserversPageClient() {
   const ui = useUiTranslations();
@@ -122,7 +90,10 @@ export default function ObserversPageClient() {
         <SectionTabs
           value={statusTab}
           onValueChange={(value) => setStatusTab(value as StatusTab)}
-          items={statusItems.map((item) => ({ ...item, count: counts[item.value] }))}
+          items={statusItems.map((item) => ({
+            ...item,
+            count: counts[item.value],
+          }))}
         />
       </PageControlStrip>
 

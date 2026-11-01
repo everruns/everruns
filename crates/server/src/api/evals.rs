@@ -33,6 +33,10 @@ use crate::domains::evals::{
     ImportAtifTrajectories, ImportEvalRun, ListEvalCases, ListEvalRuns, ListEvals,
     RevokeEvalRunShare, UpdateEval, UpdateEvalCase, UpdateEvalResultScores,
 };
+use crate::domains::evals::{
+    CreateEvalExperiment, GateEvalExperiment, GetEvalExperiment, ListAllEvalExperiments,
+    ListEvalExperiments,
+};
 use crate::storage::StorageBackend;
 use everruns_core::Caller;
 use std::sync::Arc;
@@ -105,6 +109,12 @@ pub fn routes(state: AppState) -> Router {
         .command::<CreateEvalRun>()
         .command::<ListEvalRuns>()
         .command::<GetEvalRun>()
+        // Experiments (knowledge/evaluation/experiments.md).
+        .command::<ListAllEvalExperiments>()
+        .command::<CreateEvalExperiment>()
+        .command::<ListEvalExperiments>()
+        .command::<GetEvalExperiment>()
+        .command::<GateEvalExperiment>()
         // Hand-written: NDJSON body rather than JSON.
         .route(
             "/v1/evals/{eval_id}/runs/{run_id}/artifacts",

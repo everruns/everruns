@@ -19,6 +19,7 @@ import { Check, ShieldQuestion, X } from "lucide-react";
 import { submitToolResults } from "@/lib/api/sessions";
 import { cn } from "@/lib/utils";
 import type { ToolCompletedData } from "@/lib/api/types";
+import { ApprovalDisplayText } from "./approval-display-text";
 
 export const MCP_APPROVAL_TOOL = "openai_mcp_approval";
 
@@ -94,9 +95,11 @@ export function McpApprovalToolCall({
         )}
       >
         {approved ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
-        {approved
-          ? ui("Approved {value0} on {value1}", { value0: tool, value1: server })
-          : ui("Denied {value0} on {value1}", { value0: tool, value1: server })}
+        <ApprovalDisplayText>
+          {approved
+            ? ui("Approved {value0} on {value1}", { value0: tool, value1: server })
+            : ui("Denied {value0} on {value1}", { value0: tool, value1: server })}
+        </ApprovalDisplayText>
       </div>
     );
   }
@@ -107,14 +110,14 @@ export function McpApprovalToolCall({
         <ShieldQuestion className="mt-0.5 h-5 w-5 shrink-0 text-foreground" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">
-            {ui("Allow")} {server} {ui("to run")} {tool}?
+            <ApprovalDisplayText>{`${ui("Allow")} ${server} ${ui("to run")} ${tool}?`}</ApprovalDisplayText>
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {ui("OpenAI will call this remote MCP server with these arguments.")}
           </p>
           {args && (
             <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-muted-foreground">
-              {args}
+              <ApprovalDisplayText>{args}</ApprovalDisplayText>
             </pre>
           )}
           {error && <p className="mt-2 text-xs text-destructive">{error}</p>}

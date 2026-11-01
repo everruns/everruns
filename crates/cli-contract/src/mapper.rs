@@ -169,6 +169,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Import agent trajectories (ATIF) as eval cases.",
     ),
     ("evals cases", "Inputs and expectations an eval run checks."),
+    (
+        "evals experiments",
+        "Variants compared on the same eval cases, with a CI gate.",
+    ),
     ("evals runs", "Executions of eval cases against an agent."),
     ("evals runs artifacts", "Raw outputs of an eval run."),
     (

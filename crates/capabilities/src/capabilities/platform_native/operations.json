@@ -4621,6 +4621,215 @@
     "read_only": false
   },
   {
+    "description": "Start an experiment: run an eval's cases against one to four variants and compare them case by case.",
+    "input_schema": {
+      "$defs": {
+        "CreateEvalExperimentRequest": {
+          "description": "Request to start an experiment.",
+          "properties": {
+            "max_cost_usd": {
+              "description": "Spending cap in USD for the whole experiment, split evenly between\nthe variants' runs.",
+              "example": 10.0,
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Display name. Defaults to the variant labels joined with \"vs\".",
+              "example": "Luna vs Sol",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "trials": {
+              "description": "Trials per case and variant, 1 to 20 (default 3).",
+              "example": 3,
+              "format": "int32",
+              "maximum": 20,
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "variants": {
+              "description": "One to four variants. The first is the baseline the others are\ncompared against.",
+              "items": {
+                "$ref": "#/$defs/ExperimentVariantSpec"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "variants"
+          ],
+          "type": "object"
+        },
+        "EvalTarget": {
+          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `App`: references a deployed app by ID.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
+          "oneOf": [
+            {
+              "description": "Session creation parameters (mirrors CreateSessionRequest).",
+              "properties": {
+                "agent_id": {
+                  "description": "Agent to work in this session.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "harness_id": {
+                  "description": "Harness for the session. If omitted, org default harness is used.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "harness_name": {
+                  "description": "Addressable harness name (alternative to harness_id).",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "max_iterations": {
+                  "description": "Max LLM iterations per turn.",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "model_id": {
+                  "description": "LLM model override.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "system_prompt": {
+                  "description": "System prompt override (prepended to agent prompt).",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type": {
+                  "enum": [
+                    "session"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "Reference to a deployed app.",
+              "properties": {
+                "app_id": {
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "app"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "app_id",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "Label-only target for externally-executed runs (e.g. imported from Mira).\n\nCarries provider/model labels and opaque params instead of session setup:\nexternal runs are ingested already-complete, so everruns never builds a\nsession from this. Mirrors a provider-agnostic `(provider, model)` pair.",
+              "properties": {
+                "model": {
+                  "type": "string"
+                },
+                "params": {},
+                "provider": {
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "external"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "model",
+                "type"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "ExperimentVariantSpec": {
+          "description": "One configuration an experiment runs the dataset against.",
+          "properties": {
+            "label": {
+              "description": "Short name shown in comparisons, unique within the experiment.",
+              "example": "candidate",
+              "type": "string"
+            },
+            "model_override": {
+              "description": "Model for this variant, beating the target's model.",
+              "example": "gpt-6.1-sol",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/EvalTarget",
+                  "description": "Session setup for this variant. Omitted: the eval's own target."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "label"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/CreateEvalExperimentRequest"
+        },
+        {
+          "properties": {
+            "eval_id": {
+              "description": "Eval's prefixed public identifier; its cases are the dataset.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "eval_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "create_eval_experiment",
+    "read_only": false
+  },
+  {
     "description": "Create an eval run.",
     "input_schema": {
       "$defs": {
@@ -10770,6 +10979,55 @@
     "read_only": false
   },
   {
+    "description": "Check an experiment's variant against a bar, for CI. Answers 409 while runs are going and 422 when the variant misses the bar, so the command exits non-zero.",
+    "input_schema": {
+      "properties": {
+        "eval_id": {
+          "description": "Eval's prefixed public identifier.",
+          "type": "string"
+        },
+        "experiment_id": {
+          "description": "Experiment's prefixed public identifier.",
+          "type": "string"
+        },
+        "min_pass_rate": {
+          "description": "Minimum pass rate over all trials, 0 to 1.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "min_passed_every_trial": {
+          "description": "Minimum share of cases passed in every trial, 0 to 1.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "no_regression": {
+          "description": "Fail when the variant is a regression against the baseline.",
+          "type": "boolean"
+        },
+        "variant": {
+          "description": "Variant to judge; the last one when omitted.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "eval_id",
+        "experiment_id"
+      ],
+      "type": "object"
+    },
+    "name": "gate_eval_experiment",
+    "read_only": true
+  },
+  {
     "description": "Read your own editable profile, without email, tokens or credentials.",
     "input_schema": {
       "description": "Read the editable profile belonging to the signed-in account.",
@@ -11166,6 +11424,28 @@
       "type": "object"
     },
     "name": "get_eval_case",
+    "read_only": true
+  },
+  {
+    "description": "Get an experiment with its case-by-case comparison and verdicts.",
+    "input_schema": {
+      "properties": {
+        "eval_id": {
+          "description": "Eval's prefixed public identifier.",
+          "type": "string"
+        },
+        "experiment_id": {
+          "description": "Experiment's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "eval_id",
+        "experiment_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_eval_experiment",
     "read_only": true
   },
   {
@@ -13223,6 +13503,14 @@
     "read_only": true
   },
   {
+    "description": "List the organization's experiments across evals, newest first.",
+    "input_schema": {
+      "type": "object"
+    },
+    "name": "list_all_eval_experiments",
+    "read_only": true
+  },
+  {
     "description": "List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.",
     "input_schema": {
       "description": "List audit logs for the caller's organization. Policy-gated read.",
@@ -13488,6 +13776,23 @@
       "type": "object"
     },
     "name": "list_eval_cases",
+    "read_only": true
+  },
+  {
+    "description": "List an eval's experiments, newest first.",
+    "input_schema": {
+      "properties": {
+        "eval_id": {
+          "description": "Eval's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "eval_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_eval_experiments",
     "read_only": true
   },
   {

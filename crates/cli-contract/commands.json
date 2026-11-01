@@ -5401,6 +5401,198 @@
     ]
   },
   {
+    "wire_name": "create_eval_experiment",
+    "path": [
+      "evals",
+      "experiments"
+    ],
+    "verb": "create",
+    "description": "Start an experiment: run an eval's cases against one to four variants and compare them case by case.",
+    "method": "POST",
+    "http_path": "/v1/evals/{eval_id}/experiments",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Eval's prefixed public identifier; its cases are the dataset."
+      },
+      {
+        "field": "max_cost_usd",
+        "long": "max-cost-usd",
+        "kind": "number",
+        "required": false,
+        "help": "Spending cap in USD for the whole experiment, split evenly between the variants' runs."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Display name."
+      },
+      {
+        "field": "trials",
+        "long": "trials",
+        "kind": "integer",
+        "required": false,
+        "help": "Trials per case and variant, 1 to 20 (default 3)."
+      },
+      {
+        "field": "variants",
+        "long": "variants",
+        "kind": "json",
+        "required": true,
+        "help": "One to four variants."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Compare two models on the same cases, three trials each, within $10",
+        "command": "everruns evals experiments create --eval-id eval_01h9 --variants '[{\"label\":\"luna\",\"model_override\":\"gpt-6-luna\"},{\"label\":\"sol\",\"model_override\":\"gpt-6.1-sol\"}]' --max-cost-usd 10 --reason 'Pick the model for the support agent'"
+      }
+    ]
+  },
+  {
+    "wire_name": "gate_eval_experiment",
+    "path": [
+      "evals",
+      "experiments"
+    ],
+    "verb": "gate",
+    "description": "Check an experiment's variant against a bar, for CI. Answers 409 while runs are going and 422 when the variant misses the bar, so the command exits non-zero.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/experiments/{experiment_id}/gate",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      },
+      {
+        "field": "experiment_id",
+        "long": "experiment-id",
+        "kind": "string",
+        "required": true,
+        "help": "Experiment's prefixed public identifier."
+      },
+      {
+        "field": "min_pass_rate",
+        "long": "min-pass-rate",
+        "kind": "number",
+        "required": false,
+        "help": "Minimum pass rate over all trials, 0 to 1."
+      },
+      {
+        "field": "min_passed_every_trial",
+        "long": "min-passed-every-trial",
+        "kind": "number",
+        "required": false,
+        "help": "Minimum share of cases passed in every trial, 0 to 1."
+      },
+      {
+        "field": "no_regression",
+        "long": "no-regression",
+        "kind": "boolean",
+        "required": false,
+        "help": "Fail when the variant is a regression against the baseline."
+      },
+      {
+        "field": "variant",
+        "long": "variant",
+        "kind": "string",
+        "required": false,
+        "help": "Variant to judge; the last one when omitted."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Block a merge unless the candidate passes 90% and is no regression",
+        "command": "everruns evals experiments gate --eval-id eval_01h9 --experiment-id evalexp_01h9 --min-pass-rate 0.9 --no-regression true"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_eval_experiment",
+    "path": [
+      "evals",
+      "experiments"
+    ],
+    "verb": "get",
+    "description": "Get an experiment with its case-by-case comparison and verdicts.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/experiments/{experiment_id}",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      },
+      {
+        "field": "experiment_id",
+        "long": "experiment-id",
+        "kind": "string",
+        "required": true,
+        "help": "Experiment's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which cases a candidate fixed or broke",
+        "command": "everruns evals experiments get --eval-id eval_01h9 --experiment-id evalexp_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_eval_experiments",
+    "path": [
+      "evals",
+      "experiments"
+    ],
+    "verb": "list",
+    "description": "List an eval's experiments, newest first.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/experiments",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find the last experiment on an eval",
+        "command": "everruns evals experiments list --eval-id eval_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_all_eval_experiments",
+    "path": [
+      "evals",
+      "experiments"
+    ],
+    "verb": "recent",
+    "description": "List the organization's experiments across evals, newest first.",
+    "method": "GET",
+    "http_path": "/v1/evals/experiments",
+    "args": [],
+    "examples": [
+      {
+        "intent": "See what experiments ran lately",
+        "command": "everruns evals experiments recent"
+      }
+    ]
+  },
+  {
     "wire_name": "get_eval",
     "path": [
       "evals"

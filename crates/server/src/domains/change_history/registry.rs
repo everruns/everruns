@@ -700,7 +700,7 @@ pub fn declared(name: &str) -> Change {
         "create_eval_case" => on(K::EvalCase, Created, ID),
         "update_eval_case" => on(K::EvalCase, Updated, ID),
         "delete_eval_case" => on(K::EvalCase, Deleted, Param("case_id")),
-        "create_eval_run" | "cancel_eval_run" | "import_eval_run" => {
+        "create_eval_run" | "cancel_eval_run" | "import_eval_run" | "create_eval_experiment" => {
             Change::Exempt("eval runs are results, not configuration")
         }
         "bulk_update_eval_run_scores" | "update_eval_result_scores" => {

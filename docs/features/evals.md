@@ -31,6 +31,28 @@ Targets resolve in order `EvalRun → EvalCase → Eval → org default harness`
 
 Eval runs are durable workflows: they reuse the same execution engine as production sessions, so a worker restart mid-run does not lose progress.
 
+## Experiments
+
+An experiment answers "is this change better?". It runs one dataset (an eval's cases, at the version it has now) against two to four variants, each a model or target, with several trials per case. The first variant is the baseline. Each variant is an ordinary run, so trials, spending caps and durable execution work the same way; the experiment's cap is split evenly between its variants.
+
+The experiment page compares variants case by case. It names the cases a variant fixed and the cases it broke, and gives a verdict: a likely improvement or regression when the pass-rate change is outside run-to-run noise (a 95% interval from a paired bootstrap over cases), otherwise no clear difference. Fewer than three cases give no verdict.
+
+For CI, the gate fails when a variant misses a bar:
+
+```bash
+everruns evals experiments create --eval-id eval_01h9 \
+  --variants '[{"label":"luna","model_override":"gpt-6-luna"},{"label":"sol","model_override":"gpt-6.1-sol"}]' \
+  --max-cost-usd 10
+everruns evals experiments gate --eval-id eval_01h9 --experiment-id evalexp_01h9 \
+  --min-pass-rate 0.9 --no-regression true
+```
+
+The gate answers 409 while runs are going and 422 when the variant misses the bar, so the command exits non-zero.
+
+## In the UI
+
+**Quality → Evals** opens on an overview of every agent with a dataset: its pass rate, the trend over recent runs, open findings and the last activity. Tabs hold datasets, experiments, observers, findings from session detectors and classifiers, and the graders a case can use. **Run experiment** starts one from any dataset. Each agent's page has an **Evals** tab with the same view for that agent.
+
 ## SWE-bench Lite
 
 Beyond user-facing behavioral evals, Everruns ships a **SWE-bench Lite** harness for measuring coding-agent performance against the standard benchmark, using the same eval machinery (`post` verification messages run the test scripts that determine pass/fail).

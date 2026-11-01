@@ -1,5 +1,6 @@
 // Eval storage (PostgreSQL)
 
+mod experiments;
 pub(super) mod rows;
 use rows::*;
 
@@ -79,7 +80,8 @@ impl Database {
         };
         let sql = format!(
             r#"SELECT id, org_id, public_id, name, description, target,
-                      model_override, tags, status, created_at, updated_at, archived_at, deleted_at
+                      model_override, tags, status, created_at, updated_at, archived_at, deleted_at,
+                      version
                FROM evals
                WHERE org_id = $1{status_sql}{search_sql}
                ORDER BY created_at DESC"#

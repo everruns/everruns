@@ -3465,6 +3465,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/evals/experiments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List experiments across evals
+     * @description List the organization's experiments across evals, newest first.
+     */
+    get: operations["list_all_eval_experiments"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/evals/import": {
     parameters: {
       query?: never;
@@ -3570,6 +3590,67 @@ export interface paths {
     head?: never;
     /** Update an eval case */
     patch: operations["update_eval_case"];
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/experiments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List an eval's experiments, newest first */
+    get: operations["list_eval_experiments"];
+    put?: never;
+    /**
+     * Start an eval experiment
+     * @description Start an experiment: run an eval's cases against one to four variants and compare them case by case.
+     */
+    post: operations["create_eval_experiment"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/experiments/{experiment_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get an eval experiment with its comparison
+     * @description Get an experiment with its case-by-case comparison and verdicts.
+     */
+    get: operations["get_eval_experiment"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/experiments/{experiment_id}/gate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Check an experiment's variant against a bar, for CI
+     * @description Check an experiment's variant against a bar, for CI. Answers 409 while runs are going and 422 when the variant misses the bar, so the command exits non-zero.
+     */
+    get: operations["gate_eval_experiment"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/v1/evals/{eval_id}/runs": {
@@ -11215,6 +11296,39 @@ export interface components {
       /** @description Discriminator for the kind of usage being recorded (e.g. `tool_call`, `subagent_spawn`). */
       usage_kind: components["schemas"]["CapabilityUsageKind"];
     };
+    /** @description One case under one variant. */
+    CaseCell: {
+      /**
+       * Format: double
+       * @description What the case cost, all its trials together.
+       * @example 0.05
+       */
+      cost_usd: number;
+      /** @example candidate */
+      label: string;
+      /**
+       * Format: int32
+       * @description Trials that passed, of `trials` that finished.
+       * @example 3
+       */
+      passed: number;
+      /**
+       * Format: int32
+       * @example 3
+       */
+      trials: number;
+    };
+    /** @description One case across the variants. */
+    CaseComparison: {
+      /** @example evalcase_01933b5a000070008000000000000001 */
+      case_id: string;
+      /** @example Refund request, angry customer */
+      case_name: string;
+      /** @description One cell per variant, in variant order. */
+      cells: components["schemas"]["CaseCell"][];
+      /** @description Some variant's pass rate on this case differs from the baseline's. */
+      changed: boolean;
+    };
     /**
      * @description Status of an individual eval case result.
      * @enum {string}
@@ -13328,6 +13442,32 @@ export interface components {
        */
       timeout_seconds?: number | null;
     };
+    /** @description Request to start an experiment. */
+    CreateEvalExperimentRequest: {
+      /**
+       * Format: double
+       * @description Spending cap in USD for the whole experiment, split evenly between
+       *     the variants' runs.
+       * @example 10
+       */
+      max_cost_usd?: number | null;
+      /**
+       * @description Display name. Defaults to the variant labels joined with "vs".
+       * @example Luna vs Sol
+       */
+      name?: string | null;
+      /**
+       * Format: int32
+       * @description Trials per case and variant, 1 to 20 (default 3).
+       * @example 3
+       */
+      trials?: number | null;
+      /**
+       * @description One to four variants. The first is the baseline the others are
+       *     compared against.
+       */
+      variants: components["schemas"]["ExperimentVariantSpec"][];
+    };
     /** @description Request to create a new eval */
     CreateEvalRequest: {
       /**
@@ -15040,6 +15180,13 @@ export interface components {
        * @example 2026-01-15T10:30:00Z
        */
       updated_at: string;
+      /**
+       * Format: int32
+       * @description Version of the cases (the eval's dataset). Every case change bumps it;
+       *     runs and experiments record the version they ran.
+       * @example 7
+       */
+      version?: number;
     };
     /** @description A single test case within an eval. */
     EvalCase: {
@@ -15229,6 +15376,44 @@ export interface components {
      * @enum {string}
      */
     EvalDatasetStatus: "pending" | "running" | "completed" | "failed";
+    /** @description An experiment: one dataset version against several variants. */
+    EvalExperiment: {
+      /**
+       * @description Label of the variant the others are compared against.
+       * @example baseline
+       */
+      baseline: string;
+      comparison?: components["schemas"]["ExperimentComparison"] | null;
+      /** Format: date-time */
+      created_at: string;
+      /**
+       * Format: int32
+       * @description The eval's `version` the experiment ran.
+       * @example 7
+       */
+      dataset_version: number;
+      /**
+       * @description The eval whose cases are the dataset.
+       * @example eval_01933b5a000070008000000000000001
+       */
+      eval_id: string;
+      /** @example evalexp_01933b5a000070008000000000000001 */
+      id: string;
+      /**
+       * Format: double
+       * @example 10
+       */
+      max_cost_usd?: number | null;
+      /** @example Luna vs Sol */
+      name: string;
+      status: components["schemas"]["ExperimentStatus"];
+      /**
+       * Format: int32
+       * @example 3
+       */
+      trials: number;
+      variants: components["schemas"]["ExperimentVariant"][];
+    };
     /**
      * @description Preflight capability report so optional-feature clients (e.g. Mira) can
      *     check before publishing instead of failing mid-import.
@@ -15273,6 +15458,17 @@ export interface components {
        * @example 2026-01-15T10:30:00Z
        */
       created_at: string;
+      /**
+       * Format: int32
+       * @description Dataset version (the eval's `version`) the run was created from.
+       * @example 7
+       */
+      dataset_version?: number | null;
+      /**
+       * @description The experiment this run is a variant of.
+       * @example evalexp_01933b5a000070008000000000000001
+       */
+      experiment_id?: string | null;
       /**
        * @description Only run cases matching these tags.
        * @example [
@@ -15332,6 +15528,11 @@ export interface components {
        * @example 2026-01-15T10:30:00Z
        */
       updated_at: string;
+      /**
+       * @description The variant's label within its experiment.
+       * @example candidate
+       */
+      variant_label?: string | null;
     };
     /**
      * @description An async dataset-export handle: the durable result of enqueuing a dataset
@@ -15761,6 +15962,76 @@ export interface components {
      * @enum {string}
      */
     ExecutionPhase: "commentary" | "final_answer";
+    /** @description Variants compared case by case against the baseline. */
+    ExperimentComparison: {
+      /** @example baseline */
+      baseline: string;
+      /** @description Cases whose result changed come first. */
+      cases: components["schemas"]["CaseComparison"][];
+      /** @description One verdict per variant other than the baseline. */
+      verdicts: components["schemas"]["VariantVerdict"][];
+    };
+    /** @description Result of an experiment gate that passed. */
+    ExperimentGateResult: {
+      /**
+       * Format: double
+       * @example 0.93
+       */
+      pass_rate: number;
+      passed: boolean;
+      /**
+       * Format: double
+       * @description Share of cases passed in every trial (pass^k).
+       * @example 0.9
+       */
+      passed_every_trial: number;
+      /**
+       * @description The variant the gate judged.
+       * @example candidate
+       */
+      variant: string;
+      verdict?: components["schemas"]["Verdict"] | null;
+    };
+    /**
+     * @description Where an experiment is: running until every variant's run finished.
+     * @enum {string}
+     */
+    ExperimentStatus: "running" | "completed" | "failed" | "cancelled";
+    /** @description One variant of an experiment and how its run went. */
+    ExperimentVariant: {
+      /**
+       * Format: double
+       * @description What one case cost on average, all its trials together.
+       * @example 0.031
+       */
+      cost_per_case_usd?: number | null;
+      /** @example candidate */
+      label: string;
+      /** @example gpt-6.1-sol */
+      model_override?: string | null;
+      /**
+       * @description The variant's run.
+       * @example evalrun_01933b5a000070008000000000000001
+       */
+      run_id: string;
+      status: components["schemas"]["EvalRunStatus"];
+      summary?: components["schemas"]["RunSummary"] | null;
+      target?: components["schemas"]["EvalTarget"] | null;
+    };
+    /** @description One configuration an experiment runs the dataset against. */
+    ExperimentVariantSpec: {
+      /**
+       * @description Short name shown in comparisons, unique within the experiment.
+       * @example candidate
+       */
+      label: string;
+      /**
+       * @description Model for this variant, beating the target's model.
+       * @example gpt-6.1-sol
+       */
+      model_override?: string | null;
+      target?: components["schemas"]["EvalTarget"] | null;
+    };
     /** @description Request body for `POST /v1/evals/{eval_id}/runs/{run_id}/dataset`. */
     ExportEvalRunDatasetRequest: {
       /** @description Per-case selection filters. */
@@ -18293,6 +18564,13 @@ export interface components {
          * @example 2026-01-15T10:30:00Z
          */
         updated_at: string;
+        /**
+         * Format: int32
+         * @description Version of the cases (the eval's dataset). Every case change bumps it;
+         *     runs and experiments record the version they ran.
+         * @example 7
+         */
+        version?: number;
       }[];
     };
     /**
@@ -18494,6 +18772,50 @@ export interface components {
      * @description Response wrapper for list endpoints.
      *     All list endpoints return responses wrapped in a `data` field.
      */
+    ListResponse_EvalExperiment: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        /**
+         * @description Label of the variant the others are compared against.
+         * @example baseline
+         */
+        baseline: string;
+        comparison?: components["schemas"]["ExperimentComparison"] | null;
+        /** Format: date-time */
+        created_at: string;
+        /**
+         * Format: int32
+         * @description The eval's `version` the experiment ran.
+         * @example 7
+         */
+        dataset_version: number;
+        /**
+         * @description The eval whose cases are the dataset.
+         * @example eval_01933b5a000070008000000000000001
+         */
+        eval_id: string;
+        /** @example evalexp_01933b5a000070008000000000000001 */
+        id: string;
+        /**
+         * Format: double
+         * @example 10
+         */
+        max_cost_usd?: number | null;
+        /** @example Luna vs Sol */
+        name: string;
+        status: components["schemas"]["ExperimentStatus"];
+        /**
+         * Format: int32
+         * @example 3
+         */
+        trials: number;
+        variants: components["schemas"]["ExperimentVariant"][];
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
     ListResponse_EvalRun: {
       /** @description Array of items returned by the list operation. */
       data: {
@@ -18515,6 +18837,17 @@ export interface components {
          * @example 2026-01-15T10:30:00Z
          */
         created_at: string;
+        /**
+         * Format: int32
+         * @description Dataset version (the eval's `version`) the run was created from.
+         * @example 7
+         */
+        dataset_version?: number | null;
+        /**
+         * @description The experiment this run is a variant of.
+         * @example evalexp_01933b5a000070008000000000000001
+         */
+        experiment_id?: string | null;
         /**
          * @description Only run cases matching these tags.
          * @example [
@@ -18574,6 +18907,11 @@ export interface components {
          * @example 2026-01-15T10:30:00Z
          */
         updated_at: string;
+        /**
+         * @description The variant's label within its experiment.
+         * @example candidate
+         */
+        variant_label?: string | null;
       }[];
     };
     /**
@@ -31824,6 +32162,47 @@ export interface components {
        */
       skill_md: string;
     };
+    /** @description A variant against the baseline. */
+    VariantVerdict: {
+      /**
+       * Format: int32
+       * @description Cases the baseline passes every trial of and this variant does not.
+       * @example 1
+       */
+      broke: number;
+      /**
+       * Format: int32
+       * @description Cases this variant passes every trial of and the baseline did not.
+       * @example 4
+       */
+      fixed: number;
+      /**
+       * Format: double
+       * @example 9
+       */
+      interval_high_points?: number | null;
+      /**
+       * Format: double
+       * @description 95% interval of that difference (paired bootstrap), in points.
+       * @example 1
+       */
+      interval_low_points?: number | null;
+      /** @example candidate */
+      label: string;
+      /**
+       * Format: int32
+       * @description Cases both ran.
+       * @example 42
+       */
+      paired_cases: number;
+      /**
+       * Format: double
+       * @description Mean per-case pass rate difference, in percentage points.
+       * @example 5
+       */
+      pass_rate_delta_points?: number | null;
+      verdict: components["schemas"]["Verdict"];
+    };
     /**
      * @description Verbosity level for models that support output-length control.
      *     Wire values map 1:1 to the OpenAI `verbosity` request parameter:
@@ -31847,6 +32226,11 @@ export interface components {
       /** @description The API value (e.g., "low", "high") */
       value: components["schemas"]["Verbosity"];
     };
+    /**
+     * @description How a variant compares with the baseline.
+     * @enum {string}
+     */
+    Verdict: "improvement" | "regression" | "within_noise" | "not_enough_data";
     /**
      * @description Whether a cited source entails the claim it is attached to.
      * @example entailed
@@ -43215,6 +43599,26 @@ export interface operations {
       };
     };
   };
+  list_all_eval_experiments: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_EvalExperiment"];
+        };
+      };
+    };
+  };
   import_eval_run: {
     parameters: {
       query?: never;
@@ -43538,6 +43942,134 @@ export interface operations {
       };
       /** @description Eval case not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_eval_experiments: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_EvalExperiment"];
+        };
+      };
+    };
+  };
+  create_eval_experiment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateEvalExperimentRequest"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalExperiment"];
+        };
+      };
+    };
+  };
+  get_eval_experiment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        experiment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalExperiment"];
+        };
+      };
+      /** @description Experiment not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  gate_eval_experiment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        experiment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExperimentGateResult"];
+        };
+      };
+      /** @description Experiment not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Some variant's run is still going */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The variant missed the bar */
+      422: {
         headers: {
           [name: string]: unknown;
         };
