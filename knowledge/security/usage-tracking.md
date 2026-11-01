@@ -93,9 +93,9 @@ Timeline:
 Budgeting and future cross-resource metering use a generic raw-fact journal plus rated ledger, defined in `crates/server/migrations/legacy/020_budget_journal_ledger.sql`:
 
 - `usage_journal` captures **raw facts**: an org-scoped row per metered event (`kind` = `llm_generation`, `top_up`, …) carrying the originating event/session/user/principal/agent/harness ids plus a `measures` JSONB of usage facts.
-- `usage_ledger` stores **rated postings** derived from those facts: each row references a journal entry, an optional `budget_id`, a `currency` (`usd`, `tokens`, `credits`, …), an `amount`, and a `meter_source`.
+- `usage_ledger` stores **rated postings** derived from those facts: each row references a journal entry, an optional `budget_id`, a `currency` (`usd`, `tokens`), an `amount`, and a `meter_source`.
 
-Budget balances are projections over budget-scoped ledger rows.
+Rows without a `budget_id` are the org's **cost postings**: one per journal row with its `basis` (host, rate, provider, list_price, unpriced), plus at most one `cost_host` correction. Every usage is journaled and costed whether or not a usage policy covers it ([Costs and Usage Policies](budgeting.md#cost-of-each-usage)). Policy balances are projections over budget-scoped ledger rows.
 
 ### llm_generations Table (LLM Analytics Projection)
 

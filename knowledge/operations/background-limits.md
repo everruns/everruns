@@ -60,7 +60,8 @@ the session.
   to the schedule, and the loop gate reads the session's latest invocation to
   stop a turn mid-way. Human turns in the same session never touch it.
 - **`org_unattended` budget**, keyed on the org's public id, a calendar day
-  period: $20 per day by default. Created lazily on the first unattended turn;
+  period in the org's timezone (UTC until set): $20 per day by default. It is
+  listed with every other usage policy in Settings → Costs. Created lazily on the first unattended turn;
   one live row per org (partial unique index).
 - Before firing, the scheduler checks both. A spent schedule budget disables
   the schedule with `stop_reason = budget_exhausted`. A spent org budget skips

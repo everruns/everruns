@@ -1,7 +1,7 @@
 // fr product copy for Home (knowledge/ui/org-home.md).
 export const messages: Readonly<Record<string, string>> = {
   "1 sandbox needs attention": "1 sandbox demande votre attention",
-  "1 session paused at its budget limit": "1 session en pause à sa limite de budget",
+  "1 session paused at its usage limit": "1 session en pause à sa limite d'utilisation",
   "Add provider": "Ajouter un fournisseur",
   "Agents need at least one enabled model.": "Les agents ont besoin d’au moins un modèle activé.",
   "Agents, channels, sessions, sandboxes and limits all look fine.":
@@ -58,8 +58,8 @@ export const messages: Readonly<Record<string, string>> = {
   "{count} running": "{count} en cours",
   "{count} sandboxes need attention": "{count} sandboxes demandent votre attention",
   "{count} sessions": "{count} sessions",
-  "{count} sessions paused at their budget limit":
-    "{count} sessions en pause à leur limite de budget",
+  "{count} sessions paused at their usage limit":
+    "{count} sessions en pause à leur limite d'utilisation",
   "{done} of {total} done": "{done} sur {total} faits",
   "{failed} of {runs} turns failed in the last {hours} hours":
     "{failed} tours sur {runs} ont échoué ces {hours} dernières heures",

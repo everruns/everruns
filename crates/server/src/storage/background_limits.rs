@@ -18,7 +18,7 @@ pub const SESSION_SCHEDULE_SUBJECT: &str = "session_schedule";
 pub const ORG_UNATTENDED_SUBJECT: &str = "org_unattended";
 
 const BUDGET_COLUMNS: &str = r#"id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-    balance, period, period_started_at, metadata, status, created_at, updated_at"#;
+    balance, period, period_started_at, metadata, policy, status, created_at, updated_at"#;
 
 impl StorageBackend {
     /// The org's background limits; the code defaults when it never set any.
@@ -99,8 +99,8 @@ impl StorageBackend {
         // The partial unique index makes concurrent first uses converge on one row.
         sqlx::query(
             r#"INSERT INTO budgets (org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                                   balance, period, period_started_at, metadata, status)
-               VALUES ($1, 'org_unattended', $2, 'usd', $3, NULL, $3, $4, NOW(), $5, 'active')
+                                   balance, period, period_started_at, metadata, policy, status)
+               VALUES ($1, 'org_unattended', $2, 'usd', $3, NULL, $3, $4, NOW(), $5, '{}'::jsonb, 'active')
                ON CONFLICT (org_id) WHERE subject_type = 'org_unattended' AND status <> 'disabled'
                DO NOTHING"#,
         )

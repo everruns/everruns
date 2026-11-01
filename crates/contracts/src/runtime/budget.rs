@@ -180,6 +180,132 @@ fn parse_rolling_window(window: &str) -> Option<u64> {
 }
 
 // ============================================================================
+// Usage policy (what a budget row enforces)
+// ============================================================================
+
+/// What a usage policy does when its spend crosses a step.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum PolicyStepAction {
+    /// Tell org owners and admins, once per window. The turn keeps going.
+    Notify,
+    /// Stop before the next model call until the person using the agent
+    /// approves going further in this session. Unattended work has no one
+    /// to ask and stops.
+    Ask,
+    /// Stop before the next model call.
+    Stop,
+}
+
+/// One step of a usage policy, at a percent of the limit.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct PolicyStep {
+    /// Percent of the limit at which the step applies (1 to 100).
+    pub at_percent: f64,
+    pub action: PolicyStepAction,
+}
+
+/// Which usage a policy counts. Absent counts everything.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum PolicySource {
+    #[default]
+    All,
+    /// Only models the host manages and bills (built-in models).
+    Managed,
+    /// Only the org's own provider keys.
+    OwnKeys,
+}
+
+/// Name, steps and filter of a usage policy, stored on `budgets.policy`.
+///
+/// Decision: steps are data on the existing budget row rather than a new
+/// table, so the hierarchy lookup, period rollover and gate keep working
+/// unchanged. Empty steps mean the legacy shape (see [`UsagePolicy::effective_steps`]).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct UsagePolicy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<PolicyStep>,
+    #[serde(default, skip_serializing_if = "is_all_sources")]
+    pub source: PolicySource,
+}
+
+fn is_all_sources(source: &PolicySource) -> bool {
+    *source == PolicySource::All
+}
+
+impl UsagePolicy {
+    /// Steps in force, sorted by threshold. A policy without explicit steps
+    /// keeps the behavior budgets always had: notify when 20% remains, ask
+    /// at the soft limit when one is set, stop at the limit.
+    pub fn effective_steps(&self, limit: f64, soft_limit: Option<f64>) -> Vec<PolicyStep> {
+        let mut steps = if self.steps.is_empty() {
+            let mut legacy = vec![PolicyStep {
+                at_percent: 80.0,
+                action: PolicyStepAction::Notify,
+            }];
+            if let Some(soft) = soft_limit.filter(|_| limit > 0.0) {
+                legacy.push(PolicyStep {
+                    at_percent: (soft / limit * 100.0).clamp(0.0, 100.0),
+                    action: PolicyStepAction::Ask,
+                });
+            }
+            legacy.push(PolicyStep {
+                at_percent: 100.0,
+                action: PolicyStepAction::Stop,
+            });
+            legacy
+        } else {
+            self.steps.clone()
+        };
+        steps.sort_by(|a, b| {
+            a.at_percent
+                .partial_cmp(&b.at_percent)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        steps
+    }
+
+    /// Reject steps a person could not have meant.
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(name) = &self.name
+            && name.chars().count() > 120
+        {
+            return Err("Policy name must be at most 120 characters".into());
+        }
+        if self.steps.len() > 8 {
+            return Err("A usage policy has at most 8 steps".into());
+        }
+        for step in &self.steps {
+            if !(step.at_percent > 0.0 && step.at_percent <= 100.0) {
+                return Err("Each step's at_percent must be above 0 and at most 100".into());
+            }
+        }
+        Ok(())
+    }
+
+    /// The most restrictive step reached at `spent` of `limit`.
+    pub fn reached(&self, limit: f64, soft_limit: Option<f64>, spent: f64) -> Option<PolicyStep> {
+        if limit <= 0.0 {
+            return Some(PolicyStep {
+                at_percent: 100.0,
+                action: PolicyStepAction::Stop,
+            });
+        }
+        self.effective_steps(limit, soft_limit)
+            .into_iter()
+            .filter(|step| spent >= limit * step.at_percent / 100.0)
+            .max_by(|a, b| a.action.cmp(&b.action))
+    }
+}
+
+// ============================================================================
 // Budget Rule Actions
 // ============================================================================
 

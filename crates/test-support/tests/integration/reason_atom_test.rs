@@ -2902,7 +2902,7 @@ async fn test_reason_atom_strips_dynamic_error_placeholder_messages() {
             vec![
                 RuntimeMessage::user("Create agents for me"),
                 RuntimeMessage::assistant(
-                    "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue.",
+                    "Usage limit reached. 100.00 tokens spent reached the 100.00 tokens limit. A usage policy stopped this work; raise its limit to continue.",
                 ),
                 RuntimeMessage::assistant(
                     "The model `gpt-99` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
@@ -2943,7 +2943,7 @@ async fn test_reason_atom_strips_dynamic_error_placeholder_messages() {
         .expect("ReasonAtom should succeed");
 
     assert!(result.success);
-    assert!(!result.text.contains("Budget exhausted."));
+    assert!(!result.text.contains("Usage limit reached."));
     assert!(!result.text.contains("The model `gpt-99` is not available."));
 }
 

@@ -3525,12 +3525,69 @@
               "type": "object"
             }
           ]
+        },
+        "PolicySource": {
+          "description": "Which usage a policy counts. Absent counts everything.",
+          "enum": [
+            "all",
+            "managed",
+            "own_keys"
+          ],
+          "type": "string"
+        },
+        "PolicyStep": {
+          "description": "One step of a usage policy, at a percent of the limit.",
+          "properties": {
+            "action": {
+              "$ref": "#/$defs/PolicyStepAction"
+            },
+            "at_percent": {
+              "description": "Percent of the limit at which the step applies (1 to 100).",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "at_percent",
+            "action"
+          ],
+          "type": "object"
+        },
+        "PolicyStepAction": {
+          "description": "What a usage policy does when its spend crosses a step.",
+          "enum": [
+            "notify",
+            "ask",
+            "stop"
+          ],
+          "type": "string"
+        },
+        "UsagePolicy": {
+          "description": "Name, steps and filter of a usage policy, stored on `budgets.policy`.\n\nDecision: steps are data on the existing budget row rather than a new\ntable, so the hierarchy lookup, period rollover and gate keep working\nunchanged. Empty steps mean the legacy shape (see [`UsagePolicy::effective_steps`]).",
+          "properties": {
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/PolicySource"
+            },
+            "steps": {
+              "items": {
+                "$ref": "#/$defs/PolicyStep"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
         }
       },
       "description": "Request body for creating a spending budget.",
       "properties": {
         "currency": {
-          "description": "Unit in which usage and the limit are measured.",
+          "description": "What the limit measures: \"usd\" (cost from the org's price list) or\n\"tokens\".",
           "example": "usd",
           "type": "string"
         },
@@ -3548,6 +3605,17 @@
             {
               "$ref": "#/$defs/BudgetPeriod",
               "description": "Optional recurring reset period for the budget balance."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "policy": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/UsagePolicy",
+              "description": "Name, steps (notify, ask to continue, stop) and which usage counts.\nAbsent: notify at 80%, ask at the soft limit, stop at the limit."
             },
             {
               "type": "null"
@@ -3583,6 +3651,62 @@
       "type": "object"
     },
     "name": "create_budget",
+    "read_only": false
+  },
+  {
+    "description": "Add a rate to the organization's price list. A rate is a fixed price per unit or a multiple of the list price; rates are never edited, a change is a new rate from a later date.",
+    "input_schema": {
+      "description": "Add a rate to the org's price list. Rates are never edited: a change is\na new rate from a later date.",
+      "properties": {
+        "effective_from": {
+          "description": "When it starts; now when absent.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "list_price_multiplier": {
+          "description": "Multiple of the provider's or catalog price. Model tokens only.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "match": {
+          "description": "Which usage it applies to (see `CostRate.match`).",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "meter": {
+          "description": "`model.tokens` or `sandbox.time`.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why, shown in the price list history.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unit_price_usd": {
+          "description": "Fixed USD per million tokens (model tokens) or per hour (sandboxes).",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "meter"
+      ],
+      "type": "object"
+    },
+    "name": "create_cost_rate",
     "read_only": false
   },
   {
@@ -10710,6 +10834,23 @@
     "read_only": true
   },
   {
+    "description": "What one agent cost the organization this month, in the org's timezone.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_agent_cost",
+    "read_only": true
+  },
+  {
     "description": "Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.",
     "input_schema": {
       "description": "Show an agent's GitHub connection.",
@@ -10916,6 +11057,48 @@
       "type": "object"
     },
     "name": "get_capability",
+    "read_only": true
+  },
+  {
+    "description": "Read the organization's cost settings: the timezone calendar windows use.",
+    "input_schema": {
+      "type": "object"
+    },
+    "name": "get_cost_settings",
+    "read_only": true
+  },
+  {
+    "description": "What usage cost the organization over a window, by where each number came from, source, agent, person, who started the work, and day.",
+    "input_schema": {
+      "description": "Org cost over a window. Defaults to this month in the org's timezone.",
+      "properties": {
+        "agent_id": {
+          "description": "Only this agent (`agent_...`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "from": {
+          "description": "Window start (inclusive). Default: the start of this month.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "description": "Window end (exclusive). Default: now.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_cost_summary",
     "read_only": true
   },
   {
@@ -13217,6 +13400,15 @@
       "type": "object"
     },
     "name": "list_connection_providers",
+    "read_only": true
+  },
+  {
+    "description": "List the organization's price list: the rates it uses to account its own costs, history included.",
+    "input_schema": {
+      "description": "List the org's price list, history included, newest first.",
+      "type": "object"
+    },
+    "name": "list_cost_rates",
     "read_only": true
   },
   {
@@ -16847,7 +17039,7 @@
     "read_only": false
   },
   {
-    "description": "Resume all paused session budgets for a session.",
+    "description": "Continue a session past the \"ask to continue\" step of the usage policies that stopped it, for each policy's current window.",
     "input_schema": {
       "properties": {
         "session_id": {
@@ -16861,6 +17053,38 @@
       "type": "object"
     },
     "name": "resume_session_budgets",
+    "read_only": false
+  },
+  {
+    "description": "End a rate from a date. Past costs keep the rate they used; usage after the date falls back to the provider's or catalog price.",
+    "input_schema": {
+      "description": "End a rate: adds a row that retires its match from a date.",
+      "properties": {
+        "effective_from": {
+          "description": "When it ends; now when absent.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rate_id": {
+          "description": "Rate id (`rate_...`) whose match to retire.",
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "rate_id"
+      ],
+      "type": "object"
+    },
+    "name": "retire_cost_rate",
     "read_only": false
   },
   {
@@ -19988,6 +20212,65 @@
   {
     "description": "Update a budget limit, status, or metadata.",
     "input_schema": {
+      "$defs": {
+        "PolicySource": {
+          "description": "Which usage a policy counts. Absent counts everything.",
+          "enum": [
+            "all",
+            "managed",
+            "own_keys"
+          ],
+          "type": "string"
+        },
+        "PolicyStep": {
+          "description": "One step of a usage policy, at a percent of the limit.",
+          "properties": {
+            "action": {
+              "$ref": "#/$defs/PolicyStepAction"
+            },
+            "at_percent": {
+              "description": "Percent of the limit at which the step applies (1 to 100).",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "at_percent",
+            "action"
+          ],
+          "type": "object"
+        },
+        "PolicyStepAction": {
+          "description": "What a usage policy does when its spend crosses a step.",
+          "enum": [
+            "notify",
+            "ask",
+            "stop"
+          ],
+          "type": "string"
+        },
+        "UsagePolicy": {
+          "description": "Name, steps and filter of a usage policy, stored on `budgets.policy`.\n\nDecision: steps are data on the existing budget row rather than a new\ntable, so the hierarchy lookup, period rollover and gate keep working\nunchanged. Empty steps mean the legacy shape (see [`UsagePolicy::effective_steps`]).",
+          "properties": {
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/PolicySource"
+            },
+            "steps": {
+              "items": {
+                "$ref": "#/$defs/PolicyStep"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      },
       "properties": {
         "budget_id": {
           "description": "Budget's prefixed public identifier.",
@@ -20003,6 +20286,17 @@
         },
         "metadata": {
           "description": "Free-form metadata attached to this resource."
+        },
+        "policy": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/UsagePolicy",
+              "description": "Replacement name, steps and filter."
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "soft_limit": {
           "description": "Replacement soft threshold, or null to remove it.",
@@ -20026,6 +20320,23 @@
       "type": "object"
     },
     "name": "update_budget",
+    "read_only": false
+  },
+  {
+    "description": "Set the timezone daily, weekly and monthly usage policies reset in. Windows already running keep their start; the next boundary uses the new timezone.",
+    "input_schema": {
+      "properties": {
+        "timezone": {
+          "description": "IANA timezone, or null for UTC.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "name": "update_cost_settings",
     "read_only": false
   },
   {

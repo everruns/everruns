@@ -39,6 +39,7 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`capabilities`](/reference/cli/capabilities/) | Capabilities agents can use, including declarative ones you define. |
 | [`connections`](/reference/cli/connections/) | Your LLM provider API keys |
 | [`context`](/reference/cli/context/) | Notes managers keep about an entity, read by agents that manage it. |
+| [`costs`](/reference/cli/costs/) | costs commands |
 | [`credential-bindings`](/reference/cli/credential-bindings/) | Declare, list and revoke write-only credential bindings. |
 | [`docker`](/reference/cli/docker/) | Run Everruns on this machine with Docker |
 | [`durable`](/reference/cli/durable/) | Durable scheduled tasks and their executions. |

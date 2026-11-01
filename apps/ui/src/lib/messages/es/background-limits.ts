@@ -42,7 +42,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Daily cap must be more than $0, or turn on No cap.":
     "El límite diario debe ser mayor que 0 $, o activa Sin límite.",
   "Unattended work (daily)": "Trabajo desatendido (diario)",
-  "Budget used up": "Presupuesto agotado",
+  "Usage limit reached": "Límite de uso alcanzado",
   "Stopped: repeating": "Detenido: se repite",
   " · Run {value0} of {value1}": " · Ejecución {value0} de {value1}",
   " · Ends {value0}": " · Termina {value0}",

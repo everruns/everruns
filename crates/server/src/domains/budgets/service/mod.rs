@@ -13,15 +13,23 @@ use everruns_contracts::provider::DriverId;
 use everruns_contracts::typed_id::{AgentId, BudgetId, ScheduleId, SessionId, TriggerId};
 use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
 use everruns_core::EventListener;
-use everruns_core::budget::{BudgetAction, BudgetCheckResult, BudgetPeriod};
+use everruns_core::budget::{
+    BudgetAction, BudgetCheckResult, BudgetPeriod, PolicySource, PolicyStepAction,
+};
 use everruns_core::events::{Event, EventData, LLM_GENERATION};
 use std::sync::Arc;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, instrument, warn};
 
 use crate::storage::StorageBackend;
 use crate::storage::repositories::BudgetSubjectLookup;
 use crate::storage::*;
 use crate::storage::{BudgetRow, CreateUsageJournalRow, CreateUsageLedgerRow};
+
+use super::costs::{CostBasis, RatedCost};
+
+mod postings;
+use postings::PostingContext;
+pub use postings::{HostCharge, USAGE_POLICY_NOTICE_KIND};
 
 // ============================================================================
 // BudgetService
@@ -366,44 +374,67 @@ impl BudgetService {
         self.attach_unattended(&mut scope, session.org_id, source.input_message_id)
             .await;
 
-        // Find all active budgets in the subject hierarchy
-        let budgets = match self
-            .db
-            .get_active_budgets_for_subjects(session.org_id, scope.lookup())
-            .await
-        {
-            Ok(b) => b,
-            Err(e) => {
-                error!(
-                    "Failed to fetch budgets for session {}: {}",
-                    source.session_id, e
-                );
-                return;
-            }
-        };
-
-        // Period rollover before metering: if a budget's window has elapsed,
-        // refresh balance/limit so the new generation is charged against the
-        // new period rather than against an exhausted snapshot.
-        let mut budgets: Vec<BudgetRow> =
-            futures::future::join_all(budgets.into_iter().map(|b| self.maybe_reset_period(b)))
-                .await;
-        budgets.retain(|b| b.status == "active");
-
-        if budgets.is_empty() {
-            return; // No budgets — nothing to track
-        }
-
+        let org_id = session.org_id;
         let total_tokens = Self::metered_total_tokens(
             input_tokens,
             output_tokens,
             cache_read_tokens,
             cache_creation_tokens,
         );
+        let served = crate::domains::usage::tracking::served_by(
+            &self.db,
+            org_id,
+            source.provider_id.as_deref(),
+        )
+        .await;
+        // The list price is the catalog's cache-aware estimate; the
+        // provider's own figure is never mistaken for it.
+        let list_estimate_usd = source.estimated_cost_usd.or_else(|| {
+            self.compute_debit(
+                "usd",
+                total_tokens,
+                input_tokens,
+                output_tokens,
+                cache_read_tokens,
+                cache_creation_tokens,
+                model,
+                provider,
+                None,
+            )
+        });
+        let rates = match self
+            .db
+            .effective_cost_rates(org_id, super::costs::METER_MODEL_TOKENS, Utc::now())
+            .await
+        {
+            Ok(rates) => rates,
+            Err(error) => {
+                warn!(org_id, error = %error, "Failed to read the org's price list; rating without it");
+                Vec::new()
+            }
+        };
+        let rated = super::costs::rate_model(
+            &super::costs::ModelUsage {
+                provider,
+                model,
+                managed: served.managed,
+                total_tokens,
+                provider_cost_usd,
+                list_estimate_usd,
+            },
+            &rates,
+        );
+
+        let (source_key, source_label) = if served.managed {
+            ("managed".to_string(), "Built-in models".to_string())
+        } else {
+            let provider = provider.unwrap_or("model");
+            (format!("own:{provider}"), format!("{provider} (own key)"))
+        };
         let journal = match self
             .db
             .create_usage_journal_entry(CreateUsageJournalRow {
-                org_id: session.org_id,
+                org_id,
                 kind: "llm_generation".to_string(),
                 source_type: Some(source.source_type.to_string()),
                 source_id: Some(source.source_id.clone()),
@@ -415,18 +446,26 @@ impl BudgetService {
                 agent_id: scope.agent_id,
                 harness_id: scope.harness_id,
                 measures: serde_json::json!({
+                    "quantity": total_tokens,
+                    "unit": "token",
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
                     "total_tokens": total_tokens,
                     "cache_read_tokens": cache_read_tokens,
                     "cache_creation_tokens": cache_creation_tokens,
                     "provider_cost_usd": provider_cost_usd,
+                    "list_estimate_usd": list_estimate_usd,
                 }),
                 // Billable components nobody could price (EVE-1125): the
                 // totals carry them as an explicit unknown, not a zero.
                 metadata: serde_json::json!({
                     "model": model,
                     "provider": provider,
+                    "provider_config_id": served.provider_config_id,
+                    "managed": served.managed,
+                    "source_key": source_key,
+                    "source_label": source_label,
+                    "started_by": if scope.unattended { "unattended" } else { "person" },
                     "finish_reasons": finish_reasons,
                     "cost_unknown_components": cost_unknown_components,
                 }),
@@ -435,118 +474,36 @@ impl BudgetService {
         {
             Ok(journal) => journal,
             Err(error) => {
-                error!(
+                // A repeated source (the unique source index) lands here too:
+                // the usage is already recorded and charged once.
+                debug!(
                     session_id = %source.session_id,
                     error = %error,
-                    "Failed to create usage journal row for llm generation"
+                    "Usage journal row not written for llm generation"
                 );
                 return;
             }
         };
 
-        // For each budget, compute the debit amount in budget currency and record it
-        for budget in &budgets {
-            let debit = self.compute_debit(
-                &budget.currency,
-                total_tokens,
-                input_tokens,
-                output_tokens,
-                cache_read_tokens,
-                cache_creation_tokens,
-                model,
-                provider,
-                provider_cost_usd,
-            );
-
-            if debit <= 0.0 {
-                continue;
-            }
-
-            let ledger_input = CreateUsageLedgerRow {
-                journal_id: journal.id,
-                budget_id: Some(budget.id),
-                org_id: session.org_id,
-                session_id: scope.session_id,
-                user_id: scope.user_id,
-                principal_id: scope.principal_id,
-                agent_id: scope.agent_id,
-                harness_id: scope.harness_id,
-                currency: budget.currency.clone(),
-                amount: debit,
-                meter_source: "llm_tokens".into(),
-                ref_type: Some("llm_generation".into()),
-                ref_id: Some(source.ref_id),
-                description: model.map(|m| format!("{} tokens on {}", total_tokens, m)),
-                rating_metadata: Some(serde_json::json!({
-                    "ruleset_version": "v1",
-                    "journal_kind": "llm_generation",
-                    "model": model,
-                    "provider": provider,
-                    "cost_unknown_components": cost_unknown_components,
-                })),
-            };
-
-            let updated_budget = match self.db.create_usage_ledger_entry(ledger_input).await {
-                Ok((_entry, Some(budget))) => budget,
-                Ok((_entry, None)) => {
-                    error!(
-                        "Usage ledger row for budget {} did not update a budget",
-                        budget.id
-                    );
-                    continue;
-                }
-                Err(e) => {
-                    error!("Failed to record budget ledger entry: {}", e);
-                    continue;
-                }
-            };
-
-            // Evaluate rules
-            let action = self.evaluate_rules(&updated_budget);
-
-            match action {
-                BudgetAction::Continue => {}
-                BudgetAction::Warn { message } => {
-                    info!(
-                        budget_id = %updated_budget.id,
-                        balance = updated_budget.balance,
-                        "Budget warning: {}",
-                        message
-                    );
-                    // Budget warning events would be emitted via EventEmitter
-                    // which is not available in EventListener context.
-                    // The worker checks budget status between atoms instead.
-                }
-                BudgetAction::Pause { message } => {
-                    warn!(
-                        budget_id = %updated_budget.id,
-                        balance = updated_budget.balance,
-                        "Budget pause triggered: {}",
-                        message
-                    );
-                    // Mark budget as paused
-                    if let Err(e) = self.db.set_budget_status(updated_budget.id, "paused").await {
-                        error!("Failed to set budget paused: {}", e);
-                    }
-                }
-                BudgetAction::Stop { message } => {
-                    warn!(
-                        budget_id = %updated_budget.id,
-                        balance = updated_budget.balance,
-                        "Budget exhausted: {}",
-                        message
-                    );
-                    // Mark budget as exhausted
-                    if let Err(e) = self
-                        .db
-                        .set_budget_status(updated_budget.id, "exhausted")
-                        .await
-                    {
-                        error!("Failed to set budget exhausted: {}", e);
-                    }
-                }
-            }
-        }
+        let ctx = PostingContext {
+            journal_id: journal.id,
+            org_id,
+            scope: &scope,
+            ref_type: "llm_generation",
+            ref_id: source.ref_id,
+            description: model.map(|m| format!("{total_tokens} tokens on {m}")),
+            rating_metadata: serde_json::json!({
+                "ruleset_version": "v2",
+                "journal_kind": "llm_generation",
+                "model": model,
+                "provider": provider,
+                "managed": served.managed,
+                "cost_unknown_components": cost_unknown_components,
+            }),
+        };
+        self.post_cost(&ctx, "cost", &rated).await;
+        self.debit_policies(&ctx, &rated, Some(total_tokens), served.managed)
+            .await;
     }
 
     /// Meter usage a provider reported after its generation was billed as an
@@ -575,6 +532,8 @@ impl BudgetService {
                 turn_id,
                 input_message_id: None,
                 ref_id: event_id.unwrap_or(generation_id),
+                provider_id: None,
+                estimated_cost_usd: usage.estimated_cost_usd,
             },
             model,
             provider,
@@ -582,7 +541,7 @@ impl BudgetService {
             usage.output_tokens,
             usage.cache_read_tokens,
             usage.cache_creation_tokens,
-            usage.estimated_cost_usd,
+            None,
             None,
             &[],
         )
@@ -614,6 +573,8 @@ impl BudgetService {
                 turn_id: None,
                 input_message_id: None,
                 ref_id: result_id,
+                provider_id: None,
+                estimated_cost_usd: None,
             },
             None,
             None,
@@ -637,7 +598,11 @@ impl BudgetService {
         input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens
     }
 
-    /// Compute the debit amount in the budget's currency.
+    /// The amount a usage counts in `currency`: tokens as their count, `usd`
+    /// as the provider's figure, else the catalog's cache-aware estimate.
+    /// `None` when nothing prices it: an unknown price is unknown, never the
+    /// token count read as dollars (that turned a $10 budget into a
+    /// 10-token one for any model without a price profile).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn compute_debit(
         &self,
@@ -650,26 +615,24 @@ impl BudgetService {
         model: Option<&str>,
         provider: Option<&str>,
         provider_cost_usd: Option<f64>,
-    ) -> f64 {
+    ) -> Option<f64> {
         match currency {
-            "tokens" => total_tokens as f64,
+            "tokens" => Some(total_tokens as f64),
             "usd" => {
                 // Prefer the provider's authoritative cost when present (e.g.
                 // OpenRouter's usage.cost). It accounts for provider routing,
                 // BYOK pricing, and cache discounts, and covers the long tail of
                 // models we do not maintain price profiles for.
                 if let Some(cost) = provider_cost_usd.filter(|c| *c > 0.0) {
-                    return cost;
+                    return Some(cost);
                 }
-                // Fall back to the price-table estimate. This shares the
-                // cache-aware accounting used for `estimated_cost_usd` so the
-                // meter does not bill cached reads at the full input rate (which
-                // overstated cache-heavy runs and could trip a budget early —
-                // EVE-599).
+                // The price-table estimate shares the cache-aware accounting
+                // used for `estimated_cost_usd`, so cached reads are not billed
+                // at the full input rate (EVE-599).
                 let provider_type = provider
                     .and_then(|p| p.parse::<DriverId>().ok())
                     .unwrap_or(DriverId::OpenAI);
-                let model_id = model.unwrap_or("unknown");
+                let model_id = model?;
                 estimate_cost_usd(
                     &provider_type,
                     model_id,
@@ -678,56 +641,55 @@ impl BudgetService {
                     cache_read_tokens.max(0) as u32,
                     cache_creation_tokens.max(0) as u32,
                 )
-                .unwrap_or_else(|| {
-                    // No profile or no cost data — fall back to raw token count.
-                    warn!(
-                        model = model_id,
-                        "No cost data for model, using token count as debit"
-                    );
-                    total_tokens as f64
-                })
             }
-            "credits" => {
-                // 1 credit = 1000 tokens (default rate, customizable via metadata)
-                total_tokens as f64 / 1000.0
-            }
-            _ => {
-                // Unknown currency — use raw token count
-                total_tokens as f64
-            }
+            // `credits` is retired (migrated to tokens); custom units have
+            // no rating.
+            _ => None,
         }
     }
 
-    /// Evaluate budget rules and return the most restrictive action.
+    /// The most restrictive step a policy's spend has reached: notify maps
+    /// to `Warn`, ask to `Pause`, stop to `Stop`.
     pub(crate) fn evaluate_rules(&self, budget: &BudgetRow) -> BudgetAction {
-        // Rule 1: Hard stop at 0
-        if budget.balance <= 0.0 {
-            return BudgetAction::Stop {
-                message: self.format_exhausted_message(budget),
-            };
+        let policy = budget.usage_policy();
+        let spent = self.spent_amount_raw(budget);
+        match policy.reached(budget.limit, budget.soft_limit, spent) {
+            None => BudgetAction::Continue,
+            Some(step) => match step.action {
+                PolicyStepAction::Stop => BudgetAction::Stop {
+                    message: self.format_exhausted_message(budget),
+                },
+                PolicyStepAction::Ask => BudgetAction::Pause {
+                    message: self.format_paused_message(budget),
+                },
+                PolicyStepAction::Notify => BudgetAction::Warn {
+                    message: format!(
+                        "{:.2} {} used of the {:.2} {} limit ({:.0}%).",
+                        spent,
+                        budget.currency,
+                        budget.limit,
+                        budget.currency,
+                        if budget.limit > 0.0 {
+                            spent / budget.limit * 100.0
+                        } else {
+                            100.0
+                        }
+                    ),
+                },
+            },
         }
+    }
 
-        // Rule 2: Soft limit pause
-        if let Some(soft_limit) = budget.soft_limit
-            && budget.balance <= (budget.limit - soft_limit)
-        {
-            return BudgetAction::Pause {
-                message: self.format_paused_message(budget),
-            };
+    /// The org's timezone for calendar windows; UTC when unset or unknown.
+    pub(crate) async fn org_tz(&self, org_id: i64) -> chrono_tz::Tz {
+        match self.db.org_timezone(org_id).await {
+            Ok(Some(name)) => name.parse().unwrap_or(chrono_tz::Tz::UTC),
+            Ok(None) => chrono_tz::Tz::UTC,
+            Err(error) => {
+                debug!(org_id, error = %error, "Failed to read the org timezone; using UTC");
+                chrono_tz::Tz::UTC
+            }
         }
-
-        // Rule 3: Warn at 80% of limit
-        let warn_threshold = budget.limit * 0.2; // warn when 20% remaining
-        if budget.balance <= warn_threshold {
-            return BudgetAction::Warn {
-                message: format!(
-                    "Budget running low. {:.2} {} remaining of {:.2} {} limit.",
-                    budget.balance, budget.currency, budget.limit, budget.currency
-                ),
-            };
-        }
-
-        BudgetAction::Continue
     }
 
     // ============================================================================
@@ -739,6 +701,16 @@ impl BudgetService {
     /// Otherwise return the row unchanged. Calendar periods reset on the next
     /// boundary (UTC).
     pub(crate) async fn maybe_reset_period(&self, budget: BudgetRow) -> BudgetRow {
+        let tz = self.org_tz(budget.org_id).await;
+        self.maybe_reset_period_in(budget, tz).await
+    }
+
+    /// [`Self::maybe_reset_period`] with the org's timezone already read.
+    pub(crate) async fn maybe_reset_period_in(
+        &self,
+        budget: BudgetRow,
+        tz: chrono_tz::Tz,
+    ) -> BudgetRow {
         let Some(period_value) = budget.period.as_ref() else {
             return budget;
         };
@@ -760,7 +732,7 @@ impl BudgetService {
         };
         let now = Utc::now();
         let started = budget.period_started_at.unwrap_or(budget.created_at);
-        if !period_elapsed(&period, started, now) {
+        if !period_elapsed_in(&period, started, now, tz) {
             return budget;
         }
         match self.db.reset_budget_period(budget.id, now).await {
@@ -804,6 +776,10 @@ impl BudgetService {
         let mut most_restrictive = BudgetCheckResult::ok();
         let mut most_restrictive_priority: u8 = 0; // 0=continue, 1=warn, 2=pause, 3=stop
 
+        // "Ask to continue" is answered per session: the session the person
+        // sees (the delegation root) or the one asking.
+        let asking_sessions = self.approval_sessions(org_id, session_id).await;
+
         for budget in &all_matching {
             let (action_str, message, priority) =
                 if budget.status == "exhausted" || budget.balance <= 0.0 {
@@ -814,7 +790,12 @@ impl BudgetService {
                     // Active budget — evaluate rules
                     match self.evaluate_rules(budget) {
                         BudgetAction::Stop { message } => ("stop", message, 3u8),
-                        BudgetAction::Pause { message } => ("pause", message, 2u8),
+                        BudgetAction::Pause { message } => {
+                            if self.approved_for(budget, &asking_sessions).await {
+                                continue;
+                            }
+                            ("pause", message, 2u8)
+                        }
                         BudgetAction::Warn { message } => ("warn", message, 1u8),
                         BudgetAction::Continue => continue,
                     }
@@ -836,6 +817,78 @@ impl BudgetService {
         }
 
         most_restrictive
+    }
+
+    /// Sessions whose approval answers an ask step for `session_id`: itself
+    /// and its delegation root.
+    async fn approval_sessions(&self, org_id: i64, session_id: &str) -> Vec<uuid::Uuid> {
+        let Ok(parsed) = SessionId::parse(session_id) else {
+            return Vec::new();
+        };
+        let mut sessions = vec![parsed.uuid()];
+        if let Ok(Some(session)) = self.db.get_session(org_id, parsed).await
+            && let Some(root) = session.root_session_id
+        {
+            sessions.push(root.uuid());
+        }
+        sessions
+    }
+
+    /// Whether a person let one of these sessions past the policy's ask step
+    /// in the current window. A read failure counts as not approved, which
+    /// asks again rather than spending past the step unasked.
+    async fn approved_for(&self, budget: &BudgetRow, sessions: &[uuid::Uuid]) -> bool {
+        for session in sessions {
+            match self
+                .db
+                .usage_policy_approved(budget.id, *session, budget.period_started_at)
+                .await
+            {
+                Ok(true) => return true,
+                Ok(false) => {}
+                Err(error) => {
+                    warn!(budget_id = %budget.id, error = %error, "Failed to read usage policy approvals");
+                }
+            }
+        }
+        false
+    }
+
+    /// Let one session go past a policy's ask step for the policy's current
+    /// window. Stop steps still stop.
+    pub async fn approve_session(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        approved_by: Option<uuid::Uuid>,
+    ) -> anyhow::Result<usize> {
+        let session_public_id = session_id.to_string();
+        let budgets = self
+            .list_budgets_for_session_hierarchy(org_id, &session_public_id, None)
+            .await;
+        let mut approved = 0;
+        for budget in budgets {
+            let asking = matches!(self.evaluate_rules(&budget), BudgetAction::Pause { .. })
+                || budget.status == "paused";
+            if !asking {
+                continue;
+            }
+            if budget.status == "paused" {
+                // A legacy global pause becomes a per-session answer too.
+                self.db.set_budget_status(budget.id, "active").await?;
+            }
+            self.db
+                .create_usage_policy_approval(
+                    org_id,
+                    budget.id,
+                    session_id.uuid(),
+                    approved_by,
+                    budget.period_started_at,
+                )
+                .await?;
+            approved += 1;
+        }
+        Ok(approved)
     }
 
     /// Whether a schedule may fire now: its own budget and the org's daily
@@ -880,6 +933,12 @@ impl BudgetService {
 
     fn spent_amount(&self, budget: &BudgetRow) -> f64 {
         (budget.limit - budget.balance).max(0.0)
+    }
+
+    /// Spend for step evaluation. Unclamped so a balance pushed past the
+    /// limit still reads as reaching every step.
+    fn spent_amount_raw(&self, budget: &BudgetRow) -> f64 {
+        budget.limit - budget.balance
     }
 
     fn format_exhausted_message(&self, budget: &BudgetRow) -> String {
@@ -943,7 +1002,7 @@ impl EventListener for BudgetService {
             meter.output_tokens,
             meter.cache_read_tokens,
             meter.cache_creation_tokens,
-            meter.cost_usd,
+            meter.actual_cost_usd,
             data.metadata.finish_reasons.as_deref(),
             &meter.cost_unknown_components,
         )
@@ -982,6 +1041,11 @@ pub(crate) struct GenerationSource {
     pub input_message_id: Option<uuid::Uuid>,
     /// Ledger `ref_id` (`ref_type` is `llm_generation`).
     pub ref_id: uuid::Uuid,
+    /// Provider row that served the call (`provider_...`), which says
+    /// whether the call ran on a host-managed (built-in) model.
+    pub provider_id: Option<String>,
+    /// The catalog's cache-aware estimate, used as the list price.
+    pub estimated_cost_usd: Option<f64>,
 }
 
 impl GenerationSource {
@@ -997,6 +1061,18 @@ impl GenerationSource {
             turn_id: event.context.turn_id.as_ref().map(|id| id.uuid()),
             input_message_id: event.context.input_message_id.as_ref().map(|id| id.uuid()),
             ref_id: event.id.uuid(),
+            provider_id: match &event.data {
+                EventData::LlmGeneration(data) => data.metadata.provider_id.clone(),
+                _ => None,
+            },
+            estimated_cost_usd: match &event.data {
+                EventData::LlmGeneration(data) => data
+                    .metadata
+                    .usage
+                    .as_ref()
+                    .and_then(|usage| usage.estimated_cost_usd),
+                _ => None,
+            },
         }
     }
 }
@@ -1009,6 +1085,9 @@ pub(crate) struct GenerationMeter {
     pub cache_read_tokens: i64,
     pub cache_creation_tokens: i64,
     pub cost_usd: Option<f64>,
+    /// The provider's own figure for the call (OpenRouter `usage.cost`, or
+    /// priced components); `None` when only an estimate exists.
+    pub actual_cost_usd: Option<f64>,
     /// `kind:name` of every billable component with an unknown amount.
     pub cost_unknown_components: Vec<String>,
 }
@@ -1032,6 +1111,7 @@ impl GenerationMeter {
                 cache_read_tokens: usage.cache_read_tokens.unwrap_or(0) as i64,
                 cache_creation_tokens: usage.cache_creation_tokens.unwrap_or(0) as i64,
                 cost_usd: usage.effective_cost_usd(),
+                actual_cost_usd: usage.actual_cost_usd,
                 cost_unknown_components,
             }),
             None if !metadata.cost_components.is_empty() => {
@@ -1046,6 +1126,7 @@ impl GenerationMeter {
                     cache_read_tokens: 0,
                     cache_creation_tokens: 0,
                     cost_usd: (!priced.is_empty()).then(|| priced.iter().sum()),
+                    actual_cost_usd: (!priced.is_empty()).then(|| priced.iter().sum()),
                     cost_unknown_components,
                 })
             }
@@ -1055,28 +1136,44 @@ impl GenerationMeter {
 }
 
 /// Decide whether a budget's period has elapsed and the balance should reset.
+#[cfg(test)]
 fn period_elapsed(period: &BudgetPeriod, started: DateTime<Utc>, now: DateTime<Utc>) -> bool {
+    period_elapsed_in(period, started, now, chrono_tz::Tz::UTC)
+}
+
+/// Calendar windows (hour, day, week, month, year) turn over at the
+/// boundary in the org's timezone; fixed-length windows ignore it.
+fn period_elapsed_in(
+    period: &BudgetPeriod,
+    started: DateTime<Utc>,
+    now: DateTime<Utc>,
+    tz: chrono_tz::Tz,
+) -> bool {
     if let Some(seconds) = period.duration_seconds() {
         return (now - started).num_seconds() as u64 >= seconds;
     }
     if let BudgetPeriod::Calendar { unit } = period {
-        return calendar_boundary_crossed(unit, started, now);
+        return calendar_boundary_crossed(unit, started.with_timezone(&tz), now.with_timezone(&tz));
     }
     false
 }
 
-fn calendar_boundary_crossed(unit: &str, started: DateTime<Utc>, now: DateTime<Utc>) -> bool {
+fn calendar_boundary_crossed<T: chrono::TimeZone>(
+    unit: &str,
+    started: DateTime<T>,
+    now: DateTime<T>,
+) -> bool {
     match unit.to_ascii_lowercase().as_str() {
         "hour" => started.date_naive() != now.date_naive() || started.hour() != now.hour(),
         "day" => started.date_naive() != now.date_naive(),
-        "week" => iso_week_key(started) != iso_week_key(now),
+        "week" => iso_week_key(&started) != iso_week_key(&now),
         "month" => (started.year(), started.month()) != (now.year(), now.month()),
         "year" => started.year() != now.year(),
         _ => false,
     }
 }
 
-fn iso_week_key(dt: DateTime<Utc>) -> (i32, u32) {
+fn iso_week_key<T: chrono::TimeZone>(dt: &DateTime<T>) -> (i32, u32) {
     let iso = dt.iso_week();
     (iso.year(), iso.week())
 }

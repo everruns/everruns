@@ -2257,6 +2257,47 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/costs": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "What one agent cost the organization this month, in the org's timezone",
+        "operationId": "get_agent_cost",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCost"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/credentials": {
       "get": {
         "tags": [
@@ -9442,6 +9483,237 @@
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/cost-rates": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "List the organization's price list: the rates it uses to account its own costs, history included",
+        "operationId": "list_cost_rates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CostRate"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Add a rate to the organization's price list",
+        "description": "Add a rate to the organization's price list. A rate is a fixed price per unit or a multiple of the list price; rates are never edited, a change is a new rate from a later date.",
+        "operationId": "create_cost_rate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCostRate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostRate"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/cost-rates/{rate_id}/retire": {
+      "post": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "End a rate from a date",
+        "description": "End a rate from a date. Past costs keep the rate they used; usage after the date falls back to the provider's or catalog price.",
+        "operationId": "retire_cost_rate",
+        "parameters": [
+          {
+            "name": "rate_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostRate"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rate not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/costs/settings": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Read the organization's cost settings: the timezone calendar windows use",
+        "operationId": "get_cost_settings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostSettings"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Set the timezone daily, weekly and monthly usage policies reset in",
+        "description": "Set the timezone daily, weekly and monthly usage policies reset in. Windows already running keep their start; the next boundary uses the new timezone.",
+        "operationId": "update_cost_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCostSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostSettings"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/costs/summary": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "What usage cost the organization over a window, by where each number came from, source, agent, person, who started the work, and day",
+        "operationId": "get_cost_summary",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Window start (inclusive). Default: the start of this month.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Window end (exclusive). Default: now.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Only this agent (`agent_...`).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostSummary"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
           "support": "preview"
         }
       }
@@ -28509,7 +28781,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Resume all paused session budgets for a session",
+        "summary": "Continue a session past the \"ask to continue\" step of the usage policies that stopped it, for each policy's current window",
         "operationId": "resume_session_budgets",
         "parameters": [
           {
@@ -35414,6 +35686,33 @@
           }
         }
       },
+      "AgentCost": {
+        "type": "object",
+        "description": "An agent's cost this month, for the agent page.",
+        "required": [
+          "agent_id",
+          "from",
+          "cost_usd",
+          "unpriced_records"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "unpriced_records": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "AgentCostPlan": {
         "type": "object",
         "description": "Three representative workload hypotheses; prices and usage frequency are set separately.",
@@ -38066,7 +38365,7 @@
           },
           "currency": {
             "type": "string",
-            "description": "Currency: \"usd\", \"tokens\", \"credits\", or custom."
+            "description": "What the limit is measured in: \"usd\" (cost from the org's price\nlist) or \"tokens\"."
           },
           "id": {
             "type": "string",
@@ -38101,6 +38400,10 @@
             ],
             "format": "date-time",
             "description": "When the current period started (used to detect period rollover for\n`Duration` / `Rolling` periods, and to display \"resets at\" in the UI).\n`None` for budgets without a period."
+          },
+          "policy": {
+            "$ref": "#/components/schemas/UsagePolicy",
+            "description": "Name, steps (notify, ask to continue, stop) and which usage counts.\nEmpty steps mean the legacy shape: notify at 80%, ask at the soft\nlimit, stop at the limit."
           },
           "soft_limit": {
             "type": [
@@ -41077,6 +41380,71 @@
         },
         "additionalProperties": false
       },
+      "CostRate": {
+        "type": "object",
+        "description": "One row of the org's price list.",
+        "required": [
+          "id",
+          "meter",
+          "match",
+          "unit",
+          "effective_from",
+          "retired",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "description": "Rate id (`rate_...`)."
+          },
+          "list_price_multiplier": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Multiple of the provider's or catalog's price (0.8 is a 20%\ndiscount, 0 counts usage at no cost)."
+          },
+          "match": {
+            "type": "object",
+            "description": "Which usage it applies to. Model tokens: `provider`, `model`,\n`source` (`managed` or `own_keys`). Sandbox time: `provider`, `size`.\nEmpty applies to the whole meter."
+          },
+          "meter": {
+            "type": "string",
+            "description": "What it prices: `model.tokens` or `sandbox.time`."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retired": {
+            "type": "boolean",
+            "description": "This row ends the rates it matches from `effective_from`."
+          },
+          "unit": {
+            "type": "string",
+            "description": "Unit of `unit_price_usd`: `1m_tokens` or `hour`."
+          },
+          "unit_price_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Fixed price per unit, in USD."
+          }
+        }
+      },
       "CostSandbox": {
         "type": "object",
         "description": "A sandbox the session ran and how long it ran.",
@@ -41129,6 +41497,19 @@
               "$ref": "#/components/schemas/SandboxStateSpan"
             },
             "description": "Lifecycle spans, oldest first."
+          }
+        }
+      },
+      "CostSettings": {
+        "type": "object",
+        "description": "The org's cost settings.",
+        "properties": {
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IANA timezone (e.g. `America/Chicago`) for calendar windows: daily,\nweekly and monthly usage policies reset at midnight there. `null` is\nUTC."
           }
         }
       },
@@ -41188,6 +41569,130 @@
             "format": "double",
             "description": "Spend in USD on those turns.",
             "example": 106.11
+          }
+        }
+      },
+      "CostSummary": {
+        "type": "object",
+        "description": "Org cost over a window, grouped several ways.",
+        "required": [
+          "from",
+          "to",
+          "timezone",
+          "cost_usd",
+          "unpriced_records",
+          "by_basis",
+          "by_source",
+          "by_agent",
+          "by_user",
+          "by_started_by",
+          "by_day"
+        ],
+        "properties": {
+          "by_agent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryLine"
+            }
+          },
+          "by_basis": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryLine"
+            }
+          },
+          "by_day": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryLine"
+            }
+          },
+          "by_source": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryLine"
+            }
+          },
+          "by_started_by": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryLine"
+            }
+          },
+          "by_user": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryLine"
+            }
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The org's timezone; calendar windows and days use it."
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "unpriced_records": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "CostSummaryLine": {
+        "type": "object",
+        "description": "One line of the costs summary.",
+        "required": [
+          "basis",
+          "cost_usd",
+          "unpriced_records",
+          "records",
+          "quantity"
+        ],
+        "properties": {
+          "basis": {
+            "type": "string",
+            "description": "Where the amounts came from: host, rate, provider, list_price,\nunpriced, or mixed."
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Priced cost in USD. Unpriced usage is not in it."
+          },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Group key: an agent id, a user id, a source key, a basis, a day."
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "type": "number",
+            "format": "double",
+            "description": "Tokens for models, hours for sandboxes, summed as recorded."
+          },
+          "records": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unpriced_records": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Usage records with no price."
           }
         }
       },
@@ -41985,7 +42490,7 @@
         "properties": {
           "currency": {
             "type": "string",
-            "description": "Unit in which usage and the limit are measured.",
+            "description": "What the limit measures: \"usd\" (cost from the org's price list) or\n\"tokens\".",
             "example": "usd"
           },
           "limit": {
@@ -42002,6 +42507,17 @@
               {
                 "$ref": "#/components/schemas/BudgetPeriod",
                 "description": "Optional recurring reset period for the budget balance."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UsagePolicy",
+                "description": "Name, steps (notify, ask to continue, stop) and which usage counts.\nAbsent: notify at 80%, ask at the soft limit, stop at the limit."
               },
               {
                 "type": "null"
@@ -42044,6 +42560,57 @@
         },
         "additionalProperties": {
           "description": "Additional provider-specific form fields (e.g. org_slug for provider personal tokens)."
+        }
+      },
+      "CreateCostRate": {
+        "type": "object",
+        "description": "Add a rate to the org's price list. Rates are never edited: a change is\na new rate from a later date.",
+        "required": [
+          "meter"
+        ],
+        "properties": {
+          "effective_from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it starts; now when absent."
+          },
+          "list_price_multiplier": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Multiple of the provider's or catalog price. Model tokens only."
+          },
+          "match": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Which usage it applies to (see `CostRate.match`)."
+          },
+          "meter": {
+            "type": "string",
+            "description": "`model.tokens` or `sandbox.time`."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why, shown in the price list history."
+          },
+          "unit_price_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Fixed USD per million tokens (model tokens) or per hour (sandboxes)."
+          }
         }
       },
       "CreateDatabaseRequest": {
@@ -61464,6 +62031,42 @@
           "communication"
         ]
       },
+      "PolicySource": {
+        "type": "string",
+        "description": "Which usage a policy counts. Absent counts everything.",
+        "enum": [
+          "all",
+          "managed",
+          "own_keys"
+        ]
+      },
+      "PolicyStep": {
+        "type": "object",
+        "description": "One step of a usage policy, at a percent of the limit.",
+        "required": [
+          "at_percent",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/PolicyStepAction"
+          },
+          "at_percent": {
+            "type": "number",
+            "format": "double",
+            "description": "Percent of the limit at which the step applies (1 to 100)."
+          }
+        }
+      },
+      "PolicyStepAction": {
+        "type": "string",
+        "description": "What a usage policy does when its spend crosses a step.",
+        "enum": [
+          "notify",
+          "ask",
+          "stop"
+        ]
+      },
       "PostTaskMessageBody": {
         "type": "object",
         "description": "Request body for posting an inbound task message.",
@@ -73738,6 +74341,17 @@
           "metadata": {
             "description": "Free-form metadata attached to this resource."
           },
+          "policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UsagePolicy",
+                "description": "Replacement name, steps and filter."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "soft_limit": {
             "type": [
               "number",
@@ -73752,6 +74366,18 @@
               "null"
             ],
             "description": "Current lifecycle status."
+          }
+        }
+      },
+      "UpdateCostSettings": {
+        "type": "object",
+        "properties": {
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IANA timezone, or null for UTC."
           }
         }
       },
@@ -75343,6 +75969,27 @@
           }
         }
       },
+      "UsagePolicy": {
+        "type": "object",
+        "description": "Name, steps and filter of a usage policy, stored on `budgets.policy`.\n\nDecision: steps are data on the existing budget row rather than a new\ntable, so the hierarchy lookup, period rollover and gate keep working\nunchanged. Empty steps mean the legacy shape (see [`UsagePolicy::effective_steps`]).",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/PolicySource"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyStep"
+            }
+          }
+        }
+      },
       "UseEverrunsAppRequest": {
         "type": "object",
         "description": "Which org link to act through.",
@@ -76851,7 +77498,7 @@
               },
               "currency": {
                 "type": "string",
-                "description": "Currency: \"usd\", \"tokens\", \"credits\", or custom."
+                "description": "What the limit is measured in: \"usd\" (cost from the org's price\nlist) or \"tokens\"."
               },
               "id": {
                 "type": "string",
@@ -76886,6 +77533,10 @@
                 ],
                 "format": "date-time",
                 "description": "When the current period started (used to detect period rollover for\n`Duration` / `Rolling` periods, and to display \"resets at\" in the UI).\n`None` for budgets without a period."
+              },
+              "policy": {
+                "$ref": "#/components/schemas/UsagePolicy",
+                "description": "Name, steps (notify, ask to continue, stop) and which usage counts.\nEmpty steps mean the legacy shape: notify at 80%, ask at the soft\nlimit, stop at the limit."
               },
               "soft_limit": {
                 "type": [

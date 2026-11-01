@@ -212,7 +212,7 @@ export function AgentIntegrationsPanel({
                         <BudgetPanel
                           subjectType="agent_channel"
                           subjectId={channel.id}
-                          title={ui("Channel budget")}
+                          title={ui("Channel usage policy")}
                           canManage={canManageBudgets}
                         />
                       ) : undefined
@@ -246,7 +246,7 @@ export function AgentIntegrationsPanel({
             </p>
           </RailSection>
           {canViewBudgets && (
-            <RailSection label={ui("Agent budget")}>
+            <RailSection label={ui("Costs and usage policies")}>
               <BudgetPanel subjectType="agent" subjectId={agent.id} canManage={canManageBudgets} />
             </RailSection>
           )}

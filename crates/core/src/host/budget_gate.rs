@@ -271,7 +271,7 @@ mod tests {
         assert_eq!(stop.event_type, BUDGET_EXHAUSTED);
         assert_eq!(
             stop.message(),
-            "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue."
+            "Usage limit reached. 100.00 tokens spent reached the 100.00 tokens limit. A usage policy stopped this work; raise its limit to continue."
         );
         assert_eq!(stop.event.budget_id, "bdgt_1");
         assert_eq!(stop.event.balance, 0.0);
@@ -289,7 +289,7 @@ mod tests {
         assert_eq!(stop.event_type, BUDGET_PAUSED);
         assert_eq!(
             stop.message(),
-            "Budget paused. 60.00 tokens spent exceeded the 50.00 tokens soft limit. Increase or resume the budget to continue."
+            "Usage policy asks before continuing. 60.00 tokens spent exceeded the 50.00 tokens ask point. Continue this turn or raise the limit."
         );
         assert_eq!(stop.event.soft_limit, Some(50.0));
     }
@@ -301,14 +301,14 @@ mod tests {
         };
         assert_eq!(
             stop.message(),
-            "Budget exhausted. Increase the budget to continue."
+            "Usage limit reached. A usage policy stopped this work; raise its limit to continue."
         );
         let BudgetGate::Stop(stop) = evaluate(&response("paused", vec![])) else {
             panic!("paused must stop");
         };
         assert_eq!(
             stop.message(),
-            "Budget paused. Increase or resume the budget to continue."
+            "Usage policy asks before continuing. Continue this turn or raise the limit."
         );
     }
 

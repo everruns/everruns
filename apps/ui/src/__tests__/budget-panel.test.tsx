@@ -82,12 +82,12 @@ describe("BudgetPanel", () => {
     renderPanel({ canManage: false });
 
     expect(await screen.findByText("bdgt_endpoint")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Add budget" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add usage policy" })).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Edit budget bdgt_endpoint" }),
+      screen.queryByRole("button", { name: "Edit usage policy bdgt_endpoint" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Delete budget bdgt_endpoint" }),
+      screen.queryByRole("button", { name: "Delete usage policy bdgt_endpoint" }),
     ).not.toBeInTheDocument();
   });
 
@@ -95,9 +95,9 @@ describe("BudgetPanel", () => {
     listBudgets.mockResolvedValue([]);
     renderPanel();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Add budget" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add usage policy" }));
     fireEvent.change(screen.getByLabelText("Limit"), { target: { value: "25" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create budget" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create usage policy" }));
 
     await waitFor(() =>
       expect(createBudget).toHaveBeenCalledWith({
@@ -114,9 +114,9 @@ describe("BudgetPanel", () => {
   it("edits and removes a channel budget", async () => {
     renderPanel();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Edit budget bdgt_endpoint" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit usage policy bdgt_endpoint" }));
     fireEvent.change(screen.getByLabelText("Limit"), { target: { value: "20" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save budget" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save usage policy" }));
 
     await waitFor(() =>
       expect(updateBudget).toHaveBeenCalledWith("bdgt_endpoint", {
@@ -126,7 +126,7 @@ describe("BudgetPanel", () => {
       }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete budget bdgt_endpoint" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete usage policy bdgt_endpoint" }));
     await waitFor(() => expect(deleteBudget).toHaveBeenCalledWith("bdgt_endpoint"));
   });
 });

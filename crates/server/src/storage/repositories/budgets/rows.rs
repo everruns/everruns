@@ -24,9 +24,23 @@ pub struct BudgetRow {
     #[sqlx(default)]
     pub period_started_at: Option<DateTime<Utc>>,
     pub metadata: Option<sqlx::types::JsonValue>,
+    /// Name, steps and filter (`UsagePolicy`). `{}` is the legacy shape.
+    #[sqlx(default)]
+    pub policy: sqlx::types::JsonValue,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl BudgetRow {
+    /// The usage policy this row enforces; a stored value that no longer
+    /// parses reads as the legacy shape rather than disabling enforcement.
+    pub fn usage_policy(&self) -> everruns_core::budget::UsagePolicy {
+        if self.policy.is_null() {
+            return Default::default();
+        }
+        serde_json::from_value(self.policy.clone()).unwrap_or_default()
+    }
 }
 
 /// Input for creating a budget.
@@ -49,6 +63,8 @@ pub struct UpdateBudgetRow {
     pub soft_limit: Option<Option<f64>>,
     pub status: Option<String>,
     pub metadata: Option<serde_json::Value>,
+    #[serde(default)]
+    pub policy: Option<serde_json::Value>,
 }
 
 /// Immutable activity journal row (maps to `usage_journal` table).
@@ -108,11 +124,15 @@ pub struct UsageLedgerRow {
     pub ref_id: Option<Uuid>,
     pub description: Option<String>,
     pub rating_metadata: Option<sqlx::types::JsonValue>,
+    /// Where the amount came from: host, rate, provider, list_price,
+    /// unpriced. NULL on rows written before costs had a basis.
+    pub basis: Option<String>,
+    pub rate_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
 }
 
 /// Input for creating a rated ledger row.
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Deserialize)]
 pub struct CreateUsageLedgerRow {
     pub journal_id: Uuid,
     pub budget_id: Option<Uuid>,
@@ -129,6 +149,10 @@ pub struct CreateUsageLedgerRow {
     pub ref_id: Option<Uuid>,
     pub description: Option<String>,
     pub rating_metadata: Option<serde_json::Value>,
+    #[serde(default)]
+    pub basis: Option<String>,
+    #[serde(default)]
+    pub rate_id: Option<Uuid>,
 }
 
 /// Compatibility input for callers that still think in budget-specific postings.
@@ -165,6 +189,7 @@ impl From<&BudgetRow> for Budget {
                 .and_then(|v| serde_json::from_value(v.clone()).ok()),
             period_started_at: row.period_started_at,
             metadata: row.metadata.clone(),
+            policy: row.usage_policy(),
             status: BudgetStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,

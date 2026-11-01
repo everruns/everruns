@@ -25,6 +25,7 @@ Agent definitions and their configuration.
 | [`agents destroy`](#agents-destroy) | Permanently delete an archived agent. |
 | [`agents draft`](#agents-draft) | Revise an agent draft from a conversation with the agent builder. |
 | [`agents get`](#agents-get) | Get a single agent by ID or name. |
+| [`agents costs get`](#agents-costs-get) | What one agent cost the organization this month, in the org's timezone. |
 | [`agents list`](#agents-list) | List all active agents. |
 | [`agents cost-plan`](#agents-cost-plan) | Suggest editable typical task workloads for agent cost planning. |
 | [`agents preview`](#agents-preview) | Preview the final agent shape with capabilities applied. |
@@ -324,6 +325,25 @@ Example:
 ```bash
 # Show one agent's full configuration
 everruns agents get agent_01h9
+```
+
+## agents costs get
+
+What one agent cost the organization this month, in the org's timezone.
+
+```bash
+everruns agents costs get [OPTIONS] [AGENT_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Agent's prefixed public identifier. |
+
+Example:
+
+```bash
+# See what an agent cost this month
+everruns agents costs get agent_01h9
 ```
 
 ## agents list

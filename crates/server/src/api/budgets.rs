@@ -3,6 +3,10 @@
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::budgets::cost_commands::{
+    CreateCostRate, GetAgentCost, GetCostSettings, GetCostSummary, ListCostRates, RetireCostRate,
+    UpdateCostSettings,
+};
 pub use crate::domains::budgets::types::{CreateBudgetRequest, TopUpRequest, UpdateBudgetRequest};
 use crate::domains::budgets::{
     BUDGET_MANAGE, BUDGET_VIEW, BudgetService, CheckBudget, CheckSessionBudgets, CreateBudget,
@@ -77,6 +81,13 @@ pub fn routes(state: AppState) -> Router {
         .command::<ListSessionBudgets>()
         .command::<CheckSessionBudgets>()
         .command::<ResumeSessionBudgets>()
+        .command::<ListCostRates>()
+        .command::<CreateCostRate>()
+        .command::<RetireCostRate>()
+        .command::<GetCostSummary>()
+        .command::<GetAgentCost>()
+        .command::<GetCostSettings>()
+        .command::<UpdateCostSettings>()
         .with_state(state)
 }
 

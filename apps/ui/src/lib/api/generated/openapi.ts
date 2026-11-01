@@ -580,6 +580,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/costs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** What one agent cost the organization this month, in the org's timezone */
+    get: operations["get_agent_cost"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/credentials": {
     parameters: {
       query?: never;
@@ -2298,6 +2315,85 @@ export interface paths {
     put?: never;
     /** Add a paragraph to an entity's manager context */
     post: operations["append_manager_context"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/cost-rates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the organization's price list: the rates it uses to account its own costs, history included */
+    get: operations["list_cost_rates"];
+    put?: never;
+    /**
+     * Add a rate to the organization's price list
+     * @description Add a rate to the organization's price list. A rate is a fixed price per unit or a multiple of the list price; rates are never edited, a change is a new rate from a later date.
+     */
+    post: operations["create_cost_rate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/cost-rates/{rate_id}/retire": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * End a rate from a date
+     * @description End a rate from a date. Past costs keep the rate they used; usage after the date falls back to the provider's or catalog price.
+     */
+    post: operations["retire_cost_rate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/costs/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read the organization's cost settings: the timezone calendar windows use */
+    get: operations["get_cost_settings"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Set the timezone daily, weekly and monthly usage policies reset in
+     * @description Set the timezone daily, weekly and monthly usage policies reset in. Windows already running keep their start; the next boundary uses the new timezone.
+     */
+    patch: operations["update_cost_settings"];
+    trace?: never;
+  };
+  "/v1/costs/summary": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** What usage cost the organization over a window, by where each number came from, source, agent, person, who started the work, and day */
+    get: operations["get_cost_summary"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -7241,7 +7337,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Resume all paused session budgets for a session */
+    /** Continue a session past the "ask to continue" step of the usage policies that stopped it, for each policy's current window */
     post: operations["resume_session_budgets"];
     delete?: never;
     options?: never;
@@ -9345,6 +9441,16 @@ export interface components {
       id: string;
       status: components["schemas"]["ChannelStatus"];
     };
+    /** @description An agent's cost this month, for the agent page. */
+    AgentCost: {
+      agent_id: string;
+      /** Format: double */
+      cost_usd: number;
+      /** Format: date-time */
+      from: string;
+      /** Format: int64 */
+      unpriced_records: number;
+    };
     /** @description Three representative workload hypotheses; prices and usage frequency are set separately. */
     AgentCostPlan: {
       /** @description Exactly three suggested tasks that users can edit before projecting costs. */
@@ -10719,7 +10825,10 @@ export interface components {
       balance: number;
       /** Format: date-time */
       created_at: string;
-      /** @description Currency: "usd", "tokens", "credits", or custom. */
+      /**
+       * @description What the limit is measured in: "usd" (cost from the org's price
+       *     list) or "tokens".
+       */
       currency: string;
       /** @example bdgt_01933b5a00007000800000000000001 */
       id: string;
@@ -10739,6 +10848,12 @@ export interface components {
        *     `None` for budgets without a period.
        */
       period_started_at?: string | null;
+      /**
+       * @description Name, steps (notify, ask to continue, stop) and which usage counts.
+       *     Empty steps mean the legacy shape: notify at 80%, ask at the soft
+       *     limit, stop at the limit.
+       */
+      policy?: components["schemas"]["UsagePolicy"];
       /**
        * Format: double
        * @description Soft limit — triggers pause/warn when balance drops below this.
@@ -12381,6 +12496,39 @@ export interface components {
        */
       tool_result_tokens: number;
     };
+    /** @description One row of the org's price list. */
+    CostRate: {
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      effective_from: string;
+      /** @description Rate id (`rate_...`). */
+      id: string;
+      /**
+       * Format: double
+       * @description Multiple of the provider's or catalog's price (0.8 is a 20%
+       *     discount, 0 counts usage at no cost).
+       */
+      list_price_multiplier?: number | null;
+      /**
+       * @description Which usage it applies to. Model tokens: `provider`, `model`,
+       *     `source` (`managed` or `own_keys`). Sandbox time: `provider`, `size`.
+       *     Empty applies to the whole meter.
+       */
+      match: Record<string, unknown>;
+      /** @description What it prices: `model.tokens` or `sandbox.time`. */
+      meter: string;
+      reason?: string | null;
+      /** @description This row ends the rates it matches from `effective_from`. */
+      retired: boolean;
+      /** @description Unit of `unit_price_usd`: `1m_tokens` or `hour`. */
+      unit: string;
+      /**
+       * Format: double
+       * @description Fixed price per unit, in USD.
+       */
+      unit_price_usd?: number | null;
+    };
     /** @description A sandbox the session ran and how long it ran. */
     CostSandbox: {
       /**
@@ -12414,6 +12562,15 @@ export interface components {
       sandbox_id: string;
       /** @description Lifecycle spans, oldest first. */
       spans: components["schemas"]["SandboxStateSpan"][];
+    };
+    /** @description The org's cost settings. */
+    CostSettings: {
+      /**
+       * @description IANA timezone (e.g. `America/Chicago`) for calendar windows: daily,
+       *     weekly and monthly usage policies reset at midnight there. `null` is
+       *     UTC.
+       */
+      timezone?: string | null;
     };
     /** @description Turns and spend of one origin. */
     CostSource: {
@@ -12451,6 +12608,53 @@ export interface components {
        * @example 106.11
        */
       usd: number;
+    };
+    /** @description Org cost over a window, grouped several ways. */
+    CostSummary: {
+      by_agent: components["schemas"]["CostSummaryLine"][];
+      by_basis: components["schemas"]["CostSummaryLine"][];
+      by_day: components["schemas"]["CostSummaryLine"][];
+      by_source: components["schemas"]["CostSummaryLine"][];
+      by_started_by: components["schemas"]["CostSummaryLine"][];
+      by_user: components["schemas"]["CostSummaryLine"][];
+      /** Format: double */
+      cost_usd: number;
+      /** Format: date-time */
+      from: string;
+      /** @description The org's timezone; calendar windows and days use it. */
+      timezone: string;
+      /** Format: date-time */
+      to: string;
+      /** Format: int64 */
+      unpriced_records: number;
+    };
+    /** @description One line of the costs summary. */
+    CostSummaryLine: {
+      /**
+       * @description Where the amounts came from: host, rate, provider, list_price,
+       *     unpriced, or mixed.
+       */
+      basis: string;
+      /**
+       * Format: double
+       * @description Priced cost in USD. Unpriced usage is not in it.
+       */
+      cost_usd: number;
+      /** @description Group key: an agent id, a user id, a source key, a basis, a day. */
+      key?: string | null;
+      label?: string | null;
+      /**
+       * Format: double
+       * @description Tokens for models, hours for sandboxes, summed as recorded.
+       */
+      quantity: number;
+      /** Format: int64 */
+      records: number;
+      /**
+       * Format: int64
+       * @description Usage records with no price.
+       */
+      unpriced_records: number;
     };
     /**
      * @description A pricing tier that activates above a context token threshold.
@@ -12963,7 +13167,8 @@ export interface components {
     /** @description Request body for creating a spending budget. */
     CreateBudgetRequest: {
       /**
-       * @description Unit in which usage and the limit are measured.
+       * @description What the limit measures: "usd" (cost from the org's price list) or
+       *     "tokens".
        * @example usd
        */
       currency: string;
@@ -12976,6 +13181,7 @@ export interface components {
       /** @description Free-form metadata attached to this resource. */
       metadata?: unknown;
       period?: components["schemas"]["BudgetPeriod"] | null;
+      policy?: components["schemas"]["UsagePolicy"] | null;
       /**
        * Format: double
        * @description Optional threshold that triggers a warning or pause before exhaustion.
@@ -13005,6 +13211,33 @@ export interface components {
       api_key: string;
     } & {
       [key: string]: unknown;
+    };
+    /**
+     * @description Add a rate to the org's price list. Rates are never edited: a change is
+     *     a new rate from a later date.
+     */
+    CreateCostRate: {
+      /**
+       * Format: date-time
+       * @description When it starts; now when absent.
+       */
+      effective_from?: string | null;
+      /**
+       * Format: double
+       * @description Multiple of the provider's or catalog price. Model tokens only.
+       */
+      list_price_multiplier?: number | null;
+      /** @description Which usage it applies to (see `CostRate.match`). */
+      match?: Record<string, unknown> | null;
+      /** @description `model.tokens` or `sandbox.time`. */
+      meter: string;
+      /** @description Why, shown in the price list history. */
+      reason?: string | null;
+      /**
+       * Format: double
+       * @description Fixed USD per million tokens (model tokens) or per hour (sandboxes).
+       */
+      unit_price_usd?: number | null;
     };
     /** @description Request body for creating a database. */
     CreateDatabaseRequest: {
@@ -23908,6 +24141,25 @@ export interface components {
      * @enum {string}
      */
     PhaseSource: "provider" | "derived" | "communication";
+    /**
+     * @description Which usage a policy counts. Absent counts everything.
+     * @enum {string}
+     */
+    PolicySource: "all" | "managed" | "own_keys";
+    /** @description One step of a usage policy, at a percent of the limit. */
+    PolicyStep: {
+      action: components["schemas"]["PolicyStepAction"];
+      /**
+       * Format: double
+       * @description Percent of the limit at which the step applies (1 to 100).
+       */
+      at_percent: number;
+    };
+    /**
+     * @description What a usage policy does when its spend crosses a step.
+     * @enum {string}
+     */
+    PolicyStepAction: "notify" | "ask" | "stop";
     /** @description Request body for posting an inbound task message. */
     PostTaskMessageBody: {
       /** @description Structured message parts (alternative to `text`). */
@@ -30618,6 +30870,7 @@ export interface components {
       limit?: number | null;
       /** @description Free-form metadata attached to this resource. */
       metadata?: unknown;
+      policy?: components["schemas"]["UsagePolicy"] | null;
       /**
        * Format: double
        * @description Replacement soft threshold, or null to remove the threshold.
@@ -30625,6 +30878,10 @@ export interface components {
       soft_limit?: number | null;
       /** @description Current lifecycle status. */
       status?: string | null;
+    };
+    UpdateCostSettings: {
+      /** @description IANA timezone, or null for UTC. */
+      timezone?: string | null;
     };
     /** @description Request body for the `update_declarative_capability` operation. */
     UpdateDeclarativeCapabilityRequest: {
@@ -31389,6 +31646,18 @@ export interface components {
       description?: string | null;
       name?: string | null;
       status?: string | null;
+    };
+    /**
+     * @description Name, steps and filter of a usage policy, stored on `budgets.policy`.
+     *
+     *     Decision: steps are data on the existing budget row rather than a new
+     *     table, so the hierarchy lookup, period rollover and gate keep working
+     *     unchanged. Empty steps mean the legacy shape (see [`UsagePolicy::effective_steps`]).
+     */
+    UsagePolicy: {
+      name?: string | null;
+      source?: components["schemas"]["PolicySource"];
+      steps?: components["schemas"]["PolicyStep"][];
     };
     /** @description Which org link to act through. */
     UseEverrunsAppRequest: {
@@ -32214,7 +32483,10 @@ export interface components {
       balance: number;
       /** Format: date-time */
       created_at: string;
-      /** @description Currency: "usd", "tokens", "credits", or custom. */
+      /**
+       * @description What the limit is measured in: "usd" (cost from the org's price
+       *     list) or "tokens".
+       */
       currency: string;
       /** @example bdgt_01933b5a00007000800000000000001 */
       id: string;
@@ -32234,6 +32506,12 @@ export interface components {
        *     `None` for budgets without a period.
        */
       period_started_at?: string | null;
+      /**
+       * @description Name, steps (notify, ask to continue, stop) and which usage counts.
+       *     Empty steps mean the legacy shape: notify at 80%, ask at the soft
+       *     limit, stop at the limit.
+       */
+      policy?: components["schemas"]["UsagePolicy"];
       /**
        * Format: double
        * @description Soft limit — triggers pause/warn when balance drops below this.
@@ -35462,6 +35740,36 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  get_agent_cost: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentCost"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -40071,6 +40379,151 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_cost_rates: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CostRate"][];
+        };
+      };
+    };
+  };
+  create_cost_rate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateCostRate"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CostRate"];
+        };
+      };
+    };
+  };
+  retire_cost_rate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        rate_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CostRate"];
+        };
+      };
+      /** @description Rate not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_cost_settings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CostSettings"];
+        };
+      };
+    };
+  };
+  update_cost_settings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateCostSettings"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CostSettings"];
+        };
+      };
+    };
+  };
+  get_cost_summary: {
+    parameters: {
+      query?: {
+        /** @description Window start (inclusive). Default: the start of this month. */
+        from?: string;
+        /** @description Window end (exclusive). Default: now. */
+        to?: string;
+        /** @description Only this agent (`agent_...`). */
+        agent_id?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CostSummary"];
         };
       };
     };

@@ -85,10 +85,10 @@ impl Database {
         let row = sqlx::query_as::<_, BudgetRow>(
             r#"
             INSERT INTO budgets (org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                                balance, period, period_started_at, metadata, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $5, $7, $8, $9, 'active')
+                                balance, period, period_started_at, metadata, policy, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $5, $7, $8, $9, '{}'::jsonb, 'active')
             RETURNING id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                      balance, period, period_started_at, metadata, status, created_at, updated_at
+                      balance, period, period_started_at, metadata, policy, status, created_at, updated_at
             "#,
         )
         .bind(input.org_id)
@@ -112,7 +112,7 @@ impl Database {
         let row = sqlx::query_as::<_, BudgetRow>(
             r#"
             SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                   balance, period, period_started_at, metadata, status, created_at, updated_at
+                   balance, period, period_started_at, metadata, policy, status, created_at, updated_at
             FROM budgets
             WHERE org_id = $1 AND id = $2
             "#,
@@ -133,7 +133,7 @@ impl Database {
         let rows = sqlx::query_as::<_, BudgetRow>(
             r#"
             SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                   balance, period, period_started_at, metadata, status, created_at, updated_at
+                   balance, period, period_started_at, metadata, policy, status, created_at, updated_at
             FROM budgets
             WHERE org_id = $1
               AND ($2::TEXT IS NULL OR subject_type = $2)
@@ -167,7 +167,7 @@ impl Database {
         let rows = sqlx::query_as::<_, BudgetRow>(
             r#"
             SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                   balance, period, period_started_at, metadata, status, created_at, updated_at
+                   balance, period, period_started_at, metadata, policy, status, created_at, updated_at
             FROM budgets
             WHERE org_id = $1
               AND status != 'disabled'
@@ -231,7 +231,7 @@ impl Database {
         let rows = sqlx::query_as::<_, BudgetRow>(
             r#"
             SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                   balance, period, period_started_at, metadata, status, created_at, updated_at
+                   balance, period, period_started_at, metadata, policy, status, created_at, updated_at
             FROM budgets
             WHERE org_id = $1
               AND status = 'active'
@@ -268,7 +268,7 @@ impl Database {
                    END
              WHERE id = $1
          RETURNING id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                   balance, period, period_started_at, metadata, status, created_at, updated_at
+                   balance, period, period_started_at, metadata, policy, status, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -295,11 +295,19 @@ impl Database {
                     WHEN $3 IS NOT NULL THEN balance + ($3 - "limit")
                     ELSE balance
                 END,
-                status = COALESCE($6, status),
-                metadata = COALESCE($7, metadata)
+                -- A raised limit or a new policy gets a fresh evaluation: the
+                -- next check sets exhausted again if a stop step is still
+                -- reached. An explicit status always wins.
+                status = COALESCE($6, CASE
+                    WHEN ($3 IS NOT NULL OR $8::jsonb IS NOT NULL) AND status IN ('paused', 'exhausted')
+                        THEN 'active'
+                    ELSE status
+                END),
+                metadata = COALESCE($7, metadata),
+                policy = COALESCE($8, policy)
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                      balance, period, period_started_at, metadata, status, created_at, updated_at
+                      balance, period, period_started_at, metadata, policy, status, created_at, updated_at
             "#,
         )
         .bind(org_id)
@@ -309,6 +317,7 @@ impl Database {
         .bind(input.soft_limit.flatten())
         .bind(input.status.as_deref())
         .bind(&input.metadata)
+        .bind(&input.policy)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
@@ -391,7 +400,7 @@ impl Database {
             let _budget = sqlx::query_as::<_, BudgetRow>(
                 r#"
                 SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                       balance, period, period_started_at, metadata, status, created_at, updated_at
+                       balance, period, period_started_at, metadata, policy, status, created_at, updated_at
                 FROM budgets
                 WHERE id = $1
                 FOR UPDATE
@@ -408,7 +417,7 @@ impl Database {
                     SET balance = balance - $2
                     WHERE id = $1
                     RETURNING id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                              balance, period, period_started_at, metadata, status, created_at, updated_at
+                              balance, period, period_started_at, metadata, policy, status, created_at, updated_at
                     "#,
                 )
                 .bind(budget_id)
@@ -425,11 +434,11 @@ impl Database {
             INSERT INTO usage_ledger (
                 journal_id, budget_id, org_id, session_id, user_id, principal_id,
                 agent_id, harness_id, currency, amount, meter_source, ref_type,
-                ref_id, description, rating_metadata
+                ref_id, description, rating_metadata, basis, rate_id
             ) VALUES (
                 $1, $2, $3, $4, $5, $6,
                 $7, $8, $9, $10, $11, $12,
-                $13, $14, $15
+                $13, $14, $15, $16, $17
             )
             RETURNING {UsageLedgerRow}
             "#
@@ -449,6 +458,8 @@ impl Database {
         .bind(input.ref_id)
         .bind(input.description.as_deref())
         .bind(&input.rating_metadata)
+        .bind(input.basis.as_deref())
+        .bind(input.rate_id)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -480,7 +491,7 @@ impl Database {
         let budget = sqlx::query_as::<_, BudgetRow>(
             r#"
             SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                   balance, period, period_started_at, metadata, status, created_at, updated_at
+                   balance, period, period_started_at, metadata, policy, status, created_at, updated_at
             FROM budgets
             WHERE id = $1
             "#,
@@ -540,6 +551,8 @@ impl Database {
                     "ruleset_version": "v1",
                     "compatibility_wrapper": true,
                 })),
+                basis: None,
+                rate_id: None,
             })
             .await?;
 
@@ -589,7 +602,7 @@ impl Database {
             UPDATE budgets SET status = $2
             WHERE id = $1
             RETURNING id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                      balance, period, period_started_at, metadata, status, created_at, updated_at
+                      balance, period, period_started_at, metadata, policy, status, created_at, updated_at
             "#,
         )
         .bind(id)
