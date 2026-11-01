@@ -39,11 +39,56 @@ fn tool_called_rule() {
     let scorer = Scorer::ToolCalled {
         tool: "web_fetch".into(),
         min: 2,
+        arguments_contain: None,
         weight: 1.0,
     };
     let calls = vec!["web_fetch".to_string(), "web_fetch".to_string()];
     assert!(score_rule(&scorer, &input("", &calls)).unwrap().pass);
     assert!(!score_rule(&scorer, &input("", &calls[..1])).unwrap().pass);
+}
+
+#[test]
+fn tool_called_rule_matches_arguments() {
+    let scorer = Scorer::ToolCalled {
+        tool: "lookup_order".into(),
+        min: 1,
+        arguments_contain: Some("\"A-1042\"".into()),
+        weight: 1.0,
+    };
+    let calls = vec!["lookup_order".to_string(), "lookup_order".to_string()];
+    let matching = vec![
+        r#"{"order":"A-9"}"#.to_string(),
+        r#"{"order":"A-1042"}"#.to_string(),
+    ];
+    let other = vec![r#"{"order":"A-9"}"#.to_string()];
+    let with = |args: &[String]| {
+        let mut grade = input("", &calls);
+        grade.tool_arguments = args;
+        score_rule(&scorer, &grade).unwrap()
+    };
+    let hit = with(&matching);
+    assert!(hit.pass, "{}", hit.reason);
+    assert!(hit.reason.contains("with arguments containing"));
+    // The second call has no recorded arguments, so it does not count.
+    assert!(!with(&other).pass);
+    assert!(!with(&[]).pass);
+    let empty = Scorer::ToolCalled {
+        tool: "x".into(),
+        min: 1,
+        arguments_contain: Some(String::new()),
+        weight: 1.0,
+    };
+    assert!(empty.validate().is_err());
+}
+
+#[test]
+fn decision_request_includes_the_conversation() {
+    let mut grade = input("Refund issued", &[]);
+    let plain = decision_request("Was it resolved?", &None, &None, &grade);
+    assert!(plain.state.get("conversation").is_none());
+    grade.transcript = "User: hi\n\nAgent: hello";
+    let multi = decision_request("Was it resolved?", &None, &None, &grade);
+    assert_eq!(multi.state["conversation"], "User: hi\n\nAgent: hello");
 }
 
 #[test]

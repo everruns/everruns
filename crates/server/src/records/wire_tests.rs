@@ -319,7 +319,15 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
         tags: vec![],
         model_id: None,
         capabilities: vec![AgentCapabilityConfig::new("session")],
-        tools: vec![],
+        tools: vec![
+            serde_json::from_value(serde_json::json!({
+                "type": "client_side",
+                "name": "create_ticket",
+                "description": "Open a helpdesk ticket.",
+                "parameters": {"type": "object"},
+            }))
+            .unwrap(),
+        ],
         system_prompt: None,
         initial_files: vec![],
         hints: None,
@@ -358,4 +366,7 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
     // The bad entry is dropped; the valid capability survives.
     assert_eq!(schema_session.capabilities.len(), 1);
     assert_eq!(schema_session.capabilities[0].capability_id(), "session");
+    // Session client-side tools cross the worker protocol intact.
+    assert_eq!(schema_session.tools.len(), 1);
+    assert_eq!(schema_session.tools[0].name(), "create_ticket");
 }

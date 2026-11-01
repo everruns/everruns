@@ -26,6 +26,12 @@ pub(crate) fn case_row_to_case(row: crate::storage::EvalCaseRow) -> EvalCase {
         max_turns: row.max_turns.map(|v| v as u32),
         timeout_seconds: row.timeout_seconds.map(|v| v as u32),
         position: row.position,
+        simulated_user: row
+            .simulated_user
+            .and_then(|v| serde_json::from_value(v).ok()),
+        tool_fixtures: row
+            .tool_fixtures
+            .and_then(|v| serde_json::from_value(v).ok()),
         created_at: row.created_at,
         updated_at: row.updated_at,
     }

@@ -93,6 +93,41 @@ impl MessageService {
         self
     }
 
+    /// Answer the pending client-side tool calls of a waiting session from
+    /// server code, the way `POST /v1/sessions/{id}/tool-results` does. Eval
+    /// tool fixtures use it. Returns `false` when the session is no longer
+    /// waiting (another answer won, or the turn ended).
+    pub async fn submit_tool_results(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        results: &[crate::domains::tool_results::types::ClientToolResult],
+    ) -> Result<bool> {
+        let completed = results
+            .iter()
+            .map(crate::domains::tool_results::types::ClientToolResult::completed)
+            .collect();
+        match self
+            .db
+            .claim_tool_result_command(org_id, session_id, completed)
+            .await?
+        {
+            crate::storage::ClaimWaitingTurnResult::Claimed(claim) => {
+                execute_waiting_turn_resolution(
+                    &self.db,
+                    &self.event_service,
+                    &self.runner,
+                    org_id,
+                    session_id,
+                    &claim,
+                )
+                .await?;
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
+    }
+
     async fn ensure_active_user_participant(
         &self,
         org_id: i64,

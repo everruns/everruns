@@ -1,6 +1,16 @@
 import type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
 export type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
 export type {
+  ArtifactSpec,
+  CreateEvalCaseRequest,
+  CreateEvalRunRequest,
+  EvalCase,
+  EvalInputMessage,
+  Scorer,
+  SimulatedUser,
+  ToolFixture,
+} from "./eval-case-types";
+export type {
   Organization,
   UpdateOrganizationRequest,
   SystemDecisionsSource,
@@ -1473,81 +1483,6 @@ export interface Eval {
   updated_at: string;
 }
 
-export interface EvalCase {
-  id: string;
-  name: string;
-  description?: string;
-  target?: EvalTarget;
-  tags: string[];
-  conversation: EvalInputMessage[];
-  artifacts?: ArtifactSpec[];
-  scorers: Scorer[];
-  max_turns?: number;
-  timeout_seconds?: number;
-  position: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface EvalInputMessage {
-  content: string;
-}
-
-export interface ArtifactSpec {
-  name: string;
-  path: string;
-}
-
-export type Scorer =
-  | {
-      type: "contains";
-      text: string;
-      weight?: number;
-    }
-  | {
-      type: "not_contains";
-      text: string;
-      weight?: number;
-    }
-  | {
-      type: "regex";
-      pattern: string;
-      weight?: number;
-    }
-  | {
-      type: "tool_called";
-      tool: string;
-      min?: number;
-      weight?: number;
-    }
-  | {
-      type: "tool_not_called";
-      tool: string;
-      weight?: number;
-    }
-  | {
-      type: "tool_call_count";
-      min?: number;
-      max?: number;
-      weight?: number;
-    }
-  | {
-      type: "turns_within";
-      max: number;
-      weight?: number;
-    }
-  | {
-      type: "file_contains";
-      path: string;
-      text: string;
-      weight?: number;
-    }
-  | {
-      type: "json_schema";
-      schema: object;
-      weight?: number;
-    };
-
 // Provenance for an externally-executed (imported) run. Open-vocab; the
 // producing system (e.g. Mira) fills what it has.
 export interface EvalRunAttribution {
@@ -1692,24 +1627,6 @@ export interface UpdateEvalRequest {
   target?: EvalTarget;
   model_override?: string;
   tags?: string[];
-}
-
-export interface CreateEvalCaseRequest {
-  name: string;
-  description?: string;
-  target?: EvalTarget;
-  tags?: string[];
-  conversation: EvalInputMessage[];
-  artifacts?: ArtifactSpec[];
-  scorers: Scorer[];
-  max_turns?: number;
-  timeout_seconds?: number;
-  position?: number;
-}
-
-export interface CreateEvalRunRequest {
-  target?: EvalTarget;
-  model_override?: string;
 }
 
 // ============================================

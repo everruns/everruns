@@ -4,6 +4,7 @@
 // the domain never imports `api`. The `api` module re-exports them, keeping
 // OpenAPI schema names and JSON shapes unchanged.
 
+use crate::domains::evals::multistep::{SimulatedUser, ToolFixture};
 use crate::domains::evals::record::*;
 use everruns_contracts::typed_id::EvalResultId;
 use serde::{Deserialize, Serialize};
@@ -57,7 +58,7 @@ pub struct UpdateEvalRequest {
 }
 
 /// Request to create an eval case
-#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalCaseRequest {
     /// Human-readable name. Safe to render in user-facing messages.
     #[schema(example = "fix-failing-test")]
@@ -73,7 +74,9 @@ pub struct CreateEvalCaseRequest {
     /// Free-form tags attached to this resource.
     #[schema(example = json!(["regression", "nightly"]))]
     pub tags: Option<Vec<String>>,
-    /// Input messages sent to the agent sequentially.
+    /// Input messages sent to the agent sequentially. May be empty when a
+    /// simulated user opens the conversation.
+    #[serde(default)]
     #[schema(example = json!([{"content": "Fix the failing test in src/lib.rs"}]))]
     pub conversation: Vec<EvalInputMessage>,
     /// Verification messages sent after conversation completes and session idles.
@@ -99,10 +102,17 @@ pub struct CreateEvalCaseRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = 0)]
     pub position: Option<i32>,
+    /// A model that plays the user after the scripted messages, until it is
+    /// done or reaches its turn limit. Not combined with `post`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub simulated_user: Option<SimulatedUser>,
+    /// Tools the case gives the agent, each answered with a canned response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_fixtures: Option<Vec<ToolFixture>>,
 }
 
 /// Request to update an eval case
-#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEvalCaseRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable name. Safe to render in user-facing messages.
@@ -147,6 +157,29 @@ pub struct UpdateEvalCaseRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = 0)]
     pub position: Option<i32>,
+    /// Simulated user. `null` removes it, back to scripted messages only.
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[schema(value_type = Option<SimulatedUser>)]
+    pub simulated_user: Option<Option<SimulatedUser>>,
+    /// Tool fixtures, replacing the stored ones. `null` removes them.
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[schema(value_type = Option<Vec<ToolFixture>>)]
+    pub tool_fixtures: Option<Option<Vec<ToolFixture>>>,
+}
+
+/// Present-but-null is `Some(None)`, absent is `None`.
+fn double_option<'de, T: serde::Deserialize<'de>, D: serde::Deserializer<'de>>(
+    de: D,
+) -> Result<Option<Option<T>>, D::Error> {
+    Option::<T>::deserialize(de).map(Some)
 }
 
 /// Request to create an eval run
@@ -169,6 +202,11 @@ pub struct CreateEvalRunRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = 5.0)]
     pub max_cost_usd: Option<f64>,
+    /// Run only these cases of the eval, by public id ("Try once" on a case
+    /// page). Omitted runs every case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!(["evalcase_01933b5a00007000800000000000001"]))]
+    pub case_ids: Option<Vec<String>>,
 }
 
 /// Result status reported alongside externally computed scores.

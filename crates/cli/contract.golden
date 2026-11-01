@@ -117,11 +117,11 @@ durable schedules stats get	--context-revision --reason --schedule-id!
 durable schedules trigger	--context-revision --reason --schedule-id!
 durable schedules update	--catch-up-missed --context-revision --cron-expression --description --enabled --max-catch-up --max-concurrent --reason --retry-policy --schedule-id! --target --timezone
 evals atif-import import	--body! --context-revision --eval-id! --reason
-evals cases create	--artifacts --context-revision --conversation! --description --eval-id! --max-turns --name! --position --post --reason --scorers! --tags... --target --timeout-seconds
+evals cases create	--artifacts --context-revision --conversation --description --eval-id! --max-turns --name! --position --post --reason --scorers! --simulated-user --tags... --target --timeout-seconds --tool-fixtures
 evals cases delete	--case-id! --context-revision --eval-id! --reason
 evals cases get	--case-id! --context-revision --eval-id! --reason
 evals cases list	--context-revision --eval-id! --reason
-evals cases update	--artifacts --case-id! --context-revision --conversation --description --eval-id! --max-turns --name --position --post --reason --scorers --tags... --target --timeout-seconds
+evals cases update	--artifacts --case-id! --context-revision --conversation --description --eval-id! --max-turns --name --position --post --reason --scorers --simulated-user --tags... --target --timeout-seconds --tool-fixtures
 evals create	--context-revision --description --model-override --name! --reason --tags... --target
 evals delete	--context-revision --eval-id! --reason
 evals experiments create	--context-revision --eval-id! --max-cost-usd --name --reason --trials --variants!
@@ -135,7 +135,7 @@ evals import-preflight	--context-revision --reason
 evals list	--context-revision --include-archived --reason --search
 evals runs artifacts export	--context-revision --eval-id! --reason --run-id!
 evals runs cancel	--context-revision --eval-id! --reason --run-id!
-evals runs create	--context-revision --eval-id! --max-cost-usd --model-override --reason --target --trials
+evals runs create	--case-ids... --context-revision --eval-id! --max-cost-usd --model-override --reason --target --trials
 evals runs dataset export	--context-revision --eval-id! --filters --format --reason --redaction --run-id!
 evals runs dataset get	--context-revision --dataset-id! --eval-id! --reason --run-id!
 evals runs get	--context-revision --eval-id! --reason --run-id!

@@ -6,6 +6,7 @@
 use crate::auth::share_token::{SHARE_PREFIX, generate_share_token, hash_share_token};
 use crate::domains::evals::convert::{case_row_to_case, run_row_to_run};
 use crate::domains::evals::limits::EvalLimits;
+use crate::domains::evals::multistep::{create_parts, select_cases, update_parts};
 use crate::domains::evals::record::*;
 use crate::domains::evals::runner::{EvalRunContext, dispatch_eval_run};
 use crate::domains::evals::types::{
@@ -240,6 +241,7 @@ impl EvalService {
             .transpose()?;
 
         validate_scorers(&req.scorers)?;
+        let (simulated_user, tool_fixtures) = create_parts(&req)?;
         let input = CreateEvalCaseRow {
             public_id: case_public_id.to_string(),
             name: req.name,
@@ -253,6 +255,8 @@ impl EvalService {
             max_turns: req.max_turns.map(|v| v as i32),
             timeout_seconds: req.timeout_seconds.map(|v| v as i32),
             position: req.position.unwrap_or(case_count as i32),
+            simulated_user,
+            tool_fixtures,
         };
 
         let row = self.db.create_eval_case(eval.id, input).await?;
@@ -312,7 +316,8 @@ impl EvalService {
 
         let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
 
-        let post_json = req.post.map(serde_json::to_value).transpose()?;
+        let post_json = req.post.as_ref().map(serde_json::to_value).transpose()?;
+        let (simulated_user, tool_fixtures) = update_parts(&req, &case)?;
         let artifacts_json = req.artifacts.map(serde_json::to_value).transpose()?;
 
         req.scorers.as_deref().map(validate_scorers).transpose()?;
@@ -328,6 +333,8 @@ impl EvalService {
             max_turns: req.max_turns.map(|v| v as i32),
             timeout_seconds: req.timeout_seconds.map(|v| v as i32),
             position: req.position,
+            simulated_user,
+            tool_fixtures,
         };
 
         let row = self.db.update_eval_case(case.id, input).await?;
@@ -379,6 +386,10 @@ impl EvalService {
         let run_public_id = EvalRunId::from_uuid(run_uuid);
 
         let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
+        let case_ids = match &req.case_ids {
+            Some(ids) => Some(select_cases(&self.db.list_eval_cases(eval.id).await?, ids)?),
+            None => None,
+        };
 
         let input = CreateEvalRunRow {
             public_id: run_public_id.to_string(),
@@ -391,6 +402,7 @@ impl EvalService {
             started_by_user_id: caller.user_id,
             started_by_role: crate::domains::evals::runner::started_by_role(caller),
             max_cost_usd: req.max_cost_usd,
+            case_ids,
         };
 
         // Load eval-level target for resolution
@@ -939,17 +951,9 @@ impl EvalService {
         for draft in drafts {
             if let Some(case_id) = by_name.get(&draft.name).cloned() {
                 let req = UpdateEvalCaseRequest {
-                    name: None,
                     description: Some(draft.description),
-                    target: None,
-                    tags: None,
                     conversation: Some(draft.conversation),
-                    post: None,
-                    artifacts: None,
-                    scorers: None,
-                    max_turns: None,
-                    timeout_seconds: None,
-                    position: None,
+                    ..Default::default()
                 };
                 let case = self
                     .update_case(caller, eval_public_id, &case_id, req)
@@ -962,17 +966,11 @@ impl EvalService {
                 let req = CreateEvalCaseRequest {
                     name: draft.name,
                     description: Some(draft.description),
-                    target: None,
                     tags: Some(vec!["atif-import".to_string()]),
                     conversation: draft.conversation,
-                    post: None,
-                    artifacts: None,
                     // ATIF carries no assertion semantics; imported cases start
                     // unscored and users attach scorers afterwards.
-                    scorers: vec![],
-                    max_turns: None,
-                    timeout_seconds: None,
-                    position: None,
+                    ..Default::default()
                 };
                 let case = self.create_case(caller, eval_public_id, req).await?;
                 created += 1;
@@ -1598,6 +1596,8 @@ mod tests {
                     max_turns: None,
                     timeout_seconds: None,
                     position: i as i32,
+                    simulated_user: None,
+                    tool_fixtures: None,
                 },
             )
             .await

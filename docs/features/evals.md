@@ -15,7 +15,7 @@ Because every case runs a **real session** against the target agent and harness,
 | Entity | What it is |
 |---|---|
 | **Eval** | Top-level, org-scoped collection of cases. Follows the standard `active → archived → deleted` lifecycle. |
-| **EvalCase** | A single test: input messages, scoring rules, execution bounds, and optional artifact collection. |
+| **EvalCase** | A single test: input messages or a simulated user, tool fixtures, scoring rules, execution bounds, and optional artifact collection. |
 | **EvalRun** | One execution of an eval's cases against a target, producing per-case results. |
 | **EvalTarget** | How a session is instantiated from a Harness, Agent, model, and system prompt. |
 
@@ -30,6 +30,25 @@ Targets resolve in order `EvalRun → EvalCase → Eval → org default harness`
 5. `scorers` grade the result, returning `0.0`–`1.0` for nuanced pass/fail.
 
 Eval runs are durable workflows: they reuse the same execution engine as production sessions, so a worker restart mid-run does not lose progress.
+
+## Multistep cases
+
+A case can test a whole conversation instead of one exchange.
+
+- **Simulated user**: give the case a persona, a goal and, optionally, when the user is done. After the scripted messages (there may be none), a model writes each next user message from the conversation so far, until it decides the goal is met or reaches the turn limit (default 8, at most 30). It runs on your organization's models, the default or one you pick, and its spend counts toward the run's cap. It can play the user as a virtual user, so the agent sees that end user's identity and connections. Each result records how the conversation ended and which model played the user.
+- **Tool fixtures**: tools the agent gets in this case with a canned response. Every call is answered with the response and kept in the trace, so the case never reaches a real system. The `tool_called` grader's `arguments_contain` checks what the agent sent, for example the right order number.
+
+Judge and decision graders of a multistep case see the whole conversation. `post` messages do not combine with a simulated user.
+
+```bash
+everruns evals cases create --eval-id eval_01h9 --name "Refund, angry customer" \
+  --simulated-user '{"persona":"Shop owner charged twice for the Pro plan, writes short messages","goal":"Get the duplicate charge refunded","done_when":"A refund ticket exists with order ORD-48213"}' \
+  --tool-fixtures '[{"name":"create_ticket","description":"Open a helpdesk ticket","response":{"ticket":"T-1042"}}]' \
+  --scorers '[{"type":"tool_called","tool":"create_ticket","arguments_contain":"ORD-48213"}]' \
+  --reason 'Cover the refund conversation'
+```
+
+On a case's page, **Try once** runs only that case and opens the run.
 
 ## Experiments
 

@@ -6,6 +6,7 @@ import {
   evalsCrudApi,
   listEvalCases,
   createEvalCase,
+  updateEvalCase,
   deleteEvalCase,
   listEvalRuns,
   getEvalRun,
@@ -20,6 +21,7 @@ import type {
   CreateEvalRequest,
   UpdateEvalRequest,
   CreateEvalCaseRequest,
+  UpdateEvalCaseRequest,
   CreateEvalRunRequest,
   EvalRun,
   EvalExperiment,
@@ -76,6 +78,22 @@ export function useCreateEvalCase(evalId: string) {
 
   return useMutation({
     mutationFn: (request: CreateEvalCaseRequest) => createEvalCase(evalId, request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.evals.cases(evalId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.evals.detail(evalId),
+      });
+    },
+  });
+}
+
+export function useUpdateEvalCase(evalId: string, caseId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpdateEvalCaseRequest) => updateEvalCase(evalId, caseId, request),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.evals.cases(evalId),

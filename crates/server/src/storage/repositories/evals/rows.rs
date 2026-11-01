@@ -64,6 +64,8 @@ pub struct EvalCaseRow {
     pub max_turns: Option<i32>,
     pub timeout_seconds: Option<i32>,
     pub position: i32,
+    pub simulated_user: Option<serde_json::Value>,
+    pub tool_fixtures: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -83,6 +85,8 @@ pub struct CreateEvalCaseRow {
     pub max_turns: Option<i32>,
     pub timeout_seconds: Option<i32>,
     pub position: i32,
+    pub simulated_user: Option<serde_json::Value>,
+    pub tool_fixtures: Option<serde_json::Value>,
 }
 
 /// Input for updating an eval case
@@ -99,6 +103,10 @@ pub struct UpdateEvalCaseRow {
     pub max_turns: Option<i32>,
     pub timeout_seconds: Option<i32>,
     pub position: Option<i32>,
+    /// `Some(None)` clears it (the case goes back to scripted messages).
+    pub simulated_user: Option<Option<serde_json::Value>>,
+    /// `Some(None)` clears them.
+    pub tool_fixtures: Option<Option<serde_json::Value>>,
 }
 
 /// Eval run row from database
@@ -200,6 +208,9 @@ pub struct CreateEvalRunRow {
     pub started_by_role: Option<String>,
     /// Spending cap; creates the run's `eval_run` budget with the run.
     pub max_cost_usd: Option<f64>,
+    /// Run only these cases (row ids); `None` runs every case. A selection,
+    /// not stored on the run.
+    pub case_ids: Option<Vec<Uuid>>,
 }
 
 /// Typed failures from `create_eval_run_with_case_results`. Returned (boxed in
@@ -213,6 +224,8 @@ pub enum CreateEvalRunError {
     TooManyCases { cases: usize, limit: usize },
     #[error("no eval target configured — set a target on the eval, case, or run")]
     NoTarget,
+    #[error("none of the selected cases belong to this eval")]
+    NoMatchingCases,
 }
 
 /// Eval case result row from database

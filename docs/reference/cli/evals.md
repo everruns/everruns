@@ -208,13 +208,13 @@ everruns evals atif-import import --eval-id eval_01h9 --body "$(cat trajectories
 Create an eval case.
 
 ```bash
-everruns evals cases create [OPTIONS] --conversation <conversation> --eval-id <eval_id> --name <name> --scorers <scorers>
+everruns evals cases create [OPTIONS] --eval-id <eval_id> --name <name> --scorers <scorers>
 ```
 
 | Flag | Description |
 |---|---|
 | `--artifacts <ARTIFACTS>` | Session files to capture after scoring completes. |
-| `--conversation <CONVERSATION>` | Required. Input messages sent to the agent sequentially. |
+| `--conversation <CONVERSATION>` | Input messages sent to the agent sequentially. |
 | `--description <DESCRIPTION>` | Human-readable description. |
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 | `--max-turns <MAX_TURNS>` | Maximum agent turns before the case stops. |
@@ -222,9 +222,11 @@ everruns evals cases create [OPTIONS] --conversation <conversation> --eval-id <e
 | `--position <POSITION>` | Display order within the eval. |
 | `--post <POST>` | Verification messages sent after conversation completes and session idles. |
 | `--scorers <SCORERS>` | Required. Scoring rules applied to the case output. |
+| `--simulated-user <SIMULATED_USER>` |  |
 | `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 | `--target <TARGET>` |  |
 | `--timeout-seconds <TIMEOUT_SECONDS>` | Per-case timeout in seconds. |
+| `--tool-fixtures <TOOL_FIXTURES>` | Tools the case gives the agent, each answered with a canned response. |
 
 Example:
 
@@ -312,9 +314,11 @@ everruns evals cases update [OPTIONS] --case-id <case_id> --eval-id <eval_id>
 | `--position <POSITION>` | Display order within the eval. |
 | `--post <POST>` | Verification messages sent after conversation completes. |
 | `--scorers <SCORERS>` | Scoring rules applied to the case output. |
+| `--simulated-user <SIMULATED_USER>` |  |
 | `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 | `--target <TARGET>` |  |
 | `--timeout-seconds <TIMEOUT_SECONDS>` | Per-case timeout in seconds. |
+| `--tool-fixtures <TOOL_FIXTURES>` | Tool fixtures, replacing the stored ones. |
 
 Example:
 
@@ -454,6 +458,7 @@ everruns evals runs create [OPTIONS] --eval-id <eval_id>
 
 | Flag | Description |
 |---|---|
+| `--case-ids <CASE_IDS>` | Run only these cases of the eval, by public id ("Try once" on a case page). Comma-separated or a JSON array of strings. Repeatable. |
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 | `--max-cost-usd <MAX_COST_USD>` | Spending cap in USD for the whole run, agents and grading together. Once spent, running turns... |
 | `--model-override <MODEL_OVERRIDE>` | Model override for this run. |

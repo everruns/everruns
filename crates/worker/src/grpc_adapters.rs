@@ -52,7 +52,7 @@ pub use shared_client::SharedClient;
 mod mcp_definitions;
 use mcp_definitions::proto_mcp_tool_def_to_tool_definition;
 mod definition_reads;
-use definition_reads::proto_agent_to_definition;
+use definition_reads::{proto_agent_to_definition, proto_tool_definitions};
 pub(crate) const COMMAND_API_VERSION_V1: &str = "v1";
 
 /// Create a store error for issues in gRPC responses (e.g., missing fields).
@@ -1223,7 +1223,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<ExecutionSe
         tags: proto_session.tags,
         model_id: model_id.map(|u| u.into()),
         capabilities,
-        tools: vec![],
+        tools: proto_tool_definitions(&proto_session.tools, "session")?,
         mcp_servers: Default::default(),
         system_prompt: proto_session.system_prompt.clone(),
         initial_files: serde_json::from_str(&proto_session.initial_files_json).unwrap_or_default(),
