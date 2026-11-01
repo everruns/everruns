@@ -318,6 +318,19 @@ struct SeededRun {
     result_ids: Vec<String>,
 }
 
+/// A one-trial internal run row with no target or overrides.
+fn test_run_row(public_id: &str, eval_id: uuid::Uuid) -> CreateEvalRunRow {
+    CreateEvalRunRow {
+        public_id: public_id.to_string(),
+        eval_id,
+        target: None,
+        model_override: None,
+        filter_tags: None,
+        triggered_by: "test".to_string(),
+        trials: 1,
+    }
+}
+
 async fn seed_completed_run(server: &TestServer) -> SeededRun {
     let eval: Eval = server
         .post(
@@ -378,18 +391,7 @@ async fn seed_completed_run(server: &TestServer) -> SeededRun {
     let run_public_id = EvalRunId::from_uuid(uuid::Uuid::now_v7()).to_string();
     let run_row = server
         .db
-        .create_eval_run(
-            TEST_ORG_ID,
-            CreateEvalRunRow {
-                public_id: run_public_id.clone(),
-                eval_id: eval_row.id,
-                target: None,
-                model_override: None,
-                filter_tags: None,
-                triggered_by: "test".to_string(),
-                trials: 1,
-            },
-        )
+        .create_eval_run(TEST_ORG_ID, test_run_row(&run_public_id, eval_row.id))
         .await
         .expect("create run");
 
@@ -620,18 +622,7 @@ async fn seed_run_with_session_events(server: &TestServer) -> (String, String) {
     let run_public_id = EvalRunId::from_uuid(Uuid::now_v7()).to_string();
     let run_row = server
         .db
-        .create_eval_run(
-            TEST_ORG_ID,
-            CreateEvalRunRow {
-                public_id: run_public_id.clone(),
-                eval_id: eval_row.id,
-                target: None,
-                model_override: None,
-                filter_tags: None,
-                triggered_by: "test".to_string(),
-                trials: 1,
-            },
-        )
+        .create_eval_run(TEST_ORG_ID, test_run_row(&run_public_id, eval_row.id))
         .await
         .expect("create run");
 
@@ -1034,18 +1025,7 @@ async fn seed_run_with_tool_iterations(
     let run_public_id = EvalRunId::from_uuid(Uuid::now_v7()).to_string();
     let run_row = server
         .db
-        .create_eval_run(
-            TEST_ORG_ID,
-            CreateEvalRunRow {
-                public_id: run_public_id.clone(),
-                eval_id: eval_row.id,
-                target: None,
-                model_override: None,
-                filter_tags: None,
-                triggered_by: "test".to_string(),
-                trials: 1,
-            },
-        )
+        .create_eval_run(TEST_ORG_ID, test_run_row(&run_public_id, eval_row.id))
         .await
         .expect("create run");
     let target = json!({ "type": "session", "harness_id": TEST_HARNESS_ID });
