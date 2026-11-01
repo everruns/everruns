@@ -234,6 +234,8 @@ mod tests {
             scorers: serde_json::json!([]),
             max_turns: None,
             timeout_seconds: None,
+            simulated_user: None,
+            tool_fixtures: None,
             position,
             created_at: Utc::now(),
             updated_at: Utc::now(),

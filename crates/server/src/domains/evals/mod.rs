@@ -7,6 +7,7 @@ pub mod dataset_export;
 pub mod experiments;
 pub mod graders;
 pub mod limits;
+pub mod multistep;
 pub mod queries;
 pub mod record;
 pub mod runner;

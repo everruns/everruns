@@ -22,6 +22,10 @@ use everruns_contracts::provider::DriverId;
 use everruns_contracts::typed_id::ModelId;
 
 use crate::services::ProviderResolverService;
+
+/// Extra output tokens a reasoning model gets for its reasoning, on top of
+/// the answer's budget.
+const REASONING_HEADROOM_TOKENS: u32 = 4000;
 use crate::storage::StorageBackend;
 
 /// Parsed structured output from the judge model.
@@ -169,15 +173,37 @@ impl LlmJudgeClient {
     }
 }
 
-#[async_trait]
-impl JudgeClient for LlmJudgeClient {
-    async fn judge(
+/// One completion from an org's own model: the text and what it cost.
+#[derive(Debug, Clone)]
+pub struct OrgCompletion {
+    pub text: String,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cost_usd: Option<f64>,
+}
+
+/// Sampling and attribution for one [`LlmJudgeClient::complete`] call.
+#[derive(Debug, Clone, Copy)]
+pub struct CompletionOptions<'a> {
+    pub temperature: f32,
+    pub max_tokens: u32,
+    /// Request metadata naming the caller.
+    pub purpose: &'a str,
+}
+
+impl LlmJudgeClient {
+    /// Ask `model_id` (the org's default model when `None`) to answer
+    /// `system` and `user`. `Ok(None)` when the org has no usable model, a
+    /// lasting condition. Shared with the eval user simulator, which plays a
+    /// user through the same resolution and billing.
+    pub async fn complete(
         &self,
         org_id: i64,
         model_id: Option<ModelId>,
-        rubric: &str,
-        evidence: &TurnEvidence,
-    ) -> Result<Option<JudgeResult>> {
+        system: String,
+        user: String,
+        options: CompletionOptions<'_>,
+    ) -> Result<Option<OrgCompletion>> {
         // Resolve the org's model + decrypted provider credentials. A missing
         // model is a permanent config condition → Ok(None) so the worker skips
         // (rather than retrying and finally erroring).
@@ -204,7 +230,7 @@ impl JudgeClient for LlmJudgeClient {
         };
         let mut provider_config = ProviderConfig::for_provider(
             everruns_contracts::runtime_provider::ProviderKey::new(&resolved.provider_id),
-            driver_id,
+            driver_id.clone(),
         );
         provider_config.api_key = Some(runtime_provider.credentials.api_key);
         provider_config.base_url = runtime_provider.credentials.base_url;
@@ -212,17 +238,28 @@ impl JudgeClient for LlmJudgeClient {
         provider_config.api = runtime_provider.api;
         let driver = self.driver_registry.create_chat_driver(&provider_config)?;
 
-        let (system, user) = build_judge_messages(rubric, evidence);
         let messages = vec![
             Message::text(MessageRole::System, system),
             Message::text(MessageRole::User, user),
         ];
+        // Reasoning models (GPT-6 Luna, Sol) reject `temperature`, and spend
+        // output tokens on reasoning before the answer: send temperature only
+        // where the profile accepts it, and give reasoning models low effort
+        // plus headroom so the short answer is not cut off.
+        let profile =
+            everruns_contracts::model_profiles::get_model_profile(&driver_id, &resolved.model_id);
         let mut config = LlmCallConfig::new(resolved.model_id);
-        config.temperature = Some(0.0);
-        config.max_tokens = Some(700);
+        config.max_tokens = Some(options.max_tokens);
+        if profile.as_ref().is_none_or(|p| p.temperature) {
+            config.temperature = Some(options.temperature);
+        }
+        if profile.as_ref().is_some_and(|p| p.reasoning) {
+            config.reasoning_effort = Some(everruns_contracts::ReasoningEffort::Low);
+            config.max_tokens = Some(options.max_tokens + REASONING_HEADROOM_TOKENS);
+        }
         config.metadata = std::collections::HashMap::from([
             ("org_id".to_string(), org_id.to_string()),
-            ("scorer".to_string(), "observer_llm_judge".to_string()),
+            ("scorer".to_string(), options.purpose.to_string()),
         ]);
 
         let response = driver
@@ -232,15 +269,50 @@ impl JudgeClient for LlmJudgeClient {
                 &config,
             )
             .await?;
-        let parsed = parse_judge_output(&response.text)?;
         let meta = response.metadata;
+        Ok(Some(OrgCompletion {
+            text: response.text,
+            input_tokens: meta.prompt_tokens.map(|t| t as u64),
+            output_tokens: meta.completion_tokens.map(|t| t as u64),
+            cost_usd: meta.provider_cost_usd,
+        }))
+    }
+}
+
+#[async_trait]
+impl JudgeClient for LlmJudgeClient {
+    async fn judge(
+        &self,
+        org_id: i64,
+        model_id: Option<ModelId>,
+        rubric: &str,
+        evidence: &TurnEvidence,
+    ) -> Result<Option<JudgeResult>> {
+        let (system, user) = build_judge_messages(rubric, evidence);
+        let Some(response) = self
+            .complete(
+                org_id,
+                model_id,
+                system,
+                user,
+                CompletionOptions {
+                    temperature: 0.0,
+                    max_tokens: 700,
+                    purpose: "observer_llm_judge",
+                },
+            )
+            .await?
+        else {
+            return Ok(None);
+        };
+        let parsed = parse_judge_output(&response.text)?;
         Ok(Some(JudgeResult {
             value: parsed.value,
             label: parsed.label,
             reasoning: parsed.reasoning,
-            input_tokens: meta.prompt_tokens.map(|t| t as u64),
-            output_tokens: meta.completion_tokens.map(|t| t as u64),
-            cost_usd: meta.provider_cost_usd,
+            input_tokens: response.input_tokens,
+            output_tokens: response.output_tokens,
+            cost_usd: response.cost_usd,
         }))
     }
 }

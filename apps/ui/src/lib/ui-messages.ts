@@ -8,6 +8,7 @@ import { messages as monitoringTimeline } from "./messages/uk/monitoring-timelin
 import { messages as orgHome } from "./messages/uk/org-home";
 import { messages as costs } from "./messages/uk/costs";
 import { messages as evals } from "./messages/uk/evals";
+import { messages as evalCases } from "./messages/uk/eval-cases";
 import { messages as zh } from "./messages/zh-CN";
 import { messages as es } from "./messages/es";
 import { messages as de } from "./messages/de";
@@ -67,6 +68,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   orgHome,
   costs,
   evals,
+  evalCases,
 );
 
 /** Product catalogs use null-prototype maps so hostile lookup keys fall back safely. */

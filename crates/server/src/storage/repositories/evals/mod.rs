@@ -154,8 +154,8 @@ impl Database {
     ) -> Result<EvalCaseRow> {
         let row = sqlx::query_as::<_, EvalCaseRow>(
             sql!(r#"
-            INSERT INTO eval_cases (eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers, max_turns, timeout_seconds, position)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            INSERT INTO eval_cases (eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers, max_turns, timeout_seconds, position, simulated_user, tool_fixtures)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             RETURNING {EvalCaseRow}
             "#),
         )
@@ -172,6 +172,8 @@ impl Database {
         .bind(input.max_turns)
         .bind(input.timeout_seconds)
         .bind(input.position)
+        .bind(&input.simulated_user)
+        .bind(&input.tool_fixtures)
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
@@ -245,6 +247,8 @@ impl Database {
                 max_turns = COALESCE($10, max_turns),
                 timeout_seconds = COALESCE($11, timeout_seconds),
                 position = COALESCE($12, position),
+                simulated_user = CASE WHEN $13 THEN $14 ELSE simulated_user END,
+                tool_fixtures = CASE WHEN $15 THEN $16 ELSE tool_fixtures END,
                 updated_at = NOW()
             WHERE id = $1
             RETURNING {EvalCaseRow}
@@ -262,6 +266,10 @@ impl Database {
         .bind(input.max_turns)
         .bind(input.timeout_seconds)
         .bind(input.position)
+        .bind(input.simulated_user.is_some())
+        .bind(input.simulated_user.flatten())
+        .bind(input.tool_fixtures.is_some())
+        .bind(input.tool_fixtures.flatten())
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
@@ -357,11 +365,16 @@ impl Database {
             .into());
         }
 
-        let case_count: (i64,) =
-            sqlx::query_as("SELECT COUNT(*)::bigint FROM eval_cases WHERE eval_id = $1")
-                .bind(input.eval_id)
-                .fetch_one(&mut *tx)
-                .await?;
+        let case_count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*)::bigint FROM eval_cases WHERE eval_id = $1 AND ($2::uuid[] IS NULL OR id = ANY($2))",
+        )
+        .bind(input.eval_id)
+        .bind(&input.case_ids)
+        .fetch_one(&mut *tx)
+        .await?;
+        if case_count.0 == 0 && input.case_ids.is_some() {
+            return Err(CreateEvalRunError::NoMatchingCases.into());
+        }
         // The limit bounds durable work, so every trial counts.
         let trials = input.trials.max(1) as i64;
         if case_count.0 * trials > max_cases_per_run as i64 {
@@ -376,13 +389,14 @@ impl Database {
             r#"
             SELECT id
             FROM eval_cases
-            WHERE eval_id = $1
+            WHERE eval_id = $1 AND ($3::uuid[] IS NULL OR id = ANY($3))
             ORDER BY position ASC, created_at ASC
             LIMIT $2
             "#,
         )
         .bind(input.eval_id)
         .bind(max_cases_per_run as i64 + 1)
+        .bind(&input.case_ids)
         .fetch_all(&mut *tx)
         .await?;
 

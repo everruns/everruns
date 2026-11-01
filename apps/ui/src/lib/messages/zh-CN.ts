@@ -7,6 +7,7 @@ import { messages as monitoringTimeline } from "./zh-CN/monitoring-timeline";
 import { messages as orgHome } from "./zh-CN/org-home";
 import { messages as costs } from "./zh-CN/costs";
 import { messages as evals } from "./zh-CN/evals";
+import { messages as evalCases } from "./zh-CN/eval-cases";
 import { messages as catalog0 } from "./zh-CN/agents-01";
 import { messages as catalog1 } from "./zh-CN/agents-02";
 import { messages as catalog2 } from "./zh-CN/agents-03";
@@ -62,4 +63,5 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   orgHome,
   costs,
   evals,
+  evalCases,
 );

@@ -9,6 +9,7 @@ import type {
   UpdateEvalRequest,
   EvalCase,
   CreateEvalCaseRequest,
+  UpdateEvalCaseRequest,
   EvalRun,
   CreateEvalRunRequest,
   EvalRunShareLink,
@@ -46,6 +47,18 @@ export async function createEvalCase(
   request: CreateEvalCaseRequest,
 ): Promise<EvalCase> {
   const response = await api.post<EvalCase>(`${evalPath(evalId)}/cases`, request);
+  return response.data;
+}
+
+export async function updateEvalCase(
+  evalId: string,
+  caseId: string,
+  request: UpdateEvalCaseRequest,
+): Promise<EvalCase> {
+  const response = await api.patch<EvalCase>(
+    `${evalPath(evalId)}/cases/${encodeURIComponent(caseId)}`,
+    request,
+  );
   return response.data;
 }
 

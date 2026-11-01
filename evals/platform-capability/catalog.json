@@ -4178,7 +4178,7 @@
               ]
             },
             "conversation": {
-              "description": "Input messages sent to the agent sequentially.",
+              "description": "Input messages sent to the agent sequentially. May be empty when a\nsimulated user opens the conversation.",
               "example": [
                 {
                   "content": "Fix the failing test in src/lib.rs"
@@ -4249,6 +4249,17 @@
               },
               "type": "array"
             },
+            "simulated_user": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SimulatedUser",
+                  "description": "A model that plays the user after the scripted messages, until it is\ndone or reaches its turn limit. Not combined with `post`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "tags": {
               "description": "Free-form tags attached to this resource.",
               "example": [
@@ -4283,11 +4294,20 @@
                 "integer",
                 "null"
               ]
+            },
+            "tool_fixtures": {
+              "description": "Tools the case gives the agent, each answered with a canned response.",
+              "items": {
+                "$ref": "#/$defs/ToolFixture"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
             }
           },
           "required": [
             "name",
-            "conversation",
             "scorers"
           ],
           "type": "object"
@@ -4485,8 +4505,14 @@
               "type": "object"
             },
             {
-              "description": "Agent called named tool at least `min` times.",
+              "description": "Agent called named tool at least `min` times. With\n`arguments_contain`, only calls whose argument JSON contains that text\ncount, so a case can check what the agent asked a tool to do.",
               "properties": {
+                "arguments_contain": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "min": {
                   "format": "int32",
                   "minimum": 0,
@@ -4838,6 +4864,90 @@
             }
           ]
         },
+        "SimulatedUser": {
+          "description": "A model that plays the user for a multistep case.",
+          "properties": {
+            "done_when": {
+              "description": "When the user stops: the simulator ends the conversation once this\nholds. Defaults to \"the goal is met or clearly cannot be\".",
+              "example": "The agent opened a refund ticket with the right order number.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "goal": {
+              "description": "What the user wants from the conversation.",
+              "example": "Get the duplicate charge refunded, or a clear date when it will be.",
+              "type": "string"
+            },
+            "max_turns": {
+              "description": "Most messages the simulator sends (default 8, at most 30).",
+              "example": 8,
+              "format": "int32",
+              "maximum": 30,
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "model_id": {
+              "description": "Model that plays the user. Omitted: the organization's default model.",
+              "example": "model_01933b5a00007000800000000000022c",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "persona": {
+              "description": "Who the user is, what they know and how they write.",
+              "example": "Small shop owner charged twice for the Pro plan. Writes short messages. Gives the order number ORD-48213 only when asked.",
+              "type": "string"
+            },
+            "virtual_user_id": {
+              "description": "Virtual user the simulator speaks as, so the agent sees that end\nuser's identity, connections and memory.",
+              "example": "identity_01933b5a000070008000000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "persona",
+            "goal"
+          ],
+          "type": "object"
+        },
+        "ToolFixture": {
+          "description": "A tool the case gives the agent, answered with a canned response.",
+          "properties": {
+            "description": {
+              "description": "What the tool does, as the agent reads it.",
+              "example": "Open a support ticket",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Tool name the agent calls.",
+              "example": "create_ticket",
+              "type": "string"
+            },
+            "parameters": {
+              "description": "JSON Schema of the arguments. Omitted: an object with any fields."
+            },
+            "response": {
+              "description": "What every call returns."
+            }
+          },
+          "required": [
+            "name",
+            "response"
+          ],
+          "type": "object"
+        },
         "modelId": {
           "description": "Prefixed identifier with 'model' prefix",
           "example": "model_01933b5a000070008000000000000001",
@@ -5094,6 +5204,19 @@
         "CreateEvalRunRequest": {
           "description": "Request to create an eval run",
           "properties": {
+            "case_ids": {
+              "description": "Run only these cases of the eval, by public id (\"Try once\" on a case\npage). Omitted runs every case.",
+              "example": [
+                "evalcase_01933b5a00007000800000000000001"
+              ],
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
             "max_cost_usd": {
               "description": "Spending cap in USD for the whole run, agents and grading together.\nOnce spent, running turns stop and remaining cases are skipped.",
               "example": 5.0,
@@ -7049,8 +7172,14 @@
               "type": "object"
             },
             {
-              "description": "Agent called named tool at least `min` times.",
+              "description": "Agent called named tool at least `min` times. With\n`arguments_contain`, only calls whose argument JSON contains that text\ncount, so a case can check what the agent asked a tool to do.",
               "properties": {
+                "arguments_contain": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "min": {
                   "format": "int32",
                   "minimum": 0,
@@ -23565,8 +23694,14 @@
               "type": "object"
             },
             {
-              "description": "Agent called named tool at least `min` times.",
+              "description": "Agent called named tool at least `min` times. With\n`arguments_contain`, only calls whose argument JSON contains that text\ncount, so a case can check what the agent asked a tool to do.",
               "properties": {
+                "arguments_contain": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "min": {
                   "format": "int32",
                   "minimum": 0,
@@ -23918,6 +24053,90 @@
             }
           ]
         },
+        "SimulatedUser": {
+          "description": "A model that plays the user for a multistep case.",
+          "properties": {
+            "done_when": {
+              "description": "When the user stops: the simulator ends the conversation once this\nholds. Defaults to \"the goal is met or clearly cannot be\".",
+              "example": "The agent opened a refund ticket with the right order number.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "goal": {
+              "description": "What the user wants from the conversation.",
+              "example": "Get the duplicate charge refunded, or a clear date when it will be.",
+              "type": "string"
+            },
+            "max_turns": {
+              "description": "Most messages the simulator sends (default 8, at most 30).",
+              "example": 8,
+              "format": "int32",
+              "maximum": 30,
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "model_id": {
+              "description": "Model that plays the user. Omitted: the organization's default model.",
+              "example": "model_01933b5a00007000800000000000022c",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "persona": {
+              "description": "Who the user is, what they know and how they write.",
+              "example": "Small shop owner charged twice for the Pro plan. Writes short messages. Gives the order number ORD-48213 only when asked.",
+              "type": "string"
+            },
+            "virtual_user_id": {
+              "description": "Virtual user the simulator speaks as, so the agent sees that end\nuser's identity, connections and memory.",
+              "example": "identity_01933b5a000070008000000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "persona",
+            "goal"
+          ],
+          "type": "object"
+        },
+        "ToolFixture": {
+          "description": "A tool the case gives the agent, answered with a canned response.",
+          "properties": {
+            "description": {
+              "description": "What the tool does, as the agent reads it.",
+              "example": "Open a support ticket",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Tool name the agent calls.",
+              "example": "create_ticket",
+              "type": "string"
+            },
+            "parameters": {
+              "description": "JSON Schema of the arguments. Omitted: an object with any fields."
+            },
+            "response": {
+              "description": "What every call returns."
+            }
+          },
+          "required": [
+            "name",
+            "response"
+          ],
+          "type": "object"
+        },
         "UpdateEvalCaseRequest": {
           "description": "Request to update an eval case",
           "properties": {
@@ -24018,6 +24237,17 @@
                 "null"
               ]
             },
+            "simulated_user": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SimulatedUser",
+                  "description": "Simulated user. `null` removes it, back to scripted messages only."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "tags": {
               "description": "Free-form tags attached to this resource.",
               "example": [
@@ -24050,6 +24280,16 @@
               "minimum": 0,
               "type": [
                 "integer",
+                "null"
+              ]
+            },
+            "tool_fixtures": {
+              "description": "Tool fixtures, replacing the stored ones. `null` removes them.",
+              "items": {
+                "$ref": "#/$defs/ToolFixture"
+              },
+              "type": [
+                "array",
                 "null"
               ]
             }
@@ -25590,8 +25830,14 @@
               "type": "object"
             },
             {
-              "description": "Agent called named tool at least `min` times.",
+              "description": "Agent called named tool at least `min` times. With\n`arguments_contain`, only calls whose argument JSON contains that text\ncount, so a case can check what the agent asked a tool to do.",
               "properties": {
+                "arguments_contain": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "min": {
                   "format": "int32",
                   "minimum": 0,

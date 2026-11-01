@@ -37,6 +37,7 @@ use everruns_core::{DecisionOutcome, DecisionQuestion, DecisionRequest, Decision
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::domains::evals::multistep::{LlmUserSimulator, UserSimulator};
 use crate::domains::evals::record::{Score, Scorer};
 use crate::domains::observers::judge::{JudgeClient, LlmJudgeClient, TurnEvidence};
 use crate::services::ProviderResolverService;
@@ -56,6 +57,14 @@ pub struct GradeInput<'a> {
     pub annotations: &'a [TextAnnotation],
     /// Names of the tools called, in order.
     pub tool_calls: &'a [String],
+    /// Argument JSON of each call in `tool_calls`, same order. Shorter (or
+    /// empty) where arguments are not part of the trace; a call with no
+    /// recorded arguments never matches `arguments_contain`.
+    pub tool_arguments: &'a [String],
+    /// The whole conversation as "User: ... / Agent: ..." text, for multistep
+    /// cases. Empty for a single exchange; judges and decisions then see only
+    /// `input_message` and `final_answer`.
+    pub transcript: &'a str,
     /// Turns (eval case) or iterations (observer turn).
     pub turns: u32,
     /// Input plus output tokens the agent spent.
@@ -141,6 +150,9 @@ pub struct Graders {
     db: Arc<StorageBackend>,
     judge: Option<Arc<dyn JudgeClient>>,
     decisions: Option<Arc<dyn DecisionResolver>>,
+    /// Plays the user in multistep eval cases, on the same org models the
+    /// judge uses. Lives here so every holder of graders can simulate.
+    simulator: Option<Arc<dyn UserSimulator>>,
 }
 
 impl Graders {
@@ -150,6 +162,7 @@ impl Graders {
             db,
             judge: None,
             decisions: None,
+            simulator: None,
         }
     }
 
@@ -161,12 +174,14 @@ impl Graders {
         driver_registry: Arc<crate::kernel_imports::contracts::driver_registry::DriverRegistry>,
         provider_resolver: Arc<ProviderResolverService>,
     ) -> Self {
+        let client = Arc::new(LlmJudgeClient::new(
+            db.clone(),
+            driver_registry,
+            provider_resolver.clone(),
+        ));
         Self::new(db.clone())
-            .with_judge(Arc::new(LlmJudgeClient::new(
-                db.clone(),
-                driver_registry,
-                provider_resolver.clone(),
-            )))
+            .with_judge(client.clone())
+            .with_simulator(Arc::new(LlmUserSimulator::new(client)))
             .with_decisions(Arc::new(HostDecisions {
                 db,
                 deployment: host.decisions(),
@@ -178,6 +193,16 @@ impl Graders {
     pub fn with_judge(mut self, judge: Arc<dyn JudgeClient>) -> Self {
         self.judge = Some(judge);
         self
+    }
+
+    pub fn with_simulator(mut self, simulator: Arc<dyn UserSimulator>) -> Self {
+        self.simulator = Some(simulator);
+        self
+    }
+
+    /// The simulated-user player, `None` without a model stack.
+    pub fn simulator(&self) -> Option<&Arc<dyn UserSimulator>> {
+        self.simulator.as_ref()
     }
 
     pub fn with_decisions(mut self, decisions: Arc<dyn DecisionResolver>) -> Self {
@@ -247,8 +272,15 @@ impl Graders {
                 pass_threshold,
                 ..
             } => {
+                // A multistep case shows the judge the whole conversation in
+                // place of the last user message.
+                let input_message = if input.transcript.is_empty() {
+                    input.input_message.to_string()
+                } else {
+                    format!("Full conversation:\n\n{}", input.transcript)
+                };
                 let evidence = TurnEvidence {
-                    input_message: input.input_message.to_string(),
+                    input_message,
                     final_answer: input.final_answer.to_string(),
                     tool_names: input.tool_calls.to_vec(),
                 };
@@ -355,20 +387,24 @@ fn decision_request(
     no: &Option<String>,
     input: &GradeInput<'_>,
 ) -> DecisionRequest {
-    DecisionRequest::new(json!({
+    let mut state = json!({
         "user_message": truncate(input.input_message, 4000),
         "agent_answer": truncate(input.final_answer, 8000),
         "tools_used": input.tool_calls,
-    }))
-    .ask(
-        "grade",
-        DecisionQuestion::Noul {
-            instructions: question.to_string(),
-            yes: yes.clone(),
-            no: no.clone(),
-        },
-    )
-    .with_metadata("purpose", DECISION_PURPOSE)
+    });
+    if !input.transcript.is_empty() {
+        state["conversation"] = json!(truncate(input.transcript, 12000));
+    }
+    DecisionRequest::new(state)
+        .ask(
+            "grade",
+            DecisionQuestion::Noul {
+                instructions: question.to_string(),
+                yes: yes.clone(),
+                no: no.clone(),
+            },
+        )
+        .with_metadata("purpose", DECISION_PURPOSE)
 }
 
 fn decision_grade(outcome: &DecisionOutcome, pass_threshold: f64) -> Result<Graded, GradeError> {
@@ -532,11 +568,31 @@ pub fn score_rule(scorer: &Scorer, input: &GradeInput<'_>) -> Option<Score> {
             }
             Err(error) => binary(false, format!("Invalid pattern '{pattern}': {error}")),
         },
-        Scorer::ToolCalled { tool, min, .. } => {
-            let count = tool_calls.iter().filter(|t| *t == tool).count() as u32;
+        Scorer::ToolCalled {
+            tool,
+            min,
+            arguments_contain,
+            ..
+        } => {
+            let count = tool_calls
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| *t == tool)
+                .filter(|(index, _)| match arguments_contain {
+                    None => true,
+                    Some(text) => input
+                        .tool_arguments
+                        .get(*index)
+                        .is_some_and(|args| args.contains(text.as_str())),
+                })
+                .count() as u32;
+            let with = arguments_contain
+                .as_ref()
+                .map(|text| format!(" with arguments containing '{text}'"))
+                .unwrap_or_default();
             binary(
                 count >= *min,
-                format!("Tool '{tool}' called {count} times (min: {min})"),
+                format!("Tool '{tool}' called{with} {count} times (min: {min})"),
             )
         }
         Scorer::ToolNotCalled { tool, .. } => {

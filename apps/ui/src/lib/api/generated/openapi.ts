@@ -13419,14 +13419,15 @@ export interface components {
        */
       artifacts?: components["schemas"]["ArtifactSpec"][] | null;
       /**
-       * @description Input messages sent to the agent sequentially.
+       * @description Input messages sent to the agent sequentially. May be empty when a
+       *     simulated user opens the conversation.
        * @example [
        *       {
        *         "content": "Fix the failing test in src/lib.rs"
        *       }
        *     ]
        */
-      conversation: components["schemas"]["EvalInputMessage"][];
+      conversation?: components["schemas"]["EvalInputMessage"][];
       /**
        * @description Human-readable description. Safe to render in user-facing messages.
        * @example Agent fixes a failing unit test
@@ -13468,6 +13469,7 @@ export interface components {
        *     ]
        */
       scorers: components["schemas"]["Scorer"][];
+      simulated_user?: components["schemas"]["SimulatedUser"] | null;
       /**
        * @description Free-form tags attached to this resource.
        * @example [
@@ -13483,6 +13485,8 @@ export interface components {
        * @example 120
        */
       timeout_seconds?: number | null;
+      /** @description Tools the case gives the agent, each answered with a canned response. */
+      tool_fixtures?: components["schemas"]["ToolFixture"][] | null;
     };
     /** @description Request to start an experiment. */
     CreateEvalExperimentRequest: {
@@ -13539,6 +13543,14 @@ export interface components {
     };
     /** @description Request to create an eval run */
     CreateEvalRunRequest: {
+      /**
+       * @description Run only these cases of the eval, by public id ("Try once" on a case
+       *     page). Omitted runs every case.
+       * @example [
+       *       "evalcase_01933b5a00007000800000000000001"
+       *     ]
+       */
+      case_ids?: string[] | null;
       /**
        * Format: double
        * @description Spending cap in USD for the whole run, agents and grading together.
@@ -15304,6 +15316,7 @@ export interface components {
        *     ]
        */
       scorers: components["schemas"]["Scorer"][];
+      simulated_user?: components["schemas"]["SimulatedUser"] | null;
       /**
        * @description Free-form tags for filtering runs.
        * @example [
@@ -15319,6 +15332,8 @@ export interface components {
        * @example 120
        */
       timeout_seconds?: number | null;
+      /** @description Tools the case gives the agent, answered with canned responses. */
+      tool_fixtures?: components["schemas"]["ToolFixture"][] | null;
       /**
        * Format: date-time
        * @description When the case was last updated.
@@ -18694,6 +18709,7 @@ export interface components {
          *     ]
          */
         scorers: components["schemas"]["Scorer"][];
+        simulated_user?: components["schemas"]["SimulatedUser"] | null;
         /**
          * @description Free-form tags for filtering runs.
          * @example [
@@ -18709,6 +18725,8 @@ export interface components {
          * @example 120
          */
         timeout_seconds?: number | null;
+        /** @description Tools the case gives the agent, answered with canned responses. */
+        tool_fixtures?: components["schemas"]["ToolFixture"][] | null;
         /**
          * Format: date-time
          * @description When the case was last updated.
@@ -27116,6 +27134,7 @@ export interface components {
           weight?: number;
         }
       | {
+          arguments_contain?: string | null;
           /** Format: int32 */
           min?: number;
           tool: string;
@@ -28419,6 +28438,42 @@ export interface components {
      * @enum {string}
      */
     SideEffectClass: "Pure" | "Idempotent" | "AtMostOnce";
+    /** @description A model that plays the user for a multistep case. */
+    SimulatedUser: {
+      /**
+       * @description When the user stops: the simulator ends the conversation once this
+       *     holds. Defaults to "the goal is met or clearly cannot be".
+       * @example The agent opened a refund ticket with the right order number.
+       */
+      done_when?: string | null;
+      /**
+       * @description What the user wants from the conversation.
+       * @example Get the duplicate charge refunded, or a clear date when it will be.
+       */
+      goal: string;
+      /**
+       * Format: int32
+       * @description Most messages the simulator sends (default 8, at most 30).
+       * @example 8
+       */
+      max_turns?: number | null;
+      /**
+       * @description Model that plays the user. Omitted: the organization's default model.
+       * @example model_01933b5a00007000800000000000022c
+       */
+      model_id?: string | null;
+      /**
+       * @description Who the user is, what they know and how they write.
+       * @example Small shop owner charged twice for the Pro plan. Writes short messages. Gives the order number ORD-48213 only when asked.
+       */
+      persona: string;
+      /**
+       * @description Virtual user the simulator speaks as, so the agent sees that end
+       *     user's identity, connections and memory.
+       * @example identity_01933b5a000070008000000000000001
+       */
+      virtual_user_id?: string | null;
+    };
     /** @description Skill entity (API response type) */
     Skill: {
       /** @description Comma-separated list of tool patterns this skill may invoke. `None` means inherit from the harness. */
@@ -29595,6 +29650,23 @@ export interface components {
       display_name?: string | null;
       /** @description Tool name */
       name: string;
+    };
+    /** @description A tool the case gives the agent, answered with a canned response. */
+    ToolFixture: {
+      /**
+       * @description What the tool does, as the agent reads it.
+       * @example Open a support ticket
+       */
+      description?: string | null;
+      /**
+       * @description Tool name the agent calls.
+       * @example create_ticket
+       */
+      name: string;
+      /** @description JSON Schema of the arguments. Omitted: an object with any fields. */
+      parameters?: unknown;
+      /** @description What every call returns. */
+      response: unknown;
     };
     /**
      * @description Semantic hints describing a tool's behavioral properties.
@@ -31334,6 +31406,7 @@ export interface components {
        *     ]
        */
       scorers?: components["schemas"]["Scorer"][] | null;
+      simulated_user?: components["schemas"]["SimulatedUser"] | null;
       /**
        * @description Free-form tags attached to this resource.
        * @example [
@@ -31349,6 +31422,8 @@ export interface components {
        * @example 120
        */
       timeout_seconds?: number | null;
+      /** @description Tool fixtures, replacing the stored ones. `null` removes them. */
+      tool_fixtures?: components["schemas"]["ToolFixture"][] | null;
     };
     /** @description Request to update an eval */
     UpdateEvalRequest: {

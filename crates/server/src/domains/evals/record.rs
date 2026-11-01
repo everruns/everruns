@@ -277,11 +277,15 @@ pub enum Scorer {
         #[serde(default = "default_weight")]
         weight: f64,
     },
-    /// Agent called named tool at least `min` times.
+    /// Agent called named tool at least `min` times. With
+    /// `arguments_contain`, only calls whose argument JSON contains that text
+    /// count, so a case can check what the agent asked a tool to do.
     ToolCalled {
         tool: String,
         #[serde(default = "default_min_one")]
         min: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        arguments_contain: Option<String>,
         #[serde(default = "default_weight")]
         weight: f64,
     },
@@ -484,6 +488,12 @@ impl Scorer {
             Scorer::Regex { pattern, .. } => regex::Regex::new(pattern)
                 .map(|_| ())
                 .map_err(|error| format!("regex pattern does not compile: {error}")),
+            Scorer::ToolCalled {
+                arguments_contain: Some(text),
+                ..
+            } if text.is_empty() => {
+                Err("tool_called arguments_contain must not be empty".to_string())
+            }
             Scorer::JsonSchema { schema, .. } => jsonschema::validator_for(schema)
                 .map(|_| ())
                 .map_err(|error| format!("json_schema schema is invalid: {error}")),
@@ -792,6 +802,12 @@ pub struct EvalCase {
     /// Display order.
     #[schema(example = 0)]
     pub position: i32,
+    /// A model that plays the user after the scripted messages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub simulated_user: Option<crate::domains::evals::multistep::SimulatedUser>,
+    /// Tools the case gives the agent, answered with canned responses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_fixtures: Option<Vec<crate::domains::evals::multistep::ToolFixture>>,
     /// When the case was created.
     #[schema(example = "2026-01-15T10:30:00Z")]
     pub created_at: DateTime<Utc>,

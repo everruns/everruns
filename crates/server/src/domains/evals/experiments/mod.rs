@@ -135,6 +135,7 @@ pub async fn create(
                     model_override: variant.model_override,
                     trials: Some(trials),
                     max_cost_usd: per_variant_cap,
+                    case_ids: None,
                 },
             )
             .await?;

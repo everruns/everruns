@@ -5042,7 +5042,7 @@
         "field": "conversation",
         "long": "conversation",
         "kind": "json",
-        "required": true,
+        "required": false,
         "help": "Input messages sent to the agent sequentially."
       },
       {
@@ -5095,6 +5095,12 @@
         "help": "Scoring rules applied to the case output."
       },
       {
+        "field": "simulated_user",
+        "long": "simulated-user",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "tags",
         "long": "tags",
         "kind": "string_list",
@@ -5113,6 +5119,13 @@
         "kind": "integer",
         "required": false,
         "help": "Per-case timeout in seconds."
+      },
+      {
+        "field": "tool_fixtures",
+        "long": "tool-fixtures",
+        "kind": "json",
+        "required": false,
+        "help": "Tools the case gives the agent, each answered with a canned response."
       }
     ],
     "examples": [
@@ -5296,6 +5309,12 @@
         "help": "Scoring rules applied to the case output."
       },
       {
+        "field": "simulated_user",
+        "long": "simulated-user",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "tags",
         "long": "tags",
         "kind": "string_list",
@@ -5314,6 +5333,13 @@
         "kind": "integer",
         "required": false,
         "help": "Per-case timeout in seconds."
+      },
+      {
+        "field": "tool_fixtures",
+        "long": "tool-fixtures",
+        "kind": "json",
+        "required": false,
+        "help": "Tool fixtures, replacing the stored ones."
       }
     ],
     "examples": [
@@ -5777,6 +5803,13 @@
     "method": "POST",
     "http_path": "/v1/evals/{eval_id}/runs",
     "args": [
+      {
+        "field": "case_ids",
+        "long": "case-ids",
+        "kind": "string_list",
+        "required": false,
+        "help": "Run only these cases of the eval, by public id (\"Try once\" on a case page)."
+      },
       {
         "field": "eval_id",
         "long": "eval-id",

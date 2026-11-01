@@ -42944,7 +42944,6 @@
         "description": "Request to create an eval case",
         "required": [
           "name",
-          "conversation",
           "scorers"
         ],
         "properties": {
@@ -42969,7 +42968,7 @@
             "items": {
               "$ref": "#/components/schemas/EvalInputMessage"
             },
-            "description": "Input messages sent to the agent sequentially.",
+            "description": "Input messages sent to the agent sequentially. May be empty when a\nsimulated user opens the conversation.",
             "example": [
               {
                 "content": "Fix the failing test in src/lib.rs"
@@ -43036,6 +43035,17 @@
               }
             ]
           },
+          "simulated_user": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SimulatedUser",
+                "description": "A model that plays the user after the scripted messages, until it is\ndone or reaches its turn limit. Not combined with `post`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tags": {
             "type": [
               "array",
@@ -43070,6 +43080,16 @@
             "description": "Per-case timeout in seconds.",
             "example": 120,
             "minimum": 0
+          },
+          "tool_fixtures": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ToolFixture"
+            },
+            "description": "Tools the case gives the agent, each answered with a canned response."
           }
         }
       },
@@ -43176,6 +43196,19 @@
         "type": "object",
         "description": "Request to create an eval run",
         "properties": {
+          "case_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Run only these cases of the eval, by public id (\"Try once\" on a case\npage). Omitted runs every case.",
+            "example": [
+              "evalcase_01933b5a00007000800000000000001"
+            ]
+          },
           "max_cost_usd": {
             "type": [
               "number",
@@ -46242,6 +46275,17 @@
               }
             ]
           },
+          "simulated_user": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SimulatedUser",
+                "description": "A model that plays the user after the scripted messages."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tags": {
             "type": "array",
             "items": {
@@ -46273,6 +46317,16 @@
             "description": "Per-case timeout in seconds (default: 120).",
             "example": 120,
             "minimum": 0
+          },
+          "tool_fixtures": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ToolFixture"
+            },
+            "description": "Tools the case gives the agent, answered with canned responses."
           },
           "updated_at": {
             "type": "string",
@@ -52290,6 +52344,17 @@
                     }
                   ]
                 },
+                "simulated_user": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SimulatedUser",
+                      "description": "A model that plays the user after the scripted messages."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "tags": {
                   "type": "array",
                   "items": {
@@ -52321,6 +52386,16 @@
                   "description": "Per-case timeout in seconds (default: 120).",
                   "example": 120,
                   "minimum": 0
+                },
+                "tool_fixtures": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "$ref": "#/components/schemas/ToolFixture"
+                  },
+                  "description": "Tools the case gives the agent, answered with canned responses."
                 },
                 "updated_at": {
                   "type": "string",
@@ -67416,12 +67491,18 @@
           },
           {
             "type": "object",
-            "description": "Agent called named tool at least `min` times.",
+            "description": "Agent called named tool at least `min` times. With\n`arguments_contain`, only calls whose argument JSON contains that text\ncount, so a case can check what the agent asked a tool to do.",
             "required": [
               "tool",
               "type"
             ],
             "properties": {
+              "arguments_contain": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "min": {
                 "type": "integer",
                 "format": "int32",
@@ -70001,6 +70082,61 @@
           "AtMostOnce"
         ]
       },
+      "SimulatedUser": {
+        "type": "object",
+        "description": "A model that plays the user for a multistep case.",
+        "required": [
+          "persona",
+          "goal"
+        ],
+        "properties": {
+          "done_when": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the user stops: the simulator ends the conversation once this\nholds. Defaults to \"the goal is met or clearly cannot be\".",
+            "example": "The agent opened a refund ticket with the right order number."
+          },
+          "goal": {
+            "type": "string",
+            "description": "What the user wants from the conversation.",
+            "example": "Get the duplicate charge refunded, or a clear date when it will be."
+          },
+          "max_turns": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Most messages the simulator sends (default 8, at most 30).",
+            "example": 8,
+            "maximum": 30,
+            "minimum": 1
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model that plays the user. Omitted: the organization's default model.",
+            "example": "model_01933b5a00007000800000000000022c"
+          },
+          "persona": {
+            "type": "string",
+            "description": "Who the user is, what they know and how they write.",
+            "example": "Small shop owner charged twice for the Pro plan. Writes short messages. Gives the order number ORD-48213 only when asked."
+          },
+          "virtual_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Virtual user the simulator speaks as, so the agent sees that end\nuser's identity, connections and memory.",
+            "example": "identity_01933b5a000070008000000000000001"
+          }
+        }
+      },
       "Skill": {
         "type": "object",
         "description": "Skill entity (API response type)",
@@ -72216,6 +72352,35 @@
           "name": {
             "type": "string",
             "description": "Tool name"
+          }
+        }
+      },
+      "ToolFixture": {
+        "type": "object",
+        "description": "A tool the case gives the agent, answered with a canned response.",
+        "required": [
+          "name",
+          "response"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the tool does, as the agent reads it.",
+            "example": "Open a support ticket"
+          },
+          "name": {
+            "type": "string",
+            "description": "Tool name the agent calls.",
+            "example": "create_ticket"
+          },
+          "parameters": {
+            "description": "JSON Schema of the arguments. Omitted: an object with any fields."
+          },
+          "response": {
+            "description": "What every call returns."
           }
         }
       },
@@ -75256,6 +75421,17 @@
               }
             ]
           },
+          "simulated_user": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SimulatedUser",
+                "description": "Simulated user. `null` removes it, back to scripted messages only."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tags": {
             "type": [
               "array",
@@ -75290,6 +75466,16 @@
             "description": "Per-case timeout in seconds.",
             "example": 120,
             "minimum": 0
+          },
+          "tool_fixtures": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ToolFixture"
+            },
+            "description": "Tool fixtures, replacing the stored ones. `null` removes them."
           }
         }
       },

@@ -22,19 +22,27 @@
 // listener cannot see them all; a 1 s poll on an indexed count is cheap.
 
 use crate::domains::evals::graders::{GradeInput, GraderUsage, Graders};
+use crate::domains::evals::multistep::{
+    Line, SimulatedUser, SimulatorTurn, Speaker, ToolFixture, fixture_answers, fixture_tools,
+    transcript_text,
+};
 use crate::domains::evals::record::*;
 use crate::domains::messages::types::{CreateMessageRequest, InputMessage};
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::domains::sessions::types::CreateSessionRequest;
+use crate::domains::tool_results::types::ClientToolResult;
 use crate::storage::StorageBackend;
 use crate::storage::UpdateEvalCaseResultRow;
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::events::{INPUT_MESSAGE, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED};
+use everruns_core::events::{
+    CONVERSATION_MESSAGE, INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED, TOOL_CALL_REQUESTED,
+    TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
+};
 use everruns_core::message::TextAnnotation;
 use everruns_durable::{ActivityOptions, TaskDefinition, WorkflowEventStore};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
@@ -292,10 +300,13 @@ async fn run_case_task_inner(ctx: &EvalRunContext, task: &EvalCaseTask) -> Resul
     };
 
     match outcome {
-        Ok(grader_usage) => {
+        Ok(output) => {
             let mut metadata = serde_json::json!({ "cost_usd": session_cost.unwrap_or(0.0) });
-            if let Some(usage) = &grader_usage {
+            if let Some(usage) = &output.grader_usage {
                 metadata["grader_usage"] = serde_json::to_value(usage)?;
+            }
+            if let Some(simulation) = &output.simulation {
+                metadata["simulated_user"] = serde_json::to_value(simulation)?;
             }
             ctx.db
                 .update_eval_case_result(
@@ -491,7 +502,7 @@ async fn execute_case_inner(
     target_json: &Option<serde_json::Value>,
     existing_session: Option<Uuid>,
     run_model_override: Option<&str>,
-) -> std::result::Result<Option<GraderUsage>, CaseError> {
+) -> std::result::Result<CaseOutput, CaseError> {
     let org_id = caller.org_id;
     let case_row = ctx
         .db
@@ -505,6 +516,21 @@ async fn execute_case_inner(
     let artifact_specs: Option<Vec<ArtifactSpec>> =
         case_row.artifacts.map(serde_json::from_value).transpose()?;
     let scorers: Vec<Scorer> = serde_json::from_value(case_row.scorers)?;
+    let simulated_user: Option<SimulatedUser> = case_row
+        .simulated_user
+        .map(serde_json::from_value)
+        .transpose()?;
+    let fixtures: Vec<ToolFixture> = case_row
+        .tool_fixtures
+        .map(serde_json::from_value)
+        .transpose()?
+        .unwrap_or_default();
+    // Fail before creating a session, not after the scripted messages.
+    if simulated_user.is_some() && ctx.graders.simulator().is_none() {
+        return Err(
+            anyhow::anyhow!("this deployment has no model to play the simulated user").into(),
+        );
+    }
     let timeout_secs = case_row
         .timeout_seconds
         .map(|v| v.max(1) as u64)
@@ -582,7 +608,14 @@ async fn execute_case_inner(
                         harness_name: None,
                         agent_id: None,
                         agent_name: None,
-                        virtual_user_id: None,
+                        virtual_user_id: simulated_user
+                            .as_ref()
+                            .and_then(|user| user.virtual_user_id.as_deref())
+                            .map(str::parse)
+                            .transpose()
+                            .map_err(|_| {
+                                anyhow::anyhow!("simulated_user.virtual_user_id is not valid")
+                            })?,
                         title: Some(format!("Eval: {}", case_row.name)),
                         goal: None,
                         locale: None,
@@ -590,11 +623,20 @@ async fn execute_case_inner(
                         model_id: model_id.and_then(|m| m.parse().ok()),
                         capabilities: vec![],
                         sandbox: None,
-                        tools: vec![],
+                        tools: fixture_tools(&fixtures),
                         mcp_servers: Default::default(),
                         system_prompt,
                         initial_files: vec![],
-                        hints: None,
+                        // Client-side calls park the turn only for a client
+                        // that declared it answers them; the runner answers
+                        // fixture calls, so it declares that, as a session
+                        // configured with client tools does.
+                        hints: (!fixtures.is_empty()).then(|| {
+                            std::collections::HashMap::from([(
+                                "setup_connection".to_string(),
+                                serde_json::json!(true),
+                            )])
+                        }),
                         network_access: None,
                         max_iterations,
                         parallel_tool_calls: None,
@@ -630,11 +672,12 @@ async fn execute_case_inner(
         harness_id,
         agent_id,
         case_deadline,
+        fixtures,
     };
 
     let messages: Vec<&EvalInputMessage> =
         conversation.iter().chain(post.iter().flatten()).collect();
-    let turn_count = messages.len() as u32;
+    let mut sent_total = messages.len();
 
     // Resume point: messages already delivered, and wait out the turn of the
     // last one if it had not settled when the previous owner stopped.
@@ -648,7 +691,56 @@ async fn execute_case_inner(
         send_message(ctx, &sctx, &msg.content).await?;
         wait_for_settled_turns(ctx, &sctx, index + 1).await?;
     }
+
+    // The simulated user carries on where the script stops. A resumed case
+    // counts the simulated messages it already sent.
+    let mut simulation = None;
+    if let (Some(user), Some(simulator)) = (&simulated_user, ctx.graders.simulator()) {
+        sent_total = sent_total.max(sent);
+        let mut summary = SimulationSummary {
+            model: None,
+            turns: sent_total.saturating_sub(messages.len()) as u32,
+            ended: SimulationEnd::TurnLimit,
+        };
+        while summary.turns < user.turn_limit() {
+            ensure_run_active(ctx, result_id).await?;
+            ensure_budget_left(ctx, &sctx).await?;
+            if Instant::now() >= sctx.case_deadline {
+                return Err(CaseError::Timeout);
+            }
+            let lines = conversation_lines(ctx, session_id).await?;
+            let reply = simulator
+                .next(org_id, user, &lines)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("no model available to play the simulated user"))?;
+            // Spend counts toward the run's cap as it happens, like grading.
+            crate::domains::budgets::BudgetService::new(ctx.db.clone())
+                .meter_grading(
+                    session_id,
+                    result_id,
+                    reply.input_tokens,
+                    reply.output_tokens,
+                    reply.cost_usd,
+                )
+                .await;
+            summary.model = Some(reply.model);
+            match reply.turn {
+                SimulatorTurn::Done => {
+                    summary.ended = SimulationEnd::Done;
+                    break;
+                }
+                SimulatorTurn::Say(text) => {
+                    send_message(ctx, &sctx, &text).await?;
+                    sent_total += 1;
+                    summary.turns += 1;
+                    wait_for_settled_turns(ctx, &sctx, sent_total).await?;
+                }
+            }
+        }
+        simulation = Some(summary);
+    }
     ensure_run_active(ctx, result_id).await?;
+    let turn_count = sent_total as u32;
 
     // Collect events for scoring using filtered queries to avoid 10k row cap
     // What the agent said: its text, or the messages it sent in explicit
@@ -662,10 +754,16 @@ async fn execute_case_inner(
         .list_events(session_id, None, None, &msg_filter, &[], None, None)
         .await?;
 
-    let tool_filter = vec!["tool.completed".to_string()];
+    let tool_filter = vec![TOOL_COMPLETED.to_string()];
     let tool_events = ctx
         .db
         .list_events(session_id, None, None, &tool_filter, &[], None, None)
+        .await?;
+    // Arguments ride on the call, not on its completion.
+    let call_filter = vec![TOOL_STARTED.to_string(), TOOL_CALL_REQUESTED.to_string()];
+    let call_events = ctx
+        .db
+        .list_events(session_id, None, None, &call_filter, &[], None, None)
         .await?;
 
     let turn_filter = vec![TURN_COMPLETED.to_string()];
@@ -682,6 +780,13 @@ async fn execute_case_inner(
 
     // Extract tool calls
     let tool_calls = extract_tool_calls(&tool_events);
+    let tool_arguments = extract_tool_arguments(&tool_events, &call_events);
+    // Multistep cases show judges and decisions the whole conversation.
+    let transcript = if simulation.is_some() || messages.len() > 1 {
+        transcript_text(&conversation_lines(ctx, session_id).await?)
+    } else {
+        String::new()
+    };
 
     // Extract token usage
     let (input_tokens, output_tokens) = extract_token_usage(&turn_events);
@@ -693,6 +798,8 @@ async fn execute_case_inner(
         final_answer: &final_assistant_content,
         annotations: &final_annotations,
         tool_calls: &tool_calls,
+        tool_arguments: &tool_arguments,
+        transcript: &transcript,
         turns: turn_count,
         tokens: input_tokens + output_tokens,
         session_id: Some(session_uuid),
@@ -735,7 +842,36 @@ async fn execute_case_inner(
         )
         .await?;
 
-    Ok(grader_usage)
+    Ok(CaseOutput {
+        grader_usage,
+        simulation,
+    })
+}
+
+/// What a case that ran to grading reports back, besides its result row.
+struct CaseOutput {
+    grader_usage: Option<GraderUsage>,
+    simulation: Option<SimulationSummary>,
+}
+
+/// How a simulated conversation went, recorded on the result: a score is a
+/// statement about the agent and simulator pair.
+#[derive(Debug, Clone, serde::Serialize)]
+struct SimulationSummary {
+    /// The simulator's model, `None` when it never answered.
+    model: Option<String>,
+    /// Messages the simulator sent.
+    turns: u32,
+    ended: SimulationEnd,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum SimulationEnd {
+    /// The simulator said the goal was met or will not be.
+    Done,
+    /// It reached its turn limit first.
+    TurnLimit,
 }
 
 struct SessionCtx {
@@ -747,6 +883,8 @@ struct SessionCtx {
     harness_id: Uuid,
     agent_id: Option<Uuid>,
     case_deadline: Instant,
+    /// Tool fixtures the runner answers while it waits.
+    fixtures: Vec<ToolFixture>,
 }
 
 async fn count_events_of(
@@ -858,8 +996,145 @@ async fn wait_for_settled_turns(
         if Instant::now() >= sctx.case_deadline {
             return Err(CaseError::Timeout);
         }
+        if !sctx.fixtures.is_empty() {
+            answer_fixture_calls(ctx, sctx).await?;
+        }
         tokio::time::sleep(POLL_INTERVAL).await;
     }
+}
+
+/// Answer the agent's open calls to fixture tools with their canned
+/// responses. Idempotent: calls with a completion are skipped, and a claim
+/// that loses (the turn moved on) is a no-op.
+async fn answer_fixture_calls(ctx: &EvalRunContext, sctx: &SessionCtx) -> Result<()> {
+    let requested = ctx
+        .db
+        .list_events(
+            sctx.session_id,
+            None,
+            None,
+            &[TOOL_CALL_REQUESTED.to_string()],
+            &[],
+            None,
+            None,
+        )
+        .await?;
+    let calls = requested_calls(&requested);
+    if calls.is_empty() {
+        return Ok(());
+    }
+    let completed = ctx
+        .db
+        .list_events(
+            sctx.session_id,
+            None,
+            None,
+            &[TOOL_COMPLETED.to_string()],
+            &[],
+            None,
+            None,
+        )
+        .await?;
+    let answered: HashSet<String> = completed
+        .iter()
+        .filter_map(|e| e.data.get("tool_call_id").and_then(|v| v.as_str()))
+        .map(String::from)
+        .collect();
+    let results: Vec<ClientToolResult> = fixture_answers(&sctx.fixtures, &calls, &answered)
+        .into_iter()
+        .map(|(tool_call_id, answer)| match answer {
+            Ok(result) => ClientToolResult {
+                tool_call_id,
+                result: Some(result),
+                error: None,
+            },
+            Err(error) => ClientToolResult {
+                tool_call_id,
+                result: None,
+                error: Some(error),
+            },
+        })
+        .collect();
+    if results.is_empty() {
+        return Ok(());
+    }
+    ctx.message_service
+        .submit_tool_results(sctx.org_id, sctx.session_id, &results)
+        .await?;
+    Ok(())
+}
+
+/// `(tool_call_id, tool_name)` of every client-side call the agent asked for.
+fn requested_calls(events: &[crate::storage::EventRow]) -> Vec<(String, String)> {
+    events
+        .iter()
+        .flat_map(|e| {
+            e.data
+                .get("tool_calls")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default()
+        })
+        .filter_map(|call| {
+            Some((
+                call.get("id")?.as_str()?.to_string(),
+                call.get("name")?.as_str()?.to_string(),
+            ))
+        })
+        .collect()
+}
+
+/// The conversation so far, from the session's events: what the user sent
+/// and what the agent said, consecutive lines of one speaker joined.
+async fn conversation_lines(ctx: &EvalRunContext, session_id: SessionId) -> Result<Vec<Line>> {
+    let filter = vec![
+        INPUT_MESSAGE.to_string(),
+        OUTPUT_MESSAGE_COMPLETED.to_string(),
+        CONVERSATION_MESSAGE.to_string(),
+    ];
+    let events = ctx
+        .db
+        .list_events(session_id, None, None, &filter, &[], None, None)
+        .await?;
+    Ok(lines_from_events(&events))
+}
+
+pub(crate) fn lines_from_events(events: &[crate::storage::EventRow]) -> Vec<Line> {
+    let mut lines: Vec<Line> = Vec::new();
+    for event in events {
+        let (speaker, text) = if event.event_type == INPUT_MESSAGE {
+            let text = event
+                .data
+                .pointer("/message/content")
+                .and_then(|c| c.as_array())
+                .map(|parts| {
+                    parts
+                        .iter()
+                        .filter(|p| p.get("type").and_then(|t| t.as_str()) == Some("text"))
+                        .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .unwrap_or_default();
+            (Speaker::User, text)
+        } else {
+            match everruns_core::conversation::said_in_event(&event.event_type, &event.data) {
+                Some(text) => (Speaker::Agent, text),
+                None => continue,
+            }
+        };
+        if text.trim().is_empty() {
+            continue;
+        }
+        match lines.last_mut() {
+            Some(last) if last.speaker == speaker => {
+                last.text.push_str("\n\n");
+                last.text.push_str(&text);
+            }
+            _ => lines.push(Line { speaker, text }),
+        }
+    }
+    lines
 }
 
 async fn collect_case_artifacts(
@@ -956,6 +1231,49 @@ pub(crate) fn extract_tool_calls(events: &[crate::storage::EventRow]) -> Vec<Str
                 .get("tool_name")
                 .and_then(|n| n.as_str())
                 .map(String::from)
+        })
+        .collect()
+}
+
+/// Argument JSON of each completed call, in `extract_tool_calls` order, read
+/// from the matching `tool.started` or `tool.call_requested`. Empty text for
+/// a call whose arguments are not in the trace.
+pub(crate) fn extract_tool_arguments(
+    completed: &[crate::storage::EventRow],
+    calls: &[crate::storage::EventRow],
+) -> Vec<String> {
+    let mut arguments: HashMap<String, String> = HashMap::new();
+    for event in calls {
+        let found: Vec<serde_json::Value> = match event.event_type.as_str() {
+            TOOL_STARTED => event.data.get("tool_call").cloned().into_iter().collect(),
+            _ => event
+                .data
+                .get("tool_calls")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default(),
+        };
+        for call in found {
+            if let (Some(id), Some(args)) = (
+                call.get("id").and_then(|v| v.as_str()),
+                call.get("arguments"),
+            ) {
+                arguments.insert(id.to_string(), args.to_string());
+            }
+        }
+    }
+    completed
+        .iter()
+        .filter(|e| {
+            e.event_type == TOOL_COMPLETED
+                && e.data.get("tool_name").and_then(|n| n.as_str()).is_some()
+        })
+        .map(|e| {
+            e.data
+                .get("tool_call_id")
+                .and_then(|v| v.as_str())
+                .and_then(|id| arguments.get(id).cloned())
+                .unwrap_or_default()
         })
         .collect()
 }
