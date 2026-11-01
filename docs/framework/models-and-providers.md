@@ -56,8 +56,11 @@ choice types:
 ```rust
 use everruns::{OpenAI, OpenAIApi, Mistral, MistralApi};
 
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let openai = OpenAI::from_env()?.api(OpenAIApi::ChatCompletions);
 let mistral = Mistral::from_env()?.api(MistralApi::Responses);
+# Ok(())
+# }
 ```
 
 Without `.api(...)`, OpenAI uses Responses and Mistral uses Chat Completions.

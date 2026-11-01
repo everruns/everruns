@@ -229,10 +229,13 @@ typed API selector:
 ```rust
 use everruns::{OpenAI, OpenAIApi, Provider};
 
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let provider: Provider = OpenAI::from_env()?
     .api(OpenAIApi::ChatCompletions)
     .into();
 assert!(provider.supports_batch());
+# Ok(())
+# }
 ```
 
 ### Mistral, Groq and Fireworks
