@@ -91,6 +91,22 @@ a logo slug in `apps/docs/src/assets/changelog/logos/` and repeats for up to thr
 without a logo file renders as its `--name` in a wordmark tile. Embed it first, with alt text that
 names both sides. A UI screenshot can follow it.
 
+## Social card
+
+The build draws the entry's Open Graph card ([Social cards](../../../../knowledge/docs/changelog.md#social-cards)).
+`minor` entries get a plain card and `notable` ones generated icon art: nothing to do.
+For a `major` entry or a release, draw `social.svg` in the entry folder: one picture of the
+feature on `viewBox="0 0 520 560"`, navy `#0A1636`, gold `#D4A43A`, grays `#3A4766` /
+`#A8B0BE`, panels `#0F1D45`, Geist and Geist Mono, square corners. Show the thing (real UI
+pieces, real assets referenced by relative path, the data shape), not decoration. Preview it:
+
+```bash
+cd apps/docs && node scripts/generate-og-image.mjs && open public/og/changelog/<folder>.png
+```
+
+If the generated icons fit the entry poorly, set `icons: [hero, ...satellites]` (Facet names
+from `apps/ui/src/components/icons/facet-icon-data.ts`).
+
 ## Check
 
 ```bash
