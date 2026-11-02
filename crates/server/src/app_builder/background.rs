@@ -413,6 +413,13 @@ pub(super) async fn start_maintenance(
             "sandbox-history-retention",
             "sandbox_history_retention",
         ),
+        // Retired: unified Knowledge processing (`knowledge-processing`)
+        // replaced the Knowledge index sync. Kept disabled so the schedule an
+        // earlier version created stops enqueuing tasks no pool claims.
+        crate::background::cluster_jobs::ClusterJob::disabled(
+            crate::domains::knowledge_indexes::source_sync::KNOWLEDGE_INDEX_SYNC_SCHEDULE,
+            crate::domains::knowledge_indexes::source_sync::KNOWLEDGE_INDEX_SYNC_ACTIVITY,
+        ),
         crate::background::sandbox_idle_sweep::idle_sweep_job(
             deps.background_pool.clone(),
             deps.session_sandbox_service,
