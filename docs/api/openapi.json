@@ -48991,6 +48991,7 @@
               "string",
               "null"
             ],
+            "description": "Title of that cluster, naming the problem the findings share.",
             "example": "Schedules polling an expired claim"
           },
           "completed_at": {
@@ -48999,6 +49000,7 @@
               "null"
             ],
             "format": "date-time",
+            "description": "When the write-up was finished.",
             "example": "2026-10-18T21:40:00Z"
           },
           "dismiss_reason": {
@@ -49006,6 +49008,7 @@
               "string",
               "null"
             ],
+            "description": "The note the person gave when dismissing.",
             "example": "Expected: load test"
           },
           "dismissed_at": {
@@ -63456,32 +63459,38 @@
               "string",
               "null"
             ],
+            "description": "Display name of the session's agent.",
             "example": "Outreach bot"
           },
           "cluster_title": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Title of the cluster of similar findings in that organization."
           },
           "code": {
             "type": "string",
+            "description": "Detector code of the finding.",
             "example": "session.suspected_abuse"
           },
           "evidence": {
             "type": [
               "object",
               "null"
-            ]
+            ],
+            "description": "The numbers the classifier recorded, never session content."
           },
           "first_detected_at": {
             "type": "string",
             "format": "date-time",
+            "description": "When the current episode was first detected.",
             "example": "2026-10-18T21:40:00Z"
           },
           "issue_id": {
             "type": "string",
             "format": "uuid",
+            "description": "Health issue identifier of the finding.",
             "example": "550e8400-e29b-41d4-a716-446655440000"
           },
           "org_id": {
@@ -63491,6 +63500,7 @@
           },
           "org_name": {
             "type": "string",
+            "description": "Display name of the organization.",
             "example": "Acme"
           },
           "session_id": {
@@ -63498,6 +63508,7 @@
               "string",
               "null"
             ],
+            "description": "Public identifier of the session the finding points at.",
             "example": "session_550e8400e29b41d4a716446655440000"
           },
           "severity": {
@@ -63505,19 +63516,22 @@
               "string",
               "null"
             ],
+            "description": "`high`, `medium` or `low`, as the Inspector judged it.",
             "example": "high"
           },
           "suggested_action": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The Inspector's suggested next step."
           },
           "what_happened": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The Inspector's account of what happened, once written."
           }
         }
       },
@@ -63535,21 +63549,25 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PlatformDetection"
-            }
+            },
+            "description": "Detections in this page."
           },
           "limit": {
             "type": "integer",
             "format": "int64",
+            "description": "Effective page size.",
             "example": 20
           },
           "offset": {
             "type": "integer",
             "format": "int64",
+            "description": "Effective pagination offset.",
             "example": 0
           },
           "total": {
             "type": "integer",
             "format": "int64",
+            "description": "Number of open detections.",
             "example": 1
           }
         }

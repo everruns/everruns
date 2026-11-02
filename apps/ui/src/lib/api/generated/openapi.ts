@@ -16698,14 +16698,21 @@ export interface components {
        * @example 3
        */
       cluster_open?: number | null;
-      /** @example Schedules polling an expired claim */
+      /**
+       * @description Title of that cluster, naming the problem the findings share.
+       * @example Schedules polling an expired claim
+       */
       cluster_title?: string | null;
       /**
        * Format: date-time
+       * @description When the write-up was finished.
        * @example 2026-10-18T21:40:00Z
        */
       completed_at?: string | null;
-      /** @example Expected: load test */
+      /**
+       * @description The note the person gave when dismissing.
+       * @example Expected: load test
+       */
       dismiss_reason?: string | null;
       /**
        * Format: date-time
@@ -24780,19 +24787,29 @@ export interface components {
     PhaseSource: "provider" | "derived" | "communication";
     /** @description An open finding of the platform operator's concern, in any organization. */
     PlatformDetection: {
-      /** @example Outreach bot */
+      /**
+       * @description Display name of the session's agent.
+       * @example Outreach bot
+       */
       agent_name?: string | null;
+      /** @description Title of the cluster of similar findings in that organization. */
       cluster_title?: string | null;
-      /** @example session.suspected_abuse */
+      /**
+       * @description Detector code of the finding.
+       * @example session.suspected_abuse
+       */
       code: string;
+      /** @description The numbers the classifier recorded, never session content. */
       evidence?: Record<string, unknown> | null;
       /**
        * Format: date-time
+       * @description When the current episode was first detected.
        * @example 2026-10-18T21:40:00Z
        */
       first_detected_at: string;
       /**
        * Format: uuid
+       * @description Health issue identifier of the finding.
        * @example 550e8400-e29b-41d4-a716-446655440000
        */
       issue_id: string;
@@ -24801,30 +24818,45 @@ export interface components {
        * @example org_550e8400e29b41d4a716446655440000
        */
       org_id: string;
-      /** @example Acme */
+      /**
+       * @description Display name of the organization.
+       * @example Acme
+       */
       org_name: string;
-      /** @example session_550e8400e29b41d4a716446655440000 */
+      /**
+       * @description Public identifier of the session the finding points at.
+       * @example session_550e8400e29b41d4a716446655440000
+       */
       session_id?: string | null;
-      /** @example high */
+      /**
+       * @description `high`, `medium` or `low`, as the Inspector judged it.
+       * @example high
+       */
       severity?: string | null;
+      /** @description The Inspector's suggested next step. */
       suggested_action?: string | null;
+      /** @description The Inspector's account of what happened, once written. */
       what_happened?: string | null;
     };
     /** @description A page of open platform detections. */
     PlatformDetectionList: {
+      /** @description Detections in this page. */
       data: components["schemas"]["PlatformDetection"][];
       /**
        * Format: int64
+       * @description Effective page size.
        * @example 20
        */
       limit: number;
       /**
        * Format: int64
+       * @description Effective pagination offset.
        * @example 0
        */
       offset: number;
       /**
        * Format: int64
+       * @description Number of open detections.
        * @example 1
        */
       total: number;

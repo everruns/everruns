@@ -91,6 +91,7 @@ pub struct FindingInvestigation {
     /// The cluster of similar findings in this organization.
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub cluster_id: Option<Uuid>,
+    /// Title of that cluster, naming the problem the findings share.
     #[schema(example = "Schedules polling an expired claim")]
     pub cluster_title: Option<String>,
     /// Open findings in the cluster, this one included.
@@ -99,10 +100,12 @@ pub struct FindingInvestigation {
     /// The model that wrote it.
     #[schema(example = "gpt-6.1-sol")]
     pub model: Option<String>,
+    /// When the write-up was finished.
     #[schema(example = "2026-10-18T21:40:00Z")]
     pub completed_at: Option<DateTime<Utc>>,
     /// When a person dismissed the finding, and why.
     pub dismissed_at: Option<DateTime<Utc>>,
+    /// The note the person gave when dismissing.
     #[schema(example = "Expected: load test")]
     pub dismiss_reason: Option<String>,
 }
@@ -110,38 +113,53 @@ pub struct FindingInvestigation {
 /// An open finding of the platform operator's concern, in any organization.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PlatformDetection {
+    /// Health issue identifier of the finding.
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub issue_id: Uuid,
     /// Public identifier of the organization.
     #[schema(example = "org_550e8400e29b41d4a716446655440000")]
     pub org_id: String,
+    /// Display name of the organization.
     #[schema(example = "Acme")]
     pub org_name: String,
+    /// Detector code of the finding.
     #[schema(example = "session.suspected_abuse")]
     pub code: String,
+    /// Public identifier of the session the finding points at.
     #[schema(example = "session_550e8400e29b41d4a716446655440000")]
     pub session_id: Option<String>,
+    /// Display name of the session's agent.
     #[schema(example = "Outreach bot")]
     pub agent_name: Option<String>,
+    /// The numbers the classifier recorded, never session content.
     #[schema(value_type = Option<Object>, example = json!({"probability": 0.93}))]
     pub evidence: Option<serde_json::Value>,
+    /// When the current episode was first detected.
     #[schema(example = "2026-10-18T21:40:00Z")]
     pub first_detected_at: DateTime<Utc>,
+    /// The Inspector's account of what happened, once written.
     pub what_happened: Option<String>,
+    /// `high`, `medium` or `low`, as the Inspector judged it.
     #[schema(example = "high")]
     pub severity: Option<String>,
+    /// The Inspector's suggested next step.
     pub suggested_action: Option<String>,
+    /// Title of the cluster of similar findings in that organization.
     pub cluster_title: Option<String>,
 }
 
 /// A page of open platform detections.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PlatformDetectionList {
+    /// Detections in this page.
     pub data: Vec<PlatformDetection>,
+    /// Number of open detections.
     #[schema(example = 1)]
     pub total: i64,
+    /// Effective pagination offset.
     #[schema(example = 0)]
     pub offset: i64,
+    /// Effective page size.
     #[schema(example = 20)]
     pub limit: i64,
 }
