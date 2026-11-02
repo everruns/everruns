@@ -3,6 +3,7 @@
 //! the original call ids across response continuations. The local HTTP fixture
 //! suite is `crates/everruns/tests/host/integration/native_async_http.rs`.
 
+use crate::{TRANSPORT_ATTEMPTS, is_transient_transport};
 use async_trait::async_trait;
 use everruns_contracts::{
     BearerAuth, LlmCallConfig, LlmStreamEvent, Message, MessageRole, Provider, Result,
@@ -63,28 +64,6 @@ impl NativeAsyncExecutor for LiveLookups {
     }
 }
 
-/// Attempts at the bounded run: the live matrix's budget (three attempts).
-const ATTEMPTS: u32 = 3;
-
-/// Whether a failed attempt died in transport rather than in the behavior under
-/// test. The 2026-10-31 nightly lost one run to OpenAI dropping the stream
-/// mid-body ("error decoding response body"); the matrix already retries that
-/// class (`llm_test_matrix::is_transient_transport_error`), this suite did not.
-/// Kept narrow: a provider or contract error still fails on the first attempt.
-fn is_transient_transport(message: &str) -> bool {
-    let message = message.to_ascii_lowercase();
-    [
-        "transport error",
-        "error decoding response body",
-        "connection reset",
-        "connection closed",
-        "unexpected eof",
-        "incomplete message",
-    ]
-    .iter()
-    .any(|marker| message.contains(marker))
-}
-
 /// Bounded synthetic acceptance: no repository content is sent to the provider.
 #[tokio::test]
 async fn native_async_astra_live_function_and_custom_calls() {
@@ -92,7 +71,7 @@ async fn native_async_astra_live_function_and_custom_calls() {
     // Each attempt starts from a fresh journal and executor, so a retried run
     // proves the whole flow again rather than resuming a half-finished one.
     let (_directory, executor, coordinator, text) = 'attempts: {
-        for attempt in 1..=ATTEMPTS {
+        for attempt in 1..=TRANSPORT_ATTEMPTS {
             let directory = tempfile::tempdir().unwrap();
             let executor = Arc::new(LiveLookups(std::sync::Mutex::new(Default::default())));
             let mut coordinator = NativeAsyncCoordinator::open(
@@ -126,12 +105,17 @@ async fn native_async_astra_live_function_and_custom_calls() {
             )).await.expect("bounded live acceptance timed out");
             match outcome {
                 Ok(_) => break 'attempts (directory, executor, coordinator, text),
-                Err(error) if attempt < ATTEMPTS && is_transient_transport(&error.to_string()) => {
+                Err(error)
+                    if attempt < TRANSPORT_ATTEMPTS
+                        && is_transient_transport(&error.to_string()) =>
+                {
                     eprintln!(
-                        "native async attempt {attempt}/{ATTEMPTS} lost to transport: {error}; retrying"
+                        "native async attempt {attempt}/{TRANSPORT_ATTEMPTS} lost to transport: {error}; retrying"
                     );
                 }
-                Err(error) => panic!("native async attempt {attempt}/{ATTEMPTS} failed: {error:?}"),
+                Err(error) => {
+                    panic!("native async attempt {attempt}/{TRANSPORT_ATTEMPTS} failed: {error:?}")
+                }
             }
         }
         unreachable!("the last attempt either succeeds or panics")
