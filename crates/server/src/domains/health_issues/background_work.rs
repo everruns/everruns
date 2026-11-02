@@ -65,6 +65,7 @@ pub fn owns(code: &str) -> bool {
         SCHEDULE_RUNAWAY | SCHEDULE_BUDGET | ORG_UNATTENDED_BUDGET | SPEND_SPIKE | CONTEXT_BLOAT
     ) || super::behavior::owns(code)
         || super::classifiers::owns(code)
+        || super::quality::owns(code)
 }
 
 /// The final answer's text, normalized and hashed: equal for answers that
@@ -370,6 +371,9 @@ fn copy_for(
     if super::classifiers::owns(code) {
         return super::classifiers::copy_for(code, status, evidence, agent);
     }
+    if super::quality::owns(code) {
+        return super::quality::copy_for(status, evidence);
+    }
     let agent = agent.unwrap_or("An agent");
     let task = evidence["description"]
         .as_str()
@@ -453,6 +457,7 @@ pub async fn recheck(db: &StorageBackend, row: &HealthIssueRow) -> anyhow::Resul
         SPEND_SPIKE => sweep_spend_spikes(db).await,
         CONTEXT_BLOAT => sweep_context_bloat(db).await,
         code if super::behavior::owns(code) => super::behavior::sweep(db).await,
+        code if super::quality::owns(code) => super::quality::sweep(db).await,
         _ => Ok(()),
     }
 }
@@ -619,6 +624,9 @@ pub async fn sweep(db: &StorageBackend) {
     }
     if let Err(error) = sweep_context_bloat(db).await {
         tracing::warn!(%error, "Context size health sweep failed");
+    }
+    if let Err(error) = super::quality::sweep(db).await {
+        tracing::warn!(%error, "Live quality health sweep failed");
     }
     let behavior = super::behavior::sweep(db).await;
     if let Err(error) = &behavior {

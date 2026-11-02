@@ -906,6 +906,65 @@
     "read_only": false
   },
   {
+    "description": "Score past production traffic with an observer.",
+    "input_schema": {
+      "$defs": {
+        "BackfillObserverRequest": {
+          "description": "Score past production traffic with an observer.",
+          "properties": {
+            "limit": {
+              "description": "Most past events to read, newest first (1–5000). Defaults to 500.",
+              "example": 500,
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "sample": {
+              "description": "Apply the observer's sampling rate. Defaults to true; false scores\nevery matching slice read.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "since_hours": {
+              "description": "How far back to read, in hours (1–720). Defaults to 24.",
+              "example": 24,
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/BackfillObserverRequest"
+        },
+        {
+          "properties": {
+            "observer_id": {
+              "description": "Observer's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "observer_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "backfill_observer",
+    "read_only": false
+  },
+  {
     "description": "Enqueue missing reporting projection work from canonical sources.",
     "input_schema": {
       "$defs": {
@@ -6723,6 +6782,35 @@
           ],
           "type": "object"
         },
+        "ObserverAlert": {
+          "description": "Open a health issue, and tell the people who own the watched agents, when\nan observer's pass rate falls under `min_pass_rate` over the last\n`window_hours`. Needs `min_scored` scores in the window so a handful of\nsamples cannot raise it. The issue resolves itself once the rate recovers.",
+          "properties": {
+            "min_pass_rate": {
+              "description": "Pass rate (0.0–1.0) under which the alert opens.",
+              "example": 0.8,
+              "format": "double",
+              "type": "number"
+            },
+            "min_scored": {
+              "description": "Scores the window needs before the alert can open. Defaults to 20.",
+              "example": 20,
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "window_hours": {
+              "description": "Window the rate is measured over, in hours (1–168). Defaults to 24.",
+              "example": 24,
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "min_pass_rate"
+          ],
+          "type": "object"
+        },
         "ObserverMatch": {
           "description": "Predicates selecting which production sessions an observer scores.\nAll present predicates must match (AND); within a list, any entry matches (OR).\nAn empty match block matches all org traffic. Sessions tagged `eval` are\nalways excluded so synthetic eval-run sessions are never scored.",
           "properties": {
@@ -6760,9 +6848,11 @@
           "type": "object"
         },
         "ObserverScope": {
-          "description": "What slice of the trace a scorer grades. Phase 1 implements `turn` only;\n`session` and `tool` scopes are reserved for future use.",
+          "description": "What slice of the trace a scorer grades.\n\n- `turn`: one exchange, scored when the turn completes.\n- `session`: the whole conversation, scored once the session has been idle\n  for a while ([`SESSION_SETTLE_SECONDS`]); a later idle re-scores it, so\n  each session has one current score.\n- `tool`: one tool call and its result, scored when the call completes.",
           "enum": [
-            "turn"
+            "turn",
+            "session",
+            "tool"
           ],
           "type": "string"
         },
@@ -6781,6 +6871,16 @@
                 "scope": {
                   "$ref": "#/$defs/ObserverScope",
                   "description": "Trace slice this scorer grades."
+                },
+                "tools": {
+                  "description": "Tool scope only: grade calls to these tools. Empty or absent grades\nevery tool call.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
                 }
               },
               "required": [
@@ -7279,6 +7379,17 @@
       },
       "description": "Request to create a new observer.",
       "properties": {
+        "alert": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ObserverAlert",
+              "description": "Pass-rate alert: opens a health issue and notifies the agent's owners\nwhen the observer's pass rate falls under a threshold."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "description": {
           "description": "Human-readable description. Safe to render in user-facing messages.",
           "example": "Score replies from the support agent",
@@ -11873,6 +11984,40 @@
     "read_only": true
   },
   {
+    "description": "Live quality by agent, observer and day.",
+    "input_schema": {
+      "description": "Query parameters for the live-quality summary.",
+      "properties": {
+        "agent_id": {
+          "description": "Only scores of this agent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "days": {
+          "description": "Window in days (1–90). Defaults to 7.",
+          "format": "int32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "observer_id": {
+          "description": "Only scores of this observer.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_observer_summary",
+    "read_only": true
+  },
+  {
     "description": "Get organization details.",
     "input_schema": {
       "properties": {
@@ -14566,6 +14711,10 @@
         "offset": {
           "format": "int64",
           "type": "integer"
+        },
+        "review_queue": {
+          "description": "Only unreviewed completed scores, failures first (the review queue).",
+          "type": "boolean"
         },
         "session_id": {
           "description": "Session's prefixed public identifier.",
@@ -17510,6 +17659,57 @@
       "type": "object"
     },
     "name": "retire_cost_rate",
+    "read_only": false
+  },
+  {
+    "description": "Record whether an observer's score was right.",
+    "input_schema": {
+      "$defs": {
+        "ReviewScoreRequest": {
+          "description": "A person's verdict on one score.",
+          "properties": {
+            "agrees": {
+              "description": "True when the grader got it right.",
+              "type": "boolean"
+            },
+            "note": {
+              "description": "Optional note on why (at most 2000 characters).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "agrees"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReviewScoreRequest"
+        },
+        {
+          "properties": {
+            "observer_id": {
+              "description": "Observer's prefixed public identifier.",
+              "type": "string"
+            },
+            "score_id": {
+              "description": "Score's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "observer_id",
+            "score_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "review_observer_score",
     "read_only": false
   },
   {
@@ -23153,6 +23353,35 @@
           ],
           "type": "object"
         },
+        "ObserverAlert": {
+          "description": "Open a health issue, and tell the people who own the watched agents, when\nan observer's pass rate falls under `min_pass_rate` over the last\n`window_hours`. Needs `min_scored` scores in the window so a handful of\nsamples cannot raise it. The issue resolves itself once the rate recovers.",
+          "properties": {
+            "min_pass_rate": {
+              "description": "Pass rate (0.0–1.0) under which the alert opens.",
+              "example": 0.8,
+              "format": "double",
+              "type": "number"
+            },
+            "min_scored": {
+              "description": "Scores the window needs before the alert can open. Defaults to 20.",
+              "example": 20,
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "window_hours": {
+              "description": "Window the rate is measured over, in hours (1–168). Defaults to 24.",
+              "example": 24,
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "min_pass_rate"
+          ],
+          "type": "object"
+        },
         "ObserverMatch": {
           "description": "Predicates selecting which production sessions an observer scores.\nAll present predicates must match (AND); within a list, any entry matches (OR).\nAn empty match block matches all org traffic. Sessions tagged `eval` are\nalways excluded so synthetic eval-run sessions are never scored.",
           "properties": {
@@ -23190,9 +23419,11 @@
           "type": "object"
         },
         "ObserverScope": {
-          "description": "What slice of the trace a scorer grades. Phase 1 implements `turn` only;\n`session` and `tool` scopes are reserved for future use.",
+          "description": "What slice of the trace a scorer grades.\n\n- `turn`: one exchange, scored when the turn completes.\n- `session`: the whole conversation, scored once the session has been idle\n  for a while ([`SESSION_SETTLE_SECONDS`]); a later idle re-scores it, so\n  each session has one current score.\n- `tool`: one tool call and its result, scored when the call completes.",
           "enum": [
-            "turn"
+            "turn",
+            "session",
+            "tool"
           ],
           "type": "string"
         },
@@ -23211,6 +23442,16 @@
                 "scope": {
                   "$ref": "#/$defs/ObserverScope",
                   "description": "Trace slice this scorer grades."
+                },
+                "tools": {
+                  "description": "Tool scope only: grade calls to these tools. Empty or absent grades\nevery tool call.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
                 }
               },
               "required": [
@@ -23713,6 +23954,17 @@
         "UpdateObserverRequest": {
           "description": "Request to update an observer. Omitted fields are unchanged.",
           "properties": {
+            "alert": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ObserverAlert",
+                  "description": "Pass-rate alert. `null` removes it."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "description": {
               "description": "Human-readable description. Safe to render in user-facing messages.",
               "example": "Score replies from the support agent",

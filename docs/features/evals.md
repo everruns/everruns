@@ -68,9 +68,48 @@ everruns evals experiments gate --eval-id eval_01h9 --experiment-id evalexp_01h9
 
 The gate answers 409 while runs are going and 422 when the variant misses the bar, so the command exits non-zero.
 
+## Observers: scoring live traffic
+
+Datasets test an agent before it ships. An **observer** scores a sample of real sessions after it ships. It matches sessions by agent, harness or tag, samples a share of them, and grades each sampled slice with the same graders a case uses, including LLM judges and decision models. Scoring runs in the background and never slows a turn.
+
+Each grader on an observer picks what it grades:
+
+| Scope | Grades | When |
+|-------|--------|------|
+| Answers (`turn`) | One answer: the user's message, the reply, the tool calls of that turn | When the turn completes |
+| Conversations (`session`) | The whole conversation as a transcript | 10 minutes after the session goes idle; a new message re-arms it |
+| Tools (`tool`) | One tool call: its arguments and its result or error, optionally only for the tools you list | When the call completes |
+
+Judge spend is charged to the org and the agent, never to the person, channel, schedule or session it watched, so monitoring cannot use up an end user's limits.
+
+**Alerts.** An observer with an `alert` opens a health issue, and notifies the authors of the agents it watches, when its pass rate over the last `window_hours` falls under `min_pass_rate`. The window needs `min_scored` scores first, so a handful of samples cannot raise it. The issue resolves itself when the rate recovers.
+
+```bash
+everruns observers update --observer-id observer_01h9 \
+  --alert '{"min_pass_rate": 0.8, "window_hours": 24, "min_scored": 20}' \
+  --reason 'Page me when support answers slip'
+```
+
+**Reviewing scores.** A grader can be wrong. The review queue lists completed scores nobody has checked yet, failures first, then a random sample of passes. Record whether the grader got it right:
+
+```bash
+everruns observers scores list --observer-id observer_01h9 --review-queue true
+everruns observers scores review --observer-id observer_01h9 --score-id score_01h9 \
+  --agrees false --note 'The answer did cite the refund policy' --reason 'Calibrate the judge'
+```
+
+**Backfill.** A new observer only sees traffic from now on. Backfill scores the last hours of past sessions the same way, sampling included unless you pass `--sample false`:
+
+```bash
+everruns observers backfill --observer-id observer_01h9 --since-hours 24 \
+  --reason 'Baseline the new rubric'
+```
+
+**Live quality.** `GET /v1/observers/summary` (`everruns observers summary`) returns the pass rate of completed scores over the last `days`, in total and by agent, observer and day.
+
 ## In the UI
 
-**Quality → Evals** opens on an overview of every agent with a dataset: its pass rate, the trend over recent runs, open findings and the last activity. Tabs hold datasets, experiments, observers, findings from session detectors and classifiers, and the graders a case can use. **Run experiment** starts one from any dataset. Each agent's page has an **Evals** tab with the same view for that agent.
+**Quality → Evals** opens on an overview of every agent with a dataset: its pass rate, the trend over recent runs, its live quality from observers over the last 7 days, open findings and the last activity. Tabs hold datasets, experiments, observers, findings from session detectors and classifiers, and the graders a case can use. **Run experiment** starts one from any dataset. Each agent's page has an **Evals** tab with the same view for that agent, plus the observers that watch it. On an observer's edit page, the **Answers**, **Conversations** and **Tools** tabs hold the graders of each scope.
 
 ## SWE-bench Lite
 

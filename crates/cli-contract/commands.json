@@ -8873,6 +8873,52 @@
     ]
   },
   {
+    "wire_name": "backfill_observer",
+    "path": [
+      "observers"
+    ],
+    "verb": "backfill",
+    "description": "Score past production traffic with an observer.",
+    "method": "POST",
+    "http_path": "/v1/observers/{observer_id}/backfill",
+    "args": [
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Most past events to read, newest first (1–5000)."
+      },
+      {
+        "field": "observer_id",
+        "long": "observer-id",
+        "kind": "string",
+        "required": true,
+        "help": "Observer's prefixed public identifier."
+      },
+      {
+        "field": "sample",
+        "long": "sample",
+        "kind": "boolean",
+        "required": false,
+        "help": "Apply the observer's sampling rate."
+      },
+      {
+        "field": "since_hours",
+        "long": "since-hours",
+        "kind": "integer",
+        "required": false,
+        "help": "How far back to read, in hours (1–720)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Score the last day of traffic with a new observer",
+        "command": "everruns observers backfill --observer-id observer_01h9 --since-hours 24 --reason 'Baseline the new rubric'"
+      }
+    ]
+  },
+  {
     "wire_name": "create_observer",
     "path": [
       "observers"
@@ -8882,6 +8928,12 @@
     "method": "POST",
     "http_path": "/v1/observers",
     "args": [
+      {
+        "field": "alert",
+        "long": "alert",
+        "kind": "json",
+        "required": false
+      },
       {
         "field": "description",
         "long": "description",
@@ -9031,6 +9083,13 @@
         "required": false
       },
       {
+        "field": "review_queue",
+        "long": "review-queue",
+        "kind": "boolean",
+        "required": false,
+        "help": "Only unreviewed completed scores, failures first (the review queue)."
+      },
+      {
         "field": "session_id",
         "long": "session-id",
         "kind": "string",
@@ -9046,6 +9105,92 @@
     ]
   },
   {
+    "wire_name": "review_observer_score",
+    "path": [
+      "observers",
+      "scores"
+    ],
+    "verb": "review",
+    "description": "Record whether an observer's score was right.",
+    "method": "POST",
+    "http_path": "/v1/observers/{observer_id}/scores/{score_id}/review",
+    "args": [
+      {
+        "field": "agrees",
+        "long": "agrees",
+        "kind": "boolean",
+        "required": true,
+        "help": "True when the grader got it right."
+      },
+      {
+        "field": "note",
+        "long": "note",
+        "kind": "string",
+        "required": false,
+        "help": "Optional note on why (at most 2000 characters)."
+      },
+      {
+        "field": "observer_id",
+        "long": "observer-id",
+        "kind": "string",
+        "required": true,
+        "help": "Observer's prefixed public identifier."
+      },
+      {
+        "field": "score_id",
+        "long": "score-id",
+        "kind": "string",
+        "required": true,
+        "help": "Score's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Mark a failing score as a grader mistake",
+        "command": "everruns observers scores review --observer-id observer_01h9 --score-id score_01h9 --agrees false --note 'The answer cited the refund policy' --reason 'Calibrate the grounded judge'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_observer_summary",
+    "path": [
+      "observers"
+    ],
+    "verb": "summary",
+    "description": "Live quality by agent, observer and day.",
+    "method": "GET",
+    "http_path": "/v1/observers/summary",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only scores of this agent."
+      },
+      {
+        "field": "days",
+        "long": "days",
+        "kind": "integer",
+        "required": false,
+        "help": "Window in days (1–90)."
+      },
+      {
+        "field": "observer_id",
+        "long": "observer-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only scores of this observer."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See how one agent's production answers scored this week",
+        "command": "everruns observers summary --agent-id agent_01h9 --days 7"
+      }
+    ]
+  },
+  {
     "wire_name": "update_observer",
     "path": [
       "observers"
@@ -9055,6 +9200,12 @@
     "method": "PATCH",
     "http_path": "/v1/observers/{observer_id}",
     "args": [
+      {
+        "field": "alert",
+        "long": "alert",
+        "kind": "json",
+        "required": false
+      },
       {
         "field": "description",
         "long": "description",

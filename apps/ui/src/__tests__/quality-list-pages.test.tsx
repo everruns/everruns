@@ -38,6 +38,7 @@ jest.mock("@/hooks", () => ({
   useEvals: (...args: unknown[]) => mockUseEvals(...args),
   useAgents: (...args: unknown[]) => mockUseAgents(...args),
   useObservers: (...args: unknown[]) => mockUseObservers(...args),
+  useObserverSummary: () => ({ data: undefined }),
   useAllEvalExperiments: () => ({ data: [] }),
   useEvalRunsMany: () => new Map(),
   useCreateEvalExperiment: () => ({ mutateAsync: jest.fn(), isPending: false }),

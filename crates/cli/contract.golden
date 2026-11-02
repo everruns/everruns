@@ -221,12 +221,15 @@ models selection undo	--changes! --context-revision --reason
 models update	--capabilities... --context-revision --display-name --enabled --id! --is-favorite --model-id --profile-key --provider-id --reason --service
 notifications list	--context-revision --limit --reason
 notifications view mark	--context-revision --notification-id --reason <notification_id>
-observers create	--context-revision --description --match --name! --reason --sampling-rate --scorers!
+observers backfill	--context-revision --limit --observer-id! --reason --sample --since-hours
+observers create	--alert --context-revision --description --match --name! --reason --sampling-rate --scorers!
 observers delete	--context-revision --observer-id! --reason
 observers get	--context-revision --observer-id --reason <observer_id>
 observers list	--context-revision --include-archived --reason
-observers scores list	--context-revision --limit --observer-id! --offset --reason --session-id
-observers update	--context-revision --description --match --name --observer-id! --reason --sampling-rate --scorers --status
+observers scores list	--context-revision --limit --observer-id! --offset --reason --review-queue --session-id
+observers scores review	--agrees! --context-revision --note --observer-id! --reason --score-id!
+observers summary	--agent-id --context-revision --days --observer-id --reason
+observers update	--alert --context-revision --description --match --name --observer-id! --reason --sampling-rate --scorers --status
 organization-accounts get	--context-revision --id! --reason
 organization-accounts update	--context-revision --id! --name! --reason
 orgs audit-logs list	--action --actor-id --before --context-revision --domain --event-type --limit --reason

@@ -16,12 +16,8 @@ use crate::domains::observers::record::{ObserverScorerConfig, ScorerMethod};
 use everruns_contracts::typed_id::SessionId;
 use tracing::{debug, warn};
 
-use crate::domains::evals::runner::{
-    extract_final_assistant_content, extract_token_usage, extract_tool_calls,
-};
 use crate::storage::StorageBackend;
 use crate::storage::{CompleteTraceScoreRow, TraceScoreRow};
-use crate::storage::{EventRow, ListEventsParams};
 
 /// Dependencies the worker loop needs to score: storage plus the graders
 /// shared with eval runs. Without a model stack (dev without providers) the
@@ -133,23 +129,11 @@ async fn process_score(deps: &ObserverWorkerDeps, score: &TraceScoreRow) -> anyh
         return Ok(());
     };
 
-    // Load this turn's trace slice.
-    let session_id = SessionId::from_uuid(score.session_id);
-    // What the agent said: its text, or the messages it sent in explicit
-    // communication.
-    let msg_events = list_turn_events(
-        db,
-        session_id,
-        &score.turn_id,
-        &["output.message.completed", "conversation.message"],
-    )
-    .await?;
-    let tool_events = list_turn_events(db, session_id, &score.turn_id, &["tool.completed"]).await?;
-    let turn_events = list_turn_events(db, session_id, &score.turn_id, &["turn.completed"]).await?;
-
-    let final_content = extract_final_assistant_content(&msg_events);
-    let tool_calls = extract_tool_calls(&tool_events);
-    let input_message = extract_input_content(&turn_events);
+    // Load the slice this score grades: a turn, the session or one call.
+    let Some(evidence) = super::evidence::gather(db, score).await? else {
+        finalize_skipped(db, score, "tool call is not in the trace").await?;
+        return Ok(());
+    };
 
     // An llm_judge scorer is the shared `judge` grader with the observer's
     // own pass threshold.
@@ -163,14 +147,13 @@ async fn process_score(deps: &ObserverWorkerDeps, score: &TraceScoreRow) -> anyh
         },
     };
     let input = GradeInput {
-        input_message: &input_message,
-        final_answer: &final_content,
-        tool_calls: &tool_calls,
-        turns: extract_iterations(&turn_events),
-        tokens: {
-            let (input, output) = extract_token_usage(&turn_events);
-            input + output
-        },
+        input_message: &evidence.input_message,
+        final_answer: &evidence.final_answer,
+        tool_calls: &evidence.tool_calls,
+        tool_arguments: &evidence.tool_arguments,
+        transcript: &evidence.transcript,
+        turns: evidence.turns,
+        tokens: evidence.tokens,
         ..Default::default()
     };
     let graded = match deps.graders.grade(score.org_id, &rule, &input).await {
@@ -197,6 +180,17 @@ async fn process_score(deps: &ObserverWorkerDeps, score: &TraceScoreRow) -> anyh
     };
 
     db.complete_trace_score(score.id, completion).await?;
+    if let Some(usage) = graded.usage {
+        crate::domains::budgets::BudgetService::new(db.clone())
+            .meter_observer_grading(
+                SessionId::from_uuid(score.session_id),
+                score.id,
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.cost_usd,
+            )
+            .await;
+    }
     Ok(())
 }
 
@@ -215,46 +209,6 @@ async fn finalize_skipped(
     )
     .await?;
     Ok(())
-}
-
-/// Fetch events of one type belonging to a single turn.
-async fn list_turn_events(
-    db: &StorageBackend,
-    session_id: SessionId,
-    turn_id: &str,
-    event_types: &[&str],
-) -> anyhow::Result<Vec<EventRow>> {
-    let params = ListEventsParams {
-        session_id,
-        turn_id: Some(turn_id.to_string()),
-        filter_types: event_types.iter().map(|t| t.to_string()).collect(),
-        ..Default::default()
-    };
-    db.list_events_advanced(&params).await
-}
-
-/// Iteration count from this turn's `turn.completed` event (turn-scope
-/// equivalent of "turns" for the TurnsWithin rule).
-fn extract_iterations(turn_events: &[EventRow]) -> u32 {
-    turn_events
-        .iter()
-        .rev()
-        .find(|e| e.event_type == "turn.completed")
-        .and_then(|e| e.data.get("iterations"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(1) as u32
-}
-
-/// The user's input text for this turn, carried on `turn.completed`.
-fn extract_input_content(turn_events: &[EventRow]) -> String {
-    turn_events
-        .iter()
-        .rev()
-        .find(|e| e.event_type == "turn.completed")
-        .and_then(|e| e.data.get("input_content"))
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_string()
 }
 
 #[cfg(test)]
@@ -392,6 +346,7 @@ mod tests {
             .unwrap(),
             sampling_rate: 1.0,
             scorers: serde_json::to_value(vec![scorer]).unwrap(),
+            alert: None,
         }
     }
 
@@ -401,6 +356,7 @@ mod tests {
             ObserverScorerConfig {
                 key: key.to_string(),
                 scope: ObserverScope::Turn,
+                tools: None,
                 method: ScorerMethod::Rule {
                     rule: crate::domains::evals::record::Scorer::Contains {
                         text: text.to_string(),
@@ -419,6 +375,30 @@ mod tests {
         turn_id: &str,
         agent: AgentId,
     ) {
+        enqueue_scoped(
+            db,
+            observer_id,
+            key,
+            session_id,
+            turn_id,
+            agent,
+            "turn",
+            None,
+        )
+        .await;
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn enqueue_scoped(
+        db: &StorageBackend,
+        observer_id: Uuid,
+        key: &str,
+        session_id: SessionId,
+        turn_id: &str,
+        agent: AgentId,
+        scope: &str,
+        not_before: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> u64 {
         db.enqueue_trace_scores(
             ORG,
             &[CreateTraceScoreRow {
@@ -429,10 +409,296 @@ mod tests {
                 turn_id: turn_id.to_string(),
                 agent_id: Some(agent.uuid()),
                 harness_id: None,
+                scope: scope.to_string(),
+                not_before,
             }],
         )
         .await
+        .unwrap() as u64
+    }
+
+    async fn seed_event(
+        db: &StorageBackend,
+        session_id: SessionId,
+        turn_id: &str,
+        event_type: &str,
+        data: serde_json::Value,
+    ) {
+        db.create_event(CreateEventRow {
+            session_id,
+            event_type: event_type.to_string(),
+            ts: chrono::Utc::now(),
+            context: serde_json::json!({ "turn_id": turn_id }),
+            data,
+            metadata: None,
+            tags: None,
+        })
+        .await
         .unwrap();
+    }
+
+    fn rule_scorer(key: &str, scope: ObserverScope, rule: Scorer) -> ObserverScorerConfig {
+        ObserverScorerConfig {
+            key: key.to_string(),
+            scope,
+            tools: None,
+            method: ScorerMethod::Rule { rule },
+        }
+    }
+
+    async fn observer_with(
+        db: &StorageBackend,
+        agent: AgentId,
+        scorers: Vec<ObserverScorerConfig>,
+    ) -> crate::storage::ObserverRow {
+        let mut row = observer_with_scorer(agent, scorers[0].clone());
+        row.scorers = serde_json::to_value(scorers).unwrap();
+        db.create_observer(ORG, row).await.unwrap()
+    }
+
+    async fn scores_of(db: &StorageBackend, observer_id: Uuid) -> Vec<TraceScoreRow> {
+        db.list_trace_scores(
+            ORG,
+            crate::storage::ListTraceScoresParams {
+                observer_id,
+                session_id: None,
+                review_queue: false,
+                limit: 50,
+                offset: 0,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    async fn fixture() -> (Arc<StorageBackend>, AgentId, SessionId) {
+        let db = Arc::new(StorageBackend::test_database());
+        let agent = AgentId::from_uuid(db.create_test_agent(ORG, Uuid::now_v7()).await);
+        let harness = HarnessId::from_uuid(Uuid::now_v7());
+        db.create_test_harness(ORG, harness.uuid()).await;
+        let session = db
+            .create_session(session_row(agent, harness, vec![]))
+            .await
+            .unwrap();
+        (db, agent, session.id)
+    }
+
+    #[tokio::test]
+    async fn scores_a_session_on_the_whole_conversation() {
+        let (db, agent, session) = fixture().await;
+        seed_turn(&db, session, "turn_1", "Which order was charged twice?").await;
+        seed_turn(
+            &db,
+            session,
+            "turn_2",
+            "Ticket T-1042 is open for ORD-48213.",
+        )
+        .await;
+        let observer = observer_with(
+            &db,
+            agent,
+            vec![
+                rule_scorer(
+                    "answered",
+                    ObserverScope::Session,
+                    Scorer::Contains {
+                        text: "T-1042".into(),
+                        weight: 1.0,
+                    },
+                ),
+                rule_scorer(
+                    "one_turn",
+                    ObserverScope::Session,
+                    Scorer::TurnsWithin {
+                        max: 1,
+                        weight: 1.0,
+                    },
+                ),
+            ],
+        )
+        .await;
+        for key in ["answered", "one_turn"] {
+            enqueue_scoped(
+                &db,
+                observer.id,
+                key,
+                session,
+                "session",
+                agent,
+                "session",
+                None,
+            )
+            .await;
+        }
+
+        let processed = drain_once(&deps(&db), ObserverWorkerConfig::default())
+            .await
+            .unwrap();
+        assert_eq!(processed, 2);
+        let scores = scores_of(&db, observer.id).await;
+        let by_key = |key: &str| scores.iter().find(|s| s.scorer_key == key).unwrap();
+        assert_eq!(by_key("answered").scope, "session");
+        assert_eq!(
+            by_key("answered").pass,
+            Some(true),
+            "the last answer is graded"
+        );
+        // Two turns in the conversation: a session scorer counts turns, not
+        // the iterations of one turn.
+        assert_eq!(by_key("one_turn").pass, Some(false));
+    }
+
+    #[tokio::test]
+    async fn scores_one_tool_call() {
+        let (db, agent, session) = fixture().await;
+        for (id, status) in [("call_1", "failed"), ("call_2", "open")] {
+            seed_event(
+                &db,
+                session,
+                "turn_1",
+                "tool.started",
+                serde_json::json!({"tool_call": {"id": id, "name": "create_ticket", "arguments": {"order": id}}}),
+            )
+            .await;
+            seed_event(
+                &db,
+                session,
+                "turn_1",
+                "tool.completed",
+                serde_json::json!({"tool_call_id": id, "tool_name": "create_ticket", "success": true,
+                    "status": "success", "result": [{"type": "text", "text": format!("status: {status}")}]}),
+            )
+            .await;
+        }
+        let observer = observer_with(
+            &db,
+            agent,
+            vec![rule_scorer(
+                "opened",
+                ObserverScope::Tool,
+                Scorer::Contains {
+                    text: "open".into(),
+                    weight: 1.0,
+                },
+            )],
+        )
+        .await;
+        enqueue_scoped(
+            &db,
+            observer.id,
+            "opened",
+            session,
+            "call_2",
+            agent,
+            "tool",
+            None,
+        )
+        .await;
+        enqueue_scoped(
+            &db,
+            observer.id,
+            "opened",
+            session,
+            "call_1",
+            agent,
+            "tool",
+            None,
+        )
+        .await;
+        enqueue_scoped(
+            &db,
+            observer.id,
+            "opened",
+            session,
+            "call_9",
+            agent,
+            "tool",
+            None,
+        )
+        .await;
+
+        drain_once(&deps(&db), ObserverWorkerConfig::default())
+            .await
+            .unwrap();
+        let scores = scores_of(&db, observer.id).await;
+        let of = |id: &str| scores.iter().find(|s| s.turn_id == id).unwrap();
+        assert_eq!(of("call_2").pass, Some(true));
+        assert_eq!(
+            of("call_1").pass,
+            Some(false),
+            "each call is graded on its own result"
+        );
+        assert_eq!(
+            of("call_9").status,
+            "skipped",
+            "a call not in the trace is skipped"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_session_score_waits_out_its_settle_delay_and_rearms() {
+        let (db, agent, session) = fixture().await;
+        seed_turn(&db, session, "turn_1", "done").await;
+        let observer = observer_with(
+            &db,
+            agent,
+            vec![rule_scorer(
+                "done",
+                ObserverScope::Session,
+                Scorer::Contains {
+                    text: "done".into(),
+                    weight: 1.0,
+                },
+            )],
+        )
+        .await;
+        let later = chrono::Utc::now() + chrono::Duration::seconds(600);
+        enqueue_scoped(
+            &db,
+            observer.id,
+            "done",
+            session,
+            "session",
+            agent,
+            "session",
+            Some(later),
+        )
+        .await;
+        let config = ObserverWorkerConfig::default();
+        assert_eq!(drain_once(&deps(&db), config).await.unwrap(), 0);
+
+        // The session idled again: the same score is re-armed, not duplicated.
+        let past = chrono::Utc::now() - chrono::Duration::seconds(1);
+        enqueue_scoped(
+            &db,
+            observer.id,
+            "done",
+            session,
+            "session",
+            agent,
+            "session",
+            Some(past),
+        )
+        .await;
+        assert_eq!(scores_of(&db, observer.id).await.len(), 1);
+        assert_eq!(drain_once(&deps(&db), config).await.unwrap(), 1);
+        assert_eq!(scores_of(&db, observer.id).await[0].pass, Some(true));
+
+        // A later idle re-arms the completed score for another look.
+        enqueue_scoped(
+            &db,
+            observer.id,
+            "done",
+            session,
+            "session",
+            agent,
+            "session",
+            Some(past),
+        )
+        .await;
+        let rearmed = scores_of(&db, observer.id).await;
+        assert_eq!(rearmed.len(), 1);
+        assert_eq!(rearmed[0].status, "pending");
     }
 
     #[tokio::test]
@@ -468,6 +734,7 @@ mod tests {
                     session_id: None,
                     limit: 10,
                     offset: 0,
+                    review_queue: false,
                 },
             )
             .await
@@ -510,6 +777,7 @@ mod tests {
                     session_id: None,
                     limit: 10,
                     offset: 0,
+                    review_queue: false,
                 },
             )
             .await
@@ -562,6 +830,7 @@ mod tests {
                     session_id: None,
                     limit: 10,
                     offset: 0,
+                    review_queue: false,
                 },
             )
             .await
@@ -575,6 +844,7 @@ mod tests {
             ObserverScorerConfig {
                 key: key.to_string(),
                 scope: ObserverScope::Turn,
+                tools: None,
                 method: ScorerMethod::LlmJudge(LlmJudgeConfig {
                     rubric: "Did the agent greet the user?".to_string(),
                     model_id: None,
@@ -619,6 +889,7 @@ mod tests {
                 session_id: None,
                 limit: 10,
                 offset: 0,
+                review_queue: false,
             },
         )
         .await
@@ -699,6 +970,7 @@ mod tests {
                     ObserverScorerConfig {
                         key: "polite".to_string(),
                         scope: ObserverScope::Turn,
+                        tools: None,
                         method: ScorerMethod::Rule {
                             rule: Scorer::Decision {
                                 question: "Is the answer polite?".to_string(),
@@ -726,6 +998,7 @@ mod tests {
                     session_id: None,
                     limit: 10,
                     offset: 0,
+                    review_queue: false,
                 },
             )
             .await
