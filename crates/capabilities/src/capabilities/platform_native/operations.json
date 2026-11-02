@@ -848,6 +848,7 @@
       "description": "Apply a checked fix to the agent's instructions.",
       "properties": {
         "fix_id": {
+          "description": "Prefixed public identifier of the fix.",
           "type": "string"
         }
       },
@@ -1447,6 +1448,7 @@
         {
           "properties": {
             "fix_id": {
+              "description": "Prefixed public identifier of the fix.",
               "type": "string"
             }
           },
@@ -17921,6 +17923,7 @@
         {
           "properties": {
             "fix_id": {
+              "description": "Prefixed public identifier of the fix.",
               "type": "string"
             }
           },
@@ -22638,6 +22641,7 @@
         {
           "properties": {
             "fix_id": {
+              "description": "Prefixed public identifier of the fix.",
               "type": "string"
             }
           },

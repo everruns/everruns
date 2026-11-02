@@ -489,7 +489,7 @@ everruns evals fixes apply [OPTIONS] --fix-id <fix_id>
 
 | Flag | Description |
 |---|---|
-| `--fix-id <FIX_ID>` | Required. |
+| `--fix-id <FIX_ID>` | Required. Prefixed public identifier of the fix. |
 
 Example:
 
@@ -509,7 +509,7 @@ everruns evals fixes check [OPTIONS] --fix-id <fix_id>
 | Flag | Description |
 |---|---|
 | `--eval-id <EVAL_ID>` | The agent's eval to check against. |
-| `--fix-id <FIX_ID>` | Required. |
+| `--fix-id <FIX_ID>` | Required. Prefixed public identifier of the fix. |
 | `--max-cost-usd <MAX_COST_USD>` | Spending cap in USD for the whole check. |
 | `--trials <TRIALS>` | Trials per case and side, 1 to 20 (default 2). |
 
@@ -551,7 +551,7 @@ everruns evals fixes reject [OPTIONS] --fix-id <fix_id> --note <note>
 
 | Flag | Description |
 |---|---|
-| `--fix-id <FIX_ID>` | Required. |
+| `--fix-id <FIX_ID>` | Required. Prefixed public identifier of the fix. |
 | `--note <NOTE>` | Required. Kept so later suggestions can be compared with what people turned down. (Named `note` because... |
 
 Example:
@@ -572,7 +572,7 @@ everruns evals fixes update [OPTIONS] --addition <addition> --fix-id <fix_id>
 | Flag | Description |
 |---|---|
 | `--addition <ADDITION>` | Required. The text to add to the agent's instructions. |
-| `--fix-id <FIX_ID>` | Required. |
+| `--fix-id <FIX_ID>` | Required. Prefixed public identifier of the fix. |
 | `--summary <SUMMARY>` | One line on what the change does. |
 
 Example:

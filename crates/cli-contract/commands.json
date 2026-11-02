@@ -5633,7 +5633,8 @@
         "field": "fix_id",
         "long": "fix-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Prefixed public identifier of the fix."
       }
     ],
     "examples": [
@@ -5665,7 +5666,8 @@
         "field": "fix_id",
         "long": "fix-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Prefixed public identifier of the fix."
       },
       {
         "field": "max_cost_usd",
@@ -5744,7 +5746,8 @@
         "field": "fix_id",
         "long": "fix-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Prefixed public identifier of the fix."
       },
       {
         "field": "note",
@@ -5783,7 +5786,8 @@
         "field": "fix_id",
         "long": "fix-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Prefixed public identifier of the fix."
       },
       {
         "field": "summary",
