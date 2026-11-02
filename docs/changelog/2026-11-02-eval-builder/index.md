@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api, cli]
 links:
   docs: [/features/evals/]
-  prs: [everruns/everruns#5165]
+  prs: [everruns/everruns#5164]
 ---
 
 **Propose cases** on an agent's **Evals** tab asks the **Eval Builder** for new
