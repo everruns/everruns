@@ -12,7 +12,20 @@ describe("agent tab definitions", () => {
     expect(labels(getAgentTabItems(12)).at(-1)).toBe("Sessions12");
   });
 
+  it("adds Evals before Sessions only when evals are on", () => {
+    expect(labels(getAgentTabItems(undefined, undefined, undefined, { evals: true }))).toEqual([
+      "Agent",
+      "Preview",
+      "Integrations",
+      "Stats",
+      "Evals",
+      "Sessions",
+    ]);
+    expect(labels(getAgentTabItems())).not.toContain("Evals");
+  });
+
   it.each([
+    ["evals", "evals", null, null],
     ["mcp", "agent", "mcp", null],
     ["credentials", "agent", "credentials", null],
     ["versions", "agent", null, "history"],

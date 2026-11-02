@@ -552,7 +552,9 @@ pub fn classify_runtime_error_message(
         };
     }
 
-    if normalized.starts_with("Budget exhausted.") {
+    // "Budget ..." is the wording before usage policies; old event logs keep it.
+    if normalized.starts_with("Budget exhausted.") || normalized.starts_with("Usage limit reached.")
+    {
         return UserFacingError::new(codes::BUDGET_EXHAUSTED);
     }
 
@@ -567,7 +569,10 @@ pub fn classify_runtime_error_message(
         };
     }
 
-    if normalized.starts_with("Budget paused.") || normalized.starts_with("Budget paused with ") {
+    if normalized.starts_with("Budget paused.")
+        || normalized.starts_with("Budget paused with ")
+        || normalized.starts_with("Usage policy asks before continuing")
+    {
         return UserFacingError::new(codes::BUDGET_PAUSED);
     }
 
@@ -771,12 +776,13 @@ fn budget_exhausted_message(fields: &UserFacingErrorFields) -> String {
     ) {
         let comparison = if spent > limit { "exceeded" } else { "reached" };
         return format!(
-            "Budget exhausted. {:.2} {} spent {} the {:.2} {} limit. Increase the budget to continue.",
+            "Usage limit reached. {:.2} {} spent {} the {:.2} {} limit. A usage policy stopped this work; raise its limit to continue.",
             spent, currency, comparison, limit, currency
         );
     }
 
-    "Budget exhausted. Increase the budget to continue.".to_string()
+    "Usage limit reached. A usage policy stopped this work; raise its limit to continue."
+        .to_string()
 }
 
 fn budget_paused_message(fields: &UserFacingErrorFields) -> String {
@@ -795,21 +801,22 @@ fn budget_paused_message(fields: &UserFacingErrorFields) -> String {
             };
             if comparison == "with" {
                 format!(
-                    "Budget paused with {:.2} {} spent. Increase or resume the budget to continue.",
+                    "Usage policy asks before continuing, with {:.2} {} spent. Continue this turn or raise the limit.",
                     spent, currency
                 )
             } else {
                 format!(
-                    "Budget paused. {:.2} {} spent {} the {:.2} {} soft limit. Increase or resume the budget to continue.",
+                    "Usage policy asks before continuing. {:.2} {} spent {} the {:.2} {} ask point. Continue this turn or raise the limit.",
                     spent, currency, comparison, soft_limit, currency
                 )
             }
         }
         (Some(spent), Some(currency), None) => format!(
-            "Budget paused with {:.2} {} spent. Increase or resume the budget to continue.",
+            "Usage policy asks before continuing, with {:.2} {} spent. Continue this turn or raise the limit.",
             spent, currency
         ),
-        _ => "Budget paused. Increase or resume the budget to continue.".to_string(),
+        _ => "Usage policy asks before continuing. Continue this turn or raise the limit."
+            .to_string(),
     }
 }
 
@@ -821,7 +828,7 @@ fn parse_budget_exhausted_fields(message: &str) -> Option<UserFacingErrorFields>
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| {
         Regex::new(
-            r"^Budget exhausted\. (?P<spent>\d+(?:\.\d+)?) (?P<currency>\S+) spent (?:reached|exceeded) the (?P<limit>\d+(?:\.\d+)?) \S+ limit\.",
+            r"^(?:Budget exhausted|Usage limit reached)\. (?P<spent>\d+(?:\.\d+)?) (?P<currency>\S+) spent (?:reached|exceeded) the (?P<limit>\d+(?:\.\d+)?) \S+ limit\.",
         )
         .expect("valid budget exhausted regex")
     });
@@ -844,7 +851,7 @@ fn parse_budget_paused_fields(message: &str) -> Option<UserFacingErrorFields> {
 
     let soft_limit_re = SOFT_LIMIT_RE.get_or_init(|| {
         Regex::new(
-            r"^Budget paused\. (?P<spent>\d+(?:\.\d+)?) (?P<currency>\S+) spent (?:reached|exceeded) the (?P<soft_limit>\d+(?:\.\d+)?) \S+ soft limit\.",
+            r"^(?:Budget paused|Usage policy asks before continuing)\. (?P<spent>\d+(?:\.\d+)?) (?P<currency>\S+) spent (?:reached|exceeded) the (?P<soft_limit>\d+(?:\.\d+)?) \S+ (?:soft limit|ask point)\.",
         )
         .expect("valid budget paused regex")
     });
@@ -858,7 +865,7 @@ fn parse_budget_paused_fields(message: &str) -> Option<UserFacingErrorFields> {
     }
 
     let simple_re = SIMPLE_RE.get_or_init(|| {
-        Regex::new(r"^Budget paused with (?P<spent>\d+(?:\.\d+)?) (?P<currency>\S+) spent\.")
+        Regex::new(r"^(?:Budget paused with|Usage policy asks before continuing, with) (?P<spent>\d+(?:\.\d+)?) (?P<currency>\S+) spent\.")
             .expect("valid budget paused simple regex")
     });
     let caps = simple_re.captures(message)?;
@@ -1013,20 +1020,28 @@ mod tests {
         );
         assert_eq!(
             error.fallback_message(),
-            "Budget exhausted. 12.50 usd spent exceeded the 10.00 usd limit. Increase the budget to continue."
+            "Usage limit reached. 12.50 usd spent exceeded the 10.00 usd limit. A usage policy stopped this work; raise its limit to continue."
+        );
+        // The new wording parses back to the same fields.
+        assert_eq!(
+            wire(&classify_runtime_error_message(
+                &error.fallback_message(),
+                &context()
+            )),
+            json!({"code":"budget_exhausted","fields":{"spent":12.5,"limit":10.0,"currency":"usd"}})
         );
         for (spent, expected) in [
             (
                 4.0,
-                "Budget paused with 4.00 tokens spent. Increase or resume the budget to continue.",
+                "Usage policy asks before continuing, with 4.00 tokens spent. Continue this turn or raise the limit.",
             ),
             (
                 5.0,
-                "Budget paused. 5.00 tokens spent reached the 5.00 tokens soft limit. Increase or resume the budget to continue.",
+                "Usage policy asks before continuing. 5.00 tokens spent reached the 5.00 tokens ask point. Continue this turn or raise the limit.",
             ),
             (
                 6.0,
-                "Budget paused. 6.00 tokens spent exceeded the 5.00 tokens soft limit. Increase or resume the budget to continue.",
+                "Usage policy asks before continuing. 6.00 tokens spent exceeded the 5.00 tokens ask point. Continue this turn or raise the limit.",
             ),
         ] {
             let error = UserFacingError::new("budget_paused")
@@ -1037,7 +1052,7 @@ mod tests {
         }
         assert_eq!(
             UserFacingError::new("budget_paused").fallback_message(),
-            "Budget paused. Increase or resume the budget to continue."
+            "Usage policy asks before continuing. Continue this turn or raise the limit."
         );
     }
 

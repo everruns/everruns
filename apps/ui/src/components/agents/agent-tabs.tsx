@@ -1,22 +1,32 @@
 import { AgentIcon, SessionIcon } from "@/components/icons/facet-icons";
-import { BarChart3, Eye, Plug } from "lucide-react";
+import { BarChart3, Eye, FlaskConical, Plug } from "lucide-react";
 import type { SectionTabItem } from "@/components/layout";
 
 // One tab row for the agent page. MCP and Credentials are configuration, so
 // they moved into the Agent tab's config column; Sessions got its own tab
 // instead of a card on the overview; History lives in the header overflow.
 // "Triggers" and "Integrate" folded into Integrations in EVE-1009: both
-// described how an agent is reached and when it runs.
-export type AgentTab = "agent" | "preview" | "integrations" | "stats" | "sessions";
+// described how an agent is reached and when it runs. Evals (behind the
+// evals flag) shows the agent's datasets, experiments and findings.
+export type AgentTab = "agent" | "preview" | "integrations" | "stats" | "evals" | "sessions";
 
 export function getAgentTabItems(
   sessionCount?: number,
   integrationCount?: number,
   translate: (message: string) => string = (message) => message,
+  { evals = false }: { evals?: boolean } = {},
 ): SectionTabItem[] {
   return [
-    { value: "agent", label: translate("Agent"), icon: <AgentIcon className="size-4" /> },
-    { value: "preview", label: translate("Preview"), icon: <Eye className="size-4" /> },
+    {
+      value: "agent",
+      label: translate("Agent"),
+      icon: <AgentIcon className="size-4" />,
+    },
+    {
+      value: "preview",
+      label: translate("Preview"),
+      icon: <Eye className="size-4" />,
+    },
     {
       value: "integrations",
       label:
@@ -30,7 +40,20 @@ export function getAgentTabItems(
         ),
       icon: <Plug className="size-4" />,
     },
-    { value: "stats", label: translate("Stats"), icon: <BarChart3 className="size-4" /> },
+    {
+      value: "stats",
+      label: translate("Stats"),
+      icon: <BarChart3 className="size-4" />,
+    },
+    ...(evals
+      ? [
+          {
+            value: "evals",
+            label: translate("Evals"),
+            icon: <FlaskConical className="size-4" />,
+          },
+        ]
+      : []),
     {
       value: "sessions",
       label:
@@ -47,7 +70,7 @@ export function getAgentTabItems(
   ];
 }
 
-const TABS = new Set<string>(["agent", "preview", "integrations", "stats", "sessions"]);
+const TABS = new Set<string>(["agent", "preview", "integrations", "stats", "evals", "sessions"]);
 
 export function isAgentTab(value: string): value is AgentTab {
   return TABS.has(value);

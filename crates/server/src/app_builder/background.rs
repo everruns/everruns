@@ -424,6 +424,9 @@ pub(super) async fn start_maintenance(
         ),
         crate::background::session_trace_backfill::backfill_job(deps.background_db.clone()),
         crate::background::stranded_actor_sweep::sweep_job(deps.background_db.clone()),
+        crate::background::sandbox_time_meter::meter_job(Arc::new(
+            crate::domains::budgets::BudgetService::new(deps.background_db.clone()),
+        )),
         crate::background::monitoring_timeline::sampler_job(deps.background_db.clone()),
         crate::background::monitoring_timeline::backfill_job(deps.background_db.clone()),
         crate::domains::memory::source_sync::memory_source_sync_job(

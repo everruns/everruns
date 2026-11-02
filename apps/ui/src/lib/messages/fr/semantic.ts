@@ -163,20 +163,20 @@ export const messages: Readonly<Record<string, string>> = {
     "Le service vocal n'a pas pu démarrer un appel en temps réel. Vérifiez la configuration du fournisseur, puis réessayez.",
   "Voice service is unavailable.": "Le service vocal n'est pas disponible.",
   "Error: {value}": "Erreur : {value}",
-  "Budget exhausted. {spent} {currency} spent reached the {limit} {currency} limit. Increase the budget to continue.":
-    "Budget épuisé. Les dépenses {spent} {currency} ont atteint la limite {limit} {currency}. Augmentez le budget pour continuer.",
-  "Budget exhausted. {spent} {currency} spent exceeded the {limit} {currency} limit. Increase the budget to continue.":
-    "Budget épuisé. Les dépenses {spent} {currency} ont dépassé la limite {limit} {currency}. Augmentez le budget pour continuer.",
-  "Budget exhausted. Increase the budget to continue.":
-    "Budget épuisé. Augmentez le budget pour continuer.",
-  "Budget paused. {spent} {currency} spent reached the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.":
-    "Budget suspendu. Les dépenses {spent} {currency} ont atteint la limite logicielle {soft_limit} {currency}. Augmentez ou reprenez le budget pour continuer.",
-  "Budget paused. {spent} {currency} spent exceeded the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.":
-    "Budget suspendu. Les dépenses {spent} {currency} ont dépassé la limite logicielle {soft_limit} {currency}. Augmentez ou reprenez le budget pour continuer.",
-  "Budget paused with {spent} {currency} spent. Increase or resume the budget to continue.":
-    "Budget suspendu avec {spent} {currency} dépensé. Augmentez ou reprenez le budget pour continuer.",
-  "Budget paused. Increase or resume the budget to continue.":
-    "Budget suspendu. Augmentez ou reprenez le budget pour continuer.",
+  "Usage limit reached. {spent} {currency} spent reached the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.":
+    "Limite d'utilisation atteinte. Les {spent} {currency} dépensés ont atteint la limite de {limit} {currency}. Une politique d'utilisation a arrêté ce travail ; augmentez sa limite pour continuer.",
+  "Usage limit reached. {spent} {currency} spent exceeded the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.":
+    "Limite d'utilisation atteinte. Les {spent} {currency} dépensés ont dépassé la limite de {limit} {currency}. Une politique d'utilisation a arrêté ce travail ; augmentez sa limite pour continuer.",
+  "Usage limit reached. A usage policy stopped this work; raise its limit to continue.":
+    "Limite d'utilisation atteinte. Une politique d'utilisation a arrêté ce travail ; augmentez sa limite pour continuer.",
+  "Usage policy asks before continuing. {spent} {currency} spent reached the {soft_limit} {currency} ask point. Continue this turn or raise the limit.":
+    "Une politique d'utilisation demande avant de continuer. Les {spent} {currency} dépensés ont atteint le seuil de confirmation de {soft_limit} {currency}. Continuez ce tour ou augmentez la limite.",
+  "Usage policy asks before continuing. {spent} {currency} spent exceeded the {soft_limit} {currency} ask point. Continue this turn or raise the limit.":
+    "Une politique d'utilisation demande avant de continuer. Les {spent} {currency} dépensés ont dépassé le seuil de confirmation de {soft_limit} {currency}. Continuez ce tour ou augmentez la limite.",
+  "Usage policy asks before continuing, with {spent} {currency} spent. Continue this turn or raise the limit.":
+    "Une politique d'utilisation demande avant de continuer, avec {spent} {currency} dépensés. Continuez ce tour ou augmentez la limite.",
+  "Usage policy asks before continuing. Continue this turn or raise the limit.":
+    "Une politique d'utilisation demande avant de continuer. Continuez ce tour ou augmentez la limite.",
   "The model `{value}` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.":
     "Le modèle `{value}` n'est pas disponible. Il a peut-être été supprimé, renommé ou votre clé API n'y a peut-être pas accès. Veuillez sélectionner un autre modèle.",
   "The selected model is not available. Please select a different model.":

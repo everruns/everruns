@@ -158,18 +158,20 @@ export const messages: Readonly<Record<string, string>> = {
     "语音服务无法发起实时通话。检查提供商配置，然后重试。",
   "Voice service is unavailable.": "语音服务不可用。",
   "Error: {value}": "错误：{value}",
-  "Budget exhausted. {spent} {currency} spent reached the {limit} {currency} limit. Increase the budget to continue.":
-    "预算用尽。 {spent} {currency} 花费达到了 {limit} {currency} 限制。增加预算以继续。",
-  "Budget exhausted. {spent} {currency} spent exceeded the {limit} {currency} limit. Increase the budget to continue.":
-    "预算用尽。 {spent} {currency} 花费超出了 {limit} {currency} 限制。增加预算以继续。",
-  "Budget exhausted. Increase the budget to continue.": "预算用尽。增加预算以继续。",
-  "Budget paused. {spent} {currency} spent reached the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.":
-    "预算暂停。 {spent} {currency} 用达到了 {soft_limit} {currency} 软限制。增加或恢复预算以继续。",
-  "Budget paused. {spent} {currency} spent exceeded the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.":
-    "预算暂停。 {spent} {currency} 花费超出了 {soft_limit} {currency} 软限制。增加或恢复预算以继续。",
-  "Budget paused with {spent} {currency} spent. Increase or resume the budget to continue.":
-    "预算已暂停，已支出 {spent} {currency}。增加或恢复预算以继续。",
-  "Budget paused. Increase or resume the budget to continue.": "预算暂停。增加或恢复预算以继续。",
+  "Usage limit reached. {spent} {currency} spent reached the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.":
+    "已达到使用限额。已花费 {spent} {currency}，达到了 {limit} {currency} 的限额。使用策略已停止此工作；提高其限额以继续。",
+  "Usage limit reached. {spent} {currency} spent exceeded the {limit} {currency} limit. A usage policy stopped this work; raise its limit to continue.":
+    "已达到使用限额。已花费 {spent} {currency}，超过了 {limit} {currency} 的限额。使用策略已停止此工作；提高其限额以继续。",
+  "Usage limit reached. A usage policy stopped this work; raise its limit to continue.":
+    "已达到使用限额。使用策略已停止此工作；提高其限额以继续。",
+  "Usage policy asks before continuing. {spent} {currency} spent reached the {soft_limit} {currency} ask point. Continue this turn or raise the limit.":
+    "使用策略要求确认后再继续。已花费 {spent} {currency}，达到了 {soft_limit} {currency} 的确认点。继续本轮或提高限额。",
+  "Usage policy asks before continuing. {spent} {currency} spent exceeded the {soft_limit} {currency} ask point. Continue this turn or raise the limit.":
+    "使用策略要求确认后再继续。已花费 {spent} {currency}，超过了 {soft_limit} {currency} 的确认点。继续本轮或提高限额。",
+  "Usage policy asks before continuing, with {spent} {currency} spent. Continue this turn or raise the limit.":
+    "使用策略要求确认后再继续，已花费 {spent} {currency}。继续本轮或提高限额。",
+  "Usage policy asks before continuing. Continue this turn or raise the limit.":
+    "使用策略要求确认后再继续。继续本轮或提高限额。",
   "The model `{value}` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.":
     "模型 `{value}` 不可用。它可能已被删除、重命名，或者您的 API 密钥可能无法访问它。请选择不同的模型。",
   "The selected model is not available. Please select a different model.":

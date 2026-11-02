@@ -31,7 +31,10 @@ jest.mock("@/lib/api/monitoring", () => ({
   getMonitoringTimeline: jest.fn(),
   getMonitoringTimelineWindow: jest.fn(),
 }));
-jest.mock("next/navigation", () => ({ usePathname: () => "/durable" }));
+jest.mock("next/navigation", () => ({
+  usePathname: () => "/durable",
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 function snapshot(at = "2026-10-14T12:00:00Z", actors = 50000): MonitoringSnapshot {
   return {

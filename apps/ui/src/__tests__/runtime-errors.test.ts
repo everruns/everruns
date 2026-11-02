@@ -20,7 +20,7 @@ describe("runtime error localization", () => {
       error_fields: { spent: 12.5, limit: 10, currency: "usd" },
     });
 
-    expect(text).toContain("Бюджет вичерпано");
+    expect(text).toContain("Досягнуто ліміту використання");
     expect(text).toContain("12,50");
     expect(text).toContain("10,00");
   });

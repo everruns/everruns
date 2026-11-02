@@ -29,6 +29,7 @@ pub mod session_trace_backfill;
 
 // Resumes sessions left active with no actor leased or runnable
 pub mod monitoring_timeline;
+pub mod sandbox_time_meter;
 pub mod stranded_actor_sweep;
 
 // Session schedule poller

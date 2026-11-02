@@ -310,10 +310,7 @@ async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_
             budget_id: Some(budget.id),
             org_id: DEFAULT_ORG_ID,
             session_id: Some(session.id.uuid()),
-            user_id: None,
             principal_id: Some(principal_id.uuid()),
-            agent_id: None,
-            harness_id: None,
             currency: "usd".to_string(),
             amount: 2.0,
             meter_source: "conformance".to_string(),
@@ -321,6 +318,7 @@ async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_
             ref_id: Some(event.id.uuid()),
             description: Some("repository conformance usage".to_string()),
             rating_metadata: Some(json!({ "source": "repository_conformance_test" })),
+            ..Default::default()
         })
         .await
         .expect("create usage ledger");

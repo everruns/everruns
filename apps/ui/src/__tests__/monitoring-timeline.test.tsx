@@ -16,7 +16,10 @@ jest.mock("@/lib/api/monitoring", () => ({
   getMonitoringTimeline: jest.fn(),
   getMonitoringTimelineWindow: jest.fn(),
 }));
-jest.mock("next/navigation", () => ({ usePathname: () => "/monitoring" }));
+jest.mock("next/navigation", () => ({
+  usePathname: () => "/monitoring",
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 function bucket(start: string, extra: Partial<TimelineBucket> = {}): TimelineBucket {
   return {

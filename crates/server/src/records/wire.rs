@@ -292,6 +292,11 @@ pub fn proto_session_to_schema(
         "tags": tags,
         "model_id": model_id_str,
         "capabilities": capabilities,
+        "tools": value
+            .tools
+            .iter()
+            .filter_map(|tool| serde_json::from_str::<serde_json::Value>(tool).ok())
+            .collect::<Vec<_>>(),
         "status": value.status,
         "created_at": value.created_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "updated_at": value.updated_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
@@ -381,5 +386,20 @@ pub fn schema_session_to_proto(
             String::new()
         }),
         parallel_tool_calls: value.parallel_tool_calls,
+        tools: value
+            .tools
+            .iter()
+            .filter_map(|tool| match serde_json::to_string(tool) {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    tracing::error!(
+                        session_id = %value.id,
+                        error = %e,
+                        "internal-protocol: failed to serialize session tool; dropping it"
+                    );
+                    None
+                }
+            })
+            .collect(),
     }
 }

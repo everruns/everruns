@@ -90,6 +90,7 @@ import { useAgentTriggers } from "@/hooks/use-agent-triggers";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import { AgentPromptPane } from "@/components/agents/agent-prompt-pane";
 import { AgentSessionsPanel } from "@/components/agents/agent-sessions-panel";
+import { AgentEvalsTab } from "@/components/agents/agent-evals-tab";
 import {
   AgentSettingsSheet,
   type AgentSettingsSection,
@@ -195,6 +196,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   }, [agentId, deepLink.recordSheet, router, searchParams]);
 
   const observersEnabled = useFeatureFlag("observers");
+  const evalsEnabled = useFeatureFlag("evals");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   const sourceQuery = useAgentSource(agentId);
   const sourceManaged = !!sourceQuery.data && sourceQuery.data.mode !== "two_way";
@@ -801,7 +803,9 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                   onValueChange={(value) => {
                     if (isAgentTab(value)) selectTab(value);
                   }}
-                  items={getAgentTabItems(sessionCount, integrationCount, ui)}
+                  items={getAgentTabItems(sessionCount, integrationCount, ui, {
+                    evals: evalsEnabled,
+                  })}
                   className="border-x border-t bg-background px-2"
                 />
               </PageControlStrip>
@@ -874,6 +878,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                   {activeTab === "stats" && (
                     <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
                   )}
+                  {activeTab === "evals" && evalsEnabled && <AgentEvalsTab agentId={agentId} />}
                   {activeTab === "sessions" && (
                     <AgentSessionsPanel
                       agentId={agentId}

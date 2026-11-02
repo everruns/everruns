@@ -487,6 +487,10 @@ message Session {
     optional string blueprint_config_json = 24;
     optional bool parallel_tool_calls = 25;
     optional string goal = 26;
+    // Session-level client-side tools (each a JSON-encoded ToolDefinition),
+    // additive to the agent's tools. Without them a worker-run turn never
+    // offers the session's client tools to the model.
+    repeated string tools = 27;
 }
 
 message GetSessionRequest {

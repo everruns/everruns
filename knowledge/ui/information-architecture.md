@@ -54,7 +54,7 @@ authoring is the activity that brings the user to the page.
 
 | Group | Assertion |
 |---|---|
-| **Chats** | Where you talk. First, no section header, and it carries the new-chat affordance. |
+| **Chats** | Where you talk. First, no section header, and it carries the new-chat affordance. [Home](org-home.md) sits above Chat in this group without becoming the landing route. |
 | **Operational** | Recordings and external exposure: Sessions and Exposures. |
 | **Building** | Agents, Playground, Harnesses, Sandboxes, and Virtual Users, in that order. |
 | **Library** | Reusable entries and curated resources, including Models, Web search, Knowledge indexes, and Memory. |

@@ -20,6 +20,7 @@ import {
   HealthIcon,
   KnowledgeIcon,
   MemoryIcon,
+  OrganizationIcon,
   ObserverIcon,
   PlaygroundIcon,
   QueueIcon,
@@ -71,6 +72,15 @@ export type NavigationSection = {
 };
 
 export const defaultChatsNavigation: NavigationItem[] = [
+  // Home sits above Chat but is not the landing route: Chat is
+  // (knowledge/ui/org-home.md). In the Chat workspace, landing opens Chat with Home beside it.
+  {
+    name: "Home",
+    description: "What needs attention in this organization, and how its agents ran today.",
+    href: "/home",
+    icon: OrganizationIcon,
+    keywords: ["dashboard", "overview", "attention", "health", "status"],
+  },
   {
     name: "Chat",
     description: "Talk with your personal assistant.",

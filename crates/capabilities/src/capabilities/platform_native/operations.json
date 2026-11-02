@@ -1,5 +1,45 @@
 [
   {
+    "description": "Add an Eval Builder proposal to a dataset as a new case. The dataset must target the proposal's agent.",
+    "input_schema": {
+      "$defs": {
+        "AcceptEvalProposalRequest": {
+          "description": "Request to add a proposal to a dataset.",
+          "properties": {
+            "eval_id": {
+              "description": "Dataset (eval) to add the case to.",
+              "example": "eval_01933b5a000070008000000000000001",
+              "type": "string"
+            }
+          },
+          "required": [
+            "eval_id"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/AcceptEvalProposalRequest"
+        },
+        {
+          "properties": {
+            "proposal_id": {
+              "description": "Proposal's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposal_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "accept_eval_proposal",
+    "read_only": false
+  },
+  {
     "description": "Connect an existing GitHub identity or public Git source to knowledge.",
     "input_schema": {
       "$defs": {
@@ -903,6 +943,65 @@
       "type": "object"
     },
     "name": "archive_session",
+    "read_only": false
+  },
+  {
+    "description": "Score past production traffic with an observer.",
+    "input_schema": {
+      "$defs": {
+        "BackfillObserverRequest": {
+          "description": "Score past production traffic with an observer.",
+          "properties": {
+            "limit": {
+              "description": "Most past events to read, newest first (1–5000). Defaults to 500.",
+              "example": 500,
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "sample": {
+              "description": "Apply the observer's sampling rate. Defaults to true; false scores\nevery matching slice read.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "since_hours": {
+              "description": "How far back to read, in hours (1–720). Defaults to 24.",
+              "example": 24,
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/BackfillObserverRequest"
+        },
+        {
+          "properties": {
+            "observer_id": {
+              "description": "Observer's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "observer_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "backfill_observer",
     "read_only": false
   },
   {
@@ -3525,12 +3624,73 @@
               "type": "object"
             }
           ]
+        },
+        "PolicySource": {
+          "description": "Which usage a policy counts. Absent counts everything.",
+          "enum": [
+            "all",
+            "managed",
+            "own_keys"
+          ],
+          "type": "string"
+        },
+        "PolicyStep": {
+          "description": "One step of a usage policy, at a percent of the limit.",
+          "properties": {
+            "action": {
+              "$ref": "#/$defs/PolicyStepAction",
+              "description": "What happens when usage reaches the step."
+            },
+            "at_percent": {
+              "description": "Percent of the limit at which the step applies (1 to 100).",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "at_percent",
+            "action"
+          ],
+          "type": "object"
+        },
+        "PolicyStepAction": {
+          "description": "What a usage policy does when its spend crosses a step.",
+          "enum": [
+            "notify",
+            "ask",
+            "stop"
+          ],
+          "type": "string"
+        },
+        "UsagePolicy": {
+          "description": "Name, steps and filter of a usage policy, stored on `budgets.policy`.\n\nDecision: steps are data on the existing budget row rather than a new\ntable, so the hierarchy lookup, period rollover and gate keep working\nunchanged. Empty steps mean the legacy shape (see [`UsagePolicy::effective_steps`]).",
+          "properties": {
+            "name": {
+              "description": "Display name of the policy.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/PolicySource",
+              "description": "Which usage the policy counts."
+            },
+            "steps": {
+              "description": "Steps by percent of the limit. Empty: notify at 80%, ask at the soft\nlimit, stop at the limit.",
+              "items": {
+                "$ref": "#/$defs/PolicyStep"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
         }
       },
       "description": "Request body for creating a spending budget.",
       "properties": {
         "currency": {
-          "description": "Unit in which usage and the limit are measured.",
+          "description": "What the limit measures: \"usd\" (cost from the org's price list) or\n\"tokens\".",
           "example": "usd",
           "type": "string"
         },
@@ -3548,6 +3708,17 @@
             {
               "$ref": "#/$defs/BudgetPeriod",
               "description": "Optional recurring reset period for the budget balance."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "policy": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/UsagePolicy",
+              "description": "Name, steps (notify, ask to continue, stop) and which usage counts.\nAbsent: notify at 80%, ask at the soft limit, stop at the limit."
             },
             {
               "type": "null"
@@ -3583,6 +3754,55 @@
       "type": "object"
     },
     "name": "create_budget",
+    "read_only": false
+  },
+  {
+    "description": "Add a rate to the organization's price list. A rate is a fixed price per unit or a multiple of the list price; rates are never edited, a change is a new rate from a later date.",
+    "input_schema": {
+      "description": "Add a rate to the org's price list. Rates are never edited: a change is\na new rate from a later date.",
+      "properties": {
+        "effective_from": {
+          "description": "When it starts; now when absent.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "list_price_multiplier": {
+          "description": "Multiple of the provider's or catalog price. Model tokens only.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "match": {
+          "description": "Which usage it applies to (see `CostRate.match`).",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "meter": {
+          "description": "`model.tokens` or `sandbox.time`.",
+          "type": "string"
+        },
+        "unit_price_usd": {
+          "description": "Fixed USD per million tokens (model tokens) or per hour (sandboxes).",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "meter"
+      ],
+      "type": "object"
+    },
+    "name": "create_cost_rate",
     "read_only": false
   },
   {
@@ -3815,7 +4035,7 @@
               ]
             },
             "conversation": {
-              "description": "Input messages sent to the agent sequentially.",
+              "description": "Input messages sent to the agent sequentially. May be empty when a\nsimulated user opens the conversation.",
               "example": [
                 {
                   "content": "Fix the failing test in src/lib.rs"
@@ -3886,6 +4106,17 @@
               },
               "type": "array"
             },
+            "simulated_user": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SimulatedUser",
+                  "description": "A model that plays the user after the scripted messages, until it is\ndone or reaches its turn limit. Not combined with `post`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "tags": {
               "description": "Free-form tags attached to this resource.",
               "example": [
@@ -3920,11 +4151,20 @@
                 "integer",
                 "null"
               ]
+            },
+            "tool_fixtures": {
+              "description": "Tools the case gives the agent, each answered with a canned response.",
+              "items": {
+                "$ref": "#/$defs/ToolFixture"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
             }
           },
           "required": [
             "name",
-            "conversation",
             "scorers"
           ],
           "type": "object"
@@ -4122,8 +4362,14 @@
               "type": "object"
             },
             {
-              "description": "Agent called named tool at least `min` times.",
+              "description": "Agent called named tool at least `min` times. With\n`arguments_contain`, only calls whose argument JSON contains that text\ncount, so a case can check what the agent asked a tool to do.",
               "properties": {
+                "arguments_contain": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "min": {
                   "format": "int32",
                   "minimum": 0,
@@ -4218,6 +4464,32 @@
                 "type": {
                   "enum": [
                     "turns_within"
+                  ],
+                  "type": "string"
+                },
+                "weight": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "max",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "The agent spent at most `max` tokens (input plus output).",
+              "properties": {
+                "max": {
+                  "example": 20000,
+                  "format": "int64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": {
+                  "enum": [
+                    "tokens_within"
                   ],
                   "type": "string"
                 },
@@ -4359,8 +4631,179 @@
                 "type"
               ],
               "type": "object"
+            },
+            {
+              "description": "The org's chat model grades the answer against a rubric and returns a\nvalue from 0 to 1 with its reasoning.",
+              "properties": {
+                "model_id": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/modelId",
+                      "description": "Judge model; the org's default is used when absent."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "pass_threshold": {
+                  "description": "Minimum judged value to pass.",
+                  "example": 0.5,
+                  "format": "double",
+                  "type": "number"
+                },
+                "rubric": {
+                  "description": "What a good answer does and what a bad one does.",
+                  "example": "Score 1 when the answer resolves the refund request with the policy's actual terms; 0 when it invents terms or deflects.",
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "judge"
+                  ],
+                  "type": "string"
+                },
+                "weight": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "rubric",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "A decision model answers one yes/no question about the answer; the\nprobability of yes is the value. Cheaper than `judge` and typed, so it\nsuits any check with a yes/no shape.",
+              "properties": {
+                "no": {
+                  "description": "What a no means.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pass_threshold": {
+                  "description": "Minimum probability of yes to pass.",
+                  "example": 0.5,
+                  "format": "double",
+                  "type": "number"
+                },
+                "question": {
+                  "description": "The yes/no question, asked about the user message, the answer and\nthe tools used.",
+                  "example": "Does the answer stay within the published refund policy?",
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "decision"
+                  ],
+                  "type": "string"
+                },
+                "weight": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "yes": {
+                  "description": "What a yes means, when the question alone is ambiguous.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "question",
+                "type"
+              ],
+              "type": "object"
             }
           ]
+        },
+        "SimulatedUser": {
+          "description": "A model that plays the user for a multistep case.",
+          "properties": {
+            "done_when": {
+              "description": "When the user stops: the simulator ends the conversation once this\nholds. Defaults to \"the goal is met or clearly cannot be\".",
+              "example": "The agent opened a refund ticket with the right order number.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "goal": {
+              "description": "What the user wants from the conversation.",
+              "example": "Get the duplicate charge refunded, or a clear date when it will be.",
+              "type": "string"
+            },
+            "max_turns": {
+              "description": "Most messages the simulator sends (default 8, at most 30).",
+              "example": 8,
+              "format": "int32",
+              "maximum": 30,
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "model_id": {
+              "description": "Model that plays the user. Omitted: the organization's default model.",
+              "example": "model_01933b5a00007000800000000000022c",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "persona": {
+              "description": "Who the user is, what they know and how they write.",
+              "example": "Small shop owner charged twice for the Pro plan. Writes short messages. Gives the order number ORD-48213 only when asked.",
+              "type": "string"
+            },
+            "virtual_user_id": {
+              "description": "Virtual user the simulator speaks as, so the agent sees that end\nuser's identity, connections and memory.",
+              "example": "identity_01933b5a000070008000000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "persona",
+            "goal"
+          ],
+          "type": "object"
+        },
+        "ToolFixture": {
+          "description": "A tool the case gives the agent, answered with a canned response.",
+          "properties": {
+            "description": {
+              "description": "What the tool does, as the agent reads it.",
+              "example": "Open a support ticket",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Tool name the agent calls.",
+              "example": "create_ticket",
+              "type": "string"
+            },
+            "parameters": {
+              "description": "JSON Schema of the arguments. Omitted: an object with any fields."
+            },
+            "response": {
+              "description": "What every call returns."
+            }
+          },
+          "required": [
+            "name",
+            "response"
+          ],
+          "type": "object"
         },
         "modelId": {
           "description": "Prefixed identifier with 'model' prefix",
@@ -4391,12 +4834,243 @@
     "read_only": false
   },
   {
+    "description": "Start an experiment: run an eval's cases against one to four variants and compare them case by case.",
+    "input_schema": {
+      "$defs": {
+        "CreateEvalExperimentRequest": {
+          "description": "Request to start an experiment.",
+          "properties": {
+            "max_cost_usd": {
+              "description": "Spending cap in USD for the whole experiment, split evenly between\nthe variants' runs.",
+              "example": 10.0,
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Display name. Defaults to the variant labels joined with \"vs\".",
+              "example": "Luna vs Sol",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "trials": {
+              "description": "Trials per case and variant, 1 to 20 (default 3).",
+              "example": 3,
+              "format": "int32",
+              "maximum": 20,
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "variants": {
+              "description": "One to four variants. The first is the baseline the others are\ncompared against.",
+              "items": {
+                "$ref": "#/$defs/ExperimentVariantSpec"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "variants"
+          ],
+          "type": "object"
+        },
+        "EvalTarget": {
+          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `App`: references a deployed app by ID.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
+          "oneOf": [
+            {
+              "description": "Session creation parameters (mirrors CreateSessionRequest).",
+              "properties": {
+                "agent_id": {
+                  "description": "Agent to work in this session.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "harness_id": {
+                  "description": "Harness for the session. If omitted, org default harness is used.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "harness_name": {
+                  "description": "Addressable harness name (alternative to harness_id).",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "max_iterations": {
+                  "description": "Max LLM iterations per turn.",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "model_id": {
+                  "description": "LLM model override.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "system_prompt": {
+                  "description": "System prompt override (prepended to agent prompt).",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type": {
+                  "enum": [
+                    "session"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "Reference to a deployed app.",
+              "properties": {
+                "app_id": {
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "app"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "app_id",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "Label-only target for externally-executed runs (e.g. imported from Mira).\n\nCarries provider/model labels and opaque params instead of session setup:\nexternal runs are ingested already-complete, so everruns never builds a\nsession from this. Mirrors a provider-agnostic `(provider, model)` pair.",
+              "properties": {
+                "model": {
+                  "type": "string"
+                },
+                "params": {},
+                "provider": {
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "external"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "model",
+                "type"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "ExperimentVariantSpec": {
+          "description": "One configuration an experiment runs the dataset against.",
+          "properties": {
+            "label": {
+              "description": "Short name shown in comparisons, unique within the experiment.",
+              "example": "candidate",
+              "type": "string"
+            },
+            "model_override": {
+              "description": "Model for this variant, beating the target's model.",
+              "example": "gpt-6.1-sol",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/EvalTarget",
+                  "description": "Session setup for this variant. Omitted: the eval's own target."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "label"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/CreateEvalExperimentRequest"
+        },
+        {
+          "properties": {
+            "eval_id": {
+              "description": "Eval's prefixed public identifier; its cases are the dataset.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "eval_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "create_eval_experiment",
+    "read_only": false
+  },
+  {
     "description": "Create an eval run.",
     "input_schema": {
       "$defs": {
         "CreateEvalRunRequest": {
           "description": "Request to create an eval run",
           "properties": {
+            "case_ids": {
+              "description": "Run only these cases of the eval, by public id (\"Try once\" on a case\npage). Omitted runs every case.",
+              "example": [
+                "evalcase_01933b5a00007000800000000000001"
+              ],
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "max_cost_usd": {
+              "description": "Spending cap in USD for the whole run, agents and grading together.\nOnce spent, running turns stop and remaining cases are skipped.",
+              "example": 5.0,
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
             "model_override": {
               "description": "Model override for this run.",
               "example": "gpt-6-luna",
@@ -6148,6 +6822,35 @@
           ],
           "type": "object"
         },
+        "ObserverAlert": {
+          "description": "Open a health issue, and tell the people who own the watched agents, when\nan observer's pass rate falls under `min_pass_rate` over the last\n`window_hours`. Needs `min_scored` scores in the window so a handful of\nsamples cannot raise it. The issue resolves itself once the rate recovers.",
+          "properties": {
+            "min_pass_rate": {
+              "description": "Pass rate (0.0–1.0) under which the alert opens.",
+              "example": 0.8,
+              "format": "double",
+              "type": "number"
+            },
+            "min_scored": {
+              "description": "Scores the window needs before the alert can open. Defaults to 20.",
+              "example": 20,
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "window_hours": {
+              "description": "Window the rate is measured over, in hours (1–168). Defaults to 24.",
+              "example": 24,
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "min_pass_rate"
+          ],
+          "type": "object"
+        },
         "ObserverMatch": {
           "description": "Predicates selecting which production sessions an observer scores.\nAll present predicates must match (AND); within a list, any entry matches (OR).\nAn empty match block matches all org traffic. Sessions tagged `eval` are\nalways excluded so synthetic eval-run sessions are never scored.",
           "properties": {
@@ -6185,9 +6888,11 @@
           "type": "object"
         },
         "ObserverScope": {
-          "description": "What slice of the trace a scorer grades. Phase 1 implements `turn` only;\n`session` and `tool` scopes are reserved for future use.",
+          "description": "What slice of the trace a scorer grades.\n\n- `turn`: one exchange, scored when the turn completes.\n- `session`: the whole conversation, scored once the session has been idle\n  for a while ([`SESSION_SETTLE_SECONDS`]); a later idle re-scores it, so\n  each session has one current score.\n- `tool`: one tool call and its result, scored when the call completes.",
           "enum": [
-            "turn"
+            "turn",
+            "session",
+            "tool"
           ],
           "type": "string"
         },
@@ -6206,6 +6911,16 @@
                 "scope": {
                   "$ref": "#/$defs/ObserverScope",
                   "description": "Trace slice this scorer grades."
+                },
+                "tools": {
+                  "description": "Tool scope only: grade calls to these tools. Empty or absent grades\nevery tool call.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
                 }
               },
               "required": [
@@ -6289,8 +7004,14 @@
               "type": "object"
             },
             {
-              "description": "Agent called named tool at least `min` times.",
+              "description": "Agent called named tool at least `min` times. With\n`arguments_contain`, only calls whose argument JSON contains that text\ncount, so a case can check what the agent asked a tool to do.",
               "properties": {
+                "arguments_contain": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "min": {
                   "format": "int32",
                   "minimum": 0,
@@ -6385,6 +7106,32 @@
                 "type": {
                   "enum": [
                     "turns_within"
+                  ],
+                  "type": "string"
+                },
+                "weight": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "max",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "The agent spent at most `max` tokens (input plus output).",
+              "properties": {
+                "max": {
+                  "example": 20000,
+                  "format": "int64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": {
+                  "enum": [
+                    "tokens_within"
                   ],
                   "type": "string"
                 },
@@ -6526,6 +7273,93 @@
                 "type"
               ],
               "type": "object"
+            },
+            {
+              "description": "The org's chat model grades the answer against a rubric and returns a\nvalue from 0 to 1 with its reasoning.",
+              "properties": {
+                "model_id": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/modelId",
+                      "description": "Judge model; the org's default is used when absent."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "pass_threshold": {
+                  "description": "Minimum judged value to pass.",
+                  "example": 0.5,
+                  "format": "double",
+                  "type": "number"
+                },
+                "rubric": {
+                  "description": "What a good answer does and what a bad one does.",
+                  "example": "Score 1 when the answer resolves the refund request with the policy's actual terms; 0 when it invents terms or deflects.",
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "judge"
+                  ],
+                  "type": "string"
+                },
+                "weight": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "rubric",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "A decision model answers one yes/no question about the answer; the\nprobability of yes is the value. Cheaper than `judge` and typed, so it\nsuits any check with a yes/no shape.",
+              "properties": {
+                "no": {
+                  "description": "What a no means.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pass_threshold": {
+                  "description": "Minimum probability of yes to pass.",
+                  "example": 0.5,
+                  "format": "double",
+                  "type": "number"
+                },
+                "question": {
+                  "description": "The yes/no question, asked about the user message, the answer and\nthe tools used.",
+                  "example": "Does the answer stay within the published refund policy?",
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "decision"
+                  ],
+                  "type": "string"
+                },
+                "weight": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "yes": {
+                  "description": "What a yes means, when the question alone is ambiguous.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "question",
+                "type"
+              ],
+              "type": "object"
             }
           ]
         },
@@ -6585,6 +7419,17 @@
       },
       "description": "Request to create a new observer.",
       "properties": {
+        "alert": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ObserverAlert",
+              "description": "Pass-rate alert: opens a health issue and notifies the agent's owners\nwhen the observer's pass rate falls under a threshold."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "description": {
           "description": "Human-readable description. Safe to render in user-facing messages.",
           "example": "Score replies from the support agent",
@@ -9621,6 +10466,89 @@
     "read_only": false
   },
   {
+    "description": "Dismiss an Eval Builder proposal, optionally saying why. The Eval Builder does not offer it again.",
+    "input_schema": {
+      "$defs": {
+        "DismissEvalProposalRequest": {
+          "description": "Request to turn a proposal down.",
+          "properties": {
+            "note": {
+              "description": "Why it is not wanted, kept so the builder does not offer it again.",
+              "example": "We do not support refunds over the limit at all.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/DismissEvalProposalRequest"
+        },
+        {
+          "properties": {
+            "proposal_id": {
+              "description": "Proposal's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposal_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "dismiss_eval_proposal",
+    "read_only": false
+  },
+  {
+    "description": "Dismiss a detector finding with a reason.",
+    "input_schema": {
+      "$defs": {
+        "DismissHealthIssueRequest": {
+          "description": "Why a finding needs nothing.",
+          "properties": {
+            "note": {
+              "description": "A false alarm, expected work, or already handled. Kept so detectors\ncan be calibrated against it.\n(Named `note` because `reason` is the change-intent flag every\ncommand takes.)",
+              "example": "Expected: this is our nightly load test",
+              "type": "string"
+            }
+          },
+          "required": [
+            "note"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/DismissHealthIssueRequest"
+        },
+        {
+          "properties": {
+            "issue_id": {
+              "description": "Stable identifier of the issue in the current organization.",
+              "example": "550e8400-e29b-41d4-a716-446655440000",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "issue_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Close a finding that needs nothing, saying why."
+    },
+    "name": "dismiss_health_issue",
+    "read_only": false
+  },
+  {
     "description": "Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.",
     "input_schema": {
       "$defs": {
@@ -10059,6 +10987,23 @@
     "read_only": false
   },
   {
+    "description": "Export an eval's cases as Mira samples, one per case. Settings Mira has no field for ride under metadata.everruns, so the export imports back unchanged.",
+    "input_schema": {
+      "properties": {
+        "eval_id": {
+          "description": "Eval's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "eval_id"
+      ],
+      "type": "object"
+    },
+    "name": "export_eval_samples",
+    "read_only": true
+  },
+  {
     "description": "Run and export an org-scoped semantic reporting query.",
     "input_schema": {
       "$defs": {
@@ -10418,6 +11363,55 @@
     "read_only": false
   },
   {
+    "description": "Check an experiment's variant against a bar, for CI. Answers 409 while runs are going and 422 when the variant misses the bar, so the command exits non-zero.",
+    "input_schema": {
+      "properties": {
+        "eval_id": {
+          "description": "Eval's prefixed public identifier.",
+          "type": "string"
+        },
+        "experiment_id": {
+          "description": "Experiment's prefixed public identifier.",
+          "type": "string"
+        },
+        "min_pass_rate": {
+          "description": "Minimum pass rate over all trials, 0 to 1.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "min_passed_every_trial": {
+          "description": "Minimum share of cases passed in every trial, 0 to 1.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "no_regression": {
+          "description": "Fail when the variant is a regression against the baseline.",
+          "type": "boolean"
+        },
+        "variant": {
+          "description": "Variant to judge; the last one when omitted.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "eval_id",
+        "experiment_id"
+      ],
+      "type": "object"
+    },
+    "name": "gate_eval_experiment",
+    "read_only": true
+  },
+  {
     "description": "Read your own editable profile, without email, tokens or credentials.",
     "input_schema": {
       "description": "Read the editable profile belonging to the signed-in account.",
@@ -10472,6 +11466,23 @@
       "type": "object"
     },
     "name": "get_agent_channel",
+    "read_only": true
+  },
+  {
+    "description": "What one agent cost the organization this month.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_agent_cost",
     "read_only": true
   },
   {
@@ -10684,6 +11695,48 @@
     "read_only": true
   },
   {
+    "description": "Read the organization's cost settings.",
+    "input_schema": {
+      "type": "object"
+    },
+    "name": "get_cost_settings",
+    "read_only": true
+  },
+  {
+    "description": "Summarize what usage cost the organization.",
+    "input_schema": {
+      "description": "Org cost over a window. Defaults to this month in the org's timezone.",
+      "properties": {
+        "agent_id": {
+          "description": "Only this agent (`agent_...`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "from": {
+          "description": "Window start (inclusive). Default: the start of this month.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "description": "Window end (exclusive). Default: now.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_cost_summary",
+    "read_only": true
+  },
+  {
     "description": "Get a persisted declarative capability.",
     "input_schema": {
       "properties": {
@@ -10755,6 +11808,28 @@
       "type": "object"
     },
     "name": "get_eval_case",
+    "read_only": true
+  },
+  {
+    "description": "Get an experiment with its case-by-case comparison and verdicts.",
+    "input_schema": {
+      "properties": {
+        "eval_id": {
+          "description": "Eval's prefixed public identifier.",
+          "type": "string"
+        },
+        "experiment_id": {
+          "description": "Experiment's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "eval_id",
+        "experiment_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_eval_experiment",
     "read_only": true
   },
   {
@@ -11046,6 +12121,40 @@
       "type": "object"
     },
     "name": "get_observer",
+    "read_only": true
+  },
+  {
+    "description": "Live quality by agent, observer and day.",
+    "input_schema": {
+      "description": "Query parameters for the live-quality summary.",
+      "properties": {
+        "agent_id": {
+          "description": "Only scores of this agent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "days": {
+          "description": "Window in days (1–90). Defaults to 7.",
+          "format": "int32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "observer_id": {
+          "description": "Only scores of this observer.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_observer_summary",
     "read_only": true
   },
   {
@@ -12371,6 +13480,17 @@
               },
               "type": "array"
             },
+            "experiment": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ImportExperimentRef",
+                  "description": "Publish each eval's run as a variant of an experiment, so it is\ncompared with the experiment's other variants."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "source": {
               "$ref": "#/$defs/ImportEvalSource",
               "description": "External system that produced the run."
@@ -12444,6 +13564,26 @@
           ],
           "type": "object"
         },
+        "ImportExperimentRef": {
+          "description": "The experiment an import publishes into. Each imported eval's run becomes\nthe variant `variant` of the experiment named `name` on that eval, which\nis created on first use.",
+          "properties": {
+            "name": {
+              "description": "Experiment name, matched within each eval.",
+              "example": "Luna vs Sol",
+              "type": "string"
+            },
+            "variant": {
+              "description": "The variant this import is. A later import with the same label\nreplaces it.",
+              "example": "gpt-6.1-sol",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "variant"
+          ],
+          "type": "object"
+        },
         "ImportScore": {
           "description": "A single named score from an external scorer.",
           "properties": {
@@ -12490,6 +13630,86 @@
       "description": "Import a full external run group (everruns as host/viewer for external eval\nsystems)."
     },
     "name": "import_eval_run",
+    "read_only": false
+  },
+  {
+    "description": "Create or update an eval's cases from Mira samples, matched by name. A sample's expected text becomes a contains scorer unless metadata.everruns names the scorers.",
+    "input_schema": {
+      "$defs": {
+        "EvalSample": {
+          "description": "One Mira dataset row (`mira::Sample`).",
+          "properties": {
+            "attachments": {
+              "description": "Non-text input. Not imported.",
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "expected": {
+              "description": "Reference answer. Text becomes a `contains` scorer on import.",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "files": {
+              "description": "Files to seed into the workspace. Not imported.",
+              "type": "object"
+            },
+            "id": {
+              "description": "Stable id within the dataset: the case name.",
+              "example": "refund-over-limit",
+              "type": "string"
+            },
+            "input": {
+              "description": "User turns, sent in order.",
+              "example": [
+                "Refund $450 for order 1182"
+              ],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "metadata": {
+              "description": "Free-form metadata. `everruns` holds the case settings Mira has no\nfield for.",
+              "type": "object"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "input"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "eval_id": {
+          "description": "Eval's prefixed public identifier.",
+          "type": "string"
+        },
+        "samples": {
+          "description": "Mira samples. Each becomes the case named by its id.",
+          "items": {
+            "$ref": "#/$defs/EvalSample"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "eval_id",
+        "samples"
+      ],
+      "type": "object"
+    },
+    "name": "import_eval_samples",
     "read_only": false
   },
   {
@@ -12812,6 +14032,14 @@
     "read_only": true
   },
   {
+    "description": "List the organization's experiments across evals, newest first.",
+    "input_schema": {
+      "type": "object"
+    },
+    "name": "list_all_eval_experiments",
+    "read_only": true
+  },
+  {
     "description": "List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.",
     "input_schema": {
       "description": "List audit logs for the caller's organization. Policy-gated read.",
@@ -12985,6 +14213,15 @@
     "read_only": true
   },
   {
+    "description": "List the organization's price list, history included.",
+    "input_schema": {
+      "description": "List the org's price list, history included, newest first.",
+      "type": "object"
+    },
+    "name": "list_cost_rates",
+    "read_only": true
+  },
+  {
     "description": "List persisted declarative capabilities.",
     "input_schema": {
       "properties": {
@@ -13068,6 +14305,40 @@
       "type": "object"
     },
     "name": "list_eval_cases",
+    "read_only": true
+  },
+  {
+    "description": "List an eval's experiments, newest first.",
+    "input_schema": {
+      "properties": {
+        "eval_id": {
+          "description": "Eval's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "eval_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_eval_experiments",
+    "read_only": true
+  },
+  {
+    "description": "List an agent's open eval case proposals, newest first, with the Eval Builder's latest run.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_eval_proposals",
     "read_only": true
   },
   {
@@ -13709,6 +14980,10 @@
           "format": "int64",
           "type": "integer"
         },
+        "review_queue": {
+          "description": "Only unreviewed completed scores, failures first (the review queue).",
+          "type": "boolean"
+        },
         "session_id": {
           "description": "Session's prefixed public identifier.",
           "type": [
@@ -13958,6 +15233,33 @@
       "type": "object"
     },
     "name": "list_payment_policies",
+    "read_only": true
+  },
+  {
+    "description": "List open abuse detections in every organization, with the Inspector's write-up. Leads for a person to confirm, never grounds for automatic action.",
+    "input_schema": {
+      "description": "Page through the open findings that concern the platform operator.",
+      "properties": {
+        "limit": {
+          "description": "Page size from 1 through 100; defaults to 20.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "description": "Number of detections to skip; defaults to zero.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "name": "list_platform_detections",
     "read_only": true
   },
   {
@@ -16453,6 +17755,23 @@
     "read_only": true
   },
   {
+    "description": "Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. Runs in the background on the organization's default model; nothing is added until a person accepts a proposal.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "propose_eval_cases",
+    "read_only": false
+  },
+  {
     "description": "Publish an agent ingress channel.",
     "input_schema": {
       "properties": {
@@ -16612,7 +17931,7 @@
     "read_only": false
   },
   {
-    "description": "Resume all paused session budgets for a session.",
+    "description": "Continue a session past a usage policy's ask step.",
     "input_schema": {
       "properties": {
         "session_id": {
@@ -16626,6 +17945,83 @@
       "type": "object"
     },
     "name": "resume_session_budgets",
+    "read_only": false
+  },
+  {
+    "description": "End a rate from a date. Past costs keep the rate they used; usage after the date falls back to the provider's or catalog price.",
+    "input_schema": {
+      "description": "End a rate: adds a row that retires its match from a date.",
+      "properties": {
+        "effective_from": {
+          "description": "When it ends; now when absent.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rate_id": {
+          "description": "Rate id (`rate_...`) whose match to retire.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rate_id"
+      ],
+      "type": "object"
+    },
+    "name": "retire_cost_rate",
+    "read_only": false
+  },
+  {
+    "description": "Record whether an observer's score was right.",
+    "input_schema": {
+      "$defs": {
+        "ReviewScoreRequest": {
+          "description": "A person's verdict on one score.",
+          "properties": {
+            "agrees": {
+              "description": "True when the grader got it right.",
+              "type": "boolean"
+            },
+            "note": {
+              "description": "Optional note on why (at most 2000 characters).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "agrees"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReviewScoreRequest"
+        },
+        {
+          "properties": {
+            "observer_id": {
+              "description": "Observer's prefixed public identifier.",
+              "type": "string"
+            },
+            "score_id": {
+              "description": "Score's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "observer_id",
+            "score_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "review_observer_score",
     "read_only": false
   },
   {
@@ -19753,6 +21149,69 @@
   {
     "description": "Update a budget limit, status, or metadata.",
     "input_schema": {
+      "$defs": {
+        "PolicySource": {
+          "description": "Which usage a policy counts. Absent counts everything.",
+          "enum": [
+            "all",
+            "managed",
+            "own_keys"
+          ],
+          "type": "string"
+        },
+        "PolicyStep": {
+          "description": "One step of a usage policy, at a percent of the limit.",
+          "properties": {
+            "action": {
+              "$ref": "#/$defs/PolicyStepAction",
+              "description": "What happens when usage reaches the step."
+            },
+            "at_percent": {
+              "description": "Percent of the limit at which the step applies (1 to 100).",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "at_percent",
+            "action"
+          ],
+          "type": "object"
+        },
+        "PolicyStepAction": {
+          "description": "What a usage policy does when its spend crosses a step.",
+          "enum": [
+            "notify",
+            "ask",
+            "stop"
+          ],
+          "type": "string"
+        },
+        "UsagePolicy": {
+          "description": "Name, steps and filter of a usage policy, stored on `budgets.policy`.\n\nDecision: steps are data on the existing budget row rather than a new\ntable, so the hierarchy lookup, period rollover and gate keep working\nunchanged. Empty steps mean the legacy shape (see [`UsagePolicy::effective_steps`]).",
+          "properties": {
+            "name": {
+              "description": "Display name of the policy.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/PolicySource",
+              "description": "Which usage the policy counts."
+            },
+            "steps": {
+              "description": "Steps by percent of the limit. Empty: notify at 80%, ask at the soft\nlimit, stop at the limit.",
+              "items": {
+                "$ref": "#/$defs/PolicyStep"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      },
       "properties": {
         "budget_id": {
           "description": "Budget's prefixed public identifier.",
@@ -19768,6 +21227,17 @@
         },
         "metadata": {
           "description": "Free-form metadata attached to this resource."
+        },
+        "policy": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/UsagePolicy",
+              "description": "Replacement name, steps and filter."
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "soft_limit": {
           "description": "Replacement soft threshold, or null to remove it.",
@@ -19791,6 +21261,23 @@
       "type": "object"
     },
     "name": "update_budget",
+    "read_only": false
+  },
+  {
+    "description": "Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.",
+    "input_schema": {
+      "properties": {
+        "timezone": {
+          "description": "IANA timezone, or null for UTC.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "name": "update_cost_settings",
     "read_only": false
   },
   {
@@ -20241,8 +21728,14 @@
               "type": "object"
             },
             {
-              "description": "Agent called named tool at least `min` times.",
+              "description": "Agent called named tool at least `min` times. With\n`arguments_contain`, only calls whose argument JSON contains that text\ncount, so a case can check what the agent asked a tool to do.",
               "properties": {
+                "arguments_contain": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "min": {
                   "format": "int32",
                   "minimum": 0,
@@ -20337,6 +21830,32 @@
                 "type": {
                   "enum": [
                     "turns_within"
+                  ],
+                  "type": "string"
+                },
+                "weight": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "max",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "The agent spent at most `max` tokens (input plus output).",
+              "properties": {
+                "max": {
+                  "example": 20000,
+                  "format": "int64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": {
+                  "enum": [
+                    "tokens_within"
                   ],
                   "type": "string"
                 },
@@ -20478,8 +21997,179 @@
                 "type"
               ],
               "type": "object"
+            },
+            {
+              "description": "The org's chat model grades the answer against a rubric and returns a\nvalue from 0 to 1 with its reasoning.",
+              "properties": {
+                "model_id": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/modelId",
+                      "description": "Judge model; the org's default is used when absent."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "pass_threshold": {
+                  "description": "Minimum judged value to pass.",
+                  "example": 0.5,
+                  "format": "double",
+                  "type": "number"
+                },
+                "rubric": {
+                  "description": "What a good answer does and what a bad one does.",
+                  "example": "Score 1 when the answer resolves the refund request with the policy's actual terms; 0 when it invents terms or deflects.",
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "judge"
+                  ],
+                  "type": "string"
+                },
+                "weight": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "rubric",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "A decision model answers one yes/no question about the answer; the\nprobability of yes is the value. Cheaper than `judge` and typed, so it\nsuits any check with a yes/no shape.",
+              "properties": {
+                "no": {
+                  "description": "What a no means.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pass_threshold": {
+                  "description": "Minimum probability of yes to pass.",
+                  "example": 0.5,
+                  "format": "double",
+                  "type": "number"
+                },
+                "question": {
+                  "description": "The yes/no question, asked about the user message, the answer and\nthe tools used.",
+                  "example": "Does the answer stay within the published refund policy?",
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "decision"
+                  ],
+                  "type": "string"
+                },
+                "weight": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "yes": {
+                  "description": "What a yes means, when the question alone is ambiguous.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "question",
+                "type"
+              ],
+              "type": "object"
             }
           ]
+        },
+        "SimulatedUser": {
+          "description": "A model that plays the user for a multistep case.",
+          "properties": {
+            "done_when": {
+              "description": "When the user stops: the simulator ends the conversation once this\nholds. Defaults to \"the goal is met or clearly cannot be\".",
+              "example": "The agent opened a refund ticket with the right order number.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "goal": {
+              "description": "What the user wants from the conversation.",
+              "example": "Get the duplicate charge refunded, or a clear date when it will be.",
+              "type": "string"
+            },
+            "max_turns": {
+              "description": "Most messages the simulator sends (default 8, at most 30).",
+              "example": 8,
+              "format": "int32",
+              "maximum": 30,
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "model_id": {
+              "description": "Model that plays the user. Omitted: the organization's default model.",
+              "example": "model_01933b5a00007000800000000000022c",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "persona": {
+              "description": "Who the user is, what they know and how they write.",
+              "example": "Small shop owner charged twice for the Pro plan. Writes short messages. Gives the order number ORD-48213 only when asked.",
+              "type": "string"
+            },
+            "virtual_user_id": {
+              "description": "Virtual user the simulator speaks as, so the agent sees that end\nuser's identity, connections and memory.",
+              "example": "identity_01933b5a000070008000000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "persona",
+            "goal"
+          ],
+          "type": "object"
+        },
+        "ToolFixture": {
+          "description": "A tool the case gives the agent, answered with a canned response.",
+          "properties": {
+            "description": {
+              "description": "What the tool does, as the agent reads it.",
+              "example": "Open a support ticket",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Tool name the agent calls.",
+              "example": "create_ticket",
+              "type": "string"
+            },
+            "parameters": {
+              "description": "JSON Schema of the arguments. Omitted: an object with any fields."
+            },
+            "response": {
+              "description": "What every call returns."
+            }
+          },
+          "required": [
+            "name",
+            "response"
+          ],
+          "type": "object"
         },
         "UpdateEvalCaseRequest": {
           "description": "Request to update an eval case",
@@ -20581,6 +22271,17 @@
                 "null"
               ]
             },
+            "simulated_user": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SimulatedUser",
+                  "description": "Simulated user. `null` removes it, back to scripted messages only."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "tags": {
               "description": "Free-form tags attached to this resource.",
               "example": [
@@ -20613,6 +22314,16 @@
               "minimum": 0,
               "type": [
                 "integer",
+                "null"
+              ]
+            },
+            "tool_fixtures": {
+              "description": "Tool fixtures, replacing the stored ones. `null` removes them.",
+              "items": {
+                "$ref": "#/$defs/ToolFixture"
+              },
+              "type": [
+                "array",
                 "null"
               ]
             }
@@ -21954,6 +23665,35 @@
           ],
           "type": "object"
         },
+        "ObserverAlert": {
+          "description": "Open a health issue, and tell the people who own the watched agents, when\nan observer's pass rate falls under `min_pass_rate` over the last\n`window_hours`. Needs `min_scored` scores in the window so a handful of\nsamples cannot raise it. The issue resolves itself once the rate recovers.",
+          "properties": {
+            "min_pass_rate": {
+              "description": "Pass rate (0.0–1.0) under which the alert opens.",
+              "example": 0.8,
+              "format": "double",
+              "type": "number"
+            },
+            "min_scored": {
+              "description": "Scores the window needs before the alert can open. Defaults to 20.",
+              "example": 20,
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "window_hours": {
+              "description": "Window the rate is measured over, in hours (1–168). Defaults to 24.",
+              "example": 24,
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "min_pass_rate"
+          ],
+          "type": "object"
+        },
         "ObserverMatch": {
           "description": "Predicates selecting which production sessions an observer scores.\nAll present predicates must match (AND); within a list, any entry matches (OR).\nAn empty match block matches all org traffic. Sessions tagged `eval` are\nalways excluded so synthetic eval-run sessions are never scored.",
           "properties": {
@@ -21991,9 +23731,11 @@
           "type": "object"
         },
         "ObserverScope": {
-          "description": "What slice of the trace a scorer grades. Phase 1 implements `turn` only;\n`session` and `tool` scopes are reserved for future use.",
+          "description": "What slice of the trace a scorer grades.\n\n- `turn`: one exchange, scored when the turn completes.\n- `session`: the whole conversation, scored once the session has been idle\n  for a while ([`SESSION_SETTLE_SECONDS`]); a later idle re-scores it, so\n  each session has one current score.\n- `tool`: one tool call and its result, scored when the call completes.",
           "enum": [
-            "turn"
+            "turn",
+            "session",
+            "tool"
           ],
           "type": "string"
         },
@@ -22012,6 +23754,16 @@
                 "scope": {
                   "$ref": "#/$defs/ObserverScope",
                   "description": "Trace slice this scorer grades."
+                },
+                "tools": {
+                  "description": "Tool scope only: grade calls to these tools. Empty or absent grades\nevery tool call.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
                 }
               },
               "required": [
@@ -22105,8 +23857,14 @@
               "type": "object"
             },
             {
-              "description": "Agent called named tool at least `min` times.",
+              "description": "Agent called named tool at least `min` times. With\n`arguments_contain`, only calls whose argument JSON contains that text\ncount, so a case can check what the agent asked a tool to do.",
               "properties": {
+                "arguments_contain": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "min": {
                   "format": "int32",
                   "minimum": 0,
@@ -22201,6 +23959,32 @@
                 "type": {
                   "enum": [
                     "turns_within"
+                  ],
+                  "type": "string"
+                },
+                "weight": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "max",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "The agent spent at most `max` tokens (input plus output).",
+              "properties": {
+                "max": {
+                  "example": 20000,
+                  "format": "int64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": {
+                  "enum": [
+                    "tokens_within"
                   ],
                   "type": "string"
                 },
@@ -22342,6 +24126,93 @@
                 "type"
               ],
               "type": "object"
+            },
+            {
+              "description": "The org's chat model grades the answer against a rubric and returns a\nvalue from 0 to 1 with its reasoning.",
+              "properties": {
+                "model_id": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/modelId",
+                      "description": "Judge model; the org's default is used when absent."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "pass_threshold": {
+                  "description": "Minimum judged value to pass.",
+                  "example": 0.5,
+                  "format": "double",
+                  "type": "number"
+                },
+                "rubric": {
+                  "description": "What a good answer does and what a bad one does.",
+                  "example": "Score 1 when the answer resolves the refund request with the policy's actual terms; 0 when it invents terms or deflects.",
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "judge"
+                  ],
+                  "type": "string"
+                },
+                "weight": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "rubric",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "A decision model answers one yes/no question about the answer; the\nprobability of yes is the value. Cheaper than `judge` and typed, so it\nsuits any check with a yes/no shape.",
+              "properties": {
+                "no": {
+                  "description": "What a no means.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pass_threshold": {
+                  "description": "Minimum probability of yes to pass.",
+                  "example": 0.5,
+                  "format": "double",
+                  "type": "number"
+                },
+                "question": {
+                  "description": "The yes/no question, asked about the user message, the answer and\nthe tools used.",
+                  "example": "Does the answer stay within the published refund policy?",
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "decision"
+                  ],
+                  "type": "string"
+                },
+                "weight": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "yes": {
+                  "description": "What a yes means, when the question alone is ambiguous.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "question",
+                "type"
+              ],
+              "type": "object"
             }
           ]
         },
@@ -22395,6 +24266,17 @@
         "UpdateObserverRequest": {
           "description": "Request to update an observer. Omitted fields are unchanged.",
           "properties": {
+            "alert": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ObserverAlert",
+                  "description": "Pass-rate alert. `null` removes it."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "description": {
               "description": "Human-readable description. Safe to render in user-facing messages.",
               "example": "Score replies from the support agent",

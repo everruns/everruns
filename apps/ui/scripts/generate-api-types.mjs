@@ -15,6 +15,8 @@ const schemaTypesPath = resolve(uiRoot, "src/lib/api/generated/schema-types.ts")
 // from schema-types.ts, which would make `export *` in types.ts ambiguous.
 const legacyTypesPaths = [
   "legacy-api-types.ts",
+  "observer-types.ts",
+  "eval-case-types.ts",
   "session-types.ts",
   "connection-provider-types.ts",
   "agent-types.ts",
@@ -27,6 +29,7 @@ const legacyTypesPaths = [
   "provider-config-types.ts",
   "model-types.ts",
   "organization-types.ts",
+  "eval-run-types.ts",
 ].map((file) => resolve(uiRoot, "src/lib/api", file));
 // OpenAPI schemas still carrying App-era component names whose hand-maintained
 // UI type was renamed (EVE-1131). Only the `OpenApi*` alias is emitted for them,

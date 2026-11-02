@@ -2257,6 +2257,47 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/costs": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "What one agent cost the organization this month",
+        "operationId": "get_agent_cost",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCost"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/credentials": {
       "get": {
         "tags": [
@@ -3037,6 +3078,85 @@
           "support": "preview"
         },
         "x-superseded-by": "create_channel_call"
+      }
+    },
+    "/v1/agents/{agent_id}/eval-proposals": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "List the Eval Builder's proposals for an agent",
+        "description": "List an agent's open eval case proposals, newest first, with the Eval Builder's latest run.",
+        "operationId": "list_eval_proposals",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalProposalList"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Ask the Eval Builder for cases",
+        "description": "Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. Runs in the background on the organization's default model; nothing is added until a person accepts a proposal.",
+        "operationId": "propose_eval_cases",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalBuilderRun"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A run for this agent is still going"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
       }
     },
     "/v1/agents/{agent_id}/export": {
@@ -9446,6 +9566,237 @@
         }
       }
     },
+    "/v1/cost-rates": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "List the organization's price list, history included",
+        "operationId": "list_cost_rates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CostRate"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Add a rate to the organization's price list",
+        "description": "Add a rate to the organization's price list. A rate is a fixed price per unit or a multiple of the list price; rates are never edited, a change is a new rate from a later date.",
+        "operationId": "create_cost_rate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCostRate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostRate"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/cost-rates/{rate_id}/retire": {
+      "post": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "End a rate from a date",
+        "description": "End a rate from a date. Past costs keep the rate they used; usage after the date falls back to the provider's or catalog price.",
+        "operationId": "retire_cost_rate",
+        "parameters": [
+          {
+            "name": "rate_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostRate"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rate not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/costs/settings": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Read the organization's cost settings",
+        "operationId": "get_cost_settings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostSettings"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Set the timezone usage policy windows reset in",
+        "description": "Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.",
+        "operationId": "update_cost_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCostSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostSettings"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/costs/summary": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Summarize what usage cost the organization",
+        "operationId": "get_cost_summary",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Window start (inclusive). Default: the start of this month.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Window end (exclusive). Default: now.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Only this agent (`agent_...`).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostSummary"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/credential-bindings": {
       "get": {
         "tags": [
@@ -13423,6 +13774,110 @@
         "x-superseded-by": "exchange"
       }
     },
+    "/v1/eval-proposals/{proposal_id}/accept": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Add a proposed case to a dataset",
+        "description": "Add an Eval Builder proposal to a dataset as a new case. The dataset must target the proposal's agent.",
+        "operationId": "accept_eval_proposal",
+        "parameters": [
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptEvalProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalCase"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The proposal was already decided"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/eval-proposals/{proposal_id}/dismiss": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Turn a proposed case down",
+        "description": "Dismiss an Eval Builder proposal, optionally saying why. The Eval Builder does not offer it again.",
+        "operationId": "dismiss_eval_proposal",
+        "parameters": [
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DismissEvalProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalCaseProposal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The proposal was already decided"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/evals": {
       "get": {
         "tags": [
@@ -13492,6 +13947,34 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Eval"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/evals/experiments": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "List experiments across evals",
+        "description": "List the organization's experiments across evals, newest first.",
+        "operationId": "list_all_eval_experiments",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_EvalExperiment"
                 }
               }
             }
@@ -13983,6 +14466,199 @@
           },
           "404": {
             "description": "Eval case not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/experiments": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "List an eval's experiments, newest first",
+        "operationId": "list_eval_experiments",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_EvalExperiment"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Start an eval experiment",
+        "description": "Start an experiment: run an eval's cases against one to four variants and compare them case by case.",
+        "operationId": "create_eval_experiment",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEvalExperimentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalExperiment"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/experiments/{experiment_id}": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Get an eval experiment with its comparison",
+        "description": "Get an experiment with its case-by-case comparison and verdicts.",
+        "operationId": "get_eval_experiment",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "experiment_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalExperiment"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experiment not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/experiments/{experiment_id}/gate": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Check an experiment's variant against a bar, for CI",
+        "description": "Check an experiment's variant against a bar, for CI. Answers 409 while runs are going and 422 when the variant misses the bar, so the command exits non-zero.",
+        "operationId": "gate_eval_experiment",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "experiment_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentGateResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experiment not found"
+          },
+          "409": {
+            "description": "Some variant's run is still going"
+          },
+          "422": {
+            "description": "The variant missed the bar"
           }
         },
         "x-docs": {
@@ -14608,6 +15284,82 @@
         "responses": {
           "204": {
             "description": "No content"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/samples": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Export a dataset as Mira samples",
+        "description": "Export an eval's cases as Mira samples, one per case. Settings Mira has no field for ride under metadata.everruns, so the export imports back unchanged.",
+        "operationId": "export_eval_samples",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalSampleList"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Import Mira samples as cases",
+        "description": "Create or update an eval's cases from Mira samples, matched by name. A sample's expected text becomes a contains scorer unless metadata.everruns names the scorers.",
+        "operationId": "import_eval_samples",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalSampleImportReport"
+                }
+              }
+            }
           }
         },
         "x-docs": {
@@ -15655,6 +16407,72 @@
             }
           },
           "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/health-issues/{issue_id}/dismiss": {
+      "post": {
+        "tags": [
+          "health-issues"
+        ],
+        "summary": "Dismiss a detector finding with a reason",
+        "description": "Close a finding that needs nothing. The reason is kept to calibrate detectors, and a dismissed session finding stays closed when the same session is flagged again.",
+        "operationId": "dismiss_health_issue",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DismissHealthIssueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthIssue"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
             "content": {
               "application/json": {
                 "schema": {
@@ -20109,6 +20927,67 @@
         }
       }
     },
+    "/v1/observers/summary": {
+      "get": {
+        "tags": [
+          "observers"
+        ],
+        "summary": "Live quality by agent, observer and day",
+        "operationId": "get_observer_summary",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "description": "Window in days (1–90). Defaults to 7.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Only scores of this agent.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "observer_id",
+            "in": "query",
+            "description": "Only scores of this observer.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualitySummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Observer not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/observers/{observer_id}": {
       "get": {
         "tags": [
@@ -20231,6 +21110,57 @@
         }
       }
     },
+    "/v1/observers/{observer_id}/backfill": {
+      "post": {
+        "tags": [
+          "observers"
+        ],
+        "summary": "Score past production traffic with an observer",
+        "operationId": "backfill_observer",
+        "parameters": [
+          {
+            "name": "observer_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackfillObserverRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackfillResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Observer not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/observers/{observer_id}/scores": {
       "get": {
         "tags": [
@@ -20276,6 +21206,15 @@
               "type": "integer",
               "format": "int64"
             }
+          },
+          {
+            "name": "review_queue",
+            "in": "query",
+            "description": "Only completed scores nobody has reviewed yet, failures first, then a\nrandom sample of the rest (the review queue).",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -20288,6 +21227,66 @@
                 }
               }
             }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/observers/{observer_id}/scores/{score_id}/review": {
+      "post": {
+        "tags": [
+          "observers"
+        ],
+        "summary": "Record whether an observer's score was right",
+        "operationId": "review_observer_score",
+        "parameters": [
+          {
+            "name": "observer_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "score_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewScoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceScore"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Observer or completed score not found"
           }
         },
         "x-docs": {
@@ -28509,7 +29508,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Resume all paused session budgets for a session",
+        "summary": "Continue a session past a usage policy's ask step",
         "operationId": "resume_session_budgets",
         "parameters": [
           {
@@ -30585,6 +31584,68 @@
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/system/detections": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Open abuse detections in every organization",
+        "operationId": "list_platform_detections",
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of detections to skip",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size from 1 through 100; defaults to 20",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Open detections, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformDetectionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Platform user access is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
           "support": "preview"
         }
       }
@@ -34442,6 +35503,20 @@
   },
   "components": {
     "schemas": {
+      "AcceptEvalProposalRequest": {
+        "type": "object",
+        "description": "Request to add a proposal to a dataset.",
+        "required": [
+          "eval_id"
+        ],
+        "properties": {
+          "eval_id": {
+            "type": "string",
+            "description": "Dataset (eval) to add the case to.",
+            "example": "eval_01933b5a000070008000000000000001"
+          }
+        }
+      },
       "AcceptInviteResponse": {
         "type": "object",
         "description": "Accept response: where the caller now has membership.",
@@ -35411,6 +36486,37 @@
           },
           "status": {
             "$ref": "#/components/schemas/ChannelStatus"
+          }
+        }
+      },
+      "AgentCost": {
+        "type": "object",
+        "description": "An agent's cost this month, for the agent page.",
+        "required": [
+          "agent_id",
+          "from",
+          "cost_usd",
+          "unpriced_records"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Agent's prefixed public identifier."
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Priced cost in USD since `from`."
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Start of this month in the org's timezone."
+          },
+          "unpriced_records": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Usage records since `from` with no price."
           }
         }
       },
@@ -37839,6 +38945,61 @@
           "type": "string"
         }
       },
+      "BackfillObserverRequest": {
+        "type": "object",
+        "description": "Score past production traffic with an observer.",
+        "properties": {
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Most past events to read, newest first (1–5000). Defaults to 500.",
+            "example": 500,
+            "minimum": 0
+          },
+          "sample": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Apply the observer's sampling rate. Defaults to true; false scores\nevery matching slice read."
+          },
+          "since_hours": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "How far back to read, in hours (1–720). Defaults to 24.",
+            "example": 24,
+            "minimum": 0
+          }
+        }
+      },
+      "BackfillResult": {
+        "type": "object",
+        "description": "What a backfill read and queued.",
+        "required": [
+          "events_read",
+          "enqueued"
+        ],
+        "properties": {
+          "enqueued": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Scores queued. Turns and tool calls already scored are not queued\nagain; a conversation's score is refreshed.",
+            "minimum": 0
+          },
+          "events_read": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Past turn, tool and idle events read.",
+            "minimum": 0
+          }
+        }
+      },
       "BackgroundLimits": {
         "type": "object",
         "description": "Limits on background work an org can tune in Settings → Limits.\n\nDefaults are code constants rather than environment variables, so every\ndeployment starts safe. The lifetime and run limits can only be lowered:\n[`BackgroundLimits::validate`] rejects values above the agent ceilings.",
@@ -38066,7 +39227,7 @@
           },
           "currency": {
             "type": "string",
-            "description": "Currency: \"usd\", \"tokens\", \"credits\", or custom."
+            "description": "What the limit is measured in: \"usd\" (cost from the org's price\nlist) or \"tokens\"."
           },
           "id": {
             "type": "string",
@@ -38101,6 +39262,10 @@
             ],
             "format": "date-time",
             "description": "When the current period started (used to detect period rollover for\n`Duration` / `Rolling` periods, and to display \"resets at\" in the UI).\n`None` for budgets without a period."
+          },
+          "policy": {
+            "$ref": "#/components/schemas/UsagePolicy",
+            "description": "Name, steps (notify, ask to continue, stop) and which usage counts.\nEmpty steps mean the legacy shape: notify at 80%, ask at the soft\nlimit, stop at the limit."
           },
           "soft_limit": {
             "type": [
@@ -38744,6 +39909,72 @@
           "usage_kind": {
             "$ref": "#/components/schemas/CapabilityUsageKind",
             "description": "Discriminator for the kind of usage being recorded (e.g. `tool_call`, `subagent_spawn`)."
+          }
+        }
+      },
+      "CaseCell": {
+        "type": "object",
+        "description": "One case under one variant.",
+        "required": [
+          "label",
+          "passed",
+          "trials",
+          "cost_usd"
+        ],
+        "properties": {
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "What the case cost, all its trials together.",
+            "example": 0.05
+          },
+          "label": {
+            "type": "string",
+            "example": "candidate"
+          },
+          "passed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Trials that passed, of `trials` that finished.",
+            "example": 3,
+            "minimum": 0
+          },
+          "trials": {
+            "type": "integer",
+            "format": "int32",
+            "example": 3,
+            "minimum": 0
+          }
+        }
+      },
+      "CaseComparison": {
+        "type": "object",
+        "description": "One case across the variants.",
+        "required": [
+          "case_id",
+          "case_name",
+          "changed",
+          "cells"
+        ],
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "example": "evalcase_01933b5a000070008000000000000001"
+          },
+          "case_name": {
+            "type": "string",
+            "example": "Refund request, angry customer"
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CaseCell"
+            },
+            "description": "One cell per variant, in variant order."
+          },
+          "changed": {
+            "type": "boolean",
+            "description": "Some variant's pass rate on this case differs from the baseline's."
           }
         }
       },
@@ -41077,6 +42308,74 @@
         },
         "additionalProperties": false
       },
+      "CostRate": {
+        "type": "object",
+        "description": "One row of the org's price list.",
+        "required": [
+          "id",
+          "meter",
+          "match",
+          "unit",
+          "effective_from",
+          "retired",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the rate was added."
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the rate starts to apply."
+          },
+          "id": {
+            "type": "string",
+            "description": "Rate id (`rate_...`)."
+          },
+          "list_price_multiplier": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Multiple of the provider's or catalog's price (0.8 is a 20%\ndiscount, 0 counts usage at no cost)."
+          },
+          "match": {
+            "type": "object",
+            "description": "Which usage it applies to. Model tokens: `provider`, `model`,\n`source` (`managed` or `own_keys`). Sandbox time: `provider`, `size`.\nEmpty applies to the whole meter."
+          },
+          "meter": {
+            "type": "string",
+            "description": "What it prices: `model.tokens` or `sandbox.time`."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the rate was added: the change reason given with it."
+          },
+          "retired": {
+            "type": "boolean",
+            "description": "This row ends the rates it matches from `effective_from`."
+          },
+          "unit": {
+            "type": "string",
+            "description": "Unit of `unit_price_usd`: `1m_tokens` or `hour`."
+          },
+          "unit_price_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Fixed price per unit, in USD."
+          }
+        }
+      },
       "CostSandbox": {
         "type": "object",
         "description": "A sandbox the session ran and how long it ran.",
@@ -41129,6 +42428,19 @@
               "$ref": "#/components/schemas/SandboxStateSpan"
             },
             "description": "Lifecycle spans, oldest first."
+          }
+        }
+      },
+      "CostSettings": {
+        "type": "object",
+        "description": "The org's cost settings.",
+        "properties": {
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IANA timezone (e.g. `America/Chicago`) for calendar windows: daily,\nweekly and monthly usage policies reset at midnight there. `null` is\nUTC."
           }
         }
       },
@@ -41188,6 +42500,142 @@
             "format": "double",
             "description": "Spend in USD on those turns.",
             "example": 106.11
+          }
+        }
+      },
+      "CostSummary": {
+        "type": "object",
+        "description": "Org cost over a window, grouped several ways.",
+        "required": [
+          "from",
+          "to",
+          "timezone",
+          "cost_usd",
+          "unpriced_records",
+          "by_basis",
+          "by_source",
+          "by_agent",
+          "by_user",
+          "by_started_by",
+          "by_day"
+        ],
+        "properties": {
+          "by_agent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryLine"
+            },
+            "description": "Totals by agent."
+          },
+          "by_basis": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryLine"
+            },
+            "description": "Totals by where the amount came from."
+          },
+          "by_day": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryLine"
+            },
+            "description": "Totals by day, in the org's timezone."
+          },
+          "by_source": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryLine"
+            },
+            "description": "Totals by what was used, such as a provider and model."
+          },
+          "by_started_by": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryLine"
+            },
+            "description": "Totals by who started the work: `person`, or `unattended` (schedules\nand other runs nobody watches)."
+          },
+          "by_user": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryLine"
+            },
+            "description": "Totals by the person the usage counts for."
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Priced cost in USD over the window. Unpriced usage is not in it."
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Window start (inclusive)."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The org's timezone; calendar windows and days use it."
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Window end (exclusive)."
+          },
+          "unpriced_records": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Usage records over the window with no price."
+          }
+        }
+      },
+      "CostSummaryLine": {
+        "type": "object",
+        "description": "One line of the costs summary.",
+        "required": [
+          "basis",
+          "cost_usd",
+          "unpriced_records",
+          "records",
+          "quantity"
+        ],
+        "properties": {
+          "basis": {
+            "type": "string",
+            "description": "Where the amounts came from: host, rate, provider, list_price,\nunpriced, or mixed."
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Priced cost in USD. Unpriced usage is not in it."
+          },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Group key: an agent id, a user id, a source key, a basis, a day."
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name for the key, such as the agent's name."
+          },
+          "quantity": {
+            "type": "number",
+            "format": "double",
+            "description": "Tokens for models, hours for sandboxes, summed as recorded."
+          },
+          "records": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Usage records in the group, priced or not."
+          },
+          "unpriced_records": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Usage records with no price."
           }
         }
       },
@@ -41985,7 +43433,7 @@
         "properties": {
           "currency": {
             "type": "string",
-            "description": "Unit in which usage and the limit are measured.",
+            "description": "What the limit measures: \"usd\" (cost from the org's price list) or\n\"tokens\".",
             "example": "usd"
           },
           "limit": {
@@ -42002,6 +43450,17 @@
               {
                 "$ref": "#/components/schemas/BudgetPeriod",
                 "description": "Optional recurring reset period for the budget balance."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UsagePolicy",
+                "description": "Name, steps (notify, ask to continue, stop) and which usage counts.\nAbsent: notify at 80%, ask at the soft limit, stop at the limit."
               },
               {
                 "type": "null"
@@ -42046,6 +43505,50 @@
           "description": "Additional provider-specific form fields (e.g. org_slug for provider personal tokens)."
         }
       },
+      "CreateCostRate": {
+        "type": "object",
+        "description": "Add a rate to the org's price list. Rates are never edited: a change is\na new rate from a later date.",
+        "required": [
+          "meter"
+        ],
+        "properties": {
+          "effective_from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it starts; now when absent."
+          },
+          "list_price_multiplier": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Multiple of the provider's or catalog price. Model tokens only."
+          },
+          "match": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Which usage it applies to (see `CostRate.match`)."
+          },
+          "meter": {
+            "type": "string",
+            "description": "`model.tokens` or `sandbox.time`."
+          },
+          "unit_price_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Fixed USD per million tokens (model tokens) or per hour (sandboxes)."
+          }
+        }
+      },
       "CreateDatabaseRequest": {
         "type": "object",
         "description": "Request body for creating a database.",
@@ -42078,7 +43581,6 @@
         "description": "Request to create an eval case",
         "required": [
           "name",
-          "conversation",
           "scorers"
         ],
         "properties": {
@@ -42103,7 +43605,7 @@
             "items": {
               "$ref": "#/components/schemas/EvalInputMessage"
             },
-            "description": "Input messages sent to the agent sequentially.",
+            "description": "Input messages sent to the agent sequentially. May be empty when a\nsimulated user opens the conversation.",
             "example": [
               {
                 "content": "Fix the failing test in src/lib.rs"
@@ -42170,6 +43672,17 @@
               }
             ]
           },
+          "simulated_user": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SimulatedUser",
+                "description": "A model that plays the user after the scripted messages, until it is\ndone or reaches its turn limit. Not combined with `post`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tags": {
             "type": [
               "array",
@@ -42204,6 +43717,60 @@
             "description": "Per-case timeout in seconds.",
             "example": 120,
             "minimum": 0
+          },
+          "tool_fixtures": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ToolFixture"
+            },
+            "description": "Tools the case gives the agent, each answered with a canned response."
+          }
+        }
+      },
+      "CreateEvalExperimentRequest": {
+        "type": "object",
+        "description": "Request to start an experiment.",
+        "required": [
+          "variants"
+        ],
+        "properties": {
+          "max_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Spending cap in USD for the whole experiment, split evenly between\nthe variants' runs.",
+            "example": 10
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name. Defaults to the variant labels joined with \"vs\".",
+            "example": "Luna vs Sol"
+          },
+          "trials": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Trials per case and variant, 1 to 20 (default 3).",
+            "example": 3,
+            "maximum": 20,
+            "minimum": 1
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExperimentVariantSpec"
+            },
+            "description": "One to four variants. The first is the baseline the others are\ncompared against."
           }
         }
       },
@@ -42266,6 +43833,28 @@
         "type": "object",
         "description": "Request to create an eval run",
         "properties": {
+          "case_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Run only these cases of the eval, by public id (\"Try once\" on a case\npage). Omitted runs every case.",
+            "example": [
+              "evalcase_01933b5a00007000800000000000001"
+            ]
+          },
+          "max_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Spending cap in USD for the whole run, agents and grading together.\nOnce spent, running turns stop and remaining cases are skipped.",
+            "example": 5
+          },
           "model_override": {
             "type": [
               "string",
@@ -42857,6 +44446,17 @@
           "scorers"
         ],
         "properties": {
+          "alert": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ObserverAlert",
+                "description": "Pass-rate alert: opens a health issue and notifies the agent's owners\nwhen the observer's pass rate falls under a threshold."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": {
             "type": [
               "string",
@@ -44351,6 +45951,34 @@
           }
         }
       },
+      "DismissEvalProposalRequest": {
+        "type": "object",
+        "description": "Request to turn a proposal down.",
+        "properties": {
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is not wanted, kept so the builder does not offer it again.",
+            "example": "We do not support refunds over the limit at all."
+          }
+        }
+      },
+      "DismissHealthIssueRequest": {
+        "type": "object",
+        "description": "Why a finding needs nothing.",
+        "required": [
+          "note"
+        ],
+        "properties": {
+          "note": {
+            "type": "string",
+            "description": "A false alarm, expected work, or already handled. Kept so detectors\ncan be calibrated against it.\n(Named `note` because `reason` is the change-intent flag every\ncommand takes.)",
+            "example": "Expected: this is our nightly load test"
+          }
+        }
+      },
       "DlqEntryResponse": {
         "type": "object",
         "description": "DLQ entry response",
@@ -45204,8 +46832,96 @@
             "format": "date-time",
             "description": "When the eval was last updated.",
             "example": "2026-01-15T10:30:00Z"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Version of the cases (the eval's dataset). Every case change bumps it;\nruns and experiments record the version they ran.",
+            "example": 7,
+            "minimum": 0
           }
         }
+      },
+      "EvalBuilderRun": {
+        "type": "object",
+        "description": "One request to the Eval Builder for an agent.",
+        "required": [
+          "id",
+          "status",
+          "started_at",
+          "sessions_read",
+          "proposals"
+        ],
+        "properties": {
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it finished."
+          },
+          "cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "What the model call cost, when the provider reported it.",
+            "example": 0.012
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it failed, in words for a person."
+          },
+          "id": {
+            "type": "string",
+            "description": "Run identifier.",
+            "example": "evalbuild_01933b5a000070008000000000000001"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model that wrote the proposals.",
+            "example": "gpt-6.1-sol"
+          },
+          "proposals": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Proposals it made.",
+            "example": 5
+          },
+          "sessions_read": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Production sessions it read.",
+            "example": 6
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it started."
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvalBuilderStatus",
+            "description": "Where the run is."
+          }
+        }
+      },
+      "EvalBuilderStatus": {
+        "type": "string",
+        "description": "Where a request for proposals is.",
+        "enum": [
+          "running",
+          "done",
+          "failed",
+          "unavailable"
+        ]
       },
       "EvalCase": {
         "type": "object",
@@ -45316,6 +47032,17 @@
               }
             ]
           },
+          "simulated_user": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SimulatedUser",
+                "description": "A model that plays the user after the scripted messages."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tags": {
             "type": "array",
             "items": {
@@ -45348,11 +47075,97 @@
             "example": 120,
             "minimum": 0
           },
+          "tool_fixtures": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ToolFixture"
+            },
+            "description": "Tools the case gives the agent, answered with canned responses."
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
             "description": "When the case was last updated.",
             "example": "2026-01-15T10:30:00Z"
+          }
+        }
+      },
+      "EvalCaseProposal": {
+        "type": "object",
+        "description": "A case the Eval Builder suggests adding to one of the agent's datasets.",
+        "required": [
+          "id",
+          "agent_id",
+          "status",
+          "name",
+          "category",
+          "kind",
+          "reason",
+          "source_session_ids",
+          "case",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Agent the case is for.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "case": {
+            "$ref": "#/components/schemas/CreateEvalCaseRequest",
+            "description": "The case as it would be created."
+          },
+          "category": {
+            "$ref": "#/components/schemas/ProposalCategory",
+            "description": "What part of the job it covers."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was proposed."
+          },
+          "dismiss_note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Note left when it was dismissed."
+          },
+          "id": {
+            "type": "string",
+            "description": "Proposal identifier.",
+            "example": "evalprop_01933b5a000070008000000000000001"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`simulated` when a model plays the user, otherwise `scripted`.",
+            "example": "simulated"
+          },
+          "name": {
+            "type": "string",
+            "description": "Short name of the case.",
+            "example": "Refund over the approval limit"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the Eval Builder suggests it, in one or two sentences."
+          },
+          "source_session_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sessions that inspired it, by public identifier.",
+            "example": [
+              "session_01933b5a000070008000000000000001"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProposalStatus",
+            "description": "Whether it is decided."
           }
         }
       },
@@ -45520,6 +47333,86 @@
           "failed"
         ]
       },
+      "EvalExperiment": {
+        "type": "object",
+        "description": "An experiment: one dataset version against several variants.",
+        "required": [
+          "id",
+          "eval_id",
+          "name",
+          "dataset_version",
+          "trials",
+          "baseline",
+          "status",
+          "variants",
+          "created_at"
+        ],
+        "properties": {
+          "baseline": {
+            "type": "string",
+            "description": "Label of the variant the others are compared against.",
+            "example": "baseline"
+          },
+          "comparison": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExperimentComparison",
+                "description": "Paired comparison by case (detail view)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dataset_version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The eval's `version` the experiment ran.",
+            "example": 7,
+            "minimum": 0
+          },
+          "eval_id": {
+            "type": "string",
+            "description": "The eval whose cases are the dataset.",
+            "example": "eval_01933b5a000070008000000000000001"
+          },
+          "id": {
+            "type": "string",
+            "example": "evalexp_01933b5a000070008000000000000001"
+          },
+          "max_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "example": 10
+          },
+          "name": {
+            "type": "string",
+            "example": "Luna vs Sol"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExperimentStatus"
+          },
+          "trials": {
+            "type": "integer",
+            "format": "int32",
+            "example": 3,
+            "minimum": 0
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExperimentVariant"
+            }
+          }
+        }
+      },
       "EvalImportPreflight": {
         "type": "object",
         "description": "Preflight capability report so optional-feature clients (e.g. Mira) can\ncheck before publishing instead of failing mid-import.",
@@ -45554,6 +47447,33 @@
           }
         }
       },
+      "EvalProposalList": {
+        "type": "object",
+        "description": "An agent's open proposals and its latest Eval Builder run.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvalCaseProposal"
+            },
+            "description": "Open proposals, newest first."
+          },
+          "latest_run": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalBuilderRun",
+                "description": "The most recent run, when there was one."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "EvalRun": {
         "type": "object",
         "description": "An eval run: one execution of all/some cases.",
@@ -45583,6 +47503,24 @@
             "description": "When the run was created.",
             "example": "2026-01-15T10:30:00Z"
           },
+          "dataset_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Dataset version (the eval's `version`) the run was created from.",
+            "example": 7,
+            "minimum": 0
+          },
+          "experiment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The experiment this run is a variant of.",
+            "example": "evalexp_01933b5a000070008000000000000001"
+          },
           "filter_tags": {
             "type": [
               "array",
@@ -45602,13 +47540,22 @@
             "description": "External identifier (evalrun_<32-hex>).",
             "example": "evalrun_01933b5a000070008000000000000001"
           },
+          "max_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Spending cap in USD. Once the run's agents and graders have spent it,\nrunning turns stop and remaining cases are skipped.",
+            "example": 5
+          },
           "model_override": {
             "type": [
               "string",
               "null"
             ],
             "description": "Model override for this run.",
-            "example": "gpt-5.1"
+            "example": "gpt-6-luna"
           },
           "results": {
             "type": "array",
@@ -45673,6 +47620,14 @@
             "format": "date-time",
             "description": "When the run was last updated.",
             "example": "2026-01-15T10:30:00Z"
+          },
+          "variant_label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The variant's label within its experiment.",
+            "example": "candidate"
           }
         }
       },
@@ -45834,6 +47789,116 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "EvalSample": {
+        "type": "object",
+        "description": "One Mira dataset row (`mira::Sample`).",
+        "required": [
+          "id",
+          "input"
+        ],
+        "properties": {
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Non-text input. Not imported."
+          },
+          "expected": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Reference answer. Text becomes a `contains` scorer on import."
+          },
+          "files": {
+            "type": "object",
+            "description": "Files to seed into the workspace. Not imported."
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable id within the dataset: the case name.",
+            "example": "refund-over-limit"
+          },
+          "input": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "User turns, sent in order.",
+            "example": [
+              "Refund $450 for order 1182"
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Free-form metadata. `everruns` holds the case settings Mira has no\nfield for."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "EvalSampleImportReport": {
+        "type": "object",
+        "description": "What a sample import did.",
+        "required": [
+          "created",
+          "updated",
+          "case_ids"
+        ],
+        "properties": {
+          "case_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Public ids of the affected cases, in import order."
+          },
+          "created": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Cases created.",
+            "example": 3,
+            "minimum": 0
+          },
+          "left_behind": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sample fields a case cannot hold, one line per sample that had them.",
+            "example": [
+              "refund-with-receipt: attachments"
+            ]
+          },
+          "updated": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Existing cases updated, matched by name.",
+            "example": 1,
+            "minimum": 0
+          }
+        }
+      },
+      "EvalSampleList": {
+        "type": "object",
+        "description": "A dataset as Mira samples.",
+        "required": [
+          "samples"
+        ],
+        "properties": {
+          "samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvalSample"
+            }
           }
         }
       },
@@ -46471,6 +48536,187 @@
           "commentary",
           "final_answer"
         ]
+      },
+      "ExperimentComparison": {
+        "type": "object",
+        "description": "Variants compared case by case against the baseline.",
+        "required": [
+          "baseline",
+          "verdicts",
+          "cases"
+        ],
+        "properties": {
+          "baseline": {
+            "type": "string",
+            "example": "baseline"
+          },
+          "cases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CaseComparison"
+            },
+            "description": "Cases whose result changed come first."
+          },
+          "verdicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VariantVerdict"
+            },
+            "description": "One verdict per variant other than the baseline."
+          }
+        }
+      },
+      "ExperimentGateResult": {
+        "type": "object",
+        "description": "Result of an experiment gate that passed.",
+        "required": [
+          "passed",
+          "variant",
+          "pass_rate",
+          "passed_every_trial"
+        ],
+        "properties": {
+          "pass_rate": {
+            "type": "number",
+            "format": "double",
+            "example": 0.93
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "passed_every_trial": {
+            "type": "number",
+            "format": "double",
+            "description": "Share of cases passed in every trial (pass^k).",
+            "example": 0.9
+          },
+          "variant": {
+            "type": "string",
+            "description": "The variant the gate judged.",
+            "example": "candidate"
+          },
+          "verdict": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Verdict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ExperimentStatus": {
+        "type": "string",
+        "description": "Where an experiment is: running until every variant's run finished.",
+        "enum": [
+          "running",
+          "completed",
+          "failed",
+          "cancelled"
+        ]
+      },
+      "ExperimentVariant": {
+        "type": "object",
+        "description": "One variant of an experiment and how its run went.",
+        "required": [
+          "label",
+          "run_id",
+          "status"
+        ],
+        "properties": {
+          "cost_per_case_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "What one case cost on average, all its trials together.",
+            "example": 0.031
+          },
+          "label": {
+            "type": "string",
+            "example": "candidate"
+          },
+          "model_override": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "gpt-6.1-sol"
+          },
+          "run_elsewhere": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when the variant ran outside Everruns and was imported: the system\nthat ran it, such as \"mira\".",
+            "example": "mira"
+          },
+          "run_id": {
+            "type": "string",
+            "description": "The variant's run.",
+            "example": "evalrun_01933b5a000070008000000000000001"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvalRunStatus"
+          },
+          "summary": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunSummary",
+                "description": "Set once the run finished."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ExperimentVariantSpec": {
+        "type": "object",
+        "description": "One configuration an experiment runs the dataset against.",
+        "required": [
+          "label"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Short name shown in comparisons, unique within the experiment.",
+            "example": "candidate"
+          },
+          "model_override": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for this variant, beating the target's model.",
+            "example": "gpt-6.1-sol"
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget",
+                "description": "Session setup for this variant. Omitted: the eval's own target."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
       },
       "ExportEvalRunDatasetRequest": {
         "type": "object",
@@ -47303,6 +49549,103 @@
           "safety",
           "cost"
         ]
+      },
+      "FindingInvestigation": {
+        "type": "object",
+        "description": "The Inspector's write-up of a finding: what happened, how serious it is,\nwhat to do, and the cluster of similar findings it was filed under.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "cluster_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The cluster of similar findings in this organization.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "cluster_open": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Open findings in the cluster, this one included.",
+            "example": 3
+          },
+          "cluster_title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Title of that cluster, naming the problem the findings share.",
+            "example": "Schedules polling an expired claim"
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the write-up was finished.",
+            "example": "2026-10-18T21:40:00Z"
+          },
+          "dismiss_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The note the person gave when dismissing.",
+            "example": "Expected: load test"
+          },
+          "dismissed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a person dismissed the finding, and why."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model that wrote it.",
+            "example": "gpt-6.1-sol"
+          },
+          "severity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`high`, `medium` or `low`, as the Inspector judged it.",
+            "example": "high"
+          },
+          "status": {
+            "type": "string",
+            "description": "`running`, `done`, `failed`, or `unavailable` (no model to write it).",
+            "example": "done"
+          },
+          "suggested_action": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One concrete next step.",
+            "example": "Add a stop rule to the schedule's instructions."
+          },
+          "what_happened": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What happened, in two to four plain sentences.",
+            "example": "The schedule polls a sign-in claim that expired; every run since reports the same error."
+          }
+        }
       },
       "FindingLocation": {
         "type": "object",
@@ -48792,6 +51135,13 @@
             "description": "Sanitized provider or verification error code, when available.",
             "example": "missing_scope"
           },
+          "evidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The numbers a detector or classifier recorded for a finding: counts,\ncosts, probabilities. Never session content."
+          },
           "first_detected_at": {
             "type": "string",
             "format": "date-time",
@@ -48808,6 +51158,17 @@
             "format": "uuid",
             "description": "Stable identifier of the canonical issue.",
             "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "investigation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FindingInvestigation",
+                "description": "The Inspector's write-up of a finding's current episode, when it has\none."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "last_checked_at": {
             "type": "string",
@@ -49375,6 +51736,17 @@
             },
             "description": "Evals and their case results in this run."
           },
+          "experiment": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ImportExperimentRef",
+                "description": "Publish each eval's run as a variant of an experiment, so it is\ncompared with the experiment's other variants."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source": {
             "$ref": "#/components/schemas/ImportEvalSource",
             "description": "External system that produced the run."
@@ -49440,6 +51812,26 @@
             "type": "string",
             "description": "Provider name.",
             "example": "openai"
+          }
+        }
+      },
+      "ImportExperimentRef": {
+        "type": "object",
+        "description": "The experiment an import publishes into. Each imported eval's run becomes\nthe variant `variant` of the experiment named `name` on that eval, which\nis created on first use.",
+        "required": [
+          "name",
+          "variant"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Experiment name, matched within each eval.",
+            "example": "Luna vs Sol"
+          },
+          "variant": {
+            "type": "string",
+            "description": "The variant this import is. A later import with the same label\nreplaces it.",
+            "example": "gpt-6.1-sol"
           }
         }
       },
@@ -50944,6 +53336,13 @@
                   "format": "date-time",
                   "description": "When the eval was last updated.",
                   "example": "2026-01-15T10:30:00Z"
+                },
+                "version": {
+                  "type": "integer",
+                  "format": "int32",
+                  "description": "Version of the cases (the eval's dataset). Every case change bumps it;\nruns and experiments record the version they ran.",
+                  "example": 7,
+                  "minimum": 0
                 }
               }
             },
@@ -51069,6 +53468,17 @@
                     }
                   ]
                 },
+                "simulated_user": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SimulatedUser",
+                      "description": "A model that plays the user after the scripted messages."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "tags": {
                   "type": "array",
                   "items": {
@@ -51100,6 +53510,16 @@
                   "description": "Per-case timeout in seconds (default: 120).",
                   "example": 120,
                   "minimum": 0
+                },
+                "tool_fixtures": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "$ref": "#/components/schemas/ToolFixture"
+                  },
+                  "description": "Tools the case gives the agent, answered with canned responses."
                 },
                 "updated_at": {
                   "type": "string",
@@ -51280,6 +53700,99 @@
           }
         }
       },
+      "ListResponse_EvalExperiment": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "An experiment: one dataset version against several variants.",
+              "required": [
+                "id",
+                "eval_id",
+                "name",
+                "dataset_version",
+                "trials",
+                "baseline",
+                "status",
+                "variants",
+                "created_at"
+              ],
+              "properties": {
+                "baseline": {
+                  "type": "string",
+                  "description": "Label of the variant the others are compared against.",
+                  "example": "baseline"
+                },
+                "comparison": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ExperimentComparison",
+                      "description": "Paired comparison by case (detail view)."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "dataset_version": {
+                  "type": "integer",
+                  "format": "int32",
+                  "description": "The eval's `version` the experiment ran.",
+                  "example": 7,
+                  "minimum": 0
+                },
+                "eval_id": {
+                  "type": "string",
+                  "description": "The eval whose cases are the dataset.",
+                  "example": "eval_01933b5a000070008000000000000001"
+                },
+                "id": {
+                  "type": "string",
+                  "example": "evalexp_01933b5a000070008000000000000001"
+                },
+                "max_cost_usd": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "example": 10
+                },
+                "name": {
+                  "type": "string",
+                  "example": "Luna vs Sol"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/ExperimentStatus"
+                },
+                "trials": {
+                  "type": "integer",
+                  "format": "int32",
+                  "example": 3,
+                  "minimum": 0
+                },
+                "variants": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExperimentVariant"
+                  }
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
       "ListResponse_EvalRun": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -51318,6 +53831,24 @@
                   "description": "When the run was created.",
                   "example": "2026-01-15T10:30:00Z"
                 },
+                "dataset_version": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "Dataset version (the eval's `version`) the run was created from.",
+                  "example": 7,
+                  "minimum": 0
+                },
+                "experiment_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The experiment this run is a variant of.",
+                  "example": "evalexp_01933b5a000070008000000000000001"
+                },
                 "filter_tags": {
                   "type": [
                     "array",
@@ -51337,13 +53868,22 @@
                   "description": "External identifier (evalrun_<32-hex>).",
                   "example": "evalrun_01933b5a000070008000000000000001"
                 },
+                "max_cost_usd": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "description": "Spending cap in USD. Once the run's agents and graders have spent it,\nrunning turns stop and remaining cases are skipped.",
+                  "example": 5
+                },
                 "model_override": {
                   "type": [
                     "string",
                     "null"
                   ],
                   "description": "Model override for this run.",
-                  "example": "gpt-5.1"
+                  "example": "gpt-6-luna"
                 },
                 "results": {
                   "type": "array",
@@ -51408,6 +53948,14 @@
                   "format": "date-time",
                   "description": "When the run was last updated.",
                   "example": "2026-01-15T10:30:00Z"
+                },
+                "variant_label": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The variant's label within its experiment.",
+                  "example": "candidate"
                 }
               }
             },
@@ -52438,6 +54986,17 @@
                 "updated_at"
               ],
               "properties": {
+                "alert": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ObserverAlert",
+                      "description": "Pass-rate alert, when set."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "archived_at": {
                   "type": [
                     "string",
@@ -53007,6 +55566,21 @@
                   ],
                   "description": "Human-readable explanation (set when completed). For LLM judges this is\nthe judge's reasoning — retained as the raw material for the Phase 2\nimprovement loop."
                 },
+                "review": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ScoreReview",
+                      "description": "A person's review of this score."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "scope": {
+                  "$ref": "#/components/schemas/ObserverScope",
+                  "description": "Trace slice this score grades."
+                },
                 "scorer_key": {
                   "type": "string",
                   "description": "Scorer key within the observer.",
@@ -53022,7 +55596,7 @@
                 },
                 "turn_id": {
                   "type": "string",
-                  "description": "Turn this score grades (turn scope)."
+                  "description": "What was graded: the turn id (turn scope), `session` (session scope)\nor the tool call id (tool scope)."
                 },
                 "updated_at": {
                   "type": "string",
@@ -58725,6 +61299,17 @@
           "updated_at"
         ],
         "properties": {
+          "alert": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ObserverAlert",
+                "description": "Pass-rate alert, when set."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "archived_at": {
             "type": [
               "string",
@@ -58781,6 +61366,35 @@
           }
         }
       },
+      "ObserverAlert": {
+        "type": "object",
+        "description": "Open a health issue, and tell the people who own the watched agents, when\nan observer's pass rate falls under `min_pass_rate` over the last\n`window_hours`. Needs `min_scored` scores in the window so a handful of\nsamples cannot raise it. The issue resolves itself once the rate recovers.",
+        "required": [
+          "min_pass_rate"
+        ],
+        "properties": {
+          "min_pass_rate": {
+            "type": "number",
+            "format": "double",
+            "description": "Pass rate (0.0–1.0) under which the alert opens.",
+            "example": 0.8
+          },
+          "min_scored": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Scores the window needs before the alert can open. Defaults to 20.",
+            "example": 20,
+            "minimum": 0
+          },
+          "window_hours": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Window the rate is measured over, in hours (1–168). Defaults to 24.",
+            "example": 24,
+            "minimum": 0
+          }
+        }
+      },
       "ObserverMatch": {
         "type": "object",
         "description": "Predicates selecting which production sessions an observer scores.\nAll present predicates must match (AND); within a list, any entry matches (OR).\nAn empty match block matches all org traffic. Sessions tagged `eval` are\nalways excluded so synthetic eval-run sessions are never scored.",
@@ -58819,9 +61433,11 @@
       },
       "ObserverScope": {
         "type": "string",
-        "description": "What slice of the trace a scorer grades. Phase 1 implements `turn` only;\n`session` and `tool` scopes are reserved for future use.",
+        "description": "What slice of the trace a scorer grades.\n\n- `turn`: one exchange, scored when the turn completes.\n- `session`: the whole conversation, scored once the session has been idle\n  for a while ([`SESSION_SETTLE_SECONDS`]); a later idle re-scores it, so\n  each session has one current score.\n- `tool`: one tool call and its result, scored when the call completes.",
         "enum": [
-          "turn"
+          "turn",
+          "session",
+          "tool"
         ]
       },
       "ObserverScorerConfig": {
@@ -58843,6 +61459,16 @@
               "scope": {
                 "$ref": "#/components/schemas/ObserverScope",
                 "description": "Trace slice this scorer grades."
+              },
+              "tools": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "Tool scope only: grade calls to these tools. Empty or absent grades\nevery tool call."
               }
             }
           }
@@ -61437,6 +64063,172 @@
           "communication"
         ]
       },
+      "PlatformDetection": {
+        "type": "object",
+        "description": "An open finding of the platform operator's concern, in any organization.",
+        "required": [
+          "issue_id",
+          "org_id",
+          "org_name",
+          "code",
+          "first_detected_at"
+        ],
+        "properties": {
+          "agent_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name of the session's agent.",
+            "example": "Outreach bot"
+          },
+          "cluster_title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Title of the cluster of similar findings in that organization."
+          },
+          "code": {
+            "type": "string",
+            "description": "Detector code of the finding.",
+            "example": "session.suspected_abuse"
+          },
+          "evidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The numbers the classifier recorded, never session content."
+          },
+          "first_detected_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the current episode was first detected.",
+            "example": "2026-10-18T21:40:00Z"
+          },
+          "issue_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Health issue identifier of the finding.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "org_id": {
+            "type": "string",
+            "description": "Public identifier of the organization.",
+            "example": "org_550e8400e29b41d4a716446655440000"
+          },
+          "org_name": {
+            "type": "string",
+            "description": "Display name of the organization.",
+            "example": "Acme"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public identifier of the session the finding points at.",
+            "example": "session_550e8400e29b41d4a716446655440000"
+          },
+          "severity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`high`, `medium` or `low`, as the Inspector judged it.",
+            "example": "high"
+          },
+          "suggested_action": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The Inspector's suggested next step."
+          },
+          "what_happened": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The Inspector's account of what happened, once written."
+          }
+        }
+      },
+      "PlatformDetectionList": {
+        "type": "object",
+        "description": "A page of open platform detections.",
+        "required": [
+          "data",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlatformDetection"
+            },
+            "description": "Detections in this page."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Effective page size.",
+            "example": 20
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Effective pagination offset.",
+            "example": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of open detections.",
+            "example": 1
+          }
+        }
+      },
+      "PolicySource": {
+        "type": "string",
+        "description": "Which usage a policy counts. Absent counts everything.",
+        "enum": [
+          "all",
+          "managed",
+          "own_keys"
+        ]
+      },
+      "PolicyStep": {
+        "type": "object",
+        "description": "One step of a usage policy, at a percent of the limit.",
+        "required": [
+          "at_percent",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/PolicyStepAction",
+            "description": "What happens when usage reaches the step."
+          },
+          "at_percent": {
+            "type": "number",
+            "format": "double",
+            "description": "Percent of the limit at which the step applies (1 to 100)."
+          }
+        }
+      },
+      "PolicyStepAction": {
+        "type": "string",
+        "description": "What a usage policy does when its spend crosses a step.",
+        "enum": [
+          "notify",
+          "ask",
+          "stop"
+        ]
+      },
       "PostTaskMessageBody": {
         "type": "object",
         "description": "Request body for posting an inbound task message.",
@@ -61703,6 +64495,25 @@
         "enum": [
           "auto",
           "explicit"
+        ]
+      },
+      "ProposalCategory": {
+        "type": "string",
+        "description": "What part of the agent's job a proposed case covers.",
+        "enum": [
+          "happy_path",
+          "edge_case",
+          "failure",
+          "adversarial"
+        ]
+      },
+      "ProposalStatus": {
+        "type": "string",
+        "description": "Whether a proposal is decided.",
+        "enum": [
+          "proposed",
+          "accepted",
+          "dismissed"
         ]
       },
       "Provider": {
@@ -61998,6 +64809,124 @@
             "propertyNames": {
               "type": "string"
             }
+          }
+        }
+      },
+      "QualityGroup": {
+        "type": "object",
+        "description": "Completed scores in one group of a live-quality summary.",
+        "required": [
+          "key",
+          "scored",
+          "passed",
+          "sessions"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "An agent id, an observer id or a day (`YYYY-MM-DD`), by list.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "pass_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "`passed / scored`; absent when nothing was scored.",
+            "example": 0.92
+          },
+          "passed": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "scored": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "sessions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Distinct sessions the scores read.",
+            "minimum": 0
+          },
+          "trend": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            },
+            "description": "Daily pass rates, oldest first (agent groups only)."
+          }
+        }
+      },
+      "QualitySummary": {
+        "type": "object",
+        "description": "How production traffic scored over the last `days`: in total, by agent,\nby observer and by day.",
+        "required": [
+          "since",
+          "days",
+          "scored",
+          "passed",
+          "sessions",
+          "by_agent",
+          "by_observer",
+          "by_day"
+        ],
+        "properties": {
+          "by_agent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QualityGroup"
+            }
+          },
+          "by_day": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QualityGroup"
+            }
+          },
+          "by_observer": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QualityGroup"
+            }
+          },
+          "days": {
+            "type": "integer",
+            "format": "int32",
+            "example": 7,
+            "minimum": 0
+          },
+          "pass_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "example": 0.92
+          },
+          "passed": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "scored": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "sessions": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Start of the window."
           }
         }
       },
@@ -63458,6 +66387,26 @@
           }
         }
       },
+      "ReviewScoreRequest": {
+        "type": "object",
+        "description": "A person's verdict on one score.",
+        "required": [
+          "agrees"
+        ],
+        "properties": {
+          "agrees": {
+            "type": "boolean",
+            "description": "True when the grader got it right."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional note on why (at most 2000 characters)."
+          }
+        }
+      },
       "ReviseSandboxTemplateRequest": {
         "type": "object",
         "required": [
@@ -63649,6 +66598,15 @@
             "description": "Total number of cases in the run.",
             "example": 12,
             "minimum": 0
+          },
+          "total_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "What the run spent in USD: the agents' model calls plus grading.\nAbsent on imported runs, whose cost is in their own metrics.",
+            "example": 0.42
           },
           "total_input_tokens": {
             "type": "integer",
@@ -65948,6 +68906,41 @@
           }
         }
       },
+      "ScoreReview": {
+        "type": "object",
+        "description": "A person's verdict on one score: whether the grader got it right. Reviews\ncalibrate graders, and a disagreed score is a candidate eval case.",
+        "required": [
+          "agrees"
+        ],
+        "properties": {
+          "agrees": {
+            "type": "boolean",
+            "description": "True when the person agrees with the grader's pass or fail."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional note on why."
+          },
+          "reviewed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When, set by the server."
+          },
+          "reviewed_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who reviewed (user id), set by the server."
+          }
+        }
+      },
       "Scorer": {
         "oneOf": [
           {
@@ -66021,12 +69014,18 @@
           },
           {
             "type": "object",
-            "description": "Agent called named tool at least `min` times.",
+            "description": "Agent called named tool at least `min` times. With\n`arguments_contain`, only calls whose argument JSON contains that text\ncount, so a case can check what the agent asked a tool to do.",
             "required": [
               "tool",
               "type"
             ],
             "properties": {
+              "arguments_contain": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "min": {
                 "type": "integer",
                 "format": "int32",
@@ -66122,6 +69121,32 @@
                 "type": "string",
                 "enum": [
                   "turns_within"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The agent spent at most `max` tokens (input plus output).",
+            "required": [
+              "max",
+              "type"
+            ],
+            "properties": {
+              "max": {
+                "type": "integer",
+                "format": "int64",
+                "example": 20000,
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "tokens_within"
                 ]
               },
               "weight": {
@@ -66255,6 +69280,93 @@
                 "format": "double",
                 "description": "Relative weight of this scorer in the case's weighted average.",
                 "example": 1
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The org's chat model grades the answer against a rubric and returns a\nvalue from 0 to 1 with its reasoning.",
+            "required": [
+              "rubric",
+              "type"
+            ],
+            "properties": {
+              "model_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/modelId",
+                    "description": "Judge model; the org's default is used when absent."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "pass_threshold": {
+                "type": "number",
+                "format": "double",
+                "description": "Minimum judged value to pass.",
+                "example": 0.5
+              },
+              "rubric": {
+                "type": "string",
+                "description": "What a good answer does and what a bad one does.",
+                "example": "Score 1 when the answer resolves the refund request with the policy's actual terms; 0 when it invents terms or deflects."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "judge"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A decision model answers one yes/no question about the answer; the\nprobability of yes is the value. Cheaper than `judge` and typed, so it\nsuits any check with a yes/no shape.",
+            "required": [
+              "question",
+              "type"
+            ],
+            "properties": {
+              "no": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "What a no means."
+              },
+              "pass_threshold": {
+                "type": "number",
+                "format": "double",
+                "description": "Minimum probability of yes to pass.",
+                "example": 0.5
+              },
+              "question": {
+                "type": "string",
+                "description": "The yes/no question, asked about the user message, the answer and\nthe tools used.",
+                "example": "Does the answer stay within the published refund policy?"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "decision"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              },
+              "yes": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "What a yes means, when the question alone is ambiguous."
               }
             }
           }
@@ -68493,6 +71605,61 @@
           "AtMostOnce"
         ]
       },
+      "SimulatedUser": {
+        "type": "object",
+        "description": "A model that plays the user for a multistep case.",
+        "required": [
+          "persona",
+          "goal"
+        ],
+        "properties": {
+          "done_when": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the user stops: the simulator ends the conversation once this\nholds. Defaults to \"the goal is met or clearly cannot be\".",
+            "example": "The agent opened a refund ticket with the right order number."
+          },
+          "goal": {
+            "type": "string",
+            "description": "What the user wants from the conversation.",
+            "example": "Get the duplicate charge refunded, or a clear date when it will be."
+          },
+          "max_turns": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Most messages the simulator sends (default 8, at most 30).",
+            "example": 8,
+            "maximum": 30,
+            "minimum": 1
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model that plays the user. Omitted: the organization's default model.",
+            "example": "model_01933b5a00007000800000000000022c"
+          },
+          "persona": {
+            "type": "string",
+            "description": "Who the user is, what they know and how they write.",
+            "example": "Small shop owner charged twice for the Pro plan. Writes short messages. Gives the order number ORD-48213 only when asked."
+          },
+          "virtual_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Virtual user the simulator speaks as, so the agent sees that end\nuser's identity, connections and memory.",
+            "example": "identity_01933b5a000070008000000000000001"
+          }
+        }
+      },
       "Skill": {
         "type": "object",
         "description": "Skill entity (API response type)",
@@ -70711,6 +73878,35 @@
           }
         }
       },
+      "ToolFixture": {
+        "type": "object",
+        "description": "A tool the case gives the agent, answered with a canned response.",
+        "required": [
+          "name",
+          "response"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the tool does, as the agent reads it.",
+            "example": "Open a support ticket"
+          },
+          "name": {
+            "type": "string",
+            "description": "Tool name the agent calls.",
+            "example": "create_ticket"
+          },
+          "parameters": {
+            "description": "JSON Schema of the arguments. Omitted: an object with any fields."
+          },
+          "response": {
+            "description": "What every call returns."
+          }
+        }
+      },
       "ToolHints": {
         "type": "object",
         "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
@@ -71910,6 +75106,21 @@
             ],
             "description": "Human-readable explanation (set when completed). For LLM judges this is\nthe judge's reasoning — retained as the raw material for the Phase 2\nimprovement loop."
           },
+          "review": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScoreReview",
+                "description": "A person's review of this score."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ObserverScope",
+            "description": "Trace slice this score grades."
+          },
           "scorer_key": {
             "type": "string",
             "description": "Scorer key within the observer.",
@@ -71925,7 +75136,7 @@
           },
           "turn_id": {
             "type": "string",
-            "description": "Turn this score grades (turn scope)."
+            "description": "What was graded: the turn id (turn scope), `session` (session scope)\nor the tool call id (tool scope)."
           },
           "updated_at": {
             "type": "string",
@@ -73589,6 +76800,17 @@
           "metadata": {
             "description": "Free-form metadata attached to this resource."
           },
+          "policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UsagePolicy",
+                "description": "Replacement name, steps and filter."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "soft_limit": {
             "type": [
               "number",
@@ -73603,6 +76825,18 @@
               "null"
             ],
             "description": "Current lifecycle status."
+          }
+        }
+      },
+      "UpdateCostSettings": {
+        "type": "object",
+        "properties": {
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IANA timezone, or null for UTC."
           }
         }
       },
@@ -73725,6 +76959,17 @@
               }
             ]
           },
+          "simulated_user": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SimulatedUser",
+                "description": "Simulated user. `null` removes it, back to scripted messages only."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tags": {
             "type": [
               "array",
@@ -73759,6 +77004,16 @@
             "description": "Per-case timeout in seconds.",
             "example": 120,
             "minimum": 0
+          },
+          "tool_fixtures": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ToolFixture"
+            },
+            "description": "Tool fixtures, replacing the stored ones. `null` removes them."
           }
         }
       },
@@ -74364,6 +77619,17 @@
         "type": "object",
         "description": "Request to update an observer. Omitted fields are unchanged.",
         "properties": {
+          "alert": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ObserverAlert",
+                "description": "Pass-rate alert. `null` removes it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": {
             "type": [
               "string",
@@ -75194,6 +78460,30 @@
           }
         }
       },
+      "UsagePolicy": {
+        "type": "object",
+        "description": "Name, steps and filter of a usage policy, stored on `budgets.policy`.\n\nDecision: steps are data on the existing budget row rather than a new\ntable, so the hierarchy lookup, period rollover and gate keep working\nunchanged. Empty steps mean the legacy shape (see [`UsagePolicy::effective_steps`]).",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name of the policy."
+          },
+          "source": {
+            "$ref": "#/components/schemas/PolicySource",
+            "description": "Which usage the policy counts."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyStep"
+            },
+            "description": "Steps by percent of the limit. Empty: notify at 80%, ask at the soft\nlimit, stop at the limit."
+          }
+        }
+      },
       "UseEverrunsAppRequest": {
         "type": "object",
         "description": "Which org link to act through.",
@@ -75523,6 +78813,73 @@
           }
         }
       },
+      "VariantVerdict": {
+        "type": "object",
+        "description": "A variant against the baseline.",
+        "required": [
+          "label",
+          "paired_cases",
+          "fixed",
+          "broke",
+          "verdict"
+        ],
+        "properties": {
+          "broke": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cases the baseline passes every trial of and this variant does not.",
+            "example": 1,
+            "minimum": 0
+          },
+          "fixed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cases this variant passes every trial of and the baseline did not.",
+            "example": 4,
+            "minimum": 0
+          },
+          "interval_high_points": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "example": 9
+          },
+          "interval_low_points": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "95% interval of that difference (paired bootstrap), in points.",
+            "example": 1
+          },
+          "label": {
+            "type": "string",
+            "example": "candidate"
+          },
+          "paired_cases": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cases both ran.",
+            "example": 42,
+            "minimum": 0
+          },
+          "pass_rate_delta_points": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Mean per-case pass rate difference, in percentage points.",
+            "example": 5
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/Verdict"
+          }
+        }
+      },
       "Verbosity": {
         "type": "string",
         "description": "Verbosity level for models that support output-length control.\nWire values map 1:1 to the OpenAI `verbosity` request parameter:\n`low` (terse), `medium` (balanced, provider default), `high`\n(comprehensive). Independent of `ReasoningEffort`, which tunes the\namount of reasoning rather than the length of the final answer.",
@@ -75570,6 +78927,16 @@
             "description": "The API value (e.g., \"low\", \"high\")"
           }
         }
+      },
+      "Verdict": {
+        "type": "string",
+        "description": "How a variant compares with the baseline.",
+        "enum": [
+          "improvement",
+          "regression",
+          "within_noise",
+          "not_enough_data"
+        ]
       },
       "VerificationStatus": {
         "type": "string",
@@ -76702,7 +80069,7 @@
               },
               "currency": {
                 "type": "string",
-                "description": "Currency: \"usd\", \"tokens\", \"credits\", or custom."
+                "description": "What the limit is measured in: \"usd\" (cost from the org's price\nlist) or \"tokens\"."
               },
               "id": {
                 "type": "string",
@@ -76737,6 +80104,10 @@
                 ],
                 "format": "date-time",
                 "description": "When the current period started (used to detect period rollover for\n`Duration` / `Rolling` periods, and to display \"resets at\" in the UI).\n`None` for budgets without a period."
+              },
+              "policy": {
+                "$ref": "#/components/schemas/UsagePolicy",
+                "description": "Name, steps (notify, ask to continue, stop) and which usage counts.\nEmpty steps mean the legacy shape: notify at 80%, ask at the soft\nlimit, stop at the limit."
               },
               "soft_limit": {
                 "type": [

@@ -15,3 +15,6 @@ export async function checkHealthIssue(id: string) {
 export async function snoozeHealthIssue(id: string) {
   return (await api.post<HealthIssue>(`/v1/health-issues/${id}/snooze`)).data;
 }
+export async function dismissHealthIssue(id: string, note: string) {
+  return (await api.post<HealthIssue>(`/v1/health-issues/${id}/dismiss`, { note })).data;
+}

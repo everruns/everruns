@@ -305,3 +305,127 @@ async fn a_session_resending_a_large_uncached_history_is_reported_to_the_agents_
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn an_observer_under_its_alert_opens_an_issue_for_the_agents_authors() {
+    use crate::domains::health_issues::quality::OBSERVER_PASS_RATE_LOW;
+    use crate::domains::observers::record::{
+        ObserverAlert, ObserverMatch, ObserverScope, ObserverScorerConfig, ScorerMethod,
+    };
+    let f = fixture().await;
+    let session =
+        f.db.get_session_unscoped(f.schedule.session_id)
+            .await
+            .unwrap()
+            .unwrap();
+    let agent = session.agent_id.unwrap();
+    let scorer = ObserverScorerConfig {
+        key: "grounded".into(),
+        scope: ObserverScope::Turn,
+        tools: None,
+        method: ScorerMethod::Rule {
+            rule: crate::domains::evals::record::Scorer::Contains {
+                text: "source".into(),
+                weight: 1.0,
+            },
+        },
+    };
+    let alert = ObserverAlert {
+        min_pass_rate: 0.8,
+        window_hours: 24,
+        min_scored: 4,
+    };
+    let observer =
+        f.db.create_observer(
+            DEFAULT_ORG_ID,
+            crate::storage::CreateObserverRow {
+                public_id: everruns_contracts::typed_id::ObserverId::from_uuid(Uuid::now_v7())
+                    .to_string(),
+                name: "Support quality".into(),
+                description: None,
+                match_config: serde_json::to_value(ObserverMatch {
+                    agent_ids: Some(vec![agent]),
+                    ..Default::default()
+                })
+                .unwrap(),
+                sampling_rate: 1.0,
+                scorers: serde_json::to_value(vec![scorer]).unwrap(),
+                alert: Some(serde_json::to_value(&alert).unwrap()),
+            },
+        )
+        .await
+        .unwrap();
+    let rows: Vec<_> = (0..4)
+        .map(|i| crate::storage::CreateTraceScoreRow {
+            public_id: everruns_contracts::typed_id::TraceScoreId::from_uuid(Uuid::now_v7())
+                .to_string(),
+            observer_id: observer.id,
+            scorer_key: "grounded".into(),
+            session_id: session.id.uuid(),
+            turn_id: format!("turn_{i}"),
+            agent_id: Some(agent.uuid()),
+            harness_id: None,
+            scope: "turn".into(),
+            not_before: None,
+        })
+        .collect();
+    f.db.enqueue_trace_scores(DEFAULT_ORG_ID, &rows)
+        .await
+        .unwrap();
+    let claimed = f.db.claim_trace_scores(10, 120, 3).await.unwrap();
+    assert_eq!(claimed.len(), 4);
+    // Two of four pass: 50%, under the 80% alert.
+    for (i, score) in claimed.iter().enumerate() {
+        f.db.complete_trace_score(
+            score.id,
+            crate::storage::CompleteTraceScoreRow {
+                status: "completed".into(),
+                pass: Some(i < 2),
+                value: Some(if i < 2 { 1.0 } else { 0.0 }),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    recheck(&f.db, &issue_row(OBSERVER_PASS_RATE_LOW))
+        .await
+        .unwrap();
+    let open =
+        f.db.open_subject_health_issues(OBSERVER_PASS_RATE_LOW)
+            .await
+            .unwrap();
+    assert_eq!(open.len(), 1);
+    assert_eq!(
+        open[0].subject_id.as_deref(),
+        Some(observer.public_id.as_str())
+    );
+    assert_eq!(
+        notified(&f, f.author).await,
+        vec![("Live quality dropped".to_string(), true)]
+    );
+    let (_, body) = copy(&open[0]);
+    assert!(body.contains("50% (2 of 4 scores passed)"), "{body}");
+
+    // Removing the alert resolves the issue on the next sweep.
+    f.db.update_observer(
+        DEFAULT_ORG_ID,
+        observer.id,
+        crate::storage::UpdateObserverRow {
+            alert: Some(None),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    recheck(&f.db, &issue_row(OBSERVER_PASS_RATE_LOW))
+        .await
+        .unwrap();
+    assert!(
+        f.db.open_subject_health_issues(OBSERVER_PASS_RATE_LOW)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}

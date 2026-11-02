@@ -811,6 +811,33 @@
     ]
   },
   {
+    "wire_name": "get_agent_cost",
+    "path": [
+      "agents",
+      "costs"
+    ],
+    "verb": "get",
+    "description": "What one agent cost the organization this month.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/costs",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See what an agent cost this month",
+        "command": "everruns agents costs get agent_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "create_agent",
     "path": [
       "agents"
@@ -3388,7 +3415,7 @@
         "long": "currency",
         "kind": "string",
         "required": true,
-        "help": "Unit in which usage and the limit are measured."
+        "help": "What the limit measures: \"usd\" (cost from the org's price list) or \"tokens\"."
       },
       {
         "field": "limit",
@@ -3407,6 +3434,12 @@
       {
         "field": "period",
         "long": "period",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "policy",
+        "long": "policy",
         "kind": "json",
         "required": false
       },
@@ -3633,6 +3666,12 @@
         "kind": "json",
         "required": false,
         "help": "Free-form metadata attached to this resource."
+      },
+      {
+        "field": "policy",
+        "long": "policy",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "soft_limit",
@@ -4137,6 +4176,195 @@
       {
         "intent": "Record an agent's requirements from a file",
         "command": "everruns context set agent_01h9 --content @notes.md --expected-revision 3 --reason 'Product review decisions'"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_cost_rate",
+    "path": [
+      "costs",
+      "rates"
+    ],
+    "verb": "create",
+    "description": "Add a rate to the organization's price list. A rate is a fixed price per unit or a multiple of the list price; rates are never edited, a change is a new rate from a later date.",
+    "method": "POST",
+    "http_path": "/v1/cost-rates",
+    "args": [
+      {
+        "field": "effective_from",
+        "long": "effective-from",
+        "kind": "string",
+        "required": false,
+        "help": "When it starts; now when absent."
+      },
+      {
+        "field": "list_price_multiplier",
+        "long": "list-price-multiplier",
+        "kind": "number",
+        "required": false,
+        "help": "Multiple of the provider's or catalog price."
+      },
+      {
+        "field": "match",
+        "long": "match",
+        "kind": "json",
+        "required": false,
+        "help": "Which usage it applies to (see `CostRate.match`)."
+      },
+      {
+        "field": "meter",
+        "long": "meter",
+        "kind": "string",
+        "required": true,
+        "help": "`model.tokens` or `sandbox.time`."
+      },
+      {
+        "field": "unit_price_usd",
+        "long": "unit-price-usd",
+        "kind": "number",
+        "required": false,
+        "help": "Fixed USD per million tokens (model tokens) or per hour (sandboxes)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Record a negotiated 20% discount on OpenAI",
+        "command": "everruns costs rates create --meter model.tokens --match '{\"provider\":\"openai\"}' --list-price-multiplier 0.8 --reason 'Enterprise discount'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_cost_rates",
+    "path": [
+      "costs",
+      "rates"
+    ],
+    "verb": "list",
+    "description": "List the organization's price list, history included.",
+    "method": "GET",
+    "http_path": "/v1/cost-rates",
+    "args": [],
+    "examples": [
+      {
+        "intent": "See which rates price your agents' usage",
+        "command": "everruns costs rates list"
+      }
+    ]
+  },
+  {
+    "wire_name": "retire_cost_rate",
+    "path": [
+      "costs",
+      "rates"
+    ],
+    "verb": "retire",
+    "description": "End a rate from a date. Past costs keep the rate they used; usage after the date falls back to the provider's or catalog price.",
+    "method": "POST",
+    "http_path": "/v1/cost-rates/{rate_id}/retire",
+    "args": [
+      {
+        "field": "effective_from",
+        "long": "effective-from",
+        "kind": "string",
+        "required": false,
+        "help": "When it ends; now when absent."
+      },
+      {
+        "field": "rate_id",
+        "long": "rate-id",
+        "kind": "string",
+        "required": true,
+        "help": "Rate id (`rate_...`) whose match to retire."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop applying a discount that expired",
+        "command": "everruns costs rates retire --rate-id rate_01h9 --reason 'Contract ended'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_cost_settings",
+    "path": [
+      "costs",
+      "settings"
+    ],
+    "verb": "get",
+    "description": "Read the organization's cost settings.",
+    "method": "GET",
+    "http_path": "/v1/costs/settings",
+    "args": [],
+    "examples": [
+      {
+        "intent": "See which timezone daily and monthly limits reset in",
+        "command": "everruns costs settings get"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_cost_settings",
+    "path": [
+      "costs",
+      "settings"
+    ],
+    "verb": "update",
+    "description": "Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.",
+    "method": "PATCH",
+    "http_path": "/v1/costs/settings",
+    "args": [
+      {
+        "field": "timezone",
+        "long": "timezone",
+        "kind": "string",
+        "required": false,
+        "help": "IANA timezone, or null for UTC."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Reset monthly limits at midnight in Austin",
+        "command": "everruns costs settings update --timezone America/Chicago --reason 'Team is in Austin'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_cost_summary",
+    "path": [
+      "costs",
+      "summary"
+    ],
+    "verb": "get",
+    "description": "Summarize what usage cost the organization.",
+    "method": "GET",
+    "http_path": "/v1/costs/summary",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only this agent (`agent_...`)."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "string",
+        "required": false,
+        "help": "Window start (inclusive)."
+      },
+      {
+        "field": "to",
+        "long": "to",
+        "kind": "string",
+        "required": false,
+        "help": "Window end (exclusive)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See this month's cost by agent and source",
+        "command": "everruns costs summary get"
       }
     ]
   },
@@ -4814,7 +5042,7 @@
         "field": "conversation",
         "long": "conversation",
         "kind": "json",
-        "required": true,
+        "required": false,
         "help": "Input messages sent to the agent sequentially."
       },
       {
@@ -4867,6 +5095,12 @@
         "help": "Scoring rules applied to the case output."
       },
       {
+        "field": "simulated_user",
+        "long": "simulated-user",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "tags",
         "long": "tags",
         "kind": "string_list",
@@ -4885,6 +5119,13 @@
         "kind": "integer",
         "required": false,
         "help": "Per-case timeout in seconds."
+      },
+      {
+        "field": "tool_fixtures",
+        "long": "tool-fixtures",
+        "kind": "json",
+        "required": false,
+        "help": "Tools the case gives the agent, each answered with a canned response."
       }
     ],
     "examples": [
@@ -5068,6 +5309,12 @@
         "help": "Scoring rules applied to the case output."
       },
       {
+        "field": "simulated_user",
+        "long": "simulated-user",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "tags",
         "long": "tags",
         "kind": "string_list",
@@ -5086,6 +5333,13 @@
         "kind": "integer",
         "required": false,
         "help": "Per-case timeout in seconds."
+      },
+      {
+        "field": "tool_fixtures",
+        "long": "tool-fixtures",
+        "kind": "json",
+        "required": false,
+        "help": "Tool fixtures, replacing the stored ones."
       }
     ],
     "examples": [
@@ -5173,6 +5427,198 @@
     ]
   },
   {
+    "wire_name": "create_eval_experiment",
+    "path": [
+      "evals",
+      "experiments"
+    ],
+    "verb": "create",
+    "description": "Start an experiment: run an eval's cases against one to four variants and compare them case by case.",
+    "method": "POST",
+    "http_path": "/v1/evals/{eval_id}/experiments",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Eval's prefixed public identifier; its cases are the dataset."
+      },
+      {
+        "field": "max_cost_usd",
+        "long": "max-cost-usd",
+        "kind": "number",
+        "required": false,
+        "help": "Spending cap in USD for the whole experiment, split evenly between the variants' runs."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Display name."
+      },
+      {
+        "field": "trials",
+        "long": "trials",
+        "kind": "integer",
+        "required": false,
+        "help": "Trials per case and variant, 1 to 20 (default 3)."
+      },
+      {
+        "field": "variants",
+        "long": "variants",
+        "kind": "json",
+        "required": true,
+        "help": "One to four variants."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Compare two models on the same cases, three trials each, within $10",
+        "command": "everruns evals experiments create --eval-id eval_01h9 --variants '[{\"label\":\"luna\",\"model_override\":\"gpt-6-luna\"},{\"label\":\"sol\",\"model_override\":\"gpt-6.1-sol\"}]' --max-cost-usd 10 --reason 'Pick the model for the support agent'"
+      }
+    ]
+  },
+  {
+    "wire_name": "gate_eval_experiment",
+    "path": [
+      "evals",
+      "experiments"
+    ],
+    "verb": "gate",
+    "description": "Check an experiment's variant against a bar, for CI. Answers 409 while runs are going and 422 when the variant misses the bar, so the command exits non-zero.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/experiments/{experiment_id}/gate",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      },
+      {
+        "field": "experiment_id",
+        "long": "experiment-id",
+        "kind": "string",
+        "required": true,
+        "help": "Experiment's prefixed public identifier."
+      },
+      {
+        "field": "min_pass_rate",
+        "long": "min-pass-rate",
+        "kind": "number",
+        "required": false,
+        "help": "Minimum pass rate over all trials, 0 to 1."
+      },
+      {
+        "field": "min_passed_every_trial",
+        "long": "min-passed-every-trial",
+        "kind": "number",
+        "required": false,
+        "help": "Minimum share of cases passed in every trial, 0 to 1."
+      },
+      {
+        "field": "no_regression",
+        "long": "no-regression",
+        "kind": "boolean",
+        "required": false,
+        "help": "Fail when the variant is a regression against the baseline."
+      },
+      {
+        "field": "variant",
+        "long": "variant",
+        "kind": "string",
+        "required": false,
+        "help": "Variant to judge; the last one when omitted."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Block a merge unless the candidate passes 90% and is no regression",
+        "command": "everruns evals experiments gate --eval-id eval_01h9 --experiment-id evalexp_01h9 --min-pass-rate 0.9 --no-regression true"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_eval_experiment",
+    "path": [
+      "evals",
+      "experiments"
+    ],
+    "verb": "get",
+    "description": "Get an experiment with its case-by-case comparison and verdicts.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/experiments/{experiment_id}",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      },
+      {
+        "field": "experiment_id",
+        "long": "experiment-id",
+        "kind": "string",
+        "required": true,
+        "help": "Experiment's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which cases a candidate fixed or broke",
+        "command": "everruns evals experiments get --eval-id eval_01h9 --experiment-id evalexp_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_eval_experiments",
+    "path": [
+      "evals",
+      "experiments"
+    ],
+    "verb": "list",
+    "description": "List an eval's experiments, newest first.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/experiments",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find the last experiment on an eval",
+        "command": "everruns evals experiments list --eval-id eval_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_all_eval_experiments",
+    "path": [
+      "evals",
+      "experiments"
+    ],
+    "verb": "recent",
+    "description": "List the organization's experiments across evals, newest first.",
+    "method": "GET",
+    "http_path": "/v1/evals/experiments",
+    "args": [],
+    "examples": [
+      {
+        "intent": "See what experiments ran lately",
+        "command": "everruns evals experiments recent"
+      }
+    ]
+  },
+  {
     "wire_name": "get_eval",
     "path": [
       "evals"
@@ -5214,6 +5660,12 @@
         "kind": "json",
         "required": true,
         "help": "Evals and their case results in this run."
+      },
+      {
+        "field": "experiment",
+        "long": "experiment",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "source",
@@ -5276,6 +5728,124 @@
       {
         "intent": "Find an eval by name when you do not know the id",
         "command": "everruns evals list --search support"
+      }
+    ]
+  },
+  {
+    "wire_name": "accept_eval_proposal",
+    "path": [
+      "evals",
+      "proposals"
+    ],
+    "verb": "accept",
+    "description": "Add an Eval Builder proposal to a dataset as a new case. The dataset must target the proposal's agent.",
+    "method": "POST",
+    "http_path": "/v1/eval-proposals/{proposal_id}/accept",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Dataset (eval) to add the case to."
+      },
+      {
+        "field": "proposal_id",
+        "long": "proposal-id",
+        "kind": "string",
+        "required": true,
+        "help": "Proposal's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Add a proposed case to the agent's main dataset",
+        "command": "everruns evals proposals accept --proposal-id evalprop_01h9 --eval-id eval_01h9 --reason 'Cover refunds over the limit'"
+      }
+    ]
+  },
+  {
+    "wire_name": "propose_eval_cases",
+    "path": [
+      "evals",
+      "proposals"
+    ],
+    "verb": "create",
+    "description": "Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. Runs in the background on the organization's default model; nothing is added until a person accepts a proposal.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/eval-proposals",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Ask for cases that cover what the support agent got wrong this week",
+        "command": "everruns evals proposals create --agent-id agent_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "dismiss_eval_proposal",
+    "path": [
+      "evals",
+      "proposals"
+    ],
+    "verb": "dismiss",
+    "description": "Dismiss an Eval Builder proposal, optionally saying why. The Eval Builder does not offer it again.",
+    "method": "POST",
+    "http_path": "/v1/eval-proposals/{proposal_id}/dismiss",
+    "args": [
+      {
+        "field": "note",
+        "long": "note",
+        "kind": "string",
+        "required": false,
+        "help": "Why it is not wanted, kept so the builder does not offer it again."
+      },
+      {
+        "field": "proposal_id",
+        "long": "proposal-id",
+        "kind": "string",
+        "required": true,
+        "help": "Proposal's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Turn down a case that does not fit the agent",
+        "command": "everruns evals proposals dismiss --proposal-id evalprop_01h9 --note 'Out of scope for this agent'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_eval_proposals",
+    "path": [
+      "evals",
+      "proposals"
+    ],
+    "verb": "list",
+    "description": "List an agent's open eval case proposals, newest first, with the Eval Builder's latest run.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/eval-proposals",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Review the cases proposed for an agent",
+        "command": "everruns evals proposals list --agent-id agent_01h9"
       }
     ]
   },
@@ -5358,11 +5928,25 @@
     "http_path": "/v1/evals/{eval_id}/runs",
     "args": [
       {
+        "field": "case_ids",
+        "long": "case-ids",
+        "kind": "string_list",
+        "required": false,
+        "help": "Run only these cases of the eval, by public id (\"Try once\" on a case page)."
+      },
+      {
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
         "required": true,
         "help": "Eval's prefixed public identifier."
+      },
+      {
+        "field": "max_cost_usd",
+        "long": "max-cost-usd",
+        "kind": "number",
+        "required": false,
+        "help": "Spending cap in USD for the whole run, agents and grading together. Once spent, running turns..."
       },
       {
         "field": "model_override",
@@ -5388,7 +5972,7 @@
     "examples": [
       {
         "intent": "Run every case in an eval, optionally on a different model",
-        "command": "everruns evals runs create --eval-id eval_01h9 --model-override gpt-5.1 --reason 'Check the suite on the new model'"
+        "command": "everruns evals runs create --eval-id eval_01h9 --model-override gpt-6-luna --max-cost-usd 5 --reason 'Check the suite on the new model within $5'"
       }
     ]
   },
@@ -5761,6 +6345,65 @@
       {
         "intent": "Turn off every share link for a run",
         "command": "everruns evals runs share revoke --eval-id eval_01h9 --run-id evalrun_01h9 --reason 'Vendor review finished'"
+      }
+    ]
+  },
+  {
+    "wire_name": "export_eval_samples",
+    "path": [
+      "evals",
+      "samples"
+    ],
+    "verb": "export",
+    "description": "Export an eval's cases as Mira samples, one per case. Settings Mira has no field for ride under metadata.everruns, so the export imports back unchanged.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/samples",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Save a dataset as a Mira JSONL file",
+        "command": "everruns evals samples export --eval-id eval_01h9 | jq -c '.samples[]' > cases.jsonl"
+      }
+    ]
+  },
+  {
+    "wire_name": "import_eval_samples",
+    "path": [
+      "evals",
+      "samples"
+    ],
+    "verb": "import",
+    "description": "Create or update an eval's cases from Mira samples, matched by name. A sample's expected text becomes a contains scorer unless metadata.everruns names the scorers.",
+    "method": "POST",
+    "http_path": "/v1/evals/{eval_id}/samples",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      },
+      {
+        "field": "samples",
+        "long": "samples",
+        "kind": "json",
+        "required": true,
+        "help": "Mira samples."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Load a Mira JSONL dataset into an eval",
+        "command": "everruns evals samples import --eval-id eval_01h9 --samples \"$(jq -s . cases.jsonl)\" --reason 'Share the Mira regression set'"
       }
     ]
   },
@@ -6327,6 +6970,38 @@
       {
         "intent": "Recheck whether an issue is resolved after fixing it",
         "command": "everruns health-issues check --issue-id 550e8400-e29b-41d4-a716-446655440000"
+      }
+    ]
+  },
+  {
+    "wire_name": "dismiss_health_issue",
+    "path": [
+      "health-issues"
+    ],
+    "verb": "dismiss",
+    "description": "Dismiss a detector finding with a reason.",
+    "method": "POST",
+    "http_path": "/v1/health-issues/{issue_id}/dismiss",
+    "args": [
+      {
+        "field": "issue_id",
+        "long": "issue-id",
+        "kind": "string",
+        "required": true,
+        "help": "Stable identifier of the issue in the current organization."
+      },
+      {
+        "field": "note",
+        "long": "note",
+        "kind": "string",
+        "required": true,
+        "help": "A false alarm, expected work, or already handled."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Close a false alarm and say why",
+        "command": "everruns health-issues dismiss --issue-id 550e8400-e29b-41d4-a716-446655440000 --note 'Expected: nightly load test'"
       }
     ]
   },
@@ -8413,6 +9088,52 @@
     ]
   },
   {
+    "wire_name": "backfill_observer",
+    "path": [
+      "observers"
+    ],
+    "verb": "backfill",
+    "description": "Score past production traffic with an observer.",
+    "method": "POST",
+    "http_path": "/v1/observers/{observer_id}/backfill",
+    "args": [
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Most past events to read, newest first (1–5000)."
+      },
+      {
+        "field": "observer_id",
+        "long": "observer-id",
+        "kind": "string",
+        "required": true,
+        "help": "Observer's prefixed public identifier."
+      },
+      {
+        "field": "sample",
+        "long": "sample",
+        "kind": "boolean",
+        "required": false,
+        "help": "Apply the observer's sampling rate."
+      },
+      {
+        "field": "since_hours",
+        "long": "since-hours",
+        "kind": "integer",
+        "required": false,
+        "help": "How far back to read, in hours (1–720)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Score the last day of traffic with a new observer",
+        "command": "everruns observers backfill --observer-id observer_01h9 --since-hours 24 --reason 'Baseline the new rubric'"
+      }
+    ]
+  },
+  {
     "wire_name": "create_observer",
     "path": [
       "observers"
@@ -8422,6 +9143,12 @@
     "method": "POST",
     "http_path": "/v1/observers",
     "args": [
+      {
+        "field": "alert",
+        "long": "alert",
+        "kind": "json",
+        "required": false
+      },
       {
         "field": "description",
         "long": "description",
@@ -8571,6 +9298,13 @@
         "required": false
       },
       {
+        "field": "review_queue",
+        "long": "review-queue",
+        "kind": "boolean",
+        "required": false,
+        "help": "Only unreviewed completed scores, failures first (the review queue)."
+      },
+      {
         "field": "session_id",
         "long": "session-id",
         "kind": "string",
@@ -8586,6 +9320,92 @@
     ]
   },
   {
+    "wire_name": "review_observer_score",
+    "path": [
+      "observers",
+      "scores"
+    ],
+    "verb": "review",
+    "description": "Record whether an observer's score was right.",
+    "method": "POST",
+    "http_path": "/v1/observers/{observer_id}/scores/{score_id}/review",
+    "args": [
+      {
+        "field": "agrees",
+        "long": "agrees",
+        "kind": "boolean",
+        "required": true,
+        "help": "True when the grader got it right."
+      },
+      {
+        "field": "note",
+        "long": "note",
+        "kind": "string",
+        "required": false,
+        "help": "Optional note on why (at most 2000 characters)."
+      },
+      {
+        "field": "observer_id",
+        "long": "observer-id",
+        "kind": "string",
+        "required": true,
+        "help": "Observer's prefixed public identifier."
+      },
+      {
+        "field": "score_id",
+        "long": "score-id",
+        "kind": "string",
+        "required": true,
+        "help": "Score's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Mark a failing score as a grader mistake",
+        "command": "everruns observers scores review --observer-id observer_01h9 --score-id score_01h9 --agrees false --note 'The answer cited the refund policy' --reason 'Calibrate the grounded judge'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_observer_summary",
+    "path": [
+      "observers"
+    ],
+    "verb": "summary",
+    "description": "Live quality by agent, observer and day.",
+    "method": "GET",
+    "http_path": "/v1/observers/summary",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only scores of this agent."
+      },
+      {
+        "field": "days",
+        "long": "days",
+        "kind": "integer",
+        "required": false,
+        "help": "Window in days (1–90)."
+      },
+      {
+        "field": "observer_id",
+        "long": "observer-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only scores of this observer."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See how one agent's production answers scored this week",
+        "command": "everruns observers summary --agent-id agent_01h9 --days 7"
+      }
+    ]
+  },
+  {
     "wire_name": "update_observer",
     "path": [
       "observers"
@@ -8595,6 +9415,12 @@
     "method": "PATCH",
     "http_path": "/v1/observers/{observer_id}",
     "args": [
+      {
+        "field": "alert",
+        "long": "alert",
+        "kind": "json",
+        "required": false
+      },
       {
         "field": "description",
         "long": "description",
@@ -13512,7 +14338,7 @@
       "sessions"
     ],
     "verb": "resume",
-    "description": "Resume all paused session budgets for a session.",
+    "description": "Continue a session past a usage policy's ask step.",
     "method": "POST",
     "http_path": "/v1/sessions/{session_id}/resume",
     "args": [
@@ -13527,8 +14353,8 @@
     ],
     "examples": [
       {
-        "intent": "Restart a session that paused when a budget ran out",
-        "command": "everruns sessions resume session_01h9 --reason 'Budget topped up'"
+        "intent": "Let a session continue after a usage policy asked before going further",
+        "command": "everruns sessions resume session_01h9 --reason 'Finish the report'"
       }
     ]
   },
@@ -14818,6 +15644,38 @@
       {
         "intent": "See which agents use which skills",
         "command": "everruns skills usage"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_platform_detections",
+    "path": [
+      "system"
+    ],
+    "verb": "detections",
+    "description": "List open abuse detections in every organization, with the Inspector's write-up. Leads for a person to confirm, never grounds for automatic action.",
+    "method": "GET",
+    "http_path": "/v1/system/detections",
+    "args": [
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Page size from 1 through 100; defaults to 20."
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "Number of detections to skip; defaults to zero."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Review sessions suspected of abusing the platform",
+        "command": "everruns system detections --limit 20"
       }
     ]
   },

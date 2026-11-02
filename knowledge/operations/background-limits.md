@@ -60,7 +60,8 @@ the session.
   to the schedule, and the loop gate reads the session's latest invocation to
   stop a turn mid-way. Human turns in the same session never touch it.
 - **`org_unattended` budget**, keyed on the org's public id, a calendar day
-  period: $20 per day by default. Created lazily on the first unattended turn;
+  period in the org's timezone (UTC until set): $20 per day by default. It is
+  listed with every other usage policy in Settings → Costs. Created lazily on the first unattended turn;
   one live row per org (partial unique index).
 - Before firing, the scheduler checks both. A spent schedule budget disables
   the schedule with `stop_reason = budget_exhausted`. A spent org budget skips
@@ -68,7 +69,7 @@ the session.
   one-shot waits for midnight UTC.
 - Both fail open when the budget store is unreachable, like the loop gate.
 
-Source: `crates/server/src/domains/budgets/service.rs` (`attach_unattended`,
+Source: `crates/server/src/domains/budgets/service/mod.rs` (`attach_unattended`,
 `unattended_fire_gate`), `crates/server/src/storage/background_limits.rs`.
 
 ## Detection
@@ -84,6 +85,13 @@ for unattended work that goes wrong. Each is about one subject, kept in
 | `org.unattended_budget` | org | today's unattended budget is spent | the next day, or the cap is raised |
 | `agent.unattended_spend_spike` | agent | its unattended spend over 24 hours passed $5 and 3× its average day over the six days before | the condition no longer holds |
 | `session.context_bloat` | session | its last 20 model calls averaged more than 200k prompt tokens with under 10% cached | the condition no longer holds, or it has no calls for an hour |
+| `session.tool_error_loop` | session | among its last 40 tool calls of the last hour, the same call (tool and target) failed 8 times | the condition no longer holds |
+| `session.repeated_tool_calls` | session | among those calls, the same call was made 20 times | the condition no longer holds |
+| `session.spend_spike` | session | it spent more than $2 in the last hour and 10× its agent's median session-hour over the week before (judged once the agent has 12 such hours) | the condition no longer holds |
+| `session.suspected_abuse` | session | a decision model answered yes, with probability 0.85 or more, that the session is used for spam, scraping at scale, credential attacks, crypto mining, phishing or malware | a later read answers no, or the session makes no model call for a day |
+| `session.agent_stuck` | session | the same, at 0.8, that the agent repeats itself without progress | as above |
+| `session.followed_injection` | session | the same, at 0.8, that the agent acted on instructions from a tool result or fetched content rather than its user | as above |
+| `observer.pass_rate_low` | observer | an observer with an `alert` passed under its `min_pass_rate` over its window, with at least `min_scored` scores ([online evals](../evaluation/online-evals.md)) | the rate recovers, the window has too few scores, or the alert is removed |
 
 - **Runaway schedules.** Before each fire the scheduler fingerprints the
   previous fire's final answer (lowercased, digits and spacing collapsed, so a
@@ -103,8 +111,63 @@ for unattended work that goes wrong. Each is about one subject, kept in
   **Check again** runs the issue's part of it. Only the runaway stop pauses
   anything; the rest report.
 
+- The three `session.*` behavior detectors apply to every session, attended
+  or not, except eval sessions. The spend baseline is the agent's own median,
+  not a fixed bar, so an agent that is always expensive is not flagged and a
+  cheap one that suddenly is, is. They report to the agent's authors and stop
+  nothing. The notification names the tool and amounts, never the call's
+  target.
+- **Session classifiers** (layer 2) read every session a behavior detector or
+  classifier flagged, every 6 hours while it stays flagged, plus a random 10
+  active sessions per sweep, each read at most once a day. A claim row per
+  session (`session_classifications`) keeps replicas from reading a session
+  twice. The model is the one the org's `system_decisions` setting selects.
+  Sampling covers only orgs on the deployment's decision service, and only
+  when the deployment has one: an org that answers decisions on its own
+  provider account pays per call, so it is read only when flagged. The
+  classifier reads the last six messages (1,500 characters each) and the
+  tools and targets of the last 40 tool calls; nothing of that is stored. The
+  issue keeps the probability and the model, and the notification says which
+  question was answered yes. Findings notify only: nothing is stopped or
+  suspended on a classifier's word, and a person confirms anything further.
+- **Inspector** (layer 3) writes up each open classifier finding and each
+  runaway schedule once per episode, on the org's default model: what
+  happened in two to four sentences, a severity (high, medium, low) that can
+  disagree with the detector, and one next step. It reads the last 12
+  messages (1,200 characters each), the last 60 tool calls and the issue's
+  numbers, and is asked not to repeat secrets or personal details; it stores
+  only its write-up (`finding_investigations`). It files the finding under one
+  of the org's clusters of the same code from the last 30 days, or starts one
+  (`finding_clusters`), so the Findings tab shows similar findings as one row.
+  Clusters never span orgs and are leads, never grounds for automatic action.
+  Its cost is monitoring spend: only the org and agent budgets pay. No model
+  marks the episode unavailable; a bad answer is retried after an hour, three
+  times at most.
+- **Dismiss** (`POST /v1/health-issues/{id}/dismiss`) closes a finding with a
+  `note` saying why, kept on its write-up row for calibrating detectors. A dismissed
+  session finding stays closed when a detector or classifier says yes about
+  the same session again. A dismissed runaway schedule reopens if the schedule
+  keeps repeating itself, since that is new evidence.
+- **Platform side.** `GET /v1/system/detections` (`everruns system
+  detections`, platform users only) lists open suspected-abuse findings in
+  every org with the Inspector's write-up, for the deployment's operator.
+  Suspension still needs a person.
+- **System doctor** reports `observability.detection`: a warning when the
+  sweep failed or has not finished for 40 minutes, so a detector that stopped
+  is visible. `observability.classifiers` warns while any session is
+  suspected of abuse, so a deployment's operator hears of it, and when the
+  last classifier sweep could not read any session. `observability.inspector`
+  warns while abuse detections wait for a person, and when the last Inspector
+  sweep could not write any finding up.
+
 Source: `crates/server/src/domains/health_issues/background_work.rs`,
-`crates/server/src/storage/background_work.rs`.
+`crates/server/src/domains/health_issues/behavior.rs`,
+`crates/server/src/domains/health_issues/classifiers.rs`,
+`crates/server/src/domains/health_issues/inspector.rs`,
+`crates/server/src/storage/background_work.rs`,
+`crates/server/src/storage/finding_investigations.rs`,
+`crates/server/src/storage/behavior_detectors.rs`,
+`crates/server/src/storage/session_classifications.rs`.
 
 ## Polling without the model
 

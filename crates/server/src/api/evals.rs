@@ -27,11 +27,19 @@ use crate::domains::evals::EvalService;
 use crate::domains::evals::dataset::ExportEvalRunDatasetRequest;
 use crate::domains::evals::runner::EvalRunContext;
 use crate::domains::evals::{
+    AcceptEvalProposal, DismissEvalProposal, ExportEvalSamples, ImportEvalSamples,
+    ListEvalProposals, ProposeEvalCases,
+};
+use crate::domains::evals::{
     BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun,
     CreateEvalRunShare, DeleteEval, DeleteEvalCase, EvalImportPreflightCmd, ExportEvalRunArtifacts,
     ExportEvalRunDataset, GetEval, GetEvalCase, GetEvalRun, GetEvalRunDataset, GetEvalRunShare,
     ImportAtifTrajectories, ImportEvalRun, ListEvalCases, ListEvalRuns, ListEvals,
     RevokeEvalRunShare, UpdateEval, UpdateEvalCase, UpdateEvalResultScores,
+};
+use crate::domains::evals::{
+    CreateEvalExperiment, GateEvalExperiment, GetEvalExperiment, ListAllEvalExperiments,
+    ListEvalExperiments,
 };
 use crate::storage::StorageBackend;
 use everruns_core::Caller;
@@ -105,6 +113,20 @@ pub fn routes(state: AppState) -> Router {
         .command::<CreateEvalRun>()
         .command::<ListEvalRuns>()
         .command::<GetEvalRun>()
+        // Experiments (knowledge/evaluation/experiments.md).
+        .command::<ListAllEvalExperiments>()
+        .command::<CreateEvalExperiment>()
+        .command::<ListEvalExperiments>()
+        .command::<GetEvalExperiment>()
+        .command::<GateEvalExperiment>()
+        // Eval Builder proposals (knowledge/evaluation/evals.md, "Eval Builder").
+        .command::<ProposeEvalCases>()
+        .command::<ListEvalProposals>()
+        .command::<AcceptEvalProposal>()
+        .command::<DismissEvalProposal>()
+        // Dataset cases as Mira samples (knowledge/evaluation/external-results-publishing.md).
+        .command::<ExportEvalSamples>()
+        .command::<ImportEvalSamples>()
         // Hand-written: NDJSON body rather than JSON.
         .route(
             "/v1/evals/{eval_id}/runs/{run_id}/artifacts",

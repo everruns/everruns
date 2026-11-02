@@ -25,6 +25,17 @@ Evaluation cases, runs, results and scores.
 | [`evals cases get`](#evals-cases-get) | Get an eval case. |
 | [`evals cases list`](#evals-cases-list) | List eval cases. |
 | [`evals cases update`](#evals-cases-update) | Update an eval case. |
+| [`evals experiments create`](#evals-experiments-create) | Start an experiment: run an eval's cases against one to four variants and compare them case by case. |
+| [`evals experiments gate`](#evals-experiments-gate) | Check an experiment's variant against a bar, for CI. |
+| [`evals experiments get`](#evals-experiments-get) | Get an experiment with its case-by-case comparison and verdicts. |
+| [`evals experiments recent`](#evals-experiments-recent) | List the organization's experiments across evals, newest first. |
+| [`evals experiments list`](#evals-experiments-list) | List an eval's experiments, newest first. |
+| [`evals samples export`](#evals-samples-export) | Export an eval's cases as Mira samples, one per case. |
+| [`evals samples import`](#evals-samples-import) | Create or update an eval's cases from Mira samples, matched by name. |
+| [`evals proposals accept`](#evals-proposals-accept) | Add an Eval Builder proposal to a dataset as a new case. |
+| [`evals proposals dismiss`](#evals-proposals-dismiss) | Dismiss an Eval Builder proposal, optionally saying why. |
+| [`evals proposals list`](#evals-proposals-list) | List an agent's open eval case proposals, newest first, with the Eval Builder's latest run. |
+| [`evals proposals create`](#evals-proposals-create) | Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. |
 | [`evals runs cancel`](#evals-runs-cancel) | Cancel an eval run. |
 | [`evals runs create`](#evals-runs-create) | Create an eval run. |
 | [`evals runs get`](#evals-runs-get) | Get an eval run. |
@@ -125,6 +136,7 @@ everruns evals import [OPTIONS] --evals <evals> --source <source>
 | Flag | Description |
 |---|---|
 | `--evals <EVALS>` | Required. Evals and their case results in this run. |
+| `--experiment <EXPERIMENT>` |  |
 | `--source <SOURCE>` | Required. Attribution for the external system that produced the run. |
 
 Example:
@@ -203,13 +215,13 @@ everruns evals atif-import import --eval-id eval_01h9 --body "$(cat trajectories
 Create an eval case.
 
 ```bash
-everruns evals cases create [OPTIONS] --conversation <conversation> --eval-id <eval_id> --name <name> --scorers <scorers>
+everruns evals cases create [OPTIONS] --eval-id <eval_id> --name <name> --scorers <scorers>
 ```
 
 | Flag | Description |
 |---|---|
 | `--artifacts <ARTIFACTS>` | Session files to capture after scoring completes. |
-| `--conversation <CONVERSATION>` | Required. Input messages sent to the agent sequentially. |
+| `--conversation <CONVERSATION>` | Input messages sent to the agent sequentially. |
 | `--description <DESCRIPTION>` | Human-readable description. |
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 | `--max-turns <MAX_TURNS>` | Maximum agent turns before the case stops. |
@@ -217,9 +229,11 @@ everruns evals cases create [OPTIONS] --conversation <conversation> --eval-id <e
 | `--position <POSITION>` | Display order within the eval. |
 | `--post <POST>` | Verification messages sent after conversation completes and session idles. |
 | `--scorers <SCORERS>` | Required. Scoring rules applied to the case output. |
+| `--simulated-user <SIMULATED_USER>` |  |
 | `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 | `--target <TARGET>` |  |
 | `--timeout-seconds <TIMEOUT_SECONDS>` | Per-case timeout in seconds. |
+| `--tool-fixtures <TOOL_FIXTURES>` | Tools the case gives the agent, each answered with a canned response. |
 
 Example:
 
@@ -307,15 +321,235 @@ everruns evals cases update [OPTIONS] --case-id <case_id> --eval-id <eval_id>
 | `--position <POSITION>` | Display order within the eval. |
 | `--post <POST>` | Verification messages sent after conversation completes. |
 | `--scorers <SCORERS>` | Scoring rules applied to the case output. |
+| `--simulated-user <SIMULATED_USER>` |  |
 | `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 | `--target <TARGET>` |  |
 | `--timeout-seconds <TIMEOUT_SECONDS>` | Per-case timeout in seconds. |
+| `--tool-fixtures <TOOL_FIXTURES>` | Tool fixtures, replacing the stored ones. |
 
 Example:
 
 ```bash
 # Give a slow case more turns
 everruns evals cases update --eval-id eval_01h9 --case-id evalcase_01h9 --max-turns 20 --reason 'Case timed out at the old limit'
+```
+
+## evals experiments create
+
+Start an experiment: run an eval's cases against one to four variants and compare them case by case.
+
+```bash
+everruns evals experiments create [OPTIONS] --eval-id <eval_id> --variants <variants>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier; its cases are the dataset. |
+| `--max-cost-usd <MAX_COST_USD>` | Spending cap in USD for the whole experiment, split evenly between the variants' runs. |
+| `--name <NAME>` | Display name. |
+| `--trials <TRIALS>` | Trials per case and variant, 1 to 20 (default 3). |
+| `--variants <VARIANTS>` | Required. One to four variants. |
+
+Example:
+
+```bash
+# Compare two models on the same cases, three trials each, within $10
+everruns evals experiments create --eval-id eval_01h9 --variants '[{"label":"luna","model_override":"gpt-6-luna"},{"label":"sol","model_override":"gpt-6.1-sol"}]' --max-cost-usd 10 --reason 'Pick the model for the support agent'
+```
+
+## evals experiments gate
+
+Check an experiment's variant against a bar, for CI. Answers 409 while runs are going and 422 when the variant misses the bar, so the command exits non-zero.
+
+```bash
+everruns evals experiments gate [OPTIONS] --eval-id <eval_id> --experiment-id <experiment_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+| `--experiment-id <EXPERIMENT_ID>` | Required. Experiment's prefixed public identifier. |
+| `--min-pass-rate <MIN_PASS_RATE>` | Minimum pass rate over all trials, 0 to 1. |
+| `--min-passed-every-trial <MIN_PASSED_EVERY_TRIAL>` | Minimum share of cases passed in every trial, 0 to 1. |
+| `--no-regression` | Fail when the variant is a regression against the baseline. |
+| `--variant <VARIANT>` | Variant to judge; the last one when omitted. |
+
+Example:
+
+```bash
+# Block a merge unless the candidate passes 90% and is no regression
+everruns evals experiments gate --eval-id eval_01h9 --experiment-id evalexp_01h9 --min-pass-rate 0.9 --no-regression true
+```
+
+## evals experiments get
+
+Get an experiment with its case-by-case comparison and verdicts.
+
+```bash
+everruns evals experiments get [OPTIONS] --eval-id <eval_id> --experiment-id <experiment_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+| `--experiment-id <EXPERIMENT_ID>` | Required. Experiment's prefixed public identifier. |
+
+Example:
+
+```bash
+# See which cases a candidate fixed or broke
+everruns evals experiments get --eval-id eval_01h9 --experiment-id evalexp_01h9
+```
+
+## evals experiments recent
+
+List the organization's experiments across evals, newest first.
+
+```bash
+everruns evals experiments recent [OPTIONS]
+```
+
+Example:
+
+```bash
+# See what experiments ran lately
+everruns evals experiments recent
+```
+
+## evals experiments list
+
+List an eval's experiments, newest first.
+
+```bash
+everruns evals experiments list [OPTIONS] --eval-id <eval_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+
+Example:
+
+```bash
+# Find the last experiment on an eval
+everruns evals experiments list --eval-id eval_01h9
+```
+
+## evals samples export
+
+Export an eval's cases as Mira samples, one per case. Settings Mira has no field for ride under metadata.everruns, so the export imports back unchanged.
+
+```bash
+everruns evals samples export [OPTIONS] --eval-id <eval_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+
+Example:
+
+```bash
+# Save a dataset as a Mira JSONL file
+everruns evals samples export --eval-id eval_01h9 | jq -c '.samples[]' > cases.jsonl
+```
+
+## evals samples import
+
+Create or update an eval's cases from Mira samples, matched by name. A sample's expected text becomes a contains scorer unless metadata.everruns names the scorers.
+
+```bash
+everruns evals samples import [OPTIONS] --eval-id <eval_id> --samples <samples>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+| `--samples <SAMPLES>` | Required. Mira samples. |
+
+Example:
+
+```bash
+# Load a Mira JSONL dataset into an eval
+everruns evals samples import --eval-id eval_01h9 --samples "$(jq -s . cases.jsonl)" --reason 'Share the Mira regression set'
+```
+
+## evals proposals accept
+
+Add an Eval Builder proposal to a dataset as a new case. The dataset must target the proposal's agent.
+
+```bash
+everruns evals proposals accept [OPTIONS] --eval-id <eval_id> --proposal-id <proposal_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Dataset (eval) to add the case to. |
+| `--proposal-id <PROPOSAL_ID>` | Required. Proposal's prefixed public identifier. |
+
+Example:
+
+```bash
+# Add a proposed case to the agent's main dataset
+everruns evals proposals accept --proposal-id evalprop_01h9 --eval-id eval_01h9 --reason 'Cover refunds over the limit'
+```
+
+## evals proposals dismiss
+
+Dismiss an Eval Builder proposal, optionally saying why. The Eval Builder does not offer it again.
+
+```bash
+everruns evals proposals dismiss [OPTIONS] --proposal-id <proposal_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--note <NOTE>` | Why it is not wanted, kept so the builder does not offer it again. |
+| `--proposal-id <PROPOSAL_ID>` | Required. Proposal's prefixed public identifier. |
+
+Example:
+
+```bash
+# Turn down a case that does not fit the agent
+everruns evals proposals dismiss --proposal-id evalprop_01h9 --note 'Out of scope for this agent'
+```
+
+## evals proposals list
+
+List an agent's open eval case proposals, newest first, with the Eval Builder's latest run.
+
+```bash
+everruns evals proposals list [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
+
+Example:
+
+```bash
+# Review the cases proposed for an agent
+everruns evals proposals list --agent-id agent_01h9
+```
+
+## evals proposals create
+
+Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. Runs in the background on the organization's default model; nothing is added until a person accepts a proposal.
+
+```bash
+everruns evals proposals create [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
+
+Example:
+
+```bash
+# Ask for cases that cover what the support agent got wrong this week
+everruns evals proposals create --agent-id agent_01h9
 ```
 
 ## evals runs cancel
@@ -348,7 +582,9 @@ everruns evals runs create [OPTIONS] --eval-id <eval_id>
 
 | Flag | Description |
 |---|---|
+| `--case-ids <CASE_IDS>` | Run only these cases of the eval, by public id ("Try once" on a case page). Comma-separated or a JSON array of strings. Repeatable. |
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+| `--max-cost-usd <MAX_COST_USD>` | Spending cap in USD for the whole run, agents and grading together. Once spent, running turns... |
 | `--model-override <MODEL_OVERRIDE>` | Model override for this run. |
 | `--target <TARGET>` |  |
 | `--trials <TRIALS>` | How many times to run each case, 1 to 20 (default 1). |
@@ -357,7 +593,7 @@ Example:
 
 ```bash
 # Run every case in an eval, optionally on a different model
-everruns evals runs create --eval-id eval_01h9 --model-override gpt-5.1 --reason 'Check the suite on the new model'
+everruns evals runs create --eval-id eval_01h9 --model-override gpt-6-luna --max-cost-usd 5 --reason 'Check the suite on the new model within $5'
 ```
 
 ## evals runs get

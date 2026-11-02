@@ -85,7 +85,21 @@ pub fn build_run_summary(
             .filter(|(seen, ok)| *seen > 0 && ok == seen)
             .count() as u32,
         cases_passed_any_trial: by_case.values().filter(|(_, ok)| *ok > 0).count() as u32,
+        total_cost_usd: Some(result_rows.iter().map(result_cost_usd).sum()),
     }
+}
+
+/// What one result spent: its session's model calls (`cost_usd`) plus its
+/// grading (`grader_usage.cost_usd`), both recorded in result metadata.
+pub fn result_cost_usd(result: &EvalCaseResultRow) -> f64 {
+    let Some(meta) = result.metadata.as_ref() else {
+        return 0.0;
+    };
+    let agent = meta.get("cost_usd").and_then(|v| v.as_f64());
+    let grading = meta
+        .pointer("/grader_usage/cost_usd")
+        .and_then(|v| v.as_f64());
+    agent.unwrap_or(0.0) + grading.unwrap_or(0.0)
 }
 
 /// Weighted score of one result, joining its scores positionally to the
@@ -128,11 +142,12 @@ pub fn weighted_score(scores: &[Score], scorers: &[Scorer]) -> f64 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use chrono::Utc;
 
-    fn result(case: Uuid, trial: i32, status: &str) -> EvalCaseResultRow {
+    /// A result row for tests: `status` with a matching score.
+    pub(crate) fn result_row(case: Uuid, trial: i32, status: &str) -> EvalCaseResultRow {
         EvalCaseResultRow {
             id: Uuid::now_v7(),
             eval_run_id: Uuid::nil(),
@@ -162,15 +177,15 @@ mod tests {
     fn trials_group_back_into_pass_every_and_pass_any() {
         let (a, b, c) = (Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
         let rows = vec![
-            result(a, 0, "passed"),
-            result(a, 1, "passed"),
-            result(a, 2, "passed"),
-            result(b, 0, "passed"),
-            result(b, 1, "failed"),
-            result(b, 2, "passed"),
-            result(c, 0, "failed"),
-            result(c, 1, "errored"),
-            result(c, 2, "failed"),
+            result_row(a, 0, "passed"),
+            result_row(a, 1, "passed"),
+            result_row(a, 2, "passed"),
+            result_row(b, 0, "passed"),
+            result_row(b, 1, "failed"),
+            result_row(b, 2, "passed"),
+            result_row(c, 0, "failed"),
+            result_row(c, 1, "errored"),
+            result_row(c, 2, "failed"),
         ];
         let summary = build_run_summary(&[], &rows, 3);
         assert_eq!(summary.total, 9);
@@ -187,7 +202,7 @@ mod tests {
     #[test]
     fn single_trial_run_matches_plain_counts() {
         let a = Uuid::now_v7();
-        let summary = build_run_summary(&[], &[result(a, 0, "passed")], 1);
+        let summary = build_run_summary(&[], &[result_row(a, 0, "passed")], 1);
         assert_eq!(summary.cases_passed_every_trial, 1);
         assert_eq!(summary.cases_passed_any_trial, 1);
         assert_eq!(summary.pass_rate, 1.0);
@@ -197,9 +212,26 @@ mod tests {
     #[test]
     fn skipped_trial_breaks_pass_every_trial() {
         let a = Uuid::now_v7();
-        let rows = vec![result(a, 0, "passed"), result(a, 1, "skipped")];
+        let rows = vec![result_row(a, 0, "passed"), result_row(a, 1, "skipped")];
         let summary = build_run_summary(&[], &rows, 2);
         assert_eq!(summary.cases_passed_every_trial, 0);
         assert_eq!(summary.cases_passed_any_trial, 1);
+    }
+
+    #[test]
+    fn run_cost_adds_agent_and_grading_spend_of_every_result() {
+        let a = Uuid::now_v7();
+        let mut scored = result_row(a, 0, "passed");
+        scored.metadata = Some(serde_json::json!({
+            "cost_usd": 0.25,
+            "grader_usage": {"input_tokens": 10, "output_tokens": 2, "cost_usd": 0.05},
+        }));
+        // A case stopped by a budget still spent what its agent spent.
+        let mut stopped = result_row(a, 1, "skipped");
+        stopped.metadata = Some(serde_json::json!({ "cost_usd": 0.5 }));
+        let untouched = result_row(a, 2, "skipped");
+        let summary = build_run_summary(&[], &[scored, stopped, untouched], 3);
+        let cost = summary.total_cost_usd.expect("internal runs report cost");
+        assert!((cost - 0.8).abs() < 1e-9, "{cost}");
     }
 }

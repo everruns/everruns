@@ -243,7 +243,7 @@ test.describe("channel budget refusal", () => {
     await page.getByRole("button", { name: `Expand ${scheduleMessage} details` }).click();
 
     const channelBudgetPanel = page
-      .getByRole("heading", { name: "Channel budget", exact: true })
+      .getByRole("heading", { name: "Channel usage policy", exact: true })
       .locator("xpath=../..");
     await expect(channelBudgetPanel).toBeVisible();
     await expect(channelBudgetPanel.getByText(budget.id, { exact: true })).toBeVisible();

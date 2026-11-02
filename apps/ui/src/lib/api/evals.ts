@@ -9,12 +9,19 @@ import type {
   UpdateEvalRequest,
   EvalCase,
   CreateEvalCaseRequest,
+  UpdateEvalCaseRequest,
   EvalRun,
   CreateEvalRunRequest,
   EvalRunShareLink,
   EvalRunShareStatus,
   PublicEvalRun,
+  EvalExperiment,
+  CreateEvalExperimentRequest,
+  EvalBuilderRun,
+  EvalCaseProposal,
+  EvalProposalList,
 } from "./types";
+import { changeReasonOptions } from "./change-history";
 
 export const evalsCrudApi = createCrudApi<Eval, CreateEvalRequest, UpdateEvalRequest>("/v1/evals");
 
@@ -44,6 +51,18 @@ export async function createEvalCase(
   request: CreateEvalCaseRequest,
 ): Promise<EvalCase> {
   const response = await api.post<EvalCase>(`${evalPath(evalId)}/cases`, request);
+  return response.data;
+}
+
+export async function updateEvalCase(
+  evalId: string,
+  caseId: string,
+  request: UpdateEvalCaseRequest,
+): Promise<EvalCase> {
+  const response = await api.patch<EvalCase>(
+    `${evalPath(evalId)}/cases/${encodeURIComponent(caseId)}`,
+    request,
+  );
   return response.data;
 }
 
@@ -102,4 +121,74 @@ export async function getPublicEvalRun(token: string): Promise<PublicEvalRun> {
     throw new Error(res.status === 404 ? "not_found" : `request failed (${res.status})`);
   }
   return (await res.json()) as PublicEvalRun;
+}
+
+// Experiments: one dataset version against several variants (Evals rebuild
+// step 3). Each variant is an ordinary run tagged with the experiment.
+export async function listEvalExperiments(evalId: string): Promise<EvalExperiment[]> {
+  const response = await api.get<{ data: EvalExperiment[] }>(`${evalPath(evalId)}/experiments`);
+  return response.data.data;
+}
+
+export async function listAllEvalExperiments(): Promise<EvalExperiment[]> {
+  const response = await api.get<{ data: EvalExperiment[] }>(`/v1/evals/experiments`);
+  return response.data.data;
+}
+
+export async function getEvalExperiment(
+  evalId: string,
+  experimentId: string,
+): Promise<EvalExperiment> {
+  const response = await api.get<EvalExperiment>(
+    `${evalPath(evalId)}/experiments/${encodeURIComponent(experimentId)}`,
+  );
+  return response.data;
+}
+
+export async function createEvalExperiment(
+  evalId: string,
+  request: CreateEvalExperimentRequest,
+): Promise<EvalExperiment> {
+  const response = await api.post<EvalExperiment>(`${evalPath(evalId)}/experiments`, request);
+  return response.data;
+}
+
+// Eval Builder (Evals rebuild step 8): proposed cases for an agent's
+// datasets. Nothing becomes a case until a person accepts it.
+function proposalsPath(agentId: string): string {
+  return `/v1/agents/${encodeURIComponent(agentId)}/eval-proposals`;
+}
+
+export async function listEvalProposals(agentId: string): Promise<EvalProposalList> {
+  const response = await api.get<EvalProposalList>(proposalsPath(agentId));
+  return response.data;
+}
+
+export async function proposeEvalCases(agentId: string): Promise<EvalBuilderRun> {
+  const response = await api.post<EvalBuilderRun>(proposalsPath(agentId));
+  return response.data;
+}
+
+export async function acceptEvalProposal(
+  proposalId: string,
+  evalId: string,
+  reason?: string,
+): Promise<EvalCase> {
+  const response = await api.post<EvalCase>(
+    `/v1/eval-proposals/${encodeURIComponent(proposalId)}/accept`,
+    { eval_id: evalId },
+    changeReasonOptions(reason),
+  );
+  return response.data;
+}
+
+export async function dismissEvalProposal(
+  proposalId: string,
+  note?: string,
+): Promise<EvalCaseProposal> {
+  const response = await api.post<EvalCaseProposal>(
+    `/v1/eval-proposals/${encodeURIComponent(proposalId)}/dismiss`,
+    note?.trim() ? { note: note.trim() } : {},
+  );
+  return response.data;
 }

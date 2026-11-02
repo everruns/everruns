@@ -874,7 +874,7 @@ impl TestServer {
             db: db.clone(),
             session_service: messages_state.session_service.clone(),
             message_service: messages_state.message_service.clone(),
-            judge: None,
+            graders: everruns_server::domains::evals::graders::Graders::new(db.clone()),
             queue: Default::default(),
         });
         let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone())

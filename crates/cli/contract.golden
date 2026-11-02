@@ -19,6 +19,7 @@ agents check-rules list	--context-revision --reason
 agents check-rules upsert	--category --context-revision --enabled! --kind! --match-mode --message --pattern --reason --rubric --rule-id! --severity
 agents copy	--context-revision --id --reason <id>
 agents cost-plan	--agent! --context-revision --guidance --locale --reason
+agents costs get	--agent-id --context-revision --reason <agent_id>
 agents create	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --reason --tag/-t... --writable
 agents credentials create	--agent-id --auth --context-revision --description --env-name --header-name --label! --mcp-server-name --parameter-name --reason --tool-name --url
 agents delete	--context-revision --id --reason <id>
@@ -69,13 +70,13 @@ agents update	--description --file/-f --harness/-H --initial-files-dir --instruc
 agents upsert	--capabilities --communication --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --localizations --max-iterations --max-output-tokens --mcpServers --name! --network-access --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents validate	--remote <file>!
 budgets check	--budget-id! --context-revision --reason
-budgets create	--context-revision --currency! --limit! --metadata --period --reason --soft-limit --subject-id! --subject-type!
+budgets create	--context-revision --currency! --limit! --metadata --period --policy --reason --soft-limit --subject-id! --subject-type!
 budgets delete	--budget-id --context-revision --reason <budget_id>
 budgets get	--budget-id --context-revision --reason <budget_id>
 budgets ledger list	--budget-id! --context-revision --limit --offset --reason
 budgets list	--context-revision --reason --subject-id --subject-type
 budgets top-up top	--amount! --budget-id! --context-revision --description --reason
-budgets update	--budget-id! --context-revision --limit --metadata --reason --soft-limit --status
+budgets update	--budget-id! --context-revision --limit --metadata --policy --reason --soft-limit --status
 capabilities create	--context-revision --definition! --reason
 capabilities declarative delete	--context-revision --id --reason <id>
 capabilities declarative destroy	--context-revision --id --reason <id>
@@ -94,6 +95,12 @@ context append	--context-revision --entity-ref --kind --reason --text! <entity_r
 context clear	--context-revision --entity-ref --expected-revision --kind --reason <entity_ref>
 context get	--context-revision --entity-ref --kind --reason <entity_ref>
 context set	--content! --context-revision --entity-ref --expected-revision --kind --reason <entity_ref>
+costs rates create	--context-revision --effective-from --list-price-multiplier --match --meter! --reason --unit-price-usd
+costs rates list	--context-revision --reason
+costs rates retire	--context-revision --effective-from --rate-id! --reason
+costs settings get	--context-revision --reason
+costs settings update	--context-revision --reason --timezone
+costs summary get	--agent-id --context-revision --from --reason --to
 credential-bindings create	--binding --context-revision --label! --mcp --name --owner-id --reason --scope! --source --usage!
 credential-bindings list	--context-revision --owner-id --reason --scope! --usage!
 credential-bindings revoke	--context-revision --id! --reason --revision!
@@ -117,20 +124,29 @@ durable schedules stats get	--context-revision --reason --schedule-id!
 durable schedules trigger	--context-revision --reason --schedule-id!
 durable schedules update	--catch-up-missed --context-revision --cron-expression --description --enabled --max-catch-up --max-concurrent --reason --retry-policy --schedule-id! --target --timezone
 evals atif-import import	--body! --context-revision --eval-id! --reason
-evals cases create	--artifacts --context-revision --conversation! --description --eval-id! --max-turns --name! --position --post --reason --scorers! --tags... --target --timeout-seconds
+evals cases create	--artifacts --context-revision --conversation --description --eval-id! --max-turns --name! --position --post --reason --scorers! --simulated-user --tags... --target --timeout-seconds --tool-fixtures
 evals cases delete	--case-id! --context-revision --eval-id! --reason
 evals cases get	--case-id! --context-revision --eval-id! --reason
 evals cases list	--context-revision --eval-id! --reason
-evals cases update	--artifacts --case-id! --context-revision --conversation --description --eval-id! --max-turns --name --position --post --reason --scorers --tags... --target --timeout-seconds
+evals cases update	--artifacts --case-id! --context-revision --conversation --description --eval-id! --max-turns --name --position --post --reason --scorers --simulated-user --tags... --target --timeout-seconds --tool-fixtures
 evals create	--context-revision --description --model-override --name! --reason --tags... --target
 evals delete	--context-revision --eval-id! --reason
+evals experiments create	--context-revision --eval-id! --max-cost-usd --name --reason --trials --variants!
+evals experiments gate	--context-revision --eval-id! --experiment-id! --min-pass-rate --min-passed-every-trial --no-regression --reason --variant
+evals experiments get	--context-revision --eval-id! --experiment-id! --reason
+evals experiments list	--context-revision --eval-id! --reason
+evals experiments recent	--context-revision --reason
 evals get	--context-revision --eval-id --reason <eval_id>
-evals import	--context-revision --evals! --reason --source!
+evals import	--context-revision --evals! --experiment --reason --source!
 evals import-preflight	--context-revision --reason
 evals list	--context-revision --include-archived --reason --search
+evals proposals accept	--context-revision --eval-id! --proposal-id! --reason
+evals proposals create	--agent-id! --context-revision --reason
+evals proposals dismiss	--context-revision --note --proposal-id! --reason
+evals proposals list	--agent-id! --context-revision --reason
 evals runs artifacts export	--context-revision --eval-id! --reason --run-id!
 evals runs cancel	--context-revision --eval-id! --reason --run-id!
-evals runs create	--context-revision --eval-id! --model-override --reason --target --trials
+evals runs create	--case-ids... --context-revision --eval-id! --max-cost-usd --model-override --reason --target --trials
 evals runs dataset export	--context-revision --eval-id! --filters --format --reason --redaction --run-id!
 evals runs dataset get	--context-revision --dataset-id! --eval-id! --reason --run-id!
 evals runs get	--context-revision --eval-id! --reason --run-id!
@@ -140,6 +156,8 @@ evals runs scores bulk	--context-revision --eval-id! --metadata --reason --resul
 evals runs share create	--context-revision --eval-id! --reason --run-id!
 evals runs share get	--context-revision --eval-id! --reason --run-id!
 evals runs share revoke	--context-revision --eval-id! --reason --run-id!
+evals samples export	--context-revision --eval-id! --reason
+evals samples import	--context-revision --eval-id! --reason --samples!
 evals update	--context-revision --description --eval-id! --model-override --name --reason --tags... --target
 files ls	--long/-l --recursive/-r --session/-s! <path>
 files pull	--delete --dry-run --session/-s! <local_dir>
@@ -155,6 +173,7 @@ harnesses list	--context-revision --include-archived --reason --search
 harnesses preview	--capabilities --context-revision --mcp-servers --parent-harness-id --reason --system-prompt
 harnesses update	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --id --initial-files --intro-markdown --localizations --mcpServers --name --network-access --parent-harness-id --reason --short-description --starters --status --system-prompt --tags... <id>
 health-issues check	--context-revision --issue-id! --reason
+health-issues dismiss	--context-revision --issue-id! --note! --reason
 health-issues get	--context-revision --issue-id! --reason
 health-issues list	--channel-id --context-revision --limit --offset --reason
 health-issues snooze	--context-revision --issue-id! --reason
@@ -209,12 +228,15 @@ models selection undo	--changes! --context-revision --reason
 models update	--capabilities... --context-revision --display-name --enabled --id! --is-favorite --model-id --profile-key --provider-id --reason --service
 notifications list	--context-revision --limit --reason
 notifications view mark	--context-revision --notification-id --reason <notification_id>
-observers create	--context-revision --description --match --name! --reason --sampling-rate --scorers!
+observers backfill	--context-revision --limit --observer-id! --reason --sample --since-hours
+observers create	--alert --context-revision --description --match --name! --reason --sampling-rate --scorers!
 observers delete	--context-revision --observer-id! --reason
 observers get	--context-revision --observer-id --reason <observer_id>
 observers list	--context-revision --include-archived --reason
-observers scores list	--context-revision --limit --observer-id! --offset --reason --session-id
-observers update	--context-revision --description --match --name --observer-id! --reason --sampling-rate --scorers --status
+observers scores list	--context-revision --limit --observer-id! --offset --reason --review-queue --session-id
+observers scores review	--agrees! --context-revision --note --observer-id! --reason --score-id!
+observers summary	--agent-id --context-revision --days --observer-id --reason
+observers update	--alert --context-revision --description --match --name --observer-id! --reason --sampling-rate --scorers --status
 organization-accounts get	--context-revision --id! --reason
 organization-accounts update	--context-revision --id! --name! --reason
 orgs audit-logs list	--action --actor-id --before --context-revision --domain --event-type --limit --reason
@@ -373,6 +395,7 @@ skills list	--context-revision --include-archived --reason --search
 skills update	--context-revision --id --reason --skill-md --status <id>
 skills usage	--context-revision --reason
 status
+system detections	--context-revision --limit --offset --reason
 system doctor	--context-revision --reason --refresh
 system health	--context-revision --reason
 tasks list	--context-revision --created-after --kind --limit --reason --root-session-id --state

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Check, ShieldAlert, X } from "lucide-react";
 import { submitToolApprovals, type ToolApprovalDecision } from "@/lib/api/sessions";
 import { cn } from "@/lib/utils";
+import { ApprovalDisplayText } from "./approval-display-text";
 import { CredentialConsentSummary } from "./credential-consent-summary";
 import type { ToolCompletedData } from "@/lib/api/types";
 
@@ -167,10 +168,12 @@ export function ToolApprovalRequests({
               )}
             >
               {isAllowed(outcome) ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
-              {ui("{value0}: {value1}", {
-                value0: OUTCOME_LABELS[outcome ?? ""] ?? "Answered",
-                value1: name,
-              })}
+              <ApprovalDisplayText>
+                {ui("{value0}: {value1}", {
+                  value0: OUTCOME_LABELS[outcome ?? ""] ?? "Answered",
+                  value1: name,
+                })}
+              </ApprovalDisplayText>
             </div>
           );
         })}
@@ -193,9 +196,11 @@ export function ToolApprovalRequests({
               <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-foreground" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-foreground">
-                  {credentialConsent
-                    ? ui("Save credentials for this service?")
-                    : ui("Allow the agent to run {value0}?", { value0: name })}
+                  <ApprovalDisplayText>
+                    {credentialConsent
+                      ? ui("Save credentials for this service?")
+                      : ui("Allow the agent to run {value0}?", { value0: name })}
+                  </ApprovalDisplayText>
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {credentialConsent
@@ -211,7 +216,7 @@ export function ToolApprovalRequests({
                 ) : (
                   preview && (
                     <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-muted-foreground">
-                      {preview}
+                      <ApprovalDisplayText>{preview}</ApprovalDisplayText>
                     </pre>
                   )
                 )}
