@@ -22,6 +22,7 @@ import type {
   EvalProposalList,
   FindingFix,
   FindingFixList,
+  FindingActions,
 } from "./types";
 import { changeReasonOptions } from "./change-history";
 
@@ -220,4 +221,27 @@ export async function applyFindingFix(fixId: string, reason?: string): Promise<F
 
 export async function rejectFindingFix(fixId: string, note: string): Promise<FindingFix> {
   return (await api.post<FindingFix>(`${fixPath(fixId)}/reject`, { note })).data;
+}
+
+// What was done about a finding, and undo (knowledge/evaluation/self-healing.md).
+const actionsPath = (issueId: string) => `/v1/health-issues/${encodeURIComponent(issueId)}/actions`;
+
+export async function getFindingActions(issueId: string): Promise<FindingActions> {
+  return (await api.get<FindingActions>(actionsPath(issueId))).data;
+}
+
+export async function takeFindingAction(issueId: string, kind: string): Promise<FindingActions> {
+  return (await api.post<FindingActions>(actionsPath(issueId), { kind })).data;
+}
+
+export async function undoFindingAction(
+  issueId: string,
+  actionId: string,
+): Promise<FindingActions> {
+  return (
+    await api.post<FindingActions>(
+      `${actionsPath(issueId)}/${encodeURIComponent(actionId)}/undo`,
+      {},
+    )
+  ).data;
 }

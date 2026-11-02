@@ -6,6 +6,7 @@
 * [External Evaluation Results Publishing](external-results-publishing.md) - Publishing externally executed eval results into Everruns and remaining reporting work.
 * [Agent Checks](agent-checks.md) - Advisory agent config checks (lint, LLM analysis, health checks).
 * [Suggested fixes for findings](suggested-fixes.md) - Inspector-proposed instruction changes, checked against the agent's evals and applied only with a person's approval.
+* [Self-healing](self-healing.md) - Per-org choice of what Everruns does on its own when a finding opens: automatic pause of repeating schedules, recorded and undoable.
 * [Online Evals (Observers)](online-evals.md) - Online evals (Observers) over production sessions (proposed).
 * [SWE-bench Lite on Everruns](swe-bench-lite.md) - SWE-bench Lite evaluation harness.
 * [Reporting](reporting.md) - Async reporting.

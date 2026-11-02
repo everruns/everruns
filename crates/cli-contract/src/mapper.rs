@@ -211,6 +211,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Operational problems detected in this installation.",
     ),
     (
+        "health-issues actions",
+        "What was done about a finding, such as pausing a repeating schedule, and undo.",
+    ),
+    (
         "history",
         "Recorded changes to entities: list, compare, restore.",
     ),

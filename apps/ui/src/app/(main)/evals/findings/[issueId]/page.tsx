@@ -5,8 +5,9 @@
 // the cluster of similar findings it filed this one under. Actions: open the
 // session, and dismiss with a reason the detectors are calibrated against.
 // The suggested-fix card checks and applies the Inspector's fix with a
-// person's approval; the mockup's automatic-action card arrives with
-// self-healing, and nothing is changed automatically today.
+// person's approval. The actions card shows what the org's self-healing
+// policy did (a repeating schedule paused) with Resume to undo it, or offers
+// the pause when the policy says "suggest".
 
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -33,6 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { SeverityTag } from "@/components/evals/section/findings-list";
 import { SuggestedFix } from "@/components/evals/suggested-fix";
+import { FindingActionsCard } from "@/components/evals/finding-actions";
 import { evidenceRows, findingKind } from "@/components/evals/findings";
 import { formatDate, formatRelativeTime } from "@/lib/formatting";
 import type { HealthIssue } from "@/lib/api/types";
@@ -168,23 +170,26 @@ function Finding({ issue }: { issue: HealthIssue }) {
             </Card>
             <SuggestedFix issueId={issue.id} />
           </div>
-          {investigation?.cluster_title && (
-            <Card className="self-start">
-              <CardHeader>
-                <CardTitle className="text-sm">{ui("Similar findings")}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-1 text-sm">
-                <p className="font-medium">{investigation.cluster_title}</p>
-                <p className="text-muted-foreground">
-                  {(investigation.cluster_open ?? 1) <= 1
-                    ? ui("No other open finding looks like this one.")
-                    : ui("{count} open findings, this one included, describe the same problem.", {
-                        count: investigation.cluster_open ?? 1,
-                      })}
-                </p>
-              </CardContent>
-            </Card>
-          )}
+          <div className="space-y-4 self-start">
+            <FindingActionsCard issueId={issue.id} />
+            {investigation?.cluster_title && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">{ui("Similar findings")}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1 text-sm">
+                  <p className="font-medium">{investigation.cluster_title}</p>
+                  <p className="text-muted-foreground">
+                    {(investigation.cluster_open ?? 1) <= 1
+                      ? ui("No other open finding looks like this one.")
+                      : ui("{count} open findings, this one included, describe the same problem.", {
+                          count: investigation.cluster_open ?? 1,
+                        })}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
       </PageMain>
       <DismissDialog issue={issue} open={dismissing} onOpenChange={setDismissing} />

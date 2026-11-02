@@ -839,6 +839,9 @@ pub fn declared(name: &str) -> Change {
         "check_health_issue" | "snooze_health_issue" | "dismiss_health_issue" => {
             Change::Exempt("triage state of a health issue, not configuration")
         }
+        "take_finding_action" | "undo_finding_action" => Change::Exempt(
+            "pauses or resumes a schedule; recorded on the finding as a finding action",
+        ),
 
         _ => Change::Undeclared,
     }

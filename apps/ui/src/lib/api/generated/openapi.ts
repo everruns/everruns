@@ -4283,6 +4283,50 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/health-issues/{issue_id}/actions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List actions on a finding
+     * @description List what Everruns or a person did about a finding, such as pausing a repeating schedule, and what the organization's self-healing policy offers to do now.
+     */
+    get: operations["list_finding_actions"];
+    put?: never;
+    /**
+     * Act on a finding
+     * @description Take an action the organization's self-healing policy offers on a finding, such as pausing a schedule whose runs keep ending the same way. It is recorded on the finding and can be undone.
+     */
+    post: operations["take_finding_action"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/health-issues/{issue_id}/actions/{action_id}/undo": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Undo an action on a finding
+     * @description Undo an action taken on a finding, automatic or not. Undoing a pause resumes the schedule and starts its repeated-outcome count over.
+     */
+    post: operations["undo_finding_action"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/health-issues/{issue_id}/check": {
     parameters: {
       query?: never;
@@ -10981,6 +11025,13 @@ export interface components {
        */
       target_type?: string | null;
     };
+    /** @description An action a person can take on a finding now. */
+    AvailableFindingAction: {
+      /** @description What it would do: `pause_schedule`. */
+      kind: string;
+      /** @description What it would act on, by public id. */
+      target_id: string;
+    };
     /** @description Presentation and search metadata for one curated agent avatar. */
     AvatarPreset: {
       /** @description Short description of the preset's appearance. */
@@ -17060,6 +17111,37 @@ export interface components {
       severity: components["schemas"]["FindingSeverity"];
       source: components["schemas"]["FindingSource"];
     };
+    /** @description An action taken on a finding. */
+    FindingAction: {
+      /** @description Whether Everruns took it on its own under the org's policy. */
+      automatic: boolean;
+      /**
+       * Format: date-time
+       * @description When it was taken.
+       */
+      created_at: string;
+      /** @description The finding episode it belongs to is the current one. */
+      current: boolean;
+      /** @description Prefixed public identifier (`fact_…`). */
+      id: string;
+      /** @description What was done: `pause_schedule`. */
+      kind: string;
+      /** @description What it acted on, by public id (a schedule's `sched_…`). */
+      target_id: string;
+      /**
+       * Format: date-time
+       * @description When it was undone, if it was.
+       */
+      undone_at?: string | null;
+    };
+    /** @description What has been done about a finding, and what can be. */
+    FindingActions: {
+      /** @description Actions taken, newest first. */
+      actions: components["schemas"]["FindingAction"][];
+      /** @description Actions the org's policy offers for a person to take now. */
+      available: components["schemas"]["AvailableFindingAction"][];
+      mode?: components["schemas"]["SelfHealingMode"] | null;
+    };
     /** @enum {string} */
     FindingCategory: "structure" | "completeness" | "effectiveness" | "safety" | "cost";
     /**
@@ -20326,6 +20408,13 @@ export interface components {
          *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
          */
         onboarding_completed_at?: string | null;
+        /**
+         * @description What Everruns does on its own when a finding opens (Settings →
+         *     Limits): pause a repeating schedule automatically, and whether the
+         *     Inspector suggests changes to agents. Code defaults when the
+         *     organization never set any.
+         */
+        self_healing: components["schemas"]["SelfHealingPolicy"];
         /** @description Optional small chat model, independent of the main chat and decision defaults. */
         small_model_id?: string | null;
         /**
@@ -23913,6 +24002,13 @@ export interface components {
        *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
        */
       onboarding_completed_at?: string | null;
+      /**
+       * @description What Everruns does on its own when a finding opens (Settings →
+       *     Limits): pause a repeating schedule automatically, and whether the
+       *     Inspector suggests changes to agents. Code defaults when the
+       *     organization never set any.
+       */
+      self_healing: components["schemas"]["SelfHealingPolicy"];
       /** @description Optional small chat model, independent of the main chat and decision defaults. */
       small_model_id?: string | null;
       /**
@@ -28404,6 +28500,26 @@ export interface components {
       preset_id: string;
     };
     /**
+     * @description What Everruns does about one kind of finding.
+     * @enum {string}
+     */
+    SelfHealingMode: "auto" | "suggest" | "off";
+    /** @description An org's self-healing policy (Settings → Limits). */
+    SelfHealingPolicy: {
+      /**
+       * @description The Inspector's suggested changes to an agent's instructions: `suggest`
+       *     (default) or `off`. A person always approves them.
+       * @default suggest
+       */
+      agent_fixes: components["schemas"]["SelfHealingMode"];
+      /**
+       * @description Pausing a schedule whose runs keep ending the same way, at the warning
+       *     count rather than the hard stop. Default `auto`.
+       * @default auto
+       */
+      runaway_schedules: components["schemas"]["SelfHealingMode"];
+    };
+    /**
      * @description A typed service a provider driver can offer.
      *
      *     Drivers declare supported services in code; catalog models persist their
@@ -29731,6 +29847,11 @@ export interface components {
      * @enum {string}
      */
     SystemDecisions: "deployment" | "organization";
+    /** @description The action to take. */
+    TakeFindingActionRequest: {
+      /** @description `pause_schedule`. */
+      kind: string;
+    };
     /** @description Typed link to something the task produced. */
     TaskArtifact: {
       name: string;
@@ -32744,6 +32865,7 @@ export interface components {
        * @example Acme Corporation
        */
       name?: string | null;
+      self_healing?: components["schemas"]["SelfHealingPolicy"] | null;
       /**
        * @description Shared small chat model for lightweight work. Omit to preserve the selection;
        *     pass null to clear it. Does not change the main chat or decision default.
@@ -46513,6 +46635,81 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_finding_actions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        issue_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingActions"];
+        };
+      };
+    };
+  };
+  take_finding_action: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        issue_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TakeFindingActionRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingActions"];
+        };
+      };
+    };
+  };
+  undo_finding_action: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        issue_id: string;
+        /** @description Prefixed public identifier */
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingActions"];
         };
       };
     };

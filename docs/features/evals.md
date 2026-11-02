@@ -109,7 +109,7 @@ everruns observers backfill --observer-id observer_01h9 --since-hours 24 \
 
 ## Findings
 
-Findings are health issues that detectors and classifiers raise about sessions and schedules: a tool failing in a loop, a spend spike, an agent that looks stuck, instructions followed from a tool result, suspected abuse, a runaway schedule. They notify the agent's authors and stop nothing.
+Findings are health issues that detectors and classifiers raise about sessions and schedules: a tool failing in a loop, a spend spike, an agent that looks stuck, instructions followed from a tool result, suspected abuse, a runaway schedule. They notify the agent's authors. Hard limits stop the work (a repeating schedule at 48 runs, a budget at zero); a finding itself only stops something when your self-healing policy says so.
 
 The **Inspector** writes up the serious ones (classifier findings and runaway schedules) within about 15 minutes, using your organization's default model: what happened in a few plain sentences, how serious it is, and one next step. It files each finding under a group of similar ones, so ten sessions with the same problem show as one row with a count. It keeps its write-up, not the session's text, and its cost counts against the org and agent budgets.
 
@@ -119,6 +119,13 @@ For an agent stuck in a loop, one that followed an injected instruction, or a ru
 everruns evals fixes list --agent-id agent_01933b5a000070008000000000000001 --open
 everruns evals fixes check --fix-id fix_0193... --max-cost-usd 2 --reason 'Before applying the stop rule'
 everruns evals fixes apply --fix-id fix_0193... --reason 'Stop rule checked on the claims dataset'
+```
+
+**Self-healing.** Settings → Limits, "When a finding opens", sets what Everruns does on its own. By default a schedule whose runs ended the same way 24 times in a row is paused at once, instead of at the 48-run stop: the finding says "Done automatically", the schedule's owner and the agent's authors are told, and **Resume schedule** undoes it. Choose **Offer to pause it** to get a **Pause schedule** button on the finding instead, or **Do nothing**. Changes to an agent are never applied automatically; you can only turn the suggestions off.
+
+```bash
+everruns health-issues actions list --issue-id 550e8400-e29b-41d4-a716-446655440000
+everruns health-issues actions undo --issue-id 550e8400-e29b-41d4-a716-446655440000 --action-id fact_0193... --reason 'Still waiting on the claim'
 ```
 
 **Dismiss** closes a finding that needs nothing and keeps your reason. A dismissed session finding stays closed even if a detector flags the same session again:

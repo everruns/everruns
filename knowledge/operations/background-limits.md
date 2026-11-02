@@ -99,8 +99,11 @@ for unattended work that goes wrong. Each is about one subject, kept in
   the schedule (`same_outcome_runs`). A fire whose turn has not finished is not
   counted. From 24 on, each fire's message warns the agent how many identical
   runs are left and around when it stops, and suggests cancelling or a longer
-  interval. At 48 the schedule stops with `stop_reason = runaway` and no turn
-  starts. A person resuming the schedule resets the count.
+  interval. Under the org's default [self-healing](../evaluation/self-healing.md)
+  policy the schedule is paused at 24 instead, recorded on the finding and
+  resumable from it; an org can make that an offer or turn it off. At 48 the
+  schedule stops with `stop_reason = runaway` and no turn starts, whatever the
+  policy. A person resuming the schedule resets the count.
 - **Who is told.** An issue opening sends a notification (kind `health.issue`)
   to the schedule's owner and the agent's authors, the members who changed the
   agent in its history; the org's owners for the org budget, and whenever no
@@ -108,8 +111,8 @@ for unattended work that goes wrong. Each is about one subject, kept in
   notification again. Notifications carry no text from the agent's answers.
 - A 15 minute sweep (`background_work_health_sweep`) resolves schedule issues,
   and opens and resolves the org budget, spend spike and context bloat issues.
-  **Check again** runs the issue's part of it. Only the runaway stop pauses
-  anything; the rest report.
+  **Check again** runs the issue's part of it. Only the runaway pause and
+  stop act on anything; the rest report.
 
 - The three `session.*` behavior detectors apply to every session, attended
   or not, except eval sessions. The spend baseline is the agent's own median,

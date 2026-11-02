@@ -338,6 +338,7 @@ export const queryKeys = {
       ["eval", evalId, "experiment", experimentId] as const,
     proposals: (agentId: string) => ["evals", "proposals", agentId] as const,
     findingFix: (issueId: string) => ["evals", "finding-fix", issueId] as const,
+    findingActions: (issueId: string) => ["evals", "finding-actions", issueId] as const,
   },
 
   // Observer queries

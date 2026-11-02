@@ -688,6 +688,7 @@ async fn build_organization_response(
         agentid_agents_per_owner,
         web_search_defaults,
         background_limits,
+        self_healing: crate::domains::health_issues::self_healing::policy(db, org_id).await,
         created_at: org.created_at,
         updated_at: org.updated_at,
         onboarding_completed_at,
