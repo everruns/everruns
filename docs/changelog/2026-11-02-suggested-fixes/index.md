@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api, cli]
 links:
   docs: [/features/evals/]
-  prs: [everruns/everruns#PR]
+  prs: [everruns/everruns#5167]
 ---
 
 When an agent gets stuck, follows an injected instruction, or keeps a schedule
