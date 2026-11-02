@@ -312,6 +312,12 @@ Each step is one PR unless noted, and leaves everything working.
    refused. See [admission](../../crates/contracts/src/runtime/github_credential.rs)
    and [checkout](../../crates/integrations/src/github/checkout.rs).
    Pushing from the sandbox stays with step 6.
+   Without `SandboxWorkspace` but with session files (Bashkit Worker), the
+   tool downloads the head tarball host-side and writes its text files into
+   the session files ([checkout_files](../../crates/integrations/src/github/checkout_files.rs)),
+   so a Bashkit reviewer can read the code around a change. The token never
+   leaves the host, so ordinary token resolution applies and no installation
+   evidence is needed.
 2. **GitHub section on the agent page** (D7), name rules and avatar step (D2).
    Coordinate with the Yolop PR Reviewer thread's org picker, which lands first.
    Done: the agent's Integrations tab has a **GitHub** section between Channels

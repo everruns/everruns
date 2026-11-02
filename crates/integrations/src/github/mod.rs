@@ -31,6 +31,7 @@
 //! ```
 
 mod checkout;
+mod checkout_files;
 mod client;
 mod fix_pull_requests;
 mod issues;
@@ -143,7 +144,7 @@ impl Capability for GitHubCapability {
     }
 
     fn description(&self) -> &str {
-        "Read GitHub pull requests and their diffs, check them out into the managed sandbox, review them with inline comments, keep one comment per pull request up to date, and file deduplicated issues."
+        "Read GitHub pull requests and their diffs, check them out into the managed sandbox or the session files, review them with inline comments, keep one comment per pull request up to date, and file deduplicated issues."
     }
 
     fn status(&self) -> CapabilityStatus {
