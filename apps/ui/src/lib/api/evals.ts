@@ -20,6 +20,8 @@ import type {
   EvalBuilderRun,
   EvalCaseProposal,
   EvalProposalList,
+  FindingFix,
+  FindingFixList,
 } from "./types";
 import { changeReasonOptions } from "./change-history";
 
@@ -191,4 +193,31 @@ export async function dismissEvalProposal(
     note?.trim() ? { note: note.trim() } : {},
   );
   return response.data;
+}
+
+// Suggested fixes for findings (knowledge/evaluation/suggested-fixes.md).
+export async function getFindingFix(issueId: string): Promise<FindingFix | null> {
+  const response = await api.get<FindingFixList>(
+    `/v1/evals/fixes?issue_id=${encodeURIComponent(issueId)}`,
+  );
+  return response.data.fixes[0] ?? null;
+}
+
+const fixPath = (fixId: string) => `/v1/evals/fixes/${encodeURIComponent(fixId)}`;
+
+export async function checkFindingFix(fixId: string): Promise<FindingFix> {
+  return (await api.post<FindingFix>(`${fixPath(fixId)}/check`, {})).data;
+}
+
+export async function updateFindingFix(fixId: string, addition: string): Promise<FindingFix> {
+  return (await api.patch<FindingFix>(fixPath(fixId), { addition })).data;
+}
+
+export async function applyFindingFix(fixId: string, reason?: string): Promise<FindingFix> {
+  return (await api.post<FindingFix>(`${fixPath(fixId)}/apply`, {}, changeReasonOptions(reason)))
+    .data;
+}
+
+export async function rejectFindingFix(fixId: string, note: string): Promise<FindingFix> {
+  return (await api.post<FindingFix>(`${fixPath(fixId)}/reject`, { note })).data;
 }

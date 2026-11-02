@@ -709,11 +709,19 @@ pub fn declared(name: &str) -> Change {
         "propose_eval_cases" | "dismiss_eval_proposal" => Change::Exempt(
             "Eval Builder suggestions are not configuration until accepted as a case",
         ),
+        "update_finding_fix" | "reject_finding_fix" => {
+            Change::Exempt("a suggested fix is not configuration until it is applied")
+        }
+        "apply_finding_fix" => {
+            Change::Exempt("applies through update_agent, which records the agent's new revision")
+        }
         "update_eval_case" => on(K::EvalCase, Updated, ID),
         "delete_eval_case" => on(K::EvalCase, Deleted, Param("case_id")),
-        "create_eval_run" | "cancel_eval_run" | "import_eval_run" | "create_eval_experiment" => {
-            Change::Exempt("eval runs are results, not configuration")
-        }
+        "create_eval_run"
+        | "cancel_eval_run"
+        | "import_eval_run"
+        | "create_eval_experiment"
+        | "check_finding_fix" => Change::Exempt("eval runs are results, not configuration"),
         "bulk_update_eval_run_scores" | "update_eval_result_scores" => {
             Change::Exempt("scores are results, not configuration")
         }

@@ -136,6 +136,11 @@ evals experiments gate	--context-revision --eval-id! --experiment-id! --min-pass
 evals experiments get	--context-revision --eval-id! --experiment-id! --reason
 evals experiments list	--context-revision --eval-id! --reason
 evals experiments recent	--context-revision --reason
+evals fixes apply	--context-revision --fix-id! --reason
+evals fixes check	--context-revision --eval-id --fix-id! --max-cost-usd --reason --trials
+evals fixes list	--agent-id --context-revision --issue-id --open --reason
+evals fixes reject	--context-revision --fix-id! --note! --reason
+evals fixes update	--addition! --context-revision --fix-id! --reason --summary
 evals get	--context-revision --eval-id --reason <eval_id>
 evals import	--context-revision --evals! --experiment --reason --source!
 evals import-preflight	--context-revision --reason

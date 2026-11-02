@@ -5,6 +5,7 @@
 * [Multistep eval cases](multistep.md) - Simulated users that carry a conversation from a persona and goal, and tool fixtures with canned responses.
 * [External Evaluation Results Publishing](external-results-publishing.md) - Publishing externally executed eval results into Everruns and remaining reporting work.
 * [Agent Checks](agent-checks.md) - Advisory agent config checks (lint, LLM analysis, health checks).
+* [Suggested fixes for findings](suggested-fixes.md) - Inspector-proposed instruction changes, checked against the agent's evals and applied only with a person's approval.
 * [Online Evals (Observers)](online-evals.md) - Online evals (Observers) over production sessions (proposed).
 * [SWE-bench Lite on Everruns](swe-bench-lite.md) - SWE-bench Lite evaluation harness.
 * [Reporting](reporting.md) - Async reporting.

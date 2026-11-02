@@ -885,6 +885,29 @@
     "read_only": false
   },
   {
+    "category": "evals",
+    "cli": "evals fixes apply",
+    "description": "Add a checked fix to the agent's instructions as a new agent revision. Only a fix whose check showed no regressions, against the instructions the agent has now, can be applied.",
+    "input_schema": {
+      "description": "Apply a checked fix to the agent's instructions.",
+      "properties": {
+        "fix_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "fix_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "apply_finding_fix",
+    "output_shape": "unknown",
+    "path": "/v1/evals/fixes/{fix_id}/apply",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "models",
     "cli": "models selection apply",
     "description": "Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.",
@@ -1513,6 +1536,68 @@
     "path": "/v1/budgets/{budget_id}/check",
     "positional_arg": null,
     "read_only": true
+  },
+  {
+    "category": "evals",
+    "cli": "evals fixes check",
+    "description": "Run one of the agent's evals as an experiment with and without a suggested fix. The fix can be applied once the check shows no regressions.",
+    "input_schema": {
+      "$defs": {
+        "CheckFindingFixRequest": {
+          "description": "Options for checking a fix.",
+          "properties": {
+            "eval_id": {
+              "description": "The agent's eval to check against. Default: the one with most cases.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "max_cost_usd": {
+              "description": "Spending cap in USD for the whole check.",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "trials": {
+              "description": "Trials per case and side, 1 to 20 (default 2).",
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/CheckFindingFixRequest"
+        },
+        {
+          "properties": {
+            "fix_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "fix_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Check a fix: run one of the agent's evals with and without it."
+    },
+    "method": "POST",
+    "name": "check_finding_fix",
+    "output_shape": "unknown",
+    "path": "/v1/evals/fixes/{fix_id}/check",
+    "positional_arg": null,
+    "read_only": false
   },
   {
     "category": "harnesses",
@@ -16141,6 +16226,42 @@
     "read_only": true
   },
   {
+    "category": "evals",
+    "cli": "evals fixes list",
+    "description": "List the fixes the Inspector suggested for one finding or for one agent's findings, with where checking and approving each stands.",
+    "input_schema": {
+      "description": "List suggested fixes, for one finding or one agent.",
+      "properties": {
+        "agent_id": {
+          "description": "An agent whose fixes to list.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issue_id": {
+          "description": "The finding whose fix to show.",
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "open": {
+          "description": "Only fixes still waiting on a person (agent lists only).",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_finding_fixes",
+    "output_shape": "unknown",
+    "path": "/v1/evals/fixes",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "capabilities",
     "cli": "capabilities guardrails examples list",
     "description": "List adoptable guardrail presets (the guardrail gallery), each with its config and trust metadata (check-type composition, stages, data egress).",
@@ -19930,6 +20051,50 @@
     "name": "publish_agent_channel",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/channels/{channel_id}/publish",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "evals",
+    "cli": "evals fixes reject",
+    "description": "Turn down a suggested fix, saying why. The agent is not changed.",
+    "input_schema": {
+      "$defs": {
+        "RejectFindingFixRequest": {
+          "description": "Why a fix is not wanted.",
+          "properties": {
+            "note": {
+              "description": "Kept so later suggestions can be compared with what people turned down.\n(Named `note` because `reason` is the change-intent flag every command\ntakes.)",
+              "type": "string"
+            }
+          },
+          "required": [
+            "note"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/RejectFindingFixRequest"
+        },
+        {
+          "properties": {
+            "fix_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "fix_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "reject_finding_fix",
+    "output_shape": "unknown",
+    "path": "/v1/evals/fixes/{fix_id}/reject",
     "positional_arg": null,
     "read_only": false
   },
@@ -25016,6 +25181,57 @@
     "name": "update_eval_result_scores",
     "output_shape": "unknown",
     "path": "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "evals",
+    "cli": "evals fixes update",
+    "description": "Change the text a suggested fix adds to the agent's instructions. An edited fix must be checked again before it can be applied.",
+    "input_schema": {
+      "$defs": {
+        "UpdateFindingFixRequest": {
+          "description": "New text for a fix. It must be checked again.",
+          "properties": {
+            "addition": {
+              "description": "The text to add to the agent's instructions.",
+              "type": "string"
+            },
+            "summary": {
+              "description": "One line on what the change does. Unchanged when omitted.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "addition"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/UpdateFindingFixRequest"
+        },
+        {
+          "properties": {
+            "fix_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "fix_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "PATCH",
+    "name": "update_finding_fix",
+    "output_shape": "unknown",
+    "path": "/v1/evals/fixes/{fix_id}",
     "positional_arg": null,
     "read_only": false
   },

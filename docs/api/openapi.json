@@ -13988,6 +13988,220 @@
         }
       }
     },
+    "/v1/evals/fixes": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "List suggested fixes",
+        "description": "List the fixes the Inspector suggested for one finding or for one agent's findings, with where checking and approving each stands.",
+        "operationId": "list_finding_fixes",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingFixList"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/evals/fixes/{fix_id}": {
+      "patch": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Edit a suggested fix",
+        "description": "Change the text a suggested fix adds to the agent's instructions. An edited fix must be checked again before it can be applied.",
+        "operationId": "update_finding_fix",
+        "parameters": [
+          {
+            "name": "fix_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFindingFixRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingFix"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/evals/fixes/{fix_id}/apply": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Apply a suggested fix",
+        "description": "Add a checked fix to the agent's instructions as a new agent revision. Only a fix whose check showed no regressions, against the instructions the agent has now, can be applied.",
+        "operationId": "apply_finding_fix",
+        "parameters": [
+          {
+            "name": "fix_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingFix"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/evals/fixes/{fix_id}/check": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Check a suggested fix",
+        "description": "Run one of the agent's evals as an experiment with and without a suggested fix. The fix can be applied once the check shows no regressions.",
+        "operationId": "check_finding_fix",
+        "parameters": [
+          {
+            "name": "fix_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckFindingFixRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingFix"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/evals/fixes/{fix_id}/reject": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Reject a suggested fix",
+        "description": "Turn down a suggested fix, saying why. The agent is not changed.",
+        "operationId": "reject_finding_fix",
+        "parameters": [
+          {
+            "name": "fix_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectFindingFixRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingFix"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/evals/import": {
       "post": {
         "tags": [
@@ -40508,6 +40722,36 @@
           }
         }
       },
+      "CheckFindingFixRequest": {
+        "type": "object",
+        "description": "Options for checking a fix.",
+        "properties": {
+          "eval_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent's eval to check against. Default: the one with most cases."
+          },
+          "max_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Spending cap in USD for the whole check."
+          },
+          "trials": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Trials per case and side, 1 to 20 (default 2).",
+            "minimum": 0
+          }
+        }
+      },
       "CheckNameResponse": {
         "type": "object",
         "description": "Response for name availability check.",
@@ -49550,6 +49794,108 @@
           "cost"
         ]
       },
+      "FindingFix": {
+        "type": "object",
+        "description": "A suggested change to an agent's instructions, written by the Inspector for\na finding, and where checking and approving it stand.",
+        "required": [
+          "id",
+          "issue_id",
+          "agent_id",
+          "summary",
+          "addition",
+          "status",
+          "current",
+          "created_at"
+        ],
+        "properties": {
+          "addition": {
+            "type": "string",
+            "description": "The text added to the end of the agent's instructions."
+          },
+          "agent_id": {
+            "type": "string",
+            "example": "agent_550e8400e29b41d4a716446655440000"
+          },
+          "check": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FixCheck",
+                "description": "The last check's result."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "current": {
+            "type": "boolean",
+            "description": "False when the agent's instructions changed after the last check, so\nthe fix needs checking again before it can be applied."
+          },
+          "decided_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "decision_note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it was rejected."
+          },
+          "eval_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The check's experiment, while or after it runs."
+          },
+          "experiment_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "example": "fix_0190f3a1b2c37d8e9f00112233445566"
+          },
+          "issue_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The finding the fix is for."
+          },
+          "status": {
+            "type": "string",
+            "description": "`proposed` (not checked), `checking`, `verified` (checked, no\nregressions), `regressed`, `check_failed`, `applied` or `rejected`."
+          },
+          "summary": {
+            "type": "string",
+            "description": "One line on what the change does."
+          }
+        }
+      },
+      "FindingFixList": {
+        "type": "object",
+        "description": "The fixes list.",
+        "required": [
+          "fixes"
+        ],
+        "properties": {
+          "fixes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FindingFix"
+            }
+          }
+        }
+      },
       "FindingInvestigation": {
         "type": "object",
         "description": "The Inspector's write-up of a finding: what happened, how serious it is,\nwhat to do, and the cluster of similar findings it was filed under.",
@@ -49694,6 +50040,88 @@
           "llm",
           "health_check"
         ]
+      },
+      "FixCheck": {
+        "type": "object",
+        "description": "What a check found: the eval's cases with and without the fix.",
+        "required": [
+          "eval_name",
+          "dataset_version",
+          "trials",
+          "cases",
+          "current",
+          "with_fix",
+          "fixed",
+          "broke",
+          "verdict"
+        ],
+        "properties": {
+          "broke": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cases the fix made fail.",
+            "minimum": 0
+          },
+          "cases": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cases that ran on both sides.",
+            "minimum": 0
+          },
+          "current": {
+            "$ref": "#/components/schemas/FixCheckSide"
+          },
+          "dataset_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "eval_name": {
+            "type": "string"
+          },
+          "fixed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cases the fix made pass.",
+            "minimum": 0
+          },
+          "trials": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/Verdict"
+          },
+          "with_fix": {
+            "$ref": "#/components/schemas/FixCheckSide"
+          }
+        }
+      },
+      "FixCheckSide": {
+        "type": "object",
+        "required": [
+          "passed",
+          "pass_rate",
+          "cost_usd"
+        ],
+        "properties": {
+          "cost_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "pass_rate": {
+            "type": "number",
+            "format": "double",
+            "description": "Share of all trials that passed, 0 to 1."
+          },
+          "passed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cases that passed every trial.",
+            "minimum": 0
+          }
+        }
       },
       "ForkSessionRequest": {
         "type": "object",
@@ -65618,6 +66046,19 @@
           }
         }
       },
+      "RejectFindingFixRequest": {
+        "type": "object",
+        "description": "Why a fix is not wanted.",
+        "required": [
+          "note"
+        ],
+        "properties": {
+          "note": {
+            "type": "string",
+            "description": "Kept so later suggestions can be compared with what people turned down.\n(Named `note` because `reason` is the change-intent flag every command\ntakes.)"
+          }
+        }
+      },
       "RenameOrganizationConnectionRequest": {
         "type": "object",
         "description": "A display-name change that preserves the connected account credential.",
@@ -77143,6 +77584,26 @@
             ],
             "description": "Whether file is read-only",
             "example": false
+          }
+        }
+      },
+      "UpdateFindingFixRequest": {
+        "type": "object",
+        "description": "New text for a fix. It must be checked again.",
+        "required": [
+          "addition"
+        ],
+        "properties": {
+          "addition": {
+            "type": "string",
+            "description": "The text to add to the agent's instructions."
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One line on what the change does. Unchanged when omitted."
           }
         }
       },

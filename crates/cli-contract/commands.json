@@ -5619,6 +5619,188 @@
     ]
   },
   {
+    "wire_name": "apply_finding_fix",
+    "path": [
+      "evals",
+      "fixes"
+    ],
+    "verb": "apply",
+    "description": "Add a checked fix to the agent's instructions as a new agent revision. Only a fix whose check showed no regressions, against the instructions the agent has now, can be applied.",
+    "method": "POST",
+    "http_path": "/v1/evals/fixes/{fix_id}/apply",
+    "args": [
+      {
+        "field": "fix_id",
+        "long": "fix-id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Apply a fix after its check passed",
+        "command": "everruns evals fixes apply --fix-id fix_01h9 --reason 'Stop rule checked on the support dataset'"
+      }
+    ]
+  },
+  {
+    "wire_name": "check_finding_fix",
+    "path": [
+      "evals",
+      "fixes"
+    ],
+    "verb": "check",
+    "description": "Run one of the agent's evals as an experiment with and without a suggested fix. The fix can be applied once the check shows no regressions.",
+    "method": "POST",
+    "http_path": "/v1/evals/fixes/{fix_id}/check",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": false,
+        "help": "The agent's eval to check against."
+      },
+      {
+        "field": "fix_id",
+        "long": "fix-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "max_cost_usd",
+        "long": "max-cost-usd",
+        "kind": "number",
+        "required": false,
+        "help": "Spending cap in USD for the whole check."
+      },
+      {
+        "field": "trials",
+        "long": "trials",
+        "kind": "integer",
+        "required": false,
+        "help": "Trials per case and side, 1 to 20 (default 2)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check a fix on the agent's main eval within $2",
+        "command": "everruns evals fixes check --fix-id fix_01h9 --max-cost-usd 2 --reason 'Before applying the stop rule'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_finding_fixes",
+    "path": [
+      "evals",
+      "fixes"
+    ],
+    "verb": "list",
+    "description": "List the fixes the Inspector suggested for one finding or for one agent's findings, with where checking and approving each stands.",
+    "method": "GET",
+    "http_path": "/v1/evals/fixes",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "An agent whose fixes to list."
+      },
+      {
+        "field": "issue_id",
+        "long": "issue-id",
+        "kind": "string",
+        "required": false,
+        "help": "The finding whose fix to show."
+      },
+      {
+        "field": "open",
+        "long": "open",
+        "kind": "boolean",
+        "required": false,
+        "help": "Only fixes still waiting on a person (agent lists only)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Fixes for one agent that still need a decision",
+        "command": "everruns evals fixes list --agent-id agent_01h9 --open"
+      }
+    ]
+  },
+  {
+    "wire_name": "reject_finding_fix",
+    "path": [
+      "evals",
+      "fixes"
+    ],
+    "verb": "reject",
+    "description": "Turn down a suggested fix, saying why. The agent is not changed.",
+    "method": "POST",
+    "http_path": "/v1/evals/fixes/{fix_id}/reject",
+    "args": [
+      {
+        "field": "fix_id",
+        "long": "fix-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "note",
+        "long": "note",
+        "kind": "string",
+        "required": true,
+        "help": "Kept so later suggestions can be compared with what people turned down. (Named `note` because..."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Turn down a fix that would hide the real problem",
+        "command": "everruns evals fixes reject --fix-id fix_01h9 --note 'The schedule itself is wrong, fixing it there'"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_finding_fix",
+    "path": [
+      "evals",
+      "fixes"
+    ],
+    "verb": "update",
+    "description": "Change the text a suggested fix adds to the agent's instructions. An edited fix must be checked again before it can be applied.",
+    "method": "PATCH",
+    "http_path": "/v1/evals/fixes/{fix_id}",
+    "args": [
+      {
+        "field": "addition",
+        "long": "addition",
+        "kind": "string",
+        "required": true,
+        "help": "The text to add to the agent's instructions."
+      },
+      {
+        "field": "fix_id",
+        "long": "fix-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "summary",
+        "long": "summary",
+        "kind": "string",
+        "required": false,
+        "help": "One line on what the change does."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Tighten a fix before checking it",
+        "command": "everruns evals fixes update --fix-id fix_01h9 --addition 'Stop after 12 runs with the same result.' --reason 'Shorter stop rule'"
+      }
+    ]
+  },
+  {
     "wire_name": "get_eval",
     "path": [
       "evals"

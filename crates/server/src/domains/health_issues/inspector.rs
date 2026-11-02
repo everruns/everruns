@@ -22,10 +22,11 @@
 //!   the episode is marked unavailable and not retried; a failed call is
 //!   retried after an hour, at most three times.
 
-use super::{background_work, classifiers};
+use super::{background_work, classifiers, fixes};
 use crate::domains::budgets::service::BudgetService;
 use crate::domains::observers::judge::{CompletionOptions, LlmJudgeClient};
 use crate::storage::StorageBackend;
+use crate::storage::finding_fixes::NewFindingFix;
 use crate::storage::finding_investigations::{
     CompletedInvestigation, FindingClusterRow, InvestigationCandidateRow,
 };
@@ -66,6 +67,8 @@ const TOOL_WINDOW: i64 = 60;
 const WHAT_HAPPENED_CHARS: usize = 1200;
 const ACTION_CHARS: usize = 400;
 const TITLE_CHARS: usize = 80;
+/// What it reads of the agent's instructions, for a fix.
+const INSTRUCTION_CHARS: usize = 6000;
 
 const SWEEP_INTERVAL: Duration = Duration::from_secs(15 * 60);
 pub const INSPECTOR_PURPOSE: &str = "finding_investigation";
@@ -171,9 +174,15 @@ session; describe them instead. If the detector looks wrong, say so plainly.\n\n
 Then file the finding: if one of the listed clusters describes the same underlying problem, \
 give its id; otherwise give null and a short title for a new cluster that names the problem, \
 not this one session.\n\n\
+When the agent's instructions are shown and a short addition to them would have prevented \
+this, propose it: one line saying what the change does, and the exact text to add at the end \
+of the instructions, written as an instruction to the agent. Propose nothing that loosens a \
+safety rule, grants more access, or hides the problem from people; give null when the problem \
+is not the agent's instructions.\n\n\
 Answer with one JSON object and nothing else: {\"what_happened\": string, \"severity\": \
 \"high\" | \"medium\" | \"low\", \"suggested_action\": string, \"cluster\": string or null, \
-\"cluster_title\": string}.";
+\"cluster_title\": string, \"instruction_change\": {\"summary\": string, \"add\": string} \
+or null}.";
 
 /// The prompt for one finding.
 pub fn prompt(
@@ -182,6 +191,7 @@ pub fn prompt(
     messages: &[(String, String)],
     tools: &[serde_json::Value],
     clusters: &[FindingClusterRow],
+    instructions: Option<&str>,
 ) -> String {
     let mut out = format!("Finding: {}\n", kind_label(code));
     if let Some(evidence) = evidence.filter(|e| !e.is_null()) {
@@ -208,6 +218,11 @@ pub fn prompt(
     for (index, cluster) in clusters.iter().enumerate() {
         out.push_str(&format!("C{}: {}\n", index + 1, cluster.title));
     }
+    if let Some(instructions) = instructions {
+        out.push_str("\nThe agent's instructions:\n");
+        out.push_str(&cut(instructions, INSTRUCTION_CHARS));
+        out.push('\n');
+    }
     out
 }
 
@@ -220,6 +235,16 @@ pub struct WriteUp {
     /// Index into the offered clusters, when it chose one.
     pub cluster: Option<usize>,
     pub cluster_title: String,
+    /// A proposed addition to the agent's instructions: (summary, text).
+    pub fix: Option<(String, String)>,
+}
+
+#[derive(Deserialize)]
+struct RawFix {
+    #[serde(default)]
+    summary: String,
+    #[serde(default)]
+    add: String,
 }
 
 #[derive(Deserialize)]
@@ -232,6 +257,8 @@ struct RawWriteUp {
     cluster: Option<String>,
     #[serde(default)]
     cluster_title: Option<String>,
+    #[serde(default)]
+    instruction_change: Option<RawFix>,
 }
 
 /// Parse the Inspector's answer. `None` when it is not the asked-for JSON.
@@ -261,12 +288,23 @@ pub fn parse_write_up(text: &str, clusters: usize) -> Option<WriteUp> {
         .filter(|t| !t.is_empty())
         .map(|t| cut(t, TITLE_CHARS))
         .unwrap_or_else(|| cut(&what_happened, TITLE_CHARS));
+    // A fix over its bounds is dropped, not cut: half an instruction is
+    // worse than none.
+    let fix = raw.instruction_change.and_then(|f| {
+        let add = f.add.trim();
+        let summary = f.summary.trim();
+        (!add.is_empty() && add.chars().count() <= fixes::ADDITION_CHARS).then(|| {
+            let summary = if summary.is_empty() { add } else { summary };
+            (cut(summary, fixes::SUMMARY_CHARS - 1), add.to_string())
+        })
+    });
     Some(WriteUp {
         what_happened,
         severity,
         suggested_action: cut(raw.suggested_action.trim(), ACTION_CHARS),
         cluster,
         cluster_title: title,
+        fix,
     })
 }
 
@@ -375,12 +413,24 @@ async fn investigate(
             CLUSTER_CHOICES,
         )
         .await?;
+    // The agent's instructions, when the finding may get a fix.
+    let agent = match candidate.agent_id {
+        Some(agent_id) if fixes::FIXABLE.contains(&candidate.code.as_str()) => db
+            .get_agent(
+                candidate.org_id,
+                everruns_contracts::typed_id::AgentId::from_uuid(agent_id),
+            )
+            .await?
+            .filter(|a| a.status != "archived"),
+        _ => None,
+    };
     let text = prompt(
         &candidate.code,
         candidate.evidence.as_ref(),
         &messages,
         &tools,
         &clusters,
+        agent.as_ref().map(|a| a.system_prompt.as_str()),
     );
     let Some(reply) = model
         .write_up(candidate.org_id, SYSTEM_PROMPT.to_string(), text)
@@ -434,6 +484,18 @@ async fn investigate(
         },
     )
     .await?;
+    if let (Some(agent), Some((summary, addition))) = (&agent, &write_up.fix) {
+        db.create_finding_fix(NewFindingFix {
+            org_id: candidate.org_id,
+            health_issue_id: candidate.health_issue_id,
+            episode_id: candidate.episode_id,
+            agent_id: agent.id.uuid(),
+            summary,
+            addition,
+            base_instructions_sha256: &fixes::instructions_sha256(&agent.system_prompt),
+        })
+        .await?;
+    }
     report.written += 1;
     Ok(())
 }
@@ -527,6 +589,7 @@ mod tests {
             &[("user".into(), "check the claim".into())],
             &[serde_json::json!(["http_get", "https://x", 31, 0])],
             &[cluster("Expired claim polling"), cluster("Login loop")],
+            None,
         );
         assert!(text.contains("going in circles"));
         assert!(text.contains("0.97"));
