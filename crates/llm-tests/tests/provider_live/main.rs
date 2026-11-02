@@ -15,6 +15,7 @@
 #[path = "../../../everruns/tests/host/agents_api_support/mod.rs"]
 mod agents_api_support;
 
+mod anthropic_message_threads;
 mod anthropic_parallel_tool_calls;
 mod decision_discovery;
 mod discovery;
