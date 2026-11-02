@@ -1068,6 +1068,10 @@ unrelated failures retain their classification. No thread cache is durable.
 See the [implementation](../../crates/drivers/drivers/src/anthropic/message_threads.rs),
 [wire tests](../../crates/drivers/drivers/tests/anthropic_message_threads_wire.rs),
 and [Framework session test](../../crates/everruns/tests/anthropic_message_threads.rs).
+The [live acceptance suite](../../crates/llm-tests/tests/provider_live/anthropic_message_threads.rs)
+must prove real provider state across delta-only text and tool turns, and recovery
+after a response ID is consumed. Missing credentials or silent unthreaded fallback
+must fail these tests; nightly/full provider CI owns their execution.
 The [provider guide](../../docs/providers/anthropic.md#message-threads-beta) owns
 opt-in instructions, retention exclusions and compatibility limits.
 
