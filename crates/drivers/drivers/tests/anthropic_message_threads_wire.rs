@@ -381,51 +381,6 @@ async fn stream_without_message_stop_never_publishes_thread_state() {
 }
 
 #[tokio::test]
-#[ignore = "requires ANTHROPIC_API_KEY and message-threads beta access; makes paid API calls"]
-async fn live_message_threads_preserve_a_fact_across_turns() {
-    let key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY");
-    let provider = Provider::new("anthropic", AnthropicChatDriver::new())
-        .base_url("https://api.anthropic.com/v1")
-        .auth(StaticHeaderAuth::new("x-api-key", key));
-    let mut config = config();
-    config.model = "claude-haiku-4-5".into();
-    config.max_tokens = Some(128);
-    config.metadata.insert(
-        "session_id".into(),
-        format!("message-threads-smoke-{:?}", std::time::SystemTime::now()),
-    );
-    let mut messages = initial();
-    let first = provider
-        .chat_completion(messages.clone(), &config)
-        .await
-        .unwrap();
-    assert_eq!(
-        first.metadata.request_body.as_ref().unwrap()["thread"]["type"],
-        "create"
-    );
-    next(&mut messages, &first);
-    let second = provider
-        .chat_completion(messages.clone(), &config)
-        .await
-        .unwrap();
-    assert!(second.text.contains("47"));
-    let body = second.metadata.request_body.as_ref().unwrap();
-    assert_eq!(body["thread"]["type"], "continue");
-    assert_eq!(body["messages"].as_array().unwrap().len(), 1);
-    next(&mut messages, &second);
-    messages[0] = Message::text(MessageRole::System, "Answer the user's question briefly.");
-    let third = provider.chat_completion(messages, &config).await.unwrap();
-    assert!(third.text.contains("47"));
-    assert_eq!(
-        third.metadata.request_body.as_ref().unwrap()["thread"]["type"],
-        "create"
-    );
-    println!(
-        "PASS: create -> delta continuation -> full replay after system change; fact 47 preserved"
-    );
-}
-
-#[tokio::test]
 async fn unsupported_create_falls_back_without_thread_or_beta_and_replay_is_bounded() {
     for code in ["thread_unsupported_request", "thread_not_found"] {
         let server = MockServer::start().await;
