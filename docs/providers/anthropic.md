@@ -84,7 +84,7 @@ thread state. Tool results are supported; native compaction and opaque compacted
 prefixes use the existing full-history path. Batch requests stay unthreaded.
 Changes to a system prompt on every turn can prevent reuse.
 
-This is separate from [prompt caching](/features/prompt-caching/): threads reduce
+This is separate from [prompt caching](/capabilities/prompt-caching/): threads reduce
 uploaded request history, but do not change token pricing or rate limits. Keep
 prompt caching enabled independently when desired.
 
