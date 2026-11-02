@@ -32,6 +32,7 @@ use crate::bashkit::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
 use crate::bashkit::exec_tool_result::ExecToolResultPayload;
+use crate::bashkit::session_file::FileInfo;
 use crate::bashkit::session_file::SessionFile;
 use crate::bashkit::tool_types::{DeferrablePolicy, ToolHints};
 use crate::bashkit::tools::{Tool, ToolExecutionResult};
@@ -896,11 +897,192 @@ fn collect_partial_output(mut rx: tokio::sync::mpsc::Receiver<(String, String)>)
 pub struct SessionFileSystemAdapter {
     session_id: SessionId,
     store: Arc<dyn SessionFileSystem>,
+    /// What this adapter has already listed.
+    ///
+    /// Decision: every store call is a round trip to the control plane (about
+    /// 10 ms from a worker). `find`, `ls -R` and `rg` list every directory and
+    /// stat every entry, so a walk over a 3.7k-file checkout took over 30 s.
+    /// Listings carry each child's type and size, so `stat` answers from them,
+    /// and once a walk goes below a directory it listed, the adapter fetches
+    /// that whole subtree in one `list_tree` call and serves the rest of the
+    /// walk from it. The adapter lives for one `bash` call; any change through
+    /// it drops everything remembered, and writes by other tools during the
+    /// same call are not seen until the next call.
+    listings: std::sync::Mutex<ListingCache>,
+}
+
+struct ForgetListings<'a>(&'a std::sync::Mutex<ListingCache>);
+
+impl ForgetListings<'_> {
+    fn forget(&self) {
+        if let Ok(mut listings) = self.0.lock() {
+            *listings = ListingCache::default();
+        }
+    }
+}
+
+impl Drop for ForgetListings<'_> {
+    fn drop(&mut self) {
+        self.forget();
+    }
+}
+
+#[derive(Default)]
+struct ListingCache {
+    metadata: std::collections::HashMap<String, Metadata>,
+    listed_dirs: std::collections::HashSet<String>,
+    children: std::collections::HashMap<String, Vec<DirEntry>>,
+    tree_roots_tried: std::collections::HashSet<String>,
+}
+
+/// Entries remembered per `bash` call; past this the adapter asks the store.
+const LISTED_METADATA_LIMIT: usize = 200_000;
+
+fn parent_dir(path: &str) -> Option<&str> {
+    let path = path.trim_end_matches('/');
+    let (parent, _) = path.rsplit_once('/')?;
+    Some(if parent.is_empty() { "/" } else { parent })
+}
+
+fn child_path(dir: &str, name: &str) -> String {
+    format!("{}/{name}", dir.trim_end_matches('/'))
+}
+
+impl ListingCache {
+    fn remember(&mut self, dir: &str, entries: &[DirEntry]) {
+        if self.metadata.len() + entries.len() > LISTED_METADATA_LIMIT {
+            return;
+        }
+        self.listed_dirs.insert(dir.to_string());
+        for entry in entries {
+            self.metadata
+                .insert(child_path(dir, &entry.name), entry.metadata.clone());
+        }
+        self.children.insert(dir.to_string(), entries.to_vec());
+    }
+
+    /// The highest directory listed on the way down to `dir`, when `dir`'s
+    /// parent was listed: that is a recursive walk worth one tree fetch.
+    fn walk_root(&self, dir: &str) -> Option<String> {
+        let mut root = parent_dir(dir).filter(|p| self.listed_dirs.contains(*p))?;
+        while let Some(parent) = parent_dir(root).filter(|p| self.listed_dirs.contains(*p)) {
+            if parent == root {
+                break;
+            }
+            root = parent;
+        }
+        (!self.tree_roots_tried.contains(root)).then(|| root.to_string())
+    }
+
+    /// Index a subtree listing (paths relative to `root`) as per-directory
+    /// children.
+    fn remember_tree(&mut self, root: &str, infos: Vec<FileInfo>, now: SystemTime) {
+        if infos.len() > LISTED_METADATA_LIMIT {
+            return;
+        }
+        let root = root.trim_end_matches('/');
+        let mut children: std::collections::HashMap<
+            String,
+            std::collections::BTreeMap<String, Metadata>,
+        > = std::collections::HashMap::new();
+        let directory = Metadata {
+            file_type: FileType::Directory,
+            size: 0,
+            mode: 0o755,
+            modified: now,
+            created: now,
+        };
+        for info in infos {
+            let rest = info.path.trim_start_matches('/');
+            let metadata = Metadata {
+                file_type: if info.is_directory {
+                    FileType::Directory
+                } else {
+                    FileType::File
+                },
+                size: info.size_bytes as u64,
+                mode: 0o755,
+                modified: now,
+                created: now,
+            };
+            // Every ancestor is a directory, whether or not the store has a row for it.
+            let mut dir = root.to_string();
+            let mut parts = rest.split('/').filter(|part| !part.is_empty()).peekable();
+            while let Some(part) = parts.next() {
+                let meta = if parts.peek().is_some() {
+                    directory.clone()
+                } else {
+                    metadata.clone()
+                };
+                let entry = children.entry(dir.clone()).or_default();
+                let slot = entry
+                    .entry(part.to_string())
+                    .or_insert_with(|| meta.clone());
+                if meta.file_type == FileType::Directory {
+                    *slot = meta;
+                    children.entry(child_path(&dir, part)).or_default();
+                }
+                dir = child_path(&dir, part);
+            }
+        }
+        children.entry(root.to_string()).or_default();
+        for (dir, entries) in children {
+            let entries: Vec<DirEntry> = entries
+                .into_iter()
+                .map(|(name, metadata)| DirEntry { name, metadata })
+                .collect();
+            self.remember(&dir, &entries);
+        }
+    }
 }
 
 impl SessionFileSystemAdapter {
     pub fn new(session_id: SessionId, store: Arc<dyn SessionFileSystem>) -> Self {
-        Self { session_id, store }
+        Self {
+            session_id,
+            store,
+            listings: Default::default(),
+        }
+    }
+
+    fn listed_metadata(&self, path: &Path) -> Option<Metadata> {
+        self.listings
+            .lock()
+            .ok()?
+            .metadata
+            .get(path.to_string_lossy().as_ref())
+            .cloned()
+    }
+
+    /// Any change through this adapter can make a remembered entry wrong.
+    /// Forgets now, and again when the returned guard drops at the end of the
+    /// change, since the change itself may list or stat on the way.
+    fn forget_listings(&self) -> ForgetListings<'_> {
+        ForgetListings(&self.listings).forget();
+        ForgetListings(&self.listings)
+    }
+
+    /// Serve `dir` from a fetched subtree, fetching it first when this is a
+    /// recursive walk below a directory already listed.
+    async fn listing_from_tree(&self, dir: &str) -> Option<Vec<DirEntry>> {
+        let root = {
+            let mut listings = self.listings.lock().ok()?;
+            if let Some(entries) = listings.children.get(dir) {
+                return Some(entries.clone());
+            }
+            let root = listings.walk_root(dir)?;
+            listings.tree_roots_tried.insert(root.clone());
+            root
+        };
+        let infos = self
+            .store
+            .list_tree(self.session_id, &root)
+            .await
+            .ok()
+            .flatten()?;
+        let mut listings = self.listings.lock().ok()?;
+        listings.remember_tree(&root, infos, SystemTime::now());
+        listings.children.get(dir).cloned()
     }
 
     /// The bash VFS path as a string for the store to resolve.
@@ -922,10 +1104,46 @@ impl SessionFileSystemAdapter {
     /// Stores answer `list_directory` for an unknown path with `Ok(vec![])`, so only a
     /// non-empty listing distinguishes a real directory from an absent path.
     async fn directory_has_entries(&self, session_path: &str) -> bool {
-        self.store
-            .list_directory(self.session_id, session_path)
+        self.list_dir(session_path)
             .await
             .is_ok_and(|entries| !entries.is_empty())
+    }
+
+    /// `read_dir` without the bashkit error mapping, served from what this
+    /// adapter already listed when it can.
+    async fn list_dir(
+        &self,
+        session_path: &str,
+    ) -> everruns_contracts::error::Result<Vec<DirEntry>> {
+        if let Some(entries) = self.listing_from_tree(session_path).await {
+            return Ok(entries);
+        }
+        let entries = self
+            .store
+            .list_directory(self.session_id, session_path)
+            .await?;
+        let now = SystemTime::now();
+        let entries: Vec<DirEntry> = entries
+            .into_iter()
+            .map(|e| DirEntry {
+                name: e.name,
+                metadata: Metadata {
+                    file_type: if e.is_directory {
+                        FileType::Directory
+                    } else {
+                        FileType::File
+                    },
+                    size: e.size_bytes as u64,
+                    mode: 0o755,
+                    modified: now,
+                    created: now,
+                },
+            })
+            .collect();
+        if let Ok(mut listings) = self.listings.lock() {
+            listings.remember(session_path, &entries);
+        }
+        Ok(entries)
     }
 }
 
@@ -952,6 +1170,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn write_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let session_path = Self::store_path(path);
 
         let (encoded, encoding) = SessionFile::encode_content(content);
@@ -964,6 +1183,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn append_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let session_path = Self::store_path(path);
 
         // Read existing content
@@ -990,6 +1210,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn mkdir(&self, path: &Path, _recursive: bool) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let session_path = Self::store_path(path);
 
         self.store
@@ -1000,6 +1221,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn remove(&self, path: &Path, recursive: bool) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let session_path = Self::store_path(path);
 
         self.store
@@ -1020,6 +1242,10 @@ impl FileSystem for SessionFileSystemAdapter {
                 modified: now,
                 created: now,
             });
+        }
+
+        if let Some(metadata) = self.listed_metadata(path) {
+            return Ok(metadata);
         }
 
         let session_path = Self::store_path(path);
@@ -1074,42 +1300,18 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn read_dir(&self, path: &Path) -> bashkit::Result<Vec<DirEntry>> {
-        let session_path = Self::store_path(path);
-
-        let entries = self
-            .store
-            .list_directory(self.session_id, &session_path)
+        self.list_dir(&Self::store_path(path))
             .await
-            .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))?;
-
-        let now = SystemTime::now();
-
-        Ok(entries
-            .into_iter()
-            .map(|e| {
-                let file_type = if e.is_directory {
-                    FileType::Directory
-                } else {
-                    FileType::File
-                };
-
-                DirEntry {
-                    name: e.name,
-                    metadata: Metadata {
-                        file_type,
-                        size: e.size_bytes as u64,
-                        mode: 0o755,
-                        modified: now,
-                        created: now,
-                    },
-                }
-            })
-            .collect())
+            .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))
     }
 
     async fn exists(&self, path: &Path) -> bashkit::Result<bool> {
         // /workspace always exists
         if path.to_string_lossy() == "/workspace" {
+            return Ok(true);
+        }
+
+        if self.listed_metadata(path).is_some() {
             return Ok(true);
         }
 
@@ -1126,6 +1328,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn rename(&self, from: &Path, to: &Path) -> bashkit::Result<()> {
+        let _forget = self.forget_listings();
         let from_session = Self::store_path(from);
         if self.stat(from).await?.file_type == FileType::Directory {
             return self
@@ -1310,6 +1513,9 @@ mod tests {
     struct MockFileStore {
         files: Mutex<HashMap<(SessionId, String), (String, String)>>, // (content, encoding)
         directories: Mutex<HashMap<(SessionId, String), bool>>,
+        stat_calls: AtomicUsize,
+        list_calls: AtomicUsize,
+        tree_calls: AtomicUsize,
     }
 
     impl MockFileStore {
@@ -1317,6 +1523,9 @@ mod tests {
             Self {
                 files: Mutex::new(HashMap::new()),
                 directories: Mutex::new(HashMap::new()),
+                stat_calls: AtomicUsize::new(0),
+                list_calls: AtomicUsize::new(0),
+                tree_calls: AtomicUsize::new(0),
             }
         }
 
@@ -1416,6 +1625,7 @@ mod tests {
             session_id: SessionId,
             path: &str,
         ) -> everruns_contracts::error::Result<Vec<FileInfo>> {
+            self.list_calls.fetch_add(1, Ordering::Relaxed);
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             let dirs = self.directories.lock().unwrap();
@@ -1498,11 +1708,39 @@ mod tests {
             Ok(entries)
         }
 
+        async fn list_tree(
+            &self,
+            session_id: SessionId,
+            path: &str,
+        ) -> everruns_contracts::error::Result<Option<Vec<FileInfo>>> {
+            self.tree_calls.fetch_add(1, Ordering::Relaxed);
+            let prefix = format!("{}/", Self::normalize_path(path).trim_end_matches('/'));
+            let files = self.files.lock().unwrap();
+            Ok(Some(
+                files
+                    .iter()
+                    .filter(|((sid, p), _)| *sid == session_id && p.starts_with(&prefix))
+                    .map(|((_, p), (content, _))| FileInfo {
+                        id: uuid::Uuid::new_v4(),
+                        session_id: session_id.into(),
+                        path: p[prefix.len()..].to_string(),
+                        name: p.rsplit('/').next().unwrap_or("").to_string(),
+                        is_directory: false,
+                        is_readonly: false,
+                        size_bytes: content.len() as i64,
+                        created_at: chrono::Utc::now(),
+                        updated_at: chrono::Utc::now(),
+                    })
+                    .collect(),
+            ))
+        }
+
         async fn stat_file(
             &self,
             session_id: SessionId,
             path: &str,
         ) -> everruns_contracts::error::Result<Option<FileStat>> {
+            self.stat_calls.fetch_add(1, Ordering::Relaxed);
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             if let Some((content, _)) = files.get(&(session_id, path.clone())) {
@@ -2072,6 +2310,90 @@ mod tests {
             }
             other => panic!("Expected success result, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_adapter_answers_stat_from_its_listing_until_a_write() {
+        let session_id = SessionId::new();
+        let mock = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = mock.clone();
+        for name in ["a.rs", "b.rs", "c.rs"] {
+            store
+                .write_file(session_id, &format!("/workspace/src/{name}"), "x", "text")
+                .await
+                .unwrap();
+        }
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+        let listed = adapter.read_dir(Path::new("/workspace/src")).await.unwrap();
+        assert_eq!(listed.len(), 3);
+        let before = mock.stat_calls.load(Ordering::Relaxed);
+        for name in ["a.rs", "b.rs", "c.rs"] {
+            let path = PathBuf::from(format!("/workspace/src/{name}"));
+            assert!(adapter.stat(&path).await.unwrap().file_type.is_file());
+            assert!(adapter.exists(&path).await.unwrap());
+        }
+        assert_eq!(
+            mock.stat_calls.load(Ordering::Relaxed),
+            before,
+            "listed entries need no store round trip"
+        );
+
+        adapter
+            .remove(Path::new("/workspace/src/a.rs"), false)
+            .await
+            .unwrap();
+        assert!(
+            !adapter
+                .exists(Path::new("/workspace/src/a.rs"))
+                .await
+                .unwrap(),
+            "a change through the adapter drops what it remembered"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_recursive_find_fetches_the_subtree_once() {
+        let session_id = SessionId::new();
+        let mock = Arc::new(MockFileStore::new());
+        // Through MountFs, as production wires it.
+        let store = crate::bashkit::mount_fs::MountFs::wrap(mock.clone());
+        let mut expected = Vec::new();
+        for dir in ["a", "a/x", "b", "b/y/z"] {
+            for file in ["1.rs", "2.rs"] {
+                let path = format!("/workspace/repo/{dir}/{file}");
+                store
+                    .write_file(session_id, &path, "x", "text")
+                    .await
+                    .unwrap();
+                expected.push(path);
+            }
+        }
+        expected.sort();
+        let mut context = ToolContext::new(session_id);
+        context.file_store = Some(store);
+        let before = (
+            mock.list_calls.load(Ordering::Relaxed),
+            mock.stat_calls.load(Ordering::Relaxed),
+        );
+        let result = BashTool::default()
+            .execute_with_context(
+                json!({"commands": "find /workspace/repo -type f | sort"}),
+                &context,
+            )
+            .await;
+        let ToolExecutionResult::Success(output) = result else {
+            panic!("find failed: {result:?}");
+        };
+        let stdout = output["stdout"].as_str().unwrap_or_default();
+        let found: Vec<&str> = stdout.lines().collect();
+        assert_eq!(found, expected);
+        assert_eq!(mock.tree_calls.load(Ordering::Relaxed), 1);
+        let listings = mock.list_calls.load(Ordering::Relaxed) - before.0;
+        let stats = mock.stat_calls.load(Ordering::Relaxed) - before.1;
+        // Bashkit stats the start path and lists it; everything below comes
+        // from the one subtree fetch (14 entries would otherwise cost ~20 calls).
+        assert!(listings <= 1, "listings: {listings}");
+        assert!(stats <= 2, "stats: {stats}");
     }
 
     #[tokio::test]
