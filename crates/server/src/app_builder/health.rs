@@ -173,6 +173,12 @@ pub(super) fn start_session_graders(
             ),
         );
     }
+    if let Some(inspector) = graders.inspector() {
+        supervisor.track(
+            "finding_inspector_sweep",
+            crate::domains::health_issues::inspector::spawn_sweep(db.clone(), inspector),
+        );
+    }
     if let Some(observer_wake) = observer_wake {
         supervisor.track(
             "observer_scoring",

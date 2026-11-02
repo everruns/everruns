@@ -25,6 +25,10 @@ pub fn routes(state: ApiState) -> Router {
             "/v1/health-issues/{issue_id}/snooze",
             post(snooze_health_issue),
         )
+        .route(
+            "/v1/health-issues/{issue_id}/dismiss",
+            post(dismiss_health_issue),
+        )
         .with_state(state)
 }
 #[derive(Deserialize, utoipa::IntoParams)]
@@ -93,5 +97,21 @@ pub async fn snooze_health_issue(
 ) -> ApiResult<HealthIssue> {
     Ok(Json(
         SnoozeHealthIssue { issue_id }.run(&state.ctx(&org)).await?,
+    ))
+}
+#[utoipa::path(post,path="/v1/health-issues/{issue_id}/dismiss",params(("issue_id"=Uuid,Path)),request_body=DismissHealthIssueRequest,responses((status=200,body=HealthIssue),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse)),tag="health-issues")]
+/// Dismiss a detector finding with a reason
+///
+/// Close a finding that needs nothing. The reason is kept to calibrate detectors, and a dismissed session finding stays closed when the same session is flagged again.
+pub async fn dismiss_health_issue(
+    org: ResolvedOrg,
+    State(state): State<ApiState>,
+    Path(issue_id): Path<Uuid>,
+    Json(req): Json<DismissHealthIssueRequest>,
+) -> ApiResult<HealthIssue> {
+    Ok(Json(
+        DismissHealthIssue { issue_id, req }
+            .run(&state.ctx(&org))
+            .await?,
     ))
 }

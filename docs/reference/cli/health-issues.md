@@ -13,6 +13,7 @@ Operational problems detected in this installation.
 | Command | What it does |
 |---|---|
 | [`health-issues check`](#health-issues-check) | Verify an installation's current health without modifying provider data. |
+| [`health-issues dismiss`](#health-issues-dismiss) | Dismiss a detector finding with a reason. |
 | [`health-issues get`](#health-issues-get) | Get an operational health issue. |
 | [`health-issues list`](#health-issues-list) | List pending operational health issues. |
 | [`health-issues snooze`](#health-issues-snooze) | Snooze health reminders for the current user for one day. |
@@ -34,6 +35,26 @@ Example:
 ```bash
 # Recheck whether an issue is resolved after fixing it
 everruns health-issues check --issue-id 550e8400-e29b-41d4-a716-446655440000
+```
+
+## health-issues dismiss
+
+Dismiss a detector finding with a reason.
+
+```bash
+everruns health-issues dismiss [OPTIONS] --issue-id <issue_id> --note <note>
+```
+
+| Flag | Description |
+|---|---|
+| `--issue-id <ISSUE_ID>` | Required. Stable identifier of the issue in the current organization. |
+| `--note <NOTE>` | Required. A false alarm, expected work, or already handled. |
+
+Example:
+
+```bash
+# Close a false alarm and say why
+everruns health-issues dismiss --issue-id 550e8400-e29b-41d4-a716-446655440000 --note 'Expected: nightly load test'
 ```
 
 ## health-issues get

@@ -107,9 +107,24 @@ everruns observers backfill --observer-id observer_01h9 --since-hours 24 \
 
 **Live quality.** `GET /v1/observers/summary` (`everruns observers summary`) returns the pass rate of completed scores over the last `days`, in total and by agent, observer and day.
 
+## Findings
+
+Findings are health issues that detectors and classifiers raise about sessions and schedules: a tool failing in a loop, a spend spike, an agent that looks stuck, instructions followed from a tool result, suspected abuse, a runaway schedule. They notify the agent's authors and stop nothing.
+
+The **Inspector** writes up the serious ones (classifier findings and runaway schedules) within about 15 minutes, using your organization's default model: what happened in a few plain sentences, how serious it is, and one next step. It files each finding under a group of similar ones, so ten sessions with the same problem show as one row with a count. It keeps its write-up, not the session's text, and its cost counts against the org and agent budgets.
+
+**Dismiss** closes a finding that needs nothing and keeps your reason. A dismissed session finding stays closed even if a detector flags the same session again:
+
+```bash
+everruns health-issues dismiss --issue-id 550e8400-e29b-41d4-a716-446655440000 \
+  --note 'Expected: nightly load test'
+```
+
+Operators of a deployment can list open suspected-abuse findings in every organization with `everruns system detections`. They are leads for a person to confirm; nothing is suspended automatically.
+
 ## In the UI
 
-**Quality → Evals** opens on an overview of every agent with a dataset: its pass rate, the trend over recent runs, its live quality from observers over the last 7 days, open findings and the last activity. Tabs hold datasets, experiments, observers, findings from session detectors and classifiers, and the graders a case can use. **Run experiment** starts one from any dataset. Each agent's page has an **Evals** tab with the same view for that agent, plus the observers that watch it. On an observer's edit page, the **Answers**, **Conversations** and **Tools** tabs hold the graders of each scope.
+**Quality → Evals** opens on an overview of every agent with a dataset: its pass rate, the trend over recent runs, its live quality from observers over the last 7 days, open findings and the last activity. Tabs hold datasets, experiments, observers, findings from session detectors and classifiers (similar ones grouped, each opening a page with its evidence and the Inspector's account), and the graders a case can use. **Run experiment** starts one from any dataset. Each agent's page has an **Evals** tab with the same view for that agent, plus the observers that watch it. On an observer's edit page, the **Answers**, **Conversations** and **Tools** tabs hold the graders of each scope.
 
 ## SWE-bench Lite
 

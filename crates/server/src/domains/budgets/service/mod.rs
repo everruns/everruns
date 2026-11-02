@@ -392,7 +392,7 @@ impl BudgetService {
 
         self.attach_unattended(&mut scope, session.org_id, source.input_message_id)
             .await;
-        if source.source_type == OBSERVER_GRADING_SOURCE {
+        if is_monitoring_source(source.source_type) {
             scope.monitoring = true;
             scope.unattended = false;
             scope.user_id = None;
@@ -614,9 +614,7 @@ impl BudgetService {
         .await;
     }
 
-    /// Meter what an observer's judge spent grading one trace score. It is
-    /// monitoring spend: journaled against the session it read, but only the
-    /// org and agent budgets are debited (see `BudgetScope::monitoring`).
+    /// Meter what an observer's judge spent grading one trace score.
     /// Keyed to the score, so a retried grade is charged once.
     pub(crate) async fn meter_observer_grading(
         &self,
@@ -626,18 +624,46 @@ impl BudgetService {
         output_tokens: u64,
         cost_usd: Option<f64>,
     ) {
+        self.meter_monitoring(
+            OBSERVER_GRADING_SOURCE,
+            session_id,
+            score_id.to_string(),
+            score_id,
+            input_tokens,
+            output_tokens,
+            cost_usd,
+        )
+        .await;
+    }
+
+    /// Meter a model call made to watch a session rather than to do its
+    /// work: observer grading and Inspector write-ups. It is journaled against
+    /// the session it read, but only the org and agent budgets are debited
+    /// (see `BudgetScope::monitoring`). `source_id` keys the journal entry.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn meter_monitoring(
+        &self,
+        source_type: &'static str,
+        session_id: SessionId,
+        source_id: String,
+        ref_id: uuid::Uuid,
+        input_tokens: u64,
+        output_tokens: u64,
+        cost_usd: Option<f64>,
+    ) {
+        debug_assert!(is_monitoring_source(source_type));
         if !cost_usd.is_some_and(|cost| cost > 0.0) {
             return;
         }
         self.process_llm_generation(
             GenerationSource {
                 session_id,
-                source_type: OBSERVER_GRADING_SOURCE,
-                source_id: score_id.to_string(),
+                source_type,
+                source_id,
                 event_id: None,
                 turn_id: None,
                 input_message_id: None,
-                ref_id: score_id,
+                ref_id,
                 provider_id: None,
                 estimated_cost_usd: None,
             },
@@ -1091,6 +1117,14 @@ impl EventListener for BudgetService {
 pub(crate) const LATE_USAGE_SOURCE: &str = "llm_generation_late_usage";
 /// Journal `source_type` of an observer judge grading a trace score.
 pub(crate) const OBSERVER_GRADING_SOURCE: &str = "observer_grading";
+/// Inspector write-ups of findings (`health_issues/inspector.rs`).
+pub(crate) const INSPECTOR_SOURCE: &str = "finding_investigation";
+
+/// Sources that watch a session rather than do its work: only the org and
+/// agent budgets pay for them.
+pub(crate) fn is_monitoring_source(source_type: &str) -> bool {
+    matches!(source_type, OBSERVER_GRADING_SOURCE | INSPECTOR_SOURCE)
+}
 
 /// What a metered generation is journaled against. An `llm.generation` event
 /// is one source; usage applied to its record later (late Agents API usage,

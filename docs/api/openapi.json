@@ -16165,6 +16165,72 @@
         }
       }
     },
+    "/v1/health-issues/{issue_id}/dismiss": {
+      "post": {
+        "tags": [
+          "health-issues"
+        ],
+        "summary": "Dismiss a detector finding with a reason",
+        "description": "Close a finding that needs nothing. The reason is kept to calibrate detectors, and a dismissed session finding stays closed when the same session is flagged again.",
+        "operationId": "dismiss_health_issue",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DismissHealthIssueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthIssue"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/health-issues/{issue_id}/snooze": {
       "post": {
         "tags": [
@@ -31263,6 +31329,68 @@
         }
       }
     },
+    "/v1/system/detections": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Open abuse detections in every organization",
+        "operationId": "list_platform_detections",
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of detections to skip",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size from 1 through 100; defaults to 20",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Open detections, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformDetectionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Platform user access is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/system/doctor": {
       "get": {
         "tags": [
@@ -45550,6 +45678,20 @@
           }
         }
       },
+      "DismissHealthIssueRequest": {
+        "type": "object",
+        "description": "Why a finding needs nothing.",
+        "required": [
+          "note"
+        ],
+        "properties": {
+          "note": {
+            "type": "string",
+            "description": "A false alarm, expected work, or already handled. Kept so detectors\ncan be calibrated against it.\n(Named `note` because `reason` is the change-intent flag every\ncommand takes.)",
+            "example": "Expected: this is our nightly load test"
+          }
+        }
+      },
       "DlqEntryResponse": {
         "type": "object",
         "description": "DLQ entry response",
@@ -48819,6 +48961,103 @@
           "cost"
         ]
       },
+      "FindingInvestigation": {
+        "type": "object",
+        "description": "The Inspector's write-up of a finding: what happened, how serious it is,\nwhat to do, and the cluster of similar findings it was filed under.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "cluster_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The cluster of similar findings in this organization.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "cluster_open": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Open findings in the cluster, this one included.",
+            "example": 3
+          },
+          "cluster_title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Title of that cluster, naming the problem the findings share.",
+            "example": "Schedules polling an expired claim"
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the write-up was finished.",
+            "example": "2026-10-18T21:40:00Z"
+          },
+          "dismiss_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The note the person gave when dismissing.",
+            "example": "Expected: load test"
+          },
+          "dismissed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a person dismissed the finding, and why."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model that wrote it.",
+            "example": "gpt-6.1-sol"
+          },
+          "severity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`high`, `medium` or `low`, as the Inspector judged it.",
+            "example": "high"
+          },
+          "status": {
+            "type": "string",
+            "description": "`running`, `done`, `failed`, or `unavailable` (no model to write it).",
+            "example": "done"
+          },
+          "suggested_action": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One concrete next step.",
+            "example": "Add a stop rule to the schedule's instructions."
+          },
+          "what_happened": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What happened, in two to four plain sentences.",
+            "example": "The schedule polls a sign-in claim that expired; every run since reports the same error."
+          }
+        }
+      },
       "FindingLocation": {
         "type": "object",
         "description": "Pointer to the config field (and optional byte span within it) a finding\nrefers to.",
@@ -50307,6 +50546,13 @@
             "description": "Sanitized provider or verification error code, when available.",
             "example": "missing_scope"
           },
+          "evidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The numbers a detector or classifier recorded for a finding: counts,\ncosts, probabilities. Never session content."
+          },
           "first_detected_at": {
             "type": "string",
             "format": "date-time",
@@ -50323,6 +50569,17 @@
             "format": "uuid",
             "description": "Stable identifier of the canonical issue.",
             "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "investigation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FindingInvestigation",
+                "description": "The Inspector's write-up of a finding's current episode, when it has\none."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "last_checked_at": {
             "type": "string",
@@ -63185,6 +63442,135 @@
           "derived",
           "communication"
         ]
+      },
+      "PlatformDetection": {
+        "type": "object",
+        "description": "An open finding of the platform operator's concern, in any organization.",
+        "required": [
+          "issue_id",
+          "org_id",
+          "org_name",
+          "code",
+          "first_detected_at"
+        ],
+        "properties": {
+          "agent_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name of the session's agent.",
+            "example": "Outreach bot"
+          },
+          "cluster_title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Title of the cluster of similar findings in that organization."
+          },
+          "code": {
+            "type": "string",
+            "description": "Detector code of the finding.",
+            "example": "session.suspected_abuse"
+          },
+          "evidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The numbers the classifier recorded, never session content."
+          },
+          "first_detected_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the current episode was first detected.",
+            "example": "2026-10-18T21:40:00Z"
+          },
+          "issue_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Health issue identifier of the finding.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "org_id": {
+            "type": "string",
+            "description": "Public identifier of the organization.",
+            "example": "org_550e8400e29b41d4a716446655440000"
+          },
+          "org_name": {
+            "type": "string",
+            "description": "Display name of the organization.",
+            "example": "Acme"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public identifier of the session the finding points at.",
+            "example": "session_550e8400e29b41d4a716446655440000"
+          },
+          "severity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`high`, `medium` or `low`, as the Inspector judged it.",
+            "example": "high"
+          },
+          "suggested_action": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The Inspector's suggested next step."
+          },
+          "what_happened": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The Inspector's account of what happened, once written."
+          }
+        }
+      },
+      "PlatformDetectionList": {
+        "type": "object",
+        "description": "A page of open platform detections.",
+        "required": [
+          "data",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlatformDetection"
+            },
+            "description": "Detections in this page."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Effective page size.",
+            "example": 20
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Effective pagination offset.",
+            "example": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of open detections.",
+            "example": 1
+          }
+        }
       },
       "PolicySource": {
         "type": "string",

@@ -177,6 +177,8 @@ impl LlmJudgeClient {
 #[derive(Debug, Clone)]
 pub struct OrgCompletion {
     pub text: String,
+    /// The provider model that answered.
+    pub model: String,
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
     pub cost_usd: Option<f64>,
@@ -248,6 +250,7 @@ impl LlmJudgeClient {
         // plus headroom so the short answer is not cut off.
         let profile =
             everruns_contracts::model_profiles::get_model_profile(&driver_id, &resolved.model_id);
+        let model = resolved.model_id.clone();
         let mut config = LlmCallConfig::new(resolved.model_id);
         config.max_tokens = Some(options.max_tokens);
         if profile.as_ref().is_none_or(|p| p.temperature) {
@@ -272,6 +275,7 @@ impl LlmJudgeClient {
         let meta = response.metadata;
         Ok(Some(OrgCompletion {
             text: response.text,
+            model,
             input_tokens: meta.prompt_tokens.map(|t| t as u64),
             output_tokens: meta.completion_tokens.map(|t| t as u64),
             cost_usd: meta.provider_cost_usd,

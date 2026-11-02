@@ -6,6 +6,7 @@ import {
   getHealthIssue,
   checkHealthIssue,
   snoozeHealthIssue,
+  dismissHealthIssue,
 } from "@/lib/api/health-issues";
 import { ApiError } from "@/lib/api/client";
 import { useOrg } from "@/providers/org-provider";
@@ -42,6 +43,22 @@ export function useHealthIssueAction(action: "check" | "snooze") {
   const client = useQueryClient();
   return useMutation({
     mutationFn: action === "check" ? checkHealthIssue : snoozeHealthIssue,
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["health-issues"] }),
+        client.invalidateQueries({ queryKey: ["health-issue"] }),
+        client.invalidateQueries({ queryKey: ["notifications"] }),
+      ]);
+    },
+  });
+}
+
+// Close a finding that needs nothing, with the reason the detectors are
+// calibrated against.
+export function useDismissFinding() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => dismissHealthIssue(id, reason),
     onSuccess: async () => {
       await Promise.all([
         client.invalidateQueries({ queryKey: ["health-issues"] }),

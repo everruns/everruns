@@ -62,6 +62,7 @@
     "evals/[evalId]/cases/[caseId]/page.tsx",
     "evals/[evalId]/compare/page.tsx",
     "evals/[evalId]/experiments/[experimentId]/page.tsx",
+    "evals/findings/[issueId]/page.tsx",
     "evals/[evalId]/runs/[runId]/page.tsx",
     "evals/page.tsx",
     "harnesses/examples/page.tsx",

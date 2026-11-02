@@ -10426,6 +10426,49 @@
     "read_only": false
   },
   {
+    "description": "Dismiss a detector finding with a reason.",
+    "input_schema": {
+      "$defs": {
+        "DismissHealthIssueRequest": {
+          "description": "Why a finding needs nothing.",
+          "properties": {
+            "note": {
+              "description": "A false alarm, expected work, or already handled. Kept so detectors\ncan be calibrated against it.\n(Named `note` because `reason` is the change-intent flag every\ncommand takes.)",
+              "example": "Expected: this is our nightly load test",
+              "type": "string"
+            }
+          },
+          "required": [
+            "note"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/DismissHealthIssueRequest"
+        },
+        {
+          "properties": {
+            "issue_id": {
+              "description": "Stable identifier of the issue in the current organization.",
+              "example": "550e8400-e29b-41d4-a716-446655440000",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "issue_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Close a finding that needs nothing, saying why."
+    },
+    "name": "dismiss_health_issue",
+    "read_only": false
+  },
+  {
     "description": "Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.",
     "input_schema": {
       "$defs": {
@@ -14965,6 +15008,33 @@
       "type": "object"
     },
     "name": "list_payment_policies",
+    "read_only": true
+  },
+  {
+    "description": "List open abuse detections in every organization, with the Inspector's write-up. Leads for a person to confirm, never grounds for automatic action.",
+    "input_schema": {
+      "description": "Page through the open findings that concern the platform operator.",
+      "properties": {
+        "limit": {
+          "description": "Page size from 1 through 100; defaults to 20.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "description": "Number of detections to skip; defaults to zero.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "name": "list_platform_detections",
     "read_only": true
   },
   {
