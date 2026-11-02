@@ -32,5 +32,8 @@ The copy is a snapshot, not a git repository, and binary files and files over
 1 MiB are skipped and listed. The GitHub token stays on the host. The built-in
 PR Reviewer template now checks the pull request out before reviewing it.
 
+Walking the copy is fast too: `find` and `ls -R` over a 3,700-file checkout
+now finish in under a second instead of hitting the 30-second shell timeout.
+
 Session files can also now hold names that start with `_`, such as
 `__init__.py` and `__tests__/`; only the top-level `_` folder stays reserved.
