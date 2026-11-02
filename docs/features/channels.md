@@ -118,6 +118,7 @@ AG-UI channels are public client surfaces, so they expose less than the Agent's 
 
 - `tool_visibility` controls tool activity: `none`, `generic` (a fixed text you configure in `generic_tool_text`), or `narrated`. Raw tool names, arguments, and results are never sent.
 - Reasoning summaries, token usage, subagent activity, the todo list as shared state, and client answers to tool-approval interrupts are off by default, each behind its own setting.
+- Message reactions stream as a `CUSTOM` event named `everruns.reaction`, with `value` `{messageId, emoji, action, actor}`. `action` is `added` or `removed`, and `actor` carries only `kind` and display `name`. A client adds its own reactions through the [Agent Execution API](/features/agent-api/) reaction routes.
 - Access is anonymous by default. Set a shared `token` or an `auth` block to require authentication, and `rate_limit_per_minute` to cap requests per IP.
 - A thread stays resumable for `session_expiration_seconds` (6 hours by default); after that, the same thread ID starts a new session.
 
