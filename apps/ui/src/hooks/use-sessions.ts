@@ -436,6 +436,8 @@ const SSE_EVENT_TYPES = [
   "session.model.changed",
   "task.created",
   "task.updated",
+  "message.reaction.added",
+  "message.reaction.removed",
 ];
 
 /** Default page size for paginated event loading */
@@ -451,7 +453,15 @@ const MAX_EVENTS_IN_MEMORY = 5_000;
 function isSettledTail(events: Event[], settled = false): boolean {
   for (const event of events) {
     if (event.type === "session.idled" || event.type === "session.started") settled = true;
-    else if (!["task.created", "task.updated", "session.model.changed"].includes(event.type)) {
+    else if (
+      ![
+        "task.created",
+        "task.updated",
+        "session.model.changed",
+        "message.reaction.added",
+        "message.reaction.removed",
+      ].includes(event.type)
+    ) {
       settled = false;
     }
   }

@@ -322,4 +322,8 @@ export const messages: Readonly<Record<string, string>> = {
     "La imagen {count} se omitió en la exportación ATIF",
   "{count} images were omitted from the ATIF export":
     "Las imágenes {count} se omitieron de la exportación ATIF",
+  "Add reaction": "Añadir reacción",
+  "{names} reacted {emoji}": "{names} reaccionó con {emoji}",
+  "Remove your {emoji}": "Quitar tu {emoji}",
+  Reaction: "Reacción",
 };
