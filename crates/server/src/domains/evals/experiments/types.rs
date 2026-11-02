@@ -72,6 +72,25 @@ pub struct ExperimentVariant {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = 0.031)]
     pub cost_per_case_usd: Option<f64>,
+    /// Set when the variant ran outside Everruns and was imported: the system
+    /// that ran it, such as "mira".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "mira")]
+    pub run_elsewhere: Option<String>,
+}
+
+/// The experiment an import publishes into. Each imported eval's run becomes
+/// the variant `variant` of the experiment named `name` on that eval, which
+/// is created on first use.
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct ImportExperimentRef {
+    /// Experiment name, matched within each eval.
+    #[schema(example = "Luna vs Sol")]
+    pub name: String,
+    /// The variant this import is. A later import with the same label
+    /// replaces it.
+    #[schema(example = "gpt-6.1-sol")]
+    pub variant: String,
 }
 
 /// An experiment: one dataset version against several variants.

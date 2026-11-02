@@ -144,6 +144,21 @@ everruns evals proposals dismiss --proposal-id evalprop_01933b5a0000700080000000
 
 It runs on your organization's default model and reads only that agent's sessions in your organization. Its cost counts against the org and agent budgets.
 
+## Mira
+
+[Mira](https://github.com/everruns/mira) is the code-first eval runner: studies in code, model matrices, trials, and any CLI or SDK as the subject. It shares its formats with Everruns, so one dataset runs in either.
+
+A dataset exports as Mira samples and imports from them. Each case becomes one sample named after the case; settings Mira has no field for (scorers, post messages, simulated user, tool fixtures, limits) ride under `metadata.everruns`, so an export imports back unchanged.
+
+```bash
+everruns evals samples export --eval-id eval_01h9 | jq -c '.samples[]' > cases.jsonl
+everruns evals samples import --eval-id eval_01h9 --samples "$(jq -s . cases.jsonl)"
+```
+
+Cases are matched by name, so importing again updates them instead of adding copies. A sample written for Mira has no `metadata.everruns`: its `expected` text becomes a `contains` scorer. Attachments and seeded files have no case field, and the import report lists the samples that had them.
+
+A Mira run published to Everruns can join an experiment. Publish with an experiment name and a variant label, and each eval's run becomes that variant of the experiment with that name, created on first use. The experiment page compares it case by case with the other variants and marks it as run in Mira. Publishing the same label again replaces the variant.
+
 ## In the UI
 
 **Quality → Evals** opens on an overview of every agent with a dataset: its pass rate, the trend over recent runs, its live quality from observers over the last 7 days, open findings and the last activity. Tabs hold datasets, experiments, observers, findings from session detectors and classifiers (similar ones grouped, each opening a page with its evidence and the Inspector's account), and the graders a case can use. **Run experiment** starts one from any dataset. Each agent's page has an **Evals** tab with the same view for that agent, plus the observers that watch it and the Eval Builder's proposals. On an observer's edit page, the **Answers**, **Conversations** and **Tools** tabs hold the graders of each scope.

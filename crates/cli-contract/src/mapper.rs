@@ -174,6 +174,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Variants compared on the same eval cases, with a CI gate.",
     ),
     (
+        "evals samples",
+        "Dataset cases as Mira samples, to export or import.",
+    ),
+    (
         "evals proposals",
         "Cases the Eval Builder suggests for an agent, to add or dismiss.",
     ),

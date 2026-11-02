@@ -15294,6 +15294,82 @@
         }
       }
     },
+    "/v1/evals/{eval_id}/samples": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Export a dataset as Mira samples",
+        "description": "Export an eval's cases as Mira samples, one per case. Settings Mira has no field for ride under metadata.everruns, so the export imports back unchanged.",
+        "operationId": "export_eval_samples",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalSampleList"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Import Mira samples as cases",
+        "description": "Create or update an eval's cases from Mira samples, matched by name. A sample's expected text becomes a contains scorer unless metadata.everruns names the scorers.",
+        "operationId": "import_eval_samples",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalSampleImportReport"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/files": {
       "get": {
         "tags": [
@@ -47716,6 +47792,116 @@
           }
         }
       },
+      "EvalSample": {
+        "type": "object",
+        "description": "One Mira dataset row (`mira::Sample`).",
+        "required": [
+          "id",
+          "input"
+        ],
+        "properties": {
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Non-text input. Not imported."
+          },
+          "expected": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Reference answer. Text becomes a `contains` scorer on import."
+          },
+          "files": {
+            "type": "object",
+            "description": "Files to seed into the workspace. Not imported."
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable id within the dataset: the case name.",
+            "example": "refund-over-limit"
+          },
+          "input": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "User turns, sent in order.",
+            "example": [
+              "Refund $450 for order 1182"
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Free-form metadata. `everruns` holds the case settings Mira has no\nfield for."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "EvalSampleImportReport": {
+        "type": "object",
+        "description": "What a sample import did.",
+        "required": [
+          "created",
+          "updated",
+          "case_ids"
+        ],
+        "properties": {
+          "case_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Public ids of the affected cases, in import order."
+          },
+          "created": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Cases created.",
+            "example": 3,
+            "minimum": 0
+          },
+          "left_behind": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sample fields a case cannot hold, one line per sample that had them.",
+            "example": [
+              "refund-with-receipt: attachments"
+            ]
+          },
+          "updated": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Existing cases updated, matched by name.",
+            "example": 1,
+            "minimum": 0
+          }
+        }
+      },
+      "EvalSampleList": {
+        "type": "object",
+        "description": "A dataset as Mira samples.",
+        "required": [
+          "samples"
+        ],
+        "properties": {
+          "samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvalSample"
+            }
+          }
+        }
+      },
       "EvalStatus": {
         "type": "string",
         "description": "Eval lifecycle status (standard building-block lifecycle).",
@@ -48459,6 +48645,14 @@
               "null"
             ],
             "example": "gpt-6.1-sol"
+          },
+          "run_elsewhere": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when the variant ran outside Everruns and was imported: the system\nthat ran it, such as \"mira\".",
+            "example": "mira"
           },
           "run_id": {
             "type": "string",
@@ -51542,6 +51736,17 @@
             },
             "description": "Evals and their case results in this run."
           },
+          "experiment": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ImportExperimentRef",
+                "description": "Publish each eval's run as a variant of an experiment, so it is\ncompared with the experiment's other variants."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source": {
             "$ref": "#/components/schemas/ImportEvalSource",
             "description": "External system that produced the run."
@@ -51607,6 +51812,26 @@
             "type": "string",
             "description": "Provider name.",
             "example": "openai"
+          }
+        }
+      },
+      "ImportExperimentRef": {
+        "type": "object",
+        "description": "The experiment an import publishes into. Each imported eval's run becomes\nthe variant `variant` of the experiment named `name` on that eval, which\nis created on first use.",
+        "required": [
+          "name",
+          "variant"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Experiment name, matched within each eval.",
+            "example": "Luna vs Sol"
+          },
+          "variant": {
+            "type": "string",
+            "description": "The variant this import is. A later import with the same label\nreplaces it.",
+            "example": "gpt-6.1-sol"
           }
         }
       },

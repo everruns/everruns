@@ -107,6 +107,74 @@ impl Database {
         Ok(())
     }
 
+    /// The newest experiment of `eval_id` with this name, for imports that
+    /// name the experiment they belong to.
+    pub async fn find_eval_experiment_by_name(
+        &self,
+        org_id: i64,
+        eval_id: Uuid,
+        name: &str,
+    ) -> Result<Option<EvalExperimentRow>> {
+        Ok(sqlx::query_as::<_, EvalExperimentRow>(sql!(
+            r#"
+            SELECT {EvalExperimentRow} FROM eval_experiments
+            WHERE org_id = $1 AND eval_id = $2 AND name = $3
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#
+        ))
+        .bind(org_id)
+        .bind(eval_id)
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    /// Untag every other run that holds `label` in the experiment, so a
+    /// re-published variant replaces the earlier one instead of sitting
+    /// beside it. The runs themselves stay.
+    pub async fn release_eval_experiment_label(
+        &self,
+        experiment_id: Uuid,
+        label: &str,
+        keep_run_id: Uuid,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE eval_runs SET experiment_id = NULL, variant_label = NULL \
+             WHERE experiment_id = $1 AND variant_label = $2 AND id <> $3",
+        )
+        .bind(experiment_id)
+        .bind(label)
+        .bind(keep_run_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// An eval's dataset version.
+    pub async fn eval_dataset_version(&self, eval_id: Uuid) -> Result<Option<i32>> {
+        Ok(
+            sqlx::query_scalar("SELECT version FROM evals WHERE id = $1")
+                .bind(eval_id)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
+    }
+
+    /// Replace a run's summary.
+    pub async fn set_eval_run_summary(
+        &self,
+        run_id: Uuid,
+        summary: serde_json::Value,
+    ) -> Result<()> {
+        sqlx::query("UPDATE eval_runs SET summary = $2, updated_at = NOW() WHERE id = $1")
+            .bind(run_id)
+            .bind(summary)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     /// The runs of one experiment, oldest (the baseline) first.
     pub async fn list_eval_experiment_runs(&self, experiment_id: Uuid) -> Result<Vec<EvalRunRow>> {
         Ok(sqlx::query_as::<_, EvalRunRow>(sql!(

@@ -114,7 +114,17 @@ export function VariantTable({
                 <TableCell>
                   <span className="font-semibold">{variant.label}</span>
                   <span className="ml-1.5 text-xs text-muted-foreground">
-                    {[isBase ? ui("baseline") : null, setup].filter(Boolean).join(" · ")}
+                    {[
+                      isBase ? ui("baseline") : null,
+                      setup,
+                      variant.run_elsewhere
+                        ? ui("run in {system}", {
+                            system: variant.run_elsewhere,
+                          })
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                   {variant.status !== "completed" && (
                     <Badge variant="outline" className="ml-2 text-xs">
