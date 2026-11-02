@@ -19,11 +19,7 @@ import {
 } from "@/components/ui/table";
 import { formatCostUsd, formatDuration } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
-import type {
-  EvalExperiment,
-  ExperimentVariant,
-  VariantVerdict,
-} from "@/lib/api/types";
+import type { EvalExperiment, ExperimentVariant, VariantVerdict } from "@/lib/api/types";
 import {
   costPerCase,
   deltaTone,
@@ -62,10 +58,7 @@ function Delta({
 
 function RateBar({ rate }: { rate: number }) {
   return (
-    <span
-      className="ml-2 inline-block h-1.5 w-20 bg-muted align-middle"
-      aria-hidden
-    >
+    <span className="ml-2 inline-block h-1.5 w-20 bg-muted align-middle" aria-hidden>
       <span
         className="block h-full bg-foreground"
         style={{ width: `${Math.round(rate * 100)}%` }}
@@ -74,14 +67,10 @@ function RateBar({ rate }: { rate: number }) {
   );
 }
 
-function variantSetup(
-  variant: ExperimentVariant,
-  modelNames: Map<string, string>,
-): string | null {
+function variantSetup(variant: ExperimentVariant, modelNames: Map<string, string>): string | null {
   const target = variant.target;
   const model =
-    variant.model_override ??
-    (target?.type === "session" ? target.model_id : undefined);
+    variant.model_override ?? (target?.type === "session" ? target.model_id : undefined);
   if (model) return modelNames.get(model) ?? model;
   return null;
 }
@@ -176,9 +165,7 @@ export function VariantTable({
                   )}
                 </TableCell>
                 <TableCell className="tabular-nums">
-                  {summary
-                    ? formatDuration(Math.round(summary.avg_latency_ms))
-                    : "—"}
+                  {summary ? formatDuration(Math.round(summary.avg_latency_ms)) : "—"}
                 </TableCell>
                 <TableCell className="tabular-nums">
                   {summary ? summary.avg_turns.toFixed(1) : "—"}
@@ -203,8 +190,7 @@ export function VerdictNotice({ verdict }: { verdict: VariantVerdict }) {
   return (
     <Notice variant={variant} data-testid="experiment-verdict">
       <p className="text-sm">
-        <strong>{verdictHeadline(verdict.verdict, ui)}</strong>{" "}
-        {verdictDetail(verdict, ui)}
+        <strong>{verdictHeadline(verdict.verdict, ui)}</strong> {verdictDetail(verdict, ui)}
       </p>
     </Notice>
   );
@@ -212,20 +198,11 @@ export function VerdictNotice({ verdict }: { verdict: VariantVerdict }) {
 
 type CaseFilter = "changed" | "all";
 
-export function CaseComparisonTable({
-  experiment,
-}: {
-  experiment: EvalExperiment;
-}) {
+export function CaseComparisonTable({ experiment }: { experiment: EvalExperiment }) {
   const ui = useUiTranslations();
-  const cases = useMemo(
-    () => experiment.comparison?.cases ?? [],
-    [experiment.comparison],
-  );
+  const cases = useMemo(() => experiment.comparison?.cases ?? [], [experiment.comparison]);
   const changed = cases.filter((c) => c.changed).length;
-  const [filter, setFilter] = useState<CaseFilter>(
-    changed > 0 ? "changed" : "all",
-  );
+  const [filter, setFilter] = useState<CaseFilter>(changed > 0 ? "changed" : "all");
   const visible = filter === "changed" ? cases.filter((c) => c.changed) : cases;
   const labels = experiment.variants.map((v) => v.label);
 
@@ -267,9 +244,7 @@ export function CaseComparisonTable({
                     <TableHead key={label}>{label}</TableHead>
                   ))}
                   {labels.map((label) => (
-                    <TableHead key={`${label}-cost`}>
-                      {ui("{label} cost", { label })}
-                    </TableHead>
+                    <TableHead key={`${label}-cost`}>{ui("{label} cost", { label })}</TableHead>
                   ))}
                   <TableHead>
                     <span className="sr-only">{ui("Changed")}</span>
@@ -278,17 +253,13 @@ export function CaseComparisonTable({
               </TableHeader>
               <TableBody>
                 {visible.map((row) => (
-                  <TableRow
-                    key={row.case_id}
-                    className={cn(row.changed && "bg-warning/5")}
-                  >
+                  <TableRow key={row.case_id} className={cn(row.changed && "bg-warning/5")}>
                     <TableCell>{row.case_name}</TableCell>
                     {row.cells.map((cell, index) => {
                       const base = row.cells[0];
                       const better =
                         index > 0 && base && cell.trials > 0 && base.trials > 0
-                          ? cell.passed / cell.trials -
-                            base.passed / base.trials
+                          ? cell.passed / cell.trials - base.passed / base.trials
                           : 0;
                       return (
                         <TableCell
@@ -300,9 +271,7 @@ export function CaseComparisonTable({
                             better < 0 && "text-destructive",
                           )}
                         >
-                          {cell.trials > 0
-                            ? `${cell.passed}/${cell.trials}`
-                            : "—"}
+                          {cell.trials > 0 ? `${cell.passed}/${cell.trials}` : "—"}
                         </TableCell>
                       );
                     })}

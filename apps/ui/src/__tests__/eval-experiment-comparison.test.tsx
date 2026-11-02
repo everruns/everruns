@@ -85,10 +85,7 @@ const experiment: EvalExperiment = {
 
 it("shows each variant against the baseline with model names and deltas", () => {
   render(
-    <VariantTable
-      experiment={experiment}
-      modelNames={new Map([["model_sol", "GPT-6.1 Sol"]])}
-    />,
+    <VariantTable experiment={experiment} modelNames={new Map([["model_sol", "GPT-6.1 Sol"]])} />,
   );
   expect(screen.getByText("GPT-6.1 Sol")).toBeInTheDocument();
   // Pass rate and passes-every-trial both gained 50 points.
