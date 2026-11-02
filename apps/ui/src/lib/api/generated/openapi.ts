@@ -5199,6 +5199,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/observers/summary": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Live quality by agent, observer and day */
+    get: operations["get_observer_summary"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/observers/{observer_id}": {
     parameters: {
       query?: never;
@@ -5218,6 +5235,23 @@ export interface paths {
     patch: operations["update_observer"];
     trace?: never;
   };
+  "/v1/observers/{observer_id}/backfill": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Score past production traffic with an observer */
+    post: operations["backfill_observer"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/observers/{observer_id}/scores": {
     parameters: {
       query?: never;
@@ -5229,6 +5263,23 @@ export interface paths {
     get: operations["list_observer_scores"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/observers/{observer_id}/scores/{score_id}/review": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Record whether an observer's score was right */
+    post: operations["review_observer_score"];
     delete?: never;
     options?: never;
     head?: never;
@@ -10803,6 +10854,40 @@ export interface components {
         use?: components["schemas"]["McpServerPresetRef"] | null;
       };
     };
+    /** @description Score past production traffic with an observer. */
+    BackfillObserverRequest: {
+      /**
+       * Format: int32
+       * @description Most past events to read, newest first (1–5000). Defaults to 500.
+       * @example 500
+       */
+      limit?: number | null;
+      /**
+       * @description Apply the observer's sampling rate. Defaults to true; false scores
+       *     every matching slice read.
+       */
+      sample?: boolean | null;
+      /**
+       * Format: int32
+       * @description How far back to read, in hours (1–720). Defaults to 24.
+       * @example 24
+       */
+      since_hours?: number | null;
+    };
+    /** @description What a backfill read and queued. */
+    BackfillResult: {
+      /**
+       * Format: int64
+       * @description Scores queued. Turns and tool calls already scored are not queued
+       *     again; a conversation's score is refreshed.
+       */
+      enqueued: number;
+      /**
+       * Format: int64
+       * @description Past turn, tool and idle events read.
+       */
+      events_read: number;
+    };
     /**
      * @description Limits on background work an org can tune in Settings → Limits.
      *
@@ -13858,6 +13943,7 @@ export interface components {
     };
     /** @description Request to create a new observer. */
     CreateObserverRequest: {
+      alert?: components["schemas"]["ObserverAlert"] | null;
       /**
        * @description Human-readable description. Safe to render in user-facing messages.
        * @example Score replies from the support agent
@@ -19525,6 +19611,7 @@ export interface components {
     ListResponse_Observer: {
       /** @description Array of items returned by the list operation. */
       data: {
+        alert?: components["schemas"]["ObserverAlert"] | null;
         /** Format: date-time */
         archived_at?: string | null;
         /** Format: date-time */
@@ -19818,6 +19905,9 @@ export interface components {
          *     improvement loop.
          */
         reason?: string | null;
+        review?: components["schemas"]["ScoreReview"] | null;
+        /** @description Trace slice this score grades. */
+        scope?: components["schemas"]["ObserverScope"];
         /**
          * @description Scorer key within the observer.
          * @example grounded
@@ -19829,7 +19919,10 @@ export interface components {
          */
         session_id: string;
         status: components["schemas"]["TraceScoreStatus"];
-        /** @description Turn this score grades (turn scope). */
+        /**
+         * @description What was graded: the turn id (turn scope), `session` (session scope)
+         *     or the tool call id (tool scope).
+         */
         turn_id: string;
         /** Format: date-time */
         updated_at: string;
@@ -22939,6 +23032,7 @@ export interface components {
     };
     /** @description An observer: online scoring config over production sessions. */
     Observer: {
+      alert?: components["schemas"]["ObserverAlert"] | null;
       /** Format: date-time */
       archived_at?: string | null;
       /** Format: date-time */
@@ -22974,6 +23068,32 @@ export interface components {
       updated_at: string;
     };
     /**
+     * @description Open a health issue, and tell the people who own the watched agents, when
+     *     an observer's pass rate falls under `min_pass_rate` over the last
+     *     `window_hours`. Needs `min_scored` scores in the window so a handful of
+     *     samples cannot raise it. The issue resolves itself once the rate recovers.
+     */
+    ObserverAlert: {
+      /**
+       * Format: double
+       * @description Pass rate (0.0–1.0) under which the alert opens.
+       * @example 0.8
+       */
+      min_pass_rate: number;
+      /**
+       * Format: int32
+       * @description Scores the window needs before the alert can open. Defaults to 20.
+       * @example 20
+       */
+      min_scored?: number;
+      /**
+       * Format: int32
+       * @description Window the rate is measured over, in hours (1–168). Defaults to 24.
+       * @example 24
+       */
+      window_hours?: number;
+    };
+    /**
      * @description Predicates selecting which production sessions an observer scores.
      *     All present predicates must match (AND); within a list, any entry matches (OR).
      *     An empty match block matches all org traffic. Sessions tagged `eval` are
@@ -22988,11 +23108,16 @@ export interface components {
       session_tags?: string[] | null;
     };
     /**
-     * @description What slice of the trace a scorer grades. Phase 1 implements `turn` only;
-     *     `session` and `tool` scopes are reserved for future use.
+     * @description What slice of the trace a scorer grades.
+     *
+     *     - `turn`: one exchange, scored when the turn completes.
+     *     - `session`: the whole conversation, scored once the session has been idle
+     *       for a while ([`SESSION_SETTLE_SECONDS`]); a later idle re-scores it, so
+     *       each session has one current score.
+     *     - `tool`: one tool call and its result, scored when the call completes.
      * @enum {string}
      */
-    ObserverScope: "turn";
+    ObserverScope: "turn" | "session" | "tool";
     /**
      * @description One scorer inside an observer. `key` names the score series in listings
      *     and future dashboards; `scope` selects the trace slice; `method` is how
@@ -23003,6 +23128,11 @@ export interface components {
       key: string;
       /** @description Trace slice this scorer grades. */
       scope?: components["schemas"]["ObserverScope"];
+      /**
+       * @description Tool scope only: grade calls to these tools. Empty or absent grades
+       *     every tool call.
+       */
+      tools?: string[] | null;
     };
     /**
      * @description Observer lifecycle status. `paused` keeps configuration but stops matching.
@@ -24881,6 +25011,61 @@ export interface components {
         [key: string]: boolean;
       };
     };
+    /** @description Completed scores in one group of a live-quality summary. */
+    QualityGroup: {
+      /**
+       * @description An agent id, an observer id or a day (`YYYY-MM-DD`), by list.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      key: string;
+      /**
+       * Format: double
+       * @description `passed / scored`; absent when nothing was scored.
+       * @example 0.92
+       */
+      pass_rate?: number | null;
+      /** Format: int64 */
+      passed: number;
+      /** Format: int64 */
+      scored: number;
+      /**
+       * Format: int64
+       * @description Distinct sessions the scores read.
+       */
+      sessions: number;
+      /** @description Daily pass rates, oldest first (agent groups only). */
+      trend?: number[];
+    };
+    /**
+     * @description How production traffic scored over the last `days`: in total, by agent,
+     *     by observer and by day.
+     */
+    QualitySummary: {
+      by_agent: components["schemas"]["QualityGroup"][];
+      by_day: components["schemas"]["QualityGroup"][];
+      by_observer: components["schemas"]["QualityGroup"][];
+      /**
+       * Format: int32
+       * @example 7
+       */
+      days: number;
+      /**
+       * Format: double
+       * @example 0.92
+       */
+      pass_rate?: number | null;
+      /** Format: int64 */
+      passed: number;
+      /** Format: int64 */
+      scored: number;
+      /** Format: int64 */
+      sessions: number;
+      /**
+       * Format: date-time
+       * @description Start of the window.
+       */
+      since: string;
+    };
     /** @description Request to answer a pending `ask_user` question set. */
     QuestionAnswersRequest: {
       /**
@@ -25728,6 +25913,13 @@ export interface components {
     ResumeSessionResponse: {
       resumed_budgets: number;
       session_id: string;
+    };
+    /** @description A person's verdict on one score. */
+    ReviewScoreRequest: {
+      /** @description True when the grader got it right. */
+      agrees: boolean;
+      /** @description Optional note on why (at most 2000 characters). */
+      note?: string | null;
     };
     ReviseSandboxTemplateRequest: {
       /**
@@ -27109,6 +27301,23 @@ export interface components {
        * @example 1
        */
       value: number;
+    };
+    /**
+     * @description A person's verdict on one score: whether the grader got it right. Reviews
+     *     calibrate graders, and a disagreed score is a candidate eval case.
+     */
+    ScoreReview: {
+      /** @description True when the person agrees with the grader's pass or fail. */
+      agrees: boolean;
+      /** @description Optional note on why. */
+      note?: string | null;
+      /**
+       * Format: date-time
+       * @description When, set by the server.
+       */
+      reviewed_at?: string | null;
+      /** @description Who reviewed (user id), set by the server. */
+      reviewed_by?: string | null;
     };
     /** @description A scoring rule applied to eval case output. */
     Scorer:
@@ -30422,6 +30631,9 @@ export interface components {
        *     improvement loop.
        */
       reason?: string | null;
+      review?: components["schemas"]["ScoreReview"] | null;
+      /** @description Trace slice this score grades. */
+      scope?: components["schemas"]["ObserverScope"];
       /**
        * @description Scorer key within the observer.
        * @example grounded
@@ -30433,7 +30645,10 @@ export interface components {
        */
       session_id: string;
       status: components["schemas"]["TraceScoreStatus"];
-      /** @description Turn this score grades (turn scope). */
+      /**
+       * @description What was graded: the turn id (turn scope), `session` (session scope)
+       *     or the tool call id (tool scope).
+       */
       turn_id: string;
       /** Format: date-time */
       updated_at: string;
@@ -31695,6 +31910,7 @@ export interface components {
     };
     /** @description Request to update an observer. Omitted fields are unchanged. */
     UpdateObserverRequest: {
+      alert?: components["schemas"]["ObserverAlert"] | null;
       /**
        * @description Human-readable description. Safe to render in user-facing messages.
        * @example Score replies from the support agent
@@ -48075,6 +48291,40 @@ export interface operations {
       };
     };
   };
+  get_observer_summary: {
+    parameters: {
+      query?: {
+        /** @description Window in days (1–90). Defaults to 7. */
+        days?: number;
+        /** @description Only scores of this agent. */
+        agent_id?: string;
+        /** @description Only scores of this observer. */
+        observer_id?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QualitySummary"];
+        };
+      };
+      /** @description Observer not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   get_observer: {
     parameters: {
       query?: never;
@@ -48167,6 +48417,40 @@ export interface operations {
       };
     };
   };
+  backfill_observer: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        observer_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BackfillObserverRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BackfillResult"];
+        };
+      };
+      /** @description Observer not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_observer_scores: {
     parameters: {
       query?: {
@@ -48176,6 +48460,11 @@ export interface operations {
         limit?: number;
         /** @description Zero-based offset into the result set. */
         offset?: number;
+        /**
+         * @description Only completed scores nobody has reviewed yet, failures first, then a
+         *     random sample of the rest (the review queue).
+         */
+        review_queue?: boolean;
       };
       header?: never;
       path: {
@@ -48194,6 +48483,42 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ListResponse_TraceScore"];
         };
+      };
+    };
+  };
+  review_observer_score: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        observer_id: string;
+        /** @description Prefixed public identifier */
+        score_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReviewScoreRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceScore"];
+        };
+      };
+      /** @description Observer or completed score not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

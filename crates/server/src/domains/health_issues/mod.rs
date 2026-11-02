@@ -3,6 +3,7 @@ pub mod background_work;
 pub mod behavior;
 pub mod classifiers;
 pub mod commands;
+pub mod quality;
 pub mod service;
 pub mod types;
 pub use commands::*;

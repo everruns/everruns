@@ -91,6 +91,7 @@ for unattended work that goes wrong. Each is about one subject, kept in
 | `session.suspected_abuse` | session | a decision model answered yes, with probability 0.85 or more, that the session is used for spam, scraping at scale, credential attacks, crypto mining, phishing or malware | a later read answers no, or the session makes no model call for a day |
 | `session.agent_stuck` | session | the same, at 0.8, that the agent repeats itself without progress | as above |
 | `session.followed_injection` | session | the same, at 0.8, that the agent acted on instructions from a tool result or fetched content rather than its user | as above |
+| `observer.pass_rate_low` | observer | an observer with an `alert` passed under its `min_pass_rate` over its window, with at least `min_scored` scores ([online evals](../evaluation/online-evals.md)) | the rate recovers, the window has too few scores, or the alert is removed |
 
 - **Runaway schedules.** Before each fire the scheduler fingerprints the
   previous fire's final answer (lowercased, digits and spacing collapsed, so a

@@ -1,9 +1,10 @@
 "use client";
 
 // An agent's Evals tab (approved mockup 03): how this agent does on its
-// datasets, its experiments, and what detectors found in its sessions.
-// Datasets are evals whose target is a session on this agent. Live quality
-// joins with Observers v2 and the Eval Builder's proposals with that agent.
+// datasets and on real traffic (live quality), its experiments, what detectors
+// found in its sessions, and which observers watch it. Datasets are evals
+// whose target is a session on this agent. The Eval Builder's proposals join
+// with that agent.
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -18,7 +19,13 @@ import {
   YAxis,
 } from "recharts";
 import { useLocale, useUiTranslations } from "@/providers/locale-provider";
-import { useAllEvalExperiments, useEvalRunsMany, useEvals, useObservers } from "@/hooks";
+import {
+  useAllEvalExperiments,
+  useEvalRunsMany,
+  useEvals,
+  useObserverSummary,
+  useObservers,
+} from "@/hooks";
 import { useEvalFindings } from "@/hooks/use-health-issues";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -34,8 +41,15 @@ import {
 } from "@/components/ui/table";
 import { formatDate, formatRelativeTime } from "@/lib/formatting";
 import { isArchivedStatus } from "@/lib/entity-lifecycle";
-import type { EvalExperiment, EvalRun } from "@/lib/api/types";
-import { evalAgentId, isTrendRun, weightedPassRate } from "@/components/evals/evals-overview-data";
+import type { EvalExperiment, EvalRun, Observer, ObserverScorerScope } from "@/lib/api/types";
+import {
+  LIVE_QUALITY_DAYS,
+  evalAgentId,
+  isTrendRun,
+  liveQualityOf,
+  weightedPassRate,
+} from "@/components/evals/evals-overview-data";
+import { Sparkline } from "@/components/evals/sparkline";
 import { formatPercent } from "@/components/evals/experiment-format";
 import { isFinding } from "@/components/evals/findings";
 import { FindingsList } from "@/components/evals/section/findings-list";
@@ -91,6 +105,65 @@ function ExperimentLinks({ experiments }: { experiments: EvalExperiment[] }) {
   );
 }
 
+/** Whether an observer's match rules point at this agent (or at all traffic). */
+export function observesAgent(observer: Observer, agentId: string): boolean {
+  const agents = observer.match.agent_ids ?? [];
+  return agents.length === 0 || agents.includes(agentId);
+}
+
+function ObservingList({ observers, agentId }: { observers: Observer[]; agentId: string }) {
+  const ui = useUiTranslations();
+  const scopeLabel: Record<ObserverScorerScope, string> = {
+    turn: ui("answers"),
+    session: ui("conversations"),
+    tool: ui("tool calls"),
+  };
+  return (
+    <ul className="divide-y">
+      {observers.map((observer) => {
+        const scopes = [...new Set(observer.scorers.map((s) => s.scope ?? "turn"))]
+          .map((scope) => scopeLabel[scope])
+          .join(", ");
+        const allTraffic = (observer.match.agent_ids ?? []).length === 0;
+        return (
+          <li key={observer.id}>
+            <Link
+              href={`/observers/${observer.id}`}
+              className="block px-4 py-2.5 transition-colors hover:bg-muted/50"
+            >
+              <span className="block text-sm">
+                <span className="font-semibold">{observer.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {" · "}
+                  {scopes} · {Math.round(observer.sampling_rate * 100)}%
+                </span>
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {allTraffic
+                  ? ui("All agents · {keys}", {
+                      keys: observer.scorers.map((s) => s.key).join(", "),
+                    })
+                  : observer.scorers.map((s) => s.key).join(", ")}
+              </span>
+            </Link>
+          </li>
+        );
+      })}
+      {observers.length === 0 && (
+        <li className="px-4 py-4 text-sm text-muted-foreground">
+          {ui("No observer scores this agent's live traffic.")}{" "}
+          <Link
+            href={`/observers/new?agent_id=${encodeURIComponent(agentId)}`}
+            className="font-medium text-foreground hover:underline"
+          >
+            {ui("Observe")}
+          </Link>
+        </li>
+      )}
+    </ul>
+  );
+}
+
 export function AgentEvalsTab({ agentId }: { agentId: string }) {
   const ui = useUiTranslations();
   const { displayLocale } = useLocale();
@@ -118,9 +191,15 @@ export function AgentEvalsTab({ agentId }: { agentId: string }) {
   const findings = (findingsPage?.data ?? []).filter(
     (issue) => isFinding(issue) && issue.agent_id === agentId,
   );
-  const watching = (observers ?? []).filter((observer) =>
-    (observer.match.agent_ids ?? []).includes(agentId),
+  const watching = (observers ?? []).filter(
+    (observer) => observer.status === "active" && observesAgent(observer, agentId),
   );
+  const { data: quality } = useObserverSummary({
+    days: LIVE_QUALITY_DAYS,
+    agentId,
+    enabled: observersEnabled,
+  });
+  const live = liveQualityOf(quality, agentId);
 
   const pass = weightedPassRate(datasets);
   let everyTrial = 0;
@@ -167,12 +246,25 @@ export function AgentEvalsTab({ agentId }: { agentId: string }) {
           }
         />
         <StatCard
-          label={ui("Observed by")}
-          value={observersEnabled ? watching.length : "—"}
+          label={ui("Live quality · {days} days", { days: LIVE_QUALITY_DAYS })}
+          value={
+            observersEnabled ? (
+              <span className="inline-flex items-center gap-2">
+                {formatPercent(live?.rate ?? null)}
+                {live && live.trend.length > 1 && (
+                  <Sparkline values={live.trend} label={ui("Live quality by day")} />
+                )}
+              </span>
+            ) : (
+              "—"
+            )
+          }
           hint={
-            watching.length === 1
-              ? ui("1 observer")
-              : ui("{count} observers", { count: watching.length })
+            live
+              ? ui("{count} scores", { count: live.scored })
+              : watching.length > 0
+                ? ui("No scores yet")
+                : ui("Not observed")
           }
         />
         <StatCard
@@ -317,6 +409,16 @@ export function AgentEvalsTab({ agentId }: { agentId: string }) {
               />
             </CardContent>
           </Card>
+          {observersEnabled && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">{ui("Observing")}</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ObservingList observers={watching} agentId={agentId} />
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 

@@ -17,6 +17,7 @@ const FINDING_SEVERITY: Record<string, FindingSeverity> = {
   "session.spend_spike": "medium",
   "session.context_bloat": "medium",
   "agent.unattended_spend_spike": "medium",
+  "observer.pass_rate_low": "medium",
 };
 
 export function isFinding(issue: HealthIssue): boolean {

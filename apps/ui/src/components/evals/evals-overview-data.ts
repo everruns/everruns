@@ -4,10 +4,18 @@
 // Pass rates are weighted by trials, not averaged per dataset, so a 3-case
 // dataset cannot outvote a 300-case one.
 
-import type { Agent, Eval, EvalExperiment, EvalRun, HealthIssue } from "@/lib/api/types";
+import type {
+  Agent,
+  Eval,
+  EvalExperiment,
+  EvalRun,
+  HealthIssue,
+  QualitySummary,
+} from "@/lib/api/types";
 import { findingSeverity, isFinding } from "./findings";
 
 export const EXPERIMENT_WINDOW_DAYS = 7;
+export const LIVE_QUALITY_DAYS = 7;
 const TREND_POINTS = 8;
 
 /** The agent a dataset tests, when its target is a session on an agent. */
@@ -51,12 +59,23 @@ export function passRateTrend(runs: EvalRun[]): number[] {
     .map((run) => run.summary!.pass_rate);
 }
 
+/** Observer scores of production traffic over the summary window. */
+export interface LiveQuality {
+  rate: number | null;
+  scored: number;
+  sessions: number;
+  /** Daily pass rates, oldest first. */
+  trend: number[];
+}
+
 export interface AgentEvalRow {
   agentId: string;
   name: string;
   datasets: Eval[];
   passRate: number | null;
   trend: number[];
+  /** `null` when no observer scored this agent in the window. */
+  liveQuality: LiveQuality | null;
   openFindings: number;
   lastActivityAt: string | null;
 }
@@ -70,7 +89,33 @@ export interface EvalsOverview {
   runningExperiments: number;
   openFindings: number;
   highFindings: number;
+  /** `null` when observers are off or the summary has not loaded. */
+  liveQuality: LiveQuality | null;
   rows: AgentEvalRow[];
+}
+
+/** Live quality of one agent, or the whole org when `agentId` is omitted. */
+export function liveQualityOf(
+  quality: QualitySummary | undefined,
+  agentId?: string,
+): LiveQuality | null {
+  if (!quality) return null;
+  if (agentId === undefined) {
+    return {
+      rate: quality.pass_rate ?? null,
+      scored: quality.scored,
+      sessions: quality.sessions,
+      trend: quality.by_day.map((day) => day.pass_rate ?? 0),
+    };
+  }
+  const group = quality.by_agent.find((g) => g.key === agentId);
+  if (!group || group.scored === 0) return null;
+  return {
+    rate: group.pass_rate ?? null,
+    scored: group.scored,
+    sessions: group.sessions,
+    trend: group.trend ?? [],
+  };
 }
 
 export function buildEvalsOverview({
@@ -80,6 +125,7 @@ export function buildEvalsOverview({
   experiments,
   runsByEval,
   agentName,
+  quality,
   now = new Date(),
 }: {
   evals: Eval[];
@@ -88,6 +134,7 @@ export function buildEvalsOverview({
   experiments: EvalExperiment[];
   runsByEval: Map<string, EvalRun[]>;
   agentName: (agent: Agent) => string;
+  quality?: QualitySummary;
   now?: Date;
 }): EvalsOverview {
   const active = evals.filter((ev) => ev.status === "active");
@@ -118,6 +165,7 @@ export function buildEvalsOverview({
       datasets,
       passRate: weightedPassRate(datasets).rate,
       trend: passRateTrend(runs),
+      liveQuality: liveQualityOf(quality, agentId),
       openFindings: open.filter((f) => f.agent_id === agentId).length,
       lastActivityAt: activity.sort().at(-1) ?? null,
     };
@@ -134,6 +182,7 @@ export function buildEvalsOverview({
     runningExperiments: experiments.filter((e) => e.status === "running").length,
     openFindings: open.length,
     highFindings: open.filter((f) => findingSeverity(f) === "high").length,
+    liveQuality: liveQualityOf(quality),
     rows,
   };
 }

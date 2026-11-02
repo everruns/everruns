@@ -342,6 +342,8 @@ export const queryKeys = {
     list: (includeArchived = false) => ["observers", { includeArchived }] as const,
     detail: (observerId: string) => ["observer", observerId] as const,
     scores: (observerId: string) => ["observer", observerId, "scores"] as const,
+    summary: (days: number, agentId?: string) =>
+      ["observers", "summary", { days, agentId: agentId ?? null }] as const,
   },
 
   // Policy queries

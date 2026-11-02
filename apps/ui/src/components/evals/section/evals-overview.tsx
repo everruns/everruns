@@ -1,8 +1,8 @@
 "use client";
 
 // Evals Overview tab (approved mockup 01): where every agent stands on its
-// datasets, and what needs a look. Live quality from observers joins this view
-// with Observers v2; the Eval Builder's suggestions join with that agent.
+// datasets and on real traffic (live quality from observers), and what needs
+// a look. The Eval Builder's suggestions join with that agent.
 
 import Link from "next/link";
 import { useLocale, useUiTranslations } from "@/providers/locale-provider";
@@ -19,7 +19,8 @@ import {
 import { formatRelativeTime } from "@/lib/formatting";
 import type { HealthIssue } from "@/lib/api/types";
 import type { EvalsOverview } from "../evals-overview-data";
-import { EXPERIMENT_WINDOW_DAYS } from "../evals-overview-data";
+import type { LiveQuality } from "../evals-overview-data";
+import { EXPERIMENT_WINDOW_DAYS, LIVE_QUALITY_DAYS } from "../evals-overview-data";
 import { formatPercent } from "../experiment-format";
 import { Sparkline } from "../sparkline";
 import { FindingsList } from "./findings-list";
@@ -39,12 +40,39 @@ function PassRateCell({ rate }: { rate: number | null }) {
   );
 }
 
+function LiveQualityCell({ agentId, quality }: { agentId: string; quality: LiveQuality | null }) {
+  const ui = useUiTranslations();
+  if (!quality) {
+    return (
+      <span className="inline-flex flex-col gap-0.5">
+        <span className="text-muted-foreground">{ui("Not observed")}</span>
+        <Link
+          href={`/observers/new?agent_id=${encodeURIComponent(agentId)}`}
+          className="text-xs font-medium hover:underline"
+        >
+          {ui("Observe")}
+        </Link>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="tabular-nums">{formatPercent(quality.rate)}</span>
+      {quality.trend.length > 1 && (
+        <Sparkline values={quality.trend} label={ui("Live quality by day")} />
+      )}
+    </span>
+  );
+}
+
 export function EvalsOverviewPanel({
   overview,
   findings,
+  observersEnabled = false,
 }: {
   overview: EvalsOverview;
   findings: HealthIssue[];
+  observersEnabled?: boolean;
 }) {
   const ui = useUiTranslations();
   const { displayLocale } = useLocale();
@@ -72,17 +100,29 @@ export function EvalsOverviewPanel({
           value={formatPercent(overview.passRate)}
           hint={ui("{count} cases", { count: overview.passRateCases })}
         />
-        <StatCard
-          label={ui("Experiments · {days} days", {
-            days: EXPERIMENT_WINDOW_DAYS,
-          })}
-          value={overview.recentExperiments}
-          hint={
-            overview.runningExperiments > 0
-              ? ui("{count} running", { count: overview.runningExperiments })
-              : ui("none running")
-          }
-        />
+        {observersEnabled ? (
+          <StatCard
+            label={ui("Live quality · {days} days", { days: LIVE_QUALITY_DAYS })}
+            value={formatPercent(overview.liveQuality?.rate ?? null)}
+            hint={
+              overview.liveQuality && overview.liveQuality.scored > 0
+                ? ui("{count} sessions scored", { count: overview.liveQuality.sessions })
+                : ui("No observer scores yet")
+            }
+          />
+        ) : (
+          <StatCard
+            label={ui("Experiments · {days} days", {
+              days: EXPERIMENT_WINDOW_DAYS,
+            })}
+            value={overview.recentExperiments}
+            hint={
+              overview.runningExperiments > 0
+                ? ui("{count} running", { count: overview.runningExperiments })
+                : ui("none running")
+            }
+          />
+        )}
         <StatCard
           label={ui("Open findings")}
           value={overview.openFindings}
@@ -109,6 +149,7 @@ export function EvalsOverviewPanel({
                       <TableHead>{ui("Datasets")}</TableHead>
                       <TableHead>{ui("Pass rate")}</TableHead>
                       <TableHead>{ui("Trend")}</TableHead>
+                      {observersEnabled && <TableHead>{ui("Live quality")}</TableHead>}
                       <TableHead>{ui("Findings")}</TableHead>
                       <TableHead>{ui("Last activity")}</TableHead>
                     </TableRow>
@@ -134,6 +175,11 @@ export function EvalsOverviewPanel({
                             label={ui("Pass rate over the last runs")}
                           />
                         </TableCell>
+                        {observersEnabled && (
+                          <TableCell>
+                            <LiveQualityCell agentId={row.agentId} quality={row.liveQuality} />
+                          </TableCell>
+                        )}
                         <TableCell>
                           {row.openFindings > 0 ? (
                             <span className="bg-warning/15 px-1.5 py-0.5 text-xs">

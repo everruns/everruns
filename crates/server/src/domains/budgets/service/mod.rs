@@ -81,10 +81,27 @@ struct BudgetScope {
     unattended: bool,
     /// Public id of the eval run whose case created the session.
     eval_run_subject_id: Option<String>,
+    /// Spend on watching a session, not on serving it (observer grading).
+    /// Only the org and agent budgets see it, so monitoring never uses up a
+    /// person's, channel's, schedule's or the session's own limit.
+    monitoring: bool,
 }
 
 impl BudgetScope {
     fn lookup(&self) -> BudgetSubjectLookup<'_> {
+        if self.monitoring {
+            return BudgetSubjectLookup {
+                schedule_id: None,
+                org_unattended_id: None,
+                session_id: None,
+                agent_id: self.agent_subject_id.as_deref(),
+                user_id: None,
+                org_public_id: Some(self.org_subject_id.as_str()),
+                trigger_id: None,
+                channel_id: None,
+                eval_run_id: None,
+            };
+        }
         BudgetSubjectLookup {
             schedule_id: self.schedule_subject_id.as_deref(),
             org_unattended_id: self.unattended.then_some(self.org_subject_id.as_str()),
@@ -135,6 +152,7 @@ impl BudgetService {
             schedule_subject_id: None,
             unattended: false,
             eval_run_subject_id: None,
+            monitoring: false,
         })
     }
 
@@ -234,6 +252,7 @@ impl BudgetService {
             schedule_subject_id: None,
             unattended: session.trigger_id.is_some(),
             eval_run_subject_id,
+            monitoring: false,
         })
     }
 
@@ -373,6 +392,12 @@ impl BudgetService {
 
         self.attach_unattended(&mut scope, session.org_id, source.input_message_id)
             .await;
+        if source.source_type == OBSERVER_GRADING_SOURCE {
+            scope.monitoring = true;
+            scope.unattended = false;
+            scope.user_id = None;
+            scope.principal_id = None;
+        }
 
         let org_id = session.org_id;
         let total_tokens = Self::metered_total_tokens(
@@ -573,6 +598,46 @@ impl BudgetService {
                 turn_id: None,
                 input_message_id: None,
                 ref_id: result_id,
+                provider_id: None,
+                estimated_cost_usd: None,
+            },
+            None,
+            None,
+            input_tokens as i64,
+            output_tokens as i64,
+            0,
+            0,
+            cost_usd,
+            None,
+            &[],
+        )
+        .await;
+    }
+
+    /// Meter what an observer's judge spent grading one trace score. It is
+    /// monitoring spend: journaled against the session it read, but only the
+    /// org and agent budgets are debited (see `BudgetScope::monitoring`).
+    /// Keyed to the score, so a retried grade is charged once.
+    pub(crate) async fn meter_observer_grading(
+        &self,
+        session_id: SessionId,
+        score_id: uuid::Uuid,
+        input_tokens: u64,
+        output_tokens: u64,
+        cost_usd: Option<f64>,
+    ) {
+        if !cost_usd.is_some_and(|cost| cost > 0.0) {
+            return;
+        }
+        self.process_llm_generation(
+            GenerationSource {
+                session_id,
+                source_type: OBSERVER_GRADING_SOURCE,
+                source_id: score_id.to_string(),
+                event_id: None,
+                turn_id: None,
+                input_message_id: None,
+                ref_id: score_id,
                 provider_id: None,
                 estimated_cost_usd: None,
             },
@@ -1024,6 +1089,8 @@ impl EventListener for BudgetService {
 
 /// Journal `source_type` of late usage applied to a generation record.
 pub(crate) const LATE_USAGE_SOURCE: &str = "llm_generation_late_usage";
+/// Journal `source_type` of an observer judge grading a trace score.
+pub(crate) const OBSERVER_GRADING_SOURCE: &str = "observer_grading";
 
 /// What a metered generation is journaled against. An `llm.generation` event
 /// is one source; usage applied to its record later (late Agents API usage,

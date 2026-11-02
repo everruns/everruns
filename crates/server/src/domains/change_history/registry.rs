@@ -672,6 +672,12 @@ pub fn declared(name: &str) -> Change {
         "create_observer" => on(K::Observer, Created, ID),
         "update_observer" => on(K::Observer, Updated, ID),
         "delete_observer" => on(K::Observer, Deleted, Param("observer_id")),
+        "review_observer_score" => {
+            Change::Exempt("a review annotates one derived score, not the observer")
+        }
+        "backfill_observer" => {
+            Change::Exempt("a backfill queues scores, the observer is unchanged")
+        }
 
         "create_budget" => on(K::Budget, Created, ID),
         "update_budget" => on(K::Budget, Updated, ID),

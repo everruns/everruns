@@ -1,10 +1,18 @@
 import {
   buildEvalsOverview,
+  liveQualityOf,
   passRateTrend,
   weightedPassRate,
 } from "@/components/evals/evals-overview-data";
 import { sortFindings } from "@/components/evals/findings";
-import type { Agent, Eval, EvalExperiment, EvalRun, HealthIssue } from "@/lib/api/types";
+import type {
+  Agent,
+  Eval,
+  EvalExperiment,
+  EvalRun,
+  HealthIssue,
+  QualitySummary,
+} from "@/lib/api/types";
 
 function evalFor(id: string, agentId: string | undefined, passed: number, total: number): Eval {
   return {
@@ -123,6 +131,55 @@ describe("evals overview", () => {
     expect(a.openFindings).toBe(2);
     expect(a.passRate).toBe(0.8);
     expect(a.lastActivityAt).toBe("2026-11-01T10:00:00Z");
+  });
+
+  it("joins live quality from observers per agent and in total", () => {
+    const quality = {
+      since: "2026-10-25T00:00:00Z",
+      days: 7,
+      scored: 40,
+      passed: 30,
+      pass_rate: 0.75,
+      sessions: 12,
+      by_agent: [
+        { key: "agent_a", scored: 30, passed: 27, pass_rate: 0.9, sessions: 9, trend: [0.8, 0.9] },
+        { key: "agent_b", scored: 0, passed: 0, sessions: 0 },
+      ],
+      by_observer: [],
+      by_day: [
+        { key: "2026-10-31", scored: 10, passed: 5, pass_rate: 0.5, sessions: 3 },
+        { key: "2026-11-01", scored: 30, passed: 25, pass_rate: 25 / 30, sessions: 9 },
+      ],
+    } as QualitySummary;
+    expect(liveQualityOf(undefined)).toBeNull();
+    expect(liveQualityOf(quality)).toEqual({
+      rate: 0.75,
+      scored: 40,
+      sessions: 12,
+      trend: [0.5, 25 / 30],
+    });
+    expect(liveQualityOf(quality, "agent_a")).toEqual({
+      rate: 0.9,
+      scored: 30,
+      sessions: 9,
+      trend: [0.8, 0.9],
+    });
+    // Nothing scored, or no group at all, reads as "not observed".
+    expect(liveQualityOf(quality, "agent_b")).toBeNull();
+    expect(liveQualityOf(quality, "agent_c")).toBeNull();
+
+    const overview = buildEvalsOverview({
+      evals: [evalFor("e1", "agent_a", 8, 10), evalFor("e2", "agent_b", 5, 10)],
+      agents: [{ id: "agent_a" }, { id: "agent_b" }] as Agent[],
+      findings: [],
+      experiments: [],
+      runsByEval: new Map(),
+      agentName: (agent) => agent.id,
+      quality,
+    });
+    expect(overview.liveQuality?.rate).toBe(0.75);
+    expect(overview.rows.find((r) => r.agentId === "agent_a")!.liveQuality?.rate).toBe(0.9);
+    expect(overview.rows.find((r) => r.agentId === "agent_b")!.liveQuality).toBeNull();
   });
 
   it("lists the loudest findings first, then the newest", () => {

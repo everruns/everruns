@@ -17,6 +17,7 @@ import {
   useEvalRunsMany,
   useEvals,
   useObservers,
+  useObserverSummary,
   usePageTitle,
 } from "@/hooks";
 import { useEvalFindings } from "@/hooks/use-health-issues";
@@ -32,7 +33,11 @@ import {
   SectionTabs,
 } from "@/components/layout";
 import { getDisplayName, isArchivedStatus } from "@/lib/entity-lifecycle";
-import { buildEvalsOverview, evalAgentId } from "@/components/evals/evals-overview-data";
+import {
+  LIVE_QUALITY_DAYS,
+  buildEvalsOverview,
+  evalAgentId,
+} from "@/components/evals/evals-overview-data";
 import { EvalsOverviewPanel } from "@/components/evals/section/evals-overview";
 import { DatasetsGrid } from "@/components/evals/section/datasets-grid";
 import { ExperimentsTable } from "@/components/evals/section/experiments-table";
@@ -61,6 +66,10 @@ function EvalsSection() {
     includeArchived: false,
     enabled: observersEnabled,
   });
+  const { data: quality } = useObserverSummary({
+    days: LIVE_QUALITY_DAYS,
+    enabled: observersEnabled && tab === "overview",
+  });
   const findings = useMemo(() => findingsPage?.data ?? [], [findingsPage]);
 
   const activeEvals = useMemo(
@@ -78,8 +87,18 @@ function EvalsSection() {
         experiments: experiments ?? [],
         runsByEval,
         agentName: (agent) => getDisplayName(agent, displayLocale),
+        quality: observersEnabled ? quality : undefined,
       }),
-    [activeEvals, agents, findings, experiments, runsByEval, displayLocale],
+    [
+      activeEvals,
+      agents,
+      findings,
+      experiments,
+      runsByEval,
+      displayLocale,
+      quality,
+      observersEnabled,
+    ],
   );
 
   const selectTab = (next: string) => {
@@ -138,7 +157,13 @@ function EvalsSection() {
       </PageControlStrip>
 
       <PageMain>
-        {tab === "overview" && <EvalsOverviewPanel overview={overview} findings={findings} />}
+        {tab === "overview" && (
+          <EvalsOverviewPanel
+            overview={overview}
+            findings={findings}
+            observersEnabled={observersEnabled}
+          />
+        )}
         {tab === "datasets" && (
           <DatasetsGrid evals={evals} agents={agents} isLoading={isLoading} error={error} />
         )}

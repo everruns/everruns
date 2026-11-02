@@ -317,6 +317,7 @@ impl BudgetService {
             schedule_subject_id: None,
             unattended: false,
             eval_run_subject_id: None,
+            monitoring: false,
         };
         // The policies the usage counted against are resolved again from
         // its session, the way the first debit found them.
@@ -427,6 +428,7 @@ impl BudgetService {
                 schedule_subject_id: None,
                 unattended: false,
                 eval_run_subject_id: None,
+                monitoring: false,
             });
             let label = match &span.profile_name {
                 Some(size) => format!("{} sandboxes ({size})", span.provider),
