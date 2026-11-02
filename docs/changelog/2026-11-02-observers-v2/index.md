@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api, cli]
 links:
   docs: [/features/evals/]
-  prs: []
+  prs: [everruns/everruns#5161]
 ---
 
 Observers grade more than single answers. A **Conversations** grader reads the
