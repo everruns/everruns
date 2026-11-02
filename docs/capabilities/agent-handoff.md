@@ -1,5 +1,5 @@
 ---
-title: Agent Handoff
+title: Agents
 description: Delegate work to configured first-party agents with spawn_agent, as a background task, a blocking call, or an invited participant in the current session.
 appliesTo: [platform]
 ---
@@ -13,9 +13,12 @@ appliesTo: [platform]
 | **Risk** | High |
 | **Availability** | Experimental |
 
-Agent Handoff lets an agent hand work to other first-party Everruns agents.
-Each target is configured ahead of time with an agent and a harness, so the
-model can only pick from that list. The capability adds the `agent` target type
+The Agents capability (`agent_handoff`) lets an agent hand work to other
+first-party Everruns agents. The agents it can use are listed ahead of time,
+so the model can only pick from that list. In the UI, add them from the
+agent's **Agents** tab: link an existing agent, or create a new one there.
+Agents created there are exported and imported together with the agent that
+uses them. The capability adds the `agent` target type
 to the shared `spawn_agent` tool, the same dispatcher that
 [Sub Agents](/capabilities/sub-agents/) and
 [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) extend. The child runs as its own session, or joins
@@ -37,11 +40,7 @@ sessions that use the parent's own configuration, see
   "config": {
     "targets": [
       {
-        "id": "billing",
-        "name": "Billing agent",
-        "description": "Answers invoice and refund questions",
         "agent_id": "agent_...",
-        "harness_id": "harness_...",
         "required_connections": ["github"]
       }
     ]
@@ -51,11 +50,11 @@ sessions that use the parent's own configuration, see
 
 | Field | Required | Description |
 |---|---|---|
-| `id` | Yes | Stable key the model passes as `target.id` |
-| `name` | Yes | Human-readable name, shown in the system prompt |
-| `description` | No | What the target does, shown in the system prompt |
 | `agent_id` | Yes | Public ID of the target agent |
-| `harness_id` | Yes | Public ID of the harness the target runs on |
+| `id` | No | Key the model passes as `target.id`; filled from the agent when saved |
+| `name` | No | Shown in the system prompt; filled from the agent's name when saved |
+| `description` | No | Shown in the system prompt; filled from the agent's description when saved |
+| `harness_id` | No | Harness to run the target on; defaults to the agent's current harness at hand-off time |
 | `required_connections` | No | Provider connections that must exist before the handoff starts |
 | `required_scopes` | No | Non-secret scope labels recorded for audit and resource metadata |
 

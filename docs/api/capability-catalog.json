@@ -69,7 +69,7 @@
         "dev"
       ],
       "id": "agent_handoff",
-      "name": "Agent Handoff",
+      "name": "Agents",
       "status": "available",
       "tools": []
     },
