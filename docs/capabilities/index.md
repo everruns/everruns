@@ -174,6 +174,7 @@ Performance and cost optimization for LLM interactions.
 | [Parallel Tool Calls](/capabilities/parallel-tool-calls/) | `parallel_tool_calls` | 0 |
 | Native Async Tools | `native_async_tools` | 0 |
 | [Prompt Caching](/capabilities/prompt-caching/) | `prompt_caching` | 0 |
+| [Claude Message Threads](/capabilities/claude-message-threads/) | `claude_message_threads` | 0 |
 
 ### Safety
 
