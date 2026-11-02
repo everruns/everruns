@@ -1,29 +1,39 @@
 ---
-title: Datasets and experiments shared with Mira
-description: Export an eval's cases as Mira samples, import Mira datasets as cases, and publish Mira runs into experiments to compare them with other variants.
+title: Run a Mira model matrix against your hosted Everruns agents
+description: Mira now tests the agents you deployed on Everruns and publishes each run into an experiment, next to the versions Everruns ran itself.
 date: 2026-11-02
 kind: feature
-significance: minor
-products: [platform, cloud]
-surfaces: [ui, api, cli]
+significance: notable
+products: [platform, cloud, mira]
+surfaces: [ui, api, cli, code]
 links:
   docs: [/features/evals/]
-  prs: [everruns/everruns#5165]
+  prs: [everruns/everruns#5165, everruns/mira#88]
 ---
 
-Eval datasets and Mira datasets now share a format. `everruns evals samples
-export` writes an eval's cases as Mira samples, and `everruns evals samples
-import` loads a Mira JSONL file as cases, matching them by name. Case settings
-Mira has no field for travel with the sample, so a dataset makes the round trip
-unchanged.
+[Mira](https://github.com/everruns/mira), the code-first eval runner, can now
+test the agent you deployed rather than a local copy, and put the results where
+your team already compares versions. Point its `HostedAgent` subject at one
+agent per model:
 
-```bash
-everruns evals samples export --eval-id eval_01933b5a000070008000000000000001 \
-  | jq -c '.samples[]' > cases.jsonl
+```rust
+let agent = HostedAgent::from_env()? // the agent's URL and agent key
+    .route("gpt-6.1-sol", "https://everruns.example/api/v1/channels/chan_sol")
+    .route("gpt-6-luna", "https://everruns.example/api/v1/channels/chan_luna");
 ```
 
-A Mira run published with an experiment name joins that experiment, one
-variant per target. The experiment page compares it case by case with the
-other variants and marks it as run in Mira.
+Then run the dataset you exported from Everruns and publish into an experiment:
 
-See [Evals](/features/evals/).
+```bash
+everruns evals samples export --eval-id eval_019a4b5c00007000800000000000a001 \
+  | jq -c '.samples[]' > cases.jsonl
+mira run --study study.rs --publish everruns --everruns-experiment "Support triage: model matrix"
+```
+
+Each Mira target becomes one variant, marked as run in Mira, compared case by
+case with the agent's current version:
+
+![An Everruns experiment comparing the agent's version 14 with two Mira variants: GPT-6.1 Sol fixed 2 cases, GPT-6 Luna broke 2](./mira-experiment@2x.png)
+
+See [Evals](/features/evals/#mira) and Mira's
+[hosted agents guide](https://github.com/everruns/mira/blob/main/docs/subjects.md#hosted-agents-hostedagent).
