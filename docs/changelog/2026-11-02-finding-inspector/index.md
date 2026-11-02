@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api, cli]
 links:
   docs: [/features/evals/]
-  prs: []
+  prs: [everruns/everruns#5162]
 ---
 
 When a classifier flags a session as stuck, abusive or following injected
