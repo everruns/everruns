@@ -70,6 +70,7 @@ pub(super) async fn run(doctor: &SystemDoctor) -> Findings {
 
     found.check(detection_check(doctor));
     found.check(classifier_check(doctor));
+    found.check(inspector_check(doctor));
 
     let logs = DoctorCheck::new(AREA, "observability.log_level", "Log level");
     let verbose = env
@@ -174,5 +175,44 @@ fn classifier_check(doctor: &SystemDoctor) -> DoctorCheck {
     check.ok(format!(
         "The last sweep classified {} sessions.",
         sweep.classified
+    ))
+}
+
+/// Whether the Inspector is writing findings up on this server, and how many
+/// abuse detections across the install wait for a person.
+fn inspector_check(doctor: &SystemDoctor) -> DoctorCheck {
+    use crate::domains::health_issues::inspector::last_sweep;
+    let check = DoctorCheck::new(AREA, "observability.inspector", "Finding write-ups");
+    if doctor.preflight {
+        return check
+            .info("The Inspector runs inside the server; a command-line run cannot see it.");
+    }
+    let Some(sweep) = last_sweep() else {
+        return check.info("The Inspector has not swept yet since the server started.");
+    };
+    if sweep.open_platform > 0 {
+        return check
+            .warning(format!(
+                "{} abuse detections across the install wait for a person.",
+                sweep.open_platform
+            ))
+            .why("Each is a lead, written up by the Inspector, that a session may be abusing the platform.")
+            .fix(
+                "Review them with `everruns system detections` (GET /v1/system/detections). \
+                 Nothing is suspended automatically on this evidence.",
+            );
+    }
+    if sweep.failed > 0 && sweep.written == 0 {
+        return check
+            .warning(format!(
+                "The last Inspector sweep could not write any finding up: {}.",
+                sweep.last_error.unwrap_or_default()
+            ))
+            .why("Findings still notify, but without an account of what happened.")
+            .fix("Check the organizations' default models and the server log.");
+    }
+    check.ok(format!(
+        "The last sweep wrote up {} findings.",
+        sweep.written
     ))
 }

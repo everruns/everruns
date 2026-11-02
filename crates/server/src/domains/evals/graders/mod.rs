@@ -153,6 +153,8 @@ pub struct Graders {
     /// Plays the user in multistep eval cases, on the same org models the
     /// judge uses. Lives here so every holder of graders can simulate.
     simulator: Option<Arc<dyn UserSimulator>>,
+    /// Writes findings up (detection layer 3), on the same org models.
+    inspector: Option<Arc<dyn crate::domains::health_issues::inspector::InspectorModel>>,
 }
 
 impl Graders {
@@ -163,6 +165,7 @@ impl Graders {
             judge: None,
             decisions: None,
             simulator: None,
+            inspector: None,
         }
     }
 
@@ -181,7 +184,10 @@ impl Graders {
         ));
         Self::new(db.clone())
             .with_judge(client.clone())
-            .with_simulator(Arc::new(LlmUserSimulator::new(client)))
+            .with_simulator(Arc::new(LlmUserSimulator::new(client.clone())))
+            .with_inspector(Arc::new(
+                crate::domains::health_issues::inspector::LlmInspector::new(client),
+            ))
             .with_decisions(Arc::new(HostDecisions {
                 db,
                 deployment: host.decisions(),
@@ -203,6 +209,21 @@ impl Graders {
     /// The simulated-user player, `None` without a model stack.
     pub fn simulator(&self) -> Option<&Arc<dyn UserSimulator>> {
         self.simulator.as_ref()
+    }
+
+    pub fn with_inspector(
+        mut self,
+        inspector: Arc<dyn crate::domains::health_issues::inspector::InspectorModel>,
+    ) -> Self {
+        self.inspector = Some(inspector);
+        self
+    }
+
+    /// The finding writer, `None` without a model stack.
+    pub fn inspector(
+        &self,
+    ) -> Option<Arc<dyn crate::domains::health_issues::inspector::InspectorModel>> {
+        self.inspector.clone()
     }
 
     pub fn with_decisions(mut self, decisions: Arc<dyn DecisionResolver>) -> Self {

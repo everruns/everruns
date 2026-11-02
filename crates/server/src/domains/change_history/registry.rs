@@ -823,7 +823,7 @@ pub fn declared(name: &str) -> Change {
             "runtime credential operations are write-only and use payload-free resource audit",
         ),
         "mark_notification_viewed" => Change::Exempt("read state of the caller's own inbox"),
-        "check_health_issue" | "snooze_health_issue" => {
+        "check_health_issue" | "snooze_health_issue" | "dismiss_health_issue" => {
             Change::Exempt("triage state of a health issue, not configuration")
         }
 

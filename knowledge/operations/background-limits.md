@@ -130,16 +130,42 @@ for unattended work that goes wrong. Each is about one subject, kept in
   issue keeps the probability and the model, and the notification says which
   question was answered yes. Findings notify only: nothing is stopped or
   suspended on a classifier's word, and a person confirms anything further.
+- **Inspector** (layer 3) writes up each open classifier finding and each
+  runaway schedule once per episode, on the org's default model: what
+  happened in two to four sentences, a severity (high, medium, low) that can
+  disagree with the detector, and one next step. It reads the last 12
+  messages (1,200 characters each), the last 60 tool calls and the issue's
+  numbers, and is asked not to repeat secrets or personal details; it stores
+  only its write-up (`finding_investigations`). It files the finding under one
+  of the org's clusters of the same code from the last 30 days, or starts one
+  (`finding_clusters`), so the Findings tab shows similar findings as one row.
+  Clusters never span orgs and are leads, never grounds for automatic action.
+  Its cost is monitoring spend: only the org and agent budgets pay. No model
+  marks the episode unavailable; a bad answer is retried after an hour, three
+  times at most.
+- **Dismiss** (`POST /v1/health-issues/{id}/dismiss`) closes a finding with a
+  `note` saying why, kept on its write-up row for calibrating detectors. A dismissed
+  session finding stays closed when a detector or classifier says yes about
+  the same session again. A dismissed runaway schedule reopens if the schedule
+  keeps repeating itself, since that is new evidence.
+- **Platform side.** `GET /v1/system/detections` (`everruns system
+  detections`, platform users only) lists open suspected-abuse findings in
+  every org with the Inspector's write-up, for the deployment's operator.
+  Suspension still needs a person.
 - **System doctor** reports `observability.detection`: a warning when the
   sweep failed or has not finished for 40 minutes, so a detector that stopped
   is visible. `observability.classifiers` warns while any session is
   suspected of abuse, so a deployment's operator hears of it, and when the
-  last classifier sweep could not read any session.
+  last classifier sweep could not read any session. `observability.inspector`
+  warns while abuse detections wait for a person, and when the last Inspector
+  sweep could not write any finding up.
 
 Source: `crates/server/src/domains/health_issues/background_work.rs`,
 `crates/server/src/domains/health_issues/behavior.rs`,
 `crates/server/src/domains/health_issues/classifiers.rs`,
+`crates/server/src/domains/health_issues/inspector.rs`,
 `crates/server/src/storage/background_work.rs`,
+`crates/server/src/storage/finding_investigations.rs`,
 `crates/server/src/storage/behavior_detectors.rs`,
 `crates/server/src/storage/session_classifications.rs`.
 

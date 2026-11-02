@@ -183,6 +183,10 @@ pub(super) async fn observe_session(
     evidence: serde_json::Value,
 ) -> anyhow::Result<String> {
     let subject = SessionId::from_uuid(session_id).to_string();
+    // A person dismissed this finding about this session: leave it closed.
+    if db.finding_dismissed(org_id, code, &subject).await? {
+        return Ok(subject);
+    }
     let agent = match agent_id {
         Some(agent) => db.agent_label(agent).await?,
         None => None,

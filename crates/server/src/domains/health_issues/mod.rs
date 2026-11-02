@@ -3,6 +3,7 @@ pub mod background_work;
 pub mod behavior;
 pub mod classifiers;
 pub mod commands;
+pub mod inspector;
 pub mod quality;
 pub mod service;
 pub mod types;
@@ -14,5 +15,7 @@ mod background_work_tests;
 mod behavior_tests;
 #[cfg(test)]
 mod classifier_tests;
+#[cfg(test)]
+mod inspector_tests;
 #[cfg(test)]
 mod tests;

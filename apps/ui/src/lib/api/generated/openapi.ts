@@ -4115,6 +4115,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/health-issues/{issue_id}/dismiss": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Dismiss a detector finding with a reason
+     * @description Close a finding that needs nothing. The reason is kept to calibrate detectors, and a dismissed session finding stays closed when the same session is flagged again.
+     */
+    post: operations["dismiss_health_issue"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/health-issues/{issue_id}/snooze": {
     parameters: {
       query?: never;
@@ -8083,6 +8103,23 @@ export interface paths {
     put?: never;
     /** Permanently delete an archived skill */
     post: operations["destroy_skill"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/system/detections": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Open abuse detections in every organization */
+    get: operations["list_platform_detections"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -14835,6 +14872,17 @@ export interface components {
        */
       oid: string;
     };
+    /** @description Why a finding needs nothing. */
+    DismissHealthIssueRequest: {
+      /**
+       * @description A false alarm, expected work, or already handled. Kept so detectors
+       *     can be calibrated against it.
+       *     (Named `note` because `reason` is the change-intent flag every
+       *     command takes.)
+       * @example Expected: this is our nightly load test
+       */
+      note: string;
+    };
     /** @description DLQ entry response */
     DlqEntryResponse: {
       /**
@@ -16634,6 +16682,63 @@ export interface components {
     /** @enum {string} */
     FindingCategory: "structure" | "completeness" | "effectiveness" | "safety" | "cost";
     /**
+     * @description The Inspector's write-up of a finding: what happened, how serious it is,
+     *     what to do, and the cluster of similar findings it was filed under.
+     */
+    FindingInvestigation: {
+      /**
+       * Format: uuid
+       * @description The cluster of similar findings in this organization.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
+      cluster_id?: string | null;
+      /**
+       * Format: int64
+       * @description Open findings in the cluster, this one included.
+       * @example 3
+       */
+      cluster_open?: number | null;
+      /** @example Schedules polling an expired claim */
+      cluster_title?: string | null;
+      /**
+       * Format: date-time
+       * @example 2026-10-18T21:40:00Z
+       */
+      completed_at?: string | null;
+      /** @example Expected: load test */
+      dismiss_reason?: string | null;
+      /**
+       * Format: date-time
+       * @description When a person dismissed the finding, and why.
+       */
+      dismissed_at?: string | null;
+      /**
+       * @description The model that wrote it.
+       * @example gpt-6.1-sol
+       */
+      model?: string | null;
+      /**
+       * @description `high`, `medium` or `low`, as the Inspector judged it.
+       * @example high
+       */
+      severity?: string | null;
+      /**
+       * @description `running`, `done`, `failed`, or `unavailable` (no model to write it).
+       * @example done
+       */
+      status: string;
+      /**
+       * @description One concrete next step.
+       * @example Add a stop rule to the schedule's instructions.
+       */
+      suggested_action?: string | null;
+      /**
+       * @description What happened, in two to four plain sentences.
+       * @example The schedule polls a sign-in claim that expired; every run since reports the same error.
+       */
+      what_happened?: string | null;
+    };
+    /**
      * @description Pointer to the config field (and optional byte span within it) a finding
      *     refers to.
      */
@@ -17414,6 +17519,11 @@ export interface components {
        */
       error_code?: string | null;
       /**
+       * @description The numbers a detector or classifier recorded for a finding: counts,
+       *     costs, probabilities. Never session content.
+       */
+      evidence?: Record<string, unknown> | null;
+      /**
        * Format: date-time
        * @description Time the current issue episode was first detected.
        * @example 2026-10-03T12:00:00Z
@@ -17430,6 +17540,7 @@ export interface components {
        * @example 550e8400-e29b-41d4-a716-446655440000
        */
       id: string;
+      investigation?: components["schemas"]["FindingInvestigation"] | null;
       /**
        * Format: date-time
        * @description Time the latest accepted verification evidence was observed.
@@ -24667,6 +24778,57 @@ export interface components {
      * @enum {string}
      */
     PhaseSource: "provider" | "derived" | "communication";
+    /** @description An open finding of the platform operator's concern, in any organization. */
+    PlatformDetection: {
+      /** @example Outreach bot */
+      agent_name?: string | null;
+      cluster_title?: string | null;
+      /** @example session.suspected_abuse */
+      code: string;
+      evidence?: Record<string, unknown> | null;
+      /**
+       * Format: date-time
+       * @example 2026-10-18T21:40:00Z
+       */
+      first_detected_at: string;
+      /**
+       * Format: uuid
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
+      issue_id: string;
+      /**
+       * @description Public identifier of the organization.
+       * @example org_550e8400e29b41d4a716446655440000
+       */
+      org_id: string;
+      /** @example Acme */
+      org_name: string;
+      /** @example session_550e8400e29b41d4a716446655440000 */
+      session_id?: string | null;
+      /** @example high */
+      severity?: string | null;
+      suggested_action?: string | null;
+      what_happened?: string | null;
+    };
+    /** @description A page of open platform detections. */
+    PlatformDetectionList: {
+      data: components["schemas"]["PlatformDetection"][];
+      /**
+       * Format: int64
+       * @example 20
+       */
+      limit: number;
+      /**
+       * Format: int64
+       * @example 0
+       */
+      offset: number;
+      /**
+       * Format: int64
+       * @example 1
+       */
+      total: number;
+    };
     /**
      * @description Which usage a policy counts. Absent counts everything.
      * @enum {string}
@@ -45525,6 +45687,47 @@ export interface operations {
       };
     };
   };
+  dismiss_health_issue: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        issue_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DismissHealthIssueRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HealthIssue"];
+        };
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   snooze_health_issue: {
     parameters: {
       query?: never;
@@ -55410,6 +55613,47 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  list_platform_detections: {
+    parameters: {
+      query?: {
+        /** @description Number of detections to skip */
+        offset?: number;
+        /** @description Page size from 1 through 100; defaults to 20 */
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Open detections, newest first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlatformDetectionList"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Platform user access is required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
       };
     };
   };
