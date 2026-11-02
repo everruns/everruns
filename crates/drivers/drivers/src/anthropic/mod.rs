@@ -34,6 +34,7 @@ mod browser_toolset;
 mod computer_toolset;
 mod driver;
 mod effort;
+mod message_threads;
 mod prefill;
 mod server_compaction;
 mod web_search;

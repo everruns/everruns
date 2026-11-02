@@ -107,3 +107,31 @@ fn provider_ids_and_states_are_validated() {
         .is_err()
     );
 }
+
+#[test]
+fn shared_batch_encoder_does_not_enable_message_threads() {
+    let mut config = LlmCallConfig::new("claude-sonnet-4-5");
+    config
+        .driver_options
+        .insert("anthropic/message_threads".into(), json!(true));
+    config
+        .metadata
+        .insert("session_id".into(), "batch-session".into());
+    let prepared = AnthropicChatDriver::new()
+        .prepare_request(
+            &ProviderEndpoint::from_parts(
+                DEFAULT_BASE_URL,
+                everruns_contracts::StaticHeaderAuth::new("x-api-key", "fixture"),
+            ),
+            vec![Message::text(MessageRole::User, "hello")],
+            &config,
+        )
+        .unwrap();
+    let body = serde_json::to_value(prepared.request).unwrap();
+    assert!(body.get("thread").is_none());
+    assert!(
+        !prepared
+            .conversation_betas
+            .contains(&"message-threads-2026-08-12")
+    );
+}

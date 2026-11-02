@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use crate::anthropic::server_compaction;
+use crate::anthropic::{message_threads, server_compaction};
 use everruns_contracts::RejectedProviderCapability;
 use everruns_contracts::credential_schema::CredentialFormSchema;
 use everruns_contracts::driver_helpers::{
@@ -252,15 +252,15 @@ impl AnthropicChatDriver {
     ///
     /// Invoked once per reconnect attempt by [`connect_sse_with_reconnect`]. The
     /// `request` is shared (`Arc<Mutex>`) so a fallback-corrected body carries
-    /// across reconnects; it consumes no body bytes, so re-sending is
-    /// idempotent. Terminal classification and error messages are preserved
-    /// exactly.
+    /// across reconnects. Thread continuations rejected after an uncertain
+    /// attempt replay from full history; other errors keep their classification.
     async fn send_messages_request(
         &self,
         endpoint: &everruns_contracts::ProviderEndpoint,
         request: Arc<Mutex<AnthropicRequest>>,
         options: SendMessagesOptions<'_>,
         retries_consumed: u32,
+        thread: &Arc<Mutex<message_threads::Exchange>>,
     ) -> Result<(reqwest::Response, RetryMetadata)> {
         let SendMessagesOptions {
             needs_interleaved_thinking,
@@ -338,18 +338,46 @@ impl AnthropicChatDriver {
                     // Snapshot the (possibly fallback-mutated) request as JSON
                     // while holding the lock, then release it before awaiting the
                     // send so the guard never crosses an `.await` point.
-                    let body = serde_json::to_vec(&*request.lock().unwrap())
-                        .map_err(|e| {
-                            SendOutcome::Fatal(AgentLoopError::llm(format!(
-                                "Failed to serialize Anthropic request: {e}"
-                            )))
-                        })?;
-                    let resolved = endpoint.resolve("POST", url, &body).await.map_err(SendOutcome::Fatal)?;
-                    driver_headers.extend(resolved.headers);
+                    let full_body = serde_json::to_vec(&*request.lock().unwrap())
+                        .map_err(|e| SendOutcome::Fatal(AgentLoopError::llm(format!(
+                            "Failed to serialize Anthropic request: {e}"
+                        ))))?;
+                    let resolved = endpoint.resolve("POST", url.clone(), &full_body)
+                        .await.map_err(SendOutcome::Fatal)?;
+                    driver_headers.extend(resolved.headers.clone());
+                    let mut headers = driver_helpers::merge_request_headers(driver_headers, extra_headers);
+                    let (body, threaded) = {
+                        let mut exchange = thread.lock().unwrap();
+                        if exchange.enabled() {
+                            message_threads::add_beta(&mut headers);
+                            let full = serde_json::from_slice(&full_body).map_err(|e|
+                                SendOutcome::Fatal(AgentLoopError::llm(format!("Invalid serialized request: {e}"))))?;
+                            let body = exchange.prepare(full, &resolved.url, &headers);
+                            (serde_json::to_vec(&body).map_err(|e|
+                                SendOutcome::Fatal(AgentLoopError::llm(e.to_string())))?, true)
+                        } else {
+                            // Keep the default path's serialization and allocation
+                            // behavior, including after an unsupported-thread replay.
+                            exchange.sent_body = Value::Null;
+                            (full_body, false)
+                        }
+                    };
+                    // Authentication can sign the payload. Resolve again only
+                    // when the thread changed it, with the actual bytes sent.
+                    let resolved = if threaded {
+                        let resolved = endpoint.resolve("POST", url, &body)
+                            .await.map_err(SendOutcome::Fatal)?;
+                        headers = driver_helpers::merge_request_headers(headers, &resolved.headers);
+                        headers = driver_helpers::merge_request_headers(headers, extra_headers);
+                        if thread.lock().unwrap().enabled() {
+                            message_threads::add_beta(&mut headers);
+                        }
+                        resolved
+                    } else {
+                        resolved
+                    };
                     let mut request_builder = self.client().post(&resolved.url);
-                    for (name, value) in
-                        driver_helpers::merge_request_headers(driver_headers, extra_headers)
-                    {
+                    for (name, value) in headers {
                         request_builder = request_builder.header(name, value);
                     }
                     request_builder
@@ -407,6 +435,9 @@ impl AnthropicChatDriver {
                     // Non-retryable error or max retries exceeded
                     let error_text = response.text().await.unwrap_or_default();
                     let error_msg = format!("Anthropic API error ({}): {}", status, error_text);
+                    if thread.lock().unwrap().recover(status.as_u16(), &error_text) {
+                        return RetryDecision::RetryNow;
+                    }
 
                     // Graceful fallback: if max_tokens derived from profile
                     // exceeds the model limit (400 error), retry once with a safe

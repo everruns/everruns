@@ -42,6 +42,63 @@ allow third-party products to use Claude.ai login or plan usage limits. See
 [API credits for Max and Team plans](https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers)
 for eligibility, amounts, and how to link the organization.
 
+## Message threads (beta)
+
+Add the **Claude Message Threads** capability (`claude_message_threads`) to an
+agent or harness to opt in. It uses Anthropic's
+[Messages API threads](https://platform.claude.com/docs/en/build-with-claude/message-threads)
+to send only the new messages after a completed response. Existing agents keep
+sending full history unless this capability is enabled.
+
+```json
+{
+  "ref": "claude_message_threads"
+}
+```
+
+In the Framework (with the `anthropic` feature):
+
+```rust
+use everruns::{Agent, providers::anthropic::Anthropic};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let _agent = Agent::builder()
+        .provider(Anthropic::from_env()?)
+        .model("claude-sonnet-5-5")
+        .capability("claude_message_threads")
+        .build()?;
+    Ok(())
+}
+```
+
+Everruns remains the source of truth for conversation history. A thread expires
+about five minutes after its last request. Missing or already-used thread state
+causes one replay of the full transcript in a new thread. A thread-specific
+unsupported-request error falls back to a normal Messages request. Other errors
+retain their normal handling.
+
+Continuation state is held only in a bounded process-local cache. Worker changes,
+restarts, cache eviction, edits, changed settings or credentials, and concurrent
+branches can start fresh threads. A partial or cancelled response never advances
+thread state. Tool results are supported; native compaction and opaque compacted
+prefixes use the existing full-history path. Batch requests stay unthreaded.
+Changes to a system prompt on every turn can prevent reuse.
+
+This is separate from [prompt caching](/features/prompt-caching/): threads reduce
+uploaded request history, but do not change token pricing or rate limits. Keep
+prompt caching enabled independently when desired.
+
+**Data retention:** this beta is not eligible for zero data retention or HIPAA.
+Anthropic temporarily holds the conversation, system prompt, and tools, and
+states that it deletes thread state within one hour of last use. Enable the
+capability only when this retention is acceptable for your workload.
+
+Low-level driver callers can set
+`config.driver_options["anthropic/message_threads"] = serde_json::json!(true)`.
+Supply a stable, unique `config.metadata["session_id"]` and the complete transcript
+on every call, including assistant content and tool calls. Calls without a session
+scope stay unthreaded. Other provider drivers ignore this Anthropic option.
+
 ## Models
 
 Anthropic's `/v1/models` endpoint returns capability metadata, which Everruns
