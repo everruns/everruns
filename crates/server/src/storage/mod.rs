@@ -40,6 +40,7 @@ pub mod background_limits;
 pub mod background_work;
 pub mod behavior_detectors;
 pub mod costs;
+pub mod eval_proposals;
 pub mod finding_investigations;
 pub mod org_egress_allowlist;
 pub mod org_slack_connections;

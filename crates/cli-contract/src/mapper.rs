@@ -173,6 +173,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "evals experiments",
         "Variants compared on the same eval cases, with a CI gate.",
     ),
+    (
+        "evals proposals",
+        "Cases the Eval Builder suggests for an agent, to add or dismiss.",
+    ),
     ("evals runs", "Executions of eval cases against an agent."),
     ("evals runs artifacts", "Raw outputs of an eval run."),
     (

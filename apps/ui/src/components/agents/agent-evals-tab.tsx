@@ -3,12 +3,13 @@
 // An agent's Evals tab (approved mockup 03): how this agent does on its
 // datasets and on real traffic (live quality), its experiments, what detectors
 // found in its sessions, and which observers watch it. Datasets are evals
-// whose target is a session on this agent. The Eval Builder's proposals join
-// with that agent.
+// whose target is a session on this agent. "Propose cases" asks the Eval
+// Builder for cases from the agent's instructions and recent sessions; its
+// proposals wait in the side column until someone adds or dismisses them.
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Play, Plus } from "lucide-react";
+import { Play, Plus, Sparkles } from "lucide-react";
 import {
   CartesianGrid,
   Line,
@@ -21,8 +22,10 @@ import {
 import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import {
   useAllEvalExperiments,
+  useEvalProposals,
   useEvalRunsMany,
   useEvals,
+  useProposeEvalCases,
   useObserverSummary,
   useObservers,
 } from "@/hooks";
@@ -54,6 +57,7 @@ import { formatPercent } from "@/components/evals/experiment-format";
 import { isFinding } from "@/components/evals/findings";
 import { FindingsList } from "@/components/evals/section/findings-list";
 import { RunExperimentDialog } from "@/components/evals/run-experiment-dialog";
+import { EvalProposalsCard } from "@/components/evals/eval-proposals";
 
 /** Finished runs across the agent's datasets, oldest first, for the chart. */
 export function passRateSeries(runsByEval: Map<string, EvalRun[]>, names: Map<string, string>) {
@@ -172,6 +176,9 @@ export function AgentEvalsTab({ agentId }: { agentId: string }) {
   const { data: evals } = useEvals({ includeArchived: false });
   const { data: findingsPage } = useEvalFindings();
   const { data: allExperiments } = useAllEvalExperiments();
+  const { data: proposalList } = useEvalProposals(agentId);
+  const propose = useProposeEvalCases(agentId);
+  const proposing = proposalList?.latest_run?.status === "running" || propose.isPending;
   const { data: observers } = useObservers({
     includeArchived: false,
     enabled: observersEnabled,
@@ -215,6 +222,10 @@ export function AgentEvalsTab({ agentId }: { agentId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="outline" onClick={() => propose.mutate()} disabled={proposing}>
+          <Sparkles className="size-4" />
+          {proposing ? ui("Proposing…") : ui("Propose cases")}
+        </Button>
         <LinkButton variant="outline" href={`/evals/new?agent=${encodeURIComponent(agentId)}`}>
           <Plus className="size-4" />
           {ui("New dataset")}
@@ -382,6 +393,15 @@ export function AgentEvalsTab({ agentId }: { agentId: string }) {
         </div>
 
         <div className="space-y-4">
+          {propose.error && (
+            <p className="text-sm text-destructive">{(propose.error as Error).message}</p>
+          )}
+          <EvalProposalsCard
+            agentId={agentId}
+            proposals={proposalList?.data ?? []}
+            latestRun={proposalList?.latest_run}
+            datasets={datasets}
+          />
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">{ui("Experiments")}</CardTitle>

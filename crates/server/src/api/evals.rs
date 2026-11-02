@@ -27,6 +27,9 @@ use crate::domains::evals::EvalService;
 use crate::domains::evals::dataset::ExportEvalRunDatasetRequest;
 use crate::domains::evals::runner::EvalRunContext;
 use crate::domains::evals::{
+    AcceptEvalProposal, DismissEvalProposal, ListEvalProposals, ProposeEvalCases,
+};
+use crate::domains::evals::{
     BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun,
     CreateEvalRunShare, DeleteEval, DeleteEvalCase, EvalImportPreflightCmd, ExportEvalRunArtifacts,
     ExportEvalRunDataset, GetEval, GetEvalCase, GetEvalRun, GetEvalRunDataset, GetEvalRunShare,
@@ -115,6 +118,11 @@ pub fn routes(state: AppState) -> Router {
         .command::<ListEvalExperiments>()
         .command::<GetEvalExperiment>()
         .command::<GateEvalExperiment>()
+        // Eval Builder proposals (knowledge/evaluation/evals.md, "Eval Builder").
+        .command::<ProposeEvalCases>()
+        .command::<ListEvalProposals>()
+        .command::<AcceptEvalProposal>()
+        .command::<DismissEvalProposal>()
         // Hand-written: NDJSON body rather than JSON.
         .route(
             "/v1/evals/{eval_id}/runs/{run_id}/artifacts",

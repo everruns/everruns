@@ -1119,11 +1119,17 @@ pub(crate) const LATE_USAGE_SOURCE: &str = "llm_generation_late_usage";
 pub(crate) const OBSERVER_GRADING_SOURCE: &str = "observer_grading";
 /// Inspector write-ups of findings (`health_issues/inspector.rs`).
 pub(crate) const INSPECTOR_SOURCE: &str = "finding_investigation";
+/// Eval Builder proposals (`domains/evals/builder`), journaled against the
+/// first session the builder read.
+pub(crate) const EVAL_BUILDER_SOURCE: &str = "eval_builder";
 
 /// Sources that watch a session rather than do its work: only the org and
 /// agent budgets pay for them.
 pub(crate) fn is_monitoring_source(source_type: &str) -> bool {
-    matches!(source_type, OBSERVER_GRADING_SOURCE | INSPECTOR_SOURCE)
+    matches!(
+        source_type,
+        OBSERVER_GRADING_SOURCE | INSPECTOR_SOURCE | EVAL_BUILDER_SOURCE
+    )
 }
 
 /// What a metered generation is journaled against. An `llm.generation` event

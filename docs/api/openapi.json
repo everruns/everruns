@@ -3080,6 +3080,85 @@
         "x-superseded-by": "create_channel_call"
       }
     },
+    "/v1/agents/{agent_id}/eval-proposals": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "List the Eval Builder's proposals for an agent",
+        "description": "List an agent's open eval case proposals, newest first, with the Eval Builder's latest run.",
+        "operationId": "list_eval_proposals",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalProposalList"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Ask the Eval Builder for cases",
+        "description": "Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. Runs in the background on the organization's default model; nothing is added until a person accepts a proposal.",
+        "operationId": "propose_eval_cases",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalBuilderRun"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A run for this agent is still going"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/export": {
       "get": {
         "tags": [
@@ -13693,6 +13772,110 @@
           "support": "preview"
         },
         "x-superseded-by": "exchange"
+      }
+    },
+    "/v1/eval-proposals/{proposal_id}/accept": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Add a proposed case to a dataset",
+        "description": "Add an Eval Builder proposal to a dataset as a new case. The dataset must target the proposal's agent.",
+        "operationId": "accept_eval_proposal",
+        "parameters": [
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptEvalProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalCase"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The proposal was already decided"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/eval-proposals/{proposal_id}/dismiss": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Turn a proposed case down",
+        "description": "Dismiss an Eval Builder proposal, optionally saying why. The Eval Builder does not offer it again.",
+        "operationId": "dismiss_eval_proposal",
+        "parameters": [
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DismissEvalProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalCaseProposal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The proposal was already decided"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
       }
     },
     "/v1/evals": {
@@ -35244,6 +35427,20 @@
   },
   "components": {
     "schemas": {
+      "AcceptEvalProposalRequest": {
+        "type": "object",
+        "description": "Request to add a proposal to a dataset.",
+        "required": [
+          "eval_id"
+        ],
+        "properties": {
+          "eval_id": {
+            "type": "string",
+            "description": "Dataset (eval) to add the case to.",
+            "example": "eval_01933b5a000070008000000000000001"
+          }
+        }
+      },
       "AcceptInviteResponse": {
         "type": "object",
         "description": "Accept response: where the caller now has membership.",
@@ -45678,6 +45875,20 @@
           }
         }
       },
+      "DismissEvalProposalRequest": {
+        "type": "object",
+        "description": "Request to turn a proposal down.",
+        "properties": {
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is not wanted, kept so the builder does not offer it again.",
+            "example": "We do not support refunds over the limit at all."
+          }
+        }
+      },
       "DismissHealthIssueRequest": {
         "type": "object",
         "description": "Why a finding needs nothing.",
@@ -46555,6 +46766,87 @@
           }
         }
       },
+      "EvalBuilderRun": {
+        "type": "object",
+        "description": "One request to the Eval Builder for an agent.",
+        "required": [
+          "id",
+          "status",
+          "started_at",
+          "sessions_read",
+          "proposals"
+        ],
+        "properties": {
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it finished."
+          },
+          "cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "What the model call cost, when the provider reported it.",
+            "example": 0.012
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it failed, in words for a person."
+          },
+          "id": {
+            "type": "string",
+            "description": "Run identifier.",
+            "example": "evalbuild_01933b5a000070008000000000000001"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model that wrote the proposals.",
+            "example": "gpt-6.1-sol"
+          },
+          "proposals": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Proposals it made.",
+            "example": 5
+          },
+          "sessions_read": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Production sessions it read.",
+            "example": 6
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it started."
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvalBuilderStatus",
+            "description": "Where the run is."
+          }
+        }
+      },
+      "EvalBuilderStatus": {
+        "type": "string",
+        "description": "Where a request for proposals is.",
+        "enum": [
+          "running",
+          "done",
+          "failed",
+          "unavailable"
+        ]
+      },
       "EvalCase": {
         "type": "object",
         "description": "A single test case within an eval.",
@@ -46722,6 +47014,82 @@
             "format": "date-time",
             "description": "When the case was last updated.",
             "example": "2026-01-15T10:30:00Z"
+          }
+        }
+      },
+      "EvalCaseProposal": {
+        "type": "object",
+        "description": "A case the Eval Builder suggests adding to one of the agent's datasets.",
+        "required": [
+          "id",
+          "agent_id",
+          "status",
+          "name",
+          "category",
+          "kind",
+          "reason",
+          "source_session_ids",
+          "case",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Agent the case is for.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "case": {
+            "$ref": "#/components/schemas/CreateEvalCaseRequest",
+            "description": "The case as it would be created."
+          },
+          "category": {
+            "$ref": "#/components/schemas/ProposalCategory",
+            "description": "What part of the job it covers."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was proposed."
+          },
+          "dismiss_note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Note left when it was dismissed."
+          },
+          "id": {
+            "type": "string",
+            "description": "Proposal identifier.",
+            "example": "evalprop_01933b5a000070008000000000000001"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`simulated` when a model plays the user, otherwise `scripted`.",
+            "example": "simulated"
+          },
+          "name": {
+            "type": "string",
+            "description": "Short name of the case.",
+            "example": "Refund over the approval limit"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the Eval Builder suggests it, in one or two sentences."
+          },
+          "source_session_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sessions that inspired it, by public identifier.",
+            "example": [
+              "session_01933b5a000070008000000000000001"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProposalStatus",
+            "description": "Whether it is decided."
           }
         }
       },
@@ -47000,6 +47368,33 @@
             "type": "string",
             "description": "The text content to send.",
             "example": "Fix the failing test in src/lib.rs"
+          }
+        }
+      },
+      "EvalProposalList": {
+        "type": "object",
+        "description": "An agent's open proposals and its latest Eval Builder run.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvalCaseProposal"
+            },
+            "description": "Open proposals, newest first."
+          },
+          "latest_run": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalBuilderRun",
+                "description": "The most recent run, when there was one."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -63875,6 +64270,25 @@
         "enum": [
           "auto",
           "explicit"
+        ]
+      },
+      "ProposalCategory": {
+        "type": "string",
+        "description": "What part of the agent's job a proposed case covers.",
+        "enum": [
+          "happy_path",
+          "edge_case",
+          "failure",
+          "adversarial"
+        ]
+      },
+      "ProposalStatus": {
+        "type": "string",
+        "description": "Whether a proposal is decided.",
+        "enum": [
+          "proposed",
+          "accepted",
+          "dismissed"
         ]
       },
       "Provider": {

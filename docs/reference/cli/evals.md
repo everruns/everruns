@@ -30,6 +30,10 @@ Evaluation cases, runs, results and scores.
 | [`evals experiments get`](#evals-experiments-get) | Get an experiment with its case-by-case comparison and verdicts. |
 | [`evals experiments recent`](#evals-experiments-recent) | List the organization's experiments across evals, newest first. |
 | [`evals experiments list`](#evals-experiments-list) | List an eval's experiments, newest first. |
+| [`evals proposals accept`](#evals-proposals-accept) | Add an Eval Builder proposal to a dataset as a new case. |
+| [`evals proposals dismiss`](#evals-proposals-dismiss) | Dismiss an Eval Builder proposal, optionally saying why. |
+| [`evals proposals list`](#evals-proposals-list) | List an agent's open eval case proposals, newest first, with the Eval Builder's latest run. |
+| [`evals proposals create`](#evals-proposals-create) | Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. |
 | [`evals runs cancel`](#evals-runs-cancel) | Cancel an eval run. |
 | [`evals runs create`](#evals-runs-create) | Create an eval run. |
 | [`evals runs get`](#evals-runs-get) | Get an eval run. |
@@ -426,6 +430,84 @@ Example:
 ```bash
 # Find the last experiment on an eval
 everruns evals experiments list --eval-id eval_01h9
+```
+
+## evals proposals accept
+
+Add an Eval Builder proposal to a dataset as a new case. The dataset must target the proposal's agent.
+
+```bash
+everruns evals proposals accept [OPTIONS] --eval-id <eval_id> --proposal-id <proposal_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Dataset (eval) to add the case to. |
+| `--proposal-id <PROPOSAL_ID>` | Required. Proposal's prefixed public identifier. |
+
+Example:
+
+```bash
+# Add a proposed case to the agent's main dataset
+everruns evals proposals accept --proposal-id evalprop_01h9 --eval-id eval_01h9 --reason 'Cover refunds over the limit'
+```
+
+## evals proposals dismiss
+
+Dismiss an Eval Builder proposal, optionally saying why. The Eval Builder does not offer it again.
+
+```bash
+everruns evals proposals dismiss [OPTIONS] --proposal-id <proposal_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--note <NOTE>` | Why it is not wanted, kept so the builder does not offer it again. |
+| `--proposal-id <PROPOSAL_ID>` | Required. Proposal's prefixed public identifier. |
+
+Example:
+
+```bash
+# Turn down a case that does not fit the agent
+everruns evals proposals dismiss --proposal-id evalprop_01h9 --note 'Out of scope for this agent'
+```
+
+## evals proposals list
+
+List an agent's open eval case proposals, newest first, with the Eval Builder's latest run.
+
+```bash
+everruns evals proposals list [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
+
+Example:
+
+```bash
+# Review the cases proposed for an agent
+everruns evals proposals list --agent-id agent_01h9
+```
+
+## evals proposals create
+
+Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. Runs in the background on the organization's default model; nothing is added until a person accepts a proposal.
+
+```bash
+everruns evals proposals create [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
+
+Example:
+
+```bash
+# Ask for cases that cover what the support agent got wrong this week
+everruns evals proposals create --agent-id agent_01h9
 ```
 
 ## evals runs cancel

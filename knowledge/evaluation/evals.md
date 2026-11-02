@@ -224,6 +224,27 @@ OpenAPI.
 ATIF case import is a separate operation for turning trajectories into
 executable eval cases. See [`atif-adoption.md`](atif-adoption.md).
 
+## Eval Builder
+
+The Eval Builder proposes cases for one agent's datasets: what the agent is for,
+edge cases from its instructions, failures seen in its sessions, and adversarial
+attempts. Design intent, recorded at the top of `crates/server/src/domains/evals/builder/mod.rs`:
+
+- It is a built-in job on the org's default model, not a chat agent session. Its
+  answer is structured cases and it needs no tools, so a job is cheaper and its
+  output is checked before it is stored (supported scorers only, a scripted
+  message or a simulated user, at most six per run).
+- It reads only the agent's own production sessions in the org (never eval-run
+  sessions), sessions with findings or failing observer scores first, plus the
+  existing case names and earlier proposals so it does not repeat them.
+- Nothing lands without a person: a proposal becomes a case only when accepted
+  into a dataset that targets the same agent, recorded in change history.
+  Dismissal keeps an optional note.
+- One run per agent at a time; a run left `running` by a lost server reads as
+  interrupted after 15 minutes. Cost is monitoring spend (org and agent budgets),
+  journaled against the first session read.
+- Scheduled weekly runs are not built yet; runs start on request.
+
 ## Artifacts and datasets
 
 Cases may collect named session files after conversation and verification work.

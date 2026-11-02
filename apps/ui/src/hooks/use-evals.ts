@@ -16,6 +16,10 @@ import {
   listAllEvalExperiments,
   getEvalExperiment,
   createEvalExperiment,
+  listEvalProposals,
+  proposeEvalCases,
+  acceptEvalProposal,
+  dismissEvalProposal,
 } from "@/lib/api/evals";
 import type {
   CreateEvalRequest,
@@ -257,4 +261,68 @@ export function useEvalRunsMany(evalIds: string[]): Map<string, EvalRun[]> {
     })),
   });
   return new Map(ids.map((evalId, index) => [evalId, queries[index]?.data ?? []]));
+}
+
+// Eval Builder proposals for an agent. While a run is going the list polls,
+// so its proposals appear without a reload.
+const PROPOSALS_POLL_MS = 4_000;
+
+export function useEvalProposals(agentId: string | undefined, enabled = true) {
+  return useOrgScopedQuery({
+    queryKey: queryKeys.evals.proposals(agentId ?? ""),
+    queryFn: () => listEvalProposals(agentId!),
+    enabled: !!agentId && enabled,
+    refetchInterval: (query) =>
+      query.state.data?.latest_run?.status === "running" ? PROPOSALS_POLL_MS : false,
+  });
+}
+
+export function useProposeEvalCases(agentId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => proposeEvalCases(agentId),
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.evals.proposals(agentId),
+      }),
+  });
+}
+
+export function useAcceptEvalProposal(agentId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      proposalId,
+      evalId,
+      reason,
+    }: {
+      proposalId: string;
+      evalId: string;
+      reason?: string;
+    }) => acceptEvalProposal(proposalId, evalId, reason),
+    onSuccess: (_case, { evalId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.evals.proposals(agentId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.evals.cases(evalId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.evals.detail(evalId),
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.evals.all });
+    },
+  });
+}
+
+export function useDismissEvalProposal(agentId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ proposalId, note }: { proposalId: string; note?: string }) =>
+      dismissEvalProposal(proposalId, note),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.evals.proposals(agentId),
+      }),
+  });
 }

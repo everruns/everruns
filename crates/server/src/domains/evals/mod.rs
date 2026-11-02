@@ -1,5 +1,6 @@
 // Evals domain — commands, queries, service, and background runner.
 
+pub mod builder;
 pub mod commands;
 pub mod convert;
 pub mod dataset;
@@ -15,6 +16,7 @@ pub mod service;
 pub mod summary;
 pub mod types;
 
+pub use builder::commands::*;
 pub use commands::*;
 pub use experiments::commands::*;
 pub use runner::*;

@@ -155,6 +155,8 @@ pub struct Graders {
     simulator: Option<Arc<dyn UserSimulator>>,
     /// Writes findings up (detection layer 3), on the same org models.
     inspector: Option<Arc<dyn crate::domains::health_issues::inspector::InspectorModel>>,
+    /// Proposes eval cases (the Eval Builder), on the same org models.
+    proposer: Option<Arc<dyn crate::domains::evals::builder::CaseProposer>>,
 }
 
 impl Graders {
@@ -166,6 +168,7 @@ impl Graders {
             decisions: None,
             simulator: None,
             inspector: None,
+            proposer: None,
         }
     }
 
@@ -186,7 +189,10 @@ impl Graders {
             .with_judge(client.clone())
             .with_simulator(Arc::new(LlmUserSimulator::new(client.clone())))
             .with_inspector(Arc::new(
-                crate::domains::health_issues::inspector::LlmInspector::new(client),
+                crate::domains::health_issues::inspector::LlmInspector::new(client.clone()),
+            ))
+            .with_proposer(Arc::new(
+                crate::domains::evals::builder::LlmCaseProposer::new(client),
             ))
             .with_decisions(Arc::new(HostDecisions {
                 db,
@@ -224,6 +230,19 @@ impl Graders {
         &self,
     ) -> Option<Arc<dyn crate::domains::health_issues::inspector::InspectorModel>> {
         self.inspector.clone()
+    }
+
+    pub fn with_proposer(
+        mut self,
+        proposer: Arc<dyn crate::domains::evals::builder::CaseProposer>,
+    ) -> Self {
+        self.proposer = Some(proposer);
+        self
+    }
+
+    /// The Eval Builder's model, `None` without a model stack.
+    pub fn proposer(&self) -> Option<Arc<dyn crate::domains::evals::builder::CaseProposer>> {
+        self.proposer.clone()
     }
 
     pub fn with_decisions(mut self, decisions: Arc<dyn DecisionResolver>) -> Self {

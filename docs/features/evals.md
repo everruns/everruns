@@ -122,9 +122,31 @@ everruns health-issues dismiss --issue-id 550e8400-e29b-41d4-a716-446655440000 \
 
 Operators of a deployment can list open suspected-abuse findings in every organization with `everruns system detections`. They are leads for a person to confirm; nothing is suspended automatically.
 
+## Eval Builder
+
+The **Eval Builder** proposes cases for an agent's datasets. Ask it with **Propose cases** on the agent's **Evals** tab, or from the CLI:
+
+```bash
+everruns evals proposals create --agent-id agent_01933b5a000070008000000000000001
+everruns evals proposals list --agent-id agent_01933b5a000070008000000000000001
+```
+
+It reads the agent's instructions and tools, a sample of its sessions from the last two weeks (sessions with findings or failing observer scores first), and the cases its datasets already have. It then suggests up to six cases covering what the agent is for, edge cases from its instructions, failures seen in real sessions, and adversarial attempts such as instructions injected into a tool result. Each proposal says why it matters, links the sessions behind it, and comes with a check: a decision question, a judge rubric, expected text or a tool call. Conversations that need back and forth come as simulated cases.
+
+Nothing is added until you accept a proposal into a dataset for that agent, and the new case is recorded in change history like any other. Dismissed proposals, and cases the datasets already have, are not offered again:
+
+```bash
+everruns evals proposals accept --proposal-id evalprop_01933b5a000070008000000000000001 \
+  --eval-id eval_01933b5a000070008000000000000001 --reason 'Cover refunds over the limit'
+everruns evals proposals dismiss --proposal-id evalprop_01933b5a000070008000000000000002 \
+  --note 'Out of scope for this agent'
+```
+
+It runs on your organization's default model and reads only that agent's sessions in your organization. Its cost counts against the org and agent budgets.
+
 ## In the UI
 
-**Quality → Evals** opens on an overview of every agent with a dataset: its pass rate, the trend over recent runs, its live quality from observers over the last 7 days, open findings and the last activity. Tabs hold datasets, experiments, observers, findings from session detectors and classifiers (similar ones grouped, each opening a page with its evidence and the Inspector's account), and the graders a case can use. **Run experiment** starts one from any dataset. Each agent's page has an **Evals** tab with the same view for that agent, plus the observers that watch it. On an observer's edit page, the **Answers**, **Conversations** and **Tools** tabs hold the graders of each scope.
+**Quality → Evals** opens on an overview of every agent with a dataset: its pass rate, the trend over recent runs, its live quality from observers over the last 7 days, open findings and the last activity. Tabs hold datasets, experiments, observers, findings from session detectors and classifiers (similar ones grouped, each opening a page with its evidence and the Inspector's account), and the graders a case can use. **Run experiment** starts one from any dataset. Each agent's page has an **Evals** tab with the same view for that agent, plus the observers that watch it and the Eval Builder's proposals. On an observer's edit page, the **Answers**, **Conversations** and **Tools** tabs hold the graders of each scope.
 
 ## SWE-bench Lite
 

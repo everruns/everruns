@@ -82,7 +82,7 @@ pub const EVAL_IMPORT: Policy = Policy {
 
 pub struct EvalService {
     db: Arc<StorageBackend>,
-    run_context: Option<Arc<EvalRunContext>>,
+    pub(crate) run_context: Option<Arc<EvalRunContext>>,
     limits: EvalLimits,
 }
 

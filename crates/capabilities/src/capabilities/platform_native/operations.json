@@ -1,5 +1,45 @@
 [
   {
+    "description": "Add an Eval Builder proposal to a dataset as a new case. The dataset must target the proposal's agent.",
+    "input_schema": {
+      "$defs": {
+        "AcceptEvalProposalRequest": {
+          "description": "Request to add a proposal to a dataset.",
+          "properties": {
+            "eval_id": {
+              "description": "Dataset (eval) to add the case to.",
+              "example": "eval_01933b5a000070008000000000000001",
+              "type": "string"
+            }
+          },
+          "required": [
+            "eval_id"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/AcceptEvalProposalRequest"
+        },
+        {
+          "properties": {
+            "proposal_id": {
+              "description": "Proposal's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposal_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "accept_eval_proposal",
+    "read_only": false
+  },
+  {
     "description": "Connect an existing GitHub identity or public Git source to knowledge.",
     "input_schema": {
       "$defs": {
@@ -10426,6 +10466,46 @@
     "read_only": false
   },
   {
+    "description": "Dismiss an Eval Builder proposal, optionally saying why. The Eval Builder does not offer it again.",
+    "input_schema": {
+      "$defs": {
+        "DismissEvalProposalRequest": {
+          "description": "Request to turn a proposal down.",
+          "properties": {
+            "note": {
+              "description": "Why it is not wanted, kept so the builder does not offer it again.",
+              "example": "We do not support refunds over the limit at all.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/DismissEvalProposalRequest"
+        },
+        {
+          "properties": {
+            "proposal_id": {
+              "description": "Proposal's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposal_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "dismiss_eval_proposal",
+    "read_only": false
+  },
+  {
     "description": "Dismiss a detector finding with a reason.",
     "input_schema": {
       "$defs": {
@@ -14117,6 +14197,23 @@
     "read_only": true
   },
   {
+    "description": "List an agent's open eval case proposals, newest first, with the Eval Builder's latest run.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_eval_proposals",
+    "read_only": true
+  },
+  {
     "description": "List eval runs.",
     "input_schema": {
       "properties": {
@@ -17528,6 +17625,23 @@
     },
     "name": "preview_harness",
     "read_only": true
+  },
+  {
+    "description": "Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. Runs in the background on the organization's default model; nothing is added until a person accepts a proposal.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "propose_eval_cases",
+    "read_only": false
   },
   {
     "description": "Publish an agent ingress channel.",
