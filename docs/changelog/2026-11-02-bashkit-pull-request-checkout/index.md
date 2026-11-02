@@ -11,7 +11,7 @@ links:
 ---
 
 A review agent on the Bashkit Worker harness used to see only the diff.
-`github_checkout_pull_request` now copies the pull request head's text files
+`github_checkout_pull_request` from the [GitHub capability](/capabilities/github/) now copies the pull request head's text files
 into `/workspace/<repo>` in the session files when there is no managed sandbox,
 so the agent can read the project's `AGENTS.md`, callers and nearby tests with
 `grep`, `rg` and `cat` before it comments. No Daytona, E2B or Modal account is
@@ -21,7 +21,10 @@ needed.
 {
   "repo": "acme/app",
   "number": 42,
-  "paths": ["AGENTS.md", "src/billing"]
+  "paths": [
+    "AGENTS.md",
+    "src/billing"
+  ]
 }
 ```
 
