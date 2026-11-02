@@ -49814,6 +49814,7 @@
           },
           "agent_id": {
             "type": "string",
+            "description": "The agent whose instructions the fix changes.",
             "example": "agent_550e8400e29b41d4a716446655440000"
           },
           "check": {
@@ -49829,7 +49830,8 @@
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the Inspector wrote the fix."
           },
           "current": {
             "type": "boolean",
@@ -49840,7 +49842,8 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When a person applied or rejected the fix."
           },
           "decision_note": {
             "type": [
@@ -49854,16 +49857,18 @@
               "string",
               "null"
             ],
-            "description": "The check's experiment, while or after it runs."
+            "description": "The eval the last check ran, while or after it runs."
           },
           "experiment_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The last check's experiment, while or after it runs."
           },
           "id": {
             "type": "string",
+            "description": "Prefixed public identifier of the fix.",
             "example": "fix_0190f3a1b2c37d8e9f00112233445566"
           },
           "issue_id": {
@@ -49892,7 +49897,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/FindingFix"
-            }
+            },
+            "description": "Newest first."
           }
         }
       },
@@ -50069,15 +50075,18 @@
             "minimum": 0
           },
           "current": {
-            "$ref": "#/components/schemas/FixCheckSide"
+            "$ref": "#/components/schemas/FixCheckSide",
+            "description": "The agent as it is."
           },
           "dataset_version": {
             "type": "integer",
             "format": "int32",
+            "description": "The eval's dataset version at the check.",
             "minimum": 0
           },
           "eval_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Name of the eval the check ran."
           },
           "fixed": {
             "type": "integer",
@@ -50088,13 +50097,16 @@
           "trials": {
             "type": "integer",
             "format": "int32",
+            "description": "Trials per case and side.",
             "minimum": 0
           },
           "verdict": {
-            "$ref": "#/components/schemas/Verdict"
+            "$ref": "#/components/schemas/Verdict",
+            "description": "How the variant with the fix compares, noise taken into account."
           },
           "with_fix": {
-            "$ref": "#/components/schemas/FixCheckSide"
+            "$ref": "#/components/schemas/FixCheckSide",
+            "description": "The agent with the addition."
           }
         }
       },
@@ -50108,7 +50120,8 @@
         "properties": {
           "cost_usd": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "What the side's trials cost in USD."
           },
           "pass_rate": {
             "type": "number",

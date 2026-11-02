@@ -17069,24 +17069,37 @@ export interface components {
     FindingFix: {
       /** @description The text added to the end of the agent's instructions. */
       addition: string;
-      /** @example agent_550e8400e29b41d4a716446655440000 */
+      /**
+       * @description The agent whose instructions the fix changes.
+       * @example agent_550e8400e29b41d4a716446655440000
+       */
       agent_id: string;
       check?: components["schemas"]["FixCheck"] | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the Inspector wrote the fix.
+       */
       created_at: string;
       /**
        * @description False when the agent's instructions changed after the last check, so
        *     the fix needs checking again before it can be applied.
        */
       current: boolean;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When a person applied or rejected the fix.
+       */
       decided_at?: string | null;
       /** @description Why it was rejected. */
       decision_note?: string | null;
-      /** @description The check's experiment, while or after it runs. */
+      /** @description The eval the last check ran, while or after it runs. */
       eval_id?: string | null;
+      /** @description The last check's experiment, while or after it runs. */
       experiment_id?: string | null;
-      /** @example fix_0190f3a1b2c37d8e9f00112233445566 */
+      /**
+       * @description Prefixed public identifier of the fix.
+       * @example fix_0190f3a1b2c37d8e9f00112233445566
+       */
       id: string;
       /**
        * Format: uuid
@@ -17103,6 +17116,7 @@ export interface components {
     };
     /** @description The fixes list. */
     FindingFixList: {
+      /** @description Newest first. */
       fixes: components["schemas"]["FindingFix"][];
     };
     /**
@@ -17207,22 +17221,35 @@ export interface components {
        * @description Cases that ran on both sides.
        */
       cases: number;
+      /** @description The agent as it is. */
       current: components["schemas"]["FixCheckSide"];
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description The eval's dataset version at the check.
+       */
       dataset_version: number;
+      /** @description Name of the eval the check ran. */
       eval_name: string;
       /**
        * Format: int32
        * @description Cases the fix made pass.
        */
       fixed: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Trials per case and side.
+       */
       trials: number;
+      /** @description How the variant with the fix compares, noise taken into account. */
       verdict: components["schemas"]["Verdict"];
+      /** @description The agent with the addition. */
       with_fix: components["schemas"]["FixCheckSide"];
     };
     FixCheckSide: {
-      /** Format: double */
+      /**
+       * Format: double
+       * @description What the side's trials cost in USD.
+       */
       cost_usd: number;
       /**
        * Format: double

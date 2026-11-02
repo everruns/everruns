@@ -80,10 +80,12 @@ pub fn apply_to(instructions: &str, addition: &str) -> String {
 /// a finding, and where checking and approving it stand.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FindingFix {
+    /// Prefixed public identifier of the fix.
     #[schema(example = "fix_0190f3a1b2c37d8e9f00112233445566")]
     pub id: String,
     /// The finding the fix is for.
     pub issue_id: Uuid,
+    /// The agent whose instructions the fix changes.
     #[schema(example = "agent_550e8400e29b41d4a716446655440000")]
     pub agent_id: String,
     /// One line on what the change does.
@@ -98,29 +100,38 @@ pub struct FindingFix {
     pub current: bool,
     /// The last check's result.
     pub check: Option<FixCheck>,
-    /// The check's experiment, while or after it runs.
+    /// The eval the last check ran, while or after it runs.
     pub eval_id: Option<String>,
+    /// The last check's experiment, while or after it runs.
     pub experiment_id: Option<String>,
+    /// When a person applied or rejected the fix.
     pub decided_at: Option<DateTime<Utc>>,
     /// Why it was rejected.
     pub decision_note: Option<String>,
+    /// When the Inspector wrote the fix.
     pub created_at: DateTime<Utc>,
 }
 
 /// What a check found: the eval's cases with and without the fix.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct FixCheck {
+    /// Name of the eval the check ran.
     pub eval_name: String,
+    /// The eval's dataset version at the check.
     pub dataset_version: u32,
+    /// Trials per case and side.
     pub trials: u32,
     /// Cases that ran on both sides.
     pub cases: u32,
+    /// The agent as it is.
     pub current: FixCheckSide,
+    /// The agent with the addition.
     pub with_fix: FixCheckSide,
     /// Cases the fix made pass.
     pub fixed: u32,
     /// Cases the fix made fail.
     pub broke: u32,
+    /// How the variant with the fix compares, noise taken into account.
     pub verdict: Verdict,
 }
 
@@ -130,6 +141,7 @@ pub struct FixCheckSide {
     pub passed: u32,
     /// Share of all trials that passed, 0 to 1.
     pub pass_rate: f64,
+    /// What the side's trials cost in USD.
     pub cost_usd: f64,
 }
 
@@ -312,6 +324,7 @@ fn bounded(text: &str, max: usize, what: &str) -> Result<String, CommandError> {
 /// The fixes list.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct FindingFixList {
+    /// Newest first.
     pub fixes: Vec<FindingFix>,
 }
 
@@ -394,6 +407,7 @@ pub struct CheckFindingFixRequest {
 /// Check a fix: run one of the agent's evals with and without it.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct CheckFindingFix {
+    /// Prefixed public identifier of the fix.
     pub fix_id: String,
     #[serde(flatten)]
     pub req: CheckFindingFixRequest,
@@ -539,6 +553,7 @@ pub struct UpdateFindingFixRequest {
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct UpdateFindingFix {
+    /// Prefixed public identifier of the fix.
     pub fix_id: String,
     #[serde(flatten)]
     pub req: UpdateFindingFixRequest,
@@ -583,6 +598,7 @@ impl Command for UpdateFindingFix {
 /// Apply a checked fix to the agent's instructions.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ApplyFindingFix {
+    /// Prefixed public identifier of the fix.
     pub fix_id: String,
 }
 
@@ -678,6 +694,7 @@ pub struct RejectFindingFixRequest {
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct RejectFindingFix {
+    /// Prefixed public identifier of the fix.
     pub fix_id: String,
     #[serde(flatten)]
     pub req: RejectFindingFixRequest,
