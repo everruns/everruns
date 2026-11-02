@@ -18,7 +18,7 @@ credit works.
 
 Open [app.everruns.com](https://app.everruns.com) and sign in. Verify your email
 address when asked. Open **Settings** > **Billing** to see any available
-promotional credit and its expiration. Credit purchases and top-ups are
+promotional credit. Credit purchases and top-ups are
 unavailable.
 
 ## Manage your Everruns ID
@@ -125,7 +125,7 @@ use, so it needs no token. See [Use in AI Tools](/getting-started/use-in-ai-tool
 The demo has no subscriptions, credit purchases, top-ups, or paid overage.
 
 - **Balance.** **Settings** > **Billing** shows the organization's available
-  credit, its expiration, and amounts held by work that is still running.
+  credit and amounts held by work that is still running.
   Every organization member can see the balance. Historical purchased credit
   and refund records remain visible when present.
 - **Built-in models.** Requests use the organization's available credit.
