@@ -115,9 +115,11 @@ targets until the Slack mapping below lands.
 - **Slack:** inbound `reaction_added` / `reaction_removed` on mapped messages
   become reactions (`reactions:read`); `react` in a Slack session maps to
   `reactions.add` / `reactions.remove`.
-- **A2A:** extension `https://everruns.com/ext/a2a/reactions/v1`, a DataPart
-  `{kind: "reaction", messageId, emoji, action}` stored as a reaction, not a
-  turn.
+- **A2A:** extension `https://everruns.com/ext/a2a/reactions/v1` on the Agent
+  Card. A `SendMessage` on the task whose only part is a DataPart under
+  `everruns/reaction` (`{messageId, emoji, action}`, like
+  `everruns/ask_user_answer`) is stored as a reaction by the channel's remote
+  caller, not a turn. A message that also has text stays a message.
 
 ## Delivery
 
