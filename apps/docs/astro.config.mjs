@@ -609,6 +609,7 @@ export default defineConfig({
                         { label: "Self-Budget", slug: "capabilities/self-budget" },
                         { label: "Parallel Tool Calls", slug: "capabilities/parallel-tool-calls" },
                         { label: "Prompt Caching", slug: "capabilities/prompt-caching" },
+                        { label: "Claude Message Threads", slug: "capabilities/claude-message-threads" },
                       ],
                     },
                     {

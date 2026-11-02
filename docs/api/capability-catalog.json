@@ -358,6 +358,21 @@
     {
       "category": "Optimization",
       "dependencies": [],
+      "docs_slug": "claude-message-threads",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "claude_message_threads",
+      "name": "Claude Message Threads",
+      "status": "available",
+      "tools": []
+    },
+    {
+      "category": "Optimization",
+      "dependencies": [],
       "docs_slug": "tool-search",
       "feature_flag": null,
       "features": [],
