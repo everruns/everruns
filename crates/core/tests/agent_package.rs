@@ -735,3 +735,130 @@ fn yaml_and_markdown_frontmatter_reject_excessive_nesting() {
     assert!(AgentPackage::parse(&text, Format::Yaml).is_err());
     assert!(AgentPackage::parse(&format!("---\n{text}---\nHi"), Format::Markdown).is_err());
 }
+
+#[test]
+fn bundled_agents_load_from_folders_and_round_trip_through_zip_folder_and_text() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path();
+    std::fs::create_dir_all(dir.join(".agents/agents/implement/files")).unwrap();
+    std::fs::write(
+        dir.join("agent.toml"),
+        "schema_version = 1\nname = 'factory'\nmembers = ['everruns-review']\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("instructions.md"), "Run the factory.\n").unwrap();
+    std::fs::write(
+        dir.join(".agents/agents/triage.md"),
+        "---\nname: everruns-triage\ndescription: Scopes problems.\n---\nReproduce it.\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join(".agents/agents/implement/agent.toml"),
+        "schema_version = 1\nname = 'everruns-implement'\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join(".agents/agents/implement/instructions.md"),
+        "Implement it.\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join(".agents/agents/implement/files/notes.md"),
+        "Branch per change.\n",
+    )
+    .unwrap();
+
+    let package = AgentPackage::load(dir).unwrap();
+    let names: Vec<_> = package
+        .manifest
+        .agents
+        .iter()
+        .map(|a| a.name.as_str())
+        .collect();
+    assert_eq!(names, ["everruns-implement", "everruns-triage"]);
+    assert_eq!(
+        package.manifest.members.as_deref(),
+        Some(&["everruns-review".to_string()][..])
+    );
+    assert!(
+        package.files().unwrap().is_empty(),
+        "bundled agents are not the lead's starting files"
+    );
+    assert_eq!(package.manifest.agents[0].initial_files.len(), 1);
+
+    let zip = AgentPackage::from_zip(&package.to_zip().unwrap()).unwrap();
+    assert!(package.diff(&zip).unwrap().is_empty());
+    let entries = package.folder_entries().unwrap();
+    assert!(entries.contains_key(".agents/agents/everruns-implement/agent.toml"));
+    assert!(entries.contains_key(".agents/agents/everruns-implement/notes.md"));
+    let destination = tempfile::tempdir().unwrap();
+    package.write_folder(destination.path()).unwrap();
+    let written = AgentPackage::load(destination.path()).unwrap();
+    assert!(package.diff(&written).unwrap().is_empty());
+    for format in [Format::Markdown, Format::Toml, Format::Yaml, Format::Json] {
+        let text = package.to_string(format).unwrap();
+        let restored = AgentPackage::parse(&text, format).unwrap();
+        assert!(package.diff(&restored).unwrap().is_empty(), "{format:?}");
+    }
+}
+
+#[test]
+fn explicit_empty_members_turns_off_discovery() {
+    let entries = std::collections::BTreeMap::from([
+        (
+            "agent.toml".to_string(),
+            b"schema_version = 1\nname = 'solo'\ninstructions = 'Work.'\nmembers = []\n".to_vec(),
+        ),
+        (
+            ".agents/agents/helper.md".to_string(),
+            b"---\nname: helper\n---\nHelp.\n".to_vec(),
+        ),
+    ]);
+    let package = AgentPackage::from_entries(entries).unwrap();
+    assert!(package.manifest.agents.is_empty());
+    assert!(package.files().unwrap().is_empty());
+}
+
+#[test]
+fn bundled_agent_problems_are_reported_where_they_are() {
+    let base = |extra: &str| {
+        std::collections::BTreeMap::from([
+            (
+                "agent.toml".to_string(),
+                format!("schema_version = 1\nname = 'lead'\ninstructions = 'Lead.'\n{extra}")
+                    .into_bytes(),
+            ),
+            (
+                ".agents/agents/a.md".to_string(),
+                b"---\nname: helper\n---\nHelp.\n".to_vec(),
+            ),
+        ])
+    };
+    // Same name twice: listed and bundled.
+    let error = AgentPackage::from_entries(base("members = ['helper']\n"))
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("agents.helper"), "{error}");
+    // A bundled agent without instructions.
+    let mut entries = base("");
+    entries.insert(
+        ".agents/agents/b.md".into(),
+        b"---\nname: empty\n---\n".to_vec(),
+    );
+    let error = AgentPackage::from_entries(entries).unwrap_err().to_string();
+    assert!(error.contains(".agents/agents/b.md"), "{error}");
+    // Nesting is one level.
+    let mut entries = base("");
+    entries.insert(
+        ".agents/agents/c/agent.toml".into(),
+        b"schema_version = 1\nname = 'nested'\ninstructions = 'N.'\nmembers = ['helper']\n"
+            .to_vec(),
+    );
+    let error = AgentPackage::from_entries(entries).unwrap_err().to_string();
+    assert!(error.contains("cannot have agents of its own"), "{error}");
+    // Listing yourself.
+    let error = AgentPackage::from_entries(base("members = ['lead']\n"))
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("cannot list itself"), "{error}");
+}

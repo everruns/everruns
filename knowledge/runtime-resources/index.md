@@ -8,6 +8,7 @@
 * [Portable Agent Packages](agent-packages.md) - Shared authored definitions, assets, validation and diffs.
 * [Agent Blueprints](agent-blueprints.md) - Pre-built agent definitions.
 * [Agent Handoff](agent-handoff.md) - Agent handoff behavior.
+* [Agents That Use Other Agents](agents-using-agents.md) - Members, created-here agents, what they share, bundled agents in packages, and the planned run costs, approvals and traces.
 * [Agent Scripts](agent-scripts.md) - Agent scripts (saved shell scripts an agent owns; the resource behind tools in shell saved scripts).
 * [Agent Triggers](agent-triggers.md) - Agent triggers (agent wakes itself on a schedule; reuses the durable scheduler).
 * [Proactive Agents in Minutes](proactive-agents.md) - CI events on the GitHub trigger, change-only filters, reachable catalog hosts, safe test runs, and a builder that drafts it all.

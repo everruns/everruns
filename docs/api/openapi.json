@@ -36114,6 +36114,14 @@
               }
             ]
           },
+          "owner_agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent this one was created as part of, shown as \"Created here\" on\nthat agent's Agents tab and bundled into its export.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
           "parallel_tool_calls": {
             "type": [
               "boolean",
@@ -43345,6 +43353,14 @@
                 "type": "null"
               }
             ]
+          },
+          "owner_agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent this one is created as part of (\"Created here\" on that agent's\nAgents tab). It groups under that agent on Agents home and is bundled\ninto its export.",
+            "example": "agent_01933b5a00007000800000000000001"
           },
           "parallel_tool_calls": {
             "type": [
@@ -53123,6 +53139,14 @@
                     }
                   ]
                 },
+                "owner_agent_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Agent this one was created as part of, shown as \"Created here\" on\nthat agent's Agents tab and bundled into its export.",
+                  "example": "agent_01933b5a00007000800000000000001"
+                },
                 "parallel_tool_calls": {
                   "type": [
                     "boolean",
@@ -58445,6 +58469,13 @@
         "type": "object",
         "description": "Authored values only: no organisation, agent, model, harness or channel IDs.",
         "properties": {
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Manifest"
+            },
+            "description": "Agents bundled with this one, each a complete definition. Folders and\narchives keep them in `.agents/agents/<name>/`; text formats inline them."
+          },
           "capabilities": {
             "type": "array",
             "items": {
@@ -58549,6 +58580,16 @@
             "propertyNames": {
               "type": "string"
             }
+          },
+          "members": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Other agents, by name, that this agent can hand work to. Agents bundled\nunder `.agents/agents/` are found without listing them here; an explicit\nempty list turns that discovery off."
           },
           "model": {
             "oneOf": [
@@ -80140,6 +80181,14 @@
                     "type": "null"
                   }
                 ]
+              },
+              "owner_agent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Agent this one was created as part of, shown as \"Created here\" on\nthat agent's Agents tab and bundled into its export.",
+                "example": "agent_01933b5a00007000800000000000001"
               },
               "parallel_tool_calls": {
                 "type": [
