@@ -1,5 +1,5 @@
 ---
-title: Suggested fixes for findings
+title: Suggested fixes for findings, checked by evals
 description: The Inspector suggests an instruction change for a finding; check it against the agent's evals and approve it as a new agent revision.
 date: 2026-11-02
 kind: feature
