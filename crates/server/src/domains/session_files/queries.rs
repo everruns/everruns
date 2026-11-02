@@ -219,7 +219,7 @@ pub fn normalize_path(path: &str) -> String {
 /// an ordinary file, so repositories keep `__init__.py`, `__tests__/` and
 /// `_config.yml` when an agent writes or checks them out.
 pub fn is_reserved_path(path: &str) -> bool {
-    normalize_path(path).split('/').next() == Some("_")
+    normalize_path(path).trim_start_matches('/').split('/').next() == Some("_")
 }
 
 pub fn is_user_memory_path(path: &str) -> bool {
