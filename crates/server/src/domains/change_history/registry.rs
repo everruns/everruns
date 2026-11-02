@@ -703,7 +703,10 @@ pub fn declared(name: &str) -> Change {
         "update_eval" => on(K::Eval, Updated, ID),
         "delete_eval" => on(K::Eval, Deleted, Param("eval_id")),
         "import_atif_trajectories" => on(K::Eval, Imported, Param("eval_id")),
-        "create_eval_case" => on(K::EvalCase, Created, ID),
+        "create_eval_case" | "accept_eval_proposal" => on(K::EvalCase, Created, ID),
+        "propose_eval_cases" | "dismiss_eval_proposal" => Change::Exempt(
+            "Eval Builder suggestions are not configuration until accepted as a case",
+        ),
         "update_eval_case" => on(K::EvalCase, Updated, ID),
         "delete_eval_case" => on(K::EvalCase, Deleted, Param("case_id")),
         "create_eval_run" | "cancel_eval_run" | "import_eval_run" | "create_eval_experiment" => {

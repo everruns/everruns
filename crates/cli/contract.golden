@@ -140,6 +140,10 @@ evals get	--context-revision --eval-id --reason <eval_id>
 evals import	--context-revision --evals! --reason --source!
 evals import-preflight	--context-revision --reason
 evals list	--context-revision --include-archived --reason --search
+evals proposals accept	--context-revision --eval-id! --proposal-id! --reason
+evals proposals create	--agent-id! --context-revision --reason
+evals proposals dismiss	--context-revision --note --proposal-id! --reason
+evals proposals list	--agent-id! --context-revision --reason
 evals runs artifacts export	--context-revision --eval-id! --reason --run-id!
 evals runs cancel	--context-revision --eval-id! --reason --run-id!
 evals runs create	--case-ids... --context-revision --eval-id! --max-cost-usd --model-override --reason --target --trials

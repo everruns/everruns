@@ -786,6 +786,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/eval-proposals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the Eval Builder's proposals for an agent
+     * @description List an agent's open eval case proposals, newest first, with the Eval Builder's latest run.
+     */
+    get: operations["list_eval_proposals"];
+    put?: never;
+    /**
+     * Ask the Eval Builder for cases
+     * @description Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. Runs in the background on the organization's default model; nothing is added until a person accepts a proposal.
+     */
+    post: operations["propose_eval_cases"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/export": {
     parameters: {
       query?: never;
@@ -3441,6 +3465,46 @@ export interface paths {
      * @deprecated
      */
     post: operations["exchange_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/eval-proposals/{proposal_id}/accept": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add a proposed case to a dataset
+     * @description Add an Eval Builder proposal to a dataset as a new case. The dataset must target the proposal's agent.
+     */
+    post: operations["accept_eval_proposal"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/eval-proposals/{proposal_id}/dismiss": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Turn a proposed case down
+     * @description Dismiss an Eval Builder proposal, optionally saying why. The Eval Builder does not offer it again.
+     */
+    post: operations["dismiss_eval_proposal"];
     delete?: never;
     options?: never;
     head?: never;
@@ -9106,6 +9170,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** @description Request to add a proposal to a dataset. */
+    AcceptEvalProposalRequest: {
+      /**
+       * @description Dataset (eval) to add the case to.
+       * @example eval_01933b5a000070008000000000000001
+       */
+      eval_id: string;
+    };
     /** @description Accept response: where the caller now has membership. */
     AcceptInviteResponse: {
       org_id: string;
@@ -14872,6 +14944,14 @@ export interface components {
        */
       oid: string;
     };
+    /** @description Request to turn a proposal down. */
+    DismissEvalProposalRequest: {
+      /**
+       * @description Why it is not wanted, kept so the builder does not offer it again.
+       * @example We do not support refunds over the limit at all.
+       */
+      note?: string | null;
+    };
     /** @description Why a finding needs nothing. */
     DismissHealthIssueRequest: {
       /**
@@ -15376,6 +15456,56 @@ export interface components {
        */
       version?: number;
     };
+    /** @description One request to the Eval Builder for an agent. */
+    EvalBuilderRun: {
+      /**
+       * Format: date-time
+       * @description When it finished.
+       */
+      completed_at?: string | null;
+      /**
+       * Format: double
+       * @description What the model call cost, when the provider reported it.
+       * @example 0.012
+       */
+      cost_usd?: number | null;
+      /** @description Why it failed, in words for a person. */
+      error?: string | null;
+      /**
+       * @description Run identifier.
+       * @example evalbuild_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * @description Model that wrote the proposals.
+       * @example gpt-6.1-sol
+       */
+      model?: string | null;
+      /**
+       * Format: int32
+       * @description Proposals it made.
+       * @example 5
+       */
+      proposals: number;
+      /**
+       * Format: int32
+       * @description Production sessions it read.
+       * @example 6
+       */
+      sessions_read: number;
+      /**
+       * Format: date-time
+       * @description When it started.
+       */
+      started_at: string;
+      /** @description Where the run is. */
+      status: components["schemas"]["EvalBuilderStatus"];
+    };
+    /**
+     * @description Where a request for proposals is.
+     * @enum {string}
+     */
+    EvalBuilderStatus: "running" | "done" | "failed" | "unavailable";
     /** @description A single test case within an eval. */
     EvalCase: {
       /**
@@ -15474,6 +15604,51 @@ export interface components {
        * @example 2026-01-15T10:30:00Z
        */
       updated_at: string;
+    };
+    /** @description A case the Eval Builder suggests adding to one of the agent's datasets. */
+    EvalCaseProposal: {
+      /**
+       * @description Agent the case is for.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      agent_id: string;
+      /** @description The case as it would be created. */
+      case: components["schemas"]["CreateEvalCaseRequest"];
+      /** @description What part of the job it covers. */
+      category: components["schemas"]["ProposalCategory"];
+      /**
+       * Format: date-time
+       * @description When it was proposed.
+       */
+      created_at: string;
+      /** @description Note left when it was dismissed. */
+      dismiss_note?: string | null;
+      /**
+       * @description Proposal identifier.
+       * @example evalprop_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * @description `simulated` when a model plays the user, otherwise `scripted`.
+       * @example simulated
+       */
+      kind: string;
+      /**
+       * @description Short name of the case.
+       * @example Refund over the approval limit
+       */
+      name: string;
+      /** @description Why the Eval Builder suggests it, in one or two sentences. */
+      reason: string;
+      /**
+       * @description Sessions that inspired it, by public identifier.
+       * @example [
+       *       "session_01933b5a000070008000000000000001"
+       *     ]
+       */
+      source_session_ids: string[];
+      /** @description Whether it is decided. */
+      status: components["schemas"]["ProposalStatus"];
     };
     /** @description Result of a single case within a run. */
     EvalCaseResult: {
@@ -15628,6 +15803,12 @@ export interface components {
        * @example Fix the failing test in src/lib.rs
        */
       content: string;
+    };
+    /** @description An agent's open proposals and its latest Eval Builder run. */
+    EvalProposalList: {
+      /** @description Open proposals, newest first. */
+      data: components["schemas"]["EvalCaseProposal"][];
+      latest_run?: components["schemas"]["EvalBuilderRun"] | null;
     };
     /** @description An eval run: one execution of all/some cases. */
     EvalRun: {
@@ -25023,6 +25204,16 @@ export interface components {
      * @enum {string}
      */
     PromptCacheStrategy: "auto" | "explicit";
+    /**
+     * @description What part of the agent's job a proposed case covers.
+     * @enum {string}
+     */
+    ProposalCategory: "happy_path" | "edge_case" | "failure" | "adversarial";
+    /**
+     * @description Whether a proposal is decided.
+     * @enum {string}
+     */
+    ProposalStatus: "proposed" | "accepted" | "dismissed";
     /**
      * @description LLM Provider entity (API keys never exposed)
      *     This is the persisted provider entity, separate from the runtime provider trait.
@@ -37128,6 +37319,59 @@ export interface operations {
       };
     };
   };
+  list_eval_proposals: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalProposalList"];
+        };
+      };
+    };
+  };
+  propose_eval_cases: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalBuilderRun"];
+        };
+      };
+      /** @description A run for this agent is still going */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   export_agent: {
     parameters: {
       query?: {
@@ -44077,6 +44321,74 @@ export interface operations {
       };
       /** @description Permission denied */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  accept_eval_proposal: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        proposal_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AcceptEvalProposalRequest"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalCase"];
+        };
+      };
+      /** @description The proposal was already decided */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  dismiss_eval_proposal: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        proposal_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DismissEvalProposalRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalCaseProposal"];
+        };
+      };
+      /** @description The proposal was already decided */
+      409: {
         headers: {
           [name: string]: unknown;
         };

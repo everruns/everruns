@@ -5726,6 +5726,124 @@
     ]
   },
   {
+    "wire_name": "accept_eval_proposal",
+    "path": [
+      "evals",
+      "proposals"
+    ],
+    "verb": "accept",
+    "description": "Add an Eval Builder proposal to a dataset as a new case. The dataset must target the proposal's agent.",
+    "method": "POST",
+    "http_path": "/v1/eval-proposals/{proposal_id}/accept",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Dataset (eval) to add the case to."
+      },
+      {
+        "field": "proposal_id",
+        "long": "proposal-id",
+        "kind": "string",
+        "required": true,
+        "help": "Proposal's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Add a proposed case to the agent's main dataset",
+        "command": "everruns evals proposals accept --proposal-id evalprop_01h9 --eval-id eval_01h9 --reason 'Cover refunds over the limit'"
+      }
+    ]
+  },
+  {
+    "wire_name": "propose_eval_cases",
+    "path": [
+      "evals",
+      "proposals"
+    ],
+    "verb": "create",
+    "description": "Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. Runs in the background on the organization's default model; nothing is added until a person accepts a proposal.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/eval-proposals",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Ask for cases that cover what the support agent got wrong this week",
+        "command": "everruns evals proposals create --agent-id agent_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "dismiss_eval_proposal",
+    "path": [
+      "evals",
+      "proposals"
+    ],
+    "verb": "dismiss",
+    "description": "Dismiss an Eval Builder proposal, optionally saying why. The Eval Builder does not offer it again.",
+    "method": "POST",
+    "http_path": "/v1/eval-proposals/{proposal_id}/dismiss",
+    "args": [
+      {
+        "field": "note",
+        "long": "note",
+        "kind": "string",
+        "required": false,
+        "help": "Why it is not wanted, kept so the builder does not offer it again."
+      },
+      {
+        "field": "proposal_id",
+        "long": "proposal-id",
+        "kind": "string",
+        "required": true,
+        "help": "Proposal's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Turn down a case that does not fit the agent",
+        "command": "everruns evals proposals dismiss --proposal-id evalprop_01h9 --note 'Out of scope for this agent'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_eval_proposals",
+    "path": [
+      "evals",
+      "proposals"
+    ],
+    "verb": "list",
+    "description": "List an agent's open eval case proposals, newest first, with the Eval Builder's latest run.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/eval-proposals",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Review the cases proposed for an agent",
+        "command": "everruns evals proposals list --agent-id agent_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "export_eval_run_artifacts",
     "path": [
       "evals",

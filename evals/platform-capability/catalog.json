@@ -1,5 +1,51 @@
 [
   {
+    "category": "evals",
+    "cli": "evals proposals accept",
+    "description": "Add an Eval Builder proposal to a dataset as a new case. The dataset must target the proposal's agent.",
+    "input_schema": {
+      "$defs": {
+        "AcceptEvalProposalRequest": {
+          "description": "Request to add a proposal to a dataset.",
+          "properties": {
+            "eval_id": {
+              "description": "Dataset (eval) to add the case to.",
+              "example": "eval_01933b5a000070008000000000000001",
+              "type": "string"
+            }
+          },
+          "required": [
+            "eval_id"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/AcceptEvalProposalRequest"
+        },
+        {
+          "properties": {
+            "proposal_id": {
+              "description": "Proposal's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposal_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "accept_eval_proposal",
+    "output_shape": "unknown",
+    "path": "/v1/eval-proposals/{proposal_id}/accept",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "knowledge",
     "cli": "knowledge sources add",
     "description": "Connect an existing GitHub identity or public Git source to knowledge.",
@@ -11194,6 +11240,52 @@
     "read_only": false
   },
   {
+    "category": "evals",
+    "cli": "evals proposals dismiss",
+    "description": "Dismiss an Eval Builder proposal, optionally saying why. The Eval Builder does not offer it again.",
+    "input_schema": {
+      "$defs": {
+        "DismissEvalProposalRequest": {
+          "description": "Request to turn a proposal down.",
+          "properties": {
+            "note": {
+              "description": "Why it is not wanted, kept so the builder does not offer it again.",
+              "example": "We do not support refunds over the limit at all.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/DismissEvalProposalRequest"
+        },
+        {
+          "properties": {
+            "proposal_id": {
+              "description": "Proposal's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "proposal_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "dismiss_eval_proposal",
+    "output_shape": "unknown",
+    "path": "/v1/eval-proposals/{proposal_id}/dismiss",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "health_issues",
     "cli": "health-issues dismiss",
     "description": "Dismiss a detector finding with a reason.",
@@ -15672,6 +15764,29 @@
   },
   {
     "category": "evals",
+    "cli": "evals proposals list",
+    "description": "List an agent's open eval case proposals, newest first, with the Eval Builder's latest run.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_eval_proposals",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/eval-proposals",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "evals",
     "cli": "evals runs list",
     "description": "List eval runs.",
     "input_schema": {
@@ -19626,6 +19741,29 @@
     "path": "/v1/harnesses/preview",
     "positional_arg": null,
     "read_only": true
+  },
+  {
+    "category": "evals",
+    "cli": "evals proposals create",
+    "description": "Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. Runs in the background on the organization's default model; nothing is added until a person accepts a proposal.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "propose_eval_cases",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/eval-proposals",
+    "positional_arg": null,
+    "read_only": false
   },
   {
     "category": "agent_channels",
