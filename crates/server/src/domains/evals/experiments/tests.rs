@@ -18,6 +18,7 @@ fn variant(label: &str, status: EvalRunStatus, summary: Option<RunSummary>) -> E
         status,
         summary,
         cost_per_case_usd: None,
+        run_elsewhere: None,
     }
 }
 

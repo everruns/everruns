@@ -277,6 +277,10 @@ pub struct ImportEvalRunRequest {
     pub source: ImportEvalSource,
     /// Evals and their case results in this run.
     pub evals: Vec<ImportEvalGroup>,
+    /// Publish each eval's run as a variant of an experiment, so it is
+    /// compared with the experiment's other variants.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub experiment: Option<crate::domains::evals::experiments::types::ImportExperimentRef>,
 }
 
 /// Attribution for the external system that produced the run.

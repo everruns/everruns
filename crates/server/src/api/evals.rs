@@ -27,7 +27,8 @@ use crate::domains::evals::EvalService;
 use crate::domains::evals::dataset::ExportEvalRunDatasetRequest;
 use crate::domains::evals::runner::EvalRunContext;
 use crate::domains::evals::{
-    AcceptEvalProposal, DismissEvalProposal, ListEvalProposals, ProposeEvalCases,
+    AcceptEvalProposal, DismissEvalProposal, ExportEvalSamples, ImportEvalSamples,
+    ListEvalProposals, ProposeEvalCases,
 };
 use crate::domains::evals::{
     BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun,
@@ -123,6 +124,9 @@ pub fn routes(state: AppState) -> Router {
         .command::<ListEvalProposals>()
         .command::<AcceptEvalProposal>()
         .command::<DismissEvalProposal>()
+        // Dataset cases as Mira samples (knowledge/evaluation/external-results-publishing.md).
+        .command::<ExportEvalSamples>()
+        .command::<ImportEvalSamples>()
         // Hand-written: NDJSON body rather than JSON.
         .route(
             "/v1/evals/{eval_id}/runs/{run_id}/artifacts",

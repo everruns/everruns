@@ -5662,6 +5662,12 @@
         "help": "Evals and their case results in this run."
       },
       {
+        "field": "experiment",
+        "long": "experiment",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "source",
         "long": "source",
         "kind": "json",
@@ -6339,6 +6345,65 @@
       {
         "intent": "Turn off every share link for a run",
         "command": "everruns evals runs share revoke --eval-id eval_01h9 --run-id evalrun_01h9 --reason 'Vendor review finished'"
+      }
+    ]
+  },
+  {
+    "wire_name": "export_eval_samples",
+    "path": [
+      "evals",
+      "samples"
+    ],
+    "verb": "export",
+    "description": "Export an eval's cases as Mira samples, one per case. Settings Mira has no field for ride under metadata.everruns, so the export imports back unchanged.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/samples",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Save a dataset as a Mira JSONL file",
+        "command": "everruns evals samples export --eval-id eval_01h9 | jq -c '.samples[]' > cases.jsonl"
+      }
+    ]
+  },
+  {
+    "wire_name": "import_eval_samples",
+    "path": [
+      "evals",
+      "samples"
+    ],
+    "verb": "import",
+    "description": "Create or update an eval's cases from Mira samples, matched by name. A sample's expected text becomes a contains scorer unless metadata.everruns names the scorers.",
+    "method": "POST",
+    "http_path": "/v1/evals/{eval_id}/samples",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      },
+      {
+        "field": "samples",
+        "long": "samples",
+        "kind": "json",
+        "required": true,
+        "help": "Mira samples."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Load a Mira JSONL dataset into an eval",
+        "command": "everruns evals samples import --eval-id eval_01h9 --samples \"$(jq -s . cases.jsonl)\" --reason 'Share the Mira regression set'"
       }
     ]
   },

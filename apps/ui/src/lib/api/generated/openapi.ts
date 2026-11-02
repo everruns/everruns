@@ -3880,6 +3880,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/evals/{eval_id}/samples": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Export a dataset as Mira samples
+     * @description Export an eval's cases as Mira samples, one per case. Settings Mira has no field for ride under metadata.everruns, so the export imports back unchanged.
+     */
+    get: operations["export_eval_samples"];
+    put?: never;
+    /**
+     * Import Mira samples as cases
+     * @description Create or update an eval's cases from Mira samples, matched by name. A sample's expected text becomes a contains scorer unless metadata.everruns names the scorers.
+     */
+    post: operations["import_eval_samples"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/files": {
     parameters: {
       query?: never;
@@ -16012,6 +16036,61 @@ export interface components {
       status: components["schemas"]["EvalRunStatus"];
       summary?: components["schemas"]["RunSummary"] | null;
     };
+    /** @description One Mira dataset row (`mira::Sample`). */
+    EvalSample: {
+      /** @description Non-text input. Not imported. */
+      attachments?: Record<string, unknown>[];
+      /** @description Reference answer. Text becomes a `contains` scorer on import. */
+      expected?: Record<string, unknown> | null;
+      /** @description Files to seed into the workspace. Not imported. */
+      files?: Record<string, unknown>;
+      /**
+       * @description Stable id within the dataset: the case name.
+       * @example refund-over-limit
+       */
+      id: string;
+      /**
+       * @description User turns, sent in order.
+       * @example [
+       *       "Refund $450 for order 1182"
+       *     ]
+       */
+      input: string[];
+      /**
+       * @description Free-form metadata. `everruns` holds the case settings Mira has no
+       *     field for.
+       */
+      metadata?: Record<string, unknown>;
+      tags?: string[];
+    };
+    /** @description What a sample import did. */
+    EvalSampleImportReport: {
+      /** @description Public ids of the affected cases, in import order. */
+      case_ids: string[];
+      /**
+       * Format: int64
+       * @description Cases created.
+       * @example 3
+       */
+      created: number;
+      /**
+       * @description Sample fields a case cannot hold, one line per sample that had them.
+       * @example [
+       *       "refund-with-receipt: attachments"
+       *     ]
+       */
+      left_behind?: string[];
+      /**
+       * Format: int64
+       * @description Existing cases updated, matched by name.
+       * @example 1
+       */
+      updated: number;
+    };
+    /** @description A dataset as Mira samples. */
+    EvalSampleList: {
+      samples: components["schemas"]["EvalSample"][];
+    };
     /**
      * @description Eval lifecycle status (standard building-block lifecycle).
      * @enum {string}
@@ -16381,6 +16460,12 @@ export interface components {
       label: string;
       /** @example gpt-6.1-sol */
       model_override?: string | null;
+      /**
+       * @description Set when the variant ran outside Everruns and was imported: the system
+       *     that ran it, such as "mira".
+       * @example mira
+       */
+      run_elsewhere?: string | null;
       /**
        * @description The variant's run.
        * @example evalrun_01933b5a000070008000000000000001
@@ -18082,6 +18167,7 @@ export interface components {
     ImportEvalRunRequest: {
       /** @description Evals and their case results in this run. */
       evals: components["schemas"]["ImportEvalGroup"][];
+      experiment?: components["schemas"]["ImportExperimentRef"] | null;
       /** @description External system that produced the run. */
       source: components["schemas"]["ImportEvalSource"];
     };
@@ -18124,6 +18210,24 @@ export interface components {
        * @example openai
        */
       provider: string;
+    };
+    /**
+     * @description The experiment an import publishes into. Each imported eval's run becomes
+     *     the variant `variant` of the experiment named `name` on that eval, which
+     *     is created on first use.
+     */
+    ImportExperimentRef: {
+      /**
+       * @description Experiment name, matched within each eval.
+       * @example Luna vs Sol
+       */
+      name: string;
+      /**
+       * @description The variant this import is. A later import with the same label
+       *     replaces it.
+       * @example gpt-6.1-sol
+       */
+      variant: string;
     };
     /** @description A single named score from an external scorer. */
     ImportScore: {
@@ -45280,6 +45384,52 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  export_eval_samples: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalSampleList"];
+        };
+      };
+    };
+  };
+  import_eval_samples: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalSampleImportReport"];
+        };
       };
     };
   };

@@ -16,6 +16,7 @@
 
 pub mod commands;
 pub mod compare;
+pub mod imported;
 pub mod types;
 
 use crate::domains::evals::EvalService;
@@ -40,7 +41,7 @@ pub type EvalExperimentId = TypedId<EvalExperimentIdMarker>;
 
 pub const MAX_VARIANTS: usize = 4;
 pub const DEFAULT_TRIALS: u32 = 3;
-const MAX_LABEL_CHARS: usize = 40;
+pub(crate) const MAX_LABEL_CHARS: usize = 40;
 const LIST_LIMIT: i64 = 100;
 
 fn validate(req: &CreateEvalExperimentRequest) -> Result<u32> {
@@ -165,7 +166,7 @@ pub async fn get(
     if eval.id != row.eval_id {
         return Ok(None);
     }
-    let runs = db.list_eval_experiment_runs(row.id).await?;
+    let runs = baseline_first(&row, db.list_eval_experiment_runs(row.id).await?);
     let mut experiment = to_experiment(&row, &eval.public_id, &runs);
 
     let cases = db.list_eval_cases(eval.id).await?;
@@ -213,11 +214,13 @@ pub async fn list(
     Ok(rows
         .iter()
         .filter_map(|row| {
-            let mine: Vec<EvalRunRow> = runs
-                .iter()
-                .filter(|run| run.experiment_id == Some(row.id))
-                .cloned()
-                .collect();
+            let mine: Vec<EvalRunRow> = baseline_first(
+                row,
+                runs.iter()
+                    .filter(|run| run.experiment_id == Some(row.id))
+                    .cloned()
+                    .collect(),
+            );
             // An eval deleted since keeps no route to its experiments.
             let eval_public_id = eval_public_ids.get(&row.eval_id)?;
             Some(to_experiment(row, eval_public_id, &mine))
@@ -334,6 +337,15 @@ fn empty_summary() -> RunSummary {
     .expect("an empty summary deserializes")
 }
 
+/// The baseline's run first, the rest oldest first. Runs come back by age,
+/// and a re-published baseline (an import replaces its variant) is newer than
+/// the others, yet comparisons and the gate read the first variant as the
+/// baseline.
+fn baseline_first(row: &EvalExperimentRow, mut runs: Vec<EvalRunRow>) -> Vec<EvalRunRow> {
+    runs.sort_by_key(|run| run.variant_label.as_deref() != Some(row.baseline_label.as_str()));
+    runs
+}
+
 fn to_experiment(
     row: &EvalExperimentRow,
     eval_public_id: &str,
@@ -362,6 +374,7 @@ fn to_experiment(
                 status: EvalRunStatus::from(run.status.as_str()),
                 summary,
                 cost_per_case_usd,
+                run_elsewhere: imported::system_of(run),
             }
         })
         .collect();

@@ -30,6 +30,8 @@ Evaluation cases, runs, results and scores.
 | [`evals experiments get`](#evals-experiments-get) | Get an experiment with its case-by-case comparison and verdicts. |
 | [`evals experiments recent`](#evals-experiments-recent) | List the organization's experiments across evals, newest first. |
 | [`evals experiments list`](#evals-experiments-list) | List an eval's experiments, newest first. |
+| [`evals samples export`](#evals-samples-export) | Export an eval's cases as Mira samples, one per case. |
+| [`evals samples import`](#evals-samples-import) | Create or update an eval's cases from Mira samples, matched by name. |
 | [`evals proposals accept`](#evals-proposals-accept) | Add an Eval Builder proposal to a dataset as a new case. |
 | [`evals proposals dismiss`](#evals-proposals-dismiss) | Dismiss an Eval Builder proposal, optionally saying why. |
 | [`evals proposals list`](#evals-proposals-list) | List an agent's open eval case proposals, newest first, with the Eval Builder's latest run. |
@@ -134,6 +136,7 @@ everruns evals import [OPTIONS] --evals <evals> --source <source>
 | Flag | Description |
 |---|---|
 | `--evals <EVALS>` | Required. Evals and their case results in this run. |
+| `--experiment <EXPERIMENT>` |  |
 | `--source <SOURCE>` | Required. Attribution for the external system that produced the run. |
 
 Example:
@@ -430,6 +433,45 @@ Example:
 ```bash
 # Find the last experiment on an eval
 everruns evals experiments list --eval-id eval_01h9
+```
+
+## evals samples export
+
+Export an eval's cases as Mira samples, one per case. Settings Mira has no field for ride under metadata.everruns, so the export imports back unchanged.
+
+```bash
+everruns evals samples export [OPTIONS] --eval-id <eval_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+
+Example:
+
+```bash
+# Save a dataset as a Mira JSONL file
+everruns evals samples export --eval-id eval_01h9 | jq -c '.samples[]' > cases.jsonl
+```
+
+## evals samples import
+
+Create or update an eval's cases from Mira samples, matched by name. A sample's expected text becomes a contains scorer unless metadata.everruns names the scorers.
+
+```bash
+everruns evals samples import [OPTIONS] --eval-id <eval_id> --samples <samples>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+| `--samples <SAMPLES>` | Required. Mira samples. |
+
+Example:
+
+```bash
+# Load a Mira JSONL dataset into an eval
+everruns evals samples import --eval-id eval_01h9 --samples "$(jq -s . cases.jsonl)" --reason 'Share the Mira regression set'
 ```
 
 ## evals proposals accept

@@ -116,10 +116,26 @@ impl Command for ImportEvalRun {
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EvalRun>, CommandError> {
         require_evals_enabled(ctx)?;
-        q::service(ctx)
+        let experiment = self.req.experiment.clone();
+        if let Some(reference) = &experiment {
+            crate::domains::evals::experiments::imported::validate(reference)
+                .map_err(classify_anyhow)?;
+        }
+        let runs = q::service(ctx)
             .import_run(&ctx.caller, self.req)
             .await
-            .map_err(classify_anyhow)
+            .map_err(classify_anyhow)?;
+        if let Some(reference) = &experiment {
+            crate::domains::evals::experiments::imported::attach(
+                &ctx.db,
+                &ctx.caller,
+                &runs,
+                reference,
+            )
+            .await
+            .map_err(classify_anyhow)?;
+        }
+        Ok(runs)
     }
 }
 

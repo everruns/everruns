@@ -51,7 +51,15 @@ const experiment: EvalExperiment = {
   ],
   comparison: {
     baseline: "base",
-    verdicts: [{ label: "sol", paired_cases: 2, fixed: 1, broke: 0, verdict: "not_enough_data" }],
+    verdicts: [
+      {
+        label: "sol",
+        paired_cases: 2,
+        fixed: 1,
+        broke: 0,
+        verdict: "not_enough_data",
+      },
+    ],
     cases: [
       {
         case_id: "c1",
@@ -77,7 +85,10 @@ const experiment: EvalExperiment = {
 
 it("shows each variant against the baseline with model names and deltas", () => {
   render(
-    <VariantTable experiment={experiment} modelNames={new Map([["model_sol", "GPT-6.1 Sol"]])} />,
+    <VariantTable
+      experiment={experiment}
+      modelNames={new Map([["model_sol", "GPT-6.1 Sol"]])}
+    />,
   );
   expect(screen.getByText("GPT-6.1 Sol")).toBeInTheDocument();
   // Pass rate and passes-every-trial both gained 50 points.
@@ -98,4 +109,20 @@ it("shows changed cases first and all cases on request", () => {
   expect(screen.queryByText("Duplicate ticket")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "All" }));
   expect(screen.getByText("Duplicate ticket")).toBeInTheDocument();
+});
+
+it("marks a variant that ran outside Everruns", () => {
+  const imported: EvalExperiment = {
+    ...experiment,
+    variants: [
+      experiment.variants[0],
+      {
+        ...experiment.variants[1],
+        model_override: undefined,
+        run_elsewhere: "mira",
+      },
+    ],
+  };
+  render(<VariantTable experiment={imported} modelNames={new Map()} />);
+  expect(screen.getByText("run in mira")).toBeInTheDocument();
 });

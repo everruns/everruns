@@ -11821,6 +11821,29 @@
     "read_only": false
   },
   {
+    "category": "evals",
+    "cli": "evals samples export",
+    "description": "Export an eval's cases as Mira samples, one per case. Settings Mira has no field for ride under metadata.everruns, so the export imports back unchanged.",
+    "input_schema": {
+      "properties": {
+        "eval_id": {
+          "description": "Eval's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "eval_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "export_eval_samples",
+    "output_shape": "unknown",
+    "path": "/v1/evals/{eval_id}/samples",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "reporting",
     "cli": "reports query export",
     "description": "Run and export an org-scoped semantic reporting query.",
@@ -14869,6 +14892,17 @@
               },
               "type": "array"
             },
+            "experiment": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ImportExperimentRef",
+                  "description": "Publish each eval's run as a variant of an experiment, so it is\ncompared with the experiment's other variants."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "source": {
               "$ref": "#/$defs/ImportEvalSource",
               "description": "External system that produced the run."
@@ -14942,6 +14976,26 @@
           ],
           "type": "object"
         },
+        "ImportExperimentRef": {
+          "description": "The experiment an import publishes into. Each imported eval's run becomes\nthe variant `variant` of the experiment named `name` on that eval, which\nis created on first use.",
+          "properties": {
+            "name": {
+              "description": "Experiment name, matched within each eval.",
+              "example": "Luna vs Sol",
+              "type": "string"
+            },
+            "variant": {
+              "description": "The variant this import is. A later import with the same label\nreplaces it.",
+              "example": "gpt-6.1-sol",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "variant"
+          ],
+          "type": "object"
+        },
         "ImportScore": {
           "description": "A single named score from an external scorer.",
           "properties": {
@@ -14991,6 +15045,92 @@
     "name": "import_eval_run",
     "output_shape": "unknown",
     "path": "/v1/evals/import",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "evals",
+    "cli": "evals samples import",
+    "description": "Create or update an eval's cases from Mira samples, matched by name. A sample's expected text becomes a contains scorer unless metadata.everruns names the scorers.",
+    "input_schema": {
+      "$defs": {
+        "EvalSample": {
+          "description": "One Mira dataset row (`mira::Sample`).",
+          "properties": {
+            "attachments": {
+              "description": "Non-text input. Not imported.",
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "expected": {
+              "description": "Reference answer. Text becomes a `contains` scorer on import.",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "files": {
+              "description": "Files to seed into the workspace. Not imported.",
+              "type": "object"
+            },
+            "id": {
+              "description": "Stable id within the dataset: the case name.",
+              "example": "refund-over-limit",
+              "type": "string"
+            },
+            "input": {
+              "description": "User turns, sent in order.",
+              "example": [
+                "Refund $450 for order 1182"
+              ],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "metadata": {
+              "description": "Free-form metadata. `everruns` holds the case settings Mira has no\nfield for.",
+              "type": "object"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "input"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "eval_id": {
+          "description": "Eval's prefixed public identifier.",
+          "type": "string"
+        },
+        "samples": {
+          "description": "Mira samples. Each becomes the case named by its id.",
+          "items": {
+            "$ref": "#/$defs/EvalSample"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "eval_id",
+        "samples"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "import_eval_samples",
+    "output_shape": "unknown",
+    "path": "/v1/evals/{eval_id}/samples",
     "positional_arg": null,
     "read_only": false
   },

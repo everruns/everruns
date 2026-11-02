@@ -794,8 +794,7 @@ impl EvalService {
         if req.evals.is_empty() {
             return Err(BadRequestError::new("import must include at least one eval").into());
         }
-        // THREAT[TM-DOS-025]: Reject import fan-out before allocating result vectors or
-        // opening per-eval storage transactions.
+        // THREAT[TM-DOS-025]: Reject import fan-out before allocating or opening transactions.
         if req.evals.len() > self.limits.max_evals_per_import {
             return Err(BadRequestError::new(format!(
                 "import exceeds the limit of {} evals",
@@ -1692,6 +1691,7 @@ mod tests {
                 run_id: run_id.into(),
                 metadata: None,
             },
+            experiment: None,
             evals: vec![ImportEvalGroup {
                 name: "coding".into(),
                 description: Some("imported".into()),
