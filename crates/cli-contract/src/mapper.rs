@@ -178,6 +178,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Dataset cases as Mira samples, to export or import.",
     ),
     (
+        "evals fixes",
+        "Fixes the Inspector suggests for findings, to check, apply or reject.",
+    ),
+    (
         "evals proposals",
         "Cases the Eval Builder suggests for an agent, to add or dismiss.",
     ),

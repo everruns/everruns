@@ -4,8 +4,9 @@
 // numbers it recorded, and the Inspector's account of what happened, with
 // the cluster of similar findings it filed this one under. Actions: open the
 // session, and dismiss with a reason the detectors are calibrated against.
-// The mockup's automatic-action and suggested-fix cards arrive with the
-// self-healing steps; nothing is changed automatically today.
+// The suggested-fix card checks and applies the Inspector's fix with a
+// person's approval; the mockup's automatic-action card arrives with
+// self-healing, and nothing is changed automatically today.
 
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -31,6 +32,7 @@ import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { SeverityTag } from "@/components/evals/section/findings-list";
+import { SuggestedFix } from "@/components/evals/suggested-fix";
 import { evidenceRows, findingKind } from "@/components/evals/findings";
 import { formatDate, formatRelativeTime } from "@/lib/formatting";
 import type { HealthIssue } from "@/lib/api/types";
@@ -164,6 +166,7 @@ function Finding({ issue }: { issue: HealthIssue }) {
                 <InspectorAccount issue={issue} />
               </CardContent>
             </Card>
+            <SuggestedFix issueId={issue.id} />
           </div>
           {investigation?.cluster_title && (
             <Card className="self-start">

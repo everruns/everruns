@@ -3549,6 +3549,106 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/evals/fixes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List suggested fixes
+     * @description List the fixes the Inspector suggested for one finding or for one agent's findings, with where checking and approving each stands.
+     */
+    get: operations["list_finding_fixes"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/fixes/{fix_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Edit a suggested fix
+     * @description Change the text a suggested fix adds to the agent's instructions. An edited fix must be checked again before it can be applied.
+     */
+    patch: operations["update_finding_fix"];
+    trace?: never;
+  };
+  "/v1/evals/fixes/{fix_id}/apply": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Apply a suggested fix
+     * @description Add a checked fix to the agent's instructions as a new agent revision. Only a fix whose check showed no regressions, against the instructions the agent has now, can be applied.
+     */
+    post: operations["apply_finding_fix"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/fixes/{fix_id}/check": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Check a suggested fix
+     * @description Run one of the agent's evals as an experiment with and without a suggested fix. The fix can be applied once the check shows no regressions.
+     */
+    post: operations["check_finding_fix"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/fixes/{fix_id}/reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Reject a suggested fix
+     * @description Turn down a suggested fix, saying why. The agent is not changed.
+     */
+    post: operations["reject_finding_fix"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/evals/import": {
     parameters: {
       query?: never;
@@ -11829,6 +11929,21 @@ export interface components {
       /** @description The type of LLM provider (e.g., openai, anthropic). */
       provider_type: components["schemas"]["DriverId"];
     };
+    /** @description Options for checking a fix. */
+    CheckFindingFixRequest: {
+      /** @description The agent's eval to check against. Default: the one with most cases. */
+      eval_id?: string | null;
+      /**
+       * Format: double
+       * @description Spending cap in USD for the whole check.
+       */
+      max_cost_usd?: number | null;
+      /**
+       * Format: int32
+       * @description Trials per case and side, 1 to 20 (default 2).
+       */
+      trials?: number | null;
+    };
     /** @description Response for name availability check. */
     CheckNameResponse: {
       /** @description Whether the name is available for use. */
@@ -16948,6 +17063,63 @@ export interface components {
     /** @enum {string} */
     FindingCategory: "structure" | "completeness" | "effectiveness" | "safety" | "cost";
     /**
+     * @description A suggested change to an agent's instructions, written by the Inspector for
+     *     a finding, and where checking and approving it stand.
+     */
+    FindingFix: {
+      /** @description The text added to the end of the agent's instructions. */
+      addition: string;
+      /**
+       * @description The agent whose instructions the fix changes.
+       * @example agent_550e8400e29b41d4a716446655440000
+       */
+      agent_id: string;
+      check?: components["schemas"]["FixCheck"] | null;
+      /**
+       * Format: date-time
+       * @description When the Inspector wrote the fix.
+       */
+      created_at: string;
+      /**
+       * @description False when the agent's instructions changed after the last check, so
+       *     the fix needs checking again before it can be applied.
+       */
+      current: boolean;
+      /**
+       * Format: date-time
+       * @description When a person applied or rejected the fix.
+       */
+      decided_at?: string | null;
+      /** @description Why it was rejected. */
+      decision_note?: string | null;
+      /** @description The eval the last check ran, while or after it runs. */
+      eval_id?: string | null;
+      /** @description The last check's experiment, while or after it runs. */
+      experiment_id?: string | null;
+      /**
+       * @description Prefixed public identifier of the fix.
+       * @example fix_0190f3a1b2c37d8e9f00112233445566
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description The finding the fix is for.
+       */
+      issue_id: string;
+      /**
+       * @description `proposed` (not checked), `checking`, `verified` (checked, no
+       *     regressions), `regressed`, `check_failed`, `applied` or `rejected`.
+       */
+      status: string;
+      /** @description One line on what the change does. */
+      summary: string;
+    };
+    /** @description The fixes list. */
+    FindingFixList: {
+      /** @description Newest first. */
+      fixes: components["schemas"]["FindingFix"][];
+    };
+    /**
      * @description The Inspector's write-up of a finding: what happened, how serious it is,
      *     what to do, and the cluster of similar findings it was filed under.
      */
@@ -17037,6 +17209,59 @@ export interface components {
      * @enum {string}
      */
     FindingSource: "builtin" | "llm" | "health_check";
+    /** @description What a check found: the eval's cases with and without the fix. */
+    FixCheck: {
+      /**
+       * Format: int32
+       * @description Cases the fix made fail.
+       */
+      broke: number;
+      /**
+       * Format: int32
+       * @description Cases that ran on both sides.
+       */
+      cases: number;
+      /** @description The agent as it is. */
+      current: components["schemas"]["FixCheckSide"];
+      /**
+       * Format: int32
+       * @description The eval's dataset version at the check.
+       */
+      dataset_version: number;
+      /** @description Name of the eval the check ran. */
+      eval_name: string;
+      /**
+       * Format: int32
+       * @description Cases the fix made pass.
+       */
+      fixed: number;
+      /**
+       * Format: int32
+       * @description Trials per case and side.
+       */
+      trials: number;
+      /** @description How the variant with the fix compares, noise taken into account. */
+      verdict: components["schemas"]["Verdict"];
+      /** @description The agent with the addition. */
+      with_fix: components["schemas"]["FixCheckSide"];
+    };
+    FixCheckSide: {
+      /**
+       * Format: double
+       * @description What the side's trials cost in USD.
+       */
+      cost_usd: number;
+      /**
+       * Format: double
+       * @description Share of all trials that passed, 0 to 1.
+       */
+      pass_rate: number;
+      /**
+       * Format: int32
+       * @description Cases that passed every trial.
+       */
+      passed: number;
+    };
     /**
      * @description Request to fork a session. Every field is
      *     optional; omitted fields inherit the parent session's value. Title defaults
@@ -25908,6 +26133,15 @@ export interface components {
        */
       endpoint_url: string;
     };
+    /** @description Why a fix is not wanted. */
+    RejectFindingFixRequest: {
+      /**
+       * @description Kept so later suggestions can be compared with what people turned down.
+       *     (Named `note` because `reason` is the change-intent flag every command
+       *     takes.)
+       */
+      note: string;
+    };
     /** @description A display-name change that preserves the connected account credential. */
     RenameOrganizationConnectionRequest: {
       name: string;
@@ -32193,6 +32427,13 @@ export interface components {
        * @example false
        */
       is_readonly?: boolean | null;
+    };
+    /** @description New text for a fix. It must be checked again. */
+    UpdateFindingFixRequest: {
+      /** @description The text to add to the agent's instructions. */
+      addition: string;
+      /** @description One line on what the change does. Unchanged when omitted. */
+      summary?: string | null;
     };
     /** @description Request to update a harness. Only provided fields will be updated. */
     UpdateHarnessRequest: {
@@ -44565,6 +44806,130 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ListResponse_EvalExperiment"];
+        };
+      };
+    };
+  };
+  list_finding_fixes: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingFixList"];
+        };
+      };
+    };
+  };
+  update_finding_fix: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        fix_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateFindingFixRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingFix"];
+        };
+      };
+    };
+  };
+  apply_finding_fix: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        fix_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingFix"];
+        };
+      };
+    };
+  };
+  check_finding_fix: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        fix_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CheckFindingFixRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingFix"];
+        };
+      };
+    };
+  };
+  reject_finding_fix: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        fix_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RejectFindingFixRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingFix"];
         };
       };
     };

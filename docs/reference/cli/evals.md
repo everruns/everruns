@@ -32,6 +32,11 @@ Evaluation cases, runs, results and scores.
 | [`evals experiments list`](#evals-experiments-list) | List an eval's experiments, newest first. |
 | [`evals samples export`](#evals-samples-export) | Export an eval's cases as Mira samples, one per case. |
 | [`evals samples import`](#evals-samples-import) | Create or update an eval's cases from Mira samples, matched by name. |
+| [`evals fixes apply`](#evals-fixes-apply) | Add a checked fix to the agent's instructions as a new agent revision. |
+| [`evals fixes check`](#evals-fixes-check) | Run one of the agent's evals as an experiment with and without a suggested fix. |
+| [`evals fixes list`](#evals-fixes-list) | List the fixes the Inspector suggested for one finding or for one agent's findings, with where checking and approving each stands. |
+| [`evals fixes reject`](#evals-fixes-reject) | Turn down a suggested fix, saying why. |
+| [`evals fixes update`](#evals-fixes-update) | Change the text a suggested fix adds to the agent's instructions. |
 | [`evals proposals accept`](#evals-proposals-accept) | Add an Eval Builder proposal to a dataset as a new case. |
 | [`evals proposals dismiss`](#evals-proposals-dismiss) | Dismiss an Eval Builder proposal, optionally saying why. |
 | [`evals proposals list`](#evals-proposals-list) | List an agent's open eval case proposals, newest first, with the Eval Builder's latest run. |
@@ -472,6 +477,109 @@ Example:
 ```bash
 # Load a Mira JSONL dataset into an eval
 everruns evals samples import --eval-id eval_01h9 --samples "$(jq -s . cases.jsonl)" --reason 'Share the Mira regression set'
+```
+
+## evals fixes apply
+
+Add a checked fix to the agent's instructions as a new agent revision. Only a fix whose check showed no regressions, against the instructions the agent has now, can be applied.
+
+```bash
+everruns evals fixes apply [OPTIONS] --fix-id <fix_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--fix-id <FIX_ID>` | Required. Prefixed public identifier of the fix. |
+
+Example:
+
+```bash
+# Apply a fix after its check passed
+everruns evals fixes apply --fix-id fix_01h9 --reason 'Stop rule checked on the support dataset'
+```
+
+## evals fixes check
+
+Run one of the agent's evals as an experiment with and without a suggested fix. The fix can be applied once the check shows no regressions.
+
+```bash
+everruns evals fixes check [OPTIONS] --fix-id <fix_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--eval-id <EVAL_ID>` | The agent's eval to check against. |
+| `--fix-id <FIX_ID>` | Required. Prefixed public identifier of the fix. |
+| `--max-cost-usd <MAX_COST_USD>` | Spending cap in USD for the whole check. |
+| `--trials <TRIALS>` | Trials per case and side, 1 to 20 (default 2). |
+
+Example:
+
+```bash
+# Check a fix on the agent's main eval within $2
+everruns evals fixes check --fix-id fix_01h9 --max-cost-usd 2 --reason 'Before applying the stop rule'
+```
+
+## evals fixes list
+
+List the fixes the Inspector suggested for one finding or for one agent's findings, with where checking and approving each stands.
+
+```bash
+everruns evals fixes list [OPTIONS]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | An agent whose fixes to list. |
+| `--issue-id <ISSUE_ID>` | The finding whose fix to show. |
+| `--open` | Only fixes still waiting on a person (agent lists only). |
+
+Example:
+
+```bash
+# Fixes for one agent that still need a decision
+everruns evals fixes list --agent-id agent_01h9 --open
+```
+
+## evals fixes reject
+
+Turn down a suggested fix, saying why. The agent is not changed.
+
+```bash
+everruns evals fixes reject [OPTIONS] --fix-id <fix_id> --note <note>
+```
+
+| Flag | Description |
+|---|---|
+| `--fix-id <FIX_ID>` | Required. Prefixed public identifier of the fix. |
+| `--note <NOTE>` | Required. Kept so later suggestions can be compared with what people turned down. (Named `note` because... |
+
+Example:
+
+```bash
+# Turn down a fix that would hide the real problem
+everruns evals fixes reject --fix-id fix_01h9 --note 'The schedule itself is wrong, fixing it there'
+```
+
+## evals fixes update
+
+Change the text a suggested fix adds to the agent's instructions. An edited fix must be checked again before it can be applied.
+
+```bash
+everruns evals fixes update [OPTIONS] --addition <addition> --fix-id <fix_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--addition <ADDITION>` | Required. The text to add to the agent's instructions. |
+| `--fix-id <FIX_ID>` | Required. Prefixed public identifier of the fix. |
+| `--summary <SUMMARY>` | One line on what the change does. |
+
+Example:
+
+```bash
+# Tighten a fix before checking it
+everruns evals fixes update --fix-id fix_01h9 --addition 'Stop after 12 runs with the same result.' --reason 'Shorter stop rule'
 ```
 
 ## evals proposals accept

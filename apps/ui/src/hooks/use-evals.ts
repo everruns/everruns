@@ -20,6 +20,11 @@ import {
   proposeEvalCases,
   acceptEvalProposal,
   dismissEvalProposal,
+  getFindingFix,
+  checkFindingFix,
+  updateFindingFix,
+  applyFindingFix,
+  rejectFindingFix,
 } from "@/lib/api/evals";
 import type {
   CreateEvalRequest,
@@ -324,5 +329,47 @@ export function useDismissEvalProposal(agentId: string) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.evals.proposals(agentId),
       }),
+  });
+}
+
+// A finding's suggested fix (knowledge/evaluation/suggested-fixes.md). Polled
+// while its check runs, so the result appears without a reload.
+const FIX_CHECK_POLL_MS = 10_000;
+
+export function useFindingFix(issueId: string | undefined) {
+  return useOrgScopedQuery({
+    queryKey: queryKeys.evals.findingFix(issueId ?? ""),
+    queryFn: () => getFindingFix(issueId!),
+    enabled: !!issueId,
+    refetchInterval: (query) =>
+      query.state.data?.status === "checking" ? FIX_CHECK_POLL_MS : false,
+  });
+}
+
+export function useFindingFixAction(issueId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      action:
+        | { kind: "check"; fixId: string }
+        | { kind: "edit"; fixId: string; addition: string }
+        | { kind: "apply"; fixId: string; reason?: string }
+        | { kind: "reject"; fixId: string; note: string },
+    ) => {
+      switch (action.kind) {
+        case "check":
+          return checkFindingFix(action.fixId);
+        case "edit":
+          return updateFindingFix(action.fixId, action.addition);
+        case "apply":
+          return applyFindingFix(action.fixId, action.reason);
+        case "reject":
+          return rejectFindingFix(action.fixId, action.note);
+      }
+    },
+    onSuccess: (fix) => {
+      queryClient.setQueryData(queryKeys.evals.findingFix(issueId), fix);
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+    },
   });
 }

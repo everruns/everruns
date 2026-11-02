@@ -127,6 +127,12 @@ pub fn routes(state: AppState) -> Router {
         // Dataset cases as Mira samples (knowledge/evaluation/external-results-publishing.md).
         .command::<ExportEvalSamples>()
         .command::<ImportEvalSamples>()
+        // Suggested fixes for findings (knowledge/evaluation/suggested-fixes.md).
+        .command::<crate::domains::health_issues::ListFindingFixes>()
+        .command::<crate::domains::health_issues::CheckFindingFix>()
+        .command::<crate::domains::health_issues::UpdateFindingFix>()
+        .command::<crate::domains::health_issues::ApplyFindingFix>()
+        .command::<crate::domains::health_issues::RejectFindingFix>()
         // Hand-written: NDJSON body rather than JSON.
         .route(
             "/v1/evals/{eval_id}/runs/{run_id}/artifacts",

@@ -113,6 +113,14 @@ Findings are health issues that detectors and classifiers raise about sessions a
 
 The **Inspector** writes up the serious ones (classifier findings and runaway schedules) within about 15 minutes, using your organization's default model: what happened in a few plain sentences, how serious it is, and one next step. It files each finding under a group of similar ones, so ten sessions with the same problem show as one row with a count. It keeps its write-up, not the session's text, and its cost counts against the org and agent budgets.
 
+For an agent stuck in a loop, one that followed an injected instruction, or a runaway schedule, the Inspector may also suggest a **fix**: a short addition to the agent's instructions that would have prevented it. Nothing changes until a person acts. **Check against evals** runs the agent's eval with and without the addition as an experiment; once the check shows no case broke, **Approve** adds the text to the agent's instructions as a new revision you can restore from its history. A fix checked against instructions that have changed since needs another check. Suspected abuse never gets a fix.
+
+```bash
+everruns evals fixes list --agent-id agent_01933b5a000070008000000000000001 --open
+everruns evals fixes check --fix-id fix_0193... --max-cost-usd 2 --reason 'Before applying the stop rule'
+everruns evals fixes apply --fix-id fix_0193... --reason 'Stop rule checked on the claims dataset'
+```
+
 **Dismiss** closes a finding that needs nothing and keeps your reason. A dismissed session finding stays closed even if a detector flags the same session again:
 
 ```bash
