@@ -7,8 +7,8 @@ significance: minor
 products: [platform, cloud]
 surfaces: [ui, api]
 links:
-  docs: [/features/ui/#sessions, /features/agent-api/]
-  prs: [everruns/everruns#5146]
+  docs: [/features/ui/#sessions, /features/agent-api/, /features/channels/]
+  prs: [everruns/everruns#5146, everruns/everruns#5150]
 ---
 
 Anyone in a conversation can now put an emoji on a message, and so can the
@@ -29,3 +29,6 @@ curl -X PUT "$BASE/sessions/$SESSION/messages/$MESSAGE/reactions/%F0%9F%91%8D" \
   -H "Authorization: Bearer $KEY"
 curl "$BASE/sessions/$SESSION/reactions" -H "Authorization: Bearer $KEY"
 ```
+
+AG-UI channels stream each reaction as a `CUSTOM` event named
+`everruns.reaction` (see [Channels](/features/channels/)).
