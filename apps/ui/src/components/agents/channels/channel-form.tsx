@@ -622,6 +622,11 @@ export function ChannelForm({
   // The OAuth exchange is what records the workspace id, so an app id plus a workspace id means
   // Everruns created this channel's app and it was installed.
   const slackLive = Boolean(state.slackAppId && state.slackTeamId);
+  // Add to Slack stopped before Slack's approval: the app exists and its signing secret is
+  // saved, but no bot token or workspace came back. Offer Add to Slack again, which reuses
+  // that app, instead of treating the saved secret as a finished manual setup.
+  const slackInstallUnfinished = Boolean(state.slackAppId) && !slackLive;
+  const slackCanAdd = !state.slackCredentialsConfigured || slackInstallUnfinished;
   const selectSlackInstallTeam = useCallback(
     (teamId: string) => onChange({ ...state, slackInstallTeamId: teamId }),
     [onChange, state],
@@ -1291,21 +1296,19 @@ export function ChannelForm({
                   </a>
                 </div>
               )}
-              {!slackLive &&
-                !state.slackCredentialsConfigured &&
-                slackInstallCapability?.supported && (
-                  <SlackWorkspaceChoice
-                    capability={slackInstallCapability}
-                    selected={state.slackInstallTeamId}
-                    onSelect={selectSlackInstallTeam}
-                    onChanged={onSlackCapabilityChanged}
-                  />
-                )}
+              {!slackLive && slackCanAdd && slackInstallCapability?.supported && (
+                <SlackWorkspaceChoice
+                  capability={slackInstallCapability}
+                  selected={state.slackInstallTeamId}
+                  onSelect={selectSlackInstallTeam}
+                  onChanged={onSlackCapabilityChanged}
+                />
+              )}
               {!slackLive &&
                 mode === "edit" &&
                 channelId &&
                 slackInstallAvailable &&
-                !state.slackCredentialsConfigured &&
+                slackCanAdd &&
                 !slackInstall.unavailable && (
                   <div className="space-y-3 border p-4">
                     <div className="space-y-1">
