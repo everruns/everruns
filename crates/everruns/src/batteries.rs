@@ -40,6 +40,15 @@ pub fn runtime_capability_registry() -> CapabilityRegistry {
 /// registrations retain the registry's normal duplicate handling.
 pub fn compose_runtime_capability_registry(mut registry: CapabilityRegistry) -> CapabilityRegistry {
     register_session_service_capabilities(&mut registry);
+    // `AgentBuilder::member` attaches the Agents capability; it is inert on an
+    // agent without members.
+    #[cfg(feature = "local")]
+    if registry
+        .get(everruns_capabilities::capabilities::AGENT_HANDOFF_CAPABILITY_ID)
+        .is_none()
+    {
+        registry.register(everruns_capabilities::capabilities::AgentHandoffCapability);
+    }
     register_selected_integrations(&mut registry);
     registry
 }

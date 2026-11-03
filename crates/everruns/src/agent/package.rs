@@ -39,6 +39,21 @@ impl Agent {
             })
             .cloned()
             .collect();
+        m.description = self.description.clone().or(m.description);
+        // Every member exports as a bundled agent: the Framework keeps no
+        // catalog to resolve a linked name against on import.
+        m.members = None;
+        m.agents = self
+            .members
+            .iter()
+            .map(|member| {
+                member
+                    .to_package()
+                    .map(|package| package.manifest().clone())
+            })
+            .collect::<Result<_, _>>()?;
+        m.capabilities
+            .retain(|c| self.members.is_empty() || c.id() != super::members::AGENTS_CAPABILITY);
         m.max_iterations = self.max_iterations;
         m.parallel_tool_calls = self.parallel_tool_calls;
         m.communication = self
@@ -82,14 +97,14 @@ impl AgentBuilder {
                 "bind the hosted Sandbox policy explicitly",
             ));
         }
-        // Members run on the Platform today. Refuse them rather than build an
-        // agent that silently lost the agents it hands work to.
-        if !m.agents.is_empty() || m.members.as_ref().is_some_and(|m| !m.is_empty()) {
-            return Err(failure(
-                "agents",
-                "agents that hand work to other agents run on the Platform; Framework support is not available yet",
-            ));
+        // Bundled agents are built with this agent's providers in `build`;
+        // linked agents (by name) must be added with `AgentBuilder::member`.
+        for bundled in &m.agents {
+            let bundled = crate::AgentPackage::new(bundled.clone())
+                .map_err(|error| failure(&format!("agents.{}", bundled.name), error.to_string()))?;
+            self.bundled_members.push(bundled);
         }
+        self.linked_members = m.members.clone().unwrap_or_default();
         let registry = framework_capability_registry(false);
         for reference in &m.capabilities {
             if let Some(bound) = self
@@ -194,6 +209,9 @@ impl AgentBuilder {
         self.parallel_tool_calls = m.parallel_tool_calls;
         self.communication = m.communication.unwrap_or_default();
         self.network_access = m.network_access.clone();
+        if self.description.is_none() {
+            self.description = m.description.clone();
+        }
         self.package_manifest = Some(m.clone());
         Ok(self)
     }
