@@ -332,6 +332,10 @@ pub struct Database {
     blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
     /// Keeps a test's private database alive while any clone uses it.
     test_database: Option<std::sync::Arc<crate::storage::test_database::TestDatabase>>,
+    /// Group commit lanes for fenced event appends, shared by every clone
+    /// (`events::group_commit`). `None` on the clone a lane runs on, so the
+    /// lanes hold no reference to themselves and stop with the last caller.
+    event_writer: Option<std::sync::Arc<events::group_commit::EventLogWriter>>,
 }
 
 /// Idle time after which a pooled connection is pinged before reuse.
@@ -366,6 +370,7 @@ impl Database {
             pool: crate::storage::transaction::TxPool::new(pool),
             blob_store: None,
             test_database: None,
+            event_writer: Some(events::group_commit::EventLogWriter::from_env()),
         }
     }
 
@@ -519,6 +524,7 @@ impl Database {
             relaxed_pool,
             blob_store: None,
             test_database: None,
+            event_writer: Some(events::group_commit::EventLogWriter::from_env()),
         })
     }
 
@@ -561,6 +567,15 @@ impl Database {
             relaxed_pool: self.relaxed_pool.clone(),
             blob_store: self.blob_store.clone(),
             test_database: self.test_database.clone(),
+            event_writer: self.event_writer.clone(),
+        }
+    }
+
+    /// This database without group commit lanes: what a lane itself runs on.
+    pub(crate) fn without_writer(&self) -> Self {
+        Self {
+            event_writer: None,
+            ..self.clone()
         }
     }
 }
