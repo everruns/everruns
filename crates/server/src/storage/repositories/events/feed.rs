@@ -64,7 +64,12 @@ pub(crate) struct FeedBatch {
 #[derive(sqlx::FromRow)]
 struct WindowRow {
     hi: i64,
+    /// Whether the row comes from above the window (a session's earlier,
+    /// later-committed event).
+    early: Option<bool>,
     xact: Option<i64>,
+    /// The session's delivered sequence.
+    floor: Option<i32>,
     #[sqlx(flatten)]
     event: OptionalEventRow,
 }
@@ -168,6 +173,11 @@ impl Database {
     /// Read up to `limit` committed events of `event_types` (every type when
     /// empty) from `partition` at `cursor`, plus the out-of-order ones their
     /// sessions need first.
+    ///
+    /// One statement reads the window, each session's delivered sequence and
+    /// the session's committed events above the window that come first. Only
+    /// a full page, which can end inside a transaction, reads the last two
+    /// again for the trimmed window.
     pub(crate) async fn feed_read(
         &self,
         consumer: &str,
@@ -176,39 +186,78 @@ impl Database {
         event_types: &[String],
         limit: i64,
     ) -> Result<FeedBatch> {
-        let window: Vec<WindowRow> = sqlx::query_as(concat!(
+        let found: Vec<WindowRow> = sqlx::query_as(concat!(
             "WITH point AS MATERIALIZED ( \
                  SELECT pg_snapshot_xmin(pg_current_snapshot()) AS hi \
-             ) \
-             SELECT p.hi::text::bigint AS hi, e.xact_id::text::bigint AS xact, ",
-            event_columns!(),
-            " \
-             FROM point p \
-             LEFT JOIN LATERAL ( \
+             ), win AS MATERIALIZED ( \
                  SELECT ev.id, ev.session_id, ev.sequence, ev.event_type, ev.ts, ev.context, \
                         ev.data, ev.metadata, ev.tags, ev.created_at, ev.xact_id \
-                 FROM events ev \
+                 FROM events ev, point p \
                  WHERE (get_byte(uuid_send(ev.session_id), 15) % 8) = $1 \
                    AND ev.xact_id IS NOT NULL \
                    AND ev.xact_id >= $2::text::xid8 \
                    AND ev.xact_id < p.hi \
-                   AND (cardinality($3::text[]) = 0 OR ev.event_type = ANY($3))  \
+                   AND (cardinality($3::text[]) = 0 OR ev.event_type = ANY($3)) \
                  ORDER BY ev.xact_id, ev.session_id, ev.sequence \
                  LIMIT $4 \
+             ), sess AS MATERIALIZED ( \
+                 SELECT w.session_id, MAX(w.sequence) AS before_seq, \
+                        COALESCE(MAX(d.delivered_sequence), 0) AS after_seq \
+                 FROM win w \
+                 LEFT JOIN event_feed_sessions d \
+                   ON d.consumer = $5 AND d.session_id = w.session_id \
+                 GROUP BY w.session_id \
+             ) \
+             SELECT p.hi::text::bigint AS hi, e.early, e.xact, e.floor, ",
+            event_columns!(),
+            " \
+             FROM point p \
+             LEFT JOIN LATERAL ( \
+                 SELECT false AS early, w.xact_id::text::bigint AS xact, s.after_seq AS floor, \
+                        w.id, w.session_id, w.sequence, w.event_type, w.ts, w.context, \
+                        w.data, w.metadata, w.tags, w.created_at \
+                 FROM win w JOIN sess s ON s.session_id = w.session_id \
+                 UNION ALL \
+                 SELECT true, NULL::bigint, s.after_seq, \
+                        ev.id, ev.session_id, ev.sequence, ev.event_type, ev.ts, ev.context, \
+                        ev.data, ev.metadata, ev.tags, ev.created_at \
+                 FROM sess s \
+                 JOIN events ev ON ev.session_id = s.session_id \
+                  AND ev.sequence > s.after_seq AND ev.sequence < s.before_seq \
+                 WHERE ev.xact_id >= p.hi \
+                   AND (cardinality($3::text[]) = 0 OR ev.event_type = ANY($3)) \
              ) e ON true",
         ))
         .bind(partition as i32)
         .bind(cursor.to_string())
         .bind(event_types)
         .bind(limit)
+        .bind(consumer)
         .fetch_all(&self.pool)
         .await?;
 
-        let hi = window.first().map(|row| row.hi).unwrap_or(cursor);
-        let mut rows: Vec<(i64, EventRow)> = window
-            .into_iter()
-            .filter_map(|row| Some((row.xact?, row.event.into_row()?)))
-            .collect();
+        let hi = found.first().map(|row| row.hi).unwrap_or(cursor);
+        let mut rows: Vec<(i64, EventRow)> = Vec::new();
+        let mut early: Vec<EventRow> = Vec::new();
+        let mut delivered: std::collections::HashMap<Uuid, i32> = std::collections::HashMap::new();
+        for found in found {
+            let (Some(is_early), Some(floor)) = (found.early, found.floor) else {
+                continue;
+            };
+            let xact = found.xact;
+            let Some(row) = found.event.into_row() else {
+                continue;
+            };
+            delivered.insert(row.session_id.uuid(), floor);
+            match (is_early, xact) {
+                (false, Some(xact)) => rows.push((xact, row)),
+                (true, _) => early.push(row),
+                _ => {}
+            }
+        }
+        rows.sort_by(|(xa, a), (xb, b)| {
+            (xa, a.session_id.uuid(), a.sequence).cmp(&(xb, b.session_id.uuid(), b.sequence))
+        });
 
         // A full page may end inside a transaction: leave that transaction
         // for the next pass, unless it is the only one on the page.
@@ -249,50 +298,30 @@ impl Database {
             });
         }
 
-        // What each session already handed over.
-        let delivered: std::collections::HashMap<Uuid, i32> = sqlx::query_as::<_, (Uuid, i32)>(
-            "SELECT session_id, delivered_sequence FROM event_feed_sessions \
-             WHERE consumer = $1 AND session_id = ANY($2)",
-        )
-        .bind(consumer)
-        .bind(&order)
-        .fetch_all(&self.pool)
-        .await?
-        .into_iter()
-        .collect();
-
-        // Committed events above the window that come before a windowed one
-        // in their session's order.
-        let mut after = Vec::with_capacity(order.len());
-        let mut before = Vec::with_capacity(order.len());
-        for session in &order {
-            after.push(delivered.get(session).copied().unwrap_or(0));
-            before.push(
-                by_session[session]
-                    .iter()
-                    .map(|row| row.sequence)
-                    .max()
-                    .unwrap_or(0),
-            );
+        if more {
+            // The window was trimmed (or replaced by one whole transaction):
+            // read what the sessions handed over and what comes first for
+            // this window instead.
+            delivered = self.feed_delivered(consumer, &order).await?;
+            let after: Vec<i32> = order
+                .iter()
+                .map(|session| delivered.get(session).copied().unwrap_or(0))
+                .collect();
+            let before: Vec<i32> = order
+                .iter()
+                .map(|session| {
+                    by_session[session]
+                        .iter()
+                        .map(|row| row.sequence)
+                        .max()
+                        .unwrap_or(0)
+                })
+                .collect();
+            early = self
+                .feed_early(&order, &after, &before, next_cursor, event_types)
+                .await?;
         }
-        let early: Vec<OptionalEventRow> = sqlx::query_as(concat!(
-            "SELECT ",
-            event_columns!(),
-            " FROM events e \
-             JOIN UNNEST($1::uuid[], $2::int[], $3::int[]) AS s(session_id, after_seq, before_seq) \
-               ON e.session_id = s.session_id \
-              AND e.sequence > s.after_seq AND e.sequence < s.before_seq \
-             WHERE e.xact_id >= $4::text::xid8 \
-               AND (cardinality($5::text[]) = 0 OR e.event_type = ANY($5))",
-        ))
-        .bind(&order)
-        .bind(&after)
-        .bind(&before)
-        .bind(next_cursor.to_string())
-        .bind(event_types)
-        .fetch_all(&self.pool)
-        .await?;
-        for row in early.into_iter().filter_map(OptionalEventRow::into_row) {
+        for row in early {
             if let Some(events) = by_session.get_mut(&row.session_id.uuid()) {
                 events.push(row);
             }
@@ -314,6 +343,57 @@ impl Database {
             next_cursor,
             more,
         })
+    }
+
+    /// What each of `sessions` already handed over to `consumer`.
+    async fn feed_delivered(
+        &self,
+        consumer: &str,
+        sessions: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, i32>> {
+        Ok(sqlx::query_as::<_, (Uuid, i32)>(
+            "SELECT session_id, delivered_sequence FROM event_feed_sessions \
+             WHERE consumer = $1 AND session_id = ANY($2)",
+        )
+        .bind(consumer)
+        .bind(sessions)
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .collect())
+    }
+
+    /// Committed events at or above `from` that come between `after` and
+    /// `before` in their session's order.
+    async fn feed_early(
+        &self,
+        sessions: &[Uuid],
+        after: &[i32],
+        before: &[i32],
+        from: i64,
+        event_types: &[String],
+    ) -> Result<Vec<EventRow>> {
+        let early: Vec<OptionalEventRow> = sqlx::query_as(concat!(
+            "SELECT ",
+            event_columns!(),
+            " FROM events e \
+             JOIN UNNEST($1::uuid[], $2::int[], $3::int[]) AS s(session_id, after_seq, before_seq) \
+               ON e.session_id = s.session_id \
+              AND e.sequence > s.after_seq AND e.sequence < s.before_seq \
+             WHERE e.xact_id >= $4::text::xid8 \
+               AND (cardinality($5::text[]) = 0 OR e.event_type = ANY($5))",
+        ))
+        .bind(sessions)
+        .bind(after)
+        .bind(before)
+        .bind(from.to_string())
+        .bind(event_types)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(early
+            .into_iter()
+            .filter_map(OptionalEventRow::into_row)
+            .collect())
     }
 
     async fn feed_transaction(
@@ -353,43 +433,39 @@ impl Database {
         to: i64,
         delivered: &[(Uuid, i32)],
     ) -> Result<bool> {
-        let mut tx = self.pool.begin().await?;
-        if !delivered.is_empty() {
-            let (sessions, sequences): (Vec<Uuid>, Vec<i32>) = delivered.iter().copied().unzip();
-            sqlx::query(
-                "INSERT INTO event_feed_sessions (consumer, session_id, delivered_sequence) \
-                 SELECT $1, s, q FROM UNNEST($2::uuid[], $3::int[]) AS t(s, q) ORDER BY s \
+        let (sessions, sequences): (Vec<Uuid>, Vec<i32>) = delivered.iter().copied().unzip();
+        // One statement: the cursor moves only from `from`, and the delivered
+        // sequences are recorded only when it did.
+        let moved: i64 = sqlx::query_scalar(
+            "WITH moved AS ( \
+                 INSERT INTO event_feed_cursors (consumer, partition, next_xact_id) \
+                 VALUES ($1, $2, $3::text::xid8) \
+                 ON CONFLICT (consumer, partition) DO UPDATE \
+                 SET next_xact_id = EXCLUDED.next_xact_id, updated_at = now() \
+                 WHERE event_feed_cursors.next_xact_id = $4::text::xid8 \
+                 RETURNING 1 \
+             ), recorded AS ( \
+                 INSERT INTO event_feed_sessions (consumer, session_id, delivered_sequence) \
+                 SELECT $1, s, q FROM UNNEST($5::uuid[], $6::int[]) AS t(s, q) \
+                 WHERE EXISTS (SELECT 1 FROM moved) \
+                 ORDER BY s \
                  ON CONFLICT (consumer, session_id) DO UPDATE \
                  SET delivered_sequence = GREATEST(event_feed_sessions.delivered_sequence, \
                                                    EXCLUDED.delivered_sequence), \
-                     updated_at = now()",
-            )
-            .bind(consumer)
-            .bind(&sessions)
-            .bind(&sequences)
-            .execute(&mut *tx)
-            .await?;
-        }
-        let moved = sqlx::query(
-            "INSERT INTO event_feed_cursors (consumer, partition, next_xact_id) \
-             VALUES ($1, $2, $3::text::xid8) \
-             ON CONFLICT (consumer, partition) DO UPDATE \
-             SET next_xact_id = EXCLUDED.next_xact_id, updated_at = now() \
-             WHERE event_feed_cursors.next_xact_id = $4::text::xid8",
+                     updated_at = now() \
+                 RETURNING 1 \
+             ) \
+             SELECT COUNT(*) FROM moved",
         )
         .bind(consumer)
         .bind(partition as i16)
         .bind(to.to_string())
         .bind(from.to_string())
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
-        if moved == 0 {
-            tx.rollback().await?;
-            return Ok(false);
-        }
-        tx.commit().await?;
-        Ok(true)
+        .bind(&sessions)
+        .bind(&sequences)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(moved > 0)
     }
 }
 
