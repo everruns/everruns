@@ -133,6 +133,9 @@ pub fn routes(state: AppState) -> Router {
         .command::<crate::domains::health_issues::UpdateFindingFix>()
         .command::<crate::domains::health_issues::ApplyFindingFix>()
         .command::<crate::domains::health_issues::RejectFindingFix>()
+        .command::<crate::domains::health_issues::ListFindingActions>()
+        .command::<crate::domains::health_issues::TakeFindingAction>()
+        .command::<crate::domains::health_issues::UndoFindingAction>()
         // Hand-written: NDJSON body rather than JSON.
         .route(
             "/v1/evals/{eval_id}/runs/{run_id}/artifacts",

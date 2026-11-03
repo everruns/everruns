@@ -64,7 +64,7 @@ agents triggers deliveries list	--agent-id! --context-revision --limit --reason 
 agents triggers get	--agent-id! --context-revision --reason --trigger-id!
 agents triggers list	--agent-id --context-revision --include-archived --reason <agent_id>
 agents triggers runs list	--agent-id! --context-revision --reason --trigger-id!
-agents triggers trigger	--agent-id! --context-revision --reason --trigger-id!
+agents triggers trigger	--agent-id! --context-revision --event --reason --trigger-id!
 agents triggers update	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --target-binding-key --target-channel-id --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --reason --tag/-t... --writable <agent_id>
 agents upsert	--capabilities --communication --completion-check --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --localizations --max-iterations --max-output-tokens --mcpServers --name! --network-access --owner-agent-id --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
@@ -177,6 +177,9 @@ harnesses get	--context-revision --id --reason <id>
 harnesses list	--context-revision --include-archived --reason --search
 harnesses preview	--capabilities --context-revision --mcp-servers --parent-harness-id --reason --system-prompt
 harnesses update	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --id --initial-files --intro-markdown --localizations --mcpServers --name --network-access --parent-harness-id --reason --short-description --starters --status --system-prompt --tags... <id>
+health-issues actions list	--context-revision --issue-id! --reason
+health-issues actions take	--context-revision --issue-id! --kind! --reason
+health-issues actions undo	--action-id! --context-revision --issue-id! --reason
 health-issues check	--context-revision --issue-id! --reason
 health-issues dismiss	--context-revision --issue-id! --note! --reason
 health-issues get	--context-revision --issue-id! --reason
@@ -254,7 +257,7 @@ orgs list	--context-revision --reason
 orgs provider-accounts list	--context-revision --org! --reason
 orgs resolve	--context-revision --id! --reason
 orgs select
-orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --name --org! --reason --small-model-id --system-decisions --web-search-defaults
+orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --name --org! --reason --self-healing --small-model-id --system-decisions --web-search-defaults
 payments accounts create	--context-revision --label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason
 payments accounts disable	--context-revision --payment-account-id! --reason
 payments accounts get	--context-revision --payment-account-id! --reason

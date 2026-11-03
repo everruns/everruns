@@ -728,6 +728,7 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("POST", "/v1/sessions/{session_id}/question-answers", Write),
     ("GET", "/v1/sessions/{session_id}/resolved-model", Read),
     ("GET", "/v1/sessions/{session_id}/resources", Read),
+    ("GET", "/v1/sessions/{session_id}/run-requests", Read),
     ("GET", "/v1/sessions/{session_id}/sandbox", Read),
     ("POST", "/v1/sessions/{session_id}/sandbox", Write),
     ("GET", "/v1/sessions/{session_id}/sse", Read),

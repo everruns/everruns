@@ -5282,13 +5282,34 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "Optional event to fire the trigger with",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FireAgentTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "Trigger fired",
+            "description": "Trigger fired, or the event was filtered or a duplicate",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TriggerAgentTriggerOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The event does not fit the trigger",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -16586,6 +16607,140 @@
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/health-issues/{issue_id}/actions": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "List actions on a finding",
+        "description": "List what Everruns or a person did about a finding, such as pausing a repeating schedule, and what the organization's self-healing policy offers to do now.",
+        "operationId": "list_finding_actions",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingActions"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Act on a finding",
+        "description": "Take an action the organization's self-healing policy offers on a finding, such as pausing a schedule whose runs keep ending the same way. It is recorded on the finding and can be undone.",
+        "operationId": "take_finding_action",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TakeFindingActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingActions"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/health-issues/{issue_id}/actions/{action_id}/undo": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Undo an action on a finding",
+        "description": "Undo an action taken on a finding, automatic or not. Undoing a pause resumes the schedule and starts its repeated-outcome count over.",
+        "operationId": "undo_finding_action",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingActions"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
           "group": "evaluation-reporting",
           "support": "preview"
         }
@@ -29755,6 +29910,54 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/run-requests": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Get run requests",
+        "description": "Questions and approvals that the agents this session handed work to wait\non. Empty unless the session is a run's first session.",
+        "operationId": "get_run_requests",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requests from the other agents in the run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunRequestsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sessions/{session_id}/sandbox": {
       "get": {
         "tags": [
@@ -38983,6 +39186,24 @@
             ],
             "description": "Kind of resource the entry is about.",
             "example": "member"
+          }
+        }
+      },
+      "AvailableFindingAction": {
+        "type": "object",
+        "description": "An action a person can take on a finding now.",
+        "required": [
+          "kind",
+          "target_id"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "What it would do: `pause_schedule`."
+          },
+          "target_id": {
+            "type": "string",
+            "description": "What it would act on, by public id."
           }
         }
       },
@@ -49839,6 +50060,88 @@
           }
         }
       },
+      "FindingAction": {
+        "type": "object",
+        "description": "An action taken on a finding.",
+        "required": [
+          "id",
+          "kind",
+          "target_id",
+          "automatic",
+          "current",
+          "created_at"
+        ],
+        "properties": {
+          "automatic": {
+            "type": "boolean",
+            "description": "Whether Everruns took it on its own under the org's policy."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was taken."
+          },
+          "current": {
+            "type": "boolean",
+            "description": "The finding episode it belongs to is the current one."
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed public identifier (`fact_…`)."
+          },
+          "kind": {
+            "type": "string",
+            "description": "What was done: `pause_schedule`."
+          },
+          "target_id": {
+            "type": "string",
+            "description": "What it acted on, by public id (a schedule's `sched_…`)."
+          },
+          "undone_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it was undone, if it was."
+          }
+        }
+      },
+      "FindingActions": {
+        "type": "object",
+        "description": "What has been done about a finding, and what can be.",
+        "required": [
+          "actions",
+          "available"
+        ],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FindingAction"
+            },
+            "description": "Actions taken, newest first."
+          },
+          "available": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailableFindingAction"
+            },
+            "description": "Actions the org's policy offers for a person to take now."
+          },
+          "mode": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SelfHealingMode",
+                "description": "The org's policy for this kind of finding, when it has one."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "FindingCategory": {
         "type": "string",
         "enum": [
@@ -50101,6 +50404,23 @@
           "llm",
           "health_check"
         ]
+      },
+      "FireAgentTriggerRequest": {
+        "type": "object",
+        "description": "Body of a manual fire. Without `event`, a schedule trigger runs as on a tick.",
+        "properties": {
+          "event": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ManualTriggerEvent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "FixCheck": {
         "type": "object",
@@ -55584,6 +55904,7 @@
                 "system_decisions",
                 "web_search_defaults",
                 "background_limits",
+                "self_healing",
                 "created_at",
                 "updated_at"
               ],
@@ -55658,6 +55979,10 @@
                   ],
                   "format": "date-time",
                   "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+                },
+                "self_healing": {
+                  "$ref": "#/components/schemas/SelfHealingPolicy",
+                  "description": "What Everruns does on its own when a finding opens (Settings →\nLimits): pause a repeating schedule automatically, and whether the\nInspector suggests changes to agents. Code defaults when the\norganization never set any."
                 },
                 "small_model_id": {
                   "type": [
@@ -58723,9 +59048,83 @@
         },
         "additionalProperties": false
       },
+      "ManualFireStatus": {
+        "type": "string",
+        "description": "What a manual fire did.",
+        "enum": [
+          "dispatched",
+          "filtered",
+          "duplicate"
+        ]
+      },
       "ManualMemorySourceResponse": {
         "type": "object",
         "description": "Response body for manual memory source."
+      },
+      "ManualTriggerEvent": {
+        "type": "object",
+        "description": "An event to fire a trigger with, instead of a plain run.\n\nName it raw, as its source sends it (`payload`, with `name` for GitHub and\n`headers` for webhooks), or for a GitHub trigger by reference\n(`repository` and `pull_request`).",
+        "properties": {
+          "action": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub reference: the action the built event carries. Defaults to the\nfirst of opened, synchronize, reopened, ready_for_review the trigger\nlistens to.",
+            "example": "synchronize"
+          },
+          "headers": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Request headers a webhook trigger's templates see as `webhook.headers`.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Idempotency key. Defaults to a fresh id, so every manual fire runs;\nrepeat an id the trigger already saw to test deduplication."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Event name: the GitHub event (`pull_request`, `issue_comment`, the\n`X-GitHub-Event` header). For an MCP event trigger it defaults to the\ntrigger's event and must match it.",
+            "example": "pull_request"
+          },
+          "payload": {
+            "type": "object",
+            "description": "The event as its source sends it: a webhook request body, a GitHub\nevent payload, an MCP event's `data`, or extra context a schedule\ntrigger's message reads as `{{payload.*}}`."
+          },
+          "pull_request": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "GitHub reference: the pull request number. The server reads it through\nthe agent's GitHub connection and builds a `pull_request` event.",
+            "example": 12,
+            "minimum": 0
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub reference: the pull request's repository, `owner/name`.",
+            "example": "acme/api"
+          }
+        },
+        "additionalProperties": false
       },
       "McpConnectInChat": {
         "type": "string",
@@ -62245,6 +62644,7 @@
           "system_decisions",
           "web_search_defaults",
           "background_limits",
+          "self_healing",
           "created_at",
           "updated_at"
         ],
@@ -62319,6 +62719,10 @@
             ],
             "format": "date-time",
             "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+          },
+          "self_healing": {
+            "$ref": "#/components/schemas/SelfHealingPolicy",
+            "description": "What Everruns does on its own when a finding opens (Settings →\nLimits): pause a repeating schedule automatically, and whether the\nInspector suggests changes to agents. Code defaults when the\norganization never set any."
           },
           "small_model_id": {
             "type": [
@@ -64514,6 +64918,17 @@
           "expires_at"
         ],
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RequestingAgent",
+                "description": "The asking agent, when another agent in the run asked."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "answerable": {
             "type": "boolean",
             "description": "Always `true`: the person using the agent answers its approvals."
@@ -64533,6 +64948,13 @@
             "type": "string",
             "description": "Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`."
           },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The asking agent's session, when another agent in the run asked.\nAnswer on this session; the server routes it."
+          },
           "tool_call_id": {
             "type": "string",
             "description": "The request to name in `POST …/tool-approvals`."
@@ -64550,6 +64972,17 @@
           "questions"
         ],
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RequestingAgent",
+                "description": "The asking agent, when another agent in the run asked."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "expires_at": {
             "type": [
               "string",
@@ -64563,6 +64996,13 @@
               "type": "object"
             },
             "description": "The questions as asked: `kind`, `id`, `header`, `question`, `options`,\n`multi_select`, `allow_other`."
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The asking agent's session, when another agent in the run asked.\nAnswer on this session; the server routes it."
           },
           "tool_call_id": {
             "type": "string",
@@ -66586,6 +67026,25 @@
           }
         }
       },
+      "RequestingAgent": {
+        "type": "object",
+        "description": "The agent a request came from.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The agent's id, as `/v1/agents/{agent_id}` takes it.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "name": {
+            "type": "string",
+            "description": "The agent's display name."
+          }
+        }
+      },
       "ResolveOrgResponse": {
         "type": "object",
         "description": "Response body for the `resolve_org` operation.",
@@ -67071,6 +67530,75 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "RunRequest": {
+        "type": "object",
+        "description": "One request from another agent in the run.",
+        "required": [
+          "session_id",
+          "requested_at",
+          "tool_call"
+        ],
+        "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RequestingAgent",
+                "description": "The asking agent. Absent when the agent was deleted."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "The asking agent's session."
+          },
+          "tool_call": {
+            "$ref": "#/components/schemas/RunRequestToolCall"
+          }
+        }
+      },
+      "RunRequestToolCall": {
+        "type": "object",
+        "description": "A tool call another agent in the run waits on the person for.",
+        "required": [
+          "id",
+          "name",
+          "arguments"
+        ],
+        "properties": {
+          "arguments": {
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "`ask_user`, `approve_tool_call`, `openai_mcp_approval`,\n`confirm_url_elicitation` or `setup_connection`."
+          }
+        }
+      },
+      "RunRequestsResponse": {
+        "type": "object",
+        "description": "What the other agents in a run wait on the person for.",
+        "required": [
+          "requests"
+        ],
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunRequest"
+            }
           }
         }
       },
@@ -70467,6 +70995,31 @@
         },
         "additionalProperties": false
       },
+      "SelfHealingMode": {
+        "type": "string",
+        "description": "What Everruns does about one kind of finding.",
+        "enum": [
+          "auto",
+          "suggest",
+          "off"
+        ]
+      },
+      "SelfHealingPolicy": {
+        "type": "object",
+        "description": "An org's self-healing policy (Settings → Limits).",
+        "properties": {
+          "agent_fixes": {
+            "$ref": "#/components/schemas/SelfHealingMode",
+            "description": "The Inspector's suggested changes to an agent's instructions: `suggest`\n(default) or `off`. A person always approves them.",
+            "default": "suggest"
+          },
+          "runaway_schedules": {
+            "$ref": "#/components/schemas/SelfHealingMode",
+            "description": "Pausing a schedule whose runs keep ending the same way, at the warning\ncount rather than the hard stop. Default `auto`.",
+            "default": "auto"
+          }
+        }
+      },
       "ServiceKind": {
         "type": "string",
         "description": "A typed service a provider driver can offer.\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
@@ -72874,6 +73427,19 @@
           "deployment",
           "organization"
         ]
+      },
+      "TakeFindingActionRequest": {
+        "type": "object",
+        "description": "The action to take.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "`pause_schedule`."
+          }
+        }
       },
       "TaskArtifact": {
         "type": "object",
@@ -76362,16 +76928,34 @@
       "TriggerAgentTriggerOutput": {
         "type": "object",
         "required": [
-          "session_id",
+          "status",
           "created_session"
         ],
         "properties": {
           "created_session": {
             "type": "boolean"
           },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why a filtered or duplicate event did not run."
+          },
           "session_id": {
-            "$ref": "#/components/schemas/sessionId",
-            "description": "Session's prefixed public identifier."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/sessionId",
+                "description": "Session's prefixed public identifier; absent when nothing ran."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ManualFireStatus",
+            "description": "`filtered` and `duplicate` happen only for a fire with an event."
           }
         }
       },
@@ -78492,6 +79076,17 @@
             ],
             "description": "The display name of the organization.",
             "example": "Acme Corporation"
+          },
+          "self_healing": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SelfHealingPolicy",
+                "description": "Self-healing policy; replaces the stored policy as a whole. Omitted\nfields take the code default. `agent_fixes` cannot be `auto`."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "small_model_id": {
             "type": [

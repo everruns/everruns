@@ -1486,7 +1486,7 @@ everruns agents triggers list agent_01h9
 
 ## agents triggers trigger
 
-Manually fire an agent trigger once.
+Manually fire an agent trigger once. Pass an event to run it through the trigger's filter, message and session routing as a real one would; webhook, GitHub and MCP event triggers need one.
 
 ```bash
 everruns agents triggers trigger [OPTIONS] --agent-id <agent_id> --trigger-id <trigger_id>
@@ -1495,6 +1495,7 @@ everruns agents triggers trigger [OPTIONS] --agent-id <agent_id> --trigger-id <t
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Owning agent's prefixed public identifier. |
+| `--event <EVENT>` |  |
 | `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |
 
 Example:
@@ -1502,6 +1503,9 @@ Example:
 ```bash
 # Fire a trigger once now to test it without waiting for its schedule
 everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Test the digest message'
+
+# Run a GitHub trigger on an existing pull request, in that pull request's own session
+everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --event '{"repository":"acme/api","pull_request":12}' --reason 'Review this pull request'
 ```
 
 ## agents triggers update

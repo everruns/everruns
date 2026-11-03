@@ -3,6 +3,7 @@
 import { useUiTranslations } from "@/providers/locale-provider";
 import { Gauge } from "lucide-react";
 import { BackgroundLimitsSettings } from "@/components/organizations/background-limits-settings";
+import { SelfHealingSettings } from "@/components/organizations/self-healing-settings";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePageTitle } from "@/hooks";
 import { useOrganization } from "@/hooks/use-organizations";
@@ -24,6 +25,11 @@ export default function LimitsSettingsPage() {
       {/* A new organization gets a fresh form; pending edits never cross tenants. */}
       <BackgroundLimitsSettings
         key={organization.id}
+        organization={organization}
+        canManage={hasRole("admin")}
+      />
+      <SelfHealingSettings
+        key={`${organization.id}-self-healing`}
         organization={organization}
         canManage={hasRole("admin")}
       />

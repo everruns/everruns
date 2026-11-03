@@ -449,7 +449,7 @@ async fn invoke_trigger_webhook(
         },
         // Filtered and duplicate events are still accepted: the sender did
         // nothing wrong, and a non-2xx would make it retry.
-        TriggerEventOutcome::Filtered => WebhookInvocationResponse {
+        TriggerEventOutcome::Filtered { .. } => WebhookInvocationResponse {
             accepted: true,
             session_id: None,
             created_session: false,

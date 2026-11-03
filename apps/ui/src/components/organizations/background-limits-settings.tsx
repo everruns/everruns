@@ -176,7 +176,7 @@ export function BackgroundLimitsSettings({
   );
 
   return (
-    <Card className="space-y-6 p-6">
+    <Card className="space-y-6 p-6" data-testid="background-limits-settings">
       <div className="space-y-1">
         <h2 className="font-medium">{ui("Unattended work")}</h2>
         <p className="text-sm text-muted-foreground">

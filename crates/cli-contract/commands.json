@@ -2778,7 +2778,7 @@
       "triggers"
     ],
     "verb": "trigger",
-    "description": "Manually fire an agent trigger once.",
+    "description": "Manually fire an agent trigger once. Pass an event to run it through the trigger's filter, message and session routing as a real one would; webhook, GitHub and MCP event triggers need one.",
     "method": "POST",
     "http_path": "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
     "args": [
@@ -2788,6 +2788,12 @@
         "kind": "string",
         "required": true,
         "help": "Owning agent's prefixed public identifier."
+      },
+      {
+        "field": "event",
+        "long": "event",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "trigger_id",
@@ -2801,6 +2807,10 @@
       {
         "intent": "Fire a trigger once now to test it without waiting for its schedule",
         "command": "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Test the digest message'"
+      },
+      {
+        "intent": "Run a GitHub trigger on an existing pull request, in that pull request's own session",
+        "command": "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --event '{\"repository\":\"acme/api\",\"pull_request\":12}' --reason 'Review this pull request'"
       }
     ]
   },
@@ -7179,6 +7189,98 @@
     ]
   },
   {
+    "wire_name": "list_finding_actions",
+    "path": [
+      "health-issues",
+      "actions"
+    ],
+    "verb": "list",
+    "description": "List what Everruns or a person did about a finding, such as pausing a repeating schedule, and what the organization's self-healing policy offers to do now.",
+    "method": "GET",
+    "http_path": "/v1/health-issues/{issue_id}/actions",
+    "args": [
+      {
+        "field": "issue_id",
+        "long": "issue-id",
+        "kind": "string",
+        "required": true,
+        "help": "The finding."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See whether a repeating schedule was paused",
+        "command": "everruns health-issues actions list --issue-id 550e8400-e29b-41d4-a716-446655440000"
+      }
+    ]
+  },
+  {
+    "wire_name": "take_finding_action",
+    "path": [
+      "health-issues",
+      "actions"
+    ],
+    "verb": "take",
+    "description": "Take an action the organization's self-healing policy offers on a finding, such as pausing a schedule whose runs keep ending the same way. It is recorded on the finding and can be undone.",
+    "method": "POST",
+    "http_path": "/v1/health-issues/{issue_id}/actions",
+    "args": [
+      {
+        "field": "issue_id",
+        "long": "issue-id",
+        "kind": "string",
+        "required": true,
+        "help": "The finding."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": true,
+        "help": "`pause_schedule`."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Pause a repeating schedule from its finding",
+        "command": "everruns health-issues actions take --issue-id 550e8400-e29b-41d4-a716-446655440000 --kind pause_schedule --reason 'Claim expired, polling is pointless'"
+      }
+    ]
+  },
+  {
+    "wire_name": "undo_finding_action",
+    "path": [
+      "health-issues",
+      "actions"
+    ],
+    "verb": "undo",
+    "description": "Undo an action taken on a finding, automatic or not. Undoing a pause resumes the schedule and starts its repeated-outcome count over.",
+    "method": "POST",
+    "http_path": "/v1/health-issues/{issue_id}/actions/{action_id}/undo",
+    "args": [
+      {
+        "field": "action_id",
+        "long": "action-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier of the action (`fact_…`)."
+      },
+      {
+        "field": "issue_id",
+        "long": "issue-id",
+        "kind": "string",
+        "required": true,
+        "help": "The finding."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Resume a schedule that was paused automatically",
+        "command": "everruns health-issues actions undo --issue-id 550e8400-e29b-41d4-a716-446655440000 --action-id fact_01h9 --reason 'Still waiting on the claim; this is expected'"
+      }
+    ]
+  },
+  {
     "wire_name": "check_health_issue",
     "path": [
       "health-issues"
@@ -10120,6 +10222,12 @@
         "long": "org",
         "kind": "string",
         "required": true
+      },
+      {
+        "field": "self_healing",
+        "long": "self-healing",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "small_model_id",

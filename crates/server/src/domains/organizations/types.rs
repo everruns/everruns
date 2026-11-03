@@ -54,6 +54,11 @@ pub struct OrganizationResponse {
     /// largest schedule budget, and the daily unattended spend cap. Code
     /// defaults when the organization never set any.
     pub background_limits: everruns_contracts::runtime::session_schedule::BackgroundLimits,
+    /// What Everruns does on its own when a finding opens (Settings →
+    /// Limits): pause a repeating schedule automatically, and whether the
+    /// Inspector suggests changes to agents. Code defaults when the
+    /// organization never set any.
+    pub self_healing: crate::domains::health_issues::self_healing::SelfHealingPolicy,
     /// When the organization was created
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// When the organization was last updated
@@ -149,6 +154,10 @@ pub struct UpdateOrganizationRequest {
     /// and `org_unattended_daily_usd` positive or null for no daily cap.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_limits: Option<everruns_contracts::runtime::session_schedule::BackgroundLimits>,
+    /// Self-healing policy; replaces the stored policy as a whole. Omitted
+    /// fields take the code default. `agent_fixes` cannot be `auto`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub self_healing: Option<crate::domains::health_issues::self_healing::SelfHealingPolicy>,
 }
 
 fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
