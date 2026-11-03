@@ -1,6 +1,7 @@
 // PostgreSQL repository: Events (source of truth for messages)
 
 mod after_store;
+pub(crate) mod group_commit;
 mod input_lookups;
 pub(super) mod rows;
 use rows::*;
@@ -81,7 +82,7 @@ pub struct ActorLeaseFenceRejected {
 
 /// One INSERT of `inputs`, in order, with consecutive per-session sequences
 /// reserved by a single `event_sequences` bump; see `Database::create_events`.
-fn batch_insert_query(inputs: &[CreateEventRow]) -> sqlx::QueryBuilder<sqlx::Postgres> {
+pub(super) fn batch_insert_query(inputs: &[CreateEventRow]) -> sqlx::QueryBuilder<sqlx::Postgres> {
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "WITH input (ord, session_id, event_type, ts, context, data, metadata, tags) AS (",
     );
@@ -134,7 +135,10 @@ fn batch_insert_query(inputs: &[CreateEventRow]) -> sqlx::QueryBuilder<sqlx::Pos
 }
 
 /// `rows` (RETURNING order, unspecified) in the order of `inputs`.
-fn order_batch_rows(inputs: &[CreateEventRow], mut rows: Vec<EventRow>) -> Result<Vec<EventRow>> {
+pub(super) fn order_batch_rows(
+    inputs: &[CreateEventRow],
+    mut rows: Vec<EventRow>,
+) -> Result<Vec<EventRow>> {
     anyhow::ensure!(
         rows.len() == inputs.len(),
         "inserted {} events for a batch of {}",
@@ -165,7 +169,7 @@ fn order_batch_rows(inputs: &[CreateEventRow], mut rows: Vec<EventRow>) -> Resul
 }
 
 /// Most events [`Database::create_events`] inserts in one statement.
-const MAX_EVENT_BATCH: usize = 1000;
+pub(super) const MAX_EVENT_BATCH: usize = 1000;
 
 /// Safety cap for otherwise-unbounded full-history message reads. Applied to
 /// both `list_message_events_limited` (no explicit limit) and the
@@ -336,14 +340,23 @@ impl Database {
     /// - Expiry counts: a holder past its lease is rejected even when no one
     ///   took the session yet. Its renewer has already lost the lease too, or
     ///   is about to; the next holder resumes from the log.
+    ///
+    /// Appends from many callers share one transaction when they arrive
+    /// together (`group_commit`).
     pub async fn create_events_fenced(
         &self,
         inputs: Vec<CreateEventRow>,
         holder: &str,
         fence: i64,
     ) -> Result<Vec<EventRow>> {
-        self.create_events_checked(inputs, holder, fence, None)
-            .await
+        self.append_checked(
+            inputs,
+            group_commit::AppendCheck::Lease {
+                holder: holder.to_string(),
+                fence,
+            },
+        )
+        .await
     }
 
     /// Insert `inputs` for the detached tool call `tool_call_id`, only while
@@ -360,8 +373,14 @@ impl Database {
         holder: &str,
         tool_call_id: &str,
     ) -> Result<Vec<EventRow>> {
-        self.create_events_checked(inputs, holder, 0, Some(tool_call_id))
-            .await
+        self.append_checked(
+            inputs,
+            group_commit::AppendCheck::Detached {
+                holder: holder.to_string(),
+                tool_call_id: tool_call_id.to_string(),
+            },
+        )
+        .await
     }
 
     async fn create_events_checked(
