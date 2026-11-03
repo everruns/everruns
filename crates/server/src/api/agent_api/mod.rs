@@ -54,7 +54,7 @@ use super::tool_approvals::{
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::agent_channels::api_sessions::{
     AgentSessionView, ApiAuthError, ApiCaller, check_api_message, create_api_session,
-    project_event, public_event_json, send_api_message, session_is_callers, session_pending_input,
+    project_event, public_event_json, run_pending_input, send_api_message, session_is_callers,
     visible_event_types,
 };
 use crate::domains::agent_channels::record::ChannelType;
@@ -648,7 +648,7 @@ async fn get_session(state: &ChannelApiState, auth: Authorized, session_id: &str
         Ok(session) => session,
         Err(response) => return response,
     };
-    let pending = match session_pending_input(&state.db, &session).await {
+    let pending = match run_pending_input(&state.db, &session).await {
         Ok(pending) => pending,
         Err(err) => return internal_error(err),
     };
@@ -1011,6 +1011,15 @@ pub async fn agent_api_answer_questions(
         SubmittedStatus::Declined => AskUserStatus::Declined,
     };
     let answers: Vec<AskUserAnswer> = request.answers.into_iter().map(Into::into).collect();
+    // THREAT[TM-AGENT-039]: the caller's own session, or an agent its session
+    // handed work to; the asking session's own validation decides.
+    let target = match request.tool_call_id.as_deref() {
+        Some(id) => match run_answer_target(&state, &session, &[id]).await {
+            Ok(target) => target,
+            Err(response) => return response,
+        },
+        None => session.id,
+    };
     let resolver = QuestionResolver {
         db: &state.db,
         session_service: &state.session_service,
@@ -1023,7 +1032,7 @@ pub async fn agent_api_answer_questions(
     match resolve_question_answers(
         &resolver,
         &caller,
-        session.id,
+        target,
         request.tool_call_id.as_deref(),
         status,
         &answers,
@@ -1076,7 +1085,16 @@ pub async fn agent_api_submit_tool_approvals(
     // THREAT[TM-AGENTKEY-006]: the caller answers only its own session's
     // pending requests, through the same validation and single-claim resume
     // as `/v1`.
-    let pending = match pending_tool_approvals(&state.db, session.id).await {
+    let named: Vec<&str> = request
+        .decisions
+        .iter()
+        .map(|answer| answer.tool_call_id.as_str())
+        .collect();
+    let target = match run_answer_target(&state, &session, &named).await {
+        Ok(target) => target,
+        Err(response) => return response,
+    };
+    let pending = match pending_tool_approvals(&state.db, target).await {
         Ok(pending) => pending,
         Err(err) => return internal_error(err),
     };
@@ -1092,7 +1110,7 @@ pub async fn agent_api_submit_tool_approvals(
             credential_authorizer: None,
         },
         auth.context.org_id,
-        session.id,
+        target,
         &pending,
         &outcomes,
         ApprovalOutcome::NotApproved,
@@ -1107,6 +1125,23 @@ pub async fn agent_api_submit_tool_approvals(
         .into_response(),
         Err(err) => approval_error_response(err).into_response(),
     }
+}
+
+/// The session in the caller's run that waits on `tool_call_ids`.
+async fn run_answer_target(
+    state: &ChannelApiState,
+    session: &SessionRow,
+    tool_call_ids: &[&str],
+) -> Result<SessionId, Response> {
+    crate::domains::sessions::run_requests::answer_target(
+        &state.db,
+        session.org_id,
+        session.id,
+        session.parent_session_id.is_none(),
+        tool_call_ids,
+    )
+    .await
+    .map_err(|error| crate::api::run_requests::answer_target_error(error).into_response())
 }
 
 /// THREAT[TM-AGENTKEY-009]: one caller cannot run up the owner's bill past

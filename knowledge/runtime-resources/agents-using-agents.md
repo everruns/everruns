@@ -11,8 +11,9 @@ tags:
 # Agents That Use Other Agents
 
 Status: accepted (2026-11-02). Part 1 (members, created-here agents, package
-format, Agents tab) is built. Part 2 (shared run folder, copy-of-files, approvals
-on the first session, run conversation) and part 3 (whole-run costs and traces)
+format, Agents tab) is built. Approvals and questions on the first
+session are built. The rest of part 2 (shared run folder, copy-of-files, run
+conversation) and part 3 (whole-run costs and traces)
 follow. The mechanism underneath is [Agent Handoff](agent-handoff.md).
 
 ## Abstract
@@ -111,13 +112,34 @@ factory/
 Source: `crates/core/src/agent_package/` (codec), and
 `crates/server/src/domains/agents/packages.rs` (platform binding).
 
-## Approvals and questions (part 2)
+## Approvals and questions
 
-Any agent in a run can need an approval or ask a question. They surface on the
-run's first session, wherever the person talks to it: Chat, Work Chat, the
-`/v1` API (`pending_approvals` / `pending_questions` with the asking agent and
-session), the Agent Execution API, Playground and Slack. The first answer wins;
-an agent can never approve. The session page stays a read-only debugging view.
+Any agent in a run can need an approval or ask a question. They are shown and
+answered on the run's first session, the one the person talks to. The session
+page stays a read-only debugging view and never asks.
+
+- Requests are read, not copied: the first session lists the waiting sessions
+  of its run (`root_session_id`) and reads each one's last
+  `tool.call_requested`. Nothing is mirrored into the first session's events,
+  where the runtime would read a copy as its own pending batch.
+- `GET /v1/sessions/{id}/run-requests` lists them with the asking agent and
+  session. Chat and Playground render the usual cards from it, headed with the
+  agent's name; a card answers on the asking session.
+- `POST …/tool-approvals` and `POST …/question-answers` on the first session
+  route each answer to the session that waits on that call, then run that
+  session's own validation. Answers naming two agents' requests are refused.
+  Answering on the asking session directly keeps working; the first answer
+  wins.
+- The Agent Execution API includes the run's requests in `pending_approvals` /
+  `pending_questions`, each with `session_id` and `agent`, and routes answers
+  the same way, so Work Chat and other API callers get them.
+- Only a first session sees or routes them, and an agent can never approve
+  (`TM-AGENT-039`).
+
+Source: `crates/server/src/domains/sessions/run_requests.rs`,
+`crates/server/src/api/run_requests.rs`,
+`apps/ui/src/components/chat/run-request-cards.tsx`. Slack delivery of another
+agent's request is a follow-up.
 
 ## Run conversation (part 2)
 
