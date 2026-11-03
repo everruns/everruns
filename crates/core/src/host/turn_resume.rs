@@ -341,6 +341,14 @@ impl TurnLogFold {
                 turn.settled.clear();
                 turn.started.clear();
             }
+            // A completion check's automatic continuation joins the turn like
+            // steering: the answer before it does not end the turn, so a turn
+            // cut off after the continuation was stored reasons again on it
+            // instead of completing on the unfinished answer.
+            EventData::InputMessage(data) if data.message.is_turn_continuation() => {
+                turn.steered_since_reason = true;
+                turn.answered = false;
+            }
             EventData::ToolStarted(data) => {
                 turn.started.insert(data.tool_call.id);
             }

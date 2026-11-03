@@ -6,6 +6,7 @@
 //! running out. Another worker on the same index then resumes from the log.
 
 mod cancels;
+mod completion_check;
 mod completion_recovery;
 mod detached;
 mod resolutions;
@@ -353,8 +354,30 @@ fn model(answer: &str, calls: Vec<Vec<ToolCall>>) -> LlmSimConfig {
     LlmSimConfig::fixed(answer).with_tool_call_sequence(sequence)
 }
 
+/// How a [`Fixture`]'s agent and session are set up.
+struct Setup {
+    completion_check: crate::core::completion_check::CompletionCheck,
+    /// The session was started by a trigger or schedule.
+    unattended: bool,
+    max_iterations: usize,
+}
+
+impl Default for Setup {
+    fn default() -> Self {
+        Self {
+            completion_check: Default::default(),
+            unattended: false,
+            max_iterations: 8,
+        }
+    }
+}
+
 impl Fixture {
     async fn new(model: LlmSimConfig) -> Self {
+        Self::with_setup(model, Setup::default()).await
+    }
+
+    async fn with_setup(model: LlmSimConfig, setup: Setup) -> Self {
         let harness_id = HarnessId::new();
         let agent_id = AgentId::new();
         let session_id = SessionId::new();
@@ -374,6 +397,7 @@ impl Fixture {
             .tool(client_tool(
                 everruns_contracts::tool_approval_types::APPROVE_TOOL_CALL_TOOL,
             ))
+            .unattended(setup.unattended)
             .build();
         // A client is connected to answer a pause.
         session.hints = Some([("setup_connection".to_string(), json!(true))].into());
@@ -388,7 +412,8 @@ impl Fixture {
             .agent(
                 AgentBuilder::new("actor-agent", "Use the tools when asked.")
                     .id(agent_id)
-                    .max_iterations(8)
+                    .max_iterations(setup.max_iterations)
+                    .completion_check(setup.completion_check)
                     .build(),
             )
             .session(session)

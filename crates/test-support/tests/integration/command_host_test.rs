@@ -78,6 +78,7 @@ fn test_session(
     agent_id: AgentId,
 ) -> ExecutionSession {
     ExecutionSession {
+        unattended: Default::default(),
         id: session_id,
         workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),

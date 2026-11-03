@@ -1247,6 +1247,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<ExecutionSe
         forked_from_session_id: None,
         blueprint_id: proto_session.blueprint_id,
         blueprint_config,
+        unattended: proto_session.unattended.unwrap_or(false),
     })
 }
 

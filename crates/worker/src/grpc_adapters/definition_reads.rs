@@ -54,6 +54,9 @@ pub(super) fn proto_agent_to_definition(proto_agent: proto::Agent) -> Result<Age
         communication: crate::core::conversation::Communication::from_wire(
             proto_agent.communication.as_deref(),
         ),
+        completion_check: crate::core::completion_check::CompletionCheck::from_wire(
+            proto_agent.completion_check.as_deref(),
+        ),
         tools: proto_tool_definitions(&proto_agent.tools, "agent")?,
         mcp_servers: Default::default(),
     })

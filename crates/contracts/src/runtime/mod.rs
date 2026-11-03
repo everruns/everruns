@@ -23,6 +23,7 @@ pub mod channel_driver;
 pub mod command;
 pub mod command_host;
 pub mod compaction_policy;
+pub mod completion_check;
 pub mod computer_use;
 pub mod config_layer;
 pub mod connection_services;

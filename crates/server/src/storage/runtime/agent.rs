@@ -101,6 +101,9 @@ impl DbAgentStore {
                         &row.communication,
                     )
                     .unwrap_or_default(),
+                    completion_check: everruns_core::completion_check::CompletionCheck::from_wire(
+                        Some(&row.completion_check),
+                    ),
                     tools: from_json(row.tools),
                     status: AgentStatus::from(row.status.as_str()),
                     // Execution-side load: exposure state is a control-plane concern.

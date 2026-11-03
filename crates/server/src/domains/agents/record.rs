@@ -20,6 +20,7 @@ use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::tool_types::ToolDefinition;
 use everruns_contracts::typed_id::{AgentId, AvatarId, HarnessId, ModelId};
 use everruns_core::AgentDefinition;
+use everruns_core::completion_check::CompletionCheck;
 use everruns_core::conversation::Communication;
 use everruns_core::events::TokenUsage;
 use everruns_core::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
@@ -250,6 +251,12 @@ pub struct Agent {
     /// on every surface: web chat, API, Slack, A2A, AG-UI, MCP.
     #[serde(default, skip_serializing_if = "Communication::is_direct")]
     pub communication: Communication,
+    /// When a turn about to finish is checked for whether it did what was
+    /// asked, and continued automatically when it did not. `unattended`
+    /// (default): sessions started by triggers and schedules, where no person
+    /// is watching. `always`: chat too. `off`: never.
+    #[serde(default)]
+    pub completion_check: CompletionCheck,
     /// Client-side tools registered for this agent.
     /// These tools are executed by the client, not the server.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -316,6 +323,7 @@ impl Agent {
             parallel_tool_calls: self.parallel_tool_calls,
             max_output_tokens: self.max_output_tokens,
             communication: self.communication,
+            completion_check: self.completion_check,
             tools: self.tools.clone(),
             mcp_servers: self.mcp_servers.clone(),
         }
@@ -399,6 +407,7 @@ mod tests {
 
     fn test_agent() -> Agent {
         Agent {
+            completion_check: Default::default(),
             localizations: Default::default(),
             is_built_in: false,
             avatar: None,

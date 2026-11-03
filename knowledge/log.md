@@ -6,6 +6,8 @@
 
 ## 2026-11-01
 
+- Add the `completion_check` agent setting: a finishing unattended turn is reviewed on its own model and an announced but unfinished one continues within a durable budget. See [Turn Completion Check](execution/turn-completion-check.md).
+
 - Reveal bidi/control characters in tool approval displays without changing approval authority or arguments. See [Tool Approval](execution/tool-approval.md#approval-display).
 
 - Require hosted and embedded session cron triggers to advance in UTC through

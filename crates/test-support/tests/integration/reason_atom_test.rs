@@ -3124,6 +3124,7 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
     {
         session_store
             .add_session(ExecutionSession {
+                unattended: Default::default(),
                 id: session_id.into(),
                 workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id),
                 organization_id: "default".to_string(),
@@ -3233,6 +3234,7 @@ async fn test_empty_session_system_prompt_is_ignored() {
     {
         session_store
             .add_session(ExecutionSession {
+                unattended: Default::default(),
                 id: session_id.into(),
                 workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id),
                 organization_id: "default".to_string(),

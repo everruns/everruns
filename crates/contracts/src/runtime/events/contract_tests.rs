@@ -718,6 +718,21 @@ fn representative_event_payloads_preserve_wire_identity() {
             .into(),
         ),
         (
+            "turn.completion_checked",
+            TurnCompletionCheckedData {
+                turn_id: test_turn_id(),
+                verdict: Some(CompletionVerdict::InProgress),
+                reason: "the review was announced but not submitted".to_string(),
+                action: CompletionCheckAction::Continued,
+                continuations_used: 1,
+                max_continuations: 6,
+                tokens_used: 0,
+                elapsed_ms: 0,
+                continuation_message_id: Some(test_message_id()),
+            }
+            .into(),
+        ),
+        (
             "reason.started",
             ReasonStartedData {
                 harness_id: test_harness_id(),

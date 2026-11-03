@@ -599,6 +599,7 @@ pub(super) fn harness() -> HarnessDefinition {
 
 pub(super) fn session(session_id: SessionId, harness_id: HarnessId) -> ExecutionSession {
     ExecutionSession {
+        unattended: Default::default(),
         id: session_id,
         workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
