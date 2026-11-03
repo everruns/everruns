@@ -27,6 +27,8 @@ import { StreamdownMessage } from "@/components/chat/streamdown-message";
 import type { TraceBatch, TraceGap, TraceStep, TraceTurn } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { ORIGIN_ICON } from "@/components/chat/message-origin-icon";
+import { ReactionChips } from "@/components/chat/message-reactions";
+import type { ReactionSummary } from "@/lib/api/message-reactions";
 import { readOrigin, ORIGIN_LABEL_KEY, type MessageOrigin } from "@/lib/message-origin";
 import {
   errorCodeLabel,
@@ -118,11 +120,14 @@ export function TurnHeader({
   collapsed,
   onToggle,
   showScale,
+  reactions,
 }: {
   turn: TraceTurn;
   collapsed: boolean;
   onToggle: () => void;
   showScale: boolean;
+  /** Reactions on the message that started the turn. */
+  reactions?: ReactionSummary[];
 }) {
   const ui = useUiTranslations();
   const Chevron = collapsed ? ChevronRight : ChevronDown;
@@ -183,6 +188,10 @@ export function TurnHeader({
           )}
         </div>
       </button>
+      {reactions && reactions.length > 0 && (
+        // Outside the toggle: the chips are buttons of their own.
+        <ReactionChips reactions={reactions} className="border-b px-4 py-2 pl-11" />
+      )}
       {!collapsed && showScale && (
         <div className="relative hidden items-center justify-end pt-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground min-[1100px]:flex">
           <span className="absolute inset-y-0 left-[67px] w-px bg-border" aria-hidden />
@@ -225,7 +234,14 @@ function TurnOrigin({ origin }: { origin: MessageOrigin }) {
   );
 }
 
-export function TurnFooter({ turn }: { turn: TraceTurn }) {
+export function TurnFooter({
+  turn,
+  reactions,
+}: {
+  turn: TraceTurn;
+  /** Reactions on the agent's reply in this turn. */
+  reactions?: ReactionSummary[];
+}) {
   const ui = useUiTranslations();
   const tokens = turn.input_tokens + turn.output_tokens;
   const label =
@@ -267,6 +283,12 @@ export function TurnFooter({ turn }: { turn: TraceTurn }) {
           <span className="mt-0.5 line-clamp-2 w-full break-words text-foreground/80">
             {turn.error}
           </span>
+        )}
+        {reactions && reactions.length > 0 && (
+          <div className="mt-1 flex w-full flex-wrap items-center gap-2">
+            <span>{ui("Reactions on the reply")}</span>
+            <ReactionChips reactions={reactions} />
+          </div>
         )}
       </div>
     </div>

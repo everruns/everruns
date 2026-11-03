@@ -22520,6 +22520,17 @@ export interface components {
     MessageReactions: {
       /** @example message_01933b5a00007000800000000000001 */
       message_id: string;
+      /**
+       * @description Who wrote the message: `user` (a user-role message) or `agent`.
+       * @example agent
+       */
+      author?: string | null;
+      /**
+       * Format: int64
+       * @description Position of the message in the session's event log, which places it in
+       *     a turn of the trace. Absent when the message is no longer stored.
+       */
+      sequence?: number | null;
       reactions: components["schemas"]["ReactionSummary"][];
     };
     /**

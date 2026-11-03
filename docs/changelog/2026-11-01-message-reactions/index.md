@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/features/ui/#sessions, /features/agent-api/, /features/channels/, /features/a2a/#reactions]
-  prs: [everruns/everruns#5146, everruns/everruns#5150, everruns/everruns#5173]
+  prs: [everruns/everruns#5146, everruns/everruns#5150, everruns/everruns#5173, everruns/everruns#5178]
 ---
 
 Anyone in a conversation can now put an emoji on a message, and so can the
@@ -34,3 +34,4 @@ AG-UI channels stream each reaction as a `CUSTOM` event named
 `everruns.reaction` (see [Channels](/features/channels/)).
 A2A callers react through the reactions extension (see [A2A](/features/a2a/#reactions)),
 and the Rust, Python and TypeScript SDKs have `react`, `unreact` and `reactions`.
+The session trace shows each turn's reactions under its prompt and reply.
