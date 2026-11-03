@@ -696,3 +696,32 @@ async fn agent_handoff_task_executor_reconciles_terminal_child() {
     assert_eq!(task.state, SessionTaskState::Succeeded);
     assert_eq!(task.summary.as_deref(), Some("Hi!"));
 }
+
+#[test]
+fn a_target_set_to_copy_starts_with_a_copy_of_the_files() {
+    let none = json!({});
+    assert_eq!(
+        parse_seed(&none, TargetFiles::Own).unwrap(),
+        SessionSeedMode::Fresh
+    );
+    assert_eq!(
+        parse_seed(&none, TargetFiles::Copy).unwrap(),
+        SessionSeedMode::Workspace
+    );
+    // An explicit seed still wins.
+    assert_eq!(
+        parse_seed(&json!({"seed": "fresh"}), TargetFiles::Copy).unwrap(),
+        SessionSeedMode::Fresh
+    );
+    let config = AgentHandoffConfig::from_value(&json!({
+        "targets": [{"id": "r", "name": "r", "agent_id": AgentId::new(), "files": "copy"}]
+    }))
+    .unwrap();
+    assert_eq!(config.target("r").unwrap().files, TargetFiles::Copy);
+    assert!(
+        AgentHandoffConfig::from_value(&json!({
+            "targets": [{"id": "r", "name": "r", "agent_id": AgentId::new(), "files": "same"}]
+        }))
+        .is_err()
+    );
+}

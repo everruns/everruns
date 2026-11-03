@@ -89,7 +89,7 @@ async fn start(host: &Arc<Host>, agent: &str, body: &[u8]) -> crate::Result<Resp
 /// The session behind `agent`'s AG-UI thread, created on its first run, and
 /// whether this call created it.
 async fn thread_session(host: &Host, agent: &str, thread: &str) -> crate::Result<(String, bool)> {
-    if host.app.agent(agent).is_none_or(|entry| entry.sub) {
+    if host.app.agent(agent).is_none() {
         return Err(ApiError::NotFound(format!("agent {agent}")).into());
     }
     let conversation =

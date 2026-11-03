@@ -125,10 +125,16 @@ runtime.
   leases and per-agent layout, which waits for a real need. The data
   directory's absolute path must match across machines, because a session's
   workspace binding records it. See `crates/serve/src/bucket.rs`.
-- **Subagents are tools.** `#[agent(sub)]` becomes `ask_<name>` on the other
-  agents and runs a child session on the same engine. The child's tool
-  activity is reported as `tool.progress` of the parent call, and its
-  approvals and questions wait on the parent session.
+- **Members, not subagent tools.** `AgentBuilder::member("name")` names
+  another `#[agent]` of the app; serve builds it and adds it to the lead with
+  the Framework's `AgentBuilder::member`, so the lead hands work over with the
+  shared `spawn_agent` tool, as on the Platform. The former `#[agent(sub)]`
+  and its `ask_<name>` tool are gone (pre-1.0): one hand-off surface for every
+  host, background hand-offs included, and the member stays a full agent of
+  the app. Members nest one level, as in the Framework. A member's approvals
+  and questions wait on its own session; surfacing them on the run's first
+  session, as the Platform does, is not done yet. See
+  `knowledge/runtime-resources/agents-using-agents.md`.
 
 - **AG-UI is built in, not a `#[channel]`.** A channel driver answers a
   webhook and delivers the reply later; AG-UI streams the reply in the

@@ -1,4 +1,4 @@
-import { agentMembers } from "@/components/agents/agent-members-tab";
+import { agentMembers, memberFiles, withFiles } from "@/components/agents/agent-members-tab";
 import type { Agent } from "@/lib/api/types";
 
 function agent(capabilities: Agent["capabilities"]): Agent {
@@ -27,5 +27,22 @@ describe("agentMembers", () => {
       ),
     ).toEqual([{ agent_id: "agent_b" }]);
     expect(agentMembers(agent([{ ref: "agent_handoff", config: {} }]))).toEqual([]);
+  });
+});
+
+describe("memberFiles", () => {
+  it("defaults to the member's own files and reads a copy", () => {
+    expect(memberFiles({ agent_id: "a" })).toBe("own");
+    expect(memberFiles({ agent_id: "a", files: "copy" })).toBe("copy");
+    expect(memberFiles({ agent_id: "a", files: "same" })).toBe("own");
+  });
+
+  it("drops the setting when set back to own, so saved config stays minimal", () => {
+    expect(withFiles({ agent_id: "a", id: "review" }, "copy")).toEqual({
+      agent_id: "a",
+      id: "review",
+      files: "copy",
+    });
+    expect(withFiles({ agent_id: "a", files: "copy" }, "own")).toEqual({ agent_id: "a" });
   });
 });

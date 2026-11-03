@@ -66,6 +66,9 @@ pub enum MemoryScope {
     Agent,
     /// User-owned Memory that follows the user across sessions.
     User,
+    /// A run's team folder, owned by the run's first session and mounted at
+    /// `/team` in every session of the run. Not listed with org memories.
+    Run,
 }
 
 impl std::fmt::Display for MemoryScope {
@@ -74,6 +77,7 @@ impl std::fmt::Display for MemoryScope {
             MemoryScope::Org => write!(f, "org"),
             MemoryScope::Agent => write!(f, "agent"),
             MemoryScope::User => write!(f, "user"),
+            MemoryScope::Run => write!(f, "run"),
         }
     }
 }
@@ -83,6 +87,7 @@ impl From<&str> for MemoryScope {
         match s {
             "agent" => MemoryScope::Agent,
             "user" => MemoryScope::User,
+            "run" => MemoryScope::Run,
             _ => MemoryScope::Org,
         }
     }

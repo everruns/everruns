@@ -47,6 +47,22 @@ pub struct CreateCostRateRow {
 const RATE_COLUMNS: &str = "id, org_id, meter, match, unit_price_usd, list_price_multiplier, \
     unit, effective_from, retired, reason, created_by, created_at";
 
+/// Spend of one agent within runs led by another agent.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct RunsWithAgentsCostRow {
+    /// Public id of the agent of the runs' first session.
+    pub lead_id: String,
+    pub lead_name: Option<String>,
+    /// Public id of the agent that spent it; `None` for usage with no agent.
+    pub agent_id: Option<String>,
+    pub agent_name: Option<String>,
+    /// The spending agent was created as part of the lead.
+    pub created_here: Option<bool>,
+    /// Runs the lead started that used other agents, with usage in the window.
+    pub lead_runs: i64,
+    pub cost_usd: f64,
+}
+
 /// One aggregated line of the costs summary.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct CostSummaryRow {
@@ -256,6 +272,71 @@ impl StorageBackend {
             .bind(timezone)
             .fetch_all(self.database().pool())
             .await?)
+    }
+
+    /// Cost over `[from, to)` of runs where an agent handed work to other
+    /// agents, by the agent of the run's first session (the lead) and the
+    /// agent that spent it. Each usage record counts once, under the run its
+    /// session belongs to, so the rows add up to that spend and no more. A
+    /// run counts when a session other than the first belongs to it.
+    pub async fn runs_with_agents_cost(
+        &self,
+        org_id: i64,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<RunsWithAgentsCostRow>> {
+        Ok(sqlx::query_as(
+            r#"
+            WITH per AS (
+                SELECT l.journal_id,
+                       SUM(l.amount) FILTER (WHERE l.basis IS DISTINCT FROM 'unpriced') AS amount
+                FROM usage_ledger l
+                WHERE l.org_id = $1 AND l.budget_id IS NULL AND l.currency = 'usd'
+                  AND l.created_at >= $2 AND l.created_at < $3
+                GROUP BY l.journal_id
+            ),
+            spent AS (
+                SELECT COALESCE(s.root_session_id, s.id) AS root, j.agent_id, per.amount
+                FROM per
+                JOIN usage_journal j ON j.id = per.journal_id
+                JOIN sessions s ON s.id = j.session_id
+            ),
+            runs AS (
+                SELECT DISTINCT spent.root
+                FROM spent
+                WHERE EXISTS (
+                    SELECT 1 FROM sessions c
+                    WHERE c.org_id = $1 AND c.root_session_id = spent.root AND c.id <> spent.root
+                )
+            ),
+            lead_runs AS (
+                SELECT r.agent_id, COUNT(*) AS runs
+                FROM runs JOIN sessions r ON r.id = runs.root
+                GROUP BY r.agent_id
+            )
+            SELECT lead.public_id AS lead_id,
+                   MAX(COALESCE(lead.display_name, lead.name)) AS lead_name,
+                   a.public_id AS agent_id,
+                   MAX(COALESCE(a.display_name, a.name)) AS agent_name,
+                   bool_or(a.owner_agent_id IS NOT NULL AND a.owner_agent_id = lead.id) AS created_here,
+                   MAX(lead_runs.runs) AS lead_runs,
+                   COALESCE(SUM(spent.amount), 0)::float8 AS cost_usd
+            FROM spent
+            JOIN runs ON runs.root = spent.root
+            JOIN sessions r ON r.id = spent.root
+            JOIN agents lead ON lead.id = r.agent_id
+            JOIN lead_runs ON lead_runs.agent_id = r.agent_id
+            LEFT JOIN agents a ON a.id = spent.agent_id
+            GROUP BY lead.public_id, a.public_id
+            ORDER BY cost_usd DESC
+            LIMIT 500
+            "#,
+        )
+        .bind(org_id)
+        .bind(from)
+        .bind(to)
+        .fetch_all(self.database().pool())
+        .await?)
     }
 
     /// Cost so far in `[from, to)` for each agent, keyed by internal id.
