@@ -206,7 +206,12 @@ pub(crate) fn repair_unpaired_function_call_items(
     clippy::unwrap_used,
     reason = "The request builder always emits an object with an input array before applying cache options"
 )]
-pub(crate) fn apply_cache_options(body: &mut Value, config: &LlmCallConfig, native_openai: bool) {
+pub(crate) fn apply_cache_options(
+    body: &mut Value,
+    config: &LlmCallConfig,
+    native_openai: bool,
+    extended_retention: bool,
+) {
     if !native_openai || !crate::openai_compat::supports_cache_options(&config.model) {
         return;
     }
@@ -214,8 +219,7 @@ pub(crate) fn apply_cache_options(body: &mut Value, config: &LlmCallConfig, nati
         return;
     };
     let explicit = cache.strategy == crate::driver_registry::PromptCacheStrategy::Explicit;
-    body["prompt_cache_options"] =
-        json!({"ttl": "30m", "mode": if explicit { "explicit" } else { "implicit" }});
+    body["prompt_cache_options"] = json!({"ttl": if extended_retention { cache.retention.openai_responses_ttl() } else { "30m" }, "mode": if explicit { "explicit" } else { "implicit" }});
     if explicit
         && let Some(instructions) = body
             .get("instructions")

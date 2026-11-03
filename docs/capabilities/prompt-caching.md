@@ -29,7 +29,7 @@ The [Platform Chat](/built-ins/harnesses/platform-chat/) harness includes it.
 | Provider | With `strategy: auto` (default) | With `strategy: explicit` |
 |---|---|---|
 | Anthropic | `cache_control` breakpoints on the system prompt, the last tool definition, and the two most recent stable conversation messages, four in total | Breakpoints on the system prompt and the last tool definition only, so the conversation is never written to cache |
-| OpenAI | A `prompt_cache_key` derived from the session (or agent, harness, or organization) and model, so a tool or instructions change keeps the session on the same cache. On models whose profile supports cache options, also `prompt_cache_options` with mode `implicit` and a 30 minute TTL | `prompt_cache_key`, and on supporting models `prompt_cache_options` with mode `explicit`: the instructions move into a developer message marked as the cache breakpoint, so only that prefix is written to cache |
+| OpenAI | A `prompt_cache_key` derived from the session (or agent, harness, or organization) and model, so a tool or instructions change keeps the session on the same cache. On models whose profile supports cache options, also `prompt_cache_options` with mode `implicit` and the selected TTL (30 minutes by default) | `prompt_cache_key`, and on supporting models `prompt_cache_options` with mode `explicit`: the instructions move into a developer message marked as the cache breakpoint, so only that prefix is written to cache |
 | Gemini | The provider's default behavior, such as implicit caching on supported models | Same as `auto` |
 | Bedrock (Claude, Nova) | `cachePoint` blocks after the system prompt, after the tool definitions (Claude only; Nova does not cache tools), and on the two most recent messages | `cachePoint` blocks after the system prompt and tools only |
 | OpenRouter, Claude models | A top-level `cache_control`, which turns on Anthropic's automatic caching through OpenRouter. Other OpenRouter models keep their vendor's implicit caching | Nothing extra: automatic caching cannot exclude the conversation |
@@ -78,21 +78,38 @@ session has been idle longer than the cache retention.
 ## Retention
 
 `retention` sets how long the provider keeps a cached prefix after its last
-use. Each driver rounds it to the nearest value its provider supports.
+use. Drivers snap down to a supported tier, or up to the shortest tier when none is shorter. Retention is a minimum reuse lifetime, not a deletion deadline.
 
-| Provider | `default`, `5m` | `30m` | `1h` |
-|---|---|---|---|
-| Anthropic | 5 minutes | 5 minutes | 1 hour (`ttl: "1h"` on every breakpoint) |
-| Bedrock, Claude models | 5 minutes | 5 minutes | 1 hour (`ttl` on every cache point) |
-| OpenRouter, Claude models | 5 minutes | 5 minutes | 1 hour (`ttl: "1h"` on `cache_control`) |
-| OpenAI with cache options | 30 minutes | 30 minutes | 30 minutes |
-| Others | Provider default | Provider default | Provider default |
+| Provider | `default`, `5m` | `30m` | `1h` | `12h` |
+|---|---|---|---|---|
+| Anthropic | 5 minutes | 5 minutes | 1 hour | 1 hour |
+| Bedrock, Claude models with 1-hour TTL support | 5 minutes | 5 minutes | 1 hour | 1 hour |
+| OpenRouter, Claude models | 5 minutes | 5 minutes | 1 hour | 1 hour |
+| OpenAI Responses with cache options, at `api.openai.com` | 30 minutes | 30 minutes | 30 minutes | 12 hours |
+| Azure or custom Responses endpoints with cache options | 30 minutes | 30 minutes | 30 minutes | 30 minutes |
+| Others | Provider default | Provider default | Provider default | Provider default |
+
+The 12-hour option applies to direct Responses calls on models whose Everruns
+profile supports cache options (GPT-5.6 and later). It is not sent to Chat
+Completions, older OpenAI models, ChatGPT subscription endpoints, or compatible
+gateways. Native batch request encoding does not apply these cache controls.
+Bedrock TTL availability is model-specific. Models outside the documented
+one-hour allowlist, including unknown models and Nova, use five minutes.
 
 A longer retention costs more per write: Anthropic bills a 1 hour cache write at
 2x the input rate instead of 1.25x, and cost estimates include that. Choose `1h`
 for agents whose turns are often more than five minutes apart, such as agents
 that wait on a person or run on a schedule, where a 5 minute cache would have
 expired before the next turn.
+
+OpenAI's 12-hour writes cost 2.5x the uncached input rate, versus 1.25x for
+30-minute writes; reads use the same discounted rate. A prefix needs at least
+two full reads per 12-hour write to beat uncached input. Upgrading a warm
+30-minute prefix to 12 hours can charge a new write. Cost estimates use the
+provider-reported 12-hour subset, including mixed lifetimes, and the served
+service tier; the requested retention alone is not proof of a write or hit.
+See [OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching)
+for minimum prefix lengths, billing and data retention.
 
 ## Configuration
 
@@ -105,16 +122,26 @@ expired before the next turn.
 
 | Field | Default | Description |
 |---|---|---|
+| `enabled` | `true` | `false` disables Everruns-managed controls and routing hints. It cannot disable provider implicit caching or erase existing caches. |
 | `strategy` | `auto` | `auto` lets each driver pick its provider behavior. `explicit` caches only the stable prefix (instructions, and tools on Anthropic) on providers that support it. |
-| `retention` | `default` | `default`, `5m`, `30m`, or `1h`. Rounded to what the provider supports. |
+| `retention` | `default` | `default`, `5m`, `30m`, `1h`, or `12h`. Snapped to what the endpoint supports. |
 | `gemini_cached_content` | none | An existing Gemini cached content resource name, `cachedContents/{id}` |
+
+For stable instructions reused after a long pause, opt in explicitly:
+
+```json
+{
+  "ref": "prompt_caching",
+  "config": { "strategy": "explicit", "retention": "12h" }
+}
+```
 
 ## Observability
 
 Each `llm.generation` event records the request in
 `request_options.prompt_cache`: whether caching was enabled, the strategy, and
 a `provider_mode` naming what the driver did, and the `retention` it requested
-after rounding. The modes are `cache_control`
+after endpoint translation when a completed call captures its request. Pre-call or failed-call metadata can only describe intent. The modes are `cache_control`
 (Anthropic), `implicit`, `explicit`, or `prompt_cache_key` (OpenAI), and
 `implicit` or `cached_content` (Gemini). Cache read and write token counts, when
 the provider reports them, appear in the event's token usage.
