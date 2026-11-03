@@ -239,6 +239,12 @@ impl PlatformStore for LocalPlatformStore {
     async fn get_harness(&self, _id: HarnessId) -> Result<Option<HarnessDefinition>> {
         Err(unsupported("get_harness"))
     }
+    // Framework members (`AgentBuilder::member`) build their harness from their
+    // own Agent value, so this id only labels the child session's record. An
+    // agent id that is not a member is refused when the child is created.
+    async fn get_agent_harness_id(&self, _id: AgentId) -> Result<Option<HarnessId>> {
+        Ok(Some(HarnessId::new()))
+    }
     async fn get_agent_by_id(&self, _id: AgentId) -> Result<Option<AgentDefinition>> {
         Err(unsupported("get_agent_by_id"))
     }
