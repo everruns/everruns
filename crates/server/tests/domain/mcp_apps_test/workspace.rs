@@ -104,6 +104,40 @@ async fn shared_workspace_reads_the_same_resources_and_opens_each_entity() {
             .unwrap(),
         b"Bridge file bytes"
     );
+    let image = server
+        .db
+        .create_image(
+            DEFAULT_ORG_ID,
+            everruns_server::storage::CreateImageRow {
+                org_id: DEFAULT_ORG_ID,
+                filename: "proof.png".into(),
+                content_type: "image/png".into(),
+                size_bytes: 3,
+                data: vec![0, 255, 128],
+                thumbnail_data: Some(vec![0, 255, 128]),
+                thumbnail_content_type: Some("image/png".into()),
+                metadata: json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    for path in [
+        format!("/v1/images/{}", image.id),
+        format!("/v1/images/{}/thumbnail", image.id),
+    ] {
+        let result = structured(&call(&server, "app_read", json!({"path":path})).await);
+        assert_eq!(result["status"], 200, "{result}");
+        assert_eq!(result["headers"]["content-type"], "image/png");
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(result["body"].as_str().unwrap())
+                .unwrap(),
+            vec![0, 255, 128]
+        );
+        assert!(is_error(
+            &call(&server, "app_write", json!({"path":path,"method":"DELETE"})).await
+        ));
+    }
     assert!(is_error(
         &call(
             &server,

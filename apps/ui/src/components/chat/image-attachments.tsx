@@ -5,6 +5,8 @@ import { useState } from "react";
 import { X, Loader2, AlertCircle, ImageIcon, Download } from "lucide-react";
 import type { PendingImage } from "@/lib/api/images";
 import { getThumbnailUrl, getImageUrl } from "@/lib/api/images";
+import { useApiAsset } from "@/hooks/use-api-asset";
+import { downloadBlob } from "@/lib/download";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -36,7 +38,7 @@ interface ImageAttachmentItemProps {
 function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
   const ui = useUiTranslations();
   // Use thumbnail URL if uploaded, otherwise use object URL preview
-  const displayUrl = image.imageId ? getThumbnailUrl(image.imageId) : image.previewUrl;
+  const display = useApiAsset(image.imageId ? getThumbnailUrl(image.imageId) : image.previewUrl);
 
   return (
     <div className="group relative w-[88px]">
@@ -51,7 +53,7 @@ function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
         ) : (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={displayUrl} alt={image.filename} className="h-full w-full object-cover" />
+            <img src={display.url} alt={image.filename} className="h-full w-full object-cover" />
             {image.status === "uploading" && (
               <div className="absolute inset-0 flex items-center justify-center bg-background/72 backdrop-blur-[1px]">
                 <Loader2 className="h-6 w-6 animate-spin text-primary/80" />
@@ -86,12 +88,24 @@ interface MessageImageProps {
 export function MessageImage({ imageId, filename }: MessageImageProps) {
   const ui = useUiTranslations();
   const [isOpen, setIsOpen] = useState(false);
-  const thumbnailUrl = getThumbnailUrl(imageId);
-  const fullImageUrl = getImageUrl(imageId);
+  const [downloadError, setDownloadError] = useState<string>();
+  const thumbnail = useApiAsset(getThumbnailUrl(imageId));
+  const full = useApiAsset(getImageUrl(imageId), isOpen);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
+    setDownloadError(undefined);
+    if (full.proxied) {
+      try {
+        const response = await fetch(getImageUrl(imageId));
+        if (!response.ok) throw new Error(`Image request failed (${response.status})`);
+        await downloadBlob(filename || `image-${imageId}`, await response.blob());
+      } catch (error) {
+        setDownloadError(error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
     const link = document.createElement("a");
-    link.href = fullImageUrl;
+    link.href = getImageUrl(imageId);
     link.download = filename || `image-${imageId}`;
     document.body.appendChild(link);
     link.click();
@@ -104,12 +118,13 @@ export function MessageImage({ imageId, filename }: MessageImageProps) {
         <button type="button" onClick={() => setIsOpen(true)} className="block cursor-pointer">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={thumbnailUrl}
+            src={thumbnail.url}
             alt={filename || "Image"}
             className="max-h-[200px] max-w-[200px] border border-border/70 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)] transition-opacity hover:opacity-90"
             title={filename || ui("Click to view full size")}
           />
         </button>
+        {thumbnail.error && <p role="alert">{thumbnail.error.message}</p>}
         {filename && (
           <span className="mt-1 block max-w-[200px] truncate text-xs text-muted-foreground">
             {filename}
@@ -125,11 +140,17 @@ export function MessageImage({ imageId, filename }: MessageImageProps) {
             <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-muted/30">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={fullImageUrl}
+                src={full.url}
                 alt={filename || "Image"}
                 className="max-w-full max-h-[70vh] object-contain rounded"
               />
+              {full.error && <p role="alert">{full.error.message}</p>}
             </div>
+            {downloadError && (
+              <p role="alert" className="p-3 text-destructive">
+                {downloadError}
+              </p>
+            )}
             {/* Footer with filename and download */}
             <div className="flex items-center justify-between p-3 border-t bg-background">
               <span className="text-sm text-muted-foreground truncate max-w-[60%]">
