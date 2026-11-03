@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
-use wiremock::matchers::{body_string_contains, method, path};
+use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // Force linker to include the integration crate's inventory submissions.
@@ -428,11 +428,16 @@ async fn daytona_provider_checkpoints_after_completed_exec() {
 
     let requests = mock_server.received_requests().await.unwrap();
     assert!(requests.iter().any(|request| {
-        request.url.path() == "/sb_checkpoint/process/session/everruns-exec/exec"
-            && String::from_utf8_lossy(&request.body).contains("workspace.tar.gz")
-            && String::from_utf8_lossy(&request.body).contains("$mount/HEAD")
-            && !String::from_utf8_lossy(&request.body).contains("mv -f")
-            && String::from_utf8_lossy(&request.body).contains("protected_revision='rev-1'")
+        if request.url.path() != "/sb_checkpoint/process/session/everruns-exec/exec" {
+            return false;
+        }
+        let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+        let command = body["command"].as_str().unwrap_or_default();
+        command.contains("workspace.tar.gz")
+            && command.contains("$mount/HEAD")
+            && !command.contains("mv -f")
+            // The complete program is a shell literal inside the cwd guard.
+            && command.contains("protected_revision='\"'\"'rev-1'\"'\"'")
     }));
     assert_ne!(
         checkpointed.provider_state["recovery"]["head_revision"],
@@ -902,11 +907,16 @@ async fn daytona_provider_escapes_workspace_path_when_creating_directory() {
         .respond_with(ResponseTemplate::new(201))
         .mount(&mock_server)
         .await;
+    let mkdir_program = "mkdir -p -- '/tmp/it'\\''s workspace; rm -rf /'";
+    let quoted_mkdir = mkdir_program.replace('\'', "'\"'\"'");
     Mock::given(method("POST"))
         .and(path("/sb_escape/process/session/everruns-exec/exec"))
-        .and(body_string_contains(
-            "mkdir -p -- '/tmp/it'\\\\''s workspace; rm -rf /'",
-        ))
+        .and(move |request: &wiremock::Request| {
+            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+            body["command"]
+                .as_str()
+                .is_some_and(|command| command.contains(&quoted_mkdir))
+        })
         .respond_with(ResponseTemplate::new(202).set_body_json(json!({
             "cmdId": "cmd_escape"
         })))
