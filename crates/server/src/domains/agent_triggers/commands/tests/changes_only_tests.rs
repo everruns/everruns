@@ -60,7 +60,7 @@ async fn changes_only_wakes_when_a_subject_flips() {
         .expect("event handled");
         match outcome {
             events::TriggerEventOutcome::Dispatched(_) => "dispatched",
-            events::TriggerEventOutcome::Filtered => "filtered",
+            events::TriggerEventOutcome::Filtered { .. } => "filtered",
             events::TriggerEventOutcome::Duplicate => "duplicate",
         }
     };

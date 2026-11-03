@@ -961,6 +961,12 @@ impl ServerAppBuilder {
         .with_mcp_event_triggers(mcp_event_triggers.clone())
         .with_channels(channel_recovery.clone());
         agent_triggers_state.external_egress = Some(host_composition.egress_service());
+        agent_triggers_state.connection_resolver = optional_connection_resolver(
+            &db,
+            &encryption,
+            &auth_config,
+            host_composition.egress_service(),
+        );
         let schedules_state = api::schedules::routes(
             api::schedules::ScheduleAppState::new(
                 db.clone(),

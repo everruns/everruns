@@ -99,6 +99,23 @@ connection for one of those providers, `spawn_agent` returns a
 credentials through the Connections flow. The system prompt tells the agent
 never to ask for tokens in chat or pass them in tool arguments.
 
+### Approvals and questions
+
+When an agent the session handed work to needs an approval or asks a
+question, the person answers it in the conversation they started, not in the
+other agent's session. Chat and Playground show the card headed with that
+agent's name.
+
+Over the API, `GET /v1/sessions/{session_id}/run-requests` on the first
+session lists what the other agents wait on, each with the asking agent and
+its `session_id`. Answer with the usual
+`POST /v1/sessions/{session_id}/tool-approvals` or `…/question-answers` on
+either session: the first session routes the answer to the agent that asked.
+On the Agent Execution API, `pending_approvals` and `pending_questions` on the
+session include these requests with `agent` and `session_id`, and answers on
+the session are routed the same way. Only a person (or the API key holder)
+answers; another agent's message never approves.
+
 ## See also
 
 - [A2A Agent Delegation](/capabilities/a2a-agent-delegation/), delegation to external agents

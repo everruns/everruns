@@ -4283,6 +4283,50 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/health-issues/{issue_id}/actions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List actions on a finding
+     * @description List what Everruns or a person did about a finding, such as pausing a repeating schedule, and what the organization's self-healing policy offers to do now.
+     */
+    get: operations["list_finding_actions"];
+    put?: never;
+    /**
+     * Act on a finding
+     * @description Take an action the organization's self-healing policy offers on a finding, such as pausing a schedule whose runs keep ending the same way. It is recorded on the finding and can be undone.
+     */
+    post: operations["take_finding_action"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/health-issues/{issue_id}/actions/{action_id}/undo": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Undo an action on a finding
+     * @description Undo an action taken on a finding, automatic or not. Undoing a pause resumes the schedule and starts its repeated-outcome count over.
+     */
+    post: operations["undo_finding_action"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/health-issues/{issue_id}/check": {
     parameters: {
       query?: never;
@@ -7685,6 +7729,27 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/run-requests": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get run requests
+     * @description Questions and approvals that the agents this session handed work to wait
+     *     on. Empty unless the session is a run's first session.
+     */
+    get: operations["get_run_requests"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/sandbox": {
     parameters: {
       query?: never;
@@ -10993,6 +11058,13 @@ export interface components {
        * @example member
        */
       target_type?: string | null;
+    };
+    /** @description An action a person can take on a finding now. */
+    AvailableFindingAction: {
+      /** @description What it would do: `pause_schedule`. */
+      kind: string;
+      /** @description What it would act on, by public id. */
+      target_id: string;
     };
     /** @description Presentation and search metadata for one curated agent avatar. */
     AvatarPreset: {
@@ -17105,6 +17177,37 @@ export interface components {
       severity: components["schemas"]["FindingSeverity"];
       source: components["schemas"]["FindingSource"];
     };
+    /** @description An action taken on a finding. */
+    FindingAction: {
+      /** @description Whether Everruns took it on its own under the org's policy. */
+      automatic: boolean;
+      /**
+       * Format: date-time
+       * @description When it was taken.
+       */
+      created_at: string;
+      /** @description The finding episode it belongs to is the current one. */
+      current: boolean;
+      /** @description Prefixed public identifier (`fact_…`). */
+      id: string;
+      /** @description What was done: `pause_schedule`. */
+      kind: string;
+      /** @description What it acted on, by public id (a schedule's `sched_…`). */
+      target_id: string;
+      /**
+       * Format: date-time
+       * @description When it was undone, if it was.
+       */
+      undone_at?: string | null;
+    };
+    /** @description What has been done about a finding, and what can be. */
+    FindingActions: {
+      /** @description Actions taken, newest first. */
+      actions: components["schemas"]["FindingAction"][];
+      /** @description Actions the org's policy offers for a person to take now. */
+      available: components["schemas"]["AvailableFindingAction"][];
+      mode?: components["schemas"]["SelfHealingMode"] | null;
+    };
     /** @enum {string} */
     FindingCategory: "structure" | "completeness" | "effectiveness" | "safety" | "cost";
     /**
@@ -17254,6 +17357,10 @@ export interface components {
      * @enum {string}
      */
     FindingSource: "builtin" | "llm" | "health_check";
+    /** @description Body of a manual fire. Without `event`, a schedule trigger runs as on a tick. */
+    FireAgentTriggerRequest: {
+      event?: components["schemas"]["ManualTriggerEvent"] | null;
+    };
     /** @description What a check found: the eval's cases with and without the fix. */
     FixCheck: {
       /**
@@ -20384,6 +20491,13 @@ export interface components {
          *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
          */
         onboarding_completed_at?: string | null;
+        /**
+         * @description What Everruns does on its own when a finding opens (Settings →
+         *     Limits): pause a repeating schedule automatically, and whether the
+         *     Inspector suggests changes to agents. Code defaults when the
+         *     organization never set any.
+         */
+        self_healing: components["schemas"]["SelfHealingPolicy"];
         /** @description Optional small chat model, independent of the main chat and decision defaults. */
         small_model_id?: string | null;
         /**
@@ -21984,8 +22098,63 @@ export interface components {
       /** @description Tool schemas whose executable implementations must be bound by the host. */
       tools?: components["schemas"]["ToolDefinition"][];
     };
+    /**
+     * @description What a manual fire did.
+     * @enum {string}
+     */
+    ManualFireStatus: "dispatched" | "filtered" | "duplicate";
     /** @description Response body for manual memory source. */
     ManualMemorySourceResponse: Record<string, unknown>;
+    /**
+     * @description An event to fire a trigger with, instead of a plain run.
+     *
+     *     Name it raw, as its source sends it (`payload`, with `name` for GitHub and
+     *     `headers` for webhooks), or for a GitHub trigger by reference
+     *     (`repository` and `pull_request`).
+     */
+    ManualTriggerEvent: {
+      /**
+       * @description GitHub reference: the action the built event carries. Defaults to the
+       *     first of opened, synchronize, reopened, ready_for_review the trigger
+       *     listens to.
+       * @example synchronize
+       */
+      action?: string | null;
+      /** @description Request headers a webhook trigger's templates see as `webhook.headers`. */
+      headers?: {
+        [key: string]: string;
+      } | null;
+      /**
+       * @description Idempotency key. Defaults to a fresh id, so every manual fire runs;
+       *     repeat an id the trigger already saw to test deduplication.
+       */
+      id?: string | null;
+      /**
+       * @description Event name: the GitHub event (`pull_request`, `issue_comment`, the
+       *     `X-GitHub-Event` header). For an MCP event trigger it defaults to the
+       *     trigger's event and must match it.
+       * @example pull_request
+       */
+      name?: string | null;
+      /**
+       * @description The event as its source sends it: a webhook request body, a GitHub
+       *     event payload, an MCP event's `data`, or extra context a schedule
+       *     trigger's message reads as `{{payload.*}}`.
+       */
+      payload?: Record<string, unknown>;
+      /**
+       * Format: int64
+       * @description GitHub reference: the pull request number. The server reads it through
+       *     the agent's GitHub connection and builds a `pull_request` event.
+       * @example 12
+       */
+      pull_request?: number | null;
+      /**
+       * @description GitHub reference: the pull request's repository, `owner/name`.
+       * @example acme/api
+       */
+      repository?: string | null;
+    };
     /**
      * @description Whether a missing sign-in for an agent MCP attachment may pause the turn
      *     with an in-chat Connect card.
@@ -23994,6 +24163,13 @@ export interface components {
        *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
        */
       onboarding_completed_at?: string | null;
+      /**
+       * @description What Everruns does on its own when a finding opens (Settings →
+       *     Limits): pause a repeating schedule automatically, and whether the
+       *     Inspector suggests changes to agents. Code defaults when the
+       *     organization never set any.
+       */
+      self_healing: components["schemas"]["SelfHealingPolicy"];
       /** @description Optional small chat model, independent of the main chat and decision defaults. */
       small_model_id?: string | null;
       /**
@@ -25320,6 +25496,7 @@ export interface components {
      *     `pending_approvals` item, plus `answerable`.
      */
     PendingApprovalView: {
+      agent?: components["schemas"]["RequestingAgent"] | null;
       /** @description Always `true`: the person using the agent answers its approvals. */
       answerable: boolean;
       arguments: Record<string, unknown>;
@@ -25332,6 +25509,11 @@ export interface components {
       expires_at: string;
       /** @description Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`. */
       risk: string;
+      /**
+       * @description The asking agent's session, when another agent in the run asked.
+       *     Answer on this session; the server routes it.
+       */
+      session_id?: string | null;
       /** @description The request to name in `POST …/tool-approvals`. */
       tool_call_id: string;
       tool_name: string;
@@ -25341,6 +25523,7 @@ export interface components {
      *     `pending_questions` item.
      */
     PendingQuestionView: {
+      agent?: components["schemas"]["RequestingAgent"] | null;
       /** @description When the server stops waiting (RFC 3339). */
       expires_at?: string | null;
       /**
@@ -25348,6 +25531,11 @@ export interface components {
        *     `multi_select`, `allow_other`.
        */
       questions: Record<string, unknown>[];
+      /**
+       * @description The asking agent's session, when another agent in the run asked.
+       *     Answer on this session; the server routes it.
+       */
+      session_id?: string | null;
       /** @description The `ask_user` call to name in `POST …/question-answers`. */
       tool_call_id: string;
     };
@@ -26517,6 +26705,16 @@ export interface components {
        */
       processing: number;
     };
+    /** @description The agent a request came from. */
+    RequestingAgent: {
+      /**
+       * @description The agent's id, as `/v1/agents/{agent_id}` takes it.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      id: string;
+      /** @description The agent's display name. */
+      name: string;
+    };
     /** @description Response body for the `resolve_org` operation. */
     ResolveOrgResponse: {
       /** @description Public ID of the organization that owns the resource. */
@@ -26773,6 +26971,29 @@ export interface components {
       failed: number;
       /** Format: int64 */
       runs: number;
+    };
+    /** @description One request from another agent in the run. */
+    RunRequest: {
+      agent?: components["schemas"]["RequestingAgent"] | null;
+      /** Format: date-time */
+      requested_at: string;
+      /** @description The asking agent's session. */
+      session_id: string;
+      tool_call: components["schemas"]["RunRequestToolCall"];
+    };
+    /** @description A tool call another agent in the run waits on the person for. */
+    RunRequestToolCall: {
+      arguments: Record<string, unknown>;
+      id: string;
+      /**
+       * @description `ask_user`, `approve_tool_call`, `openai_mcp_approval`,
+       *     `confirm_url_elicitation` or `setup_connection`.
+       */
+      name: string;
+    };
+    /** @description What the other agents in a run wait on the person for. */
+    RunRequestsResponse: {
+      requests: components["schemas"]["RunRequest"][];
     };
     /** @description Aggregate metrics for a completed eval run. */
     RunSummary: {
@@ -28485,6 +28706,26 @@ export interface components {
       preset_id: string;
     };
     /**
+     * @description What Everruns does about one kind of finding.
+     * @enum {string}
+     */
+    SelfHealingMode: "auto" | "suggest" | "off";
+    /** @description An org's self-healing policy (Settings → Limits). */
+    SelfHealingPolicy: {
+      /**
+       * @description The Inspector's suggested changes to an agent's instructions: `suggest`
+       *     (default) or `off`. A person always approves them.
+       * @default suggest
+       */
+      agent_fixes: components["schemas"]["SelfHealingMode"];
+      /**
+       * @description Pausing a schedule whose runs keep ending the same way, at the warning
+       *     count rather than the hard stop. Default `auto`.
+       * @default auto
+       */
+      runaway_schedules: components["schemas"]["SelfHealingMode"];
+    };
+    /**
      * @description A typed service a provider driver can offer.
      *
      *     Drivers declare supported services in code; catalog models persist their
@@ -29812,6 +30053,11 @@ export interface components {
      * @enum {string}
      */
     SystemDecisions: "deployment" | "organization";
+    /** @description The action to take. */
+    TakeFindingActionRequest: {
+      /** @description `pause_schedule`. */
+      kind: string;
+    };
     /** @description Typed link to something the task produced. */
     TaskArtifact: {
       name: string;
@@ -31823,8 +32069,11 @@ export interface components {
     };
     TriggerAgentTriggerOutput: {
       created_session: boolean;
-      /** @description Session's prefixed public identifier. */
-      session_id: components["schemas"]["sessionId"];
+      /** @description Why a filtered or duplicate event did not run. */
+      reason?: string | null;
+      session_id?: components["schemas"]["sessionId"] | null;
+      /** @description `filtered` and `duplicate` happen only for a fire with an event. */
+      status: components["schemas"]["ManualFireStatus"];
     };
     /**
      * @description "Only when it changes": the trigger remembers the last value at `path` per
@@ -32870,6 +33119,7 @@ export interface components {
        * @example Acme Corporation
        */
       name?: string | null;
+      self_healing?: components["schemas"]["SelfHealingPolicy"] | null;
       /**
        * @description Shared small chat model for lightweight work. Omit to preserve the selection;
        *     pass null to clear it. Does not change the main chat or decision default.
@@ -39183,15 +39433,29 @@ export interface operations {
       };
       cookie?: never;
     };
-    requestBody?: never;
+    /** @description Optional event to fire the trigger with */
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["FireAgentTriggerRequest"];
+      };
+    };
     responses: {
-      /** @description Trigger fired */
+      /** @description Trigger fired, or the event was filtered or a duplicate */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
           "application/json": components["schemas"]["TriggerAgentTriggerOutput"];
+        };
+      };
+      /** @description The event does not fit the trigger */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
       /** @description Trigger not found */
@@ -46652,6 +46916,81 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_finding_actions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        issue_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingActions"];
+        };
+      };
+    };
+  };
+  take_finding_action: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        issue_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TakeFindingActionRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingActions"];
+        };
+      };
+    };
+  };
+  undo_finding_action: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        issue_id: string;
+        /** @description Prefixed public identifier */
+        action_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FindingActions"];
         };
       };
     };
@@ -55295,6 +55634,50 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ResumeSessionResponse"];
         };
+      };
+    };
+  };
+  get_run_requests: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID (prefixed, e.g., session_...) */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Requests from the other agents in the run */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RunRequestsResponse"];
+        };
+      };
+      /** @description Invalid session ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

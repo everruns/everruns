@@ -1,0 +1,59 @@
+# Nightly check that Slack accepts the worst-case manifests Add to Slack can
+# generate. Slack enforces limits it does not document (a 140-byte app
+# description was refused in production, #5181), so only Slack can answer.
+# The manifests come from crates/server/tests/fixtures/, which a unit test
+# keeps in step with the code; scripts/slack-manifest-validate.sh sends each
+# to `apps.manifest.validate` with a Slack app configuration token.
+name: Slack Manifest Validation
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 9 * * *'
+
+# Each run rotates the Slack refresh token and saves the new one, so two runs
+# must never overlap or the slower one would save a token already spent.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Slack accepts worst-case manifests
+    # A manual dispatch may pick any branch; only main runs beside the vault token.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Doppler CLI
+        id: doppler_install
+        # Absorbs one transient installer failure; see
+        # scripts/test-doppler-install-retry.sh for why.
+        continue-on-error: true
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      - name: Pause before Doppler CLI retry
+        if: steps.doppler_install.outcome == 'failure'
+        run: sleep 15
+
+      - name: Install Doppler CLI (retry)
+        if: steps.doppler_install.outcome == 'failure'
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      # The script writes the rotated refresh token back, so it needs a
+      # Doppler token that may write everruns-dev/dev. A dedicated
+      # DOPPLER_SLACK_ROTATE_TOKEN keeps that write access out of every other
+      # workflow; without it the shared token is tried, and the script stops
+      # before rotating if that token cannot write.
+      - name: Validate manifests with Slack
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_SLACK_ROTATE_TOKEN || secrets.DOPPLER_TOKEN }}
+          DOPPLER_PROJECT: everruns-dev
+          DOPPLER_CONFIG: dev
+        run: doppler run -- scripts/slack-manifest-validate.sh

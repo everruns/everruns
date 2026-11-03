@@ -478,6 +478,14 @@ pub async fn submit_tool_approvals(
         // answer and must bind to its persisted owner too.
         return Err(ErrorResponse::not_found("Session"));
     }
+    // A run's first session answers the other agents' approvals too.
+    let named: Vec<&str> = req
+        .decisions
+        .iter()
+        .map(|answer| answer.tool_call_id.as_str())
+        .collect();
+    let session_id =
+        super::run_requests::route_answer(&state.db, org.org_id, &session, &named).await?;
 
     let pending = pending_tool_approvals(&state.db, session_id)
         .await

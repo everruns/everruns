@@ -23,6 +23,7 @@ use std::sync::{Arc, Mutex};
 
 mod changes_only_tests;
 mod github_everruns_app_tests;
+mod manual_fire_tests;
 mod script_target_tests;
 
 // Serializes the env-mutating cap tests.
@@ -1171,7 +1172,7 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
     ));
     assert!(matches!(
         fire(pr_event("d3", "acme/api", 7, "labeled")).await,
-        events::TriggerEventOutcome::Filtered
+        events::TriggerEventOutcome::Filtered { .. }
     ));
 
     let events::TriggerEventOutcome::Dispatched(other) =
@@ -1470,7 +1471,7 @@ async fn github_trigger_needs_the_identitys_app_and_routes_its_deliveries() {
     .await;
     assert!(matches!(
         other_repo.as_slice(),
-        [events::TriggerEventOutcome::Filtered]
+        [events::TriggerEventOutcome::Filtered { .. }]
     ));
     // Unsubscribed actions and the App's own activity are not routed at all.
     assert!(

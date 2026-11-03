@@ -5,6 +5,7 @@ import { messages as tracing } from "./fr/tracing";
 import { messages as backgroundLimits } from "./fr/background-limits";
 import { messages as monitoringTimeline } from "./fr/monitoring-timeline";
 import { messages as orgHome } from "./fr/org-home";
+import { messages as runRequests } from "./fr/run-requests";
 import { messages as costs } from "./fr/costs";
 import { messages as evals } from "./fr/evals";
 import { messages as evalCases } from "./fr/eval-cases";
@@ -61,6 +62,7 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   backgroundLimits,
   monitoringTimeline,
   orgHome,
+  runRequests,
   costs,
   evals,
   evalCases,

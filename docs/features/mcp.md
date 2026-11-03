@@ -53,6 +53,19 @@ extension loads it through its skill loader, checks the manifest and frontmatter
 and applies its approval policy. Older clients can read a known skill URI as an
 ordinary resource but receive no Skills extension capability.
 
+### Polling for replies
+
+`session_get_status` returns `latest_output`, the latest non-empty text the agent
+said in the session, including replies delivered through `send_message`. Private
+commentary, tool arguments, and failed deliveries do not count as replies.
+
+`since_event_id` and `event_types` filter the returned event page only. The latest
+reply remains available even when that page is empty or contains only status
+events. It is a session snapshot, so it can still be the previous turn's reply
+while a new turn runs or after a turn that sends no reply; check `status` and
+the returned events for progress. `latest_output` is `null` when the session has
+no visible text reply.
+
 ### Long agent turns as tasks
 
 An agent turn can take minutes. Clients on protocol `2026-07-28` that declare the
