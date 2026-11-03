@@ -117,6 +117,8 @@ impl ListEvents {
     /// True when any debugging filter is set — routes to `list_events_advanced`.
     fn uses_advanced(&self) -> bool {
         self.after_sequence.is_some()
+            // The legacy limited query selects the tail and ignores forward cursors.
+            || (self.since_id.is_some() && self.limit.is_some())
             || self.around.is_some()
             || self.window.is_some()
             || self.from_ts.is_some()

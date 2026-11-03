@@ -468,7 +468,7 @@ fn session_get_status_tool(
                     "since_event_id",
                     json!({
                         "type": "string",
-                        "description": "Only return events after this event ID (for incremental polling)."
+                        "description": "Only return events after this event ID (for incremental polling). Does not filter latest_output."
                     }),
                 ),
                 (
@@ -476,7 +476,7 @@ fn session_get_status_tool(
                     json!({
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Filter to specific event types."
+                        "description": "Filter the event page to specific event types. Does not filter latest_output."
                     }),
                 ),
                 (
@@ -498,7 +498,10 @@ fn session_get_status_tool(
                 "status": { "type": ["string", "null"] },
                 "agent_id": { "type": ["string", "null"] },
                 "title": { "type": ["string", "null"] },
-                "latest_output": { "type": ["string", "null"] },
+                "latest_output": {
+                    "type": ["string", "null"],
+                    "description": "Latest non-empty visible agent reply in the session, including send_message deliveries, independent of event filters and cursors. Excludes commentary and unsent tool arguments. Remains the previous reply when a turn says nothing; null if no visible text reply exists."
+                },
                 "last_event_id": { "type": ["string", "null"] },
                 "event_count": { "type": "integer" },
                 "view_url": { "type": "string" },

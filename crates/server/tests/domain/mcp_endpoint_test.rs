@@ -12,6 +12,7 @@ mod capability_mcp_acts_as;
 mod cards;
 mod resources;
 mod skills;
+mod status;
 mod tasks;
 use crate::test_harness;
 
