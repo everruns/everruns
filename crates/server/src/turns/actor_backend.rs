@@ -224,6 +224,7 @@ impl TurnBackend for ActorTurnBackend {
                 .map_err(|e| store_error("Failed to mark the session runnable", e))?,
             other => return Err(unsupported_input(&other)),
         };
+        let target = target.filter(|_| !crate::storage::sticky_grace().is_zero());
         self.notify(SESSION_ACTOR_NOTIFICATION, target);
         Ok(self.ticket(session_id, turn_id))
     }

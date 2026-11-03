@@ -29,7 +29,7 @@
 //   releasing worker as `preferred_worker`, whose history cache holds the
 //   session. A lease call scans the caller's own preferred actors first,
 //   then everyone else's that it may take now: no preferred worker, runnable
-//   longer than `STICKY_GRACE`, or a preferred worker that is not ready
+//   longer than the grace (`sticky_grace`), or a preferred worker that is not ready
 //   (`session_actor_worker_ready`: registered, active, accepting, a heartbeat
 //   in the last 30 s, below its slot count). Marking returns that ready
 //   worker so the wake-up names it alone. A hand-off clears the preference.
@@ -135,9 +135,22 @@ fn ttl_millis_unclamped(duration: Duration) -> i64 {
     i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
 }
 
-/// How long a runnable actor whose preferred worker is ready waits for that
-/// worker before any worker may take it; see the header.
+/// How long, by default, a runnable actor whose preferred worker is ready
+/// waits for that worker before any worker may take it; see the header.
 pub const STICKY_GRACE: Duration = Duration::from_millis(300);
+
+/// The grace in effect: `SESSION_ACTOR_STICKY_GRACE_MS`, else
+/// [`STICKY_GRACE`]. Zero turns stickiness off: nobody waits, and wake-ups
+/// from the turn backend go to every worker.
+pub fn sticky_grace() -> Duration {
+    static GRACE: std::sync::LazyLock<Duration> = std::sync::LazyLock::new(|| {
+        std::env::var("SESSION_ACTOR_STICKY_GRACE_MS")
+            .ok()
+            .and_then(|ms| ms.trim().parse::<u64>().ok())
+            .map_or(STICKY_GRACE, Duration::from_millis)
+    });
+    *GRACE
+}
 
 /// The filters every lease candidate passes, in both scans of [`LEASE_SQL`]:
 /// no detached call pending, and the fleet the caller serves (`$6`: `NULL`
@@ -441,7 +454,7 @@ impl Database {
             .bind(holder)
             .bind(ttl_millis(ttl))
             .bind(custom_worker_id)
-            .bind(ttl_millis_unclamped(STICKY_GRACE))
+            .bind(ttl_millis_unclamped(sticky_grace()))
             .fetch_all(&self.pool)
             .await?)
     }

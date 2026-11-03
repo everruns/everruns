@@ -29,7 +29,8 @@ capacity target is 8,000 parallel agents.
 2. **Never wait on a worker that cannot run the turn.** A preferred worker that
    is gone, silent, draining or full holds nothing back.
 3. **Bounded wait otherwise.** Other workers may take a preferred session once
-   it has been runnable for the grace (`STICKY_GRACE`, 300 ms).
+   it has been runnable for the grace (300 ms by default,
+   `SESSION_ACTOR_STICKY_GRACE_MS`; 0 turns stickiness off).
 4. **Any number of server replicas.** The preference lives in the database, not
    in a server's memory.
 
@@ -67,6 +68,15 @@ Kept for later, if the bench shows they still matter: keeping a turn's
 agent, harness, model and provider reads across turns on the preferred
 worker (today they live for one turn), cleared by the config change
 notifications.
+
+## Measured
+
+Stress bench, 100 sessions on two workers (2026-11-03): with the [history
+cache](worker-history-cache.md) keeping windows, cold window reads fell from
+every model call (875 a run) to 142, of which 100 are first turns; 79% of
+follow-up turns started on a warm worker, and message rows read fell 77%.
+Overhead per model call is unchanged between grace 0 (stickiness off), 100 and
+300 ms, within run-to-run noise.
 
 ## Success bar
 
