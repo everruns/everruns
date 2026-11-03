@@ -74,7 +74,14 @@ session signing secret, encryption key, stored secrets readable and rotation
 finished), messaging (NATS, Valkey, both judged against the number of
 running servers), file storage (an S3 write, read and
 delete), observability (whether anything actually reads `/metrics`, traces,
-log level), platform model keys, and the host's own checks (Integrations).
+log level), platform model keys, whether Slack accepts the worst-case app
+manifests Add to Slack builds, and the host's own checks (Integrations).
+
+The Slack manifest check is the one that asks an outside service. Slack
+enforces manifest limits it does not document, so each server sends its
+worst-case manifests to `apps.manifest.validate` once a day, using any
+connected workspace's configuration token, which the server already keeps
+fresh. The doctor reports the last answer; it never calls Slack itself.
 
 Two judgments worth keeping:
 
