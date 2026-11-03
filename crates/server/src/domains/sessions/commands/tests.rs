@@ -472,6 +472,7 @@ async fn seed_agent(ctx: &Ctx, harness_id: HarnessId, name: &str) -> AgentId {
         .create_agent(
             ctx.org_id(),
             crate::storage::CreateAgentRow {
+                completion_check: Default::default(),
                 localizations: Default::default(),
                 public_id: public_id.clone(),
                 name: name.to_string(),
@@ -616,6 +617,7 @@ async fn participant_commands_list_add_and_leave_history() {
         .create_agent(
             DEFAULT_ORG_ID,
             crate::storage::CreateAgentRow {
+                completion_check: Default::default(),
                 localizations: Default::default(),
                 public_id: host_public_id.to_string(),
                 name: "participant-host".to_string(),
@@ -647,6 +649,7 @@ async fn participant_commands_list_add_and_leave_history() {
         .create_agent(
             DEFAULT_ORG_ID,
             crate::storage::CreateAgentRow {
+                completion_check: Default::default(),
                 localizations: Default::default(),
                 public_id: member_public_id.to_string(),
                 name: "participant-member".to_string(),

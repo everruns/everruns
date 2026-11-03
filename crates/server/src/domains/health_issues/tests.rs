@@ -43,6 +43,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            completion_check: Default::default(),
             localizations: Default::default(),
             public_id: public_id.clone(),
             name: "channel-agent".to_string(),

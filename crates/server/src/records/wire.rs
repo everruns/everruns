@@ -63,6 +63,7 @@ pub fn proto_agent_to_schema(
         "parallel_tool_calls": value.parallel_tool_calls,
         "max_output_tokens": value.max_tokens.filter(|tokens| *tokens > 0),
         "communication": value.communication.as_deref().unwrap_or("direct"),
+        "completion_check": value.completion_check.as_deref().unwrap_or("unattended"),
     });
     serde_json::from_value(json).map_err(ConversionError::from)
 }
@@ -97,6 +98,8 @@ pub fn schema_agent_to_proto(value: &crate::domains::agents::record::Agent) -> p
             .communication
             .is_explicit()
             .then(|| value.communication.as_str().to_owned()),
+        completion_check: (!value.completion_check.is_default())
+            .then(|| value.completion_check.as_str().to_owned()),
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
         capabilities: encode_capability_configs(&value.capabilities),
         tools: value
@@ -401,5 +404,6 @@ pub fn schema_session_to_proto(
                 }
             })
             .collect(),
+        unattended: value.source.is_unattended().then_some(true),
     }
 }

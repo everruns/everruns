@@ -636,6 +636,7 @@ pub async fn upsert_agent(
                         crate::storage::UpdateField::Set,
                     ),
                     communication: Some(req.communication),
+                    completion_check: Some(req.completion_check),
                     status: None,
                 };
                 let agent = crate::domains::agents::UpdateAgentCmd {

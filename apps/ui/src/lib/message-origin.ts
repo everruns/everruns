@@ -18,6 +18,7 @@ export type MessageOriginKind =
   | "webhook"
   | "task_wake"
   | "reaction"
+  | "turn_continuation"
   | "system";
 
 export interface MessageOriginRun {
@@ -41,6 +42,7 @@ const KINDS: readonly MessageOriginKind[] = [
   "webhook",
   "task_wake",
   "reaction",
+  "turn_continuation",
   "system",
 ];
 
@@ -110,5 +112,7 @@ export const ORIGIN_LABEL_KEY = {
   webhook: "origin_webhook",
   task_wake: "automatic_update",
   reaction: "origin_reaction",
+  // A completion check continued an unfinished turn; reads as an automatic update.
+  turn_continuation: "automatic_update",
   system: "origin_system",
 } as const satisfies Record<MessageOriginKind, string>;

@@ -225,6 +225,7 @@ async fn create_agent_and_session(
         .create_agent(
             everruns_core::DEFAULT_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
                 localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: format!("acts-as-agent-{}", Uuid::now_v7()),

@@ -221,6 +221,7 @@ mod tests {
 
     fn sample_agent() -> Agent {
         Agent {
+            completion_check: Default::default(),
             localizations: Default::default(),
             is_built_in: false,
             avatar: None,
