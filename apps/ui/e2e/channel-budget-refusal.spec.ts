@@ -240,10 +240,13 @@ test.describe("channel budget refusal", () => {
 
     await proxyApiToRealServer(page);
     await page.goto(`/agents/${agent.id}?tab=integrations`);
-    await page.getByRole("button", { name: `Expand ${scheduleMessage} details` }).click();
+    // A legacy schedule channel is a row in the Triggers table that opens the
+    // channel's own page, where its spending cap lives.
+    await page.getByRole("link", { name: "Every hour", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/agents/${agent.id}/channels/${channelId}$`));
 
     const channelBudgetPanel = page
-      .getByRole("heading", { name: "Channel usage policy", exact: true })
+      .getByRole("heading", { name: "Shared pool", exact: true })
       .locator("xpath=../..");
     await expect(channelBudgetPanel).toBeVisible();
     await expect(channelBudgetPanel.getByText(budget.id, { exact: true })).toBeVisible();
