@@ -110,6 +110,28 @@ pub fn cache_write_1h_surcharge_usd(
     )
 }
 
+/// Extra cost of provider-reported 12-hour writes above the ordinary write
+/// estimate. Both prices use the same prompt length and served service tier.
+pub fn cache_write_12h_surcharge_usd(
+    provider_type: &DriverId,
+    model_id: &str,
+    prompt_tokens: u32,
+    twelve_hour_write_tokens: u32,
+    served_tier: Option<&str>,
+) -> Option<f64> {
+    if *provider_type != DriverId::OpenAI || twelve_hour_write_tokens == 0 || prompt_tokens == 0 {
+        return None;
+    }
+    let input =
+        estimate_cost_usd_for_speed(provider_type, model_id, prompt_tokens, 0, 0, 0, served_tier)?;
+    let write =
+        estimate_cost_usd_for_speed(provider_type, model_id, 0, 0, 0, prompt_tokens, served_tier)?;
+    Some(
+        (2.5 * input - write).max(0.0) * f64::from(twelve_hour_write_tokens)
+            / f64::from(prompt_tokens),
+    )
+}
+
 /// Get the vendor/brand for a model id, or None if it is not in the registry
 /// (or not offered under the given provider type).
 pub fn get_model_vendor(provider_type: &DriverId, model_id: &str) -> Option<ModelVendor> {

@@ -103,3 +103,60 @@ async fn cold_window_read_returns_the_server_window() {
     let _ = shutdown.send(());
     let _ = server.await;
 }
+
+/// A cold window stays cached with the session's count: later windows as the
+/// session grows match a fresh read, notice of the earlier messages included,
+/// and a wider window or a full read still gets the whole of what it asks.
+#[tokio::test]
+async fn a_cached_window_matches_a_fresh_window_as_the_session_grows() {
+    let service = test_worker_service().await;
+    let (session_id, _) = create_grpc_test_session(&service).await;
+    let events = service.event_service.clone();
+    for text in ["a", "b", "c", "d", "e"] {
+        emit(&events, session_id, RuntimeMessage::user(text)).await;
+    }
+    let (addr, shutdown, server) = start_grpc_test_server(service).await;
+    let cached = GrpcAdapter::new(GrpcClient::connect(&addr).await.unwrap());
+    async fn window(adapter: &GrpcAdapter, session_id: SessionId, n: i64) -> Vec<String> {
+        texts(
+            &adapter
+                .load_filtered_history(MessageQuery::new(session_id).with_limit(n))
+                .await
+                .unwrap()
+                .messages,
+        )
+    }
+    async fn fresh(addr: &str, session_id: SessionId, n: i64) -> Vec<String> {
+        let adapter = GrpcAdapter::new(GrpcClient::connect(addr).await.unwrap());
+        window(&adapter, session_id, n).await
+    }
+
+    assert_eq!(
+        window(&cached, session_id, 2).await,
+        fresh(&addr, session_id, 2).await
+    );
+    for text in ["f", "g"] {
+        emit(&events, session_id, RuntimeMessage::user(text)).await;
+        assert_eq!(
+            window(&cached, session_id, 2).await,
+            fresh(&addr, session_id, 2).await
+        );
+    }
+    let latest = window(&cached, session_id, 2).await;
+    assert!(
+        latest.ends_with(&["f".to_string(), "g".to_string()]),
+        "{latest:?}"
+    );
+    // The cache holds d..g now; a window of 6 reaches past it.
+    assert_eq!(
+        window(&cached, session_id, 6).await,
+        fresh(&addr, session_id, 6).await
+    );
+    assert_eq!(
+        texts(&cached.load(session_id).await.unwrap()),
+        ["a", "b", "c", "d", "e", "f", "g"]
+    );
+
+    let _ = shutdown.send(());
+    let _ = server.await;
+}

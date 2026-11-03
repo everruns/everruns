@@ -1,6 +1,7 @@
 // PostgreSQL repository: Events (source of truth for messages)
 
 mod after_store;
+pub(crate) mod feed;
 pub(crate) mod group_commit;
 mod input_lookups;
 pub(super) mod rows;
