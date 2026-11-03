@@ -8,7 +8,7 @@ products: [platform, cloud, framework]
 surfaces: [ui, api, code]
 links:
   docs: [/capabilities/agent-handoff/, /framework/serve/]
-  prs: [everruns/everruns#5175, everruns/everruns#5188, everruns/everruns#5196]
+  prs: [everruns/everruns#5175, everruns/everruns#5188, everruns/everruns#5196, everruns/everruns#5202]
 ---
 
 An agent can now hand work to other agents. Open an agent's **Agents** tab and
@@ -41,5 +41,8 @@ fn analyst() -> Agent {
         .build()
 }
 ```
+
+`.member("name")` replaces serve's `#[agent(sub)]` and its `ask_<name>` tool:
+a member now runs as its own session in the run, with its own trace and cost.
 
 See [Agent handoff](/capabilities/agent-handoff/).

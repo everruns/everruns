@@ -193,16 +193,26 @@ impl Command for GetSessionRun {
                 .get(&(turn.session_id, turn.turn_id))
                 .copied()
                 .unwrap_or(0.0);
-            by_session.entry(turn.session_id).or_default().push(RunTurn {
-                turn_no: turn.turn_no,
-                turn_id: TurnId::from_uuid(turn.turn_id).to_string(),
-                started_at: turn.started_at,
-                ended_at: turn.ended_at,
-                status: turn.status,
-                cost_usd,
-            });
+            by_session
+                .entry(turn.session_id)
+                .or_default()
+                .push(RunTurn {
+                    turn_no: turn.turn_no,
+                    turn_id: TurnId::from_uuid(turn.turn_id).to_string(),
+                    started_at: turn.started_at,
+                    ended_at: turn.ended_at,
+                    status: turn.status,
+                    cost_usd,
+                });
         }
-        Ok(assemble(root, rows, &agents, by_session, waiting_requests, truncated))
+        Ok(assemble(
+            root,
+            rows,
+            &agents,
+            by_session,
+            waiting_requests,
+            truncated,
+        ))
     }
 }
 

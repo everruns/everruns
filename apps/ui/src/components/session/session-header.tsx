@@ -55,14 +55,7 @@ import {
  * recording actually has. `files` keeps its route id — the label is
  * "Files"; its stable route preserves existing links.
  */
-export type SessionNavKey =
-  | "trace"
-  | "approvals"
-  | "agents"
-  | "work"
-  | "events"
-  | "files"
-  | "cost";
+export type SessionNavKey = "trace" | "approvals" | "agents" | "work" | "events" | "files" | "cost";
 
 export interface SessionNavItem {
   key: SessionNavKey;

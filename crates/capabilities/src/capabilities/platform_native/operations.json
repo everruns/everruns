@@ -12880,6 +12880,23 @@
     "read_only": true
   },
   {
+    "description": "Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_session_run",
+    "read_only": true
+  },
+  {
     "description": "Inspect a Session's primary Sandbox and what it may touch.",
     "input_schema": {
       "properties": {

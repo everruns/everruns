@@ -14697,6 +14697,33 @@
     ]
   },
   {
+    "wire_name": "get_session_run",
+    "path": [
+      "sessions",
+      "run"
+    ],
+    "verb": "get",
+    "description": "Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/run",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See every agent in a session's run",
+        "command": "everruns sessions run get session_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "get_session_sandbox",
     "path": [
       "sessions",

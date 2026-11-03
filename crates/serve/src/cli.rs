@@ -203,11 +203,7 @@ fn banner(host: &Arc<Host>, mode: Mode, port: u16, data_dir: &std::path::Path, m
     for agent in &manifest.agents {
         let route = crate::gateway::route(&agent.model, &env)
             .map_or("simulator (no gateway configured)", |route| route.label());
-        let role = if agent.default {
-            " (default)"
-        } else {
-            ""
-        };
+        let role = if agent.default { " (default)" } else { "" };
         println!(
             "  agent    {}{role} · {} → {route}",
             agent.name, agent.model

@@ -418,11 +418,19 @@ mod reads {
         let ids: Vec<_> = sessions.iter().map(|s| s.id).collect();
         assert_eq!(ids, [root, child], "first session first, never another run");
         assert!(!ids.contains(&other));
-        assert!(db.list_run_sessions(org + 1, root, 10).await.unwrap().is_empty());
+        assert!(
+            db.list_run_sessions(org + 1, root, 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
 
         let uuids: Vec<_> = ids.iter().map(|id| id.uuid()).collect();
         for id in &uuids {
-            db.database().catch_up_session_trace_fully(*id).await.unwrap();
+            db.database()
+                .catch_up_session_trace_fully(*id)
+                .await
+                .unwrap();
         }
         let turns = db.run_turns(&uuids, 10).await.unwrap();
         assert_eq!(turns.len(), 1);

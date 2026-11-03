@@ -42,9 +42,8 @@ use anyhow::anyhow;
 use everruns::approval::{ApprovalDecision, ToolApprover};
 use everruns::ask_user::{Answer, AnsweredBy, AskContext, AskUser, Outcome, Question, Status};
 use everruns::{
-    BashkitShell, FunctionTool, LocalConfig, SendDisposition, SentMessage, SessionEvent,
-    SessionEventKind, SessionId, ToolCall, ToolCallContext, ToolDefinition, ToolResponse,
-    TurnHandle,
+    BashkitShell, FunctionTool, LocalConfig, SendDisposition, SentMessage, SessionEvent, SessionId,
+    ToolCall, ToolCallContext, ToolDefinition, TurnHandle,
 };
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, oneshot};

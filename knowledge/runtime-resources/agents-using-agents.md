@@ -10,11 +10,12 @@ tags:
 ---
 # Agents That Use Other Agents
 
-Status: accepted (2026-11-02). Part 1 (members, created-here agents, package
-format, Agents tab) is built. Approvals and questions on the first
-session, the shared team folder, copy-of-files and the run conversation
-are built. Part 3 (whole-run costs and traces)
-follow. The mechanism underneath is [Agent Handoff](agent-handoff.md).
+Status: accepted (2026-11-02). All three parts are built (2026-11-03):
+members, created-here agents, package format and the Agents tab; approvals
+and questions on the first session, the shared team folder, copy-of-files
+and the run conversation; whole-run costs and traces. Framework and serve
+apps get members too. The mechanism underneath is
+[Agent Handoff](agent-handoff.md).
 
 ## Abstract
 

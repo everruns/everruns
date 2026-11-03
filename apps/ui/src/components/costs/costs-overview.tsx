@@ -136,9 +136,7 @@ export function RunsWithAgentsCard({
               <TableCell>
                 <div className="font-medium">{line.agent_name}</div>
                 <div className="text-xs text-muted-foreground">
-                  {line.runs === 1
-                    ? ui("1 run")
-                    : ui("{count} runs", { count: String(line.runs) })}
+                  {line.runs === 1 ? ui("1 run") : ui("{count} runs", { count: String(line.runs) })}
                 </div>
               </TableCell>
               <TableCell className="text-right font-semibold tabular-nums">

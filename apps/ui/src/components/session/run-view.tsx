@@ -100,7 +100,9 @@ export function RunSummaryCards({ run }: { run: SessionRun }) {
     <div className="grid border border-border bg-card sm:grid-cols-3">
       <div className="border-b border-border p-4 sm:border-r sm:border-b-0">
         <p className="text-xs text-muted-foreground">{ui("Run cost so far")}</p>
-        <p className="mt-1 text-3xl font-semibold tabular-nums">{formatUsd(run.cost_usd, locale)}</p>
+        <p className="mt-1 text-3xl font-semibold tabular-nums">
+          {formatUsd(run.cost_usd, locale)}
+        </p>
         <p className="mt-1 text-xs text-muted-foreground">
           {ui("{value0} {value1} · other agents {value2}", {
             value0: firstName,

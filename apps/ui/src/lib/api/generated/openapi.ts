@@ -7729,6 +7729,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/run": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Show a session's whole run
+     * @description Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.
+     */
+    get: operations["get_session_run"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/run-requests": {
     parameters: {
       query?: never;
@@ -13202,6 +13222,12 @@ export interface components {
        * @description Window start (inclusive).
        */
       from: string;
+      /**
+       * @description Runs where an agent handed work to other agents: their whole cost by
+       *     the agent the run started with, split by the agent that spent it.
+       *     Every amount is also in `by_agent`, under the agent that spent it.
+       */
+      runs_with_agents: components["schemas"]["RunsWithAgentsLine"][];
       /** @description The org's timezone; calendar windows and days use it. */
       timezone: string;
       /**
@@ -26965,6 +26991,13 @@ export interface components {
       /** @description Use organization defaults, add selections, replace defaults, or disable customer exports. */
       mode?: components["schemas"]["RoutingMode"];
     };
+    /** @description The agent behind a session of the run. */
+    RunAgent: {
+      /** @description The agent's id, as `/v1/agents/{agent_id}` takes it. */
+      id: string;
+      /** @description The agent's display name. */
+      name: string;
+    };
     /** @description Turns started and failed in one bucket. */
     RunBucket: {
       /** Format: int64 */
@@ -26994,6 +27027,34 @@ export interface components {
     /** @description What the other agents in a run wait on the person for. */
     RunRequestsResponse: {
       requests: components["schemas"]["RunRequest"][];
+    };
+    /** @description One agent session of the run. */
+    RunSession: {
+      agent?: components["schemas"]["RunAgent"] | null;
+      /**
+       * Format: double
+       * @description Model spend in USD.
+       */
+      cost_usd: number;
+      /** Format: date-time */
+      created_at: string;
+      /**
+       * Format: date-time
+       * @description When its last turn ended; absent while it works or before it ran.
+       */
+      last_turn_at?: string | null;
+      /** @description Outcome of its last finished turn: `completed`, `failed` or `cancelled`. */
+      last_turn_status?: string | null;
+      /** @description The session that handed it work; absent for the first session. */
+      parent_session_id?: string | null;
+      /** @description Session's prefixed public identifier. */
+      session_id: string;
+      /** @description Session status: `started`, `active`, `idle`, `waiting_for_tool_results`, ... */
+      status: string;
+      /** @description The session's title: for work handed off, the task's name. */
+      title?: string | null;
+      /** @description Its turns, oldest first. */
+      turns: components["schemas"]["RunTurn"][];
     };
     /** @description Aggregate metrics for a completed eval run. */
     RunSummary: {
@@ -27088,6 +27149,61 @@ export interface components {
        * @example 3
        */
       trials?: number;
+    };
+    /** @description One turn of a session in the run. */
+    RunTurn: {
+      /**
+       * Format: double
+       * @description Model spend of the turn in USD.
+       */
+      cost_usd: number;
+      /**
+       * Format: date-time
+       * @description Absent while the turn runs.
+       */
+      ended_at?: string | null;
+      /** Format: date-time */
+      started_at: string;
+      /** @description Trace status of the turn: `running`, `completed`, `failed`, ... */
+      status: string;
+      /** @description Public turn id (`turn_...`). */
+      turn_id: string;
+      /**
+       * Format: int32
+       * @description Turn number within its session, from 1.
+       */
+      turn_no: number;
+    };
+    /** @description The runs one agent led, with whole-run cost and who spent it. */
+    RunsWithAgentsLine: {
+      /** @description The agent the runs started with. */
+      agent_id: string;
+      agent_name: string;
+      /** @description Who spent it, the leading agent itself included, largest first. */
+      by_agent: components["schemas"]["RunsWithAgentsShare"][];
+      /**
+       * Format: double
+       * @description Priced cost of those runs in USD, every agent included.
+       */
+      cost_usd: number;
+      /**
+       * Format: int64
+       * @description Runs it handed work to other agents in, with usage in the window.
+       */
+      runs: number;
+    };
+    /** @description One agent's spend within the runs another agent led. */
+    RunsWithAgentsShare: {
+      /** @description Absent for usage recorded with no agent. */
+      agent_id?: string | null;
+      agent_name?: string | null;
+      /** Format: double */
+      cost_usd: number;
+      /**
+       * @description `lead` for the leading agent itself, `created_here` for an agent
+       *     created as part of it, `linked` for any other agent.
+       */
+      relation: string;
     };
     /** @description A message in the conversation */
     RuntimeMessage: {
@@ -29355,6 +29471,30 @@ export interface components {
      * @enum {string}
      */
     SessionResourceStatus: "active" | "completed" | "failed" | "released";
+    /**
+     * @description The run a session belongs to: every agent that took part, with status,
+     *     timing and spend.
+     */
+    SessionRun: {
+      /**
+       * Format: double
+       * @description Spend of every session in the run, in USD.
+       */
+      cost_usd: number;
+      /**
+       * Format: double
+       * @description Spend of the first session alone, in USD.
+       */
+      first_session_cost_usd: number;
+      /** @description The run's first session, the one the person talks to. */
+      root_session_id: string;
+      /** @description The first session, then every session started under it by creation. */
+      sessions: components["schemas"]["RunSession"][];
+      /** @description More sessions or turns existed than were returned. */
+      truncated: boolean;
+      /** @description Questions and approvals any agent in the run waits on the person for. */
+      waiting_requests: number;
+    };
     /**
      * @description Operator action to take against a session's managed sandbox. `Pause`
      *     suspends the instance, `Resume` restarts it, `Delete` releases the
@@ -55633,6 +55773,29 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ResumeSessionResponse"];
+        };
+      };
+    };
+  };
+  get_session_run: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionRun"];
         };
       };
     };

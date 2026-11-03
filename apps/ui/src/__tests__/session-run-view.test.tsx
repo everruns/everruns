@@ -111,7 +111,8 @@ describe("whole run view", () => {
     wrap(<RunCostSplit run={run} />);
     const rows = screen.getAllByRole("row").slice(1);
     expect(rows[0]).toHaveTextContent("Implement");
-    expect(rows[2]).toHaveTextContent("Foreman");
+    expect(rows[1]).toHaveTextContent("Foreman");
+    expect(rows[2]).toHaveTextContent("Triage");
   });
 
   it("shows the Agents tab only for sessions in a run", () => {
@@ -136,9 +137,24 @@ describe("runs that use other agents", () => {
             runs: 412,
             cost_usd: 212.4,
             by_agent: [
-              { agent_id: "agent_impl", agent_name: "Implement", relation: "created_here", cost_usd: 121.3 },
-              { agent_id: "agent_review", agent_name: "Review", relation: "linked", cost_usd: 51.75 },
-              { agent_id: "agent_foreman", agent_name: "Foreman", relation: "lead", cost_usd: 39.35 },
+              {
+                agent_id: "agent_impl",
+                agent_name: "Implement",
+                relation: "created_here",
+                cost_usd: 121.3,
+              },
+              {
+                agent_id: "agent_review",
+                agent_name: "Review",
+                relation: "linked",
+                cost_usd: 51.75,
+              },
+              {
+                agent_id: "agent_foreman",
+                agent_name: "Foreman",
+                relation: "lead",
+                cost_usd: 39.35,
+              },
             ],
           },
           {
@@ -147,7 +163,12 @@ describe("runs that use other agents", () => {
             runs: 3,
             cost_usd: 22.9,
             by_agent: [
-              { agent_id: "agent_review", agent_name: "Review", relation: "linked", cost_usd: 22.9 },
+              {
+                agent_id: "agent_review",
+                agent_name: "Review",
+                relation: "linked",
+                cost_usd: 22.9,
+              },
             ],
           },
         ]}

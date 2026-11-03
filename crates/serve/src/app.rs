@@ -410,20 +410,13 @@ fn discover(app: &mut AppInner) {
             ));
         }
         match registration.agent {
-            Some(agent)
-                if !app
-                    .agents
-                    .iter()
-                    .any(|entry| entry.name == agent) =>
-            {
+            Some(agent) if !app.agents.iter().any(|entry| entry.name == agent) => {
                 app.errors.push(format!(
                     "channel `{}` names agent `{agent}`, which is not an agent of this app",
                     registration.name
                 ));
             }
-            None if app.agents.len() > 1
-                && !app.agents.iter().any(|entry| entry.default) =>
-            {
+            None if app.agents.len() > 1 && !app.agents.iter().any(|entry| entry.default) => {
                 app.errors.push(format!(
                     "channel `{}` names no agent and the app has no default; use #[channel(agent = \"…\")]",
                     registration.name
