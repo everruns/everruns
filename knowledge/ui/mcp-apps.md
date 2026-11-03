@@ -76,6 +76,8 @@ caller's identity and resolved organization.
 The server routes these requests in process to the existing REST handlers. A
 private request extension carries the already authenticated caller; HTTP clients
 cannot construct it, and MCP OAuth tokens remain invalid for the REST audience.
+The outer MCP request retains the real-client IP rate limit; internal REST
+dispatch is not charged again to a synthetic localhost bucket.
 REST route scope classification, command policy, organization isolation and
 feature gates still apply. Reads and writes have separate tools so read-only
 credentials can load the workspace. The parent fixes the organization from the
