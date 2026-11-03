@@ -137,6 +137,13 @@ watermark, checks exact fact source keys, and wraps after reaching the current
 tail. It does not run a full historical backfill. Full backfill remains an
 explicit admin operation.
 
+`REPORTING_BACKGROUND_ENABLED=false` turns reporting off for a deployment: no
+projector, no repair, and the event write stops enqueuing outbox rows. Hosted
+runs this way while the reporting rework is pending
+(`knowledge/execution/event-listeners.md`), because per-call capability facts
+were the largest share of a turn's rows. Turned back on, the repair walk picks
+up from its watermark, so missed events are projected over the following runs.
+
 ## Idempotency
 
 Every fact has a stable source key:
