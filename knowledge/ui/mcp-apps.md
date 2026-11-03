@@ -57,7 +57,9 @@ The entry tools and resource identities live in the
 [tool registry](../../crates/server/src/api/mcp_endpoint/tool_registry.rs).
 
 Cards reuse Slate entity components; Home reuses `OrgHome`, and Session reuses
-its provider, layout and tab components. The embedded route supplies the MCP
+its provider, [shared session layout](../../apps/ui/src/components/session/session-layout-content.tsx)
+and tab components. Reusable layout content lives outside Next route modules so
+hosted route shims need only the default route export. The embedded route supplies the MCP
 transport and identity contexts. It does not fork product layouts or require a
 separate browser sign-in. Entity links open the real application through the
 host; Session tab navigation stays inside the workspace. Fullscreen is requested
