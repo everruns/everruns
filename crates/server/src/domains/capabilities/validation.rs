@@ -306,6 +306,14 @@ pub async fn normalize_capability_refs(
 
     for cap in capabilities {
         let cap_id = cap.capability_id();
+        if cap_id == everruns_capabilities::capabilities::agent_handoff::AGENT_HANDOFF_CAPABILITY_ID
+        {
+            normalized.push(AgentCapabilityConfig::with_config(
+                cap_id.to_string(),
+                canonical_members(db, org_id, cap.config_value()).await?,
+            ));
+            continue;
+        }
         if is_mcp_capability(cap_id)
             || is_skill_capability(cap_id)
             || is_declarative_capability(cap_id)
@@ -332,6 +340,63 @@ pub async fn normalize_capability_refs(
     }
 
     Ok(normalized)
+}
+
+/// Members of the Agents capability are stored by agent and named by it: the
+/// name the model addresses, the label and the description come from the
+/// agent itself, so renaming or re-describing an agent updates every list it
+/// is on at the next save. A member that is not an active agent of this
+/// organization is rejected.
+async fn canonical_members(
+    db: &StorageBackend,
+    org_id: i64,
+    config: &serde_json::Value,
+) -> Result<serde_json::Value> {
+    let Some(object) = config.as_object() else {
+        return Ok(config.clone());
+    };
+    let Some(entries) = object
+        .get("targets")
+        .or_else(|| object.get("members"))
+        .and_then(serde_json::Value::as_array)
+    else {
+        return Ok(config.clone());
+    };
+    let mut targets = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let Some(agent_id) = entry
+            .get("agent_id")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|id| id.parse::<everruns_contracts::typed_id::AgentId>().ok())
+        else {
+            // Shape errors are reported by the capability's own validation.
+            targets.push(entry.clone());
+            continue;
+        };
+        let agent = db
+            .get_agent(org_id, agent_id)
+            .await?
+            .filter(|agent| agent.status == "active")
+            .ok_or_else(|| {
+                BadRequestError::new(format!("Agents: agent {agent_id} is not an active agent"))
+            })?;
+        let mut target = entry.clone();
+        let object = target.as_object_mut().expect("member entries are objects");
+        object.insert("id".into(), agent.name.clone().into());
+        object.insert(
+            "name".into(),
+            agent.display_name.clone().unwrap_or(agent.name).into(),
+        );
+        match agent.description.filter(|d| !d.trim().is_empty()) {
+            Some(description) => object.insert("description".into(), description.into()),
+            None => object.remove("description"),
+        };
+        targets.push(target);
+    }
+    let mut config = object.clone();
+    config.remove("members");
+    config.insert("targets".into(), targets.into());
+    Ok(config.into())
 }
 
 #[cfg(test)]

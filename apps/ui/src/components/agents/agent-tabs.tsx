@@ -1,5 +1,5 @@
 import { AgentIcon, SessionIcon } from "@/components/icons/facet-icons";
-import { BarChart3, Eye, FlaskConical, Plug } from "lucide-react";
+import { BarChart3, Eye, FlaskConical, Plug, Users } from "lucide-react";
 import type { SectionTabItem } from "@/components/layout";
 
 // One tab row for the agent page. MCP and Credentials are configuration, so
@@ -8,13 +8,22 @@ import type { SectionTabItem } from "@/components/layout";
 // "Triggers" and "Integrate" folded into Integrations in EVE-1009: both
 // described how an agent is reached and when it runs. Evals (behind the
 // evals flag) shows the agent's datasets, experiments and findings.
-export type AgentTab = "agent" | "preview" | "integrations" | "stats" | "evals" | "sessions";
+// "Agents" lists the agents this one hands work to; it shows only when the
+// agent has the Agents capability, the one opt-in for using other agents.
+export type AgentTab =
+  | "agent"
+  | "agents"
+  | "preview"
+  | "integrations"
+  | "stats"
+  | "evals"
+  | "sessions";
 
 export function getAgentTabItems(
   sessionCount?: number,
   integrationCount?: number,
   translate: (message: string) => string = (message) => message,
-  { evals = false }: { evals?: boolean } = {},
+  { evals = false, agents }: { evals?: boolean; agents?: number } = {},
 ): SectionTabItem[] {
   return [
     {
@@ -22,6 +31,20 @@ export function getAgentTabItems(
       label: translate("Agent"),
       icon: <AgentIcon className="size-4" />,
     },
+    ...(agents === undefined
+      ? []
+      : [
+          {
+            value: "agents",
+            label: (
+              <>
+                {translate("Agents")}
+                <span className="bg-muted px-1 text-[11px] font-medium">{agents}</span>
+              </>
+            ),
+            icon: <Users className="size-4" />,
+          },
+        ]),
     {
       value: "preview",
       label: translate("Preview"),
@@ -70,7 +93,15 @@ export function getAgentTabItems(
   ];
 }
 
-const TABS = new Set<string>(["agent", "preview", "integrations", "stats", "evals", "sessions"]);
+const TABS = new Set<string>([
+  "agent",
+  "agents",
+  "preview",
+  "integrations",
+  "stats",
+  "evals",
+  "sessions",
+]);
 
 export function isAgentTab(value: string): value is AgentTab {
   return TABS.has(value);

@@ -82,6 +82,14 @@ impl AgentBuilder {
                 "bind the hosted Sandbox policy explicitly",
             ));
         }
+        // Members run on the Platform today. Refuse them rather than build an
+        // agent that silently lost the agents it hands work to.
+        if !m.agents.is_empty() || m.members.as_ref().is_some_and(|m| !m.is_empty()) {
+            return Err(failure(
+                "agents",
+                "agents that hand work to other agents run on the Platform; Framework support is not available yet",
+            ));
+        }
         let registry = framework_capability_registry(false);
         for reference in &m.capabilities {
             if let Some(bound) = self

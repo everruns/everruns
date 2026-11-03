@@ -105,6 +105,7 @@ async fn analyze_maps_provider_quota_failure_to_safe_actionable_error() {
 
 fn basic_agent_request(name: &str) -> CreateAgentRequest {
     CreateAgentRequest {
+        owner_agent_id: None,
         localizations: Default::default(),
         service_virtual_user_id: None,
 

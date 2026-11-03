@@ -299,7 +299,7 @@ impl Database {
         let limit_idx = param_idx + 1;
         let offset_idx = param_idx + 2;
         let sql = format!(
-            r#"SELECT id, public_id, org_id, name, display_name, localizations, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, forked_from_agent_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, max_output_tokens, communication, environments, avatar_id,
+            r#"SELECT id, public_id, org_id, name, display_name, localizations, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, forked_from_agent_id, root_agent_id, owner_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, max_output_tokens, communication, environments, avatar_id,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
                 FROM agents
                 WHERE org_id = $1{status_sql}{search_sql}
@@ -353,6 +353,33 @@ impl Database {
     }
 
     /// Flag an agent as platform-supplied. Idempotent; used by org bootstrap.
+    /// Record (or clear) the agent another agent was created as part of.
+    pub async fn set_agent_owner(
+        &self,
+        org_id: i64,
+        id: AgentId,
+        owner: Option<AgentId>,
+    ) -> Result<()> {
+        sqlx::query("UPDATE agents SET owner_agent_id = $3 WHERE org_id = $1 AND id = $2")
+            .bind(org_id)
+            .bind(id.uuid())
+            .bind(owner.map(|owner| owner.uuid()))
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Active agents created as part of `owner`, by name.
+    pub async fn list_owned_agents(&self, org_id: i64, owner: AgentId) -> Result<Vec<AgentRow>> {
+        Ok(sqlx::query_as::<_, AgentRow>(
+            "SELECT * FROM agents WHERE org_id = $1 AND owner_agent_id = $2 AND status = 'active' ORDER BY name",
+        )
+        .bind(org_id)
+        .bind(owner.uuid())
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     pub async fn mark_agent_built_in(&self, org_id: i64, id: AgentId) -> Result<()> {
         sqlx::query("UPDATE agents SET is_built_in = TRUE WHERE org_id = $1 AND id = $2")
             .bind(org_id)

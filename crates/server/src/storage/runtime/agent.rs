@@ -81,6 +81,7 @@ impl DbAgentStore {
                     harness_id: row.harness_id,
                     forked_from_agent_id: row.forked_from_agent_id,
                     root_agent_id: row.root_agent_id,
+                    owner_agent_id: row.owner_agent_id,
                     tags: row.tags,
                     capabilities,
                     sandbox_policy: row

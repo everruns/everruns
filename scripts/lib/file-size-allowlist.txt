@@ -11,7 +11,6 @@
 # file instead.
 apps/ui/src/lib/api/legacy-api-types.ts
 crates/capabilities/src/capabilities/a2a_delegation/mod.rs
-crates/capabilities/src/capabilities/agent_handoff.rs
 crates/capabilities/src/capabilities/subagents.rs
 crates/capabilities/src/session_sandbox.rs
 crates/core/src/builtins/compaction.rs

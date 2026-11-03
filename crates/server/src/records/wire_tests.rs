@@ -29,6 +29,7 @@ fn test_proto_agent_includes_capability_ids() {
         harness_id: everruns_contracts::typed_id::HarnessId::new(),
         forked_from_agent_id: None,
         root_agent_id: None,
+        owner_agent_id: None,
         tags: vec!["slack:thread:123.456".to_string()],
         capabilities: vec![
             AgentCapabilityConfig::new("tools:read_file"),
