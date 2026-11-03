@@ -346,8 +346,33 @@ pub async fn drive_turn<A: RuntimeHostAdapter>(
                 // inbox; see the module note.
                 let can_continue =
                     reason_result.success && state.iteration < reason_result.max_iterations as u32;
-                let would_finish = !reason_schedules_act(&state, &reason_result) && can_continue;
-                let pending = inbox.after_reason(session_id, would_finish).await?;
+                let mut would_finish =
+                    !reason_schedules_act(&state, &reason_result) && can_continue;
+                // A reason that would finish the turn first passes the
+                // completion check, before the inbox takes input or closes,
+                // so a continuation keeps the inbox open like any steering
+                // (see `turn_completion_check`).
+                let continuation = if would_finish && !reason_result.waiting_for_tool_results {
+                    crate::host::turn_completion_check::check_finishing_turn(
+                        adapter,
+                        org_id,
+                        session_id,
+                        turn_id,
+                        input_message_id,
+                        &state,
+                        &reason_result,
+                    )
+                    .await?
+                } else {
+                    None
+                };
+                if continuation.is_some() {
+                    would_finish = false;
+                }
+                let mut pending = inbox.after_reason(session_id, would_finish).await?;
+                if continuation.is_some() {
+                    pending.count += 1;
+                }
                 pending_prompt_message_ids.extend(pending.prompt_message_ids);
                 if !can_continue {
                     inbox.close(session_id).await?;

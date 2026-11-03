@@ -749,6 +749,7 @@ mod tests {
         parent_session_id: SessionId,
     ) -> ExecutionSession {
         ExecutionSession {
+            unattended: Default::default(),
             id: session_id,
             workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
             organization_id: "org_00000000000000000000000000000001".to_string(),

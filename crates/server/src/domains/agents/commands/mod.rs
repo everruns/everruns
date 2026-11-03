@@ -186,6 +186,7 @@ impl Command for CreateAgent {
                     req.max_output_tokens,
                 ),
                 communication: req.communication,
+                completion_check: req.completion_check,
                 environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
                 // bootstrap. No API-facing creation path may mint one.
@@ -223,6 +224,7 @@ impl Command for CreateAgent {
                     req.max_output_tokens,
                 ),
                 communication: req.communication,
+                completion_check: req.completion_check,
                 environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
                 // bootstrap. No API-facing creation path may mint one.
@@ -547,6 +549,7 @@ impl Command for UpdateAgentCmd {
                 req.max_output_tokens,
             ),
             communication: req.communication,
+            completion_check: req.completion_check,
             environments: sandbox_templates::update_to_json(req.sandbox_policy),
             ..Default::default()
         };
@@ -745,6 +748,7 @@ impl Command for UpsertAgent {
                 req.max_output_tokens,
             ),
             communication: req.communication,
+            completion_check: req.completion_check,
             environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
             network_access: req
                 .network_access
@@ -840,6 +844,7 @@ impl Command for CopyAgent {
             parallel_tool_calls: source.parallel_tool_calls,
             max_output_tokens: source.max_output_tokens,
             communication: source.communication,
+            completion_check: source.completion_check,
         };
 
         CreateAgent(req).execute(ctx).await

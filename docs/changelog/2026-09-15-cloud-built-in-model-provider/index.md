@@ -23,3 +23,9 @@ every member can see the balance. At zero balance the built-in provider refuses
 new calls, while models on your own provider keys keep working.
 
 See [Everruns Cloud quickstart](/getting-started/cloud/).
+
+## Update 2026-11-02
+
+Credit purchases are currently paused. Billing stays inside the app and links
+to usage and credit activity, so you can review existing credit without leaving
+Settings.

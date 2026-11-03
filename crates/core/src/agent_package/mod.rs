@@ -255,6 +255,11 @@ pub struct Manifest {
     /// Omission means `direct`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub communication: Option<crate::conversation::Communication>,
+    /// When a finishing turn gets a completion check: `off`, `unattended`
+    /// (sessions started by triggers and schedules) or `always`. Omission
+    /// means `unattended`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_check: Option<crate::completion_check::CompletionCheck>,
     /// Tool schemas whose executable implementations must be bound by the host.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[serde(deserialize_with = "tools")]

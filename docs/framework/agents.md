@@ -225,6 +225,49 @@ let agent = Agent::builder()
 `FunctionTool::needs_approval(|args: &Value| ..)` and
 `FunctionTool::always_needs_approval()` are the dynamic forms.
 
+## Agents that hand work to other agents
+
+Add the agents this one can hand work to with `.member(agent)`. Each member
+keeps its own instructions, model and capabilities. The lead gets the
+`spawn_agent` tool and sees each member by its name and description; work it
+hands over runs as the member's own session in the same Engine, in the
+foreground or as a background task.
+
+```rust
+use everruns::hosting::{AgentBuild, SqliteHosting};
+use everruns::{Agent, Engine, Model, SessionId};
+
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let reviewer = Agent::builder()
+    .name("reviewer")
+    .description("Reviews a change and lists what to fix.")
+    .instructions("Review the change you are given. Be specific.")
+    .model(Model::simulated("Looks good."))
+    .build()?;
+let lead = Agent::builder()
+    .name("lead")
+    .instructions("Hand each change to reviewer before you answer.")
+    .model(Model::simulated("Done."))
+    .member(reviewer)
+    .build()?;
+
+let build = AgentBuild::new("lead", "v1");
+let engine = Engine::builder()
+    .hosting(SqliteHosting::open("./.everruns/authority.db")?)
+    .register(build.clone(), lead)
+    .build();
+let session = engine.create_registered(SessionId::new(), &build).await?;
+session.send_and_wait("Review the login change.").await?;
+# Ok(())
+# }
+```
+
+Members need a host that keeps child sessions: an Engine with
+`SqliteHosting`, or a local profile. Registering the lead is enough; a
+member's sessions resume after a restart under a build derived from the
+lead's. Members nest one level. Inviting a member into the lead's own session
+is Platform-only.
+
 ## File-based agents
 
 Load and export the shared portable package format, including initial files and

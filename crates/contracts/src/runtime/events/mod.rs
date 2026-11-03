@@ -66,6 +66,9 @@ pub const TURN_FAILED: &str = "turn.failed";
 /// `turn.completed` (success) and `turn.failed` (error). Carries a `reason`.
 pub const TURN_SEALED: &str = "turn.sealed";
 pub const TURN_CANCELLED: &str = "turn.cancelled";
+/// A turn about to finish was reviewed for whether it did what was asked,
+/// and may continue automatically (the agent's `completion_check` setting).
+pub const TURN_COMPLETION_CHECKED: &str = "turn.completion_checked";
 
 // Atom lifecycle events
 pub const REASON_STARTED: &str = "reason.started";
@@ -202,6 +205,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     TURN_FAILED,
     TURN_SEALED,
     TURN_CANCELLED,
+    TURN_COMPLETION_CHECKED,
     REASON_STARTED,
     REASON_COMPLETED,
     REASON_RECOVERED,
@@ -689,6 +693,7 @@ pub enum EventData {
 
     TurnSealed(TurnSealedData),
     TurnCancelled(TurnCancelledData),
+    TurnCompletionChecked(TurnCompletionCheckedData),
 
     // Session events
     SessionStarted(SessionStartedData),
@@ -908,6 +913,7 @@ event_data_kinds! {
     TurnFailed(TurnFailedData) = TURN_FAILED,
     TurnSealed(TurnSealedData) = TURN_SEALED,
     TurnCancelled(TurnCancelledData) = TURN_CANCELLED,
+    TurnCompletionChecked(TurnCompletionCheckedData) = TURN_COMPLETION_CHECKED,
 
     // Atom lifecycle events
     ReasonStarted(ReasonStartedData) = REASON_STARTED,
@@ -1016,6 +1022,7 @@ impl_from_event_data! {
     TurnFailedData => TurnFailed,
     TurnSealedData => TurnSealed,
     TurnCancelledData => TurnCancelled,
+    TurnCompletionCheckedData => TurnCompletionChecked,
     ReasonStartedData => ReasonStarted,
     ReasonCompletedData => ReasonCompleted,
     ReasonRecoveredData => ReasonRecovered,

@@ -759,3 +759,6 @@ mod cutover;
 #[cfg(feature = "otel")]
 #[path = "hosted_sessions/causal.rs"]
 mod causal;
+#[cfg(feature = "local")]
+#[path = "hosted_sessions/members.rs"]
+mod members;

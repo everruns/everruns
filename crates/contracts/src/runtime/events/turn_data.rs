@@ -177,6 +177,69 @@ pub struct TurnSealedData {
     pub usage: Option<TokenUsage>,
 }
 
+/// What a completion check found: the review's verdict on whether the turn
+/// did what was asked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CompletionVerdict {
+    /// The requested work is done.
+    Achieved,
+    /// Authorized work remains and another action can make progress.
+    InProgress,
+    /// Only outside input (a person, a permission, a credential) can unblock it.
+    Blocked,
+}
+
+/// What the runtime did after a completion check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CompletionCheckAction {
+    /// Nothing: the turn finishes as it was going to.
+    Finished,
+    /// An automatic continuation input was added and the turn reasons again.
+    Continued,
+    /// The work is unfinished, but the continuation budget is spent, so the
+    /// turn finishes.
+    BudgetExhausted,
+    /// The review call failed or answered something unreadable; the turn
+    /// finishes as it was going to.
+    ReviewFailed,
+}
+
+/// Data for turn.completion_checked event.
+///
+/// A turn about to finish was reviewed for whether it did what was asked
+/// (the agent's `completion_check` setting). One event per check, emitted
+/// before the continuation input it may add.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct TurnCompletionCheckedData {
+    /// Turn identifier
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+    /// The review's verdict. Absent when the review failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verdict: Option<CompletionVerdict>,
+    /// The review's short explanation, or why the review failed.
+    pub reason: String,
+    /// What the runtime did next.
+    pub action: CompletionCheckAction,
+    /// Automatic continuations this turn has used, this one included.
+    pub continuations_used: u32,
+    /// Most automatic continuations one turn may use.
+    pub max_continuations: u32,
+    /// Tokens the turn spent since its first automatic continuation.
+    pub tokens_used: u64,
+    /// Milliseconds since the turn's first automatic continuation.
+    pub elapsed_ms: u64,
+    /// The automatic continuation input, when one was added.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "message_01933b5a00007000800000000000001"))]
+    pub continuation_message_id: Option<MessageId>,
+}
+
 /// Data for turn.cancelled event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]

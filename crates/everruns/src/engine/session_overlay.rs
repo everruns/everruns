@@ -100,6 +100,7 @@ pub(crate) fn reconcile(
         forked_from_session_id,
         blueprint_id,
         blueprint_config,
+        unattended,
     } = existing;
 
     fresh.title = fresh.title.or(title);
@@ -115,6 +116,9 @@ pub(crate) fn reconcile(
     fresh.forked_from_session_id = forked_from_session_id.or(fresh.forked_from_session_id);
     fresh.blueprint_id = fresh.blueprint_id.or(blueprint_id);
     fresh.blueprint_config = fresh.blueprint_config.or(blueprint_config);
+    // An origin fact recorded when the session was created; a later build
+    // does not unmark it.
+    fresh.unattended |= unattended;
 
     // The lifecycle-hook capability is Engine-owned: the builder adds it only
     // when this build carries hook state, so a legacy copy is never an overlay.

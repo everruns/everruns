@@ -6,6 +6,7 @@ import {
   CalendarClock,
   Cog,
   RefreshCw,
+  RotateCcw,
   SmilePlus,
   Webhook,
   Zap,
@@ -20,5 +21,6 @@ export const ORIGIN_ICON: Record<MessageOriginKind, LucideIcon> = {
   webhook: Webhook,
   task_wake: RefreshCw,
   reaction: SmilePlus,
+  turn_continuation: RotateCcw,
   system: Cog,
 };
