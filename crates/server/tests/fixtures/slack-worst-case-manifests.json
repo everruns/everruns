@@ -1,0 +1,486 @@
+{
+  "long-ascii": {
+    "display_information": {
+      "background_color": "#1a1a2e",
+      "description": "Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches…",
+      "long_description": "Ecosystem Watch — Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features wo",
+      "name": "Ecosystem Watch"
+    },
+    "features": {
+      "agent_view": {
+        "agent_description": "Ecosystem Watch — Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agent frameworks for features worth adopting. Watches agen",
+        "suggested_prompts": [
+          {
+            "message": "Starter 0: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 0: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 1: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 1: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 2: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 2: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 3: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 3: a long prompt that keeps going a long prompt that"
+          }
+        ]
+      },
+      "app_home": {
+        "home_tab_enabled": false,
+        "messages_tab_enabled": true,
+        "messages_tab_read_only_enabled": false
+      },
+      "bot_user": {
+        "always_online": true,
+        "display_name": "Ecosystem Watch"
+      }
+    },
+    "oauth_config": {
+      "redirect_urls": [
+        "https://example.com/callback"
+      ],
+      "scopes": {
+        "bot": [
+          "chat:write",
+          "reactions:write",
+          "reactions:read",
+          "channels:history",
+          "groups:history",
+          "im:history",
+          "mpim:history",
+          "app_mentions:read",
+          "users:read",
+          "files:read",
+          "assistant:write"
+        ]
+      }
+    },
+    "settings": {
+      "event_subscriptions": {
+        "bot_events": [
+          "app_mention",
+          "message.channels",
+          "message.groups",
+          "message.im",
+          "message.mpim",
+          "reaction_added",
+          "reaction_removed",
+          "app_home_opened",
+          "app_context_changed",
+          "agent_session_stopped",
+          "agent_session_title_changed"
+        ],
+        "request_url": "https://example.com/events"
+      },
+      "interactivity": {
+        "is_enabled": true,
+        "request_url": "https://example.com/interactivity"
+      },
+      "org_deploy_enabled": false,
+      "socket_mode_enabled": false,
+      "token_rotation_enabled": false
+    }
+  },
+  "long-cyrillic": {
+    "display_information": {
+      "background_color": "#1a1a2e",
+      "description": "Тримає розпорядок дня дітей і відповідає в Slack. Тримає…",
+      "long_description": "Дуже довга назва агента, що не влазить у ліміт Slack — Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Sl",
+      "name": "Дуже довга назва агента, що не влаз"
+    },
+    "features": {
+      "agent_view": {
+        "agent_description": "Дуже довга назва агента, що не влазить у ліміт Slack — Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Slack. Тримає розпорядок дня дітей і відповідає в Sl",
+        "suggested_prompts": [
+          {
+            "message": "Starter 0: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 0: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 1: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 1: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 2: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 2: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 3: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 3: a long prompt that keeps going a long prompt that"
+          }
+        ]
+      },
+      "app_home": {
+        "home_tab_enabled": false,
+        "messages_tab_enabled": true,
+        "messages_tab_read_only_enabled": false
+      },
+      "bot_user": {
+        "always_online": true,
+        "display_name": "Дуже довга назва агента, що не влазить у лім"
+      }
+    },
+    "oauth_config": {
+      "redirect_urls": [
+        "https://example.com/callback"
+      ],
+      "scopes": {
+        "bot": [
+          "chat:write",
+          "reactions:write",
+          "reactions:read",
+          "channels:history",
+          "groups:history",
+          "im:history",
+          "mpim:history",
+          "app_mentions:read",
+          "users:read",
+          "files:read",
+          "assistant:write"
+        ]
+      }
+    },
+    "settings": {
+      "event_subscriptions": {
+        "bot_events": [
+          "app_mention",
+          "message.channels",
+          "message.groups",
+          "message.im",
+          "message.mpim",
+          "reaction_added",
+          "reaction_removed",
+          "app_home_opened",
+          "app_context_changed",
+          "agent_session_stopped",
+          "agent_session_title_changed"
+        ],
+        "request_url": "https://example.com/events"
+      },
+      "interactivity": {
+        "is_enabled": true,
+        "request_url": "https://example.com/interactivity"
+      },
+      "org_deploy_enabled": false,
+      "socket_mode_enabled": false,
+      "token_rotation_enabled": false
+    }
+  },
+  "no-description-long-name": {
+    "display_information": {
+      "background_color": "#1a1a2e",
+      "description": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "long_description": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx — AI agent powered by Everruns — https://everruns.com",
+      "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    "features": {
+      "agent_view": {
+        "agent_description": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx, an AI agent powered by Everruns",
+        "suggested_prompts": [
+          {
+            "message": "Starter 0: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 0: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 1: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 1: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 2: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 2: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 3: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 3: a long prompt that keeps going a long prompt that"
+          }
+        ]
+      },
+      "app_home": {
+        "home_tab_enabled": false,
+        "messages_tab_enabled": true,
+        "messages_tab_read_only_enabled": false
+      },
+      "bot_user": {
+        "always_online": true,
+        "display_name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    "oauth_config": {
+      "redirect_urls": [
+        "https://example.com/callback"
+      ],
+      "scopes": {
+        "bot": [
+          "chat:write",
+          "reactions:write",
+          "reactions:read",
+          "channels:history",
+          "groups:history",
+          "im:history",
+          "mpim:history",
+          "app_mentions:read",
+          "users:read",
+          "files:read",
+          "assistant:write"
+        ]
+      }
+    },
+    "settings": {
+      "event_subscriptions": {
+        "bot_events": [
+          "app_mention",
+          "message.channels",
+          "message.groups",
+          "message.im",
+          "message.mpim",
+          "reaction_added",
+          "reaction_removed",
+          "app_home_opened",
+          "app_context_changed",
+          "agent_session_stopped",
+          "agent_session_title_changed"
+        ],
+        "request_url": "https://example.com/events"
+      },
+      "interactivity": {
+        "is_enabled": true,
+        "request_url": "https://example.com/interactivity"
+      },
+      "org_deploy_enabled": false,
+      "socket_mode_enabled": false,
+      "token_rotation_enabled": false
+    }
+  },
+  "plain": {
+    "display_information": {
+      "background_color": "#1a1a2e",
+      "description": "Answers questions",
+      "long_description": "Ecosystem Watch — Answers questions | AI agent powered by Everruns — https://everruns.com Everruns lets you build, deploy, and run AI agents with durable execution, tool use, and real-time streaming. Learn more at https://everruns.com.",
+      "name": "Ecosystem Watch"
+    },
+    "features": {
+      "app_home": {
+        "home_tab_enabled": false,
+        "messages_tab_enabled": true,
+        "messages_tab_read_only_enabled": false
+      },
+      "bot_user": {
+        "always_online": true,
+        "display_name": "Ecosystem Watch"
+      }
+    },
+    "oauth_config": {
+      "redirect_urls": [
+        "https://example.com/callback"
+      ],
+      "scopes": {
+        "bot": [
+          "chat:write",
+          "reactions:write",
+          "reactions:read",
+          "channels:history",
+          "groups:history",
+          "im:history",
+          "mpim:history",
+          "app_mentions:read",
+          "users:read",
+          "files:read"
+        ]
+      }
+    },
+    "settings": {
+      "event_subscriptions": {
+        "bot_events": [
+          "app_mention",
+          "message.channels",
+          "message.groups",
+          "message.im",
+          "message.mpim",
+          "reaction_added",
+          "reaction_removed"
+        ],
+        "request_url": "https://example.com/events"
+      },
+      "interactivity": {
+        "is_enabled": true,
+        "request_url": "https://example.com/interactivity"
+      },
+      "org_deploy_enabled": false,
+      "socket_mode_enabled": false,
+      "token_rotation_enabled": false
+    }
+  },
+  "refused-in-prod": {
+    "display_information": {
+      "background_color": "#1a1a2e",
+      "description": "Daily watch of agent frameworks (Vercel AI SDK, LangGraph, DeepAgents, PydanticAI and more) for features worth…",
+      "long_description": "Ecosystem Watch — Daily watch of agent frameworks (Vercel AI SDK, LangGraph, DeepAgents, PydanticAI and more) for features worth adopting in Everruns or Yolop. | AI agent powered by Everruns — https://everruns.com",
+      "name": "Ecosystem Watch"
+    },
+    "features": {
+      "agent_view": {
+        "agent_description": "Ecosystem Watch — Daily watch of agent frameworks (Vercel AI SDK, LangGraph, DeepAgents, PydanticAI and more) for features worth adopting in Everruns or Yolop.",
+        "suggested_prompts": [
+          {
+            "message": "Starter 0: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 0: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 1: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 1: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 2: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 2: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 3: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 3: a long prompt that keeps going a long prompt that"
+          }
+        ]
+      },
+      "app_home": {
+        "home_tab_enabled": false,
+        "messages_tab_enabled": true,
+        "messages_tab_read_only_enabled": false
+      },
+      "bot_user": {
+        "always_online": true,
+        "display_name": "Ecosystem Watch"
+      }
+    },
+    "oauth_config": {
+      "redirect_urls": [
+        "https://example.com/callback"
+      ],
+      "scopes": {
+        "bot": [
+          "chat:write",
+          "reactions:write",
+          "reactions:read",
+          "channels:history",
+          "groups:history",
+          "im:history",
+          "mpim:history",
+          "app_mentions:read",
+          "users:read",
+          "files:read",
+          "assistant:write"
+        ]
+      }
+    },
+    "settings": {
+      "event_subscriptions": {
+        "bot_events": [
+          "app_mention",
+          "message.channels",
+          "message.groups",
+          "message.im",
+          "message.mpim",
+          "reaction_added",
+          "reaction_removed",
+          "app_home_opened",
+          "app_context_changed",
+          "agent_session_stopped",
+          "agent_session_title_changed"
+        ],
+        "request_url": "https://example.com/events"
+      },
+      "interactivity": {
+        "is_enabled": true,
+        "request_url": "https://example.com/interactivity"
+      },
+      "org_deploy_enabled": false,
+      "socket_mode_enabled": false,
+      "token_rotation_enabled": false
+    }
+  },
+  "tricky-characters": {
+    "display_information": {
+      "background_color": "#1a1a2e",
+      "description": "Quotes \"here\", a backslash \\, a tab\tand\nnew lines: ok? — yes # no",
+      "long_description": "Bot — Quotes \"here\", a backslash \\, a tab\tand\nnew lines: ok? — yes # no | AI agent powered by Everruns — https://everruns.com Everruns lets you build, deploy, and run AI agents with durable execution, tool use, and real-time streaming. Learn more at https://everruns.com.",
+      "name": "Bot"
+    },
+    "features": {
+      "agent_view": {
+        "agent_description": "Bot — Quotes \"here\", a backslash \\, a tab\tand\nnew lines: ok? — yes # no",
+        "suggested_prompts": [
+          {
+            "message": "Starter 0: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 0: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 1: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 1: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 2: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 2: a long prompt that keeps going a long prompt that"
+          },
+          {
+            "message": "Starter 3: a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going a long prompt that keeps going",
+            "title": "Starter 3: a long prompt that keeps going a long prompt that"
+          }
+        ]
+      },
+      "app_home": {
+        "home_tab_enabled": false,
+        "messages_tab_enabled": true,
+        "messages_tab_read_only_enabled": false
+      },
+      "bot_user": {
+        "always_online": true,
+        "display_name": "Bot"
+      }
+    },
+    "oauth_config": {
+      "redirect_urls": [
+        "https://example.com/callback"
+      ],
+      "scopes": {
+        "bot": [
+          "chat:write",
+          "reactions:write",
+          "reactions:read",
+          "channels:history",
+          "groups:history",
+          "im:history",
+          "mpim:history",
+          "app_mentions:read",
+          "users:read",
+          "files:read",
+          "assistant:write"
+        ]
+      }
+    },
+    "settings": {
+      "event_subscriptions": {
+        "bot_events": [
+          "app_mention",
+          "message.channels",
+          "message.groups",
+          "message.im",
+          "message.mpim",
+          "reaction_added",
+          "reaction_removed",
+          "app_home_opened",
+          "app_context_changed",
+          "agent_session_stopped",
+          "agent_session_title_changed"
+        ],
+        "request_url": "https://example.com/events"
+      },
+      "interactivity": {
+        "is_enabled": true,
+        "request_url": "https://example.com/interactivity"
+      },
+      "org_deploy_enabled": false,
+      "socket_mode_enabled": false,
+      "token_rotation_enabled": false
+    }
+  }
+}
