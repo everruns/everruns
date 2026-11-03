@@ -10168,6 +10168,7 @@ export interface components {
        * @description The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the
        *     shared App's (`everruns[bot]`) when the agent chose it and the
        *     deployment names its slug; `None` otherwise.
+       * @example pr-summarizer[bot]
        */
       bot_login?: string | null;
       /**
@@ -10186,6 +10187,7 @@ export interface components {
       /**
        * @description Which GitHub identity the agent acts as: `agent_app` (its own App) or
        *     `everruns_app` (the shared Everruns App). `None` before either exists.
+       * @example agent_app
        */
       kind?: string | null;
       /**
@@ -10194,7 +10196,10 @@ export interface components {
        *     Empty when not connected.
        */
       missing_permissions: string[];
-      /** @description `all` or `selected`. */
+      /**
+       * @description `all` or `selected`.
+       * @example selected
+       */
       repository_selection?: string | null;
       /**
        * @description GitHub accounts this organization already reached, as candidates for
@@ -10207,6 +10212,7 @@ export interface components {
        * @description The agent's GitHub page in the console, so a caller can link to it.
        *     Absolute in responses; built as a relative path here because the
        *     console's address is known only where links are decorated.
+       * @example https://app.everruns.com/agents/agent_01933b5a000070008000000000000001/github
        */
       view_url?: string | null;
     };

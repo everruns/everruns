@@ -44,6 +44,9 @@ pub struct AgentGitHubStatus {
     /// Absolute in responses; built as a relative path here because the
     /// console's address is known only where links are decorated.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(
+        example = "https://app.everruns.com/agents/agent_01933b5a000070008000000000000001/github"
+    )]
     pub view_url: Option<String>,
     /// The agent's identity, once it has one; disconnect goes through it.
     pub identity_id: Option<String>,
@@ -57,10 +60,12 @@ pub struct AgentGitHubStatus {
     pub app_url: Option<String>,
     /// Which GitHub identity the agent acts as: `agent_app` (its own App) or
     /// `everruns_app` (the shared Everruns App). `None` before either exists.
+    #[schema(example = "agent_app")]
     pub kind: Option<String>,
     /// The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the
     /// shared App's (`everruns[bot]`) when the agent chose it and the
     /// deployment names its slug; `None` otherwise.
+    #[schema(example = "pr-summarizer[bot]")]
     pub bot_login: Option<String>,
     /// The App's settings page on GitHub, where its logo is uploaded
     /// (GitHub has no API for that). `None` when the owner's account kind is
@@ -69,6 +74,7 @@ pub struct AgentGitHubStatus {
     /// GitHub account the App is installed on.
     pub account: Option<String>,
     /// `all` or `selected`.
+    #[schema(example = "selected")]
     pub repository_selection: Option<String>,
     /// Permissions new Apps request that this installation lacks (`name:level`),
     /// e.g. `actions:read` for CI triggers on an App created before them.
