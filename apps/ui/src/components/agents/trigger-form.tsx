@@ -51,20 +51,25 @@ export function TriggerFormFields({
   value,
   onChange,
   idPrefix = "trigger",
+  hideSchedule = false,
 }: {
   value: TriggerFormState;
   onChange: (next: TriggerFormState) => void;
   idPrefix?: string;
+  /** Webhook triggers share these fields but have no schedule. */
+  hideSchedule?: boolean;
 }) {
   const ui = useUiTranslations();
   return (
     <>
-      <CronInput
-        value={value.cron_expression}
-        timezone={value.timezone ?? "UTC"}
-        onChange={(cron_expression) => onChange({ ...value, cron_expression })}
-        onTimezoneChange={(timezone) => onChange({ ...value, timezone })}
-      />
+      {!hideSchedule && (
+        <CronInput
+          value={value.cron_expression}
+          timezone={value.timezone ?? "UTC"}
+          onChange={(cron_expression) => onChange({ ...value, cron_expression })}
+          onTimezoneChange={(timezone) => onChange({ ...value, timezone })}
+        />
+      )}
       <div className="space-y-2">
         <Label htmlFor={`${idPrefix}-session-mode`}>{ui("Session mode")}</Label>
         <Select

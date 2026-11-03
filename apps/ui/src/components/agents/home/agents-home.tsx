@@ -460,7 +460,7 @@ export function AgentsHome() {
                   description={
                     channels.length === 0
                       ? ui(
-                          "Add a channel from an agent's Integrations tab. New channels start as drafts and take no traffic until you publish them.",
+                          "Add a channel from an agent's Channels and triggers tab. New channels start as drafts and take no traffic until you publish them.",
                         )
                       : undefined
                   }

@@ -18,10 +18,11 @@ export function useAgentTriggers(agentId: string) {
   });
 }
 
-export function useAgentTriggerRuns(agentId: string, triggerId: string) {
+export function useAgentTriggerRuns(agentId: string, triggerId: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.agentTriggers.runs(agentId, triggerId),
     queryFn: () => listAgentTriggerRuns(agentId, triggerId),
+    enabled: enabled && !!triggerId,
   });
 }
 

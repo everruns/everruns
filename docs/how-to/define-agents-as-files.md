@@ -197,7 +197,7 @@ In **Agents → Import**, select a ZIP for a complete folder, or a self-containe
 TOML, YAML, JSON or Markdown file. The preview follows the Agent view: rendered
 instructions with a **Source** toggle, plus model/harness defaults and capabilities
 in the settings column. Open **Files** for starting files, permissions and skills,
-**Settings** for MCP servers and runtime settings, and **Integrations** for channels.
+**Settings** for MCP servers and runtime settings, and **Channels and triggers** for channels.
 For an existing destination, open **Changes** to review current/imported values
 and added, removed or updated files before applying. Validation failures block
 importing. Export offers a complete ZIP or Markdown.
@@ -236,7 +236,7 @@ GitHub account to sync through:
   people leave. Only admins link accounts.
 
 Either one connects in a popup without leaving the Agent page. Sync never uses the
-Agent's own GitHub identity from **Integrations**: that identity is how the Agent
+Agent's own GitHub identity (the **GitHub** row on the Agent tab): that identity is how the Agent
 appears on GitHub while it runs. Sources set up before this choice keep using the
 Agent's identity until you select **Change source**.
 

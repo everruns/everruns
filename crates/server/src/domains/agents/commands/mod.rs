@@ -851,56 +851,61 @@ impl Command for CopyAgent {
     }
 }
 // ============================================================================
-// SuspendAgentExposures / ResumeAgentExposures
+// PauseAgent / ResumeAgent
 // ============================================================================
 
-/// Take every endpoint on an agent off the internet in one action (EVE-1007).
+/// Pause an agent: nothing new starts until it is resumed (EVE-1007).
 ///
 /// This is the incident control, and is deliberately separate from archiving and
-/// from per-endpoint publish: it leaves every endpoint's own `status` untouched,
-/// so resuming restores exactly the set that was live before — which is what
-/// makes it safe to reach for under pressure.
+/// from per-channel publish: it leaves every channel's own `status` and every
+/// trigger's `enabled` untouched, so resuming restores exactly the set that was
+/// live before, which is what makes it safe to reach for under pressure.
+///
+/// Decision: it was "suspend exposures" and stopped channels and event triggers
+/// but not schedules. "Pause agent" stops all of them, so the word means one
+/// thing. The `exposures_suspended` column keeps its name; the old
+/// `/exposures/suspend|resume` routes stay as deprecated HTTP aliases.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
-pub struct SuspendAgentExposures {
+pub struct PauseAgent {
     /// Agent's prefixed public identifier.
     pub agent_id: String,
 }
 
 #[command(
-    name = "suspend_agent_exposures",
+    name = "pause_agent",
     category = "agents",
-    description = "Stop every channel on an agent from accepting traffic.",
+    description = "Pause an agent: its channels stop accepting messages and its triggers and schedules do not run until it is resumed.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/exposures/suspend",
+    path = "/v1/agents/{agent_id}/pause",
     policy = AGENT_MANAGE,
     positional = "agent_id",
-    cli = CliRoute::new(&["agents", "exposures"], "suspend").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Stop an agent answering on its exposed surfaces without deleting it", "everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'",)]),
+    cli = CliRoute::new(&["agents"], "pause").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Stop everything that starts an agent without deleting it", "everruns agents pause agent_01h9 --reason 'Pause while the prompt is fixed'",)]),
 )]
-impl Command for SuspendAgentExposures {
+impl Command for PauseAgent {
     type Output = Agent;
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         set_exposures_suspended(ctx, &self.agent_id, true).await
     }
 }
-/// Clear the agent-level exposure suspend, restoring the previously live set.
+/// Resume a paused agent, restoring the channels and triggers that were live.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
-pub struct ResumeAgentExposures {
+pub struct ResumeAgent {
     /// Agent's prefixed public identifier.
     pub agent_id: String,
 }
 
 #[command(
-    name = "resume_agent_exposures",
+    name = "resume_agent",
     category = "agents",
-    description = "Let an agent's live channels accept traffic again.",
+    description = "Resume a paused agent: its published channels, triggers and schedules work again.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/exposures/resume",
+    path = "/v1/agents/{agent_id}/resume",
     policy = AGENT_MANAGE,
     positional = "agent_id",
-    cli = CliRoute::new(&["agents", "exposures"], "resume").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Put a suspended agent back on its exposed surfaces", "everruns agents exposures resume agent_01h9 --reason 'Prompt fix verified'",)]),
+    cli = CliRoute::new(&["agents"], "resume").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Let a paused agent start work again", "everruns agents resume agent_01h9 --reason 'Prompt fix verified'",)]),
 )]
-impl Command for ResumeAgentExposures {
+impl Command for ResumeAgent {
     type Output = Agent;
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {

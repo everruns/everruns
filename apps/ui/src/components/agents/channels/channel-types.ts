@@ -15,7 +15,9 @@ export interface ChannelTypeInfo {
 }
 
 /// Order is the order on the New channel page, most common first in each group.
-/// Schedules are triggers and are never created here.
+/// Schedules and webhooks are triggers and are never created here: neither has
+/// a peer waiting for a reply (EVE-1006). Existing webhook channels keep working
+/// and keep their page.
 export const CHANNEL_TYPE_INFO: ChannelTypeInfo[] = [
   {
     kind: "work_chat",
@@ -47,12 +49,6 @@ export const CHANNEL_TYPE_INFO: ChannelTypeInfo[] = [
     audience: "software",
     summary:
       "Call the agent from your own code with an agent key: start sessions, send messages, stream replies.",
-  },
-  {
-    kind: "webhook",
-    audience: "software",
-    summary:
-      "Another system sends an HTTP request with a token, and the agent runs with a message you set.",
   },
   {
     kind: "ag_ui",

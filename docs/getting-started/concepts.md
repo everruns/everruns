@@ -55,7 +55,7 @@ An Agent-owned way for an external caller to reach that Agent. Slack, AG-UI, A2A
 - Each channel belongs to exactly one Agent and has its own publish state, credentials, identity, and session routing.
 - An Agent can own several channels, each published or revoked independently.
 
-Create and manage channels from the Agent's **Integrations** tab. See [Channels](/features/channels/). For proactive scheduled work, use [Agent triggers](/features/agent-triggers/) instead.
+Create and manage channels from the Agent's **Channels and triggers** tab. See [Channels](/features/channels/). For proactive scheduled work, use [Agent triggers](/features/agent-triggers/) instead.
 
 ### Everruns user and virtual user
 

@@ -69,7 +69,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Activity unavailable": "活动不可用",
   "Acts as the person": "充当人",
   "Add a": "添加",
-  "Add a channel from an agent's Integrations tab. New channels start as drafts and take no traffic until you publish them.":
+  "Add a channel from an agent's Channels and triggers tab. New channels start as drafts and take no traffic until you publish them.":
     "从智能体的“集成”选项卡添加通道。新频道以草稿形式开始，在您发布之前不会占用任何流量。",
   "Add a sandbox target": "添加沙箱目标",
   "Add a schedule or event to run this agent proactively.": "添加计划或事件以主动运行此智能体。",

@@ -98,13 +98,13 @@ a narrow column on the right holds the settings:
 
 - **Harness**, **Capabilities** (compact chips, in precedence order), **Default model**, and **Tags**
 - **Updated**, read-only
-- **More**: one row each for Branding, MCP servers, Credentials, Service account, Network
+- **More**: one row each for Branding, MCP servers, Credentials, GitHub (opens the Agent's GitHub page), Service account, Network
   access, Sandbox, Token usage, and Health check. **Files** is included when the agent
   has a filesystem (from its capabilities, a dependency, or the harness) or already has starter
   files. Each row shows its current value and opens a side sheet. Service account saves
   immediately.
 
-Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats**, and
+Tabs: **Agent**, **Preview**, **Channels and triggers**, **Stats**, and
 **Sessions**. Preview's Files card follows the same filesystem rule.
 
 #### Estimate agent cost

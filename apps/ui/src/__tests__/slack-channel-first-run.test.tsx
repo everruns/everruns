@@ -219,14 +219,14 @@ describe("Slack channel first run", () => {
     await renderNewChannelPage(mode);
     expect(registered.size).toBe(0);
 
-    fireEvent.click(screen.getByRole("button", { name: /Webhook/ }));
+    fireEvent.click(screen.getByRole("button", { name: /AG-UI/ }));
     await waitFor(() => expect(registered.size).toBe(1));
     const original = [...registered][0];
     const snapshot = original.read(original.describe().binding);
     expect(snapshot.writable).toBe(true);
     act(() => {
       original.patch(snapshot.binding, snapshot.revision, {
-        channelMessage: "Review this request",
+        agUiGenericToolText: "Review this request",
       });
     });
     expect(screen.getByDisplayValue("Review this request")).toBeVisible();
@@ -236,12 +236,12 @@ describe("Slack channel first run", () => {
     expect(() => original.read(snapshot.binding)).toThrow();
     expect(() => original.patch(snapshot.binding, snapshot.revision, { enabled: false })).toThrow();
 
-    fireEvent.click(screen.getByRole("button", { name: /Webhook/ }));
+    fireEvent.click(screen.getByRole("button", { name: /AG-UI/ }));
     await waitFor(() => expect(registered.size).toBe(1));
     const reopened = [...registered][0];
     const fresh = reopened.read(reopened.describe().binding);
     expect(fresh.binding).not.toBe(snapshot.binding);
-    expect(fresh.values.channelMessage).not.toBe("Review this request");
+    expect(fresh.values.agUiGenericToolText).not.toBe("Review this request");
     expect(() => reopened.patch(snapshot.binding, snapshot.revision, { enabled: false })).toThrow();
     expect(createChannel).not.toHaveBeenCalled();
   });

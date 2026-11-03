@@ -836,7 +836,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Let live endpoints serve again */
+    /**
+     * Deprecated alias of resume
+     * @deprecated
+     */
     post: operations["resume_agent_exposures"];
     delete?: never;
     options?: never;
@@ -853,7 +856,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Take every endpoint offline */
+    /**
+     * Deprecated alias of pause
+     * @deprecated
+     */
     post: operations["suspend_agent_exposures"];
     delete?: never;
     options?: never;
@@ -1058,6 +1064,44 @@ export interface paths {
      * @description Revokes the current caller's user connection or the virtual user's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.
      */
     delete: operations["revoke_agent_mcp_connection"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Pause an agent
+     * @description Its channels stop accepting messages and its triggers and schedules do not
+     *     run until it is resumed. Each channel keeps its own published state.
+     */
+    post: operations["pause_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume a paused agent */
+    post: operations["resume_agent"];
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -9849,6 +9893,13 @@ export interface components {
      *     Each channel has its own type, config, and lifecycle status.
      */
     AgentChannel: {
+      /**
+       * @description The agent that owns this channel. Also what lets responses carry a
+       *     `view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),
+       *     so a caller can hand out a direct link.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      agent_id?: string | null;
       auth?: components["schemas"]["ChannelAuthConfig"] | null;
       /** @description Channel-specific configuration (validated per channel type). */
       channel_config?: unknown;
@@ -10182,6 +10233,7 @@ export interface components {
        * @description The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the
        *     shared App's (`everruns[bot]`) when the agent chose it and the
        *     deployment names its slug; `None` otherwise.
+       * @example pr-summarizer[bot]
        */
       bot_login?: string | null;
       /**
@@ -10200,6 +10252,7 @@ export interface components {
       /**
        * @description Which GitHub identity the agent acts as: `agent_app` (its own App) or
        *     `everruns_app` (the shared Everruns App). `None` before either exists.
+       * @example agent_app
        */
       kind?: string | null;
       /**
@@ -10208,7 +10261,10 @@ export interface components {
        *     Empty when not connected.
        */
       missing_permissions: string[];
-      /** @description `all` or `selected`. */
+      /**
+       * @description `all` or `selected`.
+       * @example selected
+       */
       repository_selection?: string | null;
       /**
        * @description GitHub accounts this organization already reached, as candidates for
@@ -10217,6 +10273,13 @@ export interface components {
        *     then users, then accounts of unknown kind; by login within each.
        */
       suggested_owners: components["schemas"]["GitHubOwnerSuggestion"][];
+      /**
+       * @description The agent's GitHub page in the console, so a caller can link to it.
+       *     Absolute in responses; built as a relative path here because the
+       *     console's address is known only where links are decorated.
+       * @example https://app.everruns.com/agents/agent_01933b5a000070008000000000000001/github
+       */
+      view_url?: string | null;
     };
     /** @enum {string} */
     AgentHarnessSource: "explicit" | "organization_default";
@@ -10830,6 +10893,13 @@ export interface components {
      *     Each channel has its own type, config, and lifecycle status.
      */
     AppChannel: {
+      /**
+       * @description The agent that owns this channel. Also what lets responses carry a
+       *     `view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),
+       *     so a caller can hand out a direct link.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      agent_id?: string | null;
       auth?: components["schemas"]["ChannelAuthConfig"] | null;
       /** @description Channel-specific configuration (validated per channel type). */
       channel_config?: unknown;
@@ -38235,7 +38305,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Exposures resumed */
+      /** @description Agent resumed */
       200: {
         headers: {
           [name: string]: unknown;
@@ -38267,7 +38337,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Exposures suspended */
+      /** @description Agent paused */
       200: {
         headers: {
           [name: string]: unknown;
@@ -38754,6 +38824,70 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  pause_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent paused */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Agent"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  resume_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Agent"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };
