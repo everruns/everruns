@@ -55,9 +55,9 @@ use crate::events::{
 use crate::host::StoreCommandHost;
 use crate::host::runtime_host::RuntimeHostAdapter;
 use crate::message::MESSAGE_ORIGIN_METADATA_KEY;
-use everruns_contracts::message_origin::{MessageOrigin, MessageOriginKind};
 use crate::turn_completion::{ContinuationBudget, GateDecision, TurnSummary, gate_turn};
 use crate::{RuntimeMessage, RuntimeMessageRole};
+use everruns_contracts::message_origin::{MessageOrigin, MessageOriginKind};
 
 /// Provider metadata `purpose` of the review call.
 pub const COMPLETION_REVIEW_PURPOSE: &str = "completion_review";

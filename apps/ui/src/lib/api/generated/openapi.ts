@@ -9412,6 +9412,13 @@ export interface components {
        */
       communication?: components["schemas"]["Communication"];
       /**
+       * @description When a turn about to finish is checked for whether it did what was
+       *     asked, and continued automatically when it did not. `unattended`
+       *     (default): sessions started by triggers and schedules, where no person
+       *     is watching. `always`: chat too. `off`: never.
+       */
+      completion_check?: components["schemas"]["CompletionCheck"];
+      /**
        * Format: date-time
        * @description Timestamp when the agent was created.
        * @example 2026-04-01T10:00:00Z
@@ -12239,6 +12246,23 @@ export interface components {
      * @enum {string}
      */
     CompactionTrigger: "context_budget" | "cost_pressure";
+    /**
+     * @description When a turn that is about to finish gets a completion check, and an
+     *     automatic continuation when the check finds the work unfinished.
+     * @enum {string}
+     */
+    CompletionCheck: "off" | "unattended" | "always";
+    /**
+     * @description What the runtime did after a completion check.
+     * @enum {string}
+     */
+    CompletionCheckAction: "finished" | "continued" | "budget_exhausted" | "review_failed";
+    /**
+     * @description What a completion check found: the review's verdict on whether the turn
+     *     did what was asked.
+     * @enum {string}
+     */
+    CompletionVerdict: "achieved" | "in_progress" | "blocked";
     /** @description Reviewed package location and concurrency tokens required to enable source sync. */
     ConnectSourceRequest: components["schemas"]["SourceLocation"] & {
       /**
@@ -13389,6 +13413,13 @@ export interface components {
        *     and people see only the messages it sends with `send_message`.
        */
       communication?: components["schemas"]["Communication"];
+      /**
+       * @description When a turn about to finish is checked for whether it did what was
+       *     asked, and continued automatically when it did not. `unattended`
+       *     (default): sessions started by triggers and schedules, where no person
+       *     is watching. `always`: chat too. `off`: never.
+       */
+      completion_check?: components["schemas"]["CompletionCheck"];
       /**
        * @description The ID of the default LLM model to use for this agent.
        *     If not specified, the system default model will be used.
@@ -16396,6 +16427,7 @@ export interface components {
       | components["schemas"]["ReasonThinkingCompletedData"]
       | components["schemas"]["TurnSealedData"]
       | components["schemas"]["TurnCancelledData"]
+      | components["schemas"]["TurnCompletionCheckedData"]
       | components["schemas"]["SessionStartedData"]
       | components["schemas"]["SessionActivatedData"]
       | components["schemas"]["SessionIdledData"]
@@ -18845,6 +18877,13 @@ export interface components {
          *     on every surface: web chat, API, Slack, A2A, AG-UI, MCP.
          */
         communication?: components["schemas"]["Communication"];
+        /**
+         * @description When a turn about to finish is checked for whether it did what was
+         *     asked, and continued automatically when it did not. `unattended`
+         *     (default): sessions started by triggers and schedules, where no person
+         *     is watching. `always`: chat too. `off`: never.
+         */
+        completion_check?: components["schemas"]["CompletionCheck"];
         /**
          * Format: date-time
          * @description Timestamp when the agent was created.
@@ -21884,6 +21923,7 @@ export interface components {
         [key: string]: components["schemas"]["Channel"];
       };
       communication?: components["schemas"]["Communication"] | null;
+      completion_check?: components["schemas"]["CompletionCheck"] | null;
       /** @description Optional description of the agent's purpose. */
       description?: string | null;
       /** @description Human-readable agent label. Defaults to the stable name at the host. */
@@ -31906,6 +31946,50 @@ export interface components {
       usage?: components["schemas"]["TokenUsage"] | null;
     };
     /**
+     * @description Data for turn.completion_checked event.
+     *
+     *     A turn about to finish was reviewed for whether it did what was asked
+     *     (the agent's `completion_check` setting). One event per check, emitted
+     *     before the continuation input it may add.
+     */
+    TurnCompletionCheckedData: {
+      /** @description What the runtime did next. */
+      action: components["schemas"]["CompletionCheckAction"];
+      /**
+       * @description The automatic continuation input, when one was added.
+       * @example message_01933b5a00007000800000000000001
+       */
+      continuation_message_id?: string | null;
+      /**
+       * Format: int32
+       * @description Automatic continuations this turn has used, this one included.
+       */
+      continuations_used: number;
+      /**
+       * Format: int64
+       * @description Milliseconds since the turn's first automatic continuation.
+       */
+      elapsed_ms: number;
+      /**
+       * Format: int32
+       * @description Most automatic continuations one turn may use.
+       */
+      max_continuations: number;
+      /** @description The review's short explanation, or why the review failed. */
+      reason: string;
+      /**
+       * Format: int64
+       * @description Tokens the turn spent since its first automatic continuation.
+       */
+      tokens_used: number;
+      /**
+       * @description Turn identifier
+       * @example turn_01933b5a00007000800000000000001
+       */
+      turn_id: string;
+      verdict?: components["schemas"]["CompletionVerdict"] | null;
+    };
+    /**
      * @description Data for turn.failed event. A failed turn is always an error (severity
      *     `error`): the work stopped. Recoverable tool failures never produce this
      *     event; they surface as `tool.completed` issues.
@@ -32068,6 +32152,7 @@ export interface components {
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][] | null;
       communication?: components["schemas"]["Communication"] | null;
+      completion_check?: components["schemas"]["CompletionCheck"] | null;
       /**
        * @description The ID of the default LLM model to use for this agent.
        * @example model_01933b5a00007000800000000000001
@@ -33669,6 +33754,13 @@ export interface components {
        *     on every surface: web chat, API, Slack, A2A, AG-UI, MCP.
        */
       communication?: components["schemas"]["Communication"];
+      /**
+       * @description When a turn about to finish is checked for whether it did what was
+       *     asked, and continued automatically when it did not. `unattended`
+       *     (default): sessions started by triggers and schedules, where no person
+       *     is watching. `always`: chat too. `off`: never.
+       */
+      completion_check?: components["schemas"]["CompletionCheck"];
       /**
        * Format: date-time
        * @description Timestamp when the agent was created.
