@@ -27,3 +27,5 @@
 * [Session Counts](session-counts.md) - Denormalized session counters and the reads they exist to keep cheap.
 
 * [Customer-hosted Custom Workers](custom-workers.md) - Restricted agent-scoped execution, persistent routing and customer-owned private tools.
+
+* [DataFusion Trace Storage](trace-storage.md) - Experimental object-backed event segments and bounded analytical queries.

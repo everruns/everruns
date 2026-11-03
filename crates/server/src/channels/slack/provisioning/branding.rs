@@ -52,6 +52,7 @@ pub(super) fn patch(
 mod tests {
     use super::super::tests::{provisioner, stored};
     use super::*;
+    use crate::channels::slack::events::SLACK_SHORT_DESC_MAX_BYTES;
     use crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner;
     use serde_json::{Value, json};
     use wiremock::matchers::{header, method, path};
@@ -141,14 +142,13 @@ mod tests {
                     .count(),
                 35
             );
-            // Slack counts the short description in bytes: 46 three-byte chars.
-            assert_eq!(
-                manifest["display_information"]["description"]
-                    .as_str()
-                    .unwrap()
-                    .len(),
-                138
-            );
+            // One unbroken word, so it is cut by bytes: 39 three-byte chars and
+            // an ellipsis fit under the cap.
+            let short = manifest["display_information"]["description"]
+                .as_str()
+                .unwrap();
+            assert!(short.len() <= SLACK_SHORT_DESC_MAX_BYTES, "{short}");
+            assert_eq!(short, format!("{}…", "描".repeat(39)));
             assert_eq!(
                 manifest["display_information"]["long_description"]
                     .as_str()

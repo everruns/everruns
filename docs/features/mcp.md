@@ -16,7 +16,7 @@ Every Everruns deployment exposes an authenticated MCP endpoint at `/mcp` so ext
 - **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`; under `2026-07-28`, `skills/list`, `skills/get`, and `resources/directory/read`, plus `tasks/get`, `tasks/update` and `tasks/cancel` for clients that use [Tasks](#long-agent-turns-as-tasks); and, for organizations that turn on MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
 - **Auth**: MCP requests authenticate and resolve an organization before dispatch. OAuth 2.1 uses mandatory PKCE, and MCP access tokens are bound to the exact `/mcp` resource so they cannot be reused against the REST API. Unauthenticated requests fail with `401` and protected-resource discovery metadata is served at `/.well-known/oauth-protected-resource/mcp`.
 - **Files**: `agent_run` and `session_send_message` take an optional `files` list, each file as base64 `data` or a public `https` `url`. The files are copied into the session's `/attachments` folder, as for [channels](/features/channels/#files-people-send).
-- **Entity cards**: under protocol `2025-06-18`, tools like `agent_get_card` return a sandboxed `text/html` MCP App resource at the `ui://` scheme alongside a text summary, so MCP-Apps-aware hosts render rich cards while others fall back to text.
+- **Entity cards**: under protocol `2025-06-18` and newer, `agent_get_card` links to a sandboxed MCP Apps template and returns structured agent details. Supported hosts render the card; other clients receive a text summary.
 
 Routing is intentionally split: REST under `/api/*`, MCP OAuth under `/oauth/*`, and MCP JSON-RPC at `/mcp`.
 

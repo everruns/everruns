@@ -25,3 +25,10 @@ existing tool shapes are unchanged.
 
 See [MCP: In ChatGPT and Codex](/features/mcp/#in-chatgpt-and-codex).
 PR [#3927](https://github.com/everruns/everruns/pull/3927).
+
+## Update 2026-11-02
+
+Agent cards now use the same MCP Apps template protocol as the home and
+session views. Asking to show an agent opens its name, status, description,
+tags and usage in supported hosts, instead of exposing raw HTML. Hosts
+without app rendering still receive a text summary.

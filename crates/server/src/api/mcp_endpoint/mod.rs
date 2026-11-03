@@ -694,8 +694,7 @@ async fn handle_tools_call(
         return response;
     }
 
-    // Card tools return an MCP content array directly (resource + summary
-    // text) and skip the JSON-string wrapping path used by other tools.
+    // Card tools return structured template data plus a plain-text summary.
     // See knowledge/ui/mcp-cards.md.
     if tool_name == "agent_get_card" {
         let card_result = tokio::time::timeout(
@@ -711,7 +710,7 @@ async fn handle_tools_call(
         .unwrap_or_else(|_| Err(format!("Tool timed out after {}ms", tool_def.timeout_ms())));
 
         return match card_result {
-            Ok(content_array) => JsonRpcResponse::success(id, json!({ "content": content_array })),
+            Ok(result) => JsonRpcResponse::success(id, result),
             Err(msg) => {
                 let envelope = classify_mcp_execute_error(&msg);
                 JsonRpcResponse::success(id, error_result_payload(&msg, Some(&envelope)))

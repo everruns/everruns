@@ -44,6 +44,8 @@ pub(super) const APP_MIME_TYPE: &str = "text/html;profile=mcp-app";
 
 /// Template for a single session: status, transcript tail, question, approval.
 pub(super) const SESSION_VIEW_URI: &str = "ui://everruns/app/session";
+/// Template for one agent card.
+pub(super) const AGENT_VIEW_URI: &str = "ui://everruns/app/agent";
 /// Template for the home panel: agents, recent sessions, what waits on you.
 pub(super) const HOME_VIEW_URI: &str = "ui://everruns/app/home";
 
@@ -120,6 +122,9 @@ pub(super) fn is_app_tool(name: &str) -> bool {
 /// `_meta` for a tool descriptor in `tools/list`, or `None` for tools with no
 /// view.
 pub(super) fn tool_meta(name: &str) -> Option<Value> {
+    if name == "agent_get_card" {
+        return Some(json!({ "ui": { "resourceUri": AGENT_VIEW_URI } }));
+    }
     if name == HOME_TOOL {
         return Some(json!({
             "ui": { "resourceUri": HOME_VIEW_URI },
@@ -183,6 +188,7 @@ fn resource_meta(uri: &str) -> Value {
 /// Entries for `resources/list`.
 pub(super) fn resource_list_entries() -> Vec<Value> {
     [
+        (AGENT_VIEW_URI, "Everruns agent", "Agent details, status, tags, and usage."),
         (
             SESSION_VIEW_URI,
             "Everruns session",
@@ -209,7 +215,7 @@ pub(super) fn resource_list_entries() -> Vec<Value> {
 
 /// `resources/read` contents for a template URI, or `None` for other URIs.
 pub(super) fn read_resource(uri: &str) -> Option<Value> {
-    if uri != SESSION_VIEW_URI && uri != HOME_VIEW_URI {
+    if uri != SESSION_VIEW_URI && uri != HOME_VIEW_URI && uri != AGENT_VIEW_URI {
         return None;
     }
     Some(json!({
@@ -770,6 +776,19 @@ mod tests {
     }
 
     #[test]
+    fn agent_card_has_a_readable_app_template() {
+        let meta = tool_meta("agent_get_card").expect("agent cards must open an MCP App");
+        let uri = meta["ui"]["resourceUri"].as_str().unwrap();
+        let read = read_resource(uri).expect("the advertised template must be readable");
+        assert_eq!(read["contents"][0]["mimeType"], APP_MIME_TYPE);
+        assert!(
+            resource_list_entries()
+                .iter()
+                .any(|entry| entry["uri"] == uri)
+        );
+    }
+
+    #[test]
     fn home_is_a_global_and_thread_entrypoint() {
         let meta = tool_meta(HOME_TOOL).unwrap();
         assert_eq!(meta["ui"]["resourceUri"], HOME_VIEW_URI);
@@ -788,7 +807,7 @@ mod tests {
 
     #[test]
     fn templates_are_mcp_app_resources_without_network_access() {
-        for uri in [SESSION_VIEW_URI, HOME_VIEW_URI] {
+        for uri in [SESSION_VIEW_URI, HOME_VIEW_URI, AGENT_VIEW_URI] {
             let read = read_resource(uri).unwrap();
             let content = &read["contents"][0];
             assert_eq!(content["mimeType"], APP_MIME_TYPE);
@@ -798,7 +817,7 @@ mod tests {
             assert!(html.len() < super::super::cards::MAX_CARD_BYTES);
         }
         assert!(read_resource("ui://everruns/agent/agent_1/card").is_none());
-        assert_eq!(resource_list_entries().len(), 2);
+        assert_eq!(resource_list_entries().len(), 3);
     }
 
     #[test]
