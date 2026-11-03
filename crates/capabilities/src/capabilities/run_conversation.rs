@@ -1,5 +1,4 @@
-//! Run conversation: agents in one run talk to each other
-//! (`knowledge/runtime-resources/agents-using-agents.md`, Run conversation).
+//! Run conversation: agents in one run talk to each other.
 //!
 //! Decision: the conversation lives in the run's team folder, one file per
 //! message under `team/conversation/`. Every agent in the run already reads

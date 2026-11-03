@@ -71,7 +71,7 @@ impl HandoffLifetime {
 
 /// How a hand-off's session starts. An explicit `seed` wins; otherwise the
 /// target's `files` setting decides: `copy` starts the agent with a copy of
-/// this session's files (`knowledge/runtime-resources/agents-using-agents.md`).
+/// this session's files.
 fn parse_seed(arguments: &Value, files: TargetFiles) -> Result<SessionSeedMode, String> {
     match arguments.get("seed").and_then(Value::as_str) {
         None if files == TargetFiles::Copy => Ok(SessionSeedMode::Workspace),
