@@ -48,15 +48,18 @@ pub struct RequestingAgent {
     #[schema(example = "agent_01933b5a00007000800000000000001")]
     pub id: String,
     /// The agent's display name.
+    #[schema(example = "Research Assistant")]
     pub name: String,
 }
 
 /// A tool call another agent in the run waits on the person for.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RunRequestToolCall {
+    #[schema(example = "call_approval_1")]
     pub id: String,
     /// `ask_user`, `approve_tool_call`, `openai_mcp_approval`,
     /// `confirm_url_elicitation` or `setup_connection`.
+    #[schema(example = "approve_tool_call")]
     pub name: String,
     #[schema(value_type = Object)]
     pub arguments: Value,
@@ -66,11 +69,12 @@ pub struct RunRequestToolCall {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RunRequest {
     /// The asking agent's session.
-    #[schema(value_type = String)]
+    #[schema(value_type = String, example = "session_01933b5a00007000800000000000001")]
     pub session_id: SessionId,
     /// The asking agent. Absent when the agent was deleted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<RequestingAgent>,
+    #[schema(example = "2026-11-03T10:15:00Z")]
     pub requested_at: DateTime<Utc>,
     pub tool_call: RunRequestToolCall,
 }

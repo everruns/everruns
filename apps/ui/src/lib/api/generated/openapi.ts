@@ -26712,7 +26712,10 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       id: string;
-      /** @description The agent's display name. */
+      /**
+       * @description The agent's display name.
+       * @example Research Assistant
+       */
       name: string;
     };
     /** @description Response body for the `resolve_org` operation. */
@@ -26975,19 +26978,27 @@ export interface components {
     /** @description One request from another agent in the run. */
     RunRequest: {
       agent?: components["schemas"]["RequestingAgent"] | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-11-03T10:15:00Z
+       */
       requested_at: string;
-      /** @description The asking agent's session. */
+      /**
+       * @description The asking agent's session.
+       * @example session_01933b5a00007000800000000000001
+       */
       session_id: string;
       tool_call: components["schemas"]["RunRequestToolCall"];
     };
     /** @description A tool call another agent in the run waits on the person for. */
     RunRequestToolCall: {
       arguments: Record<string, unknown>;
+      /** @example call_approval_1 */
       id: string;
       /**
        * @description `ask_user`, `approve_tool_call`, `openai_mcp_approval`,
        *     `confirm_url_elicitation` or `setup_connection`.
+       * @example approve_tool_call
        */
       name: string;
     };

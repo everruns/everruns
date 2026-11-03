@@ -137,7 +137,7 @@ async fn read_resource(
         None => return JsonRpcResponse::invalid_params(id, "Missing 'uri' in params"),
     };
 
-    if let Some(contents) = apps::read_resource(uri) {
+    if let Some(contents) = apps::workspace::resource(uri, &state.auth.config.frontend_url) {
         return JsonRpcResponse::success(id, contents);
     }
 

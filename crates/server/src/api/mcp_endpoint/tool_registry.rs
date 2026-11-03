@@ -30,6 +30,12 @@ pub(super) const READ_ONLY_TOOLS: &[&str] = &[
     "agent_get_card",
     "everruns_home",
     "session_view",
+    "harness_get_card",
+    "capability_get_card",
+    "knowledge_get_card",
+    "session_open",
+    "app_read",
+    "app_bootstrap",
 ];
 
 /// Access class of an MCP tool for personal access token scopes.
@@ -93,6 +99,7 @@ pub fn tool_definitions(
     // don't see card tools.
     if supports_rich_tool_shape(protocol_version) {
         tools.push(agent_get_card_tool(protocol_version, org_id_description));
+        tools.extend(workspace_tools(protocol_version, org_id_description));
         // MCP Apps views (knowledge/ui/mcp-apps.md). Listed for every
         // rich-shape client: a host without MCP Apps shows the text result,
         // and a 2025-era host declared its capabilities only at `initialize`,
@@ -198,6 +205,7 @@ fn session_set_secret_tool(
             "properties": {
                 "name": { "type": "string" },
                 "session_id": { "type": "string" },
+                "organization_id": { "type": "string" },
                 "stored": { "type": "boolean" },
                 "message": { "type": "string" }
             },
@@ -377,6 +385,7 @@ fn agent_run_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoi
             "additionalProperties": false,
             "properties": {
                 "session_id": { "type": "string" },
+                "organization_id": { "type": "string" },
                 "message_id": { "type": "string" },
                 "status": { "type": "string" },
                 "hint": { "type": "string" },
@@ -436,6 +445,7 @@ fn session_send_message_tool(
                 "message_id": { "type": "string" },
                 "session_status": { "type": "string" },
                 "session_id": { "type": "string" },
+                "organization_id": { "type": "string" },
                 "hint": { "type": "string" },
                 "view_url": { "type": "string" },
                 "ui_link": { "type": "string" }
@@ -495,6 +505,7 @@ fn session_get_status_tool(
             "additionalProperties": false,
             "properties": {
                 "session_id": { "type": "string" },
+                "organization_id": { "type": "string" },
                 "status": { "type": ["string", "null"] },
                 "agent_id": { "type": ["string", "null"] },
                 "title": { "type": ["string", "null"] },
@@ -933,6 +944,94 @@ fn discover_output_schema() -> Value {
         },
         "required": ["count", "include_schemas", "result_scope", "shape_hints", "script_guidance"]
     })
+}
+
+fn workspace_tools(version: &str, org: &str) -> Vec<McpEndpointToolDefinition> {
+    let mut tools = Vec::new();
+    for (name, title, argument, description) in [
+        (
+            "harness_get_card",
+            "Show Harness",
+            "harness_id",
+            "Show a harness card with its capabilities and inheritance.",
+        ),
+        (
+            "capability_get_card",
+            "Show Capability",
+            "capability_id",
+            "Show a capability card and where it is used.",
+        ),
+        (
+            "knowledge_get_card",
+            "Show Knowledge",
+            "knowledge_id",
+            "Show a knowledge collection card with its sources and indexing status.",
+        ),
+        (
+            "session_open",
+            "Open Session",
+            "session_id",
+            "Open the full Everruns session UI, including Trace, Approvals, Work, Events, Files and Cost.",
+        ),
+    ] {
+        tools.push(tool(
+            version,
+            name,
+            title,
+            description,
+            with_organization_id(
+                object_schema(
+                    vec![(argument, json!({"type":"string","minLength":1}))],
+                    vec![argument],
+                ),
+                org,
+            ),
+            None,
+            Some(read_only_annotations()),
+            30_000,
+        ));
+    }
+    for (name, title, write) in [
+        ("app_read", "Workspace Read", false),
+        ("app_write", "Workspace Write", true),
+        ("app_bootstrap", "Workspace Context", false),
+    ] {
+        let schema = if name == "app_bootstrap" {
+            object_schema(vec![], vec![])
+        } else {
+            object_schema(
+                vec![
+                    ("path", json!({"type":"string"})),
+                    (
+                        "method",
+                        json!({"type":"string","enum":["POST","PATCH","PUT","DELETE"]}),
+                    ),
+                    ("body", json!({})),
+                    (
+                        "headers",
+                        json!({"type":"object","additionalProperties":{"type":"string"}}),
+                    ),
+                ],
+                vec!["path"],
+            )
+        };
+        let mut annotations = read_only_annotations();
+        annotations.read_only_hint = Some(!write);
+        annotations.destructive_hint = Some(write);
+        annotations.idempotent_hint = Some(!write);
+        annotations.open_world_hint = Some(write);
+        tools.push(tool(
+            version,
+            name,
+            title,
+            "App-only: access the shared Everruns workspace under the current MCP identity.",
+            with_organization_id(schema, org),
+            None,
+            Some(annotations),
+            30_000,
+        ));
+    }
+    tools
 }
 
 #[cfg(test)]

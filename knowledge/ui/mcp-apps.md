@@ -48,61 +48,88 @@ Pinned to the specs we implemented against (2026-09-30):
   [MCP OAuth](../integrations/mcp.md)); the protected-resource metadata now also
   lists `scopes_supported`. CIMD is not implemented; ChatGPT falls back to DCR.
 
-## Views
+## Product surfaces
 
-One template document serves three URIs, so both stay static and cacheable and
-all data arrives as `structuredContent`:
+MCP Apps expose compact Agent, Harness, Capability and Knowledge collection cards,
+plus the complete organization Home and Session workspaces. Session includes the
+same Trace, Approvals, Work, Events, Files and Cost views as the browser UI.
+The entry tools and resource identities live in the
+[tool registry](../../crates/server/src/api/mcp_endpoint/tool_registry.rs).
 
-| Template | Opened by | Shows |
-|---|---|---|
-| `ui://everruns/app/agent` | `agent_get_card` | Agent name, status, description, tags, usage, and session count |
-| `ui://everruns/app/session` | `agent_run`, `session_send_message`, `session_get_status` results | Status, recent messages, the pending `ask_user` question as a form, the pending `request_approval` as Approve/Decline, a reply box when idle, "Open in Everruns" |
-| `ui://everruns/app/home` | `everruns_home` (sidebar entry and thread tab) | Agents with a Run box, recent sessions, and everything waiting on the user |
+Cards reuse Slate entity components; Home reuses `OrgHome`, and Session reuses
+its provider, layout and tab components. The embedded route supplies the MCP
+transport and identity contexts. It does not fork product layouts or require a
+separate browser sign-in. Entity links open the real application through the
+host; Session tab navigation stays inside the workspace. Fullscreen is requested
+only when the host advertises it. Clipboard-write permission is declared for the
+shared copy controls and delegated to the trusted frontend frame; hosts may deny it.
 
-The view polls `session_view` while a turn runs and stops when the session is
-idle or waiting on the user. It branches on what the host granted in
-`ui/initialize` (`serverTools`, `openLinks`, available display modes), never on
-which host it is: a host that cannot proxy tool calls gets a read-only view.
+## Authentication and transport
 
-### Tools
+The static MCP resource is a small host bridge. It frames the deployment's
+configured frontend at `/mcp-app`, explicitly declaring that origin in its MCP
+resource CSP. Deployments must serve that frontend for these views to render.
+The child receives no bearer token or cookie-derived API identity. The embedded
+provider proxies API requests through app-only MCP tools under the connected
+caller's identity and resolved organization.
 
-`everruns_home` is model-visible so the model can open the panel. The action
-tools are `visibility: ["app"]`:
+The server routes these requests in process to the existing REST handlers. A
+private request extension carries the already authenticated caller; HTTP clients
+cannot construct it, and MCP OAuth tokens remain invalid for the REST audience.
+The outer MCP request retains the real-client IP rate limit; internal REST
+dispatch is not charged again to a synthetic localhost bucket.
+REST route scope classification, command policy, organization isolation and
+feature gates still apply. Reads and writes have separate tools so read-only
+credentials can load the workspace. The parent fixes the organization from the
+entry result rather than accepting a child-selected organization. An app bridge
+call may echo that already resolved organization, including with a PAT; selecting
+a different organization retains the normal PAT override prohibition.
 
-- `session_view`: the view state.
-- `session_answer_question`: answers go through the shared
-  `resolve_question_answers` operation, the same one the REST endpoint and form
-  elicitation use, so labels are validated against what was actually asked.
-  Secret questions are never rendered as a form; the view links to Everruns.
-- `session_decide_approval`: the decision becomes the user's next message
-  (`Approved: …` / `Declined: …`), exactly like a Slack click
-  ([Soft Approval](../execution/soft-approval.md)), so approval audit attributes
-  it to the MCP user. The view echoes the action it showed and a mismatch is
-  refused as stale.
+Session updates poll bounded event pages using a forward sequence cursor.
+A since-id cursor is resolved within that session before paging, avoiding the
+history endpoint's tail semantics. Busy pages drain before waiting for the next
+poll. Closing the workspace stops listeners and timers; there is no direct SSE
+connection carrying cookies.
 
-An MCP Apps host also counts as able to answer questions, so `agent_run` sets
-the `ask_user` pause hint for it the same way it does for a client that
-declared form elicitation.
+Workspace file reads and downloads use the same MCP bridge. Embedded file
+sources do not navigate to cookie-authenticated download or preview endpoints.
+Files and session exports save through the host's standard `ui/download-file`
+action with bounded inline bytes; hosts without download support report the
+limitation instead of attempting a sandbox-blocked browser download.
+Images and video can render from the returned content; HTML uses the existing
+static preview. Browser-dependent PDF and interactive HTML previews have an
+explicit Open in Everruns link, since the MCP host sandbox cannot reproduce the
+browser's preview environment.
 
 ## Security
 
-- **XSS.** The template writes every server value with `textContent`; a unit test
-  keeps `innerHTML` and friends out of it. The document carries a `<meta>` CSP
-  with `connect-src 'none'`, and the resource declares no CSP domains, so a
-  host applies the spec's restrictive default. See TM-MCP-003.
-- **Widget-to-server calls (CSRF, token scope).** The view has no credential and
-  no network. Every action is a host-proxied `tools/call` on `/mcp` with the
-  user's own audience-bound MCP token, through the normal org resolution and
-  command policy (`SESSION_VIEW` to read, `SESSION_MANAGE` to answer or
-  decide). There is no cookie or ambient credential a cross-site request could
-  ride. See TM-MCP-004 and TM-MCP-009.
-- **Stale or replayed clicks.** A question answer names the `tool_call_id` it
-  answers and is single-claim; an approval must match the currently pending
-  action on an idle session. See TM-MCP-009.
+- **XSS and framing.** The bridge uses no HTML insertion sinks. The child is the
+  same React product UI and retains its existing content sanitization. The
+  resource permits only the configured frontend frame; the embedded route's CSP
+  restricts connections and resources to the deployment. Host and child messages
+  are checked against the sending window, and child messages against its origin.
+- **Authority.** Every data request returns through the host's MCP connection,
+  normal organization resolution and the shared REST/command authorization path.
+  The bridge accepts local product paths, bounded bodies and only explicit audit
+  headers. It excludes auth, credential management, arbitrary commands, recursive
+  MCP calls and external URLs. Session storage reads expose key values and secret
+  metadata only. Provider and channel configuration stays read-only in the bridge,
+  because those updates can replace credentials without a dedicated secret route.
+  As in the existing recording UI, secret writes remain outside
+  this bridge. The Session Credentials action opens Everruns through the host
+  rather than collecting credential values inside the MCP frame. See TM-MCP-003, TM-MCP-004 and TM-MCP-009.
+- **Resource bounds.** Tool deadlines and request/response limits reject oversized
+  work explicitly. Events use bounded pages. Switching organization clears the
+  query cache and rejects pending requests from the previous organization.
+- **Approvals.** Existing question and approval actions retain their normal policy,
+  validation and stale-action checks; embedding introduces no second resume path.
 
-## Code
+## Ownership and evidence
 
-`crates/server/src/api/mcp_endpoint/apps/mod.rs` (metadata, view state, actions),
-`apps/app.html` (the template), `resources.rs` (`resources/list|read`),
-`tool_registry.rs` (tool descriptors). [Entity cards](mcp-cards.md) use the
-same template/data contract.
+- [Resource shell and entrypoints](../../crates/server/src/api/mcp_endpoint/apps/workspace.rs)
+- [Authenticated API bridge](../../crates/server/src/api/mcp_endpoint/apps/bridge.rs)
+- [Embedded providers, routing and event transport](../../apps/ui/src/components/mcp-app/)
+- [Integration coverage](../../crates/server/tests/domain/mcp_apps_test/workspace.rs)
+- [Transport cursor and lifecycle tests](../../apps/ui/src/components/mcp-app/__tests__/transport.test.ts)
+
+[Entity cards](mcp-cards.md) share this transport and authorization contract.

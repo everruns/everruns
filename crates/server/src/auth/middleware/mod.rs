@@ -333,6 +333,9 @@ async fn extract_auth_user(
     parts: &mut Parts,
     auth_state: &AuthState,
 ) -> Result<AuthUser, AuthError> {
+    if let Some(user) = super::mcp_app::user(parts) {
+        return user;
+    }
     // In no-auth mode, always return anonymous user
     if auth_state.config.mode == AuthMode::None {
         return Ok(AuthUser::anonymous());
@@ -745,6 +748,9 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         // First extract the authenticated user
         let user = AuthUser::from_request_parts(parts, state).await?;
+        if let Some(org) = super::mcp_app::org(parts) {
+            return Ok(org);
+        }
         let auth_state = AuthState::from_ref(state);
         resolve_org_for_user(user, parts, &auth_state).await
     }
