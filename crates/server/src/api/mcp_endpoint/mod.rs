@@ -39,6 +39,7 @@ mod files;
 mod form_elicitation;
 mod resources;
 mod scope;
+mod session_status;
 mod skills;
 mod tasks;
 mod tool_registry;
@@ -1192,13 +1193,9 @@ async fn tool_session_get_status(
     let events_data = dispatch_command("list_events", event_params, org, state).await?;
     let events = events_data["data"].as_array();
 
-    // Extract latest output from events
     let empty = vec![];
     let events_arr = events.unwrap_or(&empty);
-    // What the agent last said, never its commentary.
-    let latest_output = events_arr.iter().rev().find_map(|e| {
-        everruns_core::conversation::said_in_event(e.get("event_type")?.as_str()?, e.get("data")?)
-    });
+    let latest_output = session_status::latest_output(session_id, org, state).await?;
 
     let last_event_id = events_arr
         .last()
@@ -1214,7 +1211,7 @@ async fn tool_session_get_status(
         "event_count": events_arr.len(),
         "events": events_arr.iter().map(|e| json!({
             "id": e["id"],
-            "type": e["event_type"],
+            "type": e["type"],
             "ts": e["ts"],
         })).collect::<Vec<_>>()
     });

@@ -12,6 +12,7 @@ mod capability_mcp_acts_as;
 mod cards;
 mod resources;
 mod skills;
+mod status;
 mod tasks;
 use crate::test_harness;
 
@@ -971,101 +972,6 @@ async fn test_mcp_session_send_message_nonexistent_session() {
     )
     .await;
 
-    assert!(
-        tool_is_error(&resp),
-        "Expected error for nonexistent session"
-    );
-}
-
-// ============================================================================
-// Tier 1: session_get_status
-// ============================================================================
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_session_get_status() {
-    let server = TestServer::new().await;
-
-    // Create a session
-    let run_resp = mcp_tool_call(&server, "agent_run", json!({ "message": "Status test" })).await;
-    assert!(
-        !tool_is_error(&run_resp),
-        "agent_run failed: {}",
-        tool_text(&run_resp)
-    );
-    let session_id = tool_json(&run_resp)["session_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    // Get status
-    let resp = mcp_tool_call(
-        &server,
-        "session_get_status",
-        json!({ "session_id": session_id }),
-    )
-    .await;
-
-    assert!(
-        !tool_is_error(&resp),
-        "session_get_status failed: {}",
-        tool_text(&resp)
-    );
-    let result = tool_json(&resp);
-    assert_eq!(result["session_id"], session_id);
-    assert!(result["status"].is_string());
-    assert!(result["events"].is_array());
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_session_get_status_with_event_filter() {
-    let server = TestServer::new().await;
-
-    // Create a session
-    let run_resp = mcp_tool_call(&server, "agent_run", json!({ "message": "Filter test" })).await;
-    assert!(
-        !tool_is_error(&run_resp),
-        "agent_run failed: {}",
-        tool_text(&run_resp)
-    );
-    let session_id = tool_json(&run_resp)["session_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    // Get status with event type filter
-    let resp = mcp_tool_call(
-        &server,
-        "session_get_status",
-        json!({
-            "session_id": session_id,
-            "event_types": ["session.idled"]
-        }),
-    )
-    .await;
-
-    assert!(
-        !tool_is_error(&resp),
-        "session_get_status failed: {}",
-        tool_text(&resp)
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_session_get_status_missing_session_id() {
-    let server = TestServer::new().await;
-    let resp = mcp_tool_call(&server, "session_get_status", json!({})).await;
-    assert!(tool_is_error(&resp));
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_session_get_status_nonexistent() {
-    let server = TestServer::new().await;
-    let resp = mcp_tool_call(
-        &server,
-        "session_get_status",
-        json!({ "session_id": "session_00000000000000000000000000000000" }),
-    )
-    .await;
     assert!(
         tool_is_error(&resp),
         "Expected error for nonexistent session"
