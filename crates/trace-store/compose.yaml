@@ -1,0 +1,35 @@
+# Optional, standalone companion. No primary server service is overridden.
+services:
+  trace-store:
+    profiles: [trace-store]
+    image: ${TRACE_STORE_IMAGE:-ghcr.io/everruns/trace-store:unpublished}
+    command: [run]
+    restart: on-failure:5
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    mem_limit: 1g
+    cpus: 0.5
+    ports: ['127.0.0.1:9465:9465']
+    environment:
+      TRACE_STORE_ENABLED: ${TRACE_STORE_ENABLED:-false}
+      DATABASE_URL: ${TRACE_STORE_DATABASE_URL:-}
+      TRACE_STORE_NAME: ${TRACE_STORE_NAME:-default}
+      TRACE_STORE_PREFIX: ${TRACE_STORE_PREFIX:-traces}
+      TRACE_STORE_BUCKET: ${TRACE_STORE_BUCKET:-}
+      TRACE_STORE_ORG_IDS: ${TRACE_STORE_ORG_IDS:-}
+      TRACE_STORE_ALL_ORGS: ${TRACE_STORE_ALL_ORGS:-false}
+      TRACE_STORE_MAX_ORGS: ${TRACE_STORE_MAX_ORGS:-5}
+      TRACE_STORE_METRICS_ADDR: 0.0.0.0:9465
+      TRACE_STORE_POLL_SECONDS: ${TRACE_STORE_POLL_SECONDS:-30}
+      TRACE_STORE_MAX_SESSIONS: ${TRACE_STORE_MAX_SESSIONS:-2}
+      AWS_DEFAULT_REGION: ${TRACE_STORE_S3_REGION:-}
+      AWS_ENDPOINT: ${TRACE_STORE_S3_ENDPOINT:-}
+      AWS_ACCESS_KEY_ID: ${TRACE_STORE_S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${TRACE_STORE_S3_SECRET_ACCESS_KEY:-}
+    healthcheck:
+      test: [CMD, /app/everruns-trace-store, probe]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s

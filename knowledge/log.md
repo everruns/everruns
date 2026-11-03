@@ -3,6 +3,7 @@
 ## 2026-11-02
 
 - Add agents that hand work to other agents: the Agents capability lists linked or created-here members by agent, packages bundle agents in `.agents/agents/`, and runs, approvals, costs and traces are planned. See [Agents That Use Other Agents](runtime-resources/agents-using-agents.md).
+- Add optional DataFusion trace storage with object-backed segments, resumable retained-history backfill, shared-boundary shadow comparisons, private metrics and guarded publication/deletion. See [DataFusion Trace Storage](operations/trace-storage.md).
 
 ## 2026-11-01
 
