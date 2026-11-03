@@ -150,7 +150,7 @@ for (const scenario of [
   { name: "mobile page", chat: true, width: 390, height: 633, open: false },
   { name: "workspace off", chat: false, width: 1280, height: 633, open: false },
 ]) {
-  test(`tall trigger dialog keeps Save reachable on ${scenario.name}`, async ({
+  test(`a trigger row opens its page with Save reachable on ${scenario.name}`, async ({
     page,
     context,
     baseURL,
@@ -193,44 +193,45 @@ for (const scenario of [
         saved = route.request().postDataJSON();
         trigger.config.message = saved!.message as string;
         await route.fulfill({ json: trigger });
-      } else await route.fulfill({ json: path.endsWith("/triggers") ? [trigger] : [] });
+      } else if (path.endsWith("/triggers")) await route.fulfill({ json: [trigger] });
+      else if (path.endsWith(`/triggers/${triggerId}`)) await route.fulfill({ json: trigger });
+      else await route.fulfill({ json: [] });
     });
     await page.route(`**/api/v1/history/${triggerId}**`, (route) => route.fulfill({ json: [] }));
     await page.setViewportSize({ width: scenario.width, height: scenario.height });
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(`/agents/${AGENT_ID}?tab=integrations`);
-    await expect(page.getByRole("button", { name: "Quick edit trigger" })).toBeVisible();
+    // The quick-edit dialog is gone: each trigger row opens the trigger's own page.
+    const row = page.getByRole("link", {
+      name: "At 09:00 AM, on day 1 of the month, only in January",
+    });
+    await expect(row).toBeVisible();
     if (scenario.open) {
       await page.keyboard.press("Control+j");
       await expect(page.locator(".chat-mode-shell")).toHaveAttribute("data-chat-mode", "open");
     }
-    await page.getByRole("button", { name: "Quick edit trigger" }).click();
-    const dialog = page.getByRole("dialog", { name: "Edit trigger" });
-    await expect(dialog).toBeVisible();
+    await row.click();
+    await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_ID}/triggers/${triggerId}$`));
+    const message = page.getByRole("textbox", { name: "Message", exact: true });
+    await expect(message).toHaveValue("Fictional scheduled report");
+    await message.fill("Reviewed report");
+    const save = page.getByRole("button", { name: "Save", exact: true });
     const bounds = scenario.chat
       ? (await page.getByRole("region", { name: "Current page" }).boundingBox())!
       : { x: 0, y: 0, width: scenario.width, height: scenario.height };
+    await save.scrollIntoViewIfNeeded();
     await expect
       .poll(async () => {
-        const popup = await dialog.boundingBox();
-        return !!popup && popup.y >= bounds.y && popup.y + popup.height <= bounds.y + bounds.height;
+        const box = await save.boundingBox();
+        return !!box && box.y >= bounds.y && box.y + box.height <= bounds.y + bounds.height;
       })
       .toBe(true);
-    await expect(dialog).toHaveCSS("overflow-y", "auto");
-    await dialog.getByRole("textbox", { name: "Message", exact: true }).fill("Reviewed report");
-    await dialog
-      .getByRole("button", { name: "Save changes", exact: true })
-      .scrollIntoViewIfNeeded();
-    await testInfo.attach("Scrollable trigger dialog", {
+    await testInfo.attach("Trigger page", {
       body: await page.screenshot(),
       contentType: "image/png",
     });
-    await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
-    await expect(dialog).not.toBeVisible();
-    expect(saved).toMatchObject({ message: "Reviewed report", enabled: false });
-    await expect(
-      page.getByRole("switch", { name: "Enable trigger", exact: true }),
-    ).not.toBeChecked();
+    await save.click();
+    await expect.poll(() => saved).toMatchObject({ message: "Reviewed report", enabled: false });
   });
 }
 
