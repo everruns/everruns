@@ -383,6 +383,8 @@ pub(crate) fn build_manifest_yaml(
          \x20     - message.groups\n\
          \x20     - message.im\n\
          \x20     - message.mpim\n\
+         \x20     - reaction_added\n\
+         \x20     - reaction_removed\n\
          {agent_events}\
          \x20 org_deploy_enabled: false\n\
          \x20 socket_mode_enabled: false\n\

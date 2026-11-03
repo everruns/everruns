@@ -1,10 +1,12 @@
 //! What a channel host persists.
 //!
-//! Three things, and nothing about sessions themselves: which session a
+//! Four things, and nothing about sessions themselves: which session a
 //! binding key maps to, which platform deliveries were already accepted (a
 //! platform retries a slow acknowledgement, and the retry must not start a
-//! second turn), and which turns still owe a reply (so a restart can finish
-//! them). Memory, SQLite and Postgres implement the same trait, as the durable
+//! second turn), which turns still owe a reply (so a restart can finish
+//! them), and which platform message is which stored message (so a reaction
+//! on the platform finds its message, and the agent's reaction finds the
+//! platform's). Memory, SQLite and Postgres implement the same trait, as the durable
 //! stores do.
 //!
 //! Decisions:
@@ -101,6 +103,43 @@ pub trait ChannelStore: Send + Sync {
     ) -> Result<(), ChannelError> {
         Ok(())
     }
+
+    /// Link a platform message key to the stored message it is. The first
+    /// link of a key wins. The default keeps no links, so reactions stay
+    /// inside the host.
+    async fn link_message(
+        &self,
+        _channel: &str,
+        _message_key: &str,
+        _message: &LinkedMessage,
+    ) -> Result<(), ChannelError> {
+        Ok(())
+    }
+
+    /// The stored message a platform message key was linked to.
+    async fn linked_message(
+        &self,
+        _channel: &str,
+        _message_key: &str,
+    ) -> Result<Option<LinkedMessage>, ChannelError> {
+        Ok(None)
+    }
+
+    /// The platform key a stored message was linked under.
+    async fn message_key(
+        &self,
+        _channel: &str,
+        _message: &LinkedMessage,
+    ) -> Result<Option<String>, ChannelError> {
+        Ok(None)
+    }
+}
+
+/// A stored message, as a platform message key links to it.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct LinkedMessage {
+    pub session_id: String,
+    pub message_id: String,
 }
 
 /// In-process store. Bindings and pending deliveries are lost on restart,
@@ -119,6 +158,7 @@ struct MemoryState {
     seen: HashSet<(String, String)>,
     seen_order: VecDeque<(String, String)>,
     pending: Vec<PendingDelivery>,
+    links: HashMap<(String, String), LinkedMessage>,
 }
 
 impl MemoryChannelStore {
@@ -205,5 +245,43 @@ impl ChannelStore for MemoryChannelStore {
         _lease: Duration,
     ) -> Result<Vec<PendingDelivery>, ChannelError> {
         Ok(self.state().pending.clone())
+    }
+
+    async fn link_message(
+        &self,
+        channel: &str,
+        message_key: &str,
+        message: &LinkedMessage,
+    ) -> Result<(), ChannelError> {
+        self.state()
+            .links
+            .entry((channel.to_string(), message_key.to_string()))
+            .or_insert_with(|| message.clone());
+        Ok(())
+    }
+
+    async fn linked_message(
+        &self,
+        channel: &str,
+        message_key: &str,
+    ) -> Result<Option<LinkedMessage>, ChannelError> {
+        Ok(self
+            .state()
+            .links
+            .get(&(channel.to_string(), message_key.to_string()))
+            .cloned())
+    }
+
+    async fn message_key(
+        &self,
+        channel: &str,
+        message: &LinkedMessage,
+    ) -> Result<Option<String>, ChannelError> {
+        Ok(self
+            .state()
+            .links
+            .iter()
+            .find(|((linked_channel, _), linked)| linked_channel == channel && *linked == message)
+            .map(|((_, key), _)| key.clone()))
     }
 }

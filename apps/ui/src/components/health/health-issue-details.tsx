@@ -14,6 +14,7 @@ import type { HealthIssue, SlackChannelConfig } from "@/lib/api/types";
 
 const SCOPE_LABELS: Record<string, string> = {
   "reactions:write": "Add and remove emoji reactions",
+  "reactions:read": "See emoji reactions people add",
   "chat:write": "Send messages as this bot",
   "assistant:write": "Use Slack's agent surface",
   "channels:history": "Read messages in public channels this bot has joined",

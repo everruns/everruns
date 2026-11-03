@@ -16,8 +16,8 @@ use async_trait::async_trait;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::channel::{
     ApprovalPrompt, ChannelAgentSurface, ChannelApprovalPrompt, ChannelDeliveryAdapter,
-    ChannelProgressSurface, ChannelStreamDelivery, DeliveryContext, DeliveryResult,
-    OutboundChannelMessage,
+    ChannelProgressSurface, ChannelReactionSurface, ChannelStreamDelivery, DeliveryContext,
+    DeliveryResult, OutboundChannelMessage,
 };
 use tracing::error;
 
@@ -64,6 +64,10 @@ impl ChannelDeliveryAdapter for SlackTurnAdapter {
 
     fn agent_surface(&self) -> Option<&dyn ChannelAgentSurface> {
         self.inner.agent_surface()
+    }
+
+    fn reactions(&self) -> Option<&dyn ChannelReactionSurface> {
+        self.inner.reactions()
     }
 
     fn approvals(&self) -> Option<&dyn ChannelApprovalPrompt> {
