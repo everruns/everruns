@@ -116,6 +116,27 @@ session include these requests with `agent` and `session_id`, and answers on
 the session are routed the same way. Only a person (or the API key holder)
 answers; another agent's message never approves.
 
+### Team folder
+
+Every agent in one run shares a `team/` folder in its files. What one agent
+writes there, the others can read straight away, and the files stay after the
+run ends. The routing agent is told to have each agent write its results under
+`team/<its name>/` and to pass file paths in its instructions instead of
+pasting long content.
+
+Each run gets its own folder: starting the same agent again starts with an
+empty one. A session that is not part of a run (an agent without this
+capability, on its own) has no team folder. The folder does not show up in
+the organization's Memory list.
+
+### Starting with a copy of the files
+
+By default an agent starts with its own files. Set a member's **Files** to
+**A copy of this agent's** on the Agents tab (or `"files": "copy"` on its
+target) and each hand-off starts with a copy of the handing-off session's
+files. The agent works on the copy; the originals stay as they were, and the
+results come back through the team folder.
+
 ## See also
 
 - [A2A Agent Delegation](/capabilities/a2a-agent-delegation/), delegation to external agents

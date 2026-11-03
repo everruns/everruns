@@ -31,7 +31,7 @@ import {
 
 export const AGENTS_CAPABILITY = "agent_handoff";
 
-type Member = { agent_id: string } & Record<string, unknown>;
+export type Member = { agent_id: string } & Record<string, unknown>;
 
 /** The members listed on an agent's Agents capability, or null without it. */
 export function agentMembers(agent: Agent): Member[] | null {
@@ -44,6 +44,18 @@ export function agentMembers(agent: Agent): Member[] | null {
 /** Whether `candidate` already hands work to `agent`, so adding it would loop. */
 function wouldLoop(candidate: Agent, agent: Agent): boolean {
   return (agentMembers(candidate) ?? []).some((m) => m.agent_id === agent.id);
+}
+
+/** The files a member starts with: its own, or a copy of this agent's session files. */
+export function memberFiles(member: Member): "own" | "copy" {
+  return member.files === "copy" ? "copy" : "own";
+}
+
+export function withFiles(member: Member, files: string): Member {
+  const { files: _previous, ...rest } = member;
+  return files === "copy"
+    ? { ...rest, agent_id: member.agent_id, files: "copy" }
+    : { ...rest, agent_id: member.agent_id };
 }
 
 function withMembers(agent: Agent, members: Member[]): AgentCapabilityConfig[] {
@@ -152,6 +164,35 @@ export function AgentMembersTab({ agent, canEdit }: { agent: Agent; canEdit: boo
                   <div className="flex gap-1">
                     <dt className="text-muted-foreground">{ui("Model")}</dt>
                     <dd>{model ?? ui("Default")}</dd>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <dt className="text-muted-foreground">{ui("Files")}</dt>
+                    <dd>
+                      {canEdit ? (
+                        <SegmentedControl
+                          label={ui("Files {agent} starts with", { agent: name })}
+                          value={memberFiles(member)}
+                          onValueChange={(files) =>
+                            save(
+                              members.map((m) =>
+                                m.agent_id === member.agent_id ? withFiles(m, files) : m,
+                              ),
+                              files === "copy"
+                                ? `Start ${name} with a copy of this agent's files`
+                                : `Start ${name} with its own files`,
+                            )
+                          }
+                          options={[
+                            { value: "own", label: ui("Its own") },
+                            { value: "copy", label: ui("A copy of this agent's") },
+                          ]}
+                        />
+                      ) : memberFiles(member) === "copy" ? (
+                        ui("A copy of this agent's")
+                      ) : (
+                        ui("Its own")
+                      )}
+                    </dd>
                   </div>
                   {!target && (
                     <div className="text-destructive">

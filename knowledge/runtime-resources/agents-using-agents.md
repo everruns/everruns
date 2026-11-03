@@ -12,8 +12,8 @@ tags:
 
 Status: accepted (2026-11-02). Part 1 (members, created-here agents, package
 format, Agents tab) is built. Approvals and questions on the first
-session are built. The rest of part 2 (shared run folder, copy-of-files, run
-conversation) and part 3 (whole-run costs and traces)
+session, the shared team folder and copy-of-files are built. The rest of
+part 2 (run conversation) and part 3 (whole-run costs and traces)
 follow. The mechanism underneath is [Agent Handoff](agent-handoff.md).
 
 ## Abstract
@@ -76,8 +76,8 @@ What the field agrees on, and what Everruns does by default:
 | Thing | Default | More, when needed |
 |---|---|---|
 | Conversation | Not shared; the brief only | n/a |
-| Files | Own files | Copy of this agent's files (part 2) |
-| Run folder | A `team/` folder every agent in the run reads and writes (part 2) | Always on |
+| Files | Own files | A copy of this session's files, set per member |
+| Team folder | A `team/` folder every agent in the run reads and writes | Always on |
 | Sandbox | Own, from its own harness | Not shared in v1: git branches carry code work |
 | Memory, tools, model, harness | Its own | n/a |
 | Connections and credentials | Resolved for the person; never passed | n/a |
@@ -140,6 +140,40 @@ Source: `crates/server/src/domains/sessions/run_requests.rs`,
 `crates/server/src/api/run_requests.rs`,
 `apps/ui/src/components/chat/run-request-cards.tsx`. Slack delivery of another
 agent's request is a follow-up.
+
+## Team folder
+
+Every agent in a run sees one `team/` folder in its files, mounted at `/team`.
+What one agent writes there the others read at once, and it outlives every
+session of the run. The Agents capability's prompt asks the routing agent to
+pass paths instead of pasting long content and to have each agent write under
+`team/<its name>/`.
+
+- **Storage.** A Memory with scope `run`, owned by the run's first session
+  (`owner_session_id`), created on first use. It reuses the memory mount's
+  write-through, and organization Memory lists show only `org` scope, so a run
+  folder never appears among the organization's memories.
+- **Who sees it.** Every session started under another one, and a first
+  session only when its agent has the Agents capability. Both are fixed for
+  a session's life, so the per-process mount cache stays truthful.
+- **Isolation.** One folder per run: a second run of the same agent gets its
+  own. A session outside any run has no `/team`, and a write there stays in
+  its own files.
+
+Code: `crates/server/src/domains/session_files/memory_mounts.rs`
+(`team_folder_owner`), `ensure_run_memory` in the memory repository,
+migration `20261103050712_run_team_folder`.
+
+## Copy of the files
+
+A member set to **A copy of this agent's** (`files: "copy"` on its entry in
+the Agents capability, the Files control on the Agents tab) starts each
+hand-off with a copy of the handing-off session's files, the existing
+`workspace` seed. It changes the copy without touching the originals and
+hands results back through the team folder or a git branch. "The same files"
+is not offered: two agents writing one set of files overwrite each other. An
+explicit `seed` on `spawn_agent` still wins. The export keeps member names
+only, so the setting is not carried in a package yet.
 
 ## Run conversation (part 2)
 
