@@ -6,6 +6,7 @@ import { CircleCheck, Circle, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
 import { ChannelUsePanel } from "@/components/agents/channel-use-panel";
+import { useSlackWorkspaceName } from "@/hooks/use-agent-channels";
 import { getSlackChannelManifest } from "@/lib/api/agent-channels";
 import { getChannelLifecyclePresentation } from "@/lib/channel-display";
 import { isPublicHttpsUrl } from "@/lib/public-origin";
@@ -26,7 +27,8 @@ export function hasSlackCredentials(config: SlackChannelConfig): boolean {
 export function slackConnectionLabel(config: SlackChannelConfig): string {
   if (!hasSlackCredentials(config)) return "Not connected";
   if (config.first_message_received_at) return "Message received";
-  if (config.webhook_verified_at) return "Request URL verified";
+  // Slack checked the Request URL with a signed challenge, so Slack can reach the channel.
+  if (config.webhook_verified_at) return "Connected";
   return "Credentials saved";
 }
 
@@ -36,14 +38,16 @@ export function SlackConnectionStatus({ channel }: { channel: AgentChannel }) {
   const configured = hasSlackCredentials(config);
   const received = !!config.first_message_received_at;
   const live = getChannelLifecyclePresentation(channel).isLive;
-  const Icon = received ? CircleCheck : Circle;
+  const connected = configured && (received || !!config.webhook_verified_at);
+  const workspaceName = useSlackWorkspaceName(config.team_id);
+  const Icon = connected ? CircleCheck : Circle;
   return (
     <section className="space-y-2" aria-label={ui("Slack connection")}>
       <h3 className="text-sm font-medium">{ui("Slack connection")}</h3>
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Icon className={received ? "size-4 text-success" : "size-4 text-muted-foreground"} />
+        <Icon className={connected ? "size-4 text-success" : "size-4 text-muted-foreground"} />
         <span className="font-medium">{slackConnectionLabel(config)}</span>
-        {config.team_id && <span className="text-xs text-muted-foreground">{config.team_id}</span>}
+        {workspaceName && <span className="text-xs text-muted-foreground">{workspaceName}</span>}
       </div>
       <p className="text-xs text-muted-foreground">
         {!live

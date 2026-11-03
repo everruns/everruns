@@ -4,10 +4,13 @@ import {
   SlackConnectionStatus,
   SlackManualSetup,
 } from "@/components/agents/integrations/slack-setup-guidance";
-import { getSlackChannelManifest } from "@/lib/api/agent-channels";
+import { getSlackChannelManifest, listSlackWorkspaces } from "@/lib/api/agent-channels";
 import type { AgentChannel, SlackChannelConfig } from "@/lib/api/types";
 
-jest.mock("@/lib/api/agent-channels", () => ({ getSlackChannelManifest: jest.fn() }));
+jest.mock("@/lib/api/agent-channels", () => ({
+  getSlackChannelManifest: jest.fn(),
+  listSlackWorkspaces: jest.fn(),
+}));
 const configured = {
   session_strategy: "per_thread",
   signing_secret_configured: true,
@@ -27,6 +30,15 @@ function channel(
     updated_at: "2026-10-03T00:00:00Z",
   };
 }
+function withQueries(node: React.ReactElement) {
+  return (
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      {node}
+    </QueryClientProvider>
+  );
+}
 function renderManual(value: AgentChannel) {
   return render(
     <QueryClientProvider
@@ -41,9 +53,11 @@ describe("Slack connection guidance", () => {
   beforeEach(() => jest.clearAllMocks());
   it("removes completed setup steps and accepts signed messages without a URL challenge", () => {
     render(
-      <SlackConnectionStatus
-        channel={channel({ ...configured, first_message_received_at: "2026-10-03T10:00:00Z" })}
-      />,
+      withQueries(
+        <SlackConnectionStatus
+          channel={channel({ ...configured, first_message_received_at: "2026-10-03T10:00:00Z" })}
+        />,
+      ),
     );
     expect(screen.getByText("Message received")).toBeInTheDocument();
     expect(screen.getByText(/A signed Slack message/)).toBeInTheDocument();
@@ -52,34 +66,57 @@ describe("Slack connection guidance", () => {
     ).not.toBeInTheDocument();
   });
   it("does not claim credentials alone establish a verified connection", () => {
-    render(<SlackConnectionStatus channel={channel()} />);
+    render(withQueries(<SlackConnectionStatus channel={channel()} />));
     expect(screen.getByText("Credentials saved")).toBeInTheDocument();
     expect(screen.getByText(/No Slack message received yet/)).toBeInTheDocument();
   });
   it("shows the remaining test action after URL verification", () => {
     render(
-      <SlackConnectionStatus
-        channel={channel({ ...configured, webhook_verified_at: "2026-10-03T10:00:00Z" })}
-      />,
+      withQueries(
+        <SlackConnectionStatus
+          channel={channel({ ...configured, webhook_verified_at: "2026-10-03T10:00:00Z" })}
+        />,
+      ),
     );
-    expect(screen.getByText("Request URL verified")).toBeInTheDocument();
+    expect(screen.getByText("Connected")).toBeInTheDocument();
     expect(screen.getByText(/@mention it to test/)).toBeInTheDocument();
+  });
+  it("names the installed workspace and falls back to its ID", async () => {
+    jest
+      .mocked(listSlackWorkspaces)
+      .mockResolvedValue([{ team_id: "T1", team_name: "Everruns" }] as Awaited<
+        ReturnType<typeof listSlackWorkspaces>
+      >);
+    const installed = { ...configured, webhook_verified_at: "2026-10-03T10:00:00Z" };
+    const { unmount } = render(
+      withQueries(<SlackConnectionStatus channel={channel({ ...installed, team_id: "T1" })} />),
+    );
+    expect(await screen.findByText("Everruns")).toBeInTheDocument();
+    unmount();
+    render(
+      withQueries(<SlackConnectionStatus channel={channel({ ...installed, team_id: "T2" })} />),
+    );
+    expect(await screen.findByText("T2")).toBeInTheDocument();
   });
   it("keeps publication separate from observed delivery", () => {
     render(
-      <SlackConnectionStatus
-        channel={channel(
-          { ...configured, first_message_received_at: "2026-10-03T10:00:00Z" },
-          "draft",
-        )}
-      />,
+      withQueries(
+        <SlackConnectionStatus
+          channel={channel(
+            { ...configured, first_message_received_at: "2026-10-03T10:00:00Z" },
+            "draft",
+          )}
+        />,
+      ),
     );
     expect(screen.getByText("Message received")).toBeInTheDocument();
     expect(screen.getByText(/Publish this channel/)).toBeInTheDocument();
   });
   it("does not consider partial credentials configured", () => {
     render(
-      <SlackConnectionStatus channel={channel({ ...configured, bot_token_configured: false })} />,
+      withQueries(
+        <SlackConnectionStatus channel={channel({ ...configured, bot_token_configured: false })} />,
+      ),
     );
     expect(screen.getByText("Not connected")).toBeInTheDocument();
   });
