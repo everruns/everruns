@@ -19,6 +19,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | [`turn.completed`](#turncompleted) | Turn finished successfully. |
 | [`turn.failed`](#turnfailed) | Turn failed with an error. |
 | [`turn.completion_checked`](#turncompletion_checked) | A finishing turn was reviewed; says whether it finished or continued automatically. |
+| [`turn.credit_shortfall`](#turncredit_shortfall) | The provider refused a request for lack of credits; says whether the turn retried smaller, waits for credits, resumed, or gave up. |
 | `turn.sealed` | Turn stopped without success or error (for example repeated crash-reclaims or exhausted work budget); carries a `reason`. |
 | [`turn.cancelled`](#turncancelled) | Turn cancelled by the user. |
 | [`reason.started`](#reasonstarted) | LLM inference step began. |
@@ -311,6 +312,35 @@ Emitted when a turn that was about to finish is reviewed by the agent's `complet
     "tokens_used": 0,
     "elapsed_ms": 0,
     "continuation_message_id": "message_..."
+  }
+}
+```
+
+### turn.credit_shortfall
+
+Emitted when the provider refuses a request because the account cannot pay for it (`provider_quota_exhausted`), once per decision the runtime makes about it. When the balance still covers at least 4,096 output tokens, the same request is retried once with max output tokens lowered to what it covers (`shrunk`). Otherwise the turn fails and a check for credits runs every minute for up to an hour, as a scheduled run of the session that reads the provider balance without a model call (`wait_started`, then `still_waiting` per check). When credits are back the work continues (`resumed`); when the hour runs out the turn fails with `provider_quota_exhausted` (`gave_up`).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `turn_id` | string | Turn identifier |
+| `action` | string | `shrunk`, `wait_started`, `still_waiting`, `resumed` or `gave_up` |
+| `requested_max_tokens` | integer? | Max output tokens the refused request asked for, when the provider said |
+| `affordable_tokens` | integer? | Output tokens the balance covered, when the provider said |
+| `max_tokens` | integer? | Max output tokens of the smaller retry (`shrunk`) |
+| `wait_until` | string? | When the wait ends at the latest (RFC 3339) |
+| `next_check_at` | string? | When the next check runs, when one was scheduled |
+| `balance_checked` | boolean? | `true` when a check read the provider balance (OpenRouter); `false` when the provider has no balance API and the request itself was the check |
+
+```json
+{
+  "type": "turn.credit_shortfall",
+  "data": {
+    "turn_id": "turn_...",
+    "action": "wait_started",
+    "requested_max_tokens": 65536,
+    "affordable_tokens": 283,
+    "wait_until": "2026-11-03T15:04:05Z",
+    "next_check_at": "2026-11-03T14:05:05Z"
   }
 }
 ```

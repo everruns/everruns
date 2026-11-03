@@ -111,6 +111,19 @@ describe("runtime error localization", () => {
     expect(text).toContain("lower the max output tokens");
   });
 
+  it("says a quota refusal continues by itself while credits are awaited", () => {
+    const text = localizeRuntimeError(
+      "en",
+      {
+        code: "provider_quota_exhausted",
+        fields: { requested_max_tokens: 65536, affordable_tokens: 283, credit_wait: true },
+      },
+      "backend fallback",
+    );
+    expect(text).toContain("the balance covers 283");
+    expect(text).toContain("continues automatically once credits are back");
+  });
+
   it("localizes provider quota exhaustion distinctly from misconfiguration", () => {
     const text = localizeRuntimeError(
       "en",

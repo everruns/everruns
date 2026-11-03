@@ -14914,6 +14914,11 @@ export interface components {
      * @enum {string}
      */
     CredentialUsage: "user" | "service";
+    /**
+     * @description What the runtime did about a provider's "not enough credits" refusal.
+     * @enum {string}
+     */
+    CreditShortfallAction: "shrunk" | "wait_started" | "still_waiting" | "resumed" | "gave_up";
     /** @description Database info response. */
     DatabaseInfoResponse: {
       /** @description Timestamp when this resource was created (RFC 3339). */
@@ -16500,6 +16505,7 @@ export interface components {
       | components["schemas"]["TurnSealedData"]
       | components["schemas"]["TurnCancelledData"]
       | components["schemas"]["TurnCompletionCheckedData"]
+      | components["schemas"]["TurnCreditShortfallData"]
       | components["schemas"]["SessionStartedData"]
       | components["schemas"]["SessionActivatedData"]
       | components["schemas"]["SessionIdledData"]
@@ -32248,6 +32254,59 @@ export interface components {
        */
       turn_id: string;
       verdict?: components["schemas"]["CompletionVerdict"] | null;
+    };
+    /**
+     * @description Data for turn.credit_shortfall event.
+     *
+     *     The provider refused a request because the account could not pay for it.
+     *     One event per decision: a smaller retry, the start of a wait, each check
+     *     during it, the resume, and giving up.
+     */
+    TurnCreditShortfallData: {
+      /** @description What the runtime did. */
+      action: components["schemas"]["CreditShortfallAction"];
+      /**
+       * Format: int64
+       * @description Output tokens the balance covered, when the provider said.
+       * @example 283
+       */
+      affordable_tokens?: number | null;
+      /**
+       * @description Whether the provider's balance was read (without spending tokens).
+       *     `false`: the provider has no balance API and the request itself is
+       *     the check.
+       * @example true
+       */
+      balance_checked?: boolean | null;
+      /**
+       * Format: int32
+       * @description Max output tokens of the smaller retry (`shrunk` only).
+       * @example 7680
+       */
+      max_tokens?: number | null;
+      /**
+       * Format: date-time
+       * @description When the next check runs, when one was scheduled.
+       * @example 2026-11-03T07:01:00Z
+       */
+      next_check_at?: string | null;
+      /**
+       * Format: int64
+       * @description Max output tokens the refused request asked for, when the provider said.
+       * @example 65536
+       */
+      requested_max_tokens?: number | null;
+      /**
+       * @description Turn identifier
+       * @example turn_01933b5a00007000800000000000001
+       */
+      turn_id: string;
+      /**
+       * Format: date-time
+       * @description When the wait for credits ends at the latest.
+       * @example 2026-11-03T08:00:00Z
+       */
+      wait_until?: string | null;
     };
     /**
      * @description Data for turn.failed event. A failed turn is always an error (severity

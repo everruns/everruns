@@ -45995,6 +45995,17 @@
           "service"
         ]
       },
+      "CreditShortfallAction": {
+        "type": "string",
+        "description": "What the runtime did about a provider's \"not enough credits\" refusal.",
+        "enum": [
+          "shrunk",
+          "wait_started",
+          "still_waiting",
+          "resumed",
+          "gave_up"
+        ]
+      },
       "DatabaseInfoResponse": {
         "type": "object",
         "description": "Database info response.",
@@ -48755,6 +48766,9 @@
           },
           {
             "$ref": "#/components/schemas/TurnCompletionCheckedData"
+          },
+          {
+            "$ref": "#/components/schemas/TurnCreditShortfallData"
           },
           {
             "$ref": "#/components/schemas/SessionStartedData"
@@ -77271,6 +77285,81 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "TurnCreditShortfallData": {
+        "type": "object",
+        "description": "Data for turn.credit_shortfall event.\n\nThe provider refused a request because the account could not pay for it.\nOne event per decision: a smaller retry, the start of a wait, each check\nduring it, the resume, and giving up.",
+        "required": [
+          "turn_id",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/CreditShortfallAction",
+            "description": "What the runtime did."
+          },
+          "affordable_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Output tokens the balance covered, when the provider said.",
+            "example": 283,
+            "minimum": 0
+          },
+          "balance_checked": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the provider's balance was read (without spending tokens).\n`false`: the provider has no balance API and the request itself is\nthe check.",
+            "example": true
+          },
+          "max_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Max output tokens of the smaller retry (`shrunk` only).",
+            "example": 7680,
+            "minimum": 0
+          },
+          "next_check_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the next check runs, when one was scheduled.",
+            "example": "2026-11-03T07:01:00Z"
+          },
+          "requested_max_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Max output tokens the refused request asked for, when the provider said.",
+            "example": 65536,
+            "minimum": 0
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn identifier",
+            "example": "turn_01933b5a00007000800000000000001"
+          },
+          "wait_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the wait for credits ends at the latest.",
+            "example": "2026-11-03T08:00:00Z"
           }
         }
       },

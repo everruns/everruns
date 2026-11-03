@@ -62,7 +62,7 @@ impl EventsQuery {
 
 /// Max event types per filter parameter. Kept above the known event set so
 /// clients can explicitly request every supported event type.
-pub(crate) const MAX_EVENT_TYPE_FILTER_SIZE: usize = 64;
+pub(crate) const MAX_EVENT_TYPE_FILTER_SIZE: usize = 80;
 
 /// Validate a list of event type strings: checks size limit and known types.
 pub(crate) fn validate_event_type_list(
