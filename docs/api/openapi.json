@@ -67041,7 +67041,8 @@
           },
           "name": {
             "type": "string",
-            "description": "The agent's display name."
+            "description": "The agent's display name.",
+            "example": "Research Assistant"
           }
         }
       },
@@ -67555,11 +67556,13 @@
           },
           "requested_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "example": "2026-11-03T10:15:00Z"
           },
           "session_id": {
             "type": "string",
-            "description": "The asking agent's session."
+            "description": "The asking agent's session.",
+            "example": "session_01933b5a00007000800000000000001"
           },
           "tool_call": {
             "$ref": "#/components/schemas/RunRequestToolCall"
@@ -67579,11 +67582,13 @@
             "type": "object"
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "example": "call_approval_1"
           },
           "name": {
             "type": "string",
-            "description": "`ask_user`, `approve_tool_call`, `openai_mcp_approval`,\n`confirm_url_elicitation` or `setup_connection`."
+            "description": "`ask_user`, `approve_tool_call`, `openai_mcp_approval`,\n`confirm_url_elicitation` or `setup_connection`.",
+            "example": "approve_tool_call"
           }
         }
       },
