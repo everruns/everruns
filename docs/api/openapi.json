@@ -3220,7 +3220,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "Deprecated alias of resume",
+        "summary": "Let live endpoints serve again",
         "operationId": "resume_agent_exposures",
         "parameters": [
           {
@@ -3235,7 +3235,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Agent resumed",
+            "description": "Exposures resumed",
             "content": {
               "application/json": {
                 "schema": {
@@ -3255,17 +3255,12 @@
             }
           }
         },
-        "deprecated": true,
-        "x-deprecation": {
-          "migration": "Use the pause or resume route. This alias remains available; no removal date has been announced."
-        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        },
-        "x-superseded-by": "resume_agent"
+        }
       }
     },
     "/v1/agents/{agent_id}/exposures/suspend": {
@@ -3273,7 +3268,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "Deprecated alias of pause",
+        "summary": "Take every endpoint offline",
         "operationId": "suspend_agent_exposures",
         "parameters": [
           {
@@ -3288,7 +3283,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Agent paused",
+            "description": "Exposures suspended",
             "content": {
               "application/json": {
                 "schema": {
@@ -3308,17 +3303,12 @@
             }
           }
         },
-        "deprecated": true,
-        "x-deprecation": {
-          "migration": "Use the pause or resume route. This alias remains available; no removal date has been announced."
-        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        },
-        "x-superseded-by": "pause_agent"
+        }
       }
     },
     "/v1/agents/{agent_id}/external-worker": {
@@ -4045,103 +4035,6 @@
           },
           "500": {
             "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Everruns Cloud and self-hosted Platform",
-          "group": "agents-authoring",
-          "support": "preview"
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/pause": {
-      "post": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "Pause an agent",
-        "description": "Its channels stop accepting messages and its triggers and schedules do not\nrun until it is resumed. Each channel keeps its own published state.",
-        "operationId": "pause_agent",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Agent paused",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_Agent"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Everruns Cloud and self-hosted Platform",
-          "group": "agents-authoring",
-          "support": "preview"
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/resume": {
-      "post": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "Resume a paused agent",
-        "operationId": "resume_agent",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Agent resumed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_Agent"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -36997,14 +36890,6 @@
           "updated_at"
         ],
         "properties": {
-          "agent_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The agent that owns this channel. Also what lets responses carry a\n`view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),\nso a caller can hand out a direct link.",
-            "example": "agent_01933b5a000070008000000000000001"
-          },
           "auth": {
             "oneOf": [
               {
@@ -37638,8 +37523,7 @@
               "string",
               "null"
             ],
-            "description": "The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the\nshared App's (`everruns[bot]`) when the agent chose it and the\ndeployment names its slug; `None` otherwise.",
-            "example": "pr-summarizer[bot]"
+            "description": "The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the\nshared App's (`everruns[bot]`) when the agent chose it and the\ndeployment names its slug; `None` otherwise."
           },
           "connected": {
             "type": "boolean",
@@ -37664,8 +37548,7 @@
               "string",
               "null"
             ],
-            "description": "Which GitHub identity the agent acts as: `agent_app` (its own App) or\n`everruns_app` (the shared Everruns App). `None` before either exists.",
-            "example": "agent_app"
+            "description": "Which GitHub identity the agent acts as: `agent_app` (its own App) or\n`everruns_app` (the shared Everruns App). `None` before either exists."
           },
           "missing_permissions": {
             "type": "array",
@@ -37679,8 +37562,7 @@
               "string",
               "null"
             ],
-            "description": "`all` or `selected`.",
-            "example": "selected"
+            "description": "`all` or `selected`."
           },
           "suggested_owners": {
             "type": "array",
@@ -37688,14 +37570,6 @@
               "$ref": "#/components/schemas/GitHubOwnerSuggestion"
             },
             "description": "GitHub accounts this organization already reached, as candidates for\n`owner_org` when creating the App: installation accounts of its GitHub\nconnections and owners of its other agents' Apps. Organizations first,\nthen users, then accounts of unknown kind; by login within each."
-          },
-          "view_url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The agent's GitHub page in the console, so a caller can link to it.\nAbsolute in responses; built as a relative path here because the\nconsole's address is known only where links are decorated.",
-            "example": "https://app.everruns.com/agents/agent_01933b5a000070008000000000000001/github"
           }
         }
       },
@@ -38887,14 +38761,6 @@
           "updated_at"
         ],
         "properties": {
-          "agent_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The agent that owns this channel. Also what lets responses carry a\n`view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),\nso a caller can hand out a direct link.",
-            "example": "agent_01933b5a000070008000000000000001"
-          },
           "auth": {
             "oneOf": [
               {
@@ -46176,17 +46042,6 @@
           "service"
         ]
       },
-      "CreditShortfallAction": {
-        "type": "string",
-        "description": "What the runtime did about a provider's \"not enough credits\" refusal.",
-        "enum": [
-          "shrunk",
-          "wait_started",
-          "still_waiting",
-          "resumed",
-          "gave_up"
-        ]
-      },
       "DatabaseInfoResponse": {
         "type": "object",
         "description": "Database info response.",
@@ -48947,9 +48802,6 @@
           },
           {
             "$ref": "#/components/schemas/TurnCompletionCheckedData"
-          },
-          {
-            "$ref": "#/components/schemas/TurnCreditShortfallData"
           },
           {
             "$ref": "#/components/schemas/SessionStartedData"
@@ -67236,8 +67088,7 @@
           },
           "name": {
             "type": "string",
-            "description": "The agent's display name.",
-            "example": "Research Assistant"
+            "description": "The agent's display name."
           }
         }
       },
@@ -67769,13 +67620,11 @@
           },
           "requested_at": {
             "type": "string",
-            "format": "date-time",
-            "example": "2026-11-03T10:15:00Z"
+            "format": "date-time"
           },
           "session_id": {
             "type": "string",
-            "description": "The asking agent's session.",
-            "example": "session_01933b5a00007000800000000000001"
+            "description": "The asking agent's session."
           },
           "tool_call": {
             "$ref": "#/components/schemas/RunRequestToolCall"
@@ -67795,13 +67644,11 @@
             "type": "object"
           },
           "id": {
-            "type": "string",
-            "example": "call_approval_1"
+            "type": "string"
           },
           "name": {
             "type": "string",
-            "description": "`ask_user`, `approve_tool_call`, `openai_mcp_approval`,\n`confirm_url_elicitation` or `setup_connection`.",
-            "example": "approve_tool_call"
+            "description": "`ask_user`, `approve_tool_call`, `openai_mcp_approval`,\n`confirm_url_elicitation` or `setup_connection`."
           }
         }
       },
@@ -77716,81 +77563,6 @@
                 "type": "null"
               }
             ]
-          }
-        }
-      },
-      "TurnCreditShortfallData": {
-        "type": "object",
-        "description": "Data for turn.credit_shortfall event.\n\nThe provider refused a request because the account could not pay for it.\nOne event per decision: a smaller retry, the start of a wait, each check\nduring it, the resume, and giving up.",
-        "required": [
-          "turn_id",
-          "action"
-        ],
-        "properties": {
-          "action": {
-            "$ref": "#/components/schemas/CreditShortfallAction",
-            "description": "What the runtime did."
-          },
-          "affordable_tokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Output tokens the balance covered, when the provider said.",
-            "example": 283,
-            "minimum": 0
-          },
-          "balance_checked": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "Whether the provider's balance was read (without spending tokens).\n`false`: the provider has no balance API and the request itself is\nthe check.",
-            "example": true
-          },
-          "max_tokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "Max output tokens of the smaller retry (`shrunk` only).",
-            "example": 7680,
-            "minimum": 0
-          },
-          "next_check_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "When the next check runs, when one was scheduled.",
-            "example": "2026-11-03T07:01:00Z"
-          },
-          "requested_max_tokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Max output tokens the refused request asked for, when the provider said.",
-            "example": 65536,
-            "minimum": 0
-          },
-          "turn_id": {
-            "type": "string",
-            "description": "Turn identifier",
-            "example": "turn_01933b5a00007000800000000000001"
-          },
-          "wait_until": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "When the wait for credits ends at the latest.",
-            "example": "2026-11-03T08:00:00Z"
           }
         }
       },
