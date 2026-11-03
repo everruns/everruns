@@ -533,8 +533,17 @@ mod tests {
         assert!(feed_try_lock(&mut first, "test", 3).await.unwrap());
         assert!(!feed_try_lock(&mut second, "test", 3).await.unwrap());
         assert!(feed_try_lock(&mut second, "test", 4).await.unwrap());
-        // Closing the connection lets the partition go.
+        // Closing the connection lets the partition go, once the server
+        // process behind it has exited, which follows the close a moment
+        // later.
         first.close().await.unwrap();
-        assert!(feed_try_lock(&mut second, "test", 3).await.unwrap());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !feed_try_lock(&mut second, "test", 3).await.unwrap() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the closed connection's lock was never released"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
     }
 }
