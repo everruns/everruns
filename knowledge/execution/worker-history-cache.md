@@ -40,8 +40,13 @@ tracking:
 ## Limits
 
 - Bounded by wire size (64 MiB per worker), least recently used first out.
-- A cold "latest N" read stays a windowed server read; warming the cache would
-  pull the whole history for one window. A cold full read warms it.
+- A cold "latest N" read stays a windowed server read, and the cache keeps that
+  window with the session's message count (the count the excluded-messages
+  notice needs). Later windows no wider than what it holds, extended by the
+  messages after it, are served from it; a wider window or a full read reads
+  afresh. Before windows were kept, the reason step's read (a window on every
+  model call) never warmed the cache, so the cache missed on the whole turn
+  path (stress bench, 2026-11-03).
 - A failed read drops the session's entry. Two racing reads never step an
   entry back to an older sequence.
 - `WORKER_HISTORY_CACHE=off` disables it.
