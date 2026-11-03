@@ -91,7 +91,10 @@ const SYSTEM_PROMPT: &str = "Other agents work in this run with you. Talk to the
 
 /// The conversation tools, shared with the Agents capability.
 pub fn run_conversation_tools() -> Vec<Box<dyn Tool>> {
-    vec![Box::new(MessageAgentTool), Box::new(ReadRunConversationTool)]
+    vec![
+        Box::new(MessageAgentTool),
+        Box::new(ReadRunConversationTool),
+    ]
 }
 
 /// Who an agent is in the run's conversation.
@@ -195,7 +198,11 @@ async fn registered_agents(context: &ToolContext) -> Vec<(String, String)> {
 }
 
 /// Whether `candidate` is a session of the run that `root` started.
-async fn in_run(store: &dyn SubagentSessionDelegate, root: SessionId, candidate: SessionId) -> bool {
+async fn in_run(
+    store: &dyn SubagentSessionDelegate,
+    root: SessionId,
+    candidate: SessionId,
+) -> bool {
     if candidate == root {
         return true;
     }
@@ -225,7 +232,10 @@ async fn message_files(context: &ToolContext) -> Result<Vec<String>, String> {
 fn message_path(from: &str) -> String {
     let at = Utc::now().format("%Y%m%dT%H%M%S%.6fZ");
     let nonce = &uuid::Uuid::now_v7().simple().to_string()[24..];
-    format!("{CONVERSATION_DIR}/{at}-{}-{nonce}.md", agent_file_name(from))
+    format!(
+        "{CONVERSATION_DIR}/{at}-{}-{nonce}.md",
+        agent_file_name(from)
+    )
 }
 
 fn render_message(from: &str, to: Option<&str>, text: &str) -> String {

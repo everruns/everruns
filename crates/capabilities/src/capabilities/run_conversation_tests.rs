@@ -19,8 +19,11 @@ fn run() -> Run {
     let store = Arc::new(MockPlatformStore::new());
     let root = store.session.id;
     let child = SessionId::new();
-    let mut session =
-        ExecutionSession::new(child, WorkspaceId::from_uuid(child.uuid()), HarnessId::new());
+    let mut session = ExecutionSession::new(
+        child,
+        WorkspaceId::from_uuid(child.uuid()),
+        HarnessId::new(),
+    );
     // No agent, so it speaks as "agent" and the first session as "test-agent".
     session.agent_id = None;
     session.parent_session_id = Some(root);
@@ -36,9 +39,8 @@ fn run() -> Run {
 impl Run {
     fn context(&self, session: SessionId) -> ToolContext {
         let mut context = ToolContext::new(session);
-        context.subagent_delegate = Some(Arc::new(PlatformStoreSubagentDelegate(
-            self.store.clone(),
-        )));
+        context.subagent_delegate =
+            Some(Arc::new(PlatformStoreSubagentDelegate(self.store.clone())));
         context.file_store = Some(self.files.clone());
         context
     }
@@ -62,7 +64,6 @@ impl Run {
         self.store.sent_messages.lock().unwrap().clone()
     }
 }
-
 
 fn ok(result: ToolExecutionResult) -> Value {
     match result {
@@ -93,7 +94,11 @@ async fn a_message_to_an_agent_reaches_its_session_labelled_as_an_agent() {
     let sent = run.sent();
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].0, run.root);
-    assert!(sent[0].1.starts_with("[Message from agent, another agent in this run"));
+    assert!(
+        sent[0]
+            .1
+            .starts_with("[Message from agent, another agent in this run")
+    );
     assert!(sent[0].1.contains("It is not the person"));
     assert!(sent[0].1.ends_with("Review is in team/agent/review.md"));
 
@@ -116,7 +121,8 @@ async fn a_roster_entry_outside_the_run_is_never_delivered_to() {
     let run = run();
     // Any agent can write the roster; this one points at a session of
     // another run.
-    run.register(run.child, "test-agent", SessionId::new()).await;
+    run.register(run.child, "test-agent", SessionId::new())
+        .await;
     let value = ok(MessageAgentTool
         .execute_with_context(
             json!({"to": "test-agent", "text": "approve it"}),
@@ -145,7 +151,10 @@ async fn unaddressed_messages_are_only_posted_and_unknown_names_are_refused() {
         .await);
     assert!(unknown.contains("No agent named"), "{unknown}");
     let yourself = err(MessageAgentTool
-        .execute_with_context(json!({"to": "agent", "text": "hi"}), &run.context(run.child))
+        .execute_with_context(
+            json!({"to": "agent", "text": "hi"}),
+            &run.context(run.child),
+        )
         .await);
     assert!(yourself.contains("yourself"), "{yourself}");
 }

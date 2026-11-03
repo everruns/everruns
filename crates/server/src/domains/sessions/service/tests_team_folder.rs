@@ -2,6 +2,7 @@
 //! (`knowledge/runtime-resources/agents-using-agents.md`).
 
 use super::*;
+use crate::domains::agents::record::Agent;
 use crate::domains::agents::types::CreateAgentRequest;
 use crate::domains::common::{Command, Ctx};
 use crate::kernel_imports::{Caller, DEFAULT_ORG_ID};
@@ -36,6 +37,7 @@ async fn create_agent(ctx: &Ctx, name: &str, capabilities: Vec<AgentCapabilityCo
         parallel_tool_calls: None,
         max_output_tokens: None,
         communication: Default::default(),
+        completion_check: Default::default(),
     })
     .execute(ctx)
     .await

@@ -34,9 +34,9 @@ use parking_lot::RwLock;
 use uuid::Uuid;
 
 use crate::domains::memory::files::{MemoryFileService, MemoryFsError, NewFileInput};
-use everruns_capabilities::capabilities::AGENT_HANDOFF_CAPABILITY_ID;
 use crate::storage::StorageBackend;
 use crate::storage::{CreateMemoryRow, MemoryFileInfoRow, MemoryRow};
+use everruns_capabilities::capabilities::AGENT_HANDOFF_CAPABILITY_ID;
 
 /// Mount point of the memory owned by the session's host agent.
 pub const AGENT_MEMORY_MOUNT_PATH: &str = "/memory/agent";
