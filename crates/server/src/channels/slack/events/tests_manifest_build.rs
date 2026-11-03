@@ -738,69 +738,15 @@ mod wiremock_tests {
     }
 }
 
-/// The worst-case manifests Slack itself checks every night.
-///
-/// Slack's real limits differ from its documented ones (a 140-byte
-/// description was refused), so the unit test above cannot be the whole
-/// answer. This writes the manifests to a committed fixture, and the
-/// `Slack Manifest Validation` workflow sends each one to Slack's
-/// `apps.manifest.validate`. The test fails when the fixture no longer
-/// matches what the code builds, so the nightly check never validates stale
-/// output. Regenerate with `UPDATE_SLACK_MANIFEST_FIXTURE=1 cargo test -p
+/// The worst-case manifests, kept as a fixture for checks that run without a
+/// server. The system doctor validates the same manifests with Slack. The
+/// test fails when the fixture no longer matches what the code builds.
+/// Regenerate with `UPDATE_SLACK_MANIFEST_FIXTURE=1 cargo test -p
 /// everruns-server worst_case_manifest_fixture`.
 #[test]
 fn worst_case_manifest_fixture_is_current() {
-    let long_ascii = "Watches agent frameworks for features worth adopting. ".repeat(100);
-    let long_cyrillic = "Тримає розпорядок дня дітей і відповідає в Slack. ".repeat(100);
-    let refused = "Daily watch of agent frameworks (Vercel AI SDK, LangGraph, DeepAgents, PydanticAI and more) for features worth adopting in Everruns or Yolop.";
-    let tricky = "Quotes \"here\", a backslash \\, a tab\tand\nnew lines: ok? — yes # no";
-    let long_name = "Дуже довга назва агента, що не влазить у ліміт Slack";
-    let very_long_name = "x".repeat(200);
-    let starters: Vec<ConversationStarter> = (0..8)
-        .map(|i| ConversationStarter {
-            icon: None,
-            text: format!(
-                "Starter {i}: {}",
-                "a long prompt that keeps going ".repeat(20)
-            ),
-        })
-        .collect();
-    let cases: [(&str, &str, Option<&str>, bool); 6] = [
-        ("plain", "Ecosystem Watch", Some("Answers questions"), false),
-        ("refused-in-prod", "Ecosystem Watch", Some(refused), true),
-        (
-            "long-ascii",
-            "Ecosystem Watch",
-            Some(long_ascii.as_str()),
-            true,
-        ),
-        (
-            "long-cyrillic",
-            long_name,
-            Some(long_cyrillic.as_str()),
-            true,
-        ),
-        ("tricky-characters", "Bot", Some(tricky), true),
-        (
-            "no-description-long-name",
-            very_long_name.as_str(),
-            None,
-            true,
-        ),
-    ];
-
     let mut manifests = serde_json::Map::new();
-    for (case, name, description, agent_surface) in cases {
-        let yaml = build_manifest_yaml(
-            name,
-            &truncate_display_name(name),
-            description,
-            "https://example.com/events",
-            "https://example.com/interactivity",
-            "https://example.com/callback",
-            agent_surface,
-            &starters,
-        );
+    for (case, yaml) in worst_case_manifest_yamls() {
         let manifest: serde_json::Value = serde_yaml::from_str(&yaml).unwrap();
         manifests.insert(case.to_string(), manifest);
     }

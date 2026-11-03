@@ -43,8 +43,10 @@ pub(super) async fn serve(bind_addr: &str, app: Router) -> Result<()> {
     let shutdown = crate::shutdown::server_shutdown();
     serve_on(listener, app, shutdown.draining().clone(), timing.grace).await?;
     shutdown.stop_grpc_and_wait().await;
-    // Fenced appends are answered before their listeners run; let what they
-    // queued finish (crate::services::event::listener_dispatch).
+    // Fenced appends are answered before their in-process listeners run; let
+    // what they queued finish (crate::services::event::listener_dispatch).
+    // Listeners fed from the database need no drain: a pass cut short here is
+    // handed to the replica that takes the partition next.
     if !crate::services::event::wait_for_queued_listeners(LISTENER_DRAIN_TIMEOUT).await {
         tracing::warn!("event listener work still queued at shutdown; exiting anyway");
     }

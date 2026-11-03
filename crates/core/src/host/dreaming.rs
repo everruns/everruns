@@ -278,6 +278,18 @@ impl<A: RuntimeHostAdapter> DreamingHost for RuntimeDreamingHost<A> {
         ) {
             usage.estimated_cost_usd = usage.estimated_cost_usd.map(|cost| cost + surcharge);
         }
+        if let Some(surcharge) = everruns_contracts::model_profiles::cache_write_12h_surcharge_usd(
+            &model.provider_type,
+            &model.model,
+            usage
+                .input_tokens
+                .saturating_add(usage.cache_read_tokens.unwrap_or(0))
+                .saturating_add(usage.cache_creation_tokens.unwrap_or(0)),
+            metadata.cache_creation_12h_tokens.unwrap_or(0),
+            metadata.service_tier.as_deref(),
+        ) {
+            usage.estimated_cost_usd = usage.estimated_cost_usd.map(|cost| cost + surcharge);
+        }
         // Reuse canonical billing/budget listeners without publishing evidence,
         // prompts, request capture or generated Memory in the session log.
         let mut generation = crate::events::LlmGenerationData::success(

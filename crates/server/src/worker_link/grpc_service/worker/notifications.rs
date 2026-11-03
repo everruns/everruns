@@ -65,8 +65,11 @@ impl WorkerServiceImpl {
                     notification = receiver.recv() => {
                         match notification {
                             Ok(payload) => {
-                                // Filter by activity type
-                                if activity_types_set.contains(&payload.activity_type) {
+                                // Filter by activity type, and by worker for a
+                                // targeted wake-up (sticky sessions).
+                                if activity_types_set.contains(&payload.activity_type)
+                                    && payload.is_for(&worker_id)
+                                {
                                     let proto_notification = TaskNotification {
                                         notification_type: TaskNotificationType::TaskAvailable.into(),
                                         activity_type: payload.activity_type,

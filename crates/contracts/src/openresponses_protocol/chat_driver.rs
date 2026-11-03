@@ -286,7 +286,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         if let Some(extension) = &self.request_extension {
             extension.decorate(&mut request_body, config)?;
         }
-        apply_cache_options(&mut request_body, config, self.native_prompt_cache_options);
+        apply_cache_options(
+            &mut request_body,
+            config,
+            self.native_prompt_cache_options,
+            crate::openai_protocol::is_openai_api_url(&api_url),
+        );
         let mut background = self.background_mode && super::background::wants_background(config);
         super::background::mark(&mut request_body, background);
         crate::openai_compat::validate_body(&request_body, endpoint, true)?;
@@ -403,7 +408,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 if let Some(extension) = &self.request_extension {
                     extension.decorate(&mut request_body, config)?;
                 }
-                apply_cache_options(&mut request_body, config, self.native_prompt_cache_options);
+                apply_cache_options(
+                    &mut request_body,
+                    config,
+                    self.native_prompt_cache_options,
+                    crate::openai_protocol::is_openai_api_url(&api_url),
+                );
                 super::background::mark(&mut request_body, background);
                 crate::openai_compat::validate_body(&request_body, endpoint, true)?;
                 self.connect_response(
@@ -797,6 +807,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             completion_tokens: Some(output),
                                             cache_read_tokens: cached,
                                             cache_creation_tokens: written,
+                                            cache_creation_12h_tokens: response_obj.pointer("/usage/input_tokens_details/cache_write_tokens_details/ttl_12h_tokens")
+                                                .and_then(Value::as_u64).map(|n| n.min(u32::MAX as u64) as u32),
                                             reasoning_tokens: reasoning_used,
                                             provider_cost_usd,
                                             service_tier: response_obj

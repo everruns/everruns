@@ -206,16 +206,28 @@ pub(crate) fn repair_unpaired_function_call_items(
     clippy::unwrap_used,
     reason = "The request builder always emits an object with an input array before applying cache options"
 )]
-pub(crate) fn apply_cache_options(body: &mut Value, config: &LlmCallConfig, native_openai: bool) {
+pub(crate) fn apply_cache_options(
+    body: &mut Value,
+    config: &LlmCallConfig,
+    native_openai: bool,
+    extended_retention: bool,
+) {
     if !native_openai || !crate::openai_compat::supports_cache_options(&config.model) {
         return;
     }
-    let Some(cache) = config.prompt_cache.as_ref().filter(|c| c.enabled) else {
-        return;
+    // Only the qualified first-party endpoint gets an automatic default.
+    // Explicit disable wins; compatible endpoints retain their opt-in behavior.
+    let default_cache = crate::driver_registry::PromptCacheConfig {
+        enabled: true,
+        ..Default::default()
+    };
+    let cache = match &config.prompt_cache {
+        Some(cache) if cache.enabled => cache,
+        None if extended_retention => &default_cache,
+        _ => return,
     };
     let explicit = cache.strategy == crate::driver_registry::PromptCacheStrategy::Explicit;
-    body["prompt_cache_options"] =
-        json!({"ttl": "30m", "mode": if explicit { "explicit" } else { "implicit" }});
+    body["prompt_cache_options"] = json!({"ttl": if extended_retention { cache.retention.openai_responses_ttl() } else { "30m" }, "mode": if explicit { "explicit" } else { "implicit" }});
     if explicit
         && let Some(instructions) = body
             .get("instructions")

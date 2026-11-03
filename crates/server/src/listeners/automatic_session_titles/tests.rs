@@ -469,7 +469,10 @@ async fn title_requests_do_not_block_turn_completion() {
     .unwrap()
     .unwrap();
     let (started, release) = f.generator.pause.as_ref().unwrap();
-    tokio::time::timeout(Duration::from_secs(2), started.notified())
+    // The title listener is fed from the database on the later tier: its
+    // window waits for every older transaction in the cluster, which a
+    // parallel test run can hold open for a while.
+    tokio::time::timeout(Duration::from_secs(30), started.notified())
         .await
         .unwrap();
     release.notify_one();

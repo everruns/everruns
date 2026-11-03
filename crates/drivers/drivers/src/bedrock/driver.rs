@@ -182,6 +182,26 @@ where
 /// Register the Bedrock driver with the given registry.
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const BEDROCK_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        // Bedrock hosts Anthropic Claude (among others); the driver maps these
+        // canonical IDs to Bedrock wire IDs on sync.
+        provider: "bedrock",
+        recommended_models: &[
+            "claude-opus-5-5",
+            "claude-sonnet-5-5",
+            "claude-fable-5-1",
+            "claude-haiku-5-5",
+        ],
+        coding_model: "claude-opus-5-5",
+        research_model: "claude-fable-5-1",
+        chat_model: "claude-sonnet-5-5",
+        small_model: "claude-haiku-5-5",
+        decision_model: "claude-haiku-5-5",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     // Bedrock's multi-field credential is a declared schema of discrete typed
     // fields (knowledge/foundations/providers.md), not a JSON document smuggled through
@@ -216,6 +236,7 @@ pub fn descriptor() -> DriverDescriptor {
                 "Create an IAM user or role with Bedrock invoke permissions and use its access keys."
                     .to_string(),
         },
+        recommended_models: Some(BEDROCK_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Bedrock, |config| {
             match BedrockAuth::from_config(config) {
                 Ok(auth) => everruns_contracts::Provider::new(
