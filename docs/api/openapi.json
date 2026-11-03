@@ -5282,13 +5282,34 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "Optional event to fire the trigger with",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FireAgentTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "Trigger fired",
+            "description": "Trigger fired, or the event was filtered or a duplicate",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TriggerAgentTriggerOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The event does not fit the trigger",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -50336,6 +50357,23 @@
           "health_check"
         ]
       },
+      "FireAgentTriggerRequest": {
+        "type": "object",
+        "description": "Body of a manual fire. Without `event`, a schedule trigger runs as on a tick.",
+        "properties": {
+          "event": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ManualTriggerEvent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "FixCheck": {
         "type": "object",
         "description": "What a check found: the eval's cases with and without the fix.",
@@ -58962,9 +59000,83 @@
         },
         "additionalProperties": false
       },
+      "ManualFireStatus": {
+        "type": "string",
+        "description": "What a manual fire did.",
+        "enum": [
+          "dispatched",
+          "filtered",
+          "duplicate"
+        ]
+      },
       "ManualMemorySourceResponse": {
         "type": "object",
         "description": "Response body for manual memory source."
+      },
+      "ManualTriggerEvent": {
+        "type": "object",
+        "description": "An event to fire a trigger with, instead of a plain run.\n\nName it raw, as its source sends it (`payload`, with `name` for GitHub and\n`headers` for webhooks), or for a GitHub trigger by reference\n(`repository` and `pull_request`).",
+        "properties": {
+          "action": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub reference: the action the built event carries. Defaults to the\nfirst of opened, synchronize, reopened, ready_for_review the trigger\nlistens to.",
+            "example": "synchronize"
+          },
+          "headers": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Request headers a webhook trigger's templates see as `webhook.headers`.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Idempotency key. Defaults to a fresh id, so every manual fire runs;\nrepeat an id the trigger already saw to test deduplication."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Event name: the GitHub event (`pull_request`, `issue_comment`, the\n`X-GitHub-Event` header). For an MCP event trigger it defaults to the\ntrigger's event and must match it.",
+            "example": "pull_request"
+          },
+          "payload": {
+            "type": "object",
+            "description": "The event as its source sends it: a webhook request body, a GitHub\nevent payload, an MCP event's `data`, or extra context a schedule\ntrigger's message reads as `{{payload.*}}`."
+          },
+          "pull_request": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "GitHub reference: the pull request number. The server reads it through\nthe agent's GitHub connection and builds a `pull_request` event.",
+            "example": 12,
+            "minimum": 0
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub reference: the pull request's repository, `owner/name`.",
+            "example": "acme/api"
+          }
+        },
+        "additionalProperties": false
       },
       "McpConnectInChat": {
         "type": "string",
@@ -76644,16 +76756,34 @@
       "TriggerAgentTriggerOutput": {
         "type": "object",
         "required": [
-          "session_id",
+          "status",
           "created_session"
         ],
         "properties": {
           "created_session": {
             "type": "boolean"
           },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why a filtered or duplicate event did not run."
+          },
           "session_id": {
-            "$ref": "#/components/schemas/sessionId",
-            "description": "Session's prefixed public identifier."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/sessionId",
+                "description": "Session's prefixed public identifier; absent when nothing ran."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ManualFireStatus",
+            "description": "`filtered` and `duplicate` happen only for a fire with an event."
           }
         }
       },

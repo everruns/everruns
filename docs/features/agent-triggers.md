@@ -41,6 +41,33 @@ From the **Triggers** section of the **Integrations** tab you can:
 
 **Run now** uses the same execution path as a scheduled run. The trigger must be enabled.
 
+### Fire a trigger with an event
+
+To test a webhook, GitHub or MCP event trigger, or to run one again on an event it already saw, fire it with an `event`. The event takes the trigger's real path: its filter, message, session routing and delivery log apply as they would to a real delivery, and the delivery is recorded with source `manual`.
+
+```bash
+# A GitHub trigger, on an existing pull request: the server reads it through the
+# agent's GitHub connection and the run continues that pull request's session.
+everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 \
+  --event '{"repository":"acme/api","pull_request":12}' --reason 'Review this pull request'
+
+# A webhook trigger, with the body and headers a sender would post.
+everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 \
+  --event '{"payload":{"ticket":7},"headers":{"x-source":"test"}}' --reason 'Test the ticket message'
+```
+
+An `event` holds:
+
+| Field | Applies to | Meaning |
+|---|---|---|
+| `payload` | all | The event as its source sends it: a webhook body, a GitHub event payload, an MCP event's `data`, or extra context a schedule message reads as `{{payload.*}}` |
+| `name` | GitHub, MCP event | The GitHub event (`pull_request`, `issue_comment`); for MCP, the trigger's event |
+| `headers` | webhook | Request headers, seen as `{{webhook.headers.*}}` |
+| `repository`, `pull_request`, `action` | GitHub | A pull request to build the `pull_request` event from, instead of a `payload` |
+| `id` | all | Idempotency key. Leave it out to always run; repeat an id to test deduplication |
+
+The response's `status` is `dispatched`, `filtered` (with the `reason`: the condition the event missed) or `duplicate`. An event the trigger does not listen to, or a field that does not apply to its type, is refused with an explanation.
+
 ## API
 
 Agent triggers are managed below `/v1/agents/{agent_id}/triggers`:
@@ -52,7 +79,7 @@ Agent triggers are managed below `/v1/agents/{agent_id}/triggers`:
 | `GET` | `/v1/agents/{agent_id}/triggers/{trigger_id}` | Get one trigger |
 | `PATCH` | `/v1/agents/{agent_id}/triggers/{trigger_id}` | Update provided fields |
 | `DELETE` | `/v1/agents/{agent_id}/triggers/{trigger_id}` | Delete a trigger |
-| `POST` | `/v1/agents/{agent_id}/triggers/{trigger_id}/trigger` | Run it now |
+| `POST` | `/v1/agents/{agent_id}/triggers/{trigger_id}/trigger` | Run it now, optionally on an `event` |
 | `GET` | `/v1/agents/{agent_id}/triggers/{trigger_id}/runs` | List recent outcomes |
 
 Schedule create requests accept `trigger_type: "schedule"`, `cron_expression`, `timezone`, `session_mode`, `message`, and `enabled`. `GET /v1/agents/{agent_id}/triggers/{trigger_id}/deliveries` lists recent deliveries, including ones that were filtered out or deduplicated. See the [API reference](/api/) for current request and response schemas.

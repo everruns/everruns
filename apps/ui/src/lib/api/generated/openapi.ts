@@ -17336,6 +17336,10 @@ export interface components {
      * @enum {string}
      */
     FindingSource: "builtin" | "llm" | "health_check";
+    /** @description Body of a manual fire. Without `event`, a schedule trigger runs as on a tick. */
+    FireAgentTriggerRequest: {
+      event?: components["schemas"]["ManualTriggerEvent"] | null;
+    };
     /** @description What a check found: the eval's cases with and without the fix. */
     FixCheck: {
       /**
@@ -22073,8 +22077,63 @@ export interface components {
       /** @description Tool schemas whose executable implementations must be bound by the host. */
       tools?: components["schemas"]["ToolDefinition"][];
     };
+    /**
+     * @description What a manual fire did.
+     * @enum {string}
+     */
+    ManualFireStatus: "dispatched" | "filtered" | "duplicate";
     /** @description Response body for manual memory source. */
     ManualMemorySourceResponse: Record<string, unknown>;
+    /**
+     * @description An event to fire a trigger with, instead of a plain run.
+     *
+     *     Name it raw, as its source sends it (`payload`, with `name` for GitHub and
+     *     `headers` for webhooks), or for a GitHub trigger by reference
+     *     (`repository` and `pull_request`).
+     */
+    ManualTriggerEvent: {
+      /**
+       * @description GitHub reference: the action the built event carries. Defaults to the
+       *     first of opened, synchronize, reopened, ready_for_review the trigger
+       *     listens to.
+       * @example synchronize
+       */
+      action?: string | null;
+      /** @description Request headers a webhook trigger's templates see as `webhook.headers`. */
+      headers?: {
+        [key: string]: string;
+      } | null;
+      /**
+       * @description Idempotency key. Defaults to a fresh id, so every manual fire runs;
+       *     repeat an id the trigger already saw to test deduplication.
+       */
+      id?: string | null;
+      /**
+       * @description Event name: the GitHub event (`pull_request`, `issue_comment`, the
+       *     `X-GitHub-Event` header). For an MCP event trigger it defaults to the
+       *     trigger's event and must match it.
+       * @example pull_request
+       */
+      name?: string | null;
+      /**
+       * @description The event as its source sends it: a webhook request body, a GitHub
+       *     event payload, an MCP event's `data`, or extra context a schedule
+       *     trigger's message reads as `{{payload.*}}`.
+       */
+      payload?: Record<string, unknown>;
+      /**
+       * Format: int64
+       * @description GitHub reference: the pull request number. The server reads it through
+       *     the agent's GitHub connection and builds a `pull_request` event.
+       * @example 12
+       */
+      pull_request?: number | null;
+      /**
+       * @description GitHub reference: the pull request's repository, `owner/name`.
+       * @example acme/api
+       */
+      repository?: string | null;
+    };
     /**
      * @description Whether a missing sign-in for an agent MCP attachment may pause the turn
      *     with an in-chat Connect card.
@@ -31944,8 +32003,11 @@ export interface components {
     };
     TriggerAgentTriggerOutput: {
       created_session: boolean;
-      /** @description Session's prefixed public identifier. */
-      session_id: components["schemas"]["sessionId"];
+      /** @description Why a filtered or duplicate event did not run. */
+      reason?: string | null;
+      session_id?: components["schemas"]["sessionId"] | null;
+      /** @description `filtered` and `duplicate` happen only for a fire with an event. */
+      status: components["schemas"]["ManualFireStatus"];
     };
     /**
      * @description "Only when it changes": the trigger remembers the last value at `path` per
@@ -39305,15 +39367,29 @@ export interface operations {
       };
       cookie?: never;
     };
-    requestBody?: never;
+    /** @description Optional event to fire the trigger with */
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["FireAgentTriggerRequest"];
+      };
+    };
     responses: {
-      /** @description Trigger fired */
+      /** @description Trigger fired, or the event was filtered or a duplicate */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
           "application/json": components["schemas"]["TriggerAgentTriggerOutput"];
+        };
+      };
+      /** @description The event does not fit the trigger */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
       /** @description Trigger not found */

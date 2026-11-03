@@ -21984,13 +21984,91 @@
   {
     "category": "agent_triggers",
     "cli": "agents triggers trigger",
-    "description": "Manually fire an agent trigger once.",
+    "description": "Manually fire an agent trigger once. Pass an event to run it through the trigger's filter, message and session routing as a real one would; webhook, GitHub and MCP event triggers need one.",
     "input_schema": {
+      "$defs": {
+        "ManualTriggerEvent": {
+          "additionalProperties": false,
+          "description": "An event to fire a trigger with, instead of a plain run.\n\nName it raw, as its source sends it (`payload`, with `name` for GitHub and\n`headers` for webhooks), or for a GitHub trigger by reference\n(`repository` and `pull_request`).",
+          "properties": {
+            "action": {
+              "description": "GitHub reference: the action the built event carries. Defaults to the\nfirst of opened, synchronize, reopened, ready_for_review the trigger\nlistens to.",
+              "example": "synchronize",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "headers": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Request headers a webhook trigger's templates see as `webhook.headers`.",
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Idempotency key. Defaults to a fresh id, so every manual fire runs;\nrepeat an id the trigger already saw to test deduplication.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Event name: the GitHub event (`pull_request`, `issue_comment`, the\n`X-GitHub-Event` header). For an MCP event trigger it defaults to the\ntrigger's event and must match it.",
+              "example": "pull_request",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "payload": {
+              "description": "The event as its source sends it: a webhook request body, a GitHub\nevent payload, an MCP event's `data`, or extra context a schedule\ntrigger's message reads as `{{payload.*}}`.",
+              "type": "object"
+            },
+            "pull_request": {
+              "description": "GitHub reference: the pull request number. The server reads it through\nthe agent's GitHub connection and builds a `pull_request` event.",
+              "example": 12,
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "repository": {
+              "description": "GitHub reference: the pull request's repository, `owner/name`.",
+              "example": "acme/api",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
       "description": "Manually fire a trigger once (does not expose the durable schedule id).",
       "properties": {
         "agent_id": {
           "description": "Owning agent's prefixed public identifier.",
           "type": "string"
+        },
+        "event": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ManualTriggerEvent",
+              "description": "Fire with this event, through the same filter, message, session\nrouting and delivery log a real one takes. Required for webhook,\nGitHub and MCP event triggers; optional for schedules."
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "trigger_id": {
           "description": "Agent trigger's prefixed public identifier.",
