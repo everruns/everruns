@@ -43,6 +43,7 @@
 * [OpenAI Agents API Runtime Backend](openai-agents-api-runtime.md) - Mapping, control boundaries, durability, and recommendation for a managed OpenAI loop.
 * [Detached tool calls](detached-tool-calls.md) - Long server-side tool calls leave their turn, so the turn parks and frees its worker slot, lease and memory while the tool works.
 * [Worker history cache](worker-history-cache.md) - A gRPC worker keeps each session's message history and reads only the messages after the last sequence it holds.
+* [Sticky sessions](sticky-sessions.md) - A session's next turn goes back to the worker that ran its last one, whose history cache is warm, unless that worker cannot take it.
 * [Native asynchronous tool calls](native-async-tools.md) - Custom-host pending-call coordination and recovery boundaries.
 * [Event log group commit](event-log-group-commit.md) - Fenced event appends from many workers share one PostgreSQL transaction and one WAL flush, answered only after it commits.
 * [Event listener delivery](event-listeners.md) - How stored session events reach the server's listeners (usage, budgets, traces, notifications, titles and others), in order per session and off the worker's critical path.

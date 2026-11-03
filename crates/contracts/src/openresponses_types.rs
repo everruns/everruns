@@ -721,6 +721,15 @@ pub struct InputTokensDetails {
     /// Tokens written to cache, already included in input_tokens.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_write_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens_details: Option<CacheWriteTokensDetails>,
+}
+
+/// Disjoint subsets of cache writes, as reported by OpenAI Responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CacheWriteTokensDetails {
+    pub ttl_30m_tokens: u32,
+    pub ttl_12h_tokens: u32,
 }
 
 /// Output token breakdown.

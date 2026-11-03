@@ -650,7 +650,6 @@ impl std::fmt::Debug for AnthropicChatDriver {
 // ============================================================================
 // Driver Registration
 // ============================================================================
-
 /// Register the Anthropic driver with the driver registry
 ///
 /// This should be called at application startup to enable Anthropic model support.
@@ -681,6 +680,7 @@ pub fn descriptor() -> DriverDescriptor {
         // value verbatim yields `https://api.anthropic.com/messages` and a 404.
         // Point at a proxy with an explicit `.base_url(...)` instead.
         base_url_env: None,
+        recommended_models: Some(super::recommended::ANTHROPIC_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Anthropic, |config| {
             let provider = everruns_contracts::Provider::new(
                 config.provider.clone(),

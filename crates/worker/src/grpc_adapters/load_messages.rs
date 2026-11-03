@@ -15,13 +15,10 @@ impl GrpcAdapter {
     ) -> Result<(Vec<RuntimeMessage>, usize, Option<i64>)> {
         let history = &self.client.history;
         if after_sequence.is_none() && history.enabled() {
-            let cached = history.get(session_id.uuid());
-            // A cold "latest N" read stays a windowed server read: warming
-            // the cache would load the whole history for one window.
-            if cached.is_some() || message_limit.is_none() {
-                let after = cached.as_ref().map(|c| c.source_sequence);
+            let limit = message_limit.map(|limit| usize::try_from(limit).unwrap_or(0));
+            if let Some(cached) = history.get(session_id.uuid()) {
                 let (appended, _, source_sequence, bytes) = match self
-                    .load_from_server(session_id, None, after, after.is_some())
+                    .load_from_server(session_id, None, Some(cached.source_sequence), true)
                     .await
                 {
                     Ok(loaded) => loaded,
@@ -30,17 +27,48 @@ impl GrpcAdapter {
                         return Err(e);
                     }
                 };
-                let source_sequence = source_sequence.or(after);
-                let messages = history.extend(
-                    session_id.uuid(),
-                    cached.as_deref(),
-                    appended,
-                    bytes,
-                    source_sequence.unwrap_or(0),
-                );
-                let total_count = messages.len();
-                return Ok((messages, total_count, source_sequence));
+                // A cached window too short for this read (a wider window,
+                // or a full read) is read afresh below.
+                if cached.covers(appended.len(), limit) {
+                    let source_sequence = source_sequence.or(Some(cached.source_sequence));
+                    let total_count = cached.total_count + appended.len();
+                    let messages = history.extend(
+                        session_id.uuid(),
+                        Some(&cached),
+                        appended,
+                        bytes,
+                        source_sequence.unwrap_or(0),
+                        0,
+                    );
+                    return Ok((messages, total_count, source_sequence));
+                }
             }
+            // Cold: one read, a window or the whole history as asked, which
+            // the cache keeps with the session's message count.
+            let (messages, total_count, source_sequence, bytes) = match self
+                .load_from_server(session_id, message_limit, None, false)
+                .await
+            {
+                Ok(loaded) => loaded,
+                Err(e) => {
+                    history.forget(session_id.uuid());
+                    return Err(e);
+                }
+            };
+            let total_count = if message_limit.is_none() {
+                messages.len()
+            } else {
+                total_count.max(messages.len())
+            };
+            let messages = history.extend(
+                session_id.uuid(),
+                None,
+                messages,
+                bytes,
+                source_sequence.unwrap_or(0),
+                total_count,
+            );
+            return Ok((messages, total_count, source_sequence));
         }
         let (messages, total_count, source_sequence, _) = self
             .load_from_server(session_id, message_limit, after_sequence, false)
