@@ -48,10 +48,6 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Ready-made agents (blueprints) to adopt and adapt.",
     ),
     (
-        "agents exposures",
-        "Pause or resume all of an agent's live channels at once.",
-    ),
-    (
         "agents external-worker",
         "Inspect or disable a customer-hosted agent runtime.",
     ),
