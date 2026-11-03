@@ -201,7 +201,7 @@ fred = { version = "10", features = ["enable-rustls", "i-scripts"] }
 # NATS (event delivery, task queue)
 # Default features minus `ring`, plus `aws-lc-rs`: async-nats picks a rustls
 # backend through its own feature, and the workspace links exactly one (EVE-924).
-async-nats = { version = "0.50", default-features = false, features = [
+async-nats = { version = "0.51", default-features = false, features = [
     "server_2_10",
     "server_2_11",
     "server_2_12",

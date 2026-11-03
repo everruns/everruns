@@ -81,7 +81,7 @@ ed25519-dalek = { version = "3", features = ["rand_core"], optional = true }
 eventsource-stream = { workspace = true, optional = true }
 everruns-cli-contract = { workspace = true, optional = true }
 everruns-drivers = { workspace = true, default-features = false, optional = true }
-fetchkit = { version = "=0.5.0", features = ["bot-auth"], optional = true }
+fetchkit = { version = "=0.6.0", features = ["bot-auth"], optional = true }
 flate2 = { workspace = true, optional = true }
 tar = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
