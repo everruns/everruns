@@ -8,6 +8,9 @@ SSE, Trace UI, billing and reporting retain their PostgreSQL paths.
 
 The [architecture](../../knowledge/operations/trace-storage.md) owns the design,
 consistency boundaries and promotion criteria. This guide owns exact commands.
+Cloud I/O uses the platform's patched object-store backend. DataFusion's older
+API is connected through a read-only, manifest-scoped bridge with its cloud
+features disabled, so its old S3/XML stack is absent.
 
 ## Off by default
 
@@ -54,7 +57,19 @@ target/debug/everruns-trace-store backfill --org-id 1 --resume "$RUN_UUID" --max
 # new events, and runs rotating synthetic shadow comparisons.
 TRACE_STORE_ENABLED=true TRACE_STORE_ORG_IDS=1 \
   target/debug/everruns-trace-store run
+
+# Explicit all-organizations authority, including new orgs. Do not set ORG_IDS.
+unset TRACE_STORE_ORG_IDS
+TRACE_STORE_ENABLED=true TRACE_STORE_ALL_ORGS=true TRACE_STORE_MAX_ORGS=5 \
+  target/debug/everruns-trace-store run
+# Global payload-free progress for an all-org operator:
+target/debug/everruns-trace-store status-all
 ```
+
+All-org mode persists a rotating organization cursor, discovers only organizations
+with event history, and processes bounded batches. Backlog/storage/unhealthy-check
+gauges cover the whole store, preserving failures outside the current batch.
+The per-org finite backfill remains resumable; new orgs join subsequent sweeps.
 
 For S3, unset `TRACE_STORE_DIRECTORY` and set `TRACE_STORE_BUCKET`. The SDK
 reads `AWS_DEFAULT_REGION`, `AWS_ENDPOINT` (optional S3-compatible HTTPS endpoint),
@@ -81,7 +96,9 @@ placement and org.
 | Setting | Default | Effect |
 | --- | --- | --- |
 | `TRACE_STORE_ENABLED` | `false` | Enables `run` only when explicitly true |
-| `TRACE_STORE_ORG_IDS` | unset | Required comma-separated org allowlist when enabled |
+| `TRACE_STORE_ORG_IDS` | empty | Explicit org allowlist, mutually exclusive with all-org mode |
+| `TRACE_STORE_ALL_ORGS` | `false` | Explicit all-org authority, including future history |
+| `TRACE_STORE_MAX_ORGS` | `5` | Per-cycle all-org discovery batch; 1..100 |
 | `TRACE_STORE_DIRECTORY` | unset | Local object root; conflicts with bucket |
 | `TRACE_STORE_BUCKET` | unset | S3 placement; required unless a directory is selected |
 | `TRACE_STORE_NAME` | `default` | Stable metastore placement identity |

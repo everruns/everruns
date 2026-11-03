@@ -7,6 +7,7 @@
 mod backfill;
 mod catalog;
 mod companion;
+mod datafusion_store;
 mod model;
 mod monitor;
 mod query;
@@ -23,7 +24,7 @@ pub use schema::migrate_catalog;
 pub use shadow::{ShadowOutcome, ShadowReport};
 pub use store::TraceStore;
 
-/// Shared with the platform migrator; the operator must apply platform migrations.
+/// Shared idempotent DDL for the companion and later platform adoption.
 pub const CATALOG_MIGRATION: &str =
     include_str!("../../server/migrations/20261102213413_trace_store_segments.sql");
 

@@ -443,3 +443,88 @@ async fn companion_catalog_migration_is_idempotent_and_keeps_app_history_unchang
         .unwrap();
     assert!(everruns_trace_store::migrate_catalog(&pool).await.is_err());
 }
+
+#[sqlx::test(migrations = false)]
+async fn all_org_observer_rotates_durably_and_discovers_new_history(pool: PgPool) {
+    let (objects, first) = setup(&pool).await;
+    let store = store(&pool, objects.clone(), Limits::default());
+    assert!(store.next_org_scopes(2).await.unwrap().is_empty());
+    seed(&pool, first, &[1]).await;
+    for org in [2_i64, 3] {
+        let id = Uuid::now_v7();
+        sqlx::query("INSERT INTO sessions VALUES($1,$2)")
+            .bind(id)
+            .bind(org)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO event_sequences VALUES($1,1)")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        seed(&pool, id, &[1]).await;
+    }
+    let ids = |scopes: Vec<Scope>| scopes.into_iter().map(|s| s.org_id()).collect::<Vec<_>>();
+    assert_eq!(ids(store.next_org_scopes(2).await.unwrap()), vec![1, 2]);
+    let restarted = super::store(&pool, objects, Limits::default());
+    assert_eq!(ids(restarted.next_org_scopes(2).await.unwrap()), vec![3]);
+    assert_eq!(ids(restarted.next_org_scopes(2).await.unwrap()), vec![1, 2]);
+    let new = Uuid::now_v7();
+    sqlx::query("INSERT INTO sessions VALUES($1,4)")
+        .bind(new)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO event_sequences VALUES($1,1)")
+        .bind(new)
+        .execute(&pool)
+        .await
+        .unwrap();
+    seed(&pool, new, &[1]).await;
+    assert_eq!(ids(restarted.next_org_scopes(2).await.unwrap()), vec![3, 4]);
+    assert!(restarted.next_org_scopes(0).await.is_err());
+    let mut report = restarted
+        .parallel_cycle(&[Scope::new(1).unwrap()], 1)
+        .await
+        .unwrap();
+    restarted
+        .refresh_all_org_progress(&mut report)
+        .await
+        .unwrap();
+    assert_eq!(report.pending_sessions, 3);
+    assert!(report.payload_bytes > 0);
+    sqlx::query("UPDATE trace_store_shadow_checks SET report=jsonb_set(report,'{outcome}','\"mismatch\"'::jsonb) WHERE org_id=1")
+        .execute(&pool).await.unwrap();
+    let mut next = restarted
+        .parallel_cycle(&[Scope::new(2).unwrap()], 1)
+        .await
+        .unwrap();
+    assert_eq!(next.unhealthy_checks, 0);
+    restarted.refresh_all_org_progress(&mut next).await.unwrap();
+    assert_eq!(next.unhealthy_checks, 1);
+    assert_eq!(next.pending_sessions, 2);
+    let monitor = Monitor::default();
+    monitor.record(&next);
+    assert!(!monitor.ready(std::time::Duration::from_secs(60)));
+    assert!(
+        monitor
+            .render()
+            .contains("everruns_trace_store_unhealthy_checks 1")
+    );
+    let run = restarted
+        .start_backfill(Scope::new(3).unwrap())
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM sessions WHERE org_id=3")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(ids(restarted.next_org_scopes(100).await.unwrap()).contains(&3));
+    let skipped = restarted
+        .advance_backfill(Scope::new(3).unwrap(), run.run_id, 1)
+        .await
+        .unwrap();
+    assert!(skipped.complete());
+    assert_eq!(skipped.skipped, 1);
+}

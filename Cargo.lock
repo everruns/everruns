@@ -15,7 +15,7 @@ dependencies = [
  "bytes",
  "futures",
  "pin-project-lite",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "semver",
  "serde",
@@ -75,7 +75,7 @@ dependencies = [
  "chrono",
  "futures",
  "hyper",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "serde",
  "serde_json",
@@ -1351,7 +1351,7 @@ dependencies = [
  "indexmap",
  "jaq-core",
  "jaq-std",
- "md-5 0.11.0",
+ "md-5",
  "monty",
  "monty-types",
  "num-bigint 0.4.8",
@@ -1360,7 +1360,7 @@ dependencies = [
  "rand 0.10.3",
  "regex",
  "regex-automata",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "ryu",
  "self_cell",
@@ -3737,7 +3737,7 @@ dependencies = [
  "chrono",
  "everruns-contracts",
  "everruns-core",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -3780,7 +3780,7 @@ dependencies = [
  "jsonschema",
  "jsonwebtoken",
  "parking_lot",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -3814,7 +3814,7 @@ dependencies = [
  "ignore",
  "notify",
  "rand 0.10.3",
- "reqwest 0.13.5",
+ "reqwest",
  "rustix",
  "serde",
  "serde_json",
@@ -3891,7 +3891,7 @@ dependencies = [
  "jsonschema",
  "rand 0.10.3",
  "regex",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "schemars 1.2.3",
  "serde",
@@ -3966,7 +3966,7 @@ dependencies = [
  "opentelemetry_sdk",
  "rand 0.10.3",
  "regex",
- "reqwest 0.13.5",
+ "reqwest",
  "seccompiler",
  "serde",
  "serde-saphyr",
@@ -4001,7 +4001,7 @@ dependencies = [
  "everruns-contracts",
  "everruns-core",
  "everruns-internal-protocol",
- "reqwest 0.13.5",
+ "reqwest",
  "rusqlite",
  "serde_json",
  "tokio",
@@ -4044,7 +4044,7 @@ dependencies = [
  "futures",
  "jsonwebtoken",
  "rand 0.10.3",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -4093,7 +4093,7 @@ dependencies = [
  "axum",
  "chrono",
  "everruns",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -4211,7 +4211,7 @@ dependencies = [
  "prost",
  "protox",
  "regex",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "rustls-native-certs",
  "serde",
@@ -4242,7 +4242,7 @@ dependencies = [
  "chrono",
  "everruns-contracts",
  "everruns-core",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -4286,7 +4286,7 @@ dependencies = [
  "everruns-integrations",
  "everruns-test-support",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "rstest",
  "serde_json",
  "tempfile",
@@ -4327,7 +4327,7 @@ dependencies = [
  "async-trait",
  "axum",
  "everruns",
- "reqwest 0.13.5",
+ "reqwest",
  "serde_json",
  "tokio",
 ]
@@ -4354,7 +4354,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "getrandom 0.4.3",
- "reqwest 0.13.5",
+ "reqwest",
  "secrecy",
  "serde",
  "serde_json",
@@ -4389,7 +4389,7 @@ dependencies = [
  "inventory",
  "jsonwebtoken",
  "object_store 0.14.2",
- "reqwest 0.13.5",
+ "reqwest",
  "schemars 1.2.3",
  "serde",
  "serde_json",
@@ -4411,7 +4411,7 @@ dependencies = [
  "everruns",
  "everruns-serve",
  "futures-util",
- "reqwest 0.13.5",
+ "reqwest",
  "serde_json",
  "tempfile",
  "tokio",
@@ -4437,7 +4437,7 @@ dependencies = [
  "everruns",
  "everruns-durable-object",
  "everruns-serve",
- "reqwest 0.13.5",
+ "reqwest",
  "serde_json",
  "tempfile",
  "tokio",
@@ -4522,7 +4522,7 @@ dependencies = [
  "prost-types",
  "rand 0.10.3",
  "regex",
- "reqwest 0.13.5",
+ "reqwest",
  "rusqlite",
  "serde",
  "serde_html_form 0.4.1",
@@ -4601,6 +4601,7 @@ version = "0.50.1"
 dependencies = [
  "anyhow",
  "arrow",
+ "async-trait",
  "axum",
  "bytes",
  "chrono",
@@ -4610,6 +4611,7 @@ dependencies = [
  "futures",
  "hex",
  "object_store 0.13.2",
+ "object_store 0.14.2",
  "parquet",
  "serde",
  "serde_json",
@@ -4630,7 +4632,7 @@ dependencies = [
  "everruns-contracts",
  "everruns-core",
  "hex",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -4668,7 +4670,7 @@ dependencies = [
  "moka",
  "prost",
  "prost-types",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -4779,7 +4781,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "rand 0.10.3",
- "reqwest 0.13.5",
+ "reqwest",
  "schemars 1.2.3",
  "serde",
  "serde_json",
@@ -6770,16 +6772,6 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "md-5"
-version = "0.10.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
-dependencies = [
- "cfg-if",
- "digest 0.10.7",
-]
-
-[[package]]
-name = "md-5"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69b6441f590336821bb897fb28fc622898ccceb1d6cea3fde5ea86b090c4de98"
@@ -7328,28 +7320,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "622acbc9100d3c10e2ee15804b0caa40e55c933d5aa53814cd520805b7958a49"
 dependencies = [
  "async-trait",
- "base64 0.22.1",
  "bytes",
  "chrono",
- "form_urlencoded",
  "futures-channel",
  "futures-core",
  "futures-util",
  "http",
- "http-body-util",
  "humantime",
- "hyper",
  "itertools 0.14.0",
- "md-5 0.10.6",
  "parking_lot",
  "percent-encoding",
- "quick-xml 0.39.4",
- "rand 0.10.3",
- "reqwest 0.12.28",
- "ring",
- "serde",
- "serde_json",
- "serde_urlencoded",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -7380,13 +7360,13 @@ dependencies = [
  "humantime",
  "hyper",
  "itertools 0.15.0",
- "md-5 0.11.0",
+ "md-5",
  "nix 0.31.3",
  "parking_lot",
  "percent-encoding",
  "quick-xml 0.41.0",
  "rand 0.10.3",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls-pki-types",
  "serde",
  "serde_json",
@@ -7454,7 +7434,7 @@ dependencies = [
  "bytes",
  "http",
  "opentelemetry",
- "reqwest 0.13.5",
+ "reqwest",
 ]
 
 [[package]]
@@ -7470,7 +7450,7 @@ dependencies = [
  "opentelemetry-proto",
  "opentelemetry_sdk",
  "prost",
- "reqwest 0.13.5",
+ "reqwest",
  "thiserror 2.0.21",
 ]
 
@@ -8032,10 +8012,10 @@ dependencies = [
  "futures-util",
  "hex",
  "liblzma",
- "md-5 0.11.0",
+ "md-5",
  "quick-xml 0.42.0",
  "regex-lite",
- "reqwest 0.13.5",
+ "reqwest",
  "reqwest-middleware",
  "reqwest-retry",
  "reqwest-tracing",
@@ -8196,7 +8176,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "percent-encoding",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -8518,16 +8498,6 @@ name = "quick-error"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
-
-[[package]]
-name = "quick-xml"
-version = "0.39.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdcc8dd4e2f670d309a5f0e83fe36dfdc05af317008fea29144da1a2ac858e5e"
-dependencies = [
- "memchr",
- "serde",
-]
 
 [[package]]
 name = "quick-xml"
@@ -9036,48 +9006,6 @@ checksum = "ba39f3699c378cd8970968dcbff9c43159ea4cfbd88d43c00b22f2ef10a435d2"
 
 [[package]]
 name = "reqwest"
-version = "0.12.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
-dependencies = [
- "base64 0.22.1",
- "bytes",
- "futures-core",
- "futures-util",
- "h2",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-rustls",
- "hyper-util",
- "js-sys",
- "log",
- "percent-encoding",
- "pin-project-lite",
- "quinn",
- "rustls",
- "rustls-native-certs",
- "rustls-pki-types",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "sync_wrapper",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "tower",
- "tower-http 0.6.11",
- "tower-service",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-streams 0.4.2",
- "web-sys",
-]
-
-[[package]]
-name = "reqwest"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16a1cfa75cc186dd73d5818e510e042e40927bccc9c236b061cea97e1eb08029"
@@ -9118,7 +9046,7 @@ dependencies = [
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-streams 0.5.0",
+ "wasm-streams",
  "web-sys",
 ]
 
@@ -9131,7 +9059,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "http",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "thiserror 2.0.21",
  "tower-service",
@@ -9149,7 +9077,7 @@ dependencies = [
  "getrandom 0.2.17",
  "http",
  "hyper",
- "reqwest 0.13.5",
+ "reqwest",
  "reqwest-middleware",
  "retry-policies",
  "thiserror 2.0.21",
@@ -9169,7 +9097,7 @@ dependencies = [
  "getrandom 0.2.17",
  "http",
  "matchit",
- "reqwest 0.13.5",
+ "reqwest",
  "reqwest-middleware",
  "tracing",
 ]
@@ -9388,7 +9316,6 @@ dependencies = [
  "aws-lc-rs",
  "log",
  "once_cell",
- "ring",
  "rustls-pki-types",
  "rustls-webpki",
  "subtle",
@@ -10479,7 +10406,7 @@ dependencies = [
  "hmac",
  "itoa",
  "log",
- "md-5 0.11.0",
+ "md-5",
  "memchr",
  "rand 0.10.3",
  "serde",
@@ -11946,19 +11873,6 @@ dependencies = [
  "indexmap",
  "wasm-encoder",
  "wasmparser",
-]
-
-[[package]]
-name = "wasm-streams"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15053d8d85c7eccdbefef60f06769760a563c7f0a9d6902a13d35c7800b0ad65"
-dependencies = [
- "futures-util",
- "js-sys",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]

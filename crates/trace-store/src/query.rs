@@ -76,7 +76,13 @@ pub(crate) async fn execute(
             .with_batch_size(512),
         runtime,
     );
-    ctx.register_object_store(&url::Url::parse("s3://trace-store")?, store);
+    ctx.register_object_store(
+        &url::Url::parse("s3://trace-store")?,
+        Arc::new(crate::datafusion_store::ReadStore::new(
+            store,
+            segments.iter().map(|s| s.index_key.clone()).collect(),
+        )),
+    );
     let paths = segments
         .iter()
         .map(|s| format!("s3://trace-store/{}", s.index_key))

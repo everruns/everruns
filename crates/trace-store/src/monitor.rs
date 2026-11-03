@@ -62,6 +62,7 @@ struct Measurements {
     payload_bytes: i64,
     backfill_pending: i64,
     backfill_failed: i64,
+    unhealthy_checks: i64,
 }
 #[derive(Clone, Default)]
 pub struct Monitor {
@@ -83,6 +84,7 @@ impl Monitor {
         m.payload_bytes = cycle.payload_bytes;
         m.backfill_pending = cycle.backfill_pending;
         m.backfill_failed = cycle.backfill_failed;
+        m.unhealthy_checks = cycle.unhealthy_checks;
         for report in &cycle.comparisons {
             Self::observe(&mut m, report);
         }
@@ -126,6 +128,7 @@ impl Monitor {
         scalar("events_exported_total", "counter", m.copied.to_string());
         scalar("pending_sessions", "gauge", m.pending.to_string());
         scalar("lag_sequences", "gauge", m.lag.to_string());
+        scalar("unhealthy_checks", "gauge", m.unhealthy_checks.to_string());
         scalar("index_bytes", "gauge", m.index_bytes.to_string());
         scalar("payload_bytes", "gauge", m.payload_bytes.to_string());
         scalar(

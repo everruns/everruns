@@ -32,8 +32,13 @@ struct RunArgs {
     /// Disabled by default, even when object storage is configured.
     #[arg(long,env="TRACE_STORE_ENABLED",default_value_t=false,action=clap::ArgAction::Set)]
     enabled: bool,
-    #[arg(long, env = "TRACE_STORE_ORG_IDS", value_delimiter = ',')]
-    org_ids: Vec<i64>,
+    #[arg(long, env = "TRACE_STORE_ORG_IDS", default_value = "")]
+    org_ids: String,
+    /// Explicitly include every org with retained history, including new orgs.
+    #[arg(long, env="TRACE_STORE_ALL_ORGS", default_value_t=false, action=clap::ArgAction::Set)]
+    all_orgs: bool,
+    #[arg(long, env = "TRACE_STORE_MAX_ORGS", default_value_t = 5)]
+    max_orgs: usize,
     #[arg(long, env = "TRACE_STORE_POLL_SECONDS", default_value_t = 5)]
     poll_seconds: u64,
     #[arg(long, env = "TRACE_STORE_MAX_SESSIONS", default_value_t = 5)]
@@ -44,6 +49,22 @@ struct RunArgs {
         default_value = "127.0.0.1:9465"
     )]
     metrics_addr: std::net::SocketAddr,
+}
+
+impl RunArgs {
+    fn org_ids(&self) -> Result<Vec<i64>> {
+        if self.org_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.org_ids
+            .split(',')
+            .map(|id| {
+                let value = id.parse::<i64>().context("invalid organization id")?;
+                Scope::new(value)?;
+                Ok(value)
+            })
+            .collect()
+    }
 }
 
 #[derive(Subcommand)]
@@ -84,6 +105,8 @@ enum Command {
         #[arg(long, default_value_t = 5)]
         max_sessions: usize,
     },
+    /// Trusted all-org backlog and published storage totals, without payloads.
+    StatusAll,
     /// Current backlog and published storage sizes for one org.
     Status {
         #[arg(long)]
@@ -202,12 +225,16 @@ async fn main() -> Result<()> {
         return Ok(());
     }
     if let Command::Run(args) = &cli.command {
+        let org_ids = args.org_ids()?;
         anyhow::ensure!(
-            !args.org_ids.is_empty() && args.org_ids.len() <= 100,
-            "enabled companion requires explicit org ids"
+            (args.all_orgs && org_ids.is_empty())
+                || (!args.all_orgs && !org_ids.is_empty() && org_ids.len() <= 100),
+            "enabled companion requires explicit org ids or all-orgs, exclusively"
         );
         anyhow::ensure!(
-            (1..=100).contains(&args.max_sessions) && (1..=3600).contains(&args.poll_seconds),
+            (1..=100).contains(&args.max_sessions)
+                && (1..=100).contains(&args.max_orgs)
+                && (1..=3600).contains(&args.poll_seconds),
             "invalid companion budgets"
         );
     }
@@ -284,6 +311,7 @@ async fn main() -> Result<()> {
                 serde_json::to_value(store.shadow_once(scope, max_sessions).await?)?
             }
         }
+        Command::StatusAll => serde_json::to_value(store.progress_all().await?)?,
         Command::Status { org_id } => {
             serde_json::to_value(store.progress(Scope::new(org_id)?).await?)?
         }
@@ -370,7 +398,7 @@ async fn main() -> Result<()> {
 async fn run_companion(store: TraceStore, args: RunArgs) -> Result<serde_json::Value> {
     use std::{future::IntoFuture, time::Duration};
     let scopes = args
-        .org_ids
+        .org_ids()?
         .into_iter()
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
@@ -382,7 +410,35 @@ async fn run_companion(store: TraceStore, args: RunArgs) -> Result<serde_json::V
     let http = axum::serve(listener, monitor.router(health_age)).into_future();
     let observe = async {
         loop {
-            let report = store.parallel_cycle(&scopes, args.max_sessions).await?;
+            let discovered;
+            let batch = if args.all_orgs {
+                match store.next_org_scopes(args.max_orgs).await {
+                    Ok(batch) => {
+                        discovered = batch;
+                        &discovered
+                    }
+                    Err(_) => {
+                        let report = everruns_trace_store::CycleReport {
+                            errors: 1,
+                            ..Default::default()
+                        };
+                        monitor.record(&report);
+                        println!("{}", serde_json::to_string(&report)?);
+                        tokio::time::sleep(Duration::from_secs(args.poll_seconds)).await;
+                        continue;
+                    }
+                }
+            } else {
+                &scopes
+            };
+            let mut report = if batch.is_empty() {
+                everruns_trace_store::CycleReport::default()
+            } else {
+                store.parallel_cycle(batch, args.max_sessions).await?
+            };
+            if args.all_orgs && store.refresh_all_org_progress(&mut report).await.is_err() {
+                report.errors += 1;
+            }
             monitor.record(&report);
             println!("{}", serde_json::to_string(&report)?);
             tokio::time::sleep(Duration::from_secs(args.poll_seconds)).await;

@@ -28,7 +28,8 @@ DataFusion nor require S3. Existing file/image blob configuration and the trace
 store's object placement are independent: enabling one never enables the other.
 The trace process is off by default and must not open a database connection,
 create a directory, resolve object credentials, or bind a port while disabled.
-An enabled process requires an explicit organization allowlist and a dedicated
+An enabled process requires an explicit organization allowlist or explicit
+all-organizations authority, plus a dedicated
 object prefix. Missing configuration fails that optional process visibly; the
 primary service remains independent.
 
@@ -94,7 +95,11 @@ SaaS repository, never in this public document.
 A segment contains a narrow Parquet index and an independently fetched payload
 object. List/filter queries never fetch full prompts or tool results. A detail
 read resolves an event through an org-scoped live manifest, reads a bounded byte
-range, and verifies event identity and a checksum. Unknown event types, JSON
+range, and verifies event identity and a checksum. The index is Zstandard-
+compressed Parquet. Payload JSONL stays uncompressed so a detail read can fetch
+one exact range without downloading/decompressing a whole segment. This accepts
+larger object bytes in exchange for bounded detail I/O; account for those bytes
+in cost comparisons. Seekable payload compression is a later format decision. Unknown event types, JSON
 fields, tags and original identities survive the privileged copy format.
 
 The metastore holds object placement, session checkpoints/tombstones, published
@@ -157,7 +162,10 @@ reported as successfully complete. Byte limits are enforced before transferring
 large JSON from PostgreSQL into the process.
 
 After the fixed backfill, a low-concurrency polling loop copies new events. It
-prioritizes stale checkpoints and honors the same org allowlist. No synchronous
+prioritizes stale checkpoints and honors the same org scope. All-org mode uses a
+durable rotating tenant cursor with a bounded batch, discovering new orgs as they
+acquire history. Its backlog/storage/failure gauges aggregate the whole store;
+a healthy batch cannot hide an outstanding failure in another org. No synchronous
 dual write is added to event emission: object-store failures cannot fail or slow
 an agent append through an added application call. Catch-up errors are visible
 through health, metrics and durable status, with bounded retries between cycles.
@@ -231,6 +239,15 @@ backend. The companion applies its additive catalog DDL under its own checksum
 ledger; it never adds versions to the running platform's `_sqlx_migrations`.
 This preserves restart compatibility until a later platform version adopts the
 same idempotent migrations through its normal migration path.
+
+## Dependency boundary
+
+DataFusion's object-store API generation is isolated behind a read-only bridge
+that exposes only the selected manifest index keys. All actual cloud I/O uses
+the platform's patched backend generation; the older API dependency has cloud
+features disabled. The bridge preserves range/version/precondition reads and
+refuses mutations, preventing an older transitive S3/XML implementation from
+entering the companion. Advisory and real S3 protocol tests gate this boundary.
 
 ## Validation and remaining boundaries
 

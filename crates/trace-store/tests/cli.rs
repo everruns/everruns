@@ -17,6 +17,7 @@ fn disabled_companion_requires_no_database_s3_directory_or_listener() {
         .arg("--directory")
         .arg(&directory)
         .args(["run", "--metrics-addr", "192.0.2.1:1"])
+        .env("TRACE_STORE_ORG_IDS", "")
         .output()
         .unwrap();
     assert!(
@@ -35,11 +36,30 @@ fn disabled_companion_requires_no_database_s3_directory_or_listener() {
 fn enabled_companion_requires_explicit_organizations_before_side_effects() {
     let output = Command::new(env!("CARGO_BIN_EXE_everruns-trace-store"))
         .env_remove("TRACE_STORE_ORG_IDS")
+        .env_remove("TRACE_STORE_ALL_ORGS")
         .args(["run", "--enabled", "true"])
         .output()
         .unwrap();
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("explicit org ids"));
+}
+
+#[test]
+fn all_org_mode_rejects_ambiguous_scope_before_storage_setup() {
+    let output = Command::new(env!("CARGO_BIN_EXE_everruns-trace-store"))
+        .args([
+            "run",
+            "--enabled",
+            "true",
+            "--all-orgs",
+            "true",
+            "--org-ids",
+            "1",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("exclusively"));
 }
 
 #[test]

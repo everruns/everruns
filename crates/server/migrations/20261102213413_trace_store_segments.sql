@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS trace_store_locations (
     store_name TEXT PRIMARY KEY,
-    object_prefix TEXT NOT NULL UNIQUE
+    object_prefix TEXT NOT NULL UNIQUE,
+    observer_org_id BIGINT NOT NULL DEFAULT 0 CHECK (observer_org_id >= 0)
 );
 
 -- Analytical copies only. Intentionally retain manifests after a session is
