@@ -551,6 +551,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::mcp_url_consent::submit_elicitation_consent,
         api::question_answers::submit_question_answers,
         api::tool_approvals::submit_tool_approvals,
+        api::run_requests::get_run_requests,
         api::credentials::list,
         api::credentials::create,
         api::credentials::set_value,
@@ -826,6 +827,10 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::tool_approvals::ToolApprovalAnswer,
             api::tool_approvals::ToolApprovalDecision,
             api::tool_approvals::ToolApprovalResolution,
+            crate::domains::sessions::run_requests::RunRequestsResponse,
+            crate::domains::sessions::run_requests::RunRequest,
+            crate::domains::sessions::run_requests::RunRequestToolCall,
+            crate::domains::sessions::run_requests::RequestingAgent,
             // MCP Server types
             McpServer, McpServerStatus, McpServerTransportType,
             everruns_core::mcp_server::McpToolAnnotations,

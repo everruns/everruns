@@ -29910,6 +29910,54 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/run-requests": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Get run requests",
+        "description": "Questions and approvals that the agents this session handed work to wait\non. Empty unless the session is a run's first session.",
+        "operationId": "get_run_requests",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requests from the other agents in the run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunRequestsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sessions/{session_id}/sandbox": {
       "get": {
         "tags": [
@@ -64870,6 +64918,17 @@
           "expires_at"
         ],
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RequestingAgent",
+                "description": "The asking agent, when another agent in the run asked."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "answerable": {
             "type": "boolean",
             "description": "Always `true`: the person using the agent answers its approvals."
@@ -64889,6 +64948,13 @@
             "type": "string",
             "description": "Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`."
           },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The asking agent's session, when another agent in the run asked.\nAnswer on this session; the server routes it."
+          },
           "tool_call_id": {
             "type": "string",
             "description": "The request to name in `POST …/tool-approvals`."
@@ -64906,6 +64972,17 @@
           "questions"
         ],
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RequestingAgent",
+                "description": "The asking agent, when another agent in the run asked."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "expires_at": {
             "type": [
               "string",
@@ -64919,6 +64996,13 @@
               "type": "object"
             },
             "description": "The questions as asked: `kind`, `id`, `header`, `question`, `options`,\n`multi_select`, `allow_other`."
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The asking agent's session, when another agent in the run asked.\nAnswer on this session; the server routes it."
           },
           "tool_call_id": {
             "type": "string",
@@ -66942,6 +67026,25 @@
           }
         }
       },
+      "RequestingAgent": {
+        "type": "object",
+        "description": "The agent a request came from.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The agent's id, as `/v1/agents/{agent_id}` takes it.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "name": {
+            "type": "string",
+            "description": "The agent's display name."
+          }
+        }
+      },
       "ResolveOrgResponse": {
         "type": "object",
         "description": "Response body for the `resolve_org` operation.",
@@ -67427,6 +67530,75 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "RunRequest": {
+        "type": "object",
+        "description": "One request from another agent in the run.",
+        "required": [
+          "session_id",
+          "requested_at",
+          "tool_call"
+        ],
+        "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RequestingAgent",
+                "description": "The asking agent. Absent when the agent was deleted."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "The asking agent's session."
+          },
+          "tool_call": {
+            "$ref": "#/components/schemas/RunRequestToolCall"
+          }
+        }
+      },
+      "RunRequestToolCall": {
+        "type": "object",
+        "description": "A tool call another agent in the run waits on the person for.",
+        "required": [
+          "id",
+          "name",
+          "arguments"
+        ],
+        "properties": {
+          "arguments": {
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "`ask_user`, `approve_tool_call`, `openai_mcp_approval`,\n`confirm_url_elicitation` or `setup_connection`."
+          }
+        }
+      },
+      "RunRequestsResponse": {
+        "type": "object",
+        "description": "What the other agents in a run wait on the person for.",
+        "required": [
+          "requests"
+        ],
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunRequest"
+            }
           }
         }
       },

@@ -7729,6 +7729,27 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/run-requests": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get run requests
+     * @description Questions and approvals that the agents this session handed work to wait
+     *     on. Empty unless the session is a run's first session.
+     */
+    get: operations["get_run_requests"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/sandbox": {
     parameters: {
       query?: never;
@@ -25475,6 +25496,7 @@ export interface components {
      *     `pending_approvals` item, plus `answerable`.
      */
     PendingApprovalView: {
+      agent?: components["schemas"]["RequestingAgent"] | null;
       /** @description Always `true`: the person using the agent answers its approvals. */
       answerable: boolean;
       arguments: Record<string, unknown>;
@@ -25487,6 +25509,11 @@ export interface components {
       expires_at: string;
       /** @description Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`. */
       risk: string;
+      /**
+       * @description The asking agent's session, when another agent in the run asked.
+       *     Answer on this session; the server routes it.
+       */
+      session_id?: string | null;
       /** @description The request to name in `POST …/tool-approvals`. */
       tool_call_id: string;
       tool_name: string;
@@ -25496,6 +25523,7 @@ export interface components {
      *     `pending_questions` item.
      */
     PendingQuestionView: {
+      agent?: components["schemas"]["RequestingAgent"] | null;
       /** @description When the server stops waiting (RFC 3339). */
       expires_at?: string | null;
       /**
@@ -25503,6 +25531,11 @@ export interface components {
        *     `multi_select`, `allow_other`.
        */
       questions: Record<string, unknown>[];
+      /**
+       * @description The asking agent's session, when another agent in the run asked.
+       *     Answer on this session; the server routes it.
+       */
+      session_id?: string | null;
       /** @description The `ask_user` call to name in `POST …/question-answers`. */
       tool_call_id: string;
     };
@@ -26672,6 +26705,16 @@ export interface components {
        */
       processing: number;
     };
+    /** @description The agent a request came from. */
+    RequestingAgent: {
+      /**
+       * @description The agent's id, as `/v1/agents/{agent_id}` takes it.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      id: string;
+      /** @description The agent's display name. */
+      name: string;
+    };
     /** @description Response body for the `resolve_org` operation. */
     ResolveOrgResponse: {
       /** @description Public ID of the organization that owns the resource. */
@@ -26928,6 +26971,29 @@ export interface components {
       failed: number;
       /** Format: int64 */
       runs: number;
+    };
+    /** @description One request from another agent in the run. */
+    RunRequest: {
+      agent?: components["schemas"]["RequestingAgent"] | null;
+      /** Format: date-time */
+      requested_at: string;
+      /** @description The asking agent's session. */
+      session_id: string;
+      tool_call: components["schemas"]["RunRequestToolCall"];
+    };
+    /** @description A tool call another agent in the run waits on the person for. */
+    RunRequestToolCall: {
+      arguments: Record<string, unknown>;
+      id: string;
+      /**
+       * @description `ask_user`, `approve_tool_call`, `openai_mcp_approval`,
+       *     `confirm_url_elicitation` or `setup_connection`.
+       */
+      name: string;
+    };
+    /** @description What the other agents in a run wait on the person for. */
+    RunRequestsResponse: {
+      requests: components["schemas"]["RunRequest"][];
     };
     /** @description Aggregate metrics for a completed eval run. */
     RunSummary: {
@@ -55568,6 +55634,50 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ResumeSessionResponse"];
         };
+      };
+    };
+  };
+  get_run_requests: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID (prefixed, e.g., session_...) */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Requests from the other agents in the run */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RunRequestsResponse"];
+        };
+      };
+      /** @description Invalid session ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
