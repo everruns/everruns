@@ -73,6 +73,8 @@ mod script_run;
 #[cfg(feature = "actor-runtime")]
 #[path = "host/session_actor/mod.rs"]
 pub mod session_actor;
+#[path = "host/turn_completion_check.rs"]
+mod turn_completion_check;
 #[path = "host/turn_loop.rs"]
 mod turn_loop;
 #[path = "host/turn_resume.rs"]
@@ -102,6 +104,7 @@ pub use builders::{
 };
 pub use capabilities::{runtime_capability_registry, runtime_egress_service};
 pub use command_host::StoreCommandHost;
+pub use turn_completion_check::{COMPLETION_REVIEW_PURPOSE, REVIEW_TIMEOUT};
 pub use composition::{HostComposition, HostCompositionBuilder};
 pub use events::*;
 pub use execution_snapshot::{load_execution_snapshot, load_execution_snapshot_for_session};
