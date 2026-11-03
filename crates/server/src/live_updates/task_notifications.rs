@@ -18,6 +18,51 @@ use tracing::{debug, error, info, warn};
 pub struct TaskNotificationPayload {
     pub activity_type: String,
     pub pending_count: i32,
+    /// The one worker this wake-up is for (sticky sessions); `None` wakes
+    /// every subscriber of the activity type.
+    pub target_worker: Option<String>,
+}
+
+/// Separates an activity type from the worker a wake-up names, on the wire
+/// (`session_actor@worker-…`, in a NOTIFY payload or a NATS message body).
+const TARGET_SEPARATOR: char = '@';
+
+impl TaskNotificationPayload {
+    /// Parse a raw wake-up: an activity type, optionally `@` a worker id.
+    pub fn parse(raw: &str) -> Self {
+        let (activity_type, target_worker) = match raw.split_once(TARGET_SEPARATOR) {
+            Some((activity_type, worker)) if !worker.is_empty() => {
+                (activity_type.to_string(), Some(worker.to_string()))
+            }
+            Some((activity_type, _)) => (activity_type.to_string(), None),
+            None => (raw.to_string(), None),
+        };
+        Self {
+            activity_type,
+            pending_count: 0,
+            target_worker,
+        }
+    }
+
+    /// The wire form [`Self::parse`] reads.
+    pub fn encode(activity_type: &str, target_worker: Option<&str>) -> String {
+        match target_worker {
+            Some(worker) => format!("{activity_type}{TARGET_SEPARATOR}{worker}"),
+            None => activity_type.to_string(),
+        }
+    }
+
+    /// Whether the subscription `subscriber_id` should hear this wake-up. A
+    /// worker subscribes under its id, or its id and a `:suffix` per loop
+    /// (`worker-…:actors`); a targeted wake-up reaches only those.
+    pub fn is_for(&self, subscriber_id: &str) -> bool {
+        match &self.target_worker {
+            None => true,
+            Some(worker) => subscriber_id
+                .strip_prefix(worker.as_str())
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with(':')),
+        }
+    }
 }
 
 /// Handle for a worker subscription
@@ -146,17 +191,14 @@ impl TaskNotificationBroadcaster {
                     notification = listener.recv() => {
                         match notification {
                             Ok(notification) => {
-                                let activity_type = notification.payload().to_string();
+                                let payload = TaskNotificationPayload::parse(notification.payload());
                                 debug!(
-                                    activity_type = %activity_type,
+                                    activity_type = %payload.activity_type,
+                                    target_worker = ?payload.target_worker,
                                     "Received task_available notification"
                                 );
 
-                                // Broadcast to all subscribers
-                                let payload = TaskNotificationPayload {
-                                    activity_type,
-                                    pending_count: 0, // Could query count, but adds latency
-                                };
+                                // Broadcast to all subscribers; each stream filters.
 
                                 // Ignore send errors (no receivers is fine)
                                 let _ = sender.send(payload);
@@ -277,8 +319,15 @@ impl TaskBroadcaster {
     /// Publish a task notification (NATS only — PG uses NOTIFY triggers).
     /// No-op for PG backend since NOTIFY is handled by database triggers.
     pub async fn notify_task_available(&self, activity_type: &str) {
+        self.notify_worker(activity_type, None).await;
+    }
+
+    /// [`Self::notify_task_available`] for one worker's subscriptions only
+    /// when `target_worker` names one.
+    pub async fn notify_worker(&self, activity_type: &str, target_worker: Option<&str>) {
         if let Self::Nats(b) = self {
-            b.notify_task_available(activity_type).await;
+            b.notify_task_available_to(activity_type, target_worker)
+                .await;
         }
     }
 
@@ -287,5 +336,37 @@ impl TaskBroadcaster {
             Self::Postgres(b) => b.shutdown().await,
             Self::Nats(b) => b.shutdown().await,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TaskNotificationPayload;
+
+    #[test]
+    fn a_plain_wake_up_reaches_every_subscriber() {
+        let payload = TaskNotificationPayload::parse("session_actor");
+        assert_eq!(payload.activity_type, "session_actor");
+        assert!(payload.is_for("worker-1:actors"));
+        assert!(payload.is_for("worker-2"));
+    }
+
+    #[test]
+    fn a_targeted_wake_up_reaches_only_its_worker() {
+        let raw = TaskNotificationPayload::encode("session_actor", Some("worker-1"));
+        let payload = TaskNotificationPayload::parse(&raw);
+        assert_eq!(payload.activity_type, "session_actor");
+        assert!(payload.is_for("worker-1"));
+        assert!(payload.is_for("worker-1:actors"));
+        assert!(!payload.is_for("worker-2:actors"));
+        // A worker whose id merely starts with the target's is another worker.
+        assert!(!payload.is_for("worker-10:actors"));
+    }
+
+    #[test]
+    fn an_empty_target_is_no_target() {
+        let payload = TaskNotificationPayload::parse("session_actor@");
+        assert_eq!(payload.activity_type, "session_actor");
+        assert!(payload.is_for("worker-2:actors"));
     }
 }

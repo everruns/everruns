@@ -116,7 +116,7 @@ mod session_actors;
 pub use session_actors::rows::*;
 pub use session_actors::{
     DEFAULT_ACTOR_LEASES_PER_ORG, MAX_ACTOR_LEASE_BATCH, mark_session_actor_resumable,
-    mark_session_actor_runnable,
+    mark_session_actor_runnable, sticky_grace,
 };
 mod session_databases;
 pub use session_databases::{CreateSessionDatabase, SessionDatabaseRow};
