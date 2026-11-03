@@ -44,10 +44,6 @@ fn allowed_path(raw: &str, read: bool) -> bool {
     // The recording UI lists names/metadata only; secret values and credential
     // writes must use the existing credential-collection surface.
     let segments: Vec<_> = path.split('/').collect();
-    if segments.get(2) == Some(&"images") {
-        return read
-            && (segments.len() == 4 || (segments.len() == 5 && segments[4] == "thumbnail"));
-    }
     if segments.len() == 6
         && segments[2] == "sessions"
         && segments[4] == "storage"
@@ -198,8 +194,6 @@ mod tests {
             "/v1/sessions/session_1/storage/keys",
             "/v1/durable/config",
             "/v1/system/doctor",
-            "/v1/images/img_1",
-            "/v1/images/img_1/thumbnail",
         ] {
             assert!(allowed_path(path, true), "{path}");
         }
@@ -216,6 +210,5 @@ mod tests {
         ] {
             assert!(!allowed_path(path, true), "{path}");
         }
-        assert!(!allowed_path("/v1/images/img_1", false));
     }
 }

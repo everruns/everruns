@@ -93,8 +93,6 @@ connection carrying cookies.
 
 Workspace file reads and downloads use the same MCP bridge. Embedded file
 sources do not navigate to cookie-authenticated download or preview endpoints.
-Session image thumbnails and originals also resolve through the bridge; the
-embedded image elements receive data URLs instead of browser-authenticated URLs.
 Files and session exports save through the host's standard `ui/download-file`
 action with bounded inline bytes; hosts without download support report the
 limitation instead of attempting a sandbox-blocked browser download.

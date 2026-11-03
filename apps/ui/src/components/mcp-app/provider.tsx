@@ -9,7 +9,6 @@ import { OrgContext } from "@/providers/org-provider";
 import { FeatureFlagsContext } from "@/providers/feature-flags-provider";
 import { useUiTranslations } from "@/providers/locale-provider";
 import { setActiveOrgId } from "@/lib/api/active-org";
-import { ApiAssetContext } from "@/hooks/use-api-asset";
 import type { FeatureFlags, OrganizationMembership, UserInfoResponse } from "@/lib/api/types";
 import {
   connectWorkspace,
@@ -123,7 +122,7 @@ export function McpAppProvider({ children }: { children: ReactNode }) {
           >
             <FeatureFlagsContext value={{ flags: bootstrap.feature_flags, isLoading: false }}>
               <ConfirmationProvider scope={`${org.public_id}:${pathname}`}>
-                <ApiAssetContext value>{children}</ApiAssetContext>
+                {children}
               </ConfirmationProvider>
             </FeatureFlagsContext>
           </OrgContext>
