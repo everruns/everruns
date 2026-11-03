@@ -6,7 +6,7 @@ import { useUiTranslations } from "@/providers/locale-provider";
 import { FileNavigationContext } from "@/components/files/file-source";
 import { OrgHome } from "@/components/home/org-home";
 import { SessionProvider } from "@/app/(main)/sessions/[sessionId]/session-context";
-import { SessionLayoutContent } from "@/app/(main)/sessions/[sessionId]/layout";
+import { SessionLayoutContent } from "@/components/session/session-layout-content";
 import Trace from "@/app/(main)/sessions/[sessionId]/trace/page";
 import Approvals from "@/app/(main)/sessions/[sessionId]/approvals/page";
 import Work from "@/app/(main)/sessions/[sessionId]/work/page";
