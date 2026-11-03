@@ -87,5 +87,4 @@ impl EventListener for ReportingProjectionListener {
 }
 
 #[cfg(test)]
-#[path = "listener_tests.rs"]
 mod tests;
