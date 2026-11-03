@@ -114,6 +114,8 @@ jest.mock("@/hooks/use-agent-channels", () => ({
     refetch: jest.fn(),
   }),
   useSlackWorkspaces: () => ({ data: mockWorkspaces, isLoading: false }),
+  useSlackWorkspaceName: (teamId?: string | null) =>
+    mockWorkspaces.find((workspace) => workspace.team_id === teamId)?.team_name ?? teamId,
   useInvalidateSlackWorkspaces: () => jest.fn(),
   useUpdateAgentChannel: () => ({ mutate: updateChannel, isPending: false, reset: jest.fn() }),
   useDeleteAgentChannel: () => ({ mutate: jest.fn(), isPending: false }),
