@@ -961,6 +961,18 @@ pub(super) fn provisioning_error_response(
                 .with_code(code)
                 .into_response(StatusCode::UNPROCESSABLE_ENTITY)
         }
+        // Slack's own words about which fields it refused. They name manifest
+        // fields we generated (no tokens), and without them the person sees
+        // only "invalid_manifest" and nobody can tell what to change.
+        SlackProvisioningError::RejectedWithProblems { code, problems } => {
+            tracing::warn!(slack_error = %code, ?problems, "Slack app provisioning rejected");
+            ErrorResponse::new(format!(
+                "Slack rejected the app creation: {code} ({})",
+                problems.join("; ")
+            ))
+            .with_code(code)
+            .into_response(StatusCode::UNPROCESSABLE_ENTITY)
+        }
         // Not 502: the edge proxy replaces a 502 body with its own error page,
         // so the person never saw which part of the setup Slack refused.
         SlackProvisioningError::Unreachable(detail) => {

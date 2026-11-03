@@ -125,6 +125,12 @@ pub enum SlackProvisioningError {
     /// surface; it never carries our token.
     #[error("Slack rejected the request: {0}")]
     Rejected(String),
+    /// Slack refused the call and said which parts were wrong, as
+    /// `apps.manifest.create` does for `invalid_manifest`. `problems` is
+    /// Slack's own list, each `pointer: message`; without it the person sees
+    /// only "invalid_manifest" and cannot tell which field to change.
+    #[error("Slack rejected the request: {code} ({})", problems.join("; "))]
+    RejectedWithProblems { code: String, problems: Vec<String> },
     /// The call did not complete — network, timeout, unparseable body.
     #[error("Could not reach Slack: {0}")]
     Unreachable(String),

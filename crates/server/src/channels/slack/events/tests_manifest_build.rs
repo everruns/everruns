@@ -4,6 +4,7 @@ use super::*;
 use everruns_core::host::TurnBackend;
 
 use super::tests_support::*;
+use crate::domains::harnesses::record::ConversationStarter;
 
 #[test]
 fn manifest_lets_people_message_the_app() {
@@ -28,6 +29,116 @@ fn manifest_lets_people_message_the_app() {
     }
 }
 
+/// Every manifest we can generate must stay inside Slack's limits, whatever
+/// the agent is called or says about itself. Slack refuses an out-of-range
+/// field with a bare `invalid_manifest`, so this is the only place an
+/// oversized field is caught before a person presses Add to Slack.
+#[test]
+fn worst_case_agents_still_produce_a_manifest_within_slack_limits() {
+    let long_ascii = "Watches agent frameworks for features worth adopting. ".repeat(100);
+    let long_cyrillic = "Тримає розпорядок дня дітей і відповідає в Slack. ".repeat(100);
+    let tricky = "Quotes \"here\", a backslash \\, a tab\tand\nnew lines: ok? — yes # no";
+    let names = [
+        "a".to_string(),
+        "Ecosystem Watch".to_string(),
+        "Дуже довга назва агента, що не влазить у ліміт Slack".to_string(),
+        "x".repeat(200),
+    ];
+    let descriptions = [
+        None,
+        Some(""),
+        Some("Answers questions"),
+        Some(long_ascii.as_str()),
+        Some(long_cyrillic.as_str()),
+        Some(tricky),
+    ];
+    let starters: Vec<ConversationStarter> = (0..8)
+        .map(|i| ConversationStarter {
+            icon: None,
+            text: format!(
+                "Starter {i}: {}",
+                "a long prompt that keeps going ".repeat(20)
+            ),
+        })
+        .collect();
+
+    for name in &names {
+        for description in descriptions {
+            for agent_surface in [false, true] {
+                let yaml = build_manifest_yaml(
+                    name,
+                    &truncate_display_name(name),
+                    description,
+                    "https://example.com/events",
+                    "https://example.com/interactivity",
+                    "https://example.com/callback",
+                    agent_surface,
+                    &starters,
+                );
+                let case =
+                    format!("name={name:?} description={description:?} surface={agent_surface}");
+                let manifest: serde_json::Value = serde_yaml::from_str(&yaml)
+                    .unwrap_or_else(|error| panic!("{case}: invalid YAML: {error}\n{yaml}"));
+                let text = |pointer: &str| {
+                    manifest
+                        .pointer(pointer)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_else(|| panic!("{case}: missing {pointer}"))
+                        .to_string()
+                };
+                let chars = |s: &str| s.chars().count();
+
+                let app_name = text("/display_information/name");
+                assert!(
+                    !app_name.is_empty() && chars(&app_name) <= 35,
+                    "{case}: name {app_name:?}"
+                );
+                let short = text("/display_information/description");
+                assert!(
+                    short.len() <= SLACK_SHORT_DESC_MAX_BYTES,
+                    "{case}: description {short:?}"
+                );
+                let long = text("/display_information/long_description");
+                assert!(
+                    (SLACK_LONG_DESC_MIN..=SLACK_LONG_DESC_MAX).contains(&chars(&long)),
+                    "{case}: long_description is {} chars",
+                    chars(&long)
+                );
+                let bot = text("/features/bot_user/display_name");
+                assert!(
+                    !bot.is_empty() && bot.len() <= 80,
+                    "{case}: display_name {bot:?}"
+                );
+
+                if agent_surface {
+                    let agent = text("/features/agent_view/agent_description");
+                    assert!(
+                        chars(&agent) <= SLACK_AGENT_DESC_MAX,
+                        "{case}: agent_description"
+                    );
+                    let prompts = manifest
+                        .pointer("/features/agent_view/suggested_prompts")
+                        .and_then(serde_json::Value::as_array)
+                        .unwrap_or_else(|| panic!("{case}: suggested_prompts"));
+                    assert!(
+                        prompts.len() <= SLACK_SUGGESTED_PROMPT_MAX,
+                        "{case}: prompts"
+                    );
+                    for prompt in prompts {
+                        let title = prompt["title"].as_str().unwrap_or_default();
+                        assert!(
+                            chars(title) <= SLACK_SUGGESTED_PROMPT_TITLE_MAX,
+                            "{case}: prompt title {title:?}"
+                        );
+                    }
+                } else {
+                    assert!(manifest.pointer("/features/agent_view").is_none(), "{case}");
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn short_description_fits_slack_byte_limit() {
     let ukrainian = "Тримає розпорядок дня дітей (скрін тайм, чергування з посуду), публікує його на stend.sh, надсилає картки у Visti, відповідає в Slack.";
@@ -37,9 +148,21 @@ fn short_description_fits_slack_byte_limit() {
         "{} bytes",
         short.len()
     );
-    assert!(ukrainian.starts_with(&short));
+    assert!(ukrainian.starts_with(short.trim_end_matches('…')));
     let ascii = "x".repeat(200);
-    assert_eq!(build_short_description("a", Some(&ascii)).len(), 140);
+    assert!(build_short_description("a", Some(&ascii)).len() <= SLACK_SHORT_DESC_MAX_BYTES);
+    // The description that Slack refused in production: 141 ASCII bytes. Cut
+    // to 140 it still failed, so it must now end well short of that.
+    let refused = "Daily watch of agent frameworks (Vercel AI SDK, LangGraph, DeepAgents, PydanticAI and more) for features worth adopting in Everruns or Yolop.";
+    let short = build_short_description("Ecosystem Watch", Some(refused));
+    assert!(short.len() <= SLACK_SHORT_DESC_MAX_BYTES, "{short}");
+    assert!(short.ends_with('…') && !short.ends_with(" …"), "{short}");
+    assert!(refused.starts_with(short.trim_end_matches('…')), "{short}");
+    // Short descriptions pass through untouched.
+    assert_eq!(
+        build_short_description("a", Some("Answers questions")),
+        "Answers questions"
+    );
     assert_eq!(truncate_bytes("ab", 10), "ab");
     assert_eq!(truncate_bytes("аб", 3), "а");
 }
