@@ -32,6 +32,8 @@ from call to call.
 
 ## Update 2026-11-03
 
-Direct OpenAI Responses calls on supporting models can now request `12h`.
+Direct OpenAI Responses calls at `api.openai.com` on supporting models now
+default to `12h`. Set `retention: "30m"` for the shorter write tier or
+`enabled: false` to remove Everruns-managed controls.
 See [12-hour prompt caching](/changelog/2026-11-03-twelve-hour-prompt-cache/)
 for endpoint restrictions and write costs.

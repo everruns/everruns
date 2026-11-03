@@ -101,6 +101,12 @@ impl ColdMoment {
         let retention = cache.map(|cache| cache.retention).unwrap_or_default();
         let minutes = match retention {
             PromptCacheRetention::TwelveHours => 12 * 60,
+            PromptCacheRetention::Default
+                if *provider == DriverId::OpenAI
+                    && everruns_contracts::openai_compat::supports_cache_options(model) =>
+            {
+                12 * 60
+            }
             PromptCacheRetention::OneHour => 60,
             _ if *provider == DriverId::Anthropic || *provider == DriverId::Bedrock => 5,
             _ => 30,

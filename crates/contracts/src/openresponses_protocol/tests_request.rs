@@ -46,7 +46,7 @@ fn explicit_cache_wire_options_are_model_gated() {
     apply_cache_options(&mut body, &config, true, true);
     assert_eq!(
         body["prompt_cache_options"],
-        json!({"ttl":"30m","mode":"explicit"})
+        json!({"ttl":"12h","mode":"explicit"})
     );
     assert!(body.get("instructions").is_none());
     assert_eq!(
@@ -840,10 +840,10 @@ async fn retry_after_longer_than_budget_still_retries_within_budget() {
 }
 
 #[test]
-fn cache_retention_is_snapped_and_gated_without_changing_defaults() {
+fn cache_retention_defaults_to_twelve_hours_only_for_openai() {
     use crate::driver_registry::{PromptCacheConfig, PromptCacheRetention, PromptCacheStrategy};
     for (retention, ttl, anthropic) in [
-        (PromptCacheRetention::Default, "30m", None),
+        (PromptCacheRetention::Default, "12h", None),
         (PromptCacheRetention::FiveMinutes, "30m", None),
         (PromptCacheRetention::ThirtyMinutes, "30m", None),
         (PromptCacheRetention::OneHour, "30m", Some("1h")),
@@ -873,6 +873,31 @@ fn cache_retention_is_snapped_and_gated_without_changing_defaults() {
             let mut disabled = original.clone();
             apply_cache_options(&mut disabled, &config, true, true);
             assert_eq!(disabled, original);
+        }
+    }
+}
+
+#[test]
+fn unconfigured_cache_defaults_require_native_model_and_endpoint() {
+    let original = json!({"instructions":"policy", "input":[]});
+    for (model, native, official, expected) in [
+        ("gpt-6.1-sol", true, true, true),
+        ("gpt-5.6-sol", true, true, true),
+        ("gpt-5.5", true, true, false),
+        ("gpt-unknown", true, true, false),
+        ("gpt-6.1-sol", false, true, false),
+        ("gpt-6.1-sol", true, false, false),
+    ] {
+        let mut body = original.clone();
+        apply_cache_options(&mut body, &LlmCallConfig::new(model), native, official);
+        if expected {
+            assert_eq!(
+                body["prompt_cache_options"],
+                json!({"ttl":"12h", "mode":"implicit"})
+            );
+            assert_eq!(body["instructions"], original["instructions"]);
+        } else {
+            assert_eq!(body, original);
         }
     }
 }

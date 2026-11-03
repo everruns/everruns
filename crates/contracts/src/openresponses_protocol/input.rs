@@ -215,8 +215,16 @@ pub(crate) fn apply_cache_options(
     if !native_openai || !crate::openai_compat::supports_cache_options(&config.model) {
         return;
     }
-    let Some(cache) = config.prompt_cache.as_ref().filter(|c| c.enabled) else {
-        return;
+    // Only the qualified first-party endpoint gets an automatic default.
+    // Explicit disable wins; compatible endpoints retain their opt-in behavior.
+    let default_cache = crate::driver_registry::PromptCacheConfig {
+        enabled: true,
+        ..Default::default()
+    };
+    let cache = match &config.prompt_cache {
+        Some(cache) if cache.enabled => cache,
+        None if extended_retention => &default_cache,
+        _ => return,
     };
     let explicit = cache.strategy == crate::driver_registry::PromptCacheStrategy::Explicit;
     body["prompt_cache_options"] = json!({"ttl": if extended_retention { cache.retention.openai_responses_ttl() } else { "30m" }, "mode": if explicit { "explicit" } else { "implicit" }});

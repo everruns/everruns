@@ -211,7 +211,12 @@ Current provider mappings:
 
 `llm.generation.metadata.request_options.prompt_cache` records which provider-specific mode the driver actually attempted.
 
-Extended retention stays opt-in because writes can cost more than uncached input.
+Qualified native OpenAI Responses calls default to twelve-hour implicit caching,
+including when no capability configured cache intent. This favors reuse across
+long pauses but raises write cost: explicit `30m` preserves the cheaper tier and
+`enabled: false` removes managed controls. Other provider defaults are unchanged.
+This affects the minimum cache reuse lifetime, not the maximum data-retention
+policy, response storage, or organizational data controls.
 The [retention mapping](../../crates/contracts/src/driver_registry/configuration.rs)
 is constrained again at the Responses endpoint: only the official OpenAI API
 receives twelve-hour requests; Azure and gateways retain their existing tier.

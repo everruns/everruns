@@ -63,50 +63,128 @@ async fn twelve_hour_retention_round_trips_through_qualified_responses_endpoint(
     ] {
         for non_streaming in [false, true] {
             for strategy in [PromptCacheStrategy::Auto, PromptCacheStrategy::Explicit] {
+                for retention in [
+                    PromptCacheRetention::Default,
+                    PromptCacheRetention::TwelveHours,
+                    PromptCacheRetention::ThirtyMinutes,
+                ] {
+                    let capture = Arc::new(Capture(Mutex::new(Vec::new())));
+                    let driver = OpenResponsesProtocolChatDriver::new()
+                        .with_prompt_cache_options(true)
+                        .with_transport(capture.clone());
+                    let provider = Provider::new("test", driver).base_url(base);
+                    let mut config = LlmCallConfig::new("gpt-6.1-sol");
+                    config.prefer_non_streaming = non_streaming;
+                    config.prompt_cache = Some(PromptCacheConfig {
+                        enabled: true,
+                        retention,
+                        strategy,
+                        ..Default::default()
+                    });
+                    let result = provider
+                        .chat_completion(
+                            vec![
+                                Message::text(MessageRole::System, "Stable policy"),
+                                Message::text(MessageRole::User, "Question"),
+                            ],
+                            &config,
+                        )
+                        .await
+                        .unwrap();
+                    assert_eq!(result.metadata.prompt_tokens, Some(1000));
+                    assert_eq!(result.metadata.cache_read_tokens, Some(4000));
+                    assert_eq!(result.metadata.cache_creation_tokens, Some(7000));
+                    assert_eq!(result.metadata.cache_creation_12h_tokens, Some(4000));
+                    assert_eq!(result.metadata.total_tokens, Some(12000));
+                    let requests = capture.0.lock().unwrap();
+                    assert_eq!(requests.len(), 1);
+                    assert_eq!(
+                        requests[0]["prompt_cache_options"]["ttl"],
+                        if base == "https://api.openai.com/v1"
+                            && retention != PromptCacheRetention::ThirtyMinutes
+                        {
+                            "12h"
+                        } else {
+                            "30m"
+                        }
+                    );
+                    assert_eq!(requests[0]["stream"], !non_streaming);
+                    if strategy == PromptCacheStrategy::Explicit {
+                        assert_eq!(
+                            requests[0]["input"][0]["content"][0]["prompt_cache_breakpoint"]["mode"],
+                            "explicit"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn automatic_defaults_and_disable_are_endpoint_and_model_scoped() {
+    for (base, model, native, expected) in [
+        ("https://api.openai.com/v1", "gpt-6.1-sol", true, true),
+        ("https://api.openai.com/v1", "gpt-5.6-sol", true, true),
+        ("https://api.openai.com/v1", "gpt-5.5", true, false),
+        ("https://api.openai.com/v1", "gpt-unknown", true, false),
+        ("https://api.openai.com/v1", "gpt-6.1-sol", false, false),
+        (
+            "https://account.openai.azure.com/openai/v1",
+            "gpt-6.1-sol",
+            true,
+            false,
+        ),
+        (
+            "https://api.openai.com.example/v1",
+            "gpt-6.1-sol",
+            true,
+            false,
+        ),
+        (
+            "https://chatgpt.com/backend-api/codex",
+            "gpt-6.1-sol",
+            true,
+            false,
+        ),
+    ] {
+        for disabled in [false, true] {
+            for non_streaming in [false, true] {
                 let capture = Arc::new(Capture(Mutex::new(Vec::new())));
-                let driver = OpenResponsesProtocolChatDriver::new()
-                    .with_prompt_cache_options(true)
-                    .with_transport(capture.clone());
-                let provider = Provider::new("test", driver).base_url(base);
-                let mut config = LlmCallConfig::new("gpt-6.1-sol");
+                let provider = Provider::new(
+                    "test",
+                    OpenResponsesProtocolChatDriver::new()
+                        .with_prompt_cache_options(native)
+                        .with_transport(capture.clone()),
+                )
+                .base_url(base);
+                let mut config = LlmCallConfig::new(model);
                 config.prefer_non_streaming = non_streaming;
-                config.prompt_cache = Some(PromptCacheConfig {
-                    enabled: true,
-                    retention: PromptCacheRetention::TwelveHours,
-                    strategy,
-                    ..Default::default()
-                });
-                let result = provider
-                    .chat_completion(
-                        vec![
-                            Message::text(MessageRole::System, "Stable policy"),
-                            Message::text(MessageRole::User, "Question"),
-                        ],
-                        &config,
-                    )
+                if disabled {
+                    config.prompt_cache = Some(PromptCacheConfig {
+                        enabled: false,
+                        ..Default::default()
+                    });
+                }
+                provider
+                    .chat_completion(vec![Message::text(MessageRole::User, "Question")], &config)
                     .await
                     .unwrap();
-                assert_eq!(result.metadata.prompt_tokens, Some(1000));
-                assert_eq!(result.metadata.cache_read_tokens, Some(4000));
-                assert_eq!(result.metadata.cache_creation_tokens, Some(7000));
-                assert_eq!(result.metadata.cache_creation_12h_tokens, Some(4000));
-                assert_eq!(result.metadata.total_tokens, Some(12000));
                 let requests = capture.0.lock().unwrap();
                 assert_eq!(requests.len(), 1);
-                assert_eq!(
-                    requests[0]["prompt_cache_options"]["ttl"],
-                    if base == "https://api.openai.com/v1" {
-                        "12h"
-                    } else {
-                        "30m"
-                    }
-                );
-                assert_eq!(requests[0]["stream"], !non_streaming);
-                if strategy == PromptCacheStrategy::Explicit {
+                if expected && !disabled {
                     assert_eq!(
-                        requests[0]["input"][0]["content"][0]["prompt_cache_breakpoint"]["mode"],
-                        "explicit"
+                        requests[0]["prompt_cache_options"],
+                        json!({"ttl":"12h", "mode":"implicit"})
                     );
+                } else {
+                    assert!(
+                        requests[0].get("prompt_cache_options").is_none(),
+                        "{base}, {model}"
+                    );
+                }
+                if disabled {
+                    assert!(requests[0].get("prompt_cache_key").is_none());
                 }
             }
         }
