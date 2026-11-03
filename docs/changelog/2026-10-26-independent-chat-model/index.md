@@ -6,6 +6,7 @@ kind: feature
 significance: minor
 products: [platform, cloud]
 release: "0.50.1"
+cloud: 2026-11-03
 surfaces: [ui, api]
 links:
   docs: [/providers/openai/]
@@ -29,3 +30,10 @@ This clears only the Chat selection. GPT 6.1 Terra profiles are also available
 for OpenAI Responses and OpenRouter, using their respective provider model IDs.
 
 See [OpenAI provider setup](/providers/openai/) for Responses configuration.
+
+## Cloud update 2026-11-03
+
+GPT 6.1 Terra now joins the built-in provider. A one-time Cloud rollout sets both
+organization defaults where a compatible provider is ready, including existing
+custom defaults. Later administrator edits and explicit agent, session and harness
+choices are preserved.
