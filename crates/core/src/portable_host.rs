@@ -104,7 +104,6 @@ pub use builders::{
 };
 pub use capabilities::{runtime_capability_registry, runtime_egress_service};
 pub use command_host::StoreCommandHost;
-pub use turn_completion_check::{COMPLETION_REVIEW_PURPOSE, REVIEW_TIMEOUT};
 pub use composition::{HostComposition, HostCompositionBuilder};
 pub use events::*;
 pub use execution_snapshot::{load_execution_snapshot, load_execution_snapshot_for_session};
@@ -148,6 +147,7 @@ pub use turn_backend::{
     InProcessBackend, TurnBackend, TurnBackendFactory, TurnInput, TurnRequest, TurnScope,
     TurnTicket,
 };
+pub use turn_completion_check::{COMPLETION_REVIEW_PURPOSE, REVIEW_TIMEOUT};
 pub use turn_loop::{
     PendingInput, TurnDrive, TurnInbox, TurnResult, drive_turn, handed_off, is_handed_off,
     turn_entry_plan,

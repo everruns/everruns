@@ -575,29 +575,13 @@ async fn test_session_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                completion_check: Default::default(),
-                localizations: Default::default(),
-                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
-                name: format!("session-test-agent-{}", Uuid::now_v7()),
                 display_name: Some("Session Test Agent".to_string()),
-                description: None,
-                intro_markdown: None,
-                short_description: None,
-                starters: serde_json::json!([]),
-                system_prompt: "Test".to_string(),
-                default_model_id: None,
-                harness_id: ensure_test_harness_id(&backend).await,
-                tags: vec![],
-                initial_files: serde_json::json!([]),
-                tools: serde_json::json!([]),
-                mcp_servers: serde_json::json!({}),
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                max_output_tokens: None,
-                communication: Default::default(),
-                environments: None,
-                is_built_in: false,
+                ..CreateAgentRow::new(
+                    everruns_contracts::typed_id::AgentId::new().to_string(),
+                    format!("session-test-agent-{}", Uuid::now_v7()),
+                    "Test",
+                    ensure_test_harness_id(&backend).await,
+                )
             },
         )
         .await
