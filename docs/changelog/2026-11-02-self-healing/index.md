@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api, cli]
 links:
   docs: [/features/evals/]
-  prs: [everruns/everruns#5173]
+  prs: [everruns/everruns#5180]
 ---
 
 A schedule that polls for something that never changes used to burn 48 runs
