@@ -113,7 +113,9 @@ browser's preview environment.
   The bridge accepts local product paths, bounded bodies and only explicit audit
   headers. It excludes auth, credential management, arbitrary commands, recursive
   MCP calls and external URLs. Session storage reads expose key values and secret
-  metadata only, as the existing recording UI does; secret writes remain outside
+  metadata only. Provider and channel configuration stays read-only in the bridge,
+  because those updates can replace credentials without a dedicated secret route.
+  As in the existing recording UI, secret writes remain outside
   this bridge. The Session Credentials action opens Everruns through the host
   rather than collecting credential values inside the MCP frame. See TM-MCP-003, TM-MCP-004 and TM-MCP-009.
 - **Resource bounds.** Tool deadlines and request/response limits reject oversized

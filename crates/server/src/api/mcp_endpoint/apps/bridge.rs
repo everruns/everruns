@@ -55,6 +55,15 @@ fn allowed_path(raw: &str, read: bool) -> bool {
         return read;
     }
     let resource = path.split('/').nth(2).unwrap_or_default();
+    // These configuration routes can replace credentials even without a
+    // dedicated /credentials or /keys suffix. The embedded views only read them.
+    if !read
+        && (resource == "providers"
+            || (resource == "agents"
+                && matches!(segments.get(4).copied(), Some("channels" | "endpoints"))))
+    {
+        return false;
+    }
     matches!(
         resource,
         "agents"

@@ -66,6 +66,8 @@ async fn shared_workspace_reads_the_same_resources_and_opens_each_entity() {
     .await;
     assert_eq!(api_body(&result)["id"], agent);
     for path in [
+        "/v1/providers".to_string(),
+        format!("/v1/agents/{agent}/channels"),
         format!("/v1/sessions/{session}/trace"),
         format!("/v1/sessions/{session}/events?after_sequence=0&limit=20"),
         format!("/v1/sessions/{session}/storage/keys"),
@@ -117,6 +119,23 @@ async fn shared_workspace_reads_the_same_resources_and_opens_each_entity() {
         api_body(&changed)["description"],
         "Changed through the workspace"
     );
+    for path in [
+        "/v1/providers/missing".to_string(),
+        format!("/v1/agents/{agent}/channels/missing"),
+        format!("/v1/agents/{agent}/endpoints/missing"),
+    ] {
+        assert!(
+            is_error(
+                &call(
+                    &server,
+                    "app_write",
+                    json!({"path":path,"method":"PATCH","body":{}})
+                )
+                .await
+            ),
+            "{path}"
+        );
+    }
     for path in [
         "https://example.com/v1/agents",
         "/v1/auth/me",
