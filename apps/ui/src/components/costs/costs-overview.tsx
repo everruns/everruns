@@ -154,7 +154,7 @@ export function RunsWithAgentsCard({
                       {ui("Created here")}
                     </span>
                   ) : share.relation === "linked" && share.agent_id ? (
-                    <span className="ml-2 border border-amber-500/40 px-1.5 py-0.5 text-xs text-amber-700 dark:text-amber-300">
+                    <span className="ml-2 border border-warning/40 px-1.5 py-0.5 text-xs text-warning">
                       {ui("Linked")}
                     </span>
                   ) : null}

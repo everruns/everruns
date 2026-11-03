@@ -55,7 +55,7 @@ function StatusBadge({ session }: { session: RunSession }) {
   let tone: string;
   if (session.status === "waiting_for_tool_results") {
     label = ui("Waiting on the person");
-    tone = "border-amber-500/40 text-amber-700 dark:text-amber-300";
+    tone = "border-warning/40 text-warning";
   } else if (isWorking(session)) {
     label = ui("Working");
     tone = "border-primary/40 text-primary";
@@ -70,7 +70,7 @@ function StatusBadge({ session }: { session: RunSession }) {
     tone = "border-border text-muted-foreground";
   } else {
     label = ui("Done");
-    tone = "border-emerald-500/40 text-emerald-700 dark:text-emerald-300";
+    tone = "border-success/40 text-success";
   }
   return <span className={cn("inline-block border px-2 py-0.5 text-xs", tone)}>{label}</span>;
 }
