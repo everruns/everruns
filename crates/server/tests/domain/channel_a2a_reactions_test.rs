@@ -170,6 +170,9 @@ async fn a2a_reaction_is_stored_by_the_remote_caller_and_starts_no_turn() {
     let listed = reactions_on(&server, &task_id).await;
     let on_message = &listed[0];
     assert_eq!(on_message["message_id"], message_id);
+    // The listing places the message for the trace: its author and position.
+    assert_eq!(on_message["author"], "user");
+    assert!(on_message["sequence"].as_i64().is_some(), "{on_message}");
     assert_eq!(on_message["reactions"][0]["emoji"], "👍");
     assert_eq!(on_message["reactions"][0]["actors"][0]["kind"], "external");
     assert_eq!(

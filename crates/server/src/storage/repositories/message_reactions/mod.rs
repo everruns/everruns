@@ -32,6 +32,8 @@ pub struct ReactedMessageRow {
     /// (the agent's reply).
     pub event_type: String,
     pub message: serde_json::Value,
+    /// Sequence of the message's event in the session.
+    pub sequence: i64,
 }
 
 impl Database {
@@ -87,7 +89,8 @@ impl Database {
         }
         Ok(sqlx::query_as::<_, ReactedMessageRow>(
             r#"
-            SELECT data->'message'->>'id' AS message_id, event_type, data->'message' AS message
+            SELECT data->'message'->>'id' AS message_id, event_type, data->'message' AS message,
+                   sequence::bigint AS sequence
             FROM events
             WHERE session_id = $1
               AND event_type IN ('input.message', 'output.message.completed')

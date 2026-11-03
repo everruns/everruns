@@ -106,9 +106,13 @@ targets until the Slack mapping below lands.
   in the caller's own sessions. An end user reacts as that consumer; an agent
   key acting as itself reacts as "Application". The reaction events stream
   over SSE at every visibility, with the actor reduced to kind and name.
-- **Chat, Work Chat, trace:** chips under messages, a reaction button in the
-  reply action row, delivery status per reaction in the trace. Design and
-  mockups: the reactions thread (2026-11-01).
+- **Chat, Work Chat:** chips under messages, a reaction button in the reply
+  action row. Design and mockups: the reactions thread (2026-11-01).
+- **Trace:** read-only chips on the turn header (reactions on the message that
+  started the turn) and footer (on the agent's reply). The reaction listing
+  carries each message's `author` and event `sequence`, which places it in a
+  turn without a trace projection change. Delivery shows as the turn the
+  reaction message started, labelled with its `reaction` origin.
 - **AG-UI:** outbound `CUSTOM` event `everruns.reaction`; switch to `META`
   with `metaType: "reaction"` once the Meta Events draft is in `@ag-ui/core`.
   AG-UI clients add reactions through the Execution API route.

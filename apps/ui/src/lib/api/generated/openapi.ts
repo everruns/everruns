@@ -22548,9 +22548,20 @@ export interface components {
     };
     /** @description The reactions on one message. */
     MessageReactions: {
+      /**
+       * @description Who wrote the message: `user` (a user-role message) or `agent`.
+       * @example agent
+       */
+      author?: string | null;
       /** @example message_01933b5a00007000800000000000001 */
       message_id: string;
       reactions: components["schemas"]["ReactionSummary"][];
+      /**
+       * Format: int64
+       * @description Position of the message in the session's event log, which places it in
+       *     a turn of the trace. Absent when the message is no longer stored.
+       */
+      sequence?: number | null;
     };
     /**
      * @description Message role (API layer)

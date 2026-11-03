@@ -59830,6 +59830,14 @@
           "reactions"
         ],
         "properties": {
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who wrote the message: `user` (a user-role message) or `agent`.",
+            "example": "agent"
+          },
           "message_id": {
             "type": "string",
             "example": "message_01933b5a00007000800000000000001"
@@ -59839,6 +59847,14 @@
             "items": {
               "$ref": "#/components/schemas/ReactionSummary"
             }
+          },
+          "sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Position of the message in the session's event log, which places it in\na turn of the trace. Absent when the message is no longer stored."
           }
         }
       },
