@@ -292,12 +292,14 @@ function SessionRecordingActions({
   sessionTitle,
   sessionTags,
   platformChat,
+  credentialsAction,
 }: {
   sessionId: string;
   agentId?: string;
   sessionTitle: string | null;
   sessionTags: string[];
   platformChat: boolean;
+  credentialsAction?: React.ReactNode;
 }) {
   const ui = useUiTranslations();
   const { locale } = useLocale();
@@ -313,7 +315,7 @@ function SessionRecordingActions({
         platformChat={platformChat}
       />
 
-      <SessionCredentialsDialog sessionId={sessionId} />
+      {credentialsAction ?? <SessionCredentialsDialog sessionId={sessionId} />}
       <DropdownMenu>
         <DropdownMenuTrigger
           className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
@@ -360,6 +362,7 @@ export function SessionHeader({
   sessionTraceLabel,
   backHref = "/sessions",
   backLabel = "Sessions",
+  credentialsAction,
 }: {
   sessionId: string;
   session: Session;
@@ -376,6 +379,7 @@ export function SessionHeader({
   sessionTraceLabel?: string;
   backHref?: string;
   backLabel?: string;
+  credentialsAction?: React.ReactNode;
 }) {
   const { displayLocale } = useDisplayLocale();
   const ui = useUiTranslations();
@@ -456,6 +460,7 @@ export function SessionHeader({
             sessionTitle={session.title ?? null}
             sessionTags={session.tags ?? []}
             platformChat={agent?.name === "platform-chat"}
+            credentialsAction={credentialsAction}
           />
         </div>
       </div>

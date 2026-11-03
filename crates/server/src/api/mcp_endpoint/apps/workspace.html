@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src __WORKSPACE_ORIGIN__"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Everruns</title><style>html,body{margin:0;width:100%;height:100%;font:14px system-ui;background:Canvas;color:CanvasText}iframe{border:0;width:100%;height:100%;min-height:80px}#message{padding:16px}#expand{position:absolute;right:10px;top:10px;z-index:2;padding:7px 12px;font:inherit;border:1px solid #888;background:Canvas;color:CanvasText}#expand[hidden]{display:none}</style></head><body><button id="expand" hidden>Expand</button><p id="message">Opening Everruns…</p><iframe id="workspace" title="Everruns workspace" sandbox="allow-scripts allow-same-origin allow-downloads" allow="clipboard-write" referrerpolicy="no-referrer" hidden></iframe><script>
+(function(){
+"use strict";
+const config=__WORKSPACE_CONFIG__,frame=document.getElementById('workspace'),message=document.getElementById('message'),expand=document.getElementById('expand');
+let height=760;
+let next=1,host={},context={},current=null,org=null,ready=false,initialized=false;const pending=new Map();
+function layout(){const full=context.displayMode==='fullscreen';frame.style.height=full?'100dvh':height+'px';document.documentElement.style.colorScheme=context.theme==='dark'?'dark':'light';expand.hidden=full||!(context.availableDisplayModes||[]).includes('fullscreen');}
+function send(method,params){const id=next++;return new Promise((resolve,reject)=>{pending.set(id,{resolve,reject});window.parent.postMessage({jsonrpc:'2.0',id,method,params},'*');setTimeout(()=>{const item=pending.get(id);if(item){pending.delete(id);item.reject(new Error('Host request timed out'));}},30000);});}
+function notify(method,params){window.parent.postMessage({jsonrpc:'2.0',method,params},'*');}
+function toFrame(type,data){if(ready)frame.contentWindow.postMessage({type,...data},config.origin);}
+function structured(result){if(result?.structuredContent)return result.structuredContent;try{return JSON.parse((result?.content||[]).find(c=>c.type==='text')?.text||'null')}catch{return null}}
+function show(result){const data=structured(result);if(!data)return;org=data.organization_id||data.organization?.id||org;const view=data.view||{kind:data.session_id?'session':data.agent_card?'agent':config.kind,id:data.session_id||data.agent_card?.public_id};current={view,organization_id:org};if(ready)toFrame('everruns:init',{...current,context,capabilities:host});else if(initialized&&!frame.src){frame.src=config.base;frame.hidden=false;message.hidden=true;}}
+window.addEventListener('message',async event=>{
+ const m=event.data;if(!m||typeof m!=='object')return;
+ if(event.source===frame.contentWindow && event.origin===config.origin){
+  if(m.type==='everruns:ready'){ready=true;toFrame('everruns:init',{...current,context,capabilities:host});return;}
+  if(m.type==='everruns:size'){height=Math.max(80,Math.min(1200,Number(m.height)||760));layout();if(context.displayMode!=='fullscreen')notify('ui/notifications/size-changed',{height});return;}
+  if(m.type==='everruns:open-link'){if(host.openLinks&&typeof m.url==='string')send('ui/open-link',{url:m.url}).catch(()=>{});return;}
+  if(m.type!=='everruns:request'||!['app_read','app_write','app_bootstrap'].includes(m.tool))return;
+  try{if(!host.serverTools)throw new Error('This host does not support workspace data access');const result=await send('tools/call',{name:m.tool,arguments:{...m.arguments,organization_id:org}});if(result?.isError)throw new Error((result.content||[]).map(c=>c.text||'').join('\n'));toFrame('everruns:response',{id:m.id,result:structured(result)});}catch(error){toFrame('everruns:response',{id:m.id,error:error.message});}return;
+ }
+ if(event.source!==window.parent||m.jsonrpc!=='2.0')return;
+ if(m.id!=null&&!m.method){const item=pending.get(m.id);if(item){pending.delete(m.id);m.error?item.reject(new Error(m.error.message)):item.resolve(m.result);}return;}
+ if(m.method==='ui/notifications/tool-result')show(m.params);
+ if(m.method==='ui/notifications/host-context-changed'){context={...context,...m.params};layout();toFrame('everruns:context',{context});}
+ if(m.method==='ui/resource-teardown'){toFrame('everruns:teardown',{});frame.src='about:blank';ready=false;if(m.id!=null)window.parent.postMessage({jsonrpc:'2.0',id:m.id,result:{}},'*');}
+});
+expand.addEventListener('click',()=>send('ui/request-display-mode',{mode:'fullscreen'}).then(result=>{context={...context,displayMode:result.mode};layout();}).catch(()=>{}));
+send('ui/initialize',{protocolVersion:'2026-01-26',appInfo:{name:'everruns',version:'2'},appCapabilities:{availableDisplayModes:['inline','fullscreen']}}).then(result=>{host=result.hostCapabilities||{};context=result.hostContext||{};initialized=true;if(current&&!frame.src){frame.src=config.base;frame.hidden=false;message.hidden=true;}layout();notify('ui/notifications/initialized',{});toFrame('everruns:context',{context});}).catch(error=>{message.textContent=error.message;});
+})();
+</script></body></html>

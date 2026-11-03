@@ -1264,7 +1264,9 @@ impl ServerAppBuilder {
             auth_config.base_url.clone(),
         );
         let mut root_routes = Router::new()
-            .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
+            .merge(api::mcp_endpoint::routes(
+                mcp_endpoint_state.with_app_router(api_routes.clone()),
+            ))
             .merge(api::mcp_elicitation::routes(mcp_elicitation_state))
             .merge(channel_root_routes);
 

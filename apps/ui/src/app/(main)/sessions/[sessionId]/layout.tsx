@@ -46,11 +46,16 @@ export default function SessionLayout({ children, params }: SessionLayoutProps) 
 }
 
 interface SessionLayoutContentProps {
+  credentialsAction?: React.ReactNode;
   children: React.ReactNode;
   sessionId: string;
 }
 
-export function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps) {
+export function SessionLayoutContent({
+  children,
+  sessionId,
+  credentialsAction,
+}: SessionLayoutContentProps) {
   const { displayLocale } = useDisplayLocale();
   const ui = useUiTranslations();
   const pathname = usePathname();
@@ -123,6 +128,7 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
   return (
     <div className="flex flex-col h-full">
       <SessionHeader
+        credentialsAction={credentialsAction}
         sessionId={sessionId}
         session={session}
         agent={agent}
