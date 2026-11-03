@@ -42,8 +42,24 @@ impl ReportingBackgroundConfig {
     }
 }
 
+/// Whether this deployment builds reports (`REPORTING_BACKGROUND_ENABLED`,
+/// on by default).
+///
+/// Decision: off stops the projector and the repair job, and the event write
+/// stops enqueuing reporting work as well. A turn wrote about 9 outbox rows
+/// and the projector about 220 fact rows (2026-11-02 bench), the largest
+/// share of a turn's rows; hosted runs with reporting off until the reporting
+/// rework lands. Nothing is deleted. The reports pages show how old their
+/// data is, and the repair job enqueues recent missed events when reporting
+/// is turned back on.
+pub fn reporting_enabled() -> bool {
+    static ENABLED: std::sync::LazyLock<bool> =
+        std::sync::LazyLock::new(|| env_bool("REPORTING_BACKGROUND_ENABLED", true));
+    *ENABLED
+}
+
 pub fn spawn_reporting_background_task(db: Arc<StorageBackend>) -> Vec<JoinHandle<()>> {
-    if !env_bool("REPORTING_BACKGROUND_ENABLED", true) {
+    if !reporting_enabled() {
         tracing::info!("Reporting background task disabled");
         return Vec::new();
     }
