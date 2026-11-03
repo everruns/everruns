@@ -3,6 +3,8 @@ use everruns_contracts::knowledge::{IndexMode, KnowledgeQuery};
 use serde_json::{Value, json};
 use types::*;
 
+mod document_extraction;
+
 pub(super) fn fixture() -> KnowledgeService {
     KnowledgeService::files(Arc::new(crate::storage::StorageBackend::test_database()))
 }
@@ -71,20 +73,7 @@ async fn drain(service: &KnowledgeService) {
         }
     }
 }
-#[test]
-fn metadata_and_binary_are_not_lost() {
-    let text = "---\ntype: Custom\ncustom:\n  domain: finance\nverified: []\n---\n# Meaning\n";
-    let result = extraction::extract(text.as_bytes(), "note.md", "text/markdown");
-    assert_eq!(result.text.as_deref(), Some(text));
-    assert_eq!(
-        result.metadata["frontmatter"]["custom"]["domain"],
-        "finance"
-    );
-    assert_eq!(
-        extraction::extract(b"%PDF\0\x80", "x.pdf", "application/pdf").status,
-        "unsupported"
-    );
-}
+
 #[test]
 fn fragment_ranges_are_utf8_and_complete() {
     let text = "日本語🙂 paragraph\n\n".repeat(1200);
@@ -179,6 +168,7 @@ async fn incremental_index_preserves_noop_identity_and_old_citations() {
     let version = Uuid::parse_str(&old.results[0].version_id).unwrap();
     assert!(s.version(1, file, version).await.is_ok());
 }
+
 #[tokio::test]
 async fn turning_index_off_preserves_files_and_prevents_retrieval() {
     let s = fixture();
@@ -611,13 +601,6 @@ async fn data_knowledge_scaffold_coexists_with_collections_without_shadowing_aut
         );
     }
 }
-#[test]
-fn html_uses_markkit_and_retains_extraction_metadata() {
-    let extracted=extraction::extract(b"<html><head><title>A page</title></head><body><h1>Guide</h1><p>Useful text</p></body></html>","page.html","text/html");
-    assert_eq!(extracted.status, "ready");
-    assert!(extracted.text.unwrap().contains("Useful text"));
-    assert!(extracted.metadata.get("extraction").is_some());
-}
 
 #[tokio::test]
 async fn large_file_catalog_uses_bounded_stable_cursor_pages() {
@@ -699,23 +682,6 @@ async fn explicit_unavailable_indexer_fails_closed() {
     let mut c = create(&s, IndexMode::Lexical).await;
     c.indexer_id = Some(Uuid::now_v7());
     assert!(s.backend(&c).await.is_err());
-}
-
-#[test]
-fn binary_docx_uses_markkit_for_a_searchable_text_view() {
-    let doc = include_bytes!("../../../testdata/knowledge/minimal.docx");
-    let extracted = extraction::extract(
-        doc,
-        "policy.docx",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    );
-    assert_eq!(extracted.status, "ready");
-    assert!(
-        extracted
-            .text
-            .unwrap()
-            .contains("Refund policy from a binary Word document")
-    );
 }
 
 #[tokio::test]

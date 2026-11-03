@@ -2,6 +2,8 @@
 
 ## 2026-11-03
 
+- Adopt the patched spreadsheet parser for [Knowledge extraction](runtime-resources/knowledge.md), retain stable warning codes and resource limits, and version subsequent text views without rewriting originals.
+
 - Add credit shortfall handling: a provider refusal for lack of credits retries once with fewer max output tokens, or waits up to an hour on durable schedule checks that read the balance without spending tokens. See [Credit Shortfall](execution/credit-shortfall.md).
 
 ## 2026-11-02
