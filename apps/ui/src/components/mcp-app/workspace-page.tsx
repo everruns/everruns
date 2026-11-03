@@ -92,6 +92,15 @@ export function McpWorkspacePage() {
           <SessionProvider key={id} sessionId={id}>
             <SessionLayoutContent
               sessionId={id}
+              onForked={(sessionId) =>
+                window.parent.postMessage(
+                  {
+                    type: "everruns:open-link",
+                    url: new URL(`/chats/${sessionId}`, location.origin).href,
+                  },
+                  "*",
+                )
+              }
               credentialsAction={
                 <LinkButton
                   variant="outline"

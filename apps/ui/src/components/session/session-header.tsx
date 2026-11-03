@@ -293,6 +293,7 @@ function SessionRecordingActions({
   sessionTags,
   platformChat,
   credentialsAction,
+  onForked,
 }: {
   sessionId: string;
   agentId?: string;
@@ -300,6 +301,7 @@ function SessionRecordingActions({
   sessionTags: string[];
   platformChat: boolean;
   credentialsAction?: React.ReactNode;
+  onForked?: (sessionId: string) => void;
 }) {
   const ui = useUiTranslations();
   const { locale } = useLocale();
@@ -313,6 +315,7 @@ function SessionRecordingActions({
         sessionTags={sessionTags}
         agentId={agentId}
         platformChat={platformChat}
+        onForked={onForked}
       />
 
       {credentialsAction ?? <SessionCredentialsDialog sessionId={sessionId} />}
@@ -363,6 +366,7 @@ export function SessionHeader({
   backHref = "/sessions",
   backLabel = "Sessions",
   credentialsAction,
+  onForked,
 }: {
   sessionId: string;
   session: Session;
@@ -380,6 +384,7 @@ export function SessionHeader({
   backHref?: string;
   backLabel?: string;
   credentialsAction?: React.ReactNode;
+  onForked?: (sessionId: string) => void;
 }) {
   const { displayLocale } = useDisplayLocale();
   const ui = useUiTranslations();
@@ -461,6 +466,7 @@ export function SessionHeader({
             sessionTags={session.tags ?? []}
             platformChat={agent?.name === "platform-chat"}
             credentialsAction={credentialsAction}
+            onForked={onForked}
           />
         </div>
       </div>

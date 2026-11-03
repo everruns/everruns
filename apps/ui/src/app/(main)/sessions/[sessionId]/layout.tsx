@@ -47,6 +47,7 @@ export default function SessionLayout({ children, params }: SessionLayoutProps) 
 
 interface SessionLayoutContentProps {
   credentialsAction?: React.ReactNode;
+  onForked?: (sessionId: string) => void;
   children: React.ReactNode;
   sessionId: string;
 }
@@ -55,6 +56,7 @@ export function SessionLayoutContent({
   children,
   sessionId,
   credentialsAction,
+  onForked,
 }: SessionLayoutContentProps) {
   const { displayLocale } = useDisplayLocale();
   const ui = useUiTranslations();
@@ -129,6 +131,7 @@ export function SessionLayoutContent({
     <div className="flex flex-col h-full">
       <SessionHeader
         credentialsAction={credentialsAction}
+        onForked={onForked}
         sessionId={sessionId}
         session={session}
         agent={agent}
