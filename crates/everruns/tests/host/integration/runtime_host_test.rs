@@ -599,31 +599,9 @@ pub(super) fn harness() -> HarnessDefinition {
 
 pub(super) fn session(session_id: SessionId, harness_id: HarnessId) -> ExecutionSession {
     ExecutionSession {
-        id: session_id,
-        workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
-        harness_id,
-        agent_id: None,
         title: Some("Runtime Host".into()),
-        goal: None,
-        locale: None,
-        tags: vec![],
-        model_id: None,
-        capabilities: vec![],
-        tools: vec![],
-        mcp_servers: Default::default(),
-        system_prompt: None,
-        initial_files: vec![],
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        status: SessionExecutionState::Started,
-        usage: None,
-        parent_session_id: None,
-        forked_from_session_id: None,
-        blueprint_id: None,
-        blueprint_config: None,
+        ..ExecutionSession::with_own_workspace(session_id, harness_id)
     }
 }
 

@@ -135,6 +135,25 @@ Agent triggers, webhook triggers, and session schedules solve different problems
 - use a **webhook trigger** when an external HTTP request should invoke an Agent; and
 - use a **session schedule** when the current conversation should continue later.
 
+## Completion check
+
+A trigger or schedule session has nobody watching it, so a turn that ends on
+"Submitting the review now" without making the call would be lost. By default
+(`completion_check: "unattended"`), when such a turn used tools and is about to
+finish, the agent's own model reviews whether the request was done. If the work
+is still in progress, an automatic continuation is added to the same turn and
+the agent carries on. It is labeled as automatic, never as the person's words,
+and is bounded per input in turns, tokens and time.
+
+Set it on the agent:
+
+```json
+{ "completion_check": "always" }
+```
+
+`always` checks chat sessions too; `off` never checks. Each review records a
+[`turn.completion_checked`](/event-reference/#turncompletion_checked) event.
+
 ## See also
 
 - [Slack Integration](/capabilities/slack/), publish an Agent to an inbound messaging endpoint.

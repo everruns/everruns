@@ -866,6 +866,13 @@ impl RuntimeMessage {
             .is_some_and(|origin| origin.kind == MessageOriginKind::TaskWake)
     }
 
+    /// Whether the platform added this message to continue a turn its
+    /// completion check found unfinished.
+    pub fn is_turn_continuation(&self) -> bool {
+        self.origin()
+            .is_some_and(|origin| origin.kind == MessageOriginKind::TurnContinuation)
+    }
+
     /// Reasoning artifacts carried by this message, in emission order.
     pub fn reasoning_parts(&self) -> impl Iterator<Item = &ReasoningContentPart> {
         self.content.iter().filter_map(ContentPart::as_reasoning)

@@ -260,6 +260,23 @@ The generated manifest already points Slack interactivity at this channel. A Sla
 
 When an Agent delegates work, Slack shows one **Tasks** message and updates it as workers finish. The message lists up to five tasks and summarizes larger groups by count.
 
+## Reactions
+
+Reactions work both ways on messages the conversation stored: the messages
+people sent and the agent's replies.
+
+- An emoji a person adds or removes in Slack is stored on that message as
+  theirs, and reaches the agent as a short note, the same as a reaction in
+  Chat.
+- When the agent reacts with the **Reactions** capability's `react` tool,
+  the emoji also appears on the Slack message.
+
+Hearing reactions needs the `reactions:read` scope and the `reaction_added`
+and `reaction_removed` events, which the generated manifest includes. An app
+installed before them keeps working without reactions: update its manifest
+and reinstall the app to turn them on. Custom workspace emoji are stored as
+`:name:`.
+
 ## Slack actions
 
 | | |

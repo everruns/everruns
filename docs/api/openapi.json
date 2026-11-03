@@ -36120,6 +36120,10 @@
             "$ref": "#/components/schemas/Communication",
             "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`. Applies\non every surface: web chat, API, Slack, A2A, AG-UI, MCP."
           },
+          "completion_check": {
+            "$ref": "#/components/schemas/CompletionCheck",
+            "description": "When a turn about to finish is checked for whether it did what was\nasked, and continued automatically when it did not. `unattended`\n(default): sessions started by triggers and schedules, where no person\nis watching. `always`: chat too. `off`: never."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -41416,6 +41420,34 @@
           "cost_pressure"
         ]
       },
+      "CompletionCheck": {
+        "type": "string",
+        "description": "When a turn that is about to finish gets a completion check, and an\nautomatic continuation when the check finds the work unfinished.",
+        "enum": [
+          "off",
+          "unattended",
+          "always"
+        ]
+      },
+      "CompletionCheckAction": {
+        "type": "string",
+        "description": "What the runtime did after a completion check.",
+        "enum": [
+          "finished",
+          "continued",
+          "budget_exhausted",
+          "review_failed"
+        ]
+      },
+      "CompletionVerdict": {
+        "type": "string",
+        "description": "What a completion check found: the review's verdict on whether the turn\ndid what was asked.",
+        "enum": [
+          "achieved",
+          "in_progress",
+          "blocked"
+        ]
+      },
       "ConnectSourceRequest": {
         "allOf": [
           {
@@ -43393,6 +43425,10 @@
           "communication": {
             "$ref": "#/components/schemas/Communication",
             "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`."
+          },
+          "completion_check": {
+            "$ref": "#/components/schemas/CompletionCheck",
+            "description": "When a turn about to finish is checked for whether it did what was\nasked, and continued automatically when it did not. `unattended`\n(default): sessions started by triggers and schedules, where no person\nis watching. `always`: chat too. `off`: never."
           },
           "default_model_id": {
             "type": [
@@ -48649,6 +48685,9 @@
             "$ref": "#/components/schemas/TurnCancelledData"
           },
           {
+            "$ref": "#/components/schemas/TurnCompletionCheckedData"
+          },
+          {
             "$ref": "#/components/schemas/SessionStartedData"
           },
           {
@@ -53244,6 +53283,10 @@
                 "communication": {
                   "$ref": "#/components/schemas/Communication",
                   "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`. Applies\non every surface: web chat, API, Slack, A2A, AG-UI, MCP."
+                },
+                "completion_check": {
+                  "$ref": "#/components/schemas/CompletionCheck",
+                  "description": "When a turn about to finish is checked for whether it did what was\nasked, and continued automatically when it did not. `unattended`\n(default): sessions started by triggers and schedules, where no person\nis watching. `always`: chat too. `off`: never."
                 },
                 "created_at": {
                   "type": "string",
@@ -58743,6 +58786,17 @@
               }
             ]
           },
+          "completion_check": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CompletionCheck",
+                "description": "When a finishing turn gets a completion check: `off`, `unattended`\n(sessions started by triggers and schedules) or `always`. Omission\nmeans `unattended`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": {
             "type": [
               "string",
@@ -60069,6 +60123,14 @@
           "reactions"
         ],
         "properties": {
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who wrote the message: `user` (a user-role message) or `agent`.",
+            "example": "agent"
+          },
           "message_id": {
             "type": "string",
             "example": "message_01933b5a00007000800000000000001"
@@ -60078,6 +60140,14 @@
             "items": {
               "$ref": "#/components/schemas/ReactionSummary"
             }
+          },
+          "sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Position of the message in the session's event log, which places it in\na turn of the trace. Absent when the message is no longer stored."
           }
         }
       },
@@ -76826,6 +76896,77 @@
           }
         }
       },
+      "TurnCompletionCheckedData": {
+        "type": "object",
+        "description": "Data for turn.completion_checked event.\n\nA turn about to finish was reviewed for whether it did what was asked\n(the agent's `completion_check` setting). One event per check, emitted\nbefore the continuation input it may add.",
+        "required": [
+          "turn_id",
+          "reason",
+          "action",
+          "continuations_used",
+          "max_continuations",
+          "tokens_used",
+          "elapsed_ms"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/CompletionCheckAction",
+            "description": "What the runtime did next."
+          },
+          "continuation_message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The automatic continuation input, when one was added.",
+            "example": "message_01933b5a00007000800000000000001"
+          },
+          "continuations_used": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Automatic continuations this turn has used, this one included.",
+            "minimum": 0
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Milliseconds since the turn's first automatic continuation.",
+            "minimum": 0
+          },
+          "max_continuations": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Most automatic continuations one turn may use.",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string",
+            "description": "The review's short explanation, or why the review failed."
+          },
+          "tokens_used": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tokens the turn spent since its first automatic continuation.",
+            "minimum": 0
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn identifier",
+            "example": "turn_01933b5a00007000800000000000001"
+          },
+          "verdict": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CompletionVerdict",
+                "description": "The review's verdict. Absent when the review failed."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "TurnFailedData": {
         "type": "object",
         "description": "Data for turn.failed event. A failed turn is always an error (severity\n`error`): the work stopped. Recoverable tool failures never produce this\nevent; they surface as `tool.completed` issues.",
@@ -77122,6 +77263,17 @@
               {
                 "$ref": "#/components/schemas/Communication",
                 "description": "How the agent talks to people: `direct` or `explicit`. Omit to leave\nunchanged."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completion_check": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CompletionCheck",
+                "description": "When a finishing turn is checked and continued: `off`, `unattended`\nor `always`. Omit to leave unchanged."
               },
               {
                 "type": "null"
@@ -80346,6 +80498,10 @@
               "communication": {
                 "$ref": "#/components/schemas/Communication",
                 "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`. Applies\non every surface: web chat, API, Slack, A2A, AG-UI, MCP."
+              },
+              "completion_check": {
+                "$ref": "#/components/schemas/CompletionCheck",
+                "description": "When a turn about to finish is checked for whether it did what was\nasked, and continued automatically when it did not. `unattended`\n(default): sessions started by triggers and schedules, where no person\nis watching. `always`: chat too. `off`: never."
               },
               "created_at": {
                 "type": "string",

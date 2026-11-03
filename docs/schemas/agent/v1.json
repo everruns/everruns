@@ -37,6 +37,15 @@
         "explicit"
       ]
     },
+    "CompletionCheck": {
+      "type": "string",
+      "description": "When a turn that is about to finish gets a completion check, and an\nautomatic continuation when the check finds the work unfinished.",
+      "enum": [
+        "off",
+        "unattended",
+        "always"
+      ]
+    },
     "ConversationStarter": {
       "type": "object",
       "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
@@ -211,6 +220,17 @@
             {
               "$ref": "#/definitions/Communication",
               "description": "How the agent talks: `direct` (its text is the reply) or `explicit`\n(its text is working notes; it talks through `send_message`).\nOmission means `direct`."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completion_check": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/CompletionCheck",
+              "description": "When a finishing turn gets a completion check: `off`, `unattended`\n(sessions started by triggers and schedules) or `always`. Omission\nmeans `unattended`."
             },
             {
               "type": "null"

@@ -228,13 +228,35 @@ pub(crate) fn build_short_description(app_name: &str, app_description: Option<&s
         .filter(|d| !d.trim().is_empty())
         .map(str::to_owned)
         .unwrap_or_else(|| format!("{app_name} (Powered by Everruns)"));
-    // Slack counts this limit in bytes, not characters: a 129-character
-    // Ukrainian description (236 bytes) came back as `invalid_manifest`.
-    truncate_bytes(&description, SLACK_SHORT_DESC_MAX_BYTES)
+    shorten_at_word(&description, SLACK_SHORT_DESC_MAX_BYTES)
 }
 
-/// Slack's `display_information.description` limit.
-pub(crate) const SLACK_SHORT_DESC_MAX_BYTES: usize = 140;
+/// Our cap for `display_information.description`, in bytes.
+///
+/// Slack documents 140 characters, but its real check is stricter than that:
+/// a 129-character Ukrainian description (236 bytes) and a 140-byte ASCII one
+/// both came back `invalid_manifest`, while 132 ASCII bytes passed. Slack does
+/// not say which rule it applies, so we stay well clear of the boundary rather
+/// than guess it exactly. The full text still reaches Slack in
+/// `long_description`.
+pub(crate) const SLACK_SHORT_DESC_MAX_BYTES: usize = 120;
+
+/// `s` if it fits in `max` bytes, else its longest whole-word prefix that fits
+/// with a trailing ellipsis. Falls back to a byte cut for a single long word.
+pub(crate) fn shorten_at_word(s: &str, max: usize) -> String {
+    const ELLIPSIS: &str = "…";
+    let s = s.trim();
+    if s.len() <= max {
+        return s.to_string();
+    }
+    let room = truncate_bytes(s, max - ELLIPSIS.len());
+    let cut = match room.rfind(char::is_whitespace) {
+        Some(end) if end > 0 => &room[..end],
+        _ => room.as_str(),
+    };
+    let cut = cut.trim_end_matches(|c: char| c.is_whitespace() || ",;:-—(".contains(c));
+    format!("{cut}{ELLIPSIS}")
+}
 
 /// The longest prefix of `s` that fits in `max` bytes without splitting a
 /// character.
@@ -361,6 +383,8 @@ pub(crate) fn build_manifest_yaml(
          \x20     - message.groups\n\
          \x20     - message.im\n\
          \x20     - message.mpim\n\
+         \x20     - reaction_added\n\
+         \x20     - reaction_removed\n\
          {agent_events}\
          \x20 org_deploy_enabled: false\n\
          \x20 socket_mode_enabled: false\n\

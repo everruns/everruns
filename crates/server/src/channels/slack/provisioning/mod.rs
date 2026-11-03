@@ -480,7 +480,21 @@ impl SlackApiProvisioner {
             return Ok(value);
         }
         if let Some(code) = value.get("error").and_then(serde_json::Value::as_str) {
-            return Err(SlackProvisioningError::Rejected(code.to_string()));
+            // Only a manifest refusal carries its problems along: every other
+            // caller matches on the bare code (auth retry, app_not_found,
+            // ratelimited), and those must keep seeing `Rejected`.
+            let problems = if code == "invalid_manifest" {
+                slack_problems(&value)
+            } else {
+                Vec::new()
+            };
+            if problems.is_empty() {
+                return Err(SlackProvisioningError::Rejected(code.to_string()));
+            }
+            return Err(SlackProvisioningError::RejectedWithProblems {
+                code: code.to_string(),
+                problems,
+            });
         }
         Err(SlackProvisioningError::Unreachable(format!(
             "Slack returned HTTP {} without an error code",
@@ -820,6 +834,40 @@ fn missing_credentials() -> SlackProvisioningError {
 fn storage_error(error: anyhow::Error) -> SlackProvisioningError {
     tracing::error!(%error, "Slack connection storage failed");
     SlackProvisioningError::Unreachable("Slack connection storage failed".to_string())
+}
+
+/// What Slack said was wrong, beyond the bare error code.
+///
+/// `apps.manifest.create` answers `invalid_manifest` with an `errors` list of
+/// `{message, pointer}`; other methods put warnings-as-errors in
+/// `response_metadata.messages`. Capped so a long list cannot flood the UI.
+fn slack_problems(value: &serde_json::Value) -> Vec<String> {
+    const MAX_PROBLEMS: usize = 5;
+    let from_errors = value
+        .get("errors")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|error| {
+            let message = error.get("message").and_then(serde_json::Value::as_str)?;
+            Some(
+                match error.get("pointer").and_then(serde_json::Value::as_str) {
+                    Some(pointer) if !pointer.is_empty() => format!("{pointer}: {message}"),
+                    _ => message.to_string(),
+                },
+            )
+        });
+    let from_metadata = value
+        .pointer("/response_metadata/messages")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|message| message.as_str().map(str::to_string));
+    from_errors
+        .chain(from_metadata)
+        .filter(|problem| !problem.trim().is_empty())
+        .take(MAX_PROBLEMS)
+        .collect()
 }
 
 fn is_auth_error(code: &str) -> bool {

@@ -18,6 +18,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | [`turn.started`](#turnstarted) | Turn began. |
 | [`turn.completed`](#turncompleted) | Turn finished successfully. |
 | [`turn.failed`](#turnfailed) | Turn failed with an error. |
+| [`turn.completion_checked`](#turncompletion_checked) | A finishing turn was reviewed; says whether it finished or continued automatically. |
 | `turn.sealed` | Turn stopped without success or error (for example repeated crash-reclaims or exhausted work budget); carries a `reason`. |
 | [`turn.cancelled`](#turncancelled) | Turn cancelled by the user. |
 | [`reason.started`](#reasonstarted) | LLM inference step began. |
@@ -277,6 +278,39 @@ Emitted when a turn completes successfully.
     "issue_count": 0,
     "status": "completed",
     "stop_reason": "stop"
+  }
+}
+```
+
+### turn.completion_checked
+
+Emitted when a turn that was about to finish is reviewed by the agent's `completion_check` setting. When `action` is `continued`, an `input.message` with metadata `everruns_origin: "turn_continuation"` follows in the same turn, and the turn keeps going.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `turn_id` | string | Turn identifier |
+| `verdict` | string? | `achieved`, `in_progress` or `blocked`; absent when the review failed |
+| `reason` | string | The review's short reason, or the failure |
+| `action` | string | `finished`, `continued`, `budget_exhausted` or `review_failed` |
+| `continuations_used` | integer | Automatic continuations this turn has used, including this one |
+| `max_continuations` | integer | Continuations the turn may use |
+| `tokens_used` | integer | Tokens the turn's continuations have used |
+| `elapsed_ms` | integer | Time since the first continuation |
+| `continuation_message_id` | string? | The continuation input, when `action` is `continued` |
+
+```json
+{
+  "type": "turn.completion_checked",
+  "data": {
+    "turn_id": "turn_...",
+    "verdict": "in_progress",
+    "reason": "The review was announced but never submitted.",
+    "action": "continued",
+    "continuations_used": 1,
+    "max_continuations": 6,
+    "tokens_used": 0,
+    "elapsed_ms": 0,
+    "continuation_message_id": "message_..."
   }
 }
 ```

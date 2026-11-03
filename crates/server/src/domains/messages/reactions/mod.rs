@@ -423,6 +423,12 @@ pub struct ReactionSummary {
 pub struct MessageReactions {
     #[schema(example = "message_01933b5a00007000800000000000001")]
     pub message_id: String,
+    /// Who wrote the message: `user` (a user-role message) or `agent`.
+    #[schema(example = "agent")]
+    pub author: Option<String>,
+    /// Position of the message in the session's event log, which places it in
+    /// a turn of the trace. Absent when the message is no longer stored.
+    pub sequence: Option<i64>,
     pub reactions: Vec<ReactionSummary>,
 }
 
@@ -475,6 +481,8 @@ pub async fn list_reactions(
             None => {
                 out.push(MessageReactions {
                     message_id: key.message_id.clone(),
+                    author: None,
+                    sequence: None,
                     reactions: Vec::new(),
                 });
                 out.last_mut().expect("just pushed")
@@ -494,6 +502,18 @@ pub async fn list_reactions(
                 agent: key.actor_kind == ReactionActorKind::Agent,
                 actors: vec![actor],
             }),
+        }
+    }
+    let ids: Vec<String> = out.iter().map(|m| m.message_id.clone()).collect();
+    for row in db.reacted_messages(session.id.uuid(), &ids).await? {
+        if let Some(message) = out.iter_mut().find(|m| m.message_id == row.message_id) {
+            let author = if is_agent_reply(&row) {
+                "agent"
+            } else {
+                "user"
+            };
+            message.author = Some(author.to_string());
+            message.sequence = Some(row.sequence);
         }
     }
     Ok(out)

@@ -22,6 +22,9 @@ impl Database {
 
     /// One outbox insert for every row of a stored batch that feeds reporting.
     pub(super) async fn enqueue_event_projections(&self, rows: &[EventRow]) {
+        if !crate::domains::reporting::background::reporting_enabled() {
+            return;
+        }
         // Reporting outbox enqueue is best-effort per knowledge/evaluation/reporting.md:
         // "If an outbox write fails after canonical state commits, a periodic
         // reconciler must be able to discover and enqueue missing projection

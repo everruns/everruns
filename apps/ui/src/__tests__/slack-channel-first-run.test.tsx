@@ -114,6 +114,8 @@ jest.mock("@/hooks/use-agent-channels", () => ({
     refetch: jest.fn(),
   }),
   useSlackWorkspaces: () => ({ data: mockWorkspaces, isLoading: false }),
+  useSlackWorkspaceName: (teamId?: string | null) =>
+    mockWorkspaces.find((workspace) => workspace.team_id === teamId)?.team_name ?? teamId,
   useInvalidateSlackWorkspaces: () => jest.fn(),
   useUpdateAgentChannel: () => ({ mutate: updateChannel, isPending: false, reset: jest.fn() }),
   useDeleteAgentChannel: () => ({ mutate: jest.fn(), isPending: false }),
@@ -151,12 +153,14 @@ async function renderNewChannelPage(mode: ChatModeState | null = null) {
     await params;
   });
 }
-async function renderEditChannelPage(reason: string) {
+async function renderEditChannelPage(reason?: string) {
   const params = Promise.resolve({
     agentId: "agent_123",
     channelId: "appchan_123",
   });
-  const searchParams = Promise.resolve({ slack_install: "failed", reason });
+  const searchParams = Promise.resolve(
+    reason === undefined ? {} : { slack_install: "failed", reason },
+  );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     render(
@@ -503,6 +507,31 @@ describe("Slack channel first run", () => {
     expect(screen.queryByRole("button", { name: "Add to Slack" })).not.toBeInTheDocument();
   });
 
+  it("offers Add to Slack again when the app was created but never approved in Slack", () => {
+    // Creating the app saves its signing secret; only Slack's approval returns the bot token
+    // and workspace. Stopping between the two must not look like a finished manual setup.
+    render(
+      <ChannelForm
+        state={getDefaultChannelFormState("slack", {
+          ...slackChannel(),
+          channel_config: {
+            slack_app_id: "A0123",
+            slack_app_provisioned: true,
+            signing_secret_configured: true,
+            session_strategy: "per_channel",
+          },
+        })}
+        onChange={jest.fn()}
+        mode="edit"
+        channelId="appchan_123"
+        slackInstallCapability={mockSlackCapability}
+      />,
+    );
+    expect(screen.getByText("Acme (T1)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add to Slack" })).toBeInTheDocument();
+    expect(screen.queryByText("Installed in Slack")).not.toBeInTheDocument();
+  });
+
   it("starts Slack install immediately after saving a credential-free channel", async () => {
     const authorizeUrl = `${window.location.href}#slack-consent`;
     (beginSlackInstall as jest.Mock).mockResolvedValue({
@@ -560,6 +589,17 @@ describe("Slack channel first run", () => {
 
     expect(beginSlackInstall).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/agents/agent_123/channels/appchan_123");
+  });
+
+  it("puts Add to Slack and the settings on one page, without tabs", async () => {
+    // People reach this page from a link to set the channel up; a Connect tab without the
+    // install button sent them hunting for it under Settings.
+    await renderEditChannelPage();
+
+    expect(screen.queryByRole("tab", { name: /Settings/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Change settings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add to Slack" })).toBeInTheDocument();
+    expect(screen.getByText("Conversations")).toBeInTheDocument();
   });
 
   it("explains publish as the only way to open a channel", async () => {

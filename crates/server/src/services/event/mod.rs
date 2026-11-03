@@ -16,8 +16,9 @@
 //
 // Event Listeners:
 // After persisting events, the service notifies registered listeners for
-// observability integrations (OTel spans, metrics, etc.). Listeners are
-// called synchronously but should be non-blocking.
+// observability integrations (OTel spans, metrics, etc.). They run in order
+// per session (`listener_dispatch`). A session actor's holder does not wait
+// for them; every other caller does.
 
 use crate::domains::sessions::record::SessionParticipantKind;
 use crate::live_updates::event_delivery::EventDelivery;
@@ -43,8 +44,11 @@ use uuid::Uuid;
 /// sessions and keeps memory predictable. Mirrors the PAT auth cache
 /// (`auth::builtin`) and reuses the same moka version.
 mod deleted_session;
+mod listener_dispatch;
 mod tool_images;
 use deleted_session::{session_gone, single_session};
+use listener_dispatch::ListenerDispatch;
+pub use listener_dispatch::wait_for_queued_listeners;
 
 const AGENT_METADATA_CACHE_MAX_CAPACITY: u64 = 10_000;
 const AGENT_METADATA_CACHE_TTL: Duration = Duration::from_secs(30 * 60); // 30 minutes
@@ -68,6 +72,24 @@ pub struct ActorAppendFence<'a> {
     pub detached_tool_call: Option<&'a str>,
 }
 
+/// Whether a caller waits for its events' listeners.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ListenerWait {
+    Wait,
+    /// Queued in order, run after the caller is answered.
+    Queue,
+}
+
+/// A session actor's holder never waits for listeners: its turn is on the
+/// critical path, and nothing it does next reads a listener's effect.
+fn listener_wait(fence: Option<ActorAppendFence<'_>>) -> ListenerWait {
+    if fence.is_some() {
+        ListenerWait::Queue
+    } else {
+        ListenerWait::Wait
+    }
+}
+
 #[derive(Clone)]
 pub struct EventService {
     db: Arc<StorageBackend>,
@@ -75,6 +97,8 @@ pub struct EventService {
     event_delivery: EventDelivery,
     /// Registered event listeners for observability
     listeners: Arc<Vec<Arc<dyn EventListener>>>,
+    /// Ordered per-session queues the listeners run from.
+    dispatch: ListenerDispatch,
     /// Bounded cache: session_id -> agent metadata. moka is internally
     /// `Arc`-backed and `Clone`, so no outer `Arc<RwLock>` is needed.
     agent_metadata_cache: Cache<SessionId, AgentEventMetadata>,
@@ -89,12 +113,7 @@ fn build_agent_metadata_cache() -> Cache<SessionId, AgentEventMetadata> {
 
 impl EventService {
     pub fn new(db: Arc<StorageBackend>, event_delivery: EventDelivery) -> Self {
-        Self {
-            db,
-            event_delivery,
-            listeners: Arc::new(Vec::new()),
-            agent_metadata_cache: build_agent_metadata_cache(),
-        }
+        Self::with_listeners(db, event_delivery, Vec::new())
     }
 
     /// Create an EventService with registered listeners
@@ -103,10 +122,12 @@ impl EventService {
         event_delivery: EventDelivery,
         listeners: Vec<Arc<dyn EventListener>>,
     ) -> Self {
+        let listeners = Arc::new(listeners);
         Self {
             db,
             event_delivery,
-            listeners: Arc::new(listeners),
+            dispatch: ListenerDispatch::new(listeners.clone()),
+            listeners,
             agent_metadata_cache: build_agent_metadata_cache(),
         }
     }
@@ -116,39 +137,26 @@ impl EventService {
         &self.event_delivery
     }
 
-    /// Notify all registered listeners about an event.
-    ///
-    /// Each listener is called in isolation - if a listener panics or fails,
-    /// other listeners are still notified. This ensures misbehaving listeners
-    /// cannot disrupt event processing.
+    /// Notify the registered listeners about an event and wait until they
+    /// ran. Listeners run in order per session (`listener_dispatch`); a
+    /// listener that panics or fails does not stop the others.
     async fn notify_listeners(&self, event: &Event) {
-        for listener in self.listeners.iter() {
-            // Check if listener wants this event type
-            let should_notify = listener
-                .event_types()
-                .map(|types| types.contains(&event.event_type.as_str()))
-                .unwrap_or(true); // None means all events
+        self.notify(event, ListenerWait::Wait).await;
+    }
 
-            if should_notify {
-                let listener_name = listener.name();
-                let listener = listener.clone();
-                let event = event.clone();
-
-                // Spawn listener in isolated task to catch panics
-                let handle = tokio::spawn(async move {
-                    listener.on_event(&event).await;
-                });
-
-                // Wait for completion, log but don't propagate panics
-                if let Err(e) = handle.await {
-                    tracing::error!(
-                        listener = listener_name,
-                        error = %e,
-                        "EventListener panicked or was cancelled"
-                    );
-                }
-            }
+    async fn notify(&self, event: &Event, wait: ListenerWait) {
+        if let Some(ran) = self.dispatch.dispatch(event).await
+            && wait == ListenerWait::Wait
+        {
+            let _ = ran.await;
         }
+    }
+
+    /// Wait until every event handed to the listeners so far was handled.
+    /// For tests and shutdown: callers of a fenced append are answered
+    /// before their events' listeners run.
+    pub async fn listeners_settled(&self) {
+        self.dispatch.settled().await;
     }
 
     /// Validate that event_type matches the data type.
@@ -193,7 +201,7 @@ impl EventService {
         // (NATS provides durable pub/sub with replay). InMemory mode persists
         // everything to PG — zero behavioral change without NATS_URL.
         if request.is_ephemeral() && self.event_delivery.supports_ephemeral_skip() {
-            return self.emit_ephemeral(request).await;
+            return self.emit_ephemeral(request, ListenerWait::Wait).await;
         }
 
         self.emit_durable(request).await
@@ -565,7 +573,7 @@ impl EventService {
     }
 
     /// Emit an ephemeral event (skip PG, deliver via EventDelivery only).
-    async fn emit_ephemeral(&self, request: EventRequest) -> Result<Event> {
+    async fn emit_ephemeral(&self, request: EventRequest, wait: ListenerWait) -> Result<Event> {
         tracing::debug!(
             session_id = %request.session_id,
             event_type = %request.event_type,
@@ -595,7 +603,7 @@ impl EventService {
         }
 
         // Notify listeners (OTel, metrics) even for ephemeral events
-        self.notify_listeners(&event).await;
+        self.notify(&event, wait).await;
 
         Ok(event)
     }
@@ -657,7 +665,8 @@ impl EventService {
         .map_err(|error| session_gone(error, session_id))?;
         let events: Vec<Event> = stored.into_iter().map(Self::row_to_event).collect();
         let last = events.last().cloned();
-        self.publish_after_commit(events).await;
+        self.publish_after_commit_with(events, listener_wait(fence))
+            .await;
         Ok(last)
     }
 
@@ -667,10 +676,15 @@ impl EventService {
     /// event is published even if the caller is dropped meanwhile (a worker
     /// killed mid-RPC); see `after_commit_detached`.
     async fn publish_after_commit(&self, events: Vec<Event>) {
+        self.publish_after_commit_with(events, ListenerWait::Wait)
+            .await;
+    }
+
+    async fn publish_after_commit_with(&self, events: Vec<Event>, wait: ListenerWait) {
         let service = self.clone();
         crate::storage::transaction::after_commit_detached(async move {
             for event in &events {
-                service.publish_durable(event).await;
+                service.publish_durable_with(event, wait).await;
             }
         })
         .await;
@@ -678,6 +692,10 @@ impl EventService {
 
     /// Deliver a persisted event to SSE subscribers and listeners.
     async fn publish_durable(&self, event: &Event) {
+        self.publish_durable_with(event, ListenerWait::Wait).await;
+    }
+
+    async fn publish_durable_with(&self, event: &Event, wait: ListenerWait) {
         // Publish to EventDelivery for SSE subscribers
         if let Err(e) = self.event_delivery.publish(event).await {
             tracing::warn!(
@@ -687,8 +705,9 @@ impl EventService {
             );
         }
 
-        // Notify listeners after persisting
-        self.notify_listeners(event).await;
+        // Notify listeners after persisting. Queueing keeps the session's
+        // order even when the caller does not wait.
+        self.notify(event, wait).await;
     }
 
     /// Emit a batch of typed event requests.
@@ -750,7 +769,7 @@ impl EventService {
                     self.emit_durable_run(std::mem::take(&mut durable_run), fence)
                         .await?;
                 }
-                last = Some(self.emit_ephemeral(request).await?);
+                last = Some(self.emit_ephemeral(request, listener_wait(fence)).await?);
             } else {
                 durable_run.push(request);
             }
@@ -957,6 +976,7 @@ mod tests {
 
     mod cancelled_caller;
     mod emit_conditional;
+    mod fenced_listeners;
     mod service_mcp_responder;
     mod tool_images;
 

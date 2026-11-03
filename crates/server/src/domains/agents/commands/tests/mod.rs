@@ -106,6 +106,7 @@ async fn analyze_maps_provider_quota_failure_to_safe_actionable_error() {
 fn basic_agent_request(name: &str) -> CreateAgentRequest {
     CreateAgentRequest {
         owner_agent_id: None,
+        completion_check: Default::default(),
         localizations: Default::default(),
         service_virtual_user_id: None,
 
@@ -136,6 +137,7 @@ fn basic_agent_request(name: &str) -> CreateAgentRequest {
 
 fn update_prompt_request(system_prompt: &str) -> UpdateAgentRequest {
     UpdateAgentRequest {
+        completion_check: Default::default(),
         localizations: Default::default(),
         service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 
@@ -229,6 +231,7 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
     let renamed = UpdateAgentCmd {
         id: created.public_id.to_string(),
         req: UpdateAgentRequest {
+            completion_check: Default::default(),
             localizations: Default::default(),
             service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 

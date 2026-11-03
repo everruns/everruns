@@ -50,7 +50,10 @@ pub(super) async fn run_delivery(
                     delivery.flush().await;
                     return;
                 };
-                if let DeliveryStep::Finished(_) = delivery.observe(&event).await {
+                learn_reacted_key(&inner, &channel, &session_id, &mut delivery, &event).await;
+                let step = delivery.observe(&event).await;
+                save_links(&inner, &channel, &session_id, &mut delivery).await;
+                if let DeliveryStep::Finished(_) = step {
                     break;
                 }
             }
@@ -73,5 +76,64 @@ pub(super) async fn run_delivery(
         .await
     {
         warn!(%session_id, %error, "channel: could not clear a pending delivery");
+    }
+}
+
+/// Before the agent's reaction on a message this delivery did not post, look
+/// up the message's platform key, so the reaction can be mirrored there.
+async fn learn_reacted_key(
+    inner: &Inner,
+    channel: &ResolvedChannel,
+    session_id: &str,
+    delivery: &mut TurnDelivery,
+    event: &DeliveryEvent,
+) {
+    use everruns_contracts::runtime::events::{MESSAGE_REACTION_ADDED, MESSAGE_REACTION_REMOVED};
+    if !matches!(
+        event.event_type.as_str(),
+        MESSAGE_REACTION_ADDED | MESSAGE_REACTION_REMOVED
+    ) {
+        return;
+    }
+    // Only the agent's reactions are mirrored.
+    if event.data.pointer("/actor/kind").and_then(Value::as_str) != Some("agent") {
+        return;
+    }
+    let Some(message_id) = event.data.get("message_id").and_then(Value::as_str) else {
+        return;
+    };
+    if delivery.knows_message(message_id) {
+        return;
+    }
+    let message = super::LinkedMessage {
+        session_id: session_id.to_string(),
+        message_id: message_id.to_string(),
+    };
+    match inner.store.message_key(channel.name(), &message).await {
+        Ok(Some(key)) => delivery.know_message_key(message_id, key),
+        Ok(None) => {}
+        Err(error) => warn!(%session_id, %error, "channel: could not look up a message key"),
+    }
+}
+
+/// Persist the message keys the delivery posted under.
+async fn save_links(
+    inner: &Inner,
+    channel: &ResolvedChannel,
+    session_id: &str,
+    delivery: &mut TurnDelivery,
+) {
+    for (key, message_id) in delivery.take_links() {
+        let message = super::LinkedMessage {
+            session_id: session_id.to_string(),
+            message_id,
+        };
+        if let Err(error) = inner
+            .store
+            .link_message(channel.name(), &key, &message)
+            .await
+        {
+            warn!(%session_id, %error, "channel: could not link a posted message");
+        }
     }
 }

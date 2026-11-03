@@ -13,6 +13,7 @@ import type {
   TraceStep,
   TraceTurn,
 } from "@/lib/api/types";
+import type { MessageReactions, ReactionSummary } from "@/lib/api/message-reactions";
 
 export type TraceView = "all" | "messages" | "tools";
 
@@ -523,4 +524,53 @@ export function retrySummary(step: {
   if (attempts <= 0) return null;
   const wait = step.retry_wait_ms ? ` · waited ${formatDuration(step.retry_wait_ms)}` : "";
   return `Retried ${formatCount(attempts)}×${wait}`;
+}
+
+/** Reactions shown on one turn: on its prompt and on the agent's reply. */
+export interface TurnReactions {
+  prompt: ReactionSummary[];
+  reply: ReactionSummary[];
+}
+
+/**
+ * Reactions by turn number, placed by the reacted message's position in the
+ * event log. A reply belongs to the turn it was written in. A user message
+ * belongs to the turn it arrived in, or else to the next turn to start: the
+ * message is stored just before the turn it starts.
+ */
+export function reactionsByTurn(
+  turns: readonly TraceTurn[],
+  messages: readonly MessageReactions[] | undefined,
+): Map<number, TurnReactions> {
+  const out = new Map<number, TurnReactions>();
+  if (!messages?.length || turns.length === 0) return out;
+  const ordered = [...turns].sort((a, b) => a.start_sequence - b.start_sequence);
+  for (const message of messages) {
+    const sequence = message.sequence;
+    if (sequence == null || message.reactions.length === 0) continue;
+    const within = ordered.find(
+      (turn) => sequence >= turn.start_sequence && sequence <= (turn.end_sequence ?? Infinity),
+    );
+    const turn =
+      within ??
+      (message.author === "agent"
+        ? undefined
+        : ordered.find((candidate) => candidate.start_sequence > sequence));
+    if (!turn) continue;
+    const entry = out.get(turn.turn) ?? { prompt: [], reply: [] };
+    const side = message.author === "agent" ? entry.reply : entry.prompt;
+    for (const reaction of message.reactions) {
+      const same = side.find((existing) => existing.emoji === reaction.emoji);
+      if (same) {
+        same.count += reaction.count;
+        same.me ||= reaction.me;
+        same.agent ||= reaction.agent;
+        same.actors = [...same.actors, ...reaction.actors];
+      } else {
+        side.push({ ...reaction, actors: [...reaction.actors] });
+      }
+    }
+    out.set(turn.turn, entry);
+  }
+  return out;
 }

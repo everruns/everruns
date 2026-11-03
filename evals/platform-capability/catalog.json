@@ -2317,6 +2317,15 @@
           ],
           "type": "string"
         },
+        "CompletionCheck": {
+          "description": "When a turn that is about to finish gets a completion check, and an\nautomatic continuation when the check finds the work unfinished.",
+          "enum": [
+            "off",
+            "unattended",
+            "always"
+          ],
+          "type": "string"
+        },
         "ConversationStarter": {
           "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
           "properties": {
@@ -3074,6 +3083,10 @@
         "communication": {
           "$ref": "#/$defs/Communication",
           "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`."
+        },
+        "completion_check": {
+          "$ref": "#/$defs/CompletionCheck",
+          "description": "When a turn about to finish is checked for whether it did what was\nasked, and continued automatically when it did not. `unattended`\n(default): sessions started by triggers and schedules, where no person\nis watching. `always`: chat too. `off`: never."
         },
         "default_model_id": {
           "description": "The ID of the default LLM model to use for this agent.\nIf not specified, the system default model will be used.",
@@ -22490,6 +22503,15 @@
           ],
           "type": "string"
         },
+        "CompletionCheck": {
+          "description": "When a turn that is about to finish gets a completion check, and an\nautomatic continuation when the check finds the work unfinished.",
+          "enum": [
+            "off",
+            "unattended",
+            "always"
+          ],
+          "type": "string"
+        },
         "ConversationStarter": {
           "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
           "properties": {
@@ -23252,6 +23274,17 @@
                 {
                   "$ref": "#/$defs/Communication",
                   "description": "How the agent talks to people: `direct` or `explicit`. Omit to leave\nunchanged."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "completion_check": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/CompletionCheck",
+                  "description": "When a finishing turn is checked and continued: `off`, `unattended`\nor `always`. Omit to leave unchanged."
                 },
                 {
                   "type": "null"
@@ -29329,6 +29362,15 @@
           ],
           "type": "string"
         },
+        "CompletionCheck": {
+          "description": "When a turn that is about to finish gets a completion check, and an\nautomatic continuation when the check finds the work unfinished.",
+          "enum": [
+            "off",
+            "unattended",
+            "always"
+          ],
+          "type": "string"
+        },
         "ConversationStarter": {
           "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
           "properties": {
@@ -29374,6 +29416,10 @@
             "communication": {
               "$ref": "#/$defs/Communication",
               "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`."
+            },
+            "completion_check": {
+              "$ref": "#/$defs/CompletionCheck",
+              "description": "When a turn about to finish is checked for whether it did what was\nasked, and continued automatically when it did not. `unattended`\n(default): sessions started by triggers and schedules, where no person\nis watching. `always`: chat too. `off`: never."
             },
             "default_model_id": {
               "description": "The ID of the default LLM model to use for this agent.\nIf not specified, the system default model will be used.",

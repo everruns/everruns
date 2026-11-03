@@ -361,6 +361,71 @@ async fn app_creation_encodes_the_generated_yaml_as_json_for_slack() {
 }
 
 #[tokio::test]
+async fn a_refused_manifest_reports_which_fields_slack_rejected() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/apps.manifest.create"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ok": false,
+            "error": "invalid_manifest",
+            "errors": [
+                {"message": "Must be 139 characters or fewer", "pointer": "/display_information/description"},
+                {"message": "Something without a pointer"}
+            ]
+        })))
+        .mount(&server)
+        .await;
+    let (provisioner, db) = provisioner(&server);
+    db.upsert_org_slack_connection(stored(42, "T1", chrono::Duration::hours(1)))
+        .await
+        .unwrap();
+
+    let error = provisioner
+        .create_app(42, Some("T1"), "{}")
+        .await
+        .unwrap_err();
+
+    match error {
+        SlackProvisioningError::RejectedWithProblems { code, problems } => {
+            assert_eq!(code, "invalid_manifest");
+            assert_eq!(
+                problems,
+                vec![
+                    "/display_information/description: Must be 139 characters or fewer",
+                    "Something without a pointer",
+                ]
+            );
+        }
+        other => panic!("expected the problems to be kept, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn other_refusals_keep_the_bare_code_callers_match_on() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/apps.manifest.create"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ok": false,
+            "error": "ratelimited",
+            "response_metadata": {"messages": ["[ERROR] slow down"]}
+        })))
+        .mount(&server)
+        .await;
+    let (provisioner, db) = provisioner(&server);
+    db.upsert_org_slack_connection(stored(43, "T1", chrono::Duration::hours(1)))
+        .await
+        .unwrap();
+
+    let error = provisioner
+        .create_app(43, Some("T1"), "{}")
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, SlackProvisioningError::Rejected(code) if code == "ratelimited"));
+}
+
+#[tokio::test]
 async fn an_app_is_created_with_the_named_workspaces_token() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

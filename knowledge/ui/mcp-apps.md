@@ -50,11 +50,12 @@ Pinned to the specs we implemented against (2026-09-30):
 
 ## Views
 
-One template document serves two URIs, so both stay static and cacheable and
+One template document serves three URIs, so both stay static and cacheable and
 all data arrives as `structuredContent`:
 
 | Template | Opened by | Shows |
 |---|---|---|
+| `ui://everruns/app/agent` | `agent_get_card` | Agent name, status, description, tags, usage, and session count |
 | `ui://everruns/app/session` | `agent_run`, `session_send_message`, `session_get_status` results | Status, recent messages, the pending `ask_user` question as a form, the pending `request_approval` as Approve/Decline, a reply box when idle, "Open in Everruns" |
 | `ui://everruns/app/home` | `everruns_home` (sidebar entry and thread tab) | Agents with a Run box, recent sessions, and everything waiting on the user |
 
@@ -103,5 +104,5 @@ declared form elicitation.
 
 `crates/server/src/api/mcp_endpoint/apps/mod.rs` (metadata, view state, actions),
 `apps/app.html` (the template), `resources.rs` (`resources/list|read`),
-`tool_registry.rs` (tool descriptors). The embedded-resource
-[entity cards](mcp-cards.md) predate MCP Apps and stay as they are.
+`tool_registry.rs` (tool descriptors). [Entity cards](mcp-cards.md) use the
+same template/data contract.

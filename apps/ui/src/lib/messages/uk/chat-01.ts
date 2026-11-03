@@ -207,6 +207,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Latest generation:": "Останнє покоління:",
   Left: "Ліворуч",
   "Lifecycle events": "Події життєвого циклу",
+  "Reactions on the reply": "Реакції на відповідь",
   "LLM Generation Details": "Деталі створення LLM",
   "Load 20 earlier": "Завантажити 20 раніше",
   "Load 20 later": "Завантажити 20 пізніше",

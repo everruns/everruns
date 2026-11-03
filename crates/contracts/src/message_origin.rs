@@ -29,6 +29,8 @@ pub const MESSAGE_ORIGIN_TASK_WAKE: &str = "task_wake";
 const SCHEDULE_RUN_METADATA_KEY: &str = "schedule_run";
 /// Model-facing label on thread wake-ups.
 const TASK_WAKE_HEADER: &str = "[Automatic task update, not written by the person] ";
+/// Model-facing label on a completion check's automatic continuation.
+const TURN_CONTINUATION_HEADER: &str = "[Automatic continuation, not written by the person] ";
 /// Longest display name derived from free text, in characters.
 const NAME_MAX_CHARS: usize = 60;
 
@@ -53,6 +55,8 @@ pub enum MessageOriginKind {
     /// agent asked to be woken by reactions. The message text is the
     /// rendered reaction note (`message_reactions::ReactionNote`).
     Reaction,
+    /// A completion check found the turn's work unfinished and continued it.
+    TurnContinuation,
 }
 
 impl MessageOriginKind {
@@ -66,6 +70,7 @@ impl MessageOriginKind {
             Self::TaskWake => "task_wake",
             Self::System => "system",
             Self::Reaction => "reaction",
+            Self::TurnContinuation => "turn_continuation",
         }
     }
 
@@ -78,6 +83,7 @@ impl MessageOriginKind {
             Self::TaskWake => "Automatic update",
             Self::System => "System",
             Self::Reaction => "Reaction",
+            Self::TurnContinuation => "Automatic continuation",
         }
     }
 }
@@ -267,6 +273,7 @@ impl MessageOrigin {
             MessageOriginKind::TaskWake => return TASK_WAKE_HEADER.to_string(),
             // The text is the reaction note itself; it carries its own label.
             MessageOriginKind::Reaction => return String::new(),
+            MessageOriginKind::TurnContinuation => return TURN_CONTINUATION_HEADER.to_string(),
             kind => format!("{} message", kind.label()),
         };
         if let Some(name) = &self.name

@@ -202,6 +202,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Latest generation:": "最新一代：",
   Left: "左",
   "Lifecycle events": "生命周期事件",
+  "Reactions on the reply": "对回复的反应",
   "LLM Generation Details": "LLM生成详情",
   "Load 20 earlier": "提前加载 20 个",
   "Load 20 later": "稍后加载 20 个",

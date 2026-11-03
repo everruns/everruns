@@ -866,6 +866,18 @@
         ]
       },
       {
+        "field": "completion_check",
+        "long": "completion-check",
+        "kind": "string",
+        "required": false,
+        "help": "When a turn that is about to finish gets a completion check, and an automatic continuation wh...",
+        "choices": [
+          "off",
+          "unattended",
+          "always"
+        ]
+      },
+      {
         "field": "default_model_id",
         "long": "default-model-id",
         "kind": "string",
@@ -2987,6 +2999,12 @@
         "required": false
       },
       {
+        "field": "completion_check",
+        "long": "completion-check",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "default_model_id",
         "long": "default-model-id",
         "kind": "string",
@@ -3181,6 +3199,18 @@
         "choices": [
           "direct",
           "explicit"
+        ]
+      },
+      {
+        "field": "completion_check",
+        "long": "completion-check",
+        "kind": "string",
+        "required": false,
+        "help": "When a turn that is about to finish gets a completion check, and an automatic continuation wh...",
+        "choices": [
+          "off",
+          "unattended",
+          "always"
         ]
       },
       {
