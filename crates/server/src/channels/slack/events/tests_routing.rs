@@ -92,7 +92,9 @@ fn test_manifest_yaml_parses_as_yaml_with_expected_shape() {
             "message.channels",
             "message.groups",
             "message.im",
-            "message.mpim"
+            "message.mpim",
+            "reaction_added",
+            "reaction_removed"
         ]
     );
 }
