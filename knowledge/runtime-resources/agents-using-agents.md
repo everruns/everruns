@@ -139,9 +139,25 @@ A hand-off step shows its outcome, a member's session shows "Woken by", and the
 run view lays out every agent's session as lanes on one timeline with a
 breadcrumb back to the first session. The Cost tab can show the whole run.
 
-## Framework and serve (follow-up)
+## Framework
 
-The codec already reads members. Framework gains `AgentBuilder::member(agent)`
-and a catalog for linked names, running members on the same `Engine`; serve
-gains `.member("name")` for other `#[agent]`s in the app and drops
+`AgentBuilder::member(agent)` adds a member as an ordinary `Agent` value; the
+lead gets the Agents capability with one target per member, keyed by name
+(`crates/everruns/src/agent/members.rs`). A member's id is derived from its
+name, so it is the same on every build and restart. Member sessions run in the
+lead's Engine on the lead's host:
+
+- SQLite hosting: the member runs a build derived from the lead's
+  (`<lead>:agent:<member id>`, `Engine::member_build`), resolved from the
+  lead's registration, so registering the lead is enough after a restart.
+- Local profile (legacy lane): the coordination runner attaches the member.
+
+Packages: bundled agents are built with the lead's providers and host
+services; linked names must be added with `.member()` or the build fails.
+Export writes every member as bundled, since the Framework keeps no catalog
+for a linked name. Invite mode is Platform-only (it reads stored agents).
+
+## serve (follow-up)
+
+serve gains `.member("name")` for other `#[agent]`s in the app and drops
 `#[agent(sub)]` and its `ask_<name>` tools in favour of `spawn_agent`.

@@ -31,7 +31,7 @@
 //! - No I/O happens outside the adapter, so the same object runs in a
 //!   Framework task, serve, and the server's Postgres-driven dispatcher.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -42,7 +42,8 @@ use super::progress::TaskProgress;
 use super::{ChannelDeliveryAdapter, DeliveryContext, DeliveryResult, OutboundChannelMessage};
 use crate::conversation::NO_REPLY_TOOL_NAME;
 use everruns_contracts::runtime::events::{
-    CONVERSATION_MESSAGE, OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED,
+    CONVERSATION_MESSAGE, MESSAGE_REACTION_ADDED, MESSAGE_REACTION_REMOVED,
+    OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED,
     OUTPUT_MESSAGE_STARTED, SESSION_TITLE_UPDATED, TASK_CREATED, TASK_UPDATED, TOOL_COMPLETED,
     TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_SEALED, TURN_STARTED,
 };
@@ -171,6 +172,10 @@ pub struct TurnDelivery {
     notes: HashSet<String>,
     /// The agent sent a message with `send_message` this turn.
     sent_explicitly: bool,
+    /// Platform keys of the messages this delivery knows, by message id.
+    keys: HashMap<String, String>,
+    /// Links made since the host last took them, for it to persist.
+    new_links: Vec<(String, String)>,
 }
 
 impl TurnDelivery {
@@ -198,7 +203,32 @@ impl TurnDelivery {
             unstreamable: HashSet::new(),
             notes: HashSet::new(),
             sent_explicitly: false,
+            keys: HashMap::new(),
+            new_links: Vec::new(),
         }
+    }
+
+    /// Tell the delivery a message's platform key it did not post itself
+    /// (the input message, an earlier reply), so the agent's reactions on it
+    /// reach the platform.
+    pub fn know_message_key(&mut self, message_id: impl Into<String>, key: impl Into<String>) {
+        self.keys.insert(message_id.into(), key.into());
+    }
+
+    /// Whether the delivery knows a message's platform key.
+    pub fn knows_message(&self, message_id: &str) -> bool {
+        self.keys.contains_key(message_id)
+    }
+
+    /// Keys of the messages posted since the last call, as `(key, message_id)`,
+    /// for the host to link.
+    pub fn take_links(&mut self) -> Vec<(String, String)> {
+        std::mem::take(&mut self.new_links)
+    }
+
+    fn link(&mut self, message_id: &str, key: String) {
+        self.keys.insert(message_id.to_string(), key.clone());
+        self.new_links.push((key, message_id.to_string()));
     }
 
     /// Where this delivery posts.
@@ -264,6 +294,8 @@ impl TurnDelivery {
             CONVERSATION_MESSAGE => self.on_sent(&event.data).await,
             OUTPUT_MESSAGE_REPLACED if self.streaming() => self.on_replaced(&event.data).await,
             OUTPUT_MESSAGE_COMPLETED => self.on_completed(&event.data).await,
+            MESSAGE_REACTION_ADDED => self.on_reaction(&event.data, true).await,
+            MESSAGE_REACTION_REMOVED => self.on_reaction(&event.data, false).await,
             TOOL_STARTED => {
                 self.tools_running += 1;
                 self.set_status(self.current_status()).await;
@@ -360,6 +392,10 @@ impl TurnDelivery {
             };
             match started {
                 Ok(handle) => {
+                    if let Some(reactions) = self.adapter.reactions() {
+                        let key = reactions.stream_message_key(&handle, &self.context);
+                        self.link(message_id, key);
+                    }
                     self.streams.insert(
                         message_id.to_string(),
                         Stream {
@@ -454,7 +490,7 @@ impl TurnDelivery {
             return;
         }
         let Some(text) = text else { return };
-        match self.post(text).await {
+        match self.post_message(text, message_id.as_deref()).await {
             Ok(()) => {
                 if let Some(id) = message_id {
                     self.done.insert(id);
@@ -645,12 +681,35 @@ impl TurnDelivery {
     }
 
     async fn post(&mut self, text: String) -> Result<(), String> {
+        self.post_message(text, None).await
+    }
+
+    /// Post text; a reply's message id links the posted message to it.
+    async fn post_message(&mut self, text: String, message_id: Option<&str>) -> Result<(), String> {
         let message = OutboundChannelMessage {
             session_id: self.session_id,
             text,
             thread_ref: self.context.thread_ref.clone(),
             correlation_id: Some(self.input_message_id.clone()),
         };
+        if let (Some(message_id), Some(reactions)) = (message_id, self.adapter.reactions()) {
+            return match reactions.post_keyed(&message, &self.context).await {
+                Ok(key) => {
+                    self.delivered = true;
+                    if let Some(key) = key {
+                        self.link(message_id, key);
+                    }
+                    Ok(())
+                }
+                Err(DeliveryResult::Ok) => {
+                    self.delivered = true;
+                    Ok(())
+                }
+                Err(
+                    DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error),
+                ) => Err(error),
+            };
+        }
         match self.adapter.deliver(&message, &self.context).await {
             DeliveryResult::Ok => {
                 self.delivered = true;
@@ -659,6 +718,34 @@ impl TurnDelivery {
             DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
                 Err(error)
             }
+        }
+    }
+
+    /// The agent's own reaction, mirrored onto the platform message. Other
+    /// people's reactions came from a surface that already shows them.
+    async fn on_reaction(&mut self, data: &Value, added: bool) {
+        let Some(reactions) = self.adapter.reactions() else {
+            return;
+        };
+        let field = |name: &str| data.get(name).and_then(Value::as_str);
+        let by_agent = data
+            .get("actor")
+            .and_then(|actor| actor.get("kind"))
+            .and_then(Value::as_str)
+            == Some("agent");
+        let (Some(message_id), Some(emoji)) = (field("message_id"), field("emoji")) else {
+            return;
+        };
+        if !by_agent {
+            return;
+        }
+        let Some(key) = self.keys.get(message_id) else {
+            return;
+        };
+        if let DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) =
+            reactions.react(key, emoji, added, &self.context).await
+        {
+            warn!(session_id = %self.session_id, %error, "channel: could not mirror a reaction");
         }
     }
 

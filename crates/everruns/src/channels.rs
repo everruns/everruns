@@ -54,10 +54,11 @@ use tracing::debug;
 use crate::{Agent, Engine, InputMessage, ResumeError, SendDisposition, Session};
 
 pub use everruns_core::channel::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest,
-    ChannelResponse, ChannelStreamDelivery, ControlAction, DeliveryContext, DeliveryResult,
-    DeliveryTarget, ExternalActor, Inbound, InboundAttachment, InboundChannelEvent, InboundControl,
-    InboundDecision, InboundMessage, InboundRoute, OutboundChannelMessage, SessionBinding,
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelDriver, ChannelError,
+    ChannelReactionSurface, ChannelRequest, ChannelResponse, ChannelStreamDelivery, ControlAction,
+    DeliveryContext, DeliveryResult, DeliveryTarget, ExternalActor, Inbound, InboundAttachment,
+    InboundChannelEvent, InboundControl, InboundDecision, InboundMessage, InboundReaction,
+    InboundRoute, OutboundChannelMessage, SessionBinding,
 };
 /// File intake, for hosts that take files outside a channel (serve's
 /// message endpoint).

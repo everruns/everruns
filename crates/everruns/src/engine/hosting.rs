@@ -5,6 +5,10 @@ use crate::hosting::{
 };
 use everruns_contracts::error::{AgentLoopError, Result};
 
+/// Joins a lead's build key and a member's id into the member's build key.
+/// Build keys allow only `[A-Za-z0-9_.:-]`, so the id, not the name, follows.
+const MEMBER_BUILD_SEPARATOR: &str = ":agent:";
+
 #[derive(Clone)]
 pub(super) struct Registration {
     pub agent: Agent,
@@ -490,13 +494,49 @@ impl Engine {
     }
 
     pub(super) fn registration(&self, build: &AgentBuild) -> Result<Registration> {
-        self.inner
+        let registry = self
+            .inner
             .registry
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .get(build)
-            .cloned()
+            .unwrap_or_else(|p| p.into_inner());
+        if let Some(registration) = registry.get(build) {
+            return Ok(registration.clone());
+        }
+        // A member's build is derived from its lead's (`member_build`), so a
+        // member session resumes after a restart once the lead is registered.
+        build
+            .agent
+            .rsplit_once(MEMBER_BUILD_SEPARATOR)
+            .and_then(|(lead, member)| {
+                let lead = registry.get(&AgentBuild::new(lead, build.build_id.clone()))?;
+                let member = uuid::Uuid::try_parse(member).ok()?;
+                let agent = lead.agent.member_on_host(member.into())?;
+                Some(Registration {
+                    agent,
+                    harness: None,
+                    environment: lead.environment.clone(),
+                })
+            })
             .ok_or_else(|| AgentLoopError::config("retained agent build is unavailable"))
+    }
+
+    /// The build a member of the agent registered under `lead` runs as.
+    #[cfg(feature = "local")]
+    pub(crate) fn member_build(
+        &self,
+        lead: &AgentBuild,
+        member: everruns_contracts::typed_id::AgentId,
+    ) -> Option<AgentBuild> {
+        let registration = self.registration(lead).ok()?;
+        registration.agent.member_on_host(member)?;
+        Some(AgentBuild::new(
+            format!(
+                "{}{MEMBER_BUILD_SEPARATOR}{}",
+                lead.agent,
+                member.uuid().simple()
+            ),
+            lead.build_id.clone(),
+        ))
     }
 
     fn binding_compatibility(&self, binding: &SessionBinding) -> Result<SessionCompatibility> {
