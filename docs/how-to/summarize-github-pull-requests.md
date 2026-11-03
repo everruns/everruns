@@ -93,6 +93,17 @@ Deliveries that were filtered out (for example, a repository outside the
 trigger's list) or deduplicated (a GitHub redelivery) are listed with the
 reason, so you can see why an event did not start a run.
 
+To run the trigger on a pull request that is already open, without pushing to
+it, fire it with a reference to the pull request. The run continues that pull
+request's own session, as a real delivery would:
+
+```bash
+everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 \
+  --event '{"repository":"acme/api","pull_request":12}' --reason 'Summarize this pull request'
+```
+
+See [Fire a trigger with an event](/features/agent-triggers/#fire-a-trigger-with-an-event).
+
 ## Disconnect
 
 Select **Disconnect** in the **GitHub** section. This uninstalls the App from

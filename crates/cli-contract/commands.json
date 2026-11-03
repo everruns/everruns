@@ -2778,7 +2778,7 @@
       "triggers"
     ],
     "verb": "trigger",
-    "description": "Manually fire an agent trigger once.",
+    "description": "Manually fire an agent trigger once. Pass an event to run it through the trigger's filter, message and session routing as a real one would; webhook, GitHub and MCP event triggers need one.",
     "method": "POST",
     "http_path": "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
     "args": [
@@ -2788,6 +2788,12 @@
         "kind": "string",
         "required": true,
         "help": "Owning agent's prefixed public identifier."
+      },
+      {
+        "field": "event",
+        "long": "event",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "trigger_id",
@@ -2801,6 +2807,10 @@
       {
         "intent": "Fire a trigger once now to test it without waiting for its schedule",
         "command": "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Test the digest message'"
+      },
+      {
+        "intent": "Run a GitHub trigger on an existing pull request, in that pull request's own session",
+        "command": "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --event '{\"repository\":\"acme/api\",\"pull_request\":12}' --reason 'Review this pull request'"
       }
     ]
   },
