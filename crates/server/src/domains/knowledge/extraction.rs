@@ -1,6 +1,6 @@
 //! Preserve source bytes; Markkit produces an independently versioned text view.
 use serde_json::{Value, json};
-pub const PROFILE: &str = "markkit-0.1.1/knowledge-v1";
+pub const PROFILE: &str = "markkit-0.3.1/knowledge-v1";
 pub struct Extracted {
     pub text: Option<String>,
     pub metadata: Value,
@@ -14,6 +14,7 @@ pub fn extract(bytes: &[u8], path: &str, mime: &str) -> Extracted {
         "html" | "htm" | "docx" | "xlsx" | "xlsm" | "xls" | "ods"
     ) || mime == "text/html"
     {
+        // THREAT[TM-DOS-053]: require the patched parser and retain adapter budgets.
         let markkit = markkit::Markkit::builder()
             .max_input_size(super::content::EXTRACT_LIMIT)
             .max_processing_secs(30)
@@ -32,7 +33,12 @@ pub fn extract(bytes: &[u8], path: &str, mime: &str) -> Extracted {
             Ok(doc) if doc.markdown.len() <= super::content::EXTRACT_LIMIT => Extracted {
                 text: Some(doc.markdown),
                 metadata: json!({"extraction":{"profile":PROFILE,"format":doc.format,"title":doc.title,"stats":doc.stats}}),
-                warnings: doc.warnings.iter().map(ToString::to_string).collect(),
+                // Persist stable codes, not parser-specific diagnostic details.
+                warnings: doc
+                    .warnings
+                    .into_iter()
+                    .map(|warning| warning.code.as_str().to_owned())
+                    .collect(),
                 status: "ready",
             },
             Ok(_) => Extracted {
