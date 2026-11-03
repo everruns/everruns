@@ -29,8 +29,6 @@ agents draft	--context-revision --draft --messages! --reason
 agents examples adopt	--context-revision --name --reason <name>
 agents examples list	--context-revision --reason
 agents export	--format --out <agent>!
-agents exposures resume	--agent --context-revision --reason <agent_id>
-agents exposures suspend	--agent --context-revision --reason <agent_id>
 agents external-worker disable	--agent-id! --context-revision --reason
 agents external-worker get	--agent-id! --context-revision --reason
 agents failures list	--after --agent --before --context-revision --limit --offset --reason <agent_id>
@@ -45,7 +43,9 @@ agents health-checks list	--agent-id! --context-revision --reason
 agents health-checks trigger	--agent-id! --context-revision --reason
 agents import	--content --format --reason --target <file>
 agents list	--context-revision --include-archived --limit --offset --reason --search
+agents pause	--agent --context-revision --reason <agent_id>
 agents preview	--capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
+agents resume	--agent --context-revision --reason <agent_id>
 agents scripts create	--agent-id! --body! --context-revision --description! --input-schema --name! --reason
 agents scripts delete	--agent-id! --context-revision --reason --script-id!
 agents scripts get	--agent-id! --context-revision --reason --script-id!
