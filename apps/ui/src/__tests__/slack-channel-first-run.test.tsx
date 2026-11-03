@@ -151,12 +151,14 @@ async function renderNewChannelPage(mode: ChatModeState | null = null) {
     await params;
   });
 }
-async function renderEditChannelPage(reason: string) {
+async function renderEditChannelPage(reason?: string) {
   const params = Promise.resolve({
     agentId: "agent_123",
     channelId: "appchan_123",
   });
-  const searchParams = Promise.resolve({ slack_install: "failed", reason });
+  const searchParams = Promise.resolve(
+    reason === undefined ? {} : { slack_install: "failed", reason },
+  );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     render(
@@ -585,6 +587,17 @@ describe("Slack channel first run", () => {
 
     expect(beginSlackInstall).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/agents/agent_123/channels/appchan_123");
+  });
+
+  it("puts Add to Slack and the settings on one page, without tabs", async () => {
+    // People reach this page from a link to set the channel up; a Connect tab without the
+    // install button sent them hunting for it under Settings.
+    await renderEditChannelPage();
+
+    expect(screen.queryByRole("tab", { name: /Settings/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Change settings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add to Slack" })).toBeInTheDocument();
+    expect(screen.getByText("Conversations")).toBeInTheDocument();
   });
 
   it("explains publish as the only way to open a channel", async () => {
