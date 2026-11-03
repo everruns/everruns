@@ -46,6 +46,7 @@
         "bot": [
           "chat:write",
           "reactions:write",
+          "reactions:read",
           "channels:history",
           "groups:history",
           "im:history",
@@ -65,6 +66,8 @@
           "message.groups",
           "message.im",
           "message.mpim",
+          "reaction_added",
+          "reaction_removed",
           "app_home_opened",
           "app_context_changed",
           "agent_session_stopped",
@@ -128,6 +131,7 @@
         "bot": [
           "chat:write",
           "reactions:write",
+          "reactions:read",
           "channels:history",
           "groups:history",
           "im:history",
@@ -147,6 +151,8 @@
           "message.groups",
           "message.im",
           "message.mpim",
+          "reaction_added",
+          "reaction_removed",
           "app_home_opened",
           "app_context_changed",
           "agent_session_stopped",
@@ -210,6 +216,7 @@
         "bot": [
           "chat:write",
           "reactions:write",
+          "reactions:read",
           "channels:history",
           "groups:history",
           "im:history",
@@ -229,6 +236,8 @@
           "message.groups",
           "message.im",
           "message.mpim",
+          "reaction_added",
+          "reaction_removed",
           "app_home_opened",
           "app_context_changed",
           "agent_session_stopped",
@@ -271,6 +280,7 @@
         "bot": [
           "chat:write",
           "reactions:write",
+          "reactions:read",
           "channels:history",
           "groups:history",
           "im:history",
@@ -288,7 +298,9 @@
           "message.channels",
           "message.groups",
           "message.im",
-          "message.mpim"
+          "message.mpim",
+          "reaction_added",
+          "reaction_removed"
         ],
         "request_url": "https://example.com/events"
       },
@@ -348,6 +360,7 @@
         "bot": [
           "chat:write",
           "reactions:write",
+          "reactions:read",
           "channels:history",
           "groups:history",
           "im:history",
@@ -367,6 +380,8 @@
           "message.groups",
           "message.im",
           "message.mpim",
+          "reaction_added",
+          "reaction_removed",
           "app_home_opened",
           "app_context_changed",
           "agent_session_stopped",
@@ -430,6 +445,7 @@
         "bot": [
           "chat:write",
           "reactions:write",
+          "reactions:read",
           "channels:history",
           "groups:history",
           "im:history",
@@ -449,6 +465,8 @@
           "message.groups",
           "message.im",
           "message.mpim",
+          "reaction_added",
+          "reaction_removed",
           "app_home_opened",
           "app_context_changed",
           "agent_session_stopped",
