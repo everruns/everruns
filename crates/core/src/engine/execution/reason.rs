@@ -1891,7 +1891,6 @@ impl ReasonAtom {
             meta,
             !finalized_tool_calls.is_empty(),
         );
-        let served = meta.and_then(|m| m.response_model.clone());
         let truncation = truncation_gate.decide(&outcome);
         let mut generation_data = outcome
             .apply(LlmGenerationData::success_with_retry(
@@ -1908,7 +1907,7 @@ impl ReasonAtom {
                 response_id.clone(),
                 generation_outcome::retry_info(meta),
             ))
-            .with_response_model(served)
+            .with_response_model(meta.and_then(|m| m.response_model.clone()))
             .with_provider_id(Some(model_with_provider.provider.to_string()))
             .with_truncation_gate(truncation.label())
             .with_tool_changes(tool_changes.record.clone());
@@ -1916,11 +1915,12 @@ impl ReasonAtom {
             generation_data = generation_outcome::with_compaction(generation_data, info);
         }
 
-        if let Some(request_options) =
-            build_request_options(&llm_config, &model_with_provider.provider_type.to_string())
-        {
-            generation_data = generation_data.with_request_options(request_options);
-        }
+        generation_data = observability::with_completed_request_options(
+            generation_data,
+            &llm_config,
+            model_with_provider.provider_type.as_str(),
+            meta,
+        );
 
         if let Err(e) = self
             .event_emitter

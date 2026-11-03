@@ -312,6 +312,19 @@ fn mai_credential_schema() -> CredentialFormSchema {
 /// ```
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const MAI_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "mai",
+        recommended_models: &["mai-2-ultra", "mai-2-flash", "mai-ds-r1"],
+        coding_model: "mai-2-ultra",
+        research_model: "mai-ds-r1",
+        chat_model: "mai-2-flash",
+        small_model: "mai-2-flash",
+        decision_model: "mai-2-flash",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Microsoft MAI".into(),
@@ -325,6 +338,7 @@ pub fn descriptor() -> DriverDescriptor {
         provider: Some(std::sync::Arc::new(|config| {
             configured_provider(config).with_driver_id(DriverId::Mai)
         })),
+        recommended_models: Some(MAI_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Mai, |config| {
             configured_provider(config).into_boxed_driver()
         })

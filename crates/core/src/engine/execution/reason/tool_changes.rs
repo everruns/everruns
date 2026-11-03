@@ -100,6 +100,13 @@ impl ColdMoment {
         // it would release one into a warm cache.
         let retention = cache.map(|cache| cache.retention).unwrap_or_default();
         let minutes = match retention {
+            PromptCacheRetention::TwelveHours => 12 * 60,
+            PromptCacheRetention::Default
+                if *provider == DriverId::OpenAI
+                    && everruns_contracts::openai_compat::supports_cache_options(model) =>
+            {
+                12 * 60
+            }
             PromptCacheRetention::OneHour => 60,
             _ if *provider == DriverId::Anthropic || *provider == DriverId::Bedrock => 5,
             _ => 30,
@@ -668,6 +675,12 @@ mod tests {
         let held = ColdMoment::for_model(&DriverId::Gemini, "gemini-unknown", Some(&hour))
             .expect("fallback model holds");
         assert_eq!(held.cache_lifetime, chrono::Duration::minutes(60));
+        let long = PromptCacheConfig {
+            retention: PromptCacheRetention::TwelveHours,
+            ..hour
+        };
+        let held = ColdMoment::for_model(&DriverId::OpenAI, "gpt-unknown", Some(&long)).unwrap();
+        assert_eq!(held.cache_lifetime, chrono::Duration::hours(12));
     }
 
     #[test]
