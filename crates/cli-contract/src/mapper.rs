@@ -388,6 +388,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     ("sessions resources", "Resources registered in a session."),
     (
+        "sessions run",
+        "The whole run a session belongs to: every agent, its status and spend.",
+    ),
+    (
         "sessions sandbox",
         "A session's sandbox: inspect, pause, resume, delete.",
     ),

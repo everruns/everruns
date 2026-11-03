@@ -30017,6 +30017,45 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/run": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Show a session's whole run",
+        "description": "Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.",
+        "operationId": "get_session_run",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRun"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sessions/{session_id}/run-requests": {
       "get": {
         "tags": [
@@ -43156,7 +43195,8 @@
           "by_agent",
           "by_user",
           "by_started_by",
-          "by_day"
+          "by_day",
+          "runs_with_agents"
         ],
         "properties": {
           "by_agent": {
@@ -43210,6 +43250,13 @@
             "type": "string",
             "format": "date-time",
             "description": "Window start (inclusive)."
+          },
+          "runs_with_agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunsWithAgentsLine"
+            },
+            "description": "Runs where an agent handed work to other agents: their whole cost by\nthe agent the run started with, split by the agent that spent it.\nEvery amount is also in `by_agent`, under the agent that spent it."
           },
           "timezone": {
             "type": "string",
@@ -67662,6 +67709,26 @@
         },
         "additionalProperties": false
       },
+      "RunAgent": {
+        "type": "object",
+        "description": "The agent behind a session of the run.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The agent's id, as `/v1/agents/{agent_id}` takes it.",
+            "example": "agent_01h9xk2m"
+          },
+          "name": {
+            "type": "string",
+            "description": "The agent's display name.",
+            "example": "Triage"
+          }
+        }
+      },
       "RunBucket": {
         "type": "object",
         "description": "Turns started and failed in one bucket.",
@@ -67752,6 +67819,91 @@
             "items": {
               "$ref": "#/components/schemas/RunRequest"
             }
+          }
+        }
+      },
+      "RunSession": {
+        "type": "object",
+        "description": "One agent session of the run.",
+        "required": [
+          "session_id",
+          "status",
+          "created_at",
+          "cost_usd",
+          "turns"
+        ],
+        "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunAgent",
+                "description": "The agent that ran it. Absent when it has none or it was deleted."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Model spend in USD.",
+            "example": 0.21
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-03T09:00:00Z"
+          },
+          "last_turn_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When its last turn ended; absent while it works or before it ran.",
+            "example": "2026-11-03T09:01:30Z"
+          },
+          "last_turn_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Outcome of its last finished turn: `completed`, `failed` or `cancelled`.",
+            "example": "completed"
+          },
+          "parent_session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The session that handed it work; absent for the first session.",
+            "example": "session_01h9xk1a"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Session's prefixed public identifier.",
+            "example": "session_01h9xk2m"
+          },
+          "status": {
+            "type": "string",
+            "description": "Session status: `started`, `active`, `idle`, `waiting_for_tool_results`, ...",
+            "example": "idle"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The session's title: for work handed off, the task's name.",
+            "example": "Triage the failing build"
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunTurn"
+            },
+            "description": "Its turns, oldest first."
           }
         }
       },
@@ -67874,6 +68026,131 @@
             "description": "Repetitions per case. `total` counts every repetition.",
             "example": 3,
             "minimum": 0
+          }
+        }
+      },
+      "RunTurn": {
+        "type": "object",
+        "description": "One turn of a session in the run.",
+        "required": [
+          "turn_no",
+          "turn_id",
+          "started_at",
+          "status",
+          "cost_usd"
+        ],
+        "properties": {
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Model spend of the turn in USD.",
+            "example": 0.21
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Absent while the turn runs.",
+            "example": "2026-11-03T09:01:30Z"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-03T09:00:00Z"
+          },
+          "status": {
+            "type": "string",
+            "description": "Trace status of the turn: `running`, `completed`, `failed`, ...",
+            "example": "completed"
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Public turn id (`turn_...`).",
+            "example": "turn_01h9xk2m"
+          },
+          "turn_no": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Turn number within its session, from 1.",
+            "example": 1
+          }
+        }
+      },
+      "RunsWithAgentsLine": {
+        "type": "object",
+        "description": "The runs one agent led, with whole-run cost and who spent it.",
+        "required": [
+          "agent_id",
+          "agent_name",
+          "runs",
+          "cost_usd",
+          "by_agent"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "The agent the runs started with.",
+            "example": "agent_01h9xk1a"
+          },
+          "agent_name": {
+            "type": "string",
+            "example": "Foreman"
+          },
+          "by_agent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunsWithAgentsShare"
+            },
+            "description": "Who spent it, the leading agent itself included, largest first."
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Priced cost of those runs in USD, every agent included.",
+            "example": 212.4
+          },
+          "runs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Runs it handed work to other agents in, with usage in the window.",
+            "example": 12
+          }
+        }
+      },
+      "RunsWithAgentsShare": {
+        "type": "object",
+        "description": "One agent's spend within the runs another agent led.",
+        "required": [
+          "relation",
+          "cost_usd"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absent for usage recorded with no agent.",
+            "example": "agent_01h9xk2m"
+          },
+          "agent_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Implement"
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "example": 121.3
+          },
+          "relation": {
+            "type": "string",
+            "description": "`lead` for the leading agent itself, `created_here` for an agent\ncreated as part of it, `linked` for any other agent.",
+            "example": "created_here"
           }
         }
       },
@@ -72174,6 +72451,55 @@
           "failed",
           "released"
         ]
+      },
+      "SessionRun": {
+        "type": "object",
+        "description": "The run a session belongs to: every agent that took part, with status,\ntiming and spend.",
+        "required": [
+          "root_session_id",
+          "cost_usd",
+          "first_session_cost_usd",
+          "waiting_requests",
+          "sessions",
+          "truncated"
+        ],
+        "properties": {
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Spend of every session in the run, in USD.",
+            "example": 5.06
+          },
+          "first_session_cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Spend of the first session alone, in USD.",
+            "example": 0.25
+          },
+          "root_session_id": {
+            "type": "string",
+            "description": "The run's first session, the one the person talks to.",
+            "example": "session_01h9xk1a"
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunSession"
+            },
+            "description": "The first session, then every session started under it by creation."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "More sessions or turns existed than were returned.",
+            "example": false
+          },
+          "waiting_requests": {
+            "type": "integer",
+            "description": "Questions and approvals any agent in the run waits on the person for.",
+            "example": 1,
+            "minimum": 0
+          }
+        }
       },
       "SessionSandboxAction": {
         "type": "string",

@@ -153,6 +153,12 @@ export async function getSessionCost(sessionId: string): Promise<SessionCost> {
   return response.data;
 }
 
+/** The run the session belongs to: every agent session in it, with turns and spend. */
+export async function getSessionRun(sessionId: string): Promise<SessionRun> {
+  const response = await api.get<SessionRun>(`/v1/sessions/${sessionId}/run`);
+  return response.data;
+}
+
 /** Work report of one turn, or of the session's latest turn when `turnId` is omitted. */
 export async function getSessionWork(
   sessionId: string,
@@ -561,7 +567,7 @@ export async function submitToolApprovals(
 // Requests from other agents in a run
 // ============================================
 
-import type { RunRequestsResponse } from "./schema-types";
+import type { RunRequestsResponse, SessionRun } from "./schema-types";
 
 /**
  * Questions and approvals the agents this session handed work to wait on.

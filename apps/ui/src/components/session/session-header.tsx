@@ -44,6 +44,7 @@ import {
   MessageSquare,
   ShieldCheck,
   Sparkles,
+  Users,
   Waypoints,
   Workflow,
   Zap,
@@ -54,7 +55,7 @@ import {
  * recording actually has. `files` keeps its route id — the label is
  * "Files"; its stable route preserves existing links.
  */
-export type SessionNavKey = "trace" | "approvals" | "work" | "events" | "files" | "cost";
+export type SessionNavKey = "trace" | "approvals" | "agents" | "work" | "events" | "files" | "cost";
 
 export interface SessionNavItem {
   key: SessionNavKey;
@@ -201,6 +202,7 @@ export function buildSessionNavigation({
   eventCount,
   fileCount,
   activeScheduleCount,
+  inRun,
 }: {
   basePath: string;
   features: Set<string>;
@@ -212,6 +214,8 @@ export function buildSessionNavigation({
   fileCount?: number;
   /** Enabled schedules. A session that still has one keeps the Work tab. */
   activeScheduleCount?: number;
+  /** Another agent handed this session its work. */
+  inRun?: boolean;
 }): SessionNavItem[] {
   const hasFeature = (feature: string) => features.has(feature);
   // Work covers subagents, leased resources and the schedules this session
@@ -222,6 +226,9 @@ export function buildSessionNavigation({
     (taskCount ?? 0) > 0 ||
     (activeScheduleCount ?? 0) > 0;
   const hasFiles = sessionShowsFiles(features, fileCount);
+  // Agents shows the whole run: on a session that can hand work to other
+  // agents, and on one another agent handed work to.
+  const hasAgents = hasFeature("agent_handoffs") || !!inRun;
 
   return [
     {
@@ -239,6 +246,16 @@ export function buildSessionNavigation({
       href: `${basePath}/approvals`,
       icon: ShieldCheck,
     },
+    ...(hasAgents
+      ? [
+          {
+            key: "agents" as const,
+            label: "Agents",
+            href: `${basePath}/agents`,
+            icon: Users,
+          },
+        ]
+      : []),
     ...(hasWork
       ? [
           {

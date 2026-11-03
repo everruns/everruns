@@ -24,64 +24,96 @@ every matching listener one after another, and the gRPC call was answered only
 then. Every blocking event of a turn (`turn.started`, `tool.completed`,
 `reason.completed`, ...) paid for several listener database queries before the
 worker could continue. Listeners also ran only in memory, so a server that
-stopped between the commit and a listener lost that listener's work.
+stopped between the commit and a listener lost that listener's work. The first
+step (everruns#5186) answered the worker before its listeners ran; the feed
+below makes them restart safe.
 
 ## Contract
 
-1. **Order per session.** A listener sees one session's events in the order
-   they were stored, whichever caller stored them.
-2. **The session actor's holder never waits for listeners.** A fenced append
-   (`EventService::emit_batch_fenced`, the worker's turn path) is answered once
-   its events are stored and published for live delivery. Nothing the worker
-   does next reads a listener's effect.
-3. **Other callers still wait.** API and server paths that emit an event and
-   then read what a listener wrote (usage, titles) keep that behavior.
-4. **A listener failure is contained.** A panic in one listener does not stop
-   the others or later events.
-5. **Bounded memory.** A slow listener slows its callers down rather than
-   queueing without limit.
+1. **Every committed event, at least once.** A listener fed from the database
+   sees every committed event of its types, across server restarts, deploys
+   and NATS outages. An event that never commits is never delivered.
+2. **Order per session.** A listener sees one session's events in sequence
+   order, whichever caller or transaction stored them.
+3. **Nobody waits.** No caller (worker or API) waits for the listeners of its
+   events. Code that needs a listener's effect waits for it explicitly
+   (`EventService::listeners_settled`, tests only today).
+4. **Retries do not duplicate effects that matter.** A listener's database
+   effects are keyed on the event, or apply state rather than deltas (below).
+5. **A listener failure is contained.** A panic or a hang (30 s) in one
+   listener does not stop the others or later events.
 
 ## Design (as built)
 
-`crates/server/src/services/event/listener_dispatch.rs`. Each `EventService`
-owns a fixed set of queues; a session always maps to the same queue. A queue
-handles one event at a time and runs its listeners one after another, each in
-its own task. A caller either waits for its event's listeners (contract 3) or
-only queues it (contract 2). Queues are bounded; a full queue makes the next
-caller wait. `EventService::listeners_settled` waits for everything queued so
-far, for tests. A stopping server waits up to 5 s for queued listener work
-after its worker link stops, so a rolling deploy does not drop what fenced
-appends queued.
+`crates/server/src/services/event/feed.rs` (runner) and
+`crates/server/src/storage/repositories/events/feed.rs` (queries).
 
-Live delivery (NATS or in memory) is not a listener: it is still published
-before the caller is answered, so SSE clients see events as soon as they
-commit.
-
-## Planned: tiers and a feed read from the database
-
-Listeners still run in memory. The next step makes them restart safe without
-making NATS a store of record (RDS remains the only record of a session):
-
-- **Tiers.** Near (under a second, one event at a time): thread coordination,
-  budgets, A2A push, notifications, MCP events, sandbox start and stop. Later
-  (seconds, hundreds of events per transaction): usage, reporting, session
-  trace, customer tracing, OpenTelemetry, titles, run summary, turn latency,
-  observer matching, approval audit, metrics.
 - **Commit-safe cursor.** Each event row records the id of the transaction
-  that wrote it. A consumer reads events of its types between its cursor and
-  the oldest transaction still running (`pg_snapshot_xmin`): everything below
-  that point committed or rolled back, so a late commit is read on a later
-  pass, never skipped. No outbox row per event and no relay. A long write
-  transaction delays delivery but cannot lose it.
-- **Cursors in the database,** advanced in the same transaction as a
-  consumer's database effects (exactly once for those). Outside effects (A2A
-  push, notifications, sandboxes) are at least once with an idempotency key
-  derived from the event id.
-- **Order across replicas.** Consumers are split into partitions by session
-  hash, each held by one server replica at a time (advisory lock). A failing
-  event blocks only its own session.
-- NATS carries only live delivery and wake-ups, neither of which holds anything
-  the database does not.
+  that wrote it (`events.xact_id`, default `pg_current_xact_id()`; rows from
+  before the feed are NULL and never read). A pass reads the events between
+  its cursor and the oldest transaction still running (`pg_snapshot_xmin`), in
+  one statement. Everything below that point committed or rolled back, so a
+  late commit is read on a later pass. No outbox row per event, no relay. A
+  long write transaction anywhere in the database delays delivery, never
+  loses it.
+- **Order inside a session.** A transaction that took its id earlier can
+  commit a session's later event (it waited for the session's sequence lock).
+  The feed keeps each consumer's last delivered sequence per session
+  (`event_feed_sessions`), delivers a session's committed lower-sequence events
+  that sit above the window along with the window, and skips them when the
+  read point reaches them.
+- **Partitions.** Each consumer is split into 8 partitions by session
+  (`idx_events_feed` holds the partition expression). A replica runs a
+  partition while it holds the partition's advisory lock on one connection it
+  keeps for that; the others try every 5 s, so a stopped replica's partitions
+  move within seconds. Passes borrow pool connections per statement and hold
+  no transaction while listeners run.
+- **Cursors in the database** (`event_feed_cursors`), advanced in the same
+  transaction that records the delivered sequences, after the listeners ran,
+  and only from the value the pass started at. A replica that stops mid-pass
+  hands the pass over again.
+- **Tiers.** Near (polled every 250 ms, woken at once by this replica's own
+  writes): thread coordination, A2A push, notifications, MCP events,
+  sandbox lifecycle, and listeners an embedder adds. Later (polled every 2 s,
+  pages of 1,000): usage, budgets, customer tracing, turn latency, titles, run
+  summaries, observer matching, approval audit. Each tier has its own cursors,
+  so a slow exporter never delays a coordination wake-up. Usage and budgets
+  share the later tier because both read `llm.generation`, the largest event:
+  reading and decoding it in one tier, not two, is a measurable share of the
+  server's CPU per turn.
+- **In-process.** OpenTelemetry ends a turn's anchor span, started when the
+  turn's first event is prepared on the emitting replica, when it sees that
+  event, so it stays on the emitting replica with Braintrust and Prometheus
+  (`listener_dispatch`, queued per session as before). Ephemeral events never
+  reach the database and also go there.
+
+Effects under replay:
+
+| Listener | Why a second delivery is harmless |
+|---|---|
+| Usage | `llm_generations.event_id` is unique; totals follow the insert |
+| Budgets | Journal unique on the source event |
+| Notifications | Dedupe key per turn |
+| Observer matching | Score rows unique per observer, scorer and turn |
+| Approval audit | Audit row id is the event id |
+| MCP events | Carry the event id for receivers to dedupe |
+| A2A push, coordination, sandbox | Apply the current state, not a delta |
+| Customer tracing, turn latency, titles, run summary | May repeat a span, a log line or a check after a crash |
+
+## Cost
+
+Per stored event: one more index entry (`idx_events_feed`). Per pass with
+work: one window read, one delivered-sequence read, one read for out-of-order
+events, one commit. A woken partition waits 50 ms first, so one turn's burst of
+events shares a pass. Polling is one probe statement per consumer for every
+partition the replica holds, not one per partition, and only this replica's
+writes of a type a near listener wants wake a partition at once. An idle
+partition moves its cursor every 5 s.
+
+The first cut polled each of the 8 partitions of both tiers on its own and
+woke the near tier on every write. At 100 agents on the stress bench that added
+a quarter more commits per turn, 40% more database load and a third more
+pickup latency, with overhead per model call unchanged within noise.
 
 ## Reporting
 
@@ -95,5 +127,12 @@ as a later-tier consumer that writes capability facts once per turn.
 
 - Overhead per model call at 100 parallel agents on the stress bench does not
   regress, and improves when listeners are slow.
+- Repository tests (`events::feed::tests`): a late commit is read on a later
+  pass, never skipped; a session stays in order when an earlier transaction
+  commits later; an unrecorded pass is handed over again; a moved cursor
+  refuses the older pass; one lock connection holds a partition; a probe names
+  only partitions with something to deliver.
+- Service tests (`services/event/tests/fed_listeners.rs`): a fed listener sees
+  every committed event in session order without the caller waiting.
 - The chaos harness stays green: live delivery of every stored event survives a
   dropped caller (`services/event/tests/cancelled_caller.rs`).

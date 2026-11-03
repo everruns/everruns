@@ -14194,6 +14194,29 @@
     "read_only": true
   },
   {
+    "category": "sessions",
+    "cli": "sessions run get",
+    "description": "Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_session_run",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/run",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
     "category": "sandboxes",
     "cli": "sessions sandbox get",
     "description": "Inspect a Session's primary Sandbox and what it may touch.",

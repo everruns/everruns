@@ -53,6 +53,26 @@ export interface CostSummary {
   by_user: CostSummaryLine[];
   by_started_by: CostSummaryLine[];
   by_day: CostSummaryLine[];
+  /** Runs where an agent handed work to other agents, by the agent they started with. */
+  runs_with_agents: RunsWithAgentsLine[];
+}
+
+/** One agent's spend within the runs another agent led. */
+export interface RunsWithAgentsShare {
+  agent_id?: string;
+  agent_name?: string;
+  /** `lead` (the agent the runs started with), `created_here` or `linked`. */
+  relation: "lead" | "created_here" | "linked";
+  cost_usd: number;
+}
+
+/** The runs one agent led: whole-run cost and who spent it. */
+export interface RunsWithAgentsLine {
+  agent_id: string;
+  agent_name: string;
+  runs: number;
+  cost_usd: number;
+  by_agent: RunsWithAgentsShare[];
 }
 
 export interface AgentCost {

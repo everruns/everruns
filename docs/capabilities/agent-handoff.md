@@ -116,6 +116,44 @@ session include these requests with `agent` and `session_id`, and answers on
 the session are routed the same way. Only a person (or the API key holder)
 answers; another agent's message never approves.
 
+### Team folder
+
+Every agent in one run shares a `team/` folder in its files. What one agent
+writes there, the others can read straight away, and the files stay after the
+run ends. The routing agent is told to have each agent write its results under
+`team/<its name>/` and to pass file paths in its instructions instead of
+pasting long content.
+
+Each run gets its own folder: starting the same agent again starts with an
+empty one. A session that is not part of a run (an agent without this
+capability, on its own) has no team folder. The folder does not show up in
+the organization's Memory list.
+
+### Starting with a copy of the files
+
+By default an agent starts with its own files. Set a member's **Files** to
+**A copy of this agent's** on the Agents tab (or `"files": "copy"` on its
+target) and each hand-off starts with a copy of the handing-off session's
+files. The agent works on the copy; the originals stay as they were, and the
+results come back through the team folder.
+
+### Agents talking to each other
+
+Agents in one run can message each other while they work. Each has two
+tools:
+
+- `message_agent` posts a message. Set `to` to an agent's name and that agent
+  gets it in its own conversation; set `to` to `everyone` and every agent in
+  the run does. Without `to`, the message is only posted for others to read.
+- `read_run_conversation` reads the latest messages and lists the agents you
+  can message.
+
+The messages are kept in the team folder under `team/conversation/`, so you
+can read the whole exchange in the first session's Files. A message from
+another agent is always marked as such: it never counts as your answer to an
+approval or a question. A run stops accepting messages after 200, so two
+agents cannot keep answering each other forever.
+
 ## See also
 
 - [A2A Agent Delegation](/capabilities/a2a-agent-delegation/), delegation to external agents

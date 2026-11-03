@@ -18,7 +18,9 @@ import Link from "next/link";
 import { useLocale as useDisplayLocale, useUiTranslations } from "@/providers/locale-provider";
 import { useVirtualUser } from "@/hooks/use-virtual-users";
 import { useHarness } from "@/hooks/use-harnesses";
-import { useSessionContextReport, useSessionCost } from "@/hooks/use-sessions";
+import { useState } from "react";
+import { useSessionContextReport, useSessionCost, useSessionRun } from "@/hooks/use-sessions";
+import { RunCostSplit, RunScopeSwitch, RunSummaryCards } from "@/components/session/run-view";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import type { SessionCost } from "@/lib/api/types";
@@ -46,11 +48,24 @@ export default function CostPage() {
   const { sessionId, isActive } = useSessionContext();
   const { data: cost, isLoading } = useSessionCost(sessionId, isActive);
   const { data: report } = useSessionContextReport(sessionId);
+  // Whole run: when other agents took part, their spend is split by agent
+  // (knowledge/runtime-resources/agents-using-agents.md, Whole run).
+  const { data: run } = useSessionRun(sessionId, isActive);
+  const [scope, setScope] = useState<"session" | "run">("session");
+  const multi = !!run && (run.sessions?.length ?? 0) > 1;
 
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6">
-        {isLoading ? (
+        {multi && run ? (
+          <RunScopeSwitch scope={scope} onChange={setScope} agents={run.sessions.length} />
+        ) : null}
+        {multi && run && scope === "run" ? (
+          <>
+            <RunSummaryCards run={run} />
+            <RunCostSplit run={run} />
+          </>
+        ) : isLoading ? (
           <Skeleton className="h-72 w-full" />
         ) : cost ? (
           <>
@@ -74,8 +89,12 @@ export default function CostPage() {
             {ui("Spend is not available for this session.")}
           </p>
         )}
-        {report && report.sections.length > 0 ? <ContextCard report={report} /> : null}
-        <RunSetup />
+        {multi && scope === "run" ? null : (
+          <>
+            {report && report.sections.length > 0 ? <ContextCard report={report} /> : null}
+            <RunSetup />
+          </>
+        )}
       </div>
     </div>
   );
