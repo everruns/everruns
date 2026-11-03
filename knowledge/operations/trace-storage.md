@@ -12,9 +12,10 @@ tags:
 
 # Optional DataFusion Trace Storage and Parallel Qualification
 
-Status: optional backfill and shadow implementation, qualified locally against
-PostgreSQL and an S3-compatible service; no cloud deployment yet. PostgreSQL
-continues serving every product read throughout this phase.
+Status: optional backfill and shadow implementation, qualified against
+PostgreSQL and an S3-compatible service. PostgreSQL continues serving every
+product read throughout this phase. Deployment-specific rollout evidence and
+qualification state belong to the operator-owned deployment record.
 
 ## Goal and decision
 
