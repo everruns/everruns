@@ -69,6 +69,9 @@ pub const TURN_CANCELLED: &str = "turn.cancelled";
 /// A turn about to finish was reviewed for whether it did what was asked,
 /// and may continue automatically (the agent's `completion_check` setting).
 pub const TURN_COMPLETION_CHECKED: &str = "turn.completion_checked";
+/// The provider refused a request for lack of credits, and the runtime
+/// retried smaller, waited for credits, resumed, or gave up.
+pub const TURN_CREDIT_SHORTFALL: &str = "turn.credit_shortfall";
 
 // Atom lifecycle events
 pub const REASON_STARTED: &str = "reason.started";
@@ -206,6 +209,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     TURN_SEALED,
     TURN_CANCELLED,
     TURN_COMPLETION_CHECKED,
+    TURN_CREDIT_SHORTFALL,
     REASON_STARTED,
     REASON_COMPLETED,
     REASON_RECOVERED,
@@ -694,6 +698,7 @@ pub enum EventData {
     TurnSealed(TurnSealedData),
     TurnCancelled(TurnCancelledData),
     TurnCompletionChecked(TurnCompletionCheckedData),
+    TurnCreditShortfall(TurnCreditShortfallData),
 
     // Session events
     SessionStarted(SessionStartedData),
@@ -914,6 +919,7 @@ event_data_kinds! {
     TurnSealed(TurnSealedData) = TURN_SEALED,
     TurnCancelled(TurnCancelledData) = TURN_CANCELLED,
     TurnCompletionChecked(TurnCompletionCheckedData) = TURN_COMPLETION_CHECKED,
+    TurnCreditShortfall(TurnCreditShortfallData) = TURN_CREDIT_SHORTFALL,
 
     // Atom lifecycle events
     ReasonStarted(ReasonStartedData) = REASON_STARTED,
@@ -1023,6 +1029,7 @@ impl_from_event_data! {
     TurnSealedData => TurnSealed,
     TurnCancelledData => TurnCancelled,
     TurnCompletionCheckedData => TurnCompletionChecked,
+    TurnCreditShortfallData => TurnCreditShortfall,
     ReasonStartedData => ReasonStarted,
     ReasonCompletedData => ReasonCompleted,
     ReasonRecoveredData => ReasonRecovered,

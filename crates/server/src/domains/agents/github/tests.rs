@@ -197,7 +197,13 @@ async fn get_reports_nothing_until_connect_gives_the_agent_an_identity() {
     let ctx = ctx_for(&db, &github, OrgRole::Owner);
     let agent_id = seed_agent(&db).await;
 
-    assert_eq!(status(&ctx, &agent_id).await, AgentGitHubStatus::default());
+    assert_eq!(
+        status(&ctx, &agent_id).await,
+        AgentGitHubStatus {
+            view_url: Some(format!("agents/{agent_id}/github")),
+            ..AgentGitHubStatus::default()
+        }
+    );
 
     let BeginConnectResponse::CreateApp {
         action,

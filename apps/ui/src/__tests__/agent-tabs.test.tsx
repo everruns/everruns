@@ -16,7 +16,7 @@ describe("agent tab definitions", () => {
     expect(labels(getAgentTabItems(undefined, undefined, undefined, { evals: true }))).toEqual([
       "Agent",
       "Preview",
-      "Integrations",
+      "Channels and triggers",
       "Stats",
       "Evals",
       "Sessions",

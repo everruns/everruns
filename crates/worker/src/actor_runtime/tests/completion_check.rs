@@ -61,7 +61,7 @@ impl Fixture {
             .collect()
     }
 
-    fn model_calls(&self) -> usize {
+    pub(super) fn model_calls(&self) -> usize {
         self.model.calls.load(Ordering::SeqCst)
     }
 

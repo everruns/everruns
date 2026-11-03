@@ -80,9 +80,10 @@ Keep output targeted. Read-only resource catalogs at `everruns://agents`,
 summaries; use the discovered get/list commands when you need details or more
 than the catalog's bounded listing. Do not guess IDs, fields, or flags.
 
-When offered, `everruns_home` opens the interactive organization panel and
-`agent_get_card` shows an agent summary card. Ordinary tools work even when the
-host cannot render these panels.
+When offered, `agent_get_card`, `harness_get_card`, `capability_get_card` and
+`knowledge_get_card` show the shared entity cards. `everruns_home` opens the full
+Home UI; `session_open` opens the full Session UI, including Trace. Ordinary tools
+work even when the host cannot render these panels.
 
 ## Run and continue a session
 

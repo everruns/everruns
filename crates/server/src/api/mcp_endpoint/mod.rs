@@ -695,6 +695,12 @@ async fn handle_tools_call(
         return response;
     }
 
+    if let Some(response) =
+        apps::workspace::handle(id.clone(), tool_name, &arguments, auth_user, org, state).await
+    {
+        return response;
+    }
+
     // Card tools return structured template data plus a plain-text summary.
     // See knowledge/ui/mcp-cards.md.
     if tool_name == "agent_get_card" {
@@ -1031,10 +1037,6 @@ fn link_builder(state: &AppState) -> crate::api::common::UrlBuilder {
     crate::api::common::UrlBuilder::from_auth_config(&state.auth.config)
 }
 
-// ============================================================================
-// Tier 1: agent_run
-// ============================================================================
-
 async fn tool_agent_run(
     args: &Value,
     org: &ResolvedOrg,
@@ -1092,6 +1094,7 @@ async fn tool_agent_run(
     let msg = dispatch_command("create_message", msg_params, org, state).await?;
 
     let mut result = json!({
+        "organization_id": org.public_id,
         "session_id": session_id,
         "message_id": msg["id"],
         "status": session["status"],
@@ -1135,6 +1138,7 @@ async fn tool_session_send_message(
     let mut result = json!({
         "message_id": msg["id"],
         "session_status": session["status"],
+        "organization_id": org.public_id,
         "session_id": session_id,
         "hint": "Use session_get_status to poll for completion"
     });
@@ -1202,6 +1206,7 @@ async fn tool_session_get_status(
         .and_then(|e| e.get("id").and_then(|v| v.as_str()));
 
     let mut result = json!({
+        "organization_id": org.public_id,
         "session_id": session_id,
         "status": session["status"],
         "agent_id": session["agent_id"],
@@ -1218,11 +1223,6 @@ async fn tool_session_get_status(
     link_builder(state).decorate_value_links(&mut result);
     pretty_json(&result)
 }
-
-// ============================================================================
-// Tier 1: agent_get_card — MCP-Apps card resource for an agent
-// See knowledge/ui/mcp-cards.md for the card standard.
-// ============================================================================
 
 async fn tool_agent_get_card(
     args: &Value,
@@ -1256,12 +1256,10 @@ async fn tool_agent_get_card(
     let stats = cards::AgentCardStats { session_count };
     let card = cards::agent_card_with_avatar(&state.db, &agent, stats).await;
     let summary = cards::agent_card_summary(&agent, stats);
-    cards::card_tool_content(&card, &summary)
+    let mut result = cards::card_tool_content(&card, &summary)?;
+    result["structuredContent"]["organization_id"] = json!(org.public_id);
+    Ok(result)
 }
-
-// ============================================================================
-// Tier 2: discover — structured catalog from inventory descriptors
-// ============================================================================
 
 async fn tool_discover(
     args: &Value,

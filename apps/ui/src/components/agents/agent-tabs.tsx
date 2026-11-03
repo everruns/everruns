@@ -54,10 +54,10 @@ export function getAgentTabItems(
       value: "integrations",
       label:
         integrationCount === undefined ? (
-          translate("Integrations")
+          translate("Channels and triggers")
         ) : (
           <>
-            {translate("Integrations")}
+            {translate("Channels and triggers")}
             <span className="bg-muted px-1 text-[11px] font-medium">{integrationCount}</span>
           </>
         ),

@@ -14,21 +14,20 @@ links:
 
 ![Everruns and OpenAI logos side by side, announcing the MCP App in ChatGPT and Codex](./integration@2x.png)
 
-The Everruns MCP server at `/mcp` is now an MCP App. In hosts that render MCP
-Apps, such as ChatGPT and Codex, running an agent shows a session view with
-status, messages and a reply box. Agent questions appear as a form, and pending
-approvals as Approve and Decline buttons that refuse stale clicks. An Everruns
-panel opens from the ChatGPT sidebar.
-
-Hosts that do not render apps get the same tools as plain text, and the
-existing tool shapes are unchanged.
+The Everruns MCP server at `/mcp` is now an MCP App. Supported hosts show a
+session view with status, messages and a reply box. Questions appear as a form,
+and approvals refuse stale clicks. An Everruns panel opens from the ChatGPT
+sidebar. Hosts without app rendering retain text tools.
 
 See [MCP: In ChatGPT and Codex](/features/mcp/#in-chatgpt-and-codex).
-PR [#3927](https://github.com/everruns/everruns/pull/3927).
 
 ## Update 2026-11-02
 
-Agent cards now use the same MCP Apps template protocol as the home and
-session views. Asking to show an agent opens its name, status, description,
-tags and usage in supported hosts, instead of exposing raw HTML. Hosts
-without app rendering still receive a text summary.
+Agent cards use MCP Apps templates instead of exposing raw HTML, with a text
+summary for clients without app rendering.
+
+## Update 2026-11-03
+
+Agent, Harness, Capability and Knowledge cards now reuse the product UI. Home
+and Session open the full workspaces, including Session Trace. See
+[the shared workspace update](/changelog/2026-11-03-mcp-shared-workspaces/).

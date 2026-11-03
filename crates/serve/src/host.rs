@@ -42,9 +42,8 @@ use anyhow::anyhow;
 use everruns::approval::{ApprovalDecision, ToolApprover};
 use everruns::ask_user::{Answer, AnsweredBy, AskContext, AskUser, Outcome, Question, Status};
 use everruns::{
-    BashkitShell, FunctionTool, LocalConfig, SendDisposition, SentMessage, SessionEvent,
-    SessionEventKind, SessionId, ToolCall, ToolCallContext, ToolDefinition, ToolResponse,
-    TurnHandle,
+    BashkitShell, FunctionTool, LocalConfig, SendDisposition, SentMessage, SessionEvent, SessionId,
+    ToolCall, ToolCallContext, ToolDefinition, TurnHandle,
 };
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, oneshot};
@@ -530,7 +529,6 @@ impl Host {
             Some(name) => self
                 .app
                 .agent(name)
-                .filter(|entry| !entry.sub)
                 .ok_or_else(|| ApiError::NotFound(format!("agent {name}")))?,
             None => self.app.default_agent().ok_or_else(|| {
                 ApiError::BadRequest(
@@ -1271,23 +1269,6 @@ impl Host {
             .find(|entry| entry.registration.name == name)
             .ok_or_else(|| ApiError::NotFound(format!("schedule {name}")))?;
         (entry.registration.run)(Cx::app(&self.arc()?)).await
-    }
-}
-
-/// A subagent's tool activity, as a progress line on the parent call.
-fn child_progress(sub: &str, event: &SessionEvent) -> Option<String> {
-    match &event.kind {
-        SessionEventKind::ToolStarted { tool_name, .. } => Some(format!("{sub}: {tool_name}")),
-        SessionEventKind::ToolCompleted {
-            tool_name, success, ..
-        } => Some(format!(
-            "{sub}: {tool_name} {}",
-            if *success { "done" } else { "failed" }
-        )),
-        SessionEventKind::ToolProgress {
-            tool_name, message, ..
-        } => Some(format!("{sub}: {tool_name}: {message}")),
-        _ => None,
     }
 }
 

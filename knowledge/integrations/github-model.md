@@ -270,6 +270,13 @@ GitHub channel. Triggers and the channel need the identity and link to it
 instead of hosting its setup. Settings > Connections shows the
 person's `person` connection; Settings > Organization shows the shared App.
 
+Revised 2026-11-03: the section is a page of its own, `/agents/{id}/github`,
+opened from a GitHub row in the Agent tab's settings list next to Service
+account, rather than a section of the Channels and triggers tab. GitHub is an
+identity, like the service account, not a way to reach the agent, and a page
+gives it an address that API, CLI and MCP output can link to (`view_url` on the
+agent's GitHub status).
+
 ### D8. Talking is a channel, listening is a trigger
 
 A mention is a conversation with a sender, a thread and replies, which is what
@@ -320,8 +327,11 @@ Each step is one PR unless noted, and leaves everything working.
    evidence is needed.
 2. **GitHub section on the agent page** (D7), name rules and avatar step (D2).
    Coordinate with the Yolop PR Reviewer thread's org picker, which lands first.
-   Done: the agent's Integrations tab has a **GitHub** section between Channels
-   and Triggers (`agent-github-card.tsx`), showing the bot login, the kind,
+   Done: the agent's GitHub identity has its own page, `/agents/{id}/github`,
+   reached from a GitHub row in the Agent tab's settings list (it was a section
+   of the Integrations tab between Channels and Triggers until 2026-11-03; an
+   identity is not a way to reach the agent, so it left that tab). The page
+   (`agent-github-card.tsx`) shows the bot login, the kind,
    the installation, missing permissions, a "Set the avatar" step (download
    the agent's avatar, open the App's settings page) and links to add and list
    GitHub triggers. `AgentGitHubStatus` gained `kind`, `bot_login` and

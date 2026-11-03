@@ -33,6 +33,25 @@ pub struct CostTurnRow {
     pub status: String,
 }
 
+/// One turn of a session in a run, for the whole-run timeline.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct RunTurnRow {
+    pub session_id: Uuid,
+    pub turn_no: i32,
+    pub turn_id: Uuid,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: Option<DateTime<Utc>>,
+    pub status: String,
+}
+
+/// Spend of one turn of a session in a run.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct RunTurnCostRow {
+    pub session_id: Uuid,
+    pub turn_id: Option<Uuid>,
+    pub cost_usd: f64,
+}
+
 /// What started a turn, read from its input message.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct CostTurnOriginRow {
@@ -95,6 +114,41 @@ impl StorageBackend {
              WHERE session_id = $1 ORDER BY turn_no",
         )
         .bind(session_id)
+        .fetch_all(self.database().pool())
+        .await?)
+    }
+
+    /// Turns of `sessions` from the trace index, oldest first, at most
+    /// `limit` (the newest when there are more).
+    pub async fn run_turns(&self, sessions: &[Uuid], limit: i64) -> Result<Vec<RunTurnRow>> {
+        Ok(sqlx::query_as(
+            "SELECT * FROM ( \
+                SELECT session_id, turn_no, turn_id, started_at, ended_at, status \
+                FROM session_trace_turns WHERE session_id = ANY($1) \
+                ORDER BY started_at DESC LIMIT $2 \
+             ) t ORDER BY started_at",
+        )
+        .bind(sessions)
+        .bind(limit)
+        .fetch_all(self.database().pool())
+        .await?)
+    }
+
+    /// Model spend of `sessions` per turn: the provider-reported cost where
+    /// there is one, else the estimate, as the Cost tab counts it.
+    pub async fn run_turn_costs(
+        &self,
+        org_id: i64,
+        sessions: &[Uuid],
+    ) -> Result<Vec<RunTurnCostRow>> {
+        Ok(sqlx::query_as(
+            "SELECT session_id, turn_id, \
+                    COALESCE(SUM(COALESCE(actual_cost_usd, estimated_cost_usd)), 0)::float8 AS cost_usd \
+             FROM llm_generations WHERE org_id = $1 AND session_id = ANY($2) \
+             GROUP BY session_id, turn_id",
+        )
+        .bind(org_id)
+        .bind(sessions)
         .fetch_all(self.database().pool())
         .await?)
     }

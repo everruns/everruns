@@ -37,7 +37,7 @@ turn. Raw audio is never stored; transcripts are kept like chat messages.
 
 ## Create a voice channel
 
-1. Open the Agent and select the **Integrations** tab.
+1. Open the Agent and select the **Channels and triggers** tab.
 2. Select **Add channel** and choose **Voice**.
 3. Pick a voice and, optionally, a greeting, a language hint and a speaking
    style, then select **Create channel**.

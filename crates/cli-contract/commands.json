@@ -1352,60 +1352,6 @@
     ]
   },
   {
-    "wire_name": "resume_agent_exposures",
-    "path": [
-      "agents",
-      "exposures"
-    ],
-    "verb": "resume",
-    "description": "Let an agent's live channels accept traffic again.",
-    "method": "POST",
-    "http_path": "/v1/agents/{agent_id}/exposures/resume",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "position": 1,
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Put a suspended agent back on its exposed surfaces",
-        "command": "everruns agents exposures resume agent_01h9 --reason 'Prompt fix verified'"
-      }
-    ]
-  },
-  {
-    "wire_name": "suspend_agent_exposures",
-    "path": [
-      "agents",
-      "exposures"
-    ],
-    "verb": "suspend",
-    "description": "Stop every channel on an agent from accepting traffic.",
-    "method": "POST",
-    "http_path": "/v1/agents/{agent_id}/exposures/suspend",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "position": 1,
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Stop an agent answering on its exposed surfaces without deleting it",
-        "command": "everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'"
-      }
-    ]
-  },
-  {
     "wire_name": "disable_external_agent",
     "path": [
       "agents",
@@ -1868,6 +1814,32 @@
     ]
   },
   {
+    "wire_name": "pause_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "pause",
+    "description": "Pause an agent: its channels stop accepting messages and its triggers and schedules do not run until it is resumed.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/pause",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop everything that starts an agent without deleting it",
+        "command": "everruns agents pause agent_01h9 --reason 'Pause while the prompt is fixed'"
+      }
+    ]
+  },
+  {
     "wire_name": "preview_agent",
     "path": [
       "agents"
@@ -1918,6 +1890,32 @@
       {
         "intent": "See the prompt a draft configuration would produce, without creating it",
         "command": "everruns agents preview --system-prompt 'Triage incoming issues'"
+      }
+    ]
+  },
+  {
+    "wire_name": "resume_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "resume",
+    "description": "Resume a paused agent: its published channels, triggers and schedules work again.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/resume",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Let a paused agent start work again",
+        "command": "everruns agents resume agent_01h9 --reason 'Prompt fix verified'"
       }
     ]
   },
@@ -14693,6 +14691,33 @@
       {
         "intent": "Let a session continue after a usage policy asked before going further",
         "command": "everruns sessions resume session_01h9 --reason 'Finish the report'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_run",
+    "path": [
+      "sessions",
+      "run"
+    ],
+    "verb": "get",
+    "description": "Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/run",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See every agent in a session's run",
+        "command": "everruns sessions run get session_01h9"
       }
     ]
   },

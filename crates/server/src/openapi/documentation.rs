@@ -305,6 +305,8 @@ fn apply(spec: &mut Value) {
 
             if operation["deprecated"] == true {
                 let replacement_path = path
+                    .replace("/exposures/suspend", "/pause")
+                    .replace("/exposures/resume", "/resume")
                     .replace("/v1/e/", "/v1/channels/")
                     .replace("/endpoints", "/channels")
                     .replace("{endpoint_id}", "{channel_id}");
@@ -313,7 +315,12 @@ fn apply(spec: &mut Value) {
                     .find(|(p, m, _)| p == &replacement_path && m == method)
                 {
                     operation["x-superseded-by"] = json!(replacement);
-                    operation["x-deprecation"] = json!({"migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."});
+                    let migration = if path.contains("/exposures/") {
+                        "Use the pause or resume route. This alias remains available; no removal date has been announced."
+                    } else {
+                        "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+                    };
+                    operation["x-deprecation"] = json!({"migration": migration});
                 } else {
                     operation["x-deprecation"] = json!({"migration": "Read-only archival App records. Use agent channels for new integrations; there is no drop-in replacement."});
                 }

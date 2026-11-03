@@ -112,6 +112,13 @@ Writable agent context remains [Memory](memory.md); this proposal does not rebui
 Memory or turn external knowledge into agent-editable memory. Reuse storage and
 source-fetch machinery without maintaining two copies of a source solely for search.
 
+The [document extractor](../../crates/server/src/domains/knowledge/extraction.rs) uses
+a patched spreadsheet parser and retains the existing format and resource limits.
+It persists stable warning codes rather than parser diagnostic details. A new
+extractor profile produces a new text view on normal subsequent ingestion or
+source refresh; original bytes and older versions remain intact. An extractor
+upgrade does not start a background rewrite by itself.
+
 ## Optional indexing and explicit exclusions
 
 Offer three indexing choices: **off**, **lexical**, and **hybrid**. Lexical indexing

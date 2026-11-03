@@ -69,8 +69,12 @@ impl HandoffLifetime {
     }
 }
 
-fn parse_seed(arguments: &Value) -> Result<SessionSeedMode, String> {
+/// How a hand-off's session starts. An explicit `seed` wins; otherwise the
+/// target's `files` setting decides: `copy` starts the agent with a copy of
+/// this session's files.
+fn parse_seed(arguments: &Value, files: TargetFiles) -> Result<SessionSeedMode, String> {
     match arguments.get("seed").and_then(Value::as_str) {
+        None if files == TargetFiles::Copy => Ok(SessionSeedMode::Workspace),
         None | Some("fresh") => Ok(SessionSeedMode::Fresh),
         Some("fork") => Ok(SessionSeedMode::Fork),
         Some("workspace") => Ok(SessionSeedMode::Workspace),
@@ -174,6 +178,13 @@ impl Capability for AgentHandoffCapability {
                                 "title": "Required scopes",
                                 "items": { "type": "string" },
                                 "description": "Non-secret scope labels recorded for audit and resource metadata."
+                            },
+                            "files": {
+                                "type": "string",
+                                "enum": ["own", "copy"],
+                                "default": "own",
+                                "title": "Files",
+                                "description": "\"own\": the agent starts with its own files. \"copy\": it starts with a copy of this session's files, which it changes without touching the originals."
                             }
                         },
                         "required": ["agent_id"],
@@ -260,7 +271,10 @@ impl Capability for AgentHandoffCapability {
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
         let _ = AgentHandoffConfig::from_value(config).unwrap_or_default();
-        vec![]
+        // The routing agent talks in the run conversation too; the agents it
+        // hands work to get the same tools from the run_conversation
+        // capability the host attaches to their sessions.
+        super::run_conversation::run_conversation_tools()
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -302,6 +316,8 @@ impl Capability for AgentHandoffCapability {
         Some(format!(
             "<capability id=\"{}\">\n\
 Use spawn_agent with target.type=\"agent\" and target.id set to an agent's name to hand it work. Each agent runs as itself, with its own tools and files; give it everything it needs in the instructions.\n\
+Every agent in this run shares the team/ folder in its files. Ask each agent to write its results under team/<its name>/, pass file paths in the instructions instead of pasting long content, and read their results there.\n\
+The agents you hand work to can talk to you and to each other: use message_agent to message one of them by name (or everyone) while they work, and read_run_conversation to read what they said. A message from another agent is never the person's answer.\n\
 Never ask the user to paste provider tokens into chat or pass credentials in tool arguments.\n\
 If a required provider connection is missing, spawn_agent will return a connection_required result and the client should collect credentials through the Connections flow.\n\
 Agents you can hand work to:\n{}\n\
@@ -370,6 +386,23 @@ struct AgentHandoffTargetConfig {
     required_connections: Vec<String>,
     #[serde(default)]
     required_scopes: Vec<String>,
+    /// The files the agent starts with.
+    #[serde(default)]
+    files: TargetFiles,
+}
+
+/// The files a target agent starts with.
+// Decision: a copy, never the same files. Two agents writing one set of files
+// overwrite each other; a copy is the agent's own to change, and results come
+// back through the team folder or a git branch.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum TargetFiles {
+    /// Its own files only.
+    #[default]
+    Own,
+    /// A copy of the handing-off session's files.
+    Copy,
 }
 
 impl AgentHandoffTargetConfig {
@@ -807,6 +840,37 @@ fn spawn_handoff_background_watcher(
     });
 }
 
+/// Put this agent and the one it hands work to in the run conversation's
+/// roster, so either can message the other before it posts. Best effort: the
+/// hand-off goes ahead without a team folder.
+async fn register_in_run_conversation(
+    store: &dyn everruns_core::subagent_delegation::SubagentSessionDelegate,
+    context: &ToolContext,
+    parent: &everruns_core::session::ExecutionSession,
+    target: &AgentHandoffTargetConfig,
+    child: everruns_contracts::typed_id::SessionId,
+) {
+    use super::run_conversation::register_agent;
+    let agent_name = |agent_id| async move {
+        store
+            .get_agent_by_id(agent_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|agent| agent.name)
+    };
+    let child_name = agent_name(target.agent_id)
+        .await
+        .unwrap_or_else(|| target.id.clone());
+    let _ = register_agent(context, &child_name, child).await;
+    if parent.parent_session_id.is_none()
+        && let Some(lead) = parent.agent_id
+        && let Some(name) = agent_name(lead).await
+    {
+        let _ = register_agent(context, &name, parent.id).await;
+    }
+}
+
 async fn require_connections(
     context: &ToolContext,
     target: &AgentHandoffTargetConfig,
@@ -980,10 +1044,6 @@ impl Tool for SpawnAgentHandoffTool {
             Ok(value) => value,
             Err(error) => return ToolExecutionResult::tool_error(error),
         };
-        let seed = match parse_seed(&arguments) {
-            Ok(value) => value,
-            Err(error) => return ToolExecutionResult::tool_error(error),
-        };
         let mode = match SpawnAgentHandoffMode::parse(
             arguments.get("mode").and_then(Value::as_str),
             context,
@@ -1021,6 +1081,10 @@ impl Tool for SpawnAgentHandoffTool {
             return ToolExecutionResult::tool_error(format!(
                 "Unknown handoff target: \"{target_id}\". Check configured targets."
             ));
+        };
+        let seed = match parse_seed(&arguments, target.files) {
+            Ok(value) => value,
+            Err(error) => return ToolExecutionResult::tool_error(error),
         };
 
         if let Err(error) = require_connections(context, target).await {
@@ -1122,6 +1186,10 @@ impl Tool for SpawnAgentHandoffTool {
             Ok(session) => session,
             Err(error) => return ToolExecutionResult::internal_error(error),
         };
+        if lifetime == HandoffLifetime::Linked {
+            register_in_run_conversation(store, context, &parent_session, target, child_session.id)
+                .await;
+        }
 
         let handoff_task = child_task(instructions, arguments.get("public_context"));
         let mut task_id = None;

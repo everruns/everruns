@@ -77,6 +77,20 @@ impl Modify for SdkMetadata {
                 operation.deprecated = Some(Deprecated::True);
             }
         }
+        // Pause agent replaced "suspend exposures"; the old routes stay as aliases.
+        for path in [
+            "/v1/agents/{agent_id}/exposures/suspend",
+            "/v1/agents/{agent_id}/exposures/resume",
+        ] {
+            if let Some(operation) = openapi
+                .paths
+                .paths
+                .get_mut(path)
+                .and_then(|item| item.post.as_mut())
+            {
+                operation.deprecated = Some(Deprecated::True);
+            }
+        }
         let Some(components) = openapi.components.as_mut() else {
             return;
         };
@@ -446,6 +460,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agents::get_latest_health_check,
         api::agents::upsert_agent,
         api::agents::copy_agent,
+        api::agents::pause_agent,
+        api::agents::resume_agent,
         api::agents::suspend_agent_exposures,
         api::agents::resume_agent_exposures,
         // LLM Providers - additional

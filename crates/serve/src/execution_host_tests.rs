@@ -3,7 +3,7 @@ fn profile_app() -> crate::App {
     let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
     inner.channels.clear();
     inner.schedules.clear();
-    inner.agents.retain(|agent| !agent.sub);
+    inner.agents.retain(|agent| agent.spec.members.is_empty());
     app
 }
 
@@ -271,7 +271,7 @@ async fn pre_authority_sessions_move_to_the_native_authority_on_first_access() {
     );
 }
 
-/// `profile_app` plus a `helper` subagent, as an app that delegated before
+/// `profile_app` plus a `helper` agent (an older release's subagent), as an app that delegated before
 /// serve's native authority.
 fn app_with_helper() -> crate::App {
     let mut app = profile_app();
@@ -279,7 +279,6 @@ fn app_with_helper() -> crate::App {
     inner.agents.push(crate::app::AgentEntry {
         name: "helper".into(),
         doc: "Helps.".into(),
-        sub: true,
         default: false,
         source: "test".into(),
         spec: crate::prelude::Agent::builder()
@@ -458,4 +457,104 @@ async fn pre_authority_sessions_move_under_a_microvm_adapter() {
     );
     let turn = native.host.send(&id, "again".into()).await.unwrap();
     turn.wait().await.unwrap();
+}
+
+/// `profile_app` where `tester` hands work to a `helper` member through
+/// `spawn_agent`, both scripted.
+fn app_with_member() -> crate::App {
+    let mut app = profile_app();
+    let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+    inner.agents.retain(|agent| agent.name == "tester");
+    inner.agents[0].spec = crate::Agent::builder()
+        .model("sim")
+        .instructions("Hand the work to helper.")
+        .member("helper")
+        .offline(crate::sim::script([
+            crate::sim::call(
+                "spawn_agent",
+                serde_json::json!({
+                    "name": "Check",
+                    "instructions": "Check the numbers.",
+                    "target": {"type": "agent", "id": "helper"},
+                    "mode": "foreground",
+                }),
+            ),
+            crate::sim::reply("delegated"),
+        ]))
+        .build();
+    inner.agents.push(crate::app::AgentEntry {
+        name: "helper".into(),
+        doc: "Checks numbers.".into(),
+        default: false,
+        source: "test".into(),
+        spec: crate::prelude::Agent::builder()
+            .model("sim")
+            .instructions("Help.")
+            .offline(crate::sim::script([crate::sim::reply("HELPED by helper")]))
+            .build(),
+    });
+    assert!(crate::app::check_members(&inner.agents).is_empty());
+    app
+}
+
+/// A member runs as its own session in the lead's run, on serve's native
+/// authority, and its answer comes back to the lead.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_member_runs_as_its_own_session_and_answers_the_lead() {
+    let dir = tempfile::tempdir().unwrap();
+    let server = Server::builder(app_with_member(), Mode::Eval)
+        .data_dir(dir.path())
+        .build()
+        .unwrap();
+    let manifest = server.app().manifest();
+    let tester = manifest.agents.iter().find(|a| a.name == "tester").unwrap();
+    assert_eq!(tester.members, ["helper"]);
+    assert!(tester.tools.iter().any(|tool| tool == "spawn_agent"));
+    let id = server
+        .host
+        .create_session(NewSession {
+            agent: Some("tester".into()),
+            ..NewSession::default()
+        })
+        .await
+        .unwrap();
+    let turn = server.host.send(&id, "go".into()).await.unwrap();
+    turn.wait().await.unwrap();
+    let events = server.host.events_after(&id, 0).await.unwrap();
+    let rendered = serde_json::to_string(
+        &events
+            .iter()
+            .map(|event| event.canonical_json())
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    assert!(rendered.contains("HELPED by helper"), "{rendered}");
+}
+
+/// Discovery refuses a member that is not an agent of the app, the lead
+/// itself, and a member that leads others.
+#[test]
+fn members_must_be_other_agents_of_the_app_one_level_deep() {
+    let entry = |name: &str, members: &[&str]| {
+        let mut builder = crate::Agent::builder().model("sim");
+        for member in members {
+            builder = builder.member(*member);
+        }
+        crate::app::AgentEntry {
+            name: name.into(),
+            doc: String::new(),
+            default: false,
+            source: "test".into(),
+            spec: builder.build(),
+        }
+    };
+    let errors = crate::app::check_members(&[
+        entry("lead", &["lead", "ghost", "middle"]),
+        entry("middle", &["leaf"]),
+        entry("leaf", &[]),
+    ]);
+    assert_eq!(errors.len(), 3, "{errors:?}");
+    assert!(errors[0].contains("lists itself"));
+    assert!(errors[1].contains("`ghost`, which is not an agent"));
+    assert!(errors[2].contains("`middle`, which has members of its own"));
 }

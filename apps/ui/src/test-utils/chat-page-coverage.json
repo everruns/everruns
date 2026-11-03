@@ -49,6 +49,7 @@
     "web-search/(tabs)/defaults/page.tsx"
   ],
   "view": [
+    "agents/[agentId]/github/page.tsx",
     "agents/all/page.tsx",
     "agents/examples/page.tsx",
     "agents/page.tsx",
@@ -62,8 +63,8 @@
     "evals/[evalId]/cases/[caseId]/page.tsx",
     "evals/[evalId]/compare/page.tsx",
     "evals/[evalId]/experiments/[experimentId]/page.tsx",
-    "evals/findings/[issueId]/page.tsx",
     "evals/[evalId]/runs/[runId]/page.tsx",
+    "evals/findings/[issueId]/page.tsx",
     "evals/page.tsx",
     "harnesses/examples/page.tsx",
     "harnesses/page.tsx",
@@ -78,6 +79,7 @@
     "plugins/page.tsx",
     "sandboxes/(tabs)/page.tsx",
     "sandboxes/(tabs)/templates/page.tsx",
+    "sessions/[sessionId]/agents/page.tsx",
     "sessions/[sessionId]/approvals/page.tsx",
     "sessions/[sessionId]/cost/page.tsx",
     "sessions/[sessionId]/events/page.tsx",

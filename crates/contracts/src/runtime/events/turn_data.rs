@@ -240,6 +240,67 @@ pub struct TurnCompletionCheckedData {
     pub continuation_message_id: Option<MessageId>,
 }
 
+/// What the runtime did about a provider's "not enough credits" refusal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CreditShortfallAction {
+    /// The balance still covered a useful answer: the same request was
+    /// retried once with max output tokens lowered to what it covers.
+    Shrunk,
+    /// The turn failed and a durable check for credits was scheduled.
+    WaitStarted,
+    /// A check found credits still out; the next one is scheduled.
+    StillWaiting,
+    /// A check found credits back (or the provider has no balance API and
+    /// the request is retried); the turn continues.
+    Resumed,
+    /// The wait ran out without credits; the turn fails with the quota error.
+    GaveUp,
+}
+
+/// Data for turn.credit_shortfall event.
+///
+/// The provider refused a request because the account could not pay for it.
+/// One event per decision: a smaller retry, the start of a wait, each check
+/// during it, the resume, and giving up.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct TurnCreditShortfallData {
+    /// Turn identifier
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+    /// What the runtime did.
+    #[cfg_attr(feature = "openapi", schema(example = "wait_started"))]
+    pub action: CreditShortfallAction,
+    /// Max output tokens the refused request asked for, when the provider said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 65536))]
+    pub requested_max_tokens: Option<u64>,
+    /// Output tokens the balance covered, when the provider said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 283))]
+    pub affordable_tokens: Option<u64>,
+    /// Max output tokens of the smaller retry (`shrunk` only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 7680))]
+    pub max_tokens: Option<u32>,
+    /// When the wait for credits ends at the latest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "2026-11-03T08:00:00Z"))]
+    pub wait_until: Option<chrono::DateTime<chrono::Utc>>,
+    /// When the next check runs, when one was scheduled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "2026-11-03T07:01:00Z"))]
+    pub next_check_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Whether the provider's balance was read (without spending tokens).
+    /// `false`: the provider has no balance API and the request itself is
+    /// the check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = true))]
+    pub balance_checked: Option<bool>,
+}
+
 /// Data for turn.cancelled event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]

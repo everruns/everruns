@@ -197,6 +197,8 @@ export const messages: Readonly<Record<string, string>> = {
     "AI 提供商帐户积分或配额不足。添加积分或提高提供商帐户限额以继续。",
   "The AI provider account is out of credits for this request: it asked for up to {requested_max_tokens} output tokens, but the balance covers {affordable_tokens}. Add credits or lower the max output tokens to continue.":
     "AI 提供者帐户对于此请求没有积分：它要求最多 {requested_max_tokens} 输出代币，但余额涵盖 {affordable_tokens}。添加积分或降低最大输出令牌以继续。",
+  "The work continues automatically once credits are back (checked every minute for up to an hour).":
+    "额度恢复后，工作将自动继续（每分钟检查一次，最多持续一小时）。",
   "The AI provider account has not completed a confirmation this model requires. Complete it at {confirm_url}, then try again.":
     "AI 提供商帐户尚未完成此模型所需的确认。在 {confirm_url} 完成，然后重试。",
   "The AI provider account has not completed a confirmation this model requires ({missing_types}). Complete it at {confirm_url}, then try again.":

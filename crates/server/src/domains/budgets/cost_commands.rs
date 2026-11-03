@@ -330,6 +330,91 @@ pub struct CostSummary {
     pub by_started_by: Vec<CostSummaryLine>,
     /// Totals by day, in the org's timezone.
     pub by_day: Vec<CostSummaryLine>,
+    /// Runs where an agent handed work to other agents: their whole cost by
+    /// the agent the run started with, split by the agent that spent it.
+    /// Every amount is also in `by_agent`, under the agent that spent it.
+    pub runs_with_agents: Vec<RunsWithAgentsLine>,
+}
+
+/// The runs one agent led, with whole-run cost and who spent it.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RunsWithAgentsLine {
+    /// The agent the runs started with.
+    #[schema(example = "agent_01h9xk1a")]
+    pub agent_id: String,
+    #[schema(example = "Foreman")]
+    pub agent_name: String,
+    /// Runs it handed work to other agents in, with usage in the window.
+    #[schema(example = 12)]
+    pub runs: i64,
+    /// Priced cost of those runs in USD, every agent included.
+    #[schema(example = 212.4)]
+    pub cost_usd: f64,
+    /// Who spent it, the leading agent itself included, largest first.
+    pub by_agent: Vec<RunsWithAgentsShare>,
+}
+
+/// One agent's spend within the runs another agent led.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RunsWithAgentsShare {
+    /// Absent for usage recorded with no agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "agent_01h9xk2m")]
+    pub agent_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Implement")]
+    pub agent_name: Option<String>,
+    /// `lead` for the leading agent itself, `created_here` for an agent
+    /// created as part of it, `linked` for any other agent.
+    #[schema(example = "created_here")]
+    pub relation: String,
+    #[schema(example = 121.3)]
+    pub cost_usd: f64,
+}
+
+/// Group the per-(lead, agent) rows into one line per leading agent,
+/// largest first.
+pub(crate) fn runs_with_agents(
+    rows: Vec<crate::storage::costs::RunsWithAgentsCostRow>,
+) -> Vec<RunsWithAgentsLine> {
+    let mut lines: Vec<RunsWithAgentsLine> = Vec::new();
+    for row in rows {
+        let index = match lines.iter().position(|line| line.agent_id == row.lead_id) {
+            Some(index) => index,
+            None => {
+                lines.push(RunsWithAgentsLine {
+                    agent_id: row.lead_id.clone(),
+                    agent_name: row.lead_name.clone().unwrap_or_else(|| row.lead_id.clone()),
+                    runs: 0,
+                    cost_usd: 0.0,
+                    by_agent: Vec::new(),
+                });
+                lines.len() - 1
+            }
+        };
+        let line = &mut lines[index];
+        line.runs = row.lead_runs;
+        let relation = if row.agent_id.as_deref() == Some(row.lead_id.as_str()) {
+            "lead"
+        } else if row.created_here.unwrap_or(false) {
+            "created_here"
+        } else {
+            "linked"
+        };
+        line.cost_usd += row.cost_usd;
+        line.by_agent.push(RunsWithAgentsShare {
+            agent_id: row.agent_id,
+            agent_name: row.agent_name,
+            relation: relation.into(),
+            cost_usd: row.cost_usd,
+        });
+    }
+    for line in &mut lines {
+        line.by_agent
+            .sort_by(|a, b| b.cost_usd.total_cmp(&a.cost_usd));
+    }
+    lines.sort_by(|a, b| b.cost_usd.total_cmp(&a.cost_usd));
+    lines
 }
 
 /// Org cost over a window. Defaults to this month in the org's timezone.
@@ -400,6 +485,8 @@ impl Command for GetCostSummary {
         let by_agent = groups.pop().unwrap_or_default();
         let by_source = groups.pop().unwrap_or_default();
         let by_basis = groups.pop().unwrap_or_default();
+        let runs_with_agents =
+            runs_with_agents(ctx.db.runs_with_agents_cost(ctx.org_id(), from, to).await?);
         Ok(CostSummary {
             from,
             to,
@@ -412,6 +499,7 @@ impl Command for GetCostSummary {
             by_user,
             by_started_by,
             by_day,
+            runs_with_agents,
         })
     }
 }
@@ -545,6 +633,39 @@ impl Command for UpdateCostSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runs_with_agents_group_by_lead_and_mark_who_spent_it() {
+        let row = |lead: &str, agent: &str, created_here: bool, lead_runs: i64, cost: f64| {
+            crate::storage::costs::RunsWithAgentsCostRow {
+                lead_id: lead.into(),
+                lead_name: Some(lead.to_uppercase()),
+                agent_id: Some(agent.into()),
+                agent_name: Some(agent.to_uppercase()),
+                created_here: Some(created_here),
+                lead_runs,
+                cost_usd: cost,
+            }
+        };
+        let lines = runs_with_agents(vec![
+            row("foreman", "implement", true, 5, 121.3),
+            row("support", "review", false, 2, 22.9),
+            row("foreman", "review", false, 5, 51.75),
+            row("foreman", "foreman", false, 5, 18.05),
+        ]);
+        assert_eq!(lines.len(), 2);
+        let foreman = &lines[0];
+        assert_eq!(foreman.agent_id, "foreman");
+        assert_eq!(foreman.runs, 5);
+        assert!((foreman.cost_usd - 191.1).abs() < 1e-9);
+        let relations: Vec<_> = foreman
+            .by_agent
+            .iter()
+            .map(|share| share.relation.as_str())
+            .collect();
+        assert_eq!(relations, ["created_here", "linked", "lead"]);
+        assert_eq!(lines[1].by_agent[0].relation, "linked");
+    }
 
     #[test]
     fn month_start_follows_the_org_timezone() {

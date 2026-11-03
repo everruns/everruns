@@ -119,12 +119,13 @@ impl Host {
         if let Some(index) = self.legacy_children.get() {
             return Ok(index.clone());
         }
+        // Agents an older release ran as `#[agent(sub)]` stay agents of the
+        // app, so any agent name can head a legacy `ask_<name>` call.
         let subs: Vec<&str> = self
             .app
             .inner
             .agents
             .iter()
-            .filter(|entry| entry.sub)
             .map(|entry| entry.name.as_str())
             .collect();
         let path = legacy.data_dir().join("events.jsonl");
