@@ -1018,6 +1018,8 @@ fn workspace_tools(version: &str, org: &str) -> Vec<McpEndpointToolDefinition> {
         let mut annotations = read_only_annotations();
         annotations.read_only_hint = Some(!write);
         annotations.destructive_hint = Some(write);
+        annotations.idempotent_hint = Some(!write);
+        annotations.open_world_hint = Some(write);
         tools.push(tool(
             version,
             name,

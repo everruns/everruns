@@ -289,6 +289,10 @@ async fn tools_list_links_tools_to_views() {
         assert_eq!(tool(app_only)["_meta"]["ui"]["visibility"], json!(["app"]));
     }
 
+    assert_eq!(tool("app_write")["annotations"]["idempotentHint"], false);
+    assert_eq!(tool("app_write")["annotations"]["openWorldHint"], true);
+    assert_eq!(tool("app_read")["annotations"]["idempotentHint"], true);
+
     // The fallback protocol keeps its old shape: no views, no `_meta`.
     let old = rpc(&server, "tools/list", json!({}), "2025-03-26", vec![]).await;
     for tool in old["result"]["tools"].as_array().unwrap() {
