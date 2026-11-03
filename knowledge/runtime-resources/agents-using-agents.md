@@ -234,7 +234,17 @@ services; linked names must be added with `.member()` or the build fails.
 Export writes every member as bundled, since the Framework keeps no catalog
 for a linked name. Invite mode is Platform-only (it reads stored agents).
 
-## serve (follow-up)
+## serve
 
-serve gains `.member("name")` for other `#[agent]`s in the app and drops
-`#[agent(sub)]` and its `ask_<name>` tools in favour of `spawn_agent`.
+`serve::AgentBuilder::member("name")` names another `#[agent]` of the app.
+serve builds that agent and adds it with the Framework's
+`AgentBuilder::member`, so hand-offs, member builds and restarts work as in
+the Framework (`crates/serve/src/host/agent.rs`). `#[agent(sub)]` and its
+`ask_<name>` tools are gone. Discovery checks members
+(`crates/serve/src/app.rs`, `check_members`); the manifest lists each agent's
+members. A hosting target that brings its own session hosting profile is
+refused for apps with members until it can activate member sessions.
+
+Not yet in serve: a member's approvals and questions wait on the member's own
+session rather than the run's first session, and there is no `/team` folder or
+run conversation.

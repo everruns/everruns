@@ -1,7 +1,8 @@
 use serve::prelude::*;
 
-/// Reviews a SQL query or a revenue summary before it is shared.
-#[agent(sub)]
+/// Reviews a SQL query or a revenue summary before it is shared. The analyst
+/// hands its drafts here (`spawn_agent`); people can also talk to it directly.
+#[agent]
 fn reviewer() -> Agent {
     Agent::builder()
         // A lighter model is enough for a two-sentence review.

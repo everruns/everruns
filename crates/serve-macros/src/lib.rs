@@ -32,7 +32,6 @@ use syn::{
 /// ```text
 /// #[agent]                 // name = function name
 /// #[agent(default)]        // served on /v1/sessions when the app has several agents
-/// #[agent(sub)]            // a subagent: exposed to the other agents as `ask_<name>`
 /// #[agent(name = "triage")]
 /// ```
 #[proc_macro_attribute]
@@ -124,7 +123,7 @@ fn finish(result: syn::Result<TokenStream2>) -> TokenStream {
 struct Args {
     /// A bare leading string literal, e.g. the cron in `#[schedule("…")]`.
     positional: Option<LitStr>,
-    /// `key` flags such as `sub`, `default`, `needs_approval`.
+    /// `key` flags such as `default`, `needs_approval`.
     flags: Vec<syn::Ident>,
     /// `key = value` pairs.
     pairs: Vec<(syn::Ident, Expr)>,
@@ -274,11 +273,10 @@ fn require_async(func: &ItemFn, macro_name: &str) -> syn::Result<()> {
 // --- #[agent] -----------------------------------------------------------------
 
 fn expand_agent(args: Args, func: ItemFn) -> syn::Result<TokenStream2> {
-    args.only("agent", &["sub", "default", "name"])?;
+    args.only("agent", &["default", "name"])?;
     require_sync_nullary(&func, "agent")?;
     let ident = &func.sig.ident;
     let name = args.string("name")?.unwrap_or_else(|| ident.to_string());
-    let sub = args.flag("sub");
     let default = args.flag("default");
     let doc = doc_comment(&func.attrs);
     Ok(quote! {
@@ -288,7 +286,6 @@ fn expand_agent(args: Args, func: ItemFn) -> syn::Result<TokenStream2> {
             ::serve::__private::AgentRegistration {
                 name: #name,
                 doc: #doc,
-                sub: #sub,
                 default: #default,
                 source: ::core::file!(),
                 build: #ident,
