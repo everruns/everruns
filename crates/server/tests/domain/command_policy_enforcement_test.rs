@@ -574,6 +574,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
                 localizations: Default::default(),
                 public_id: public_id.to_string(),
                 name: name.to_string(),

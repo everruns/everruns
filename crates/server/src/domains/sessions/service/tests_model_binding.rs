@@ -14,6 +14,7 @@ async fn agent_with_model(
 ) -> <crate::domains::agents::CreateAgent as Command>::Output {
     crate::domains::agents::CreateAgent(CreateAgentRequest {
         owner_agent_id: None,
+        completion_check: Default::default(),
         localizations: Default::default(),
         service_virtual_user_id: None,
         id: None,

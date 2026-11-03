@@ -76,11 +76,14 @@ mod session_file_system_factory;
 pub mod session_services;
 mod thread_cpu;
 mod turn_backend;
+mod turn_completion_check;
 mod turn_loop;
 mod turn_resume;
 mod turn_strategy;
 mod turn_tool_context;
 mod workspace;
+
+pub use turn_completion_check::{COMPLETION_REVIEW_PURPOSE, REVIEW_TIMEOUT};
 
 pub use crate::AssembledTurnContext;
 pub use crate::task_observer::{TaskTransition, TaskTransitionObserver};

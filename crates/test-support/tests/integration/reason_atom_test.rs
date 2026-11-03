@@ -10,7 +10,7 @@ use everruns_core::host::{
     InMemoryAgentStore, InMemoryCompactionCheckpointStore, InMemoryHarnessStore,
     InMemoryProviderStore, InMemorySessionStore,
 };
-use everruns_core::session::{ExecutionSession, SessionExecutionState};
+use everruns_core::session::ExecutionSession;
 use everruns_core::{
     AgentDefinition, CompactionCheckpointStore, Controls, ExecutionContext, MessageRetriever,
     RuntimeMessage,
@@ -3124,33 +3124,13 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
     {
         session_store
             .add_session(ExecutionSession {
-                id: session_id.into(),
-                workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id),
                 organization_id: "default".to_string(),
-                harness_id,
                 agent_id: Some(agent_id.into()),
                 title: Some("Test ExecutionSession".to_string()),
-                goal: None,
-                locale: None,
-                tags: vec![],
-                status: SessionExecutionState::Started,
-                model_id: None,
-                capabilities: vec![],
-                tools: vec![],
-                mcp_servers: Default::default(),
                 system_prompt: Some(
                     "SESSION PREFIX: You must always respond in French.".to_string(),
                 ),
-                initial_files: vec![],
-                hints: None,
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                usage: None,
-                parent_session_id: None,
-                forked_from_session_id: None,
-                blueprint_id: None,
-                blueprint_config: None,
+                ..ExecutionSession::with_own_workspace(session_id.into(), harness_id)
             })
             .await;
     }
@@ -3233,31 +3213,11 @@ async fn test_empty_session_system_prompt_is_ignored() {
     {
         session_store
             .add_session(ExecutionSession {
-                id: session_id.into(),
-                workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id),
                 organization_id: "default".to_string(),
-                harness_id,
                 agent_id: Some(agent_id.into()),
                 title: Some("Test ExecutionSession".to_string()),
-                goal: None,
-                locale: None,
-                tags: vec![],
-                status: SessionExecutionState::Started,
-                model_id: None,
-                capabilities: vec![],
-                tools: vec![],
-                mcp_servers: Default::default(),
                 system_prompt: Some(String::new()),
-                initial_files: vec![],
-                hints: None,
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                usage: None,
-                parent_session_id: None,
-                forked_from_session_id: None,
-                blueprint_id: None,
-                blueprint_config: None,
+                ..ExecutionSession::with_own_workspace(session_id.into(), harness_id)
             })
             .await;
     }
