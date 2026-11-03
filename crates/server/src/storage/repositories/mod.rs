@@ -62,6 +62,7 @@ mod evals;
 pub use evals::rows::*;
 mod events;
 pub use events::ActorLeaseFenceRejected;
+pub(crate) use events::feed;
 pub use events::rows::*;
 mod files;
 pub use files::rows::*;

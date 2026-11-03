@@ -106,6 +106,10 @@ async fn assert_embedding_attribution(managed: bool, query: bool) {
         .await
         .unwrap();
     assert_eq!(vectors, vec![vec![1.0, 0.0]]);
+    // Usage is metered by a fed listener, after the event commits.
+    if let Some(events) = &service.events {
+        events.listeners_settled().await;
+    }
     let rows = sqlx::query("SELECT provider_config_id, provider_response_id, managed, input_tokens, actual_cost_usd, session_id FROM llm_generations WHERE org_id=1")
         .fetch_all(service.db.pool()).await.unwrap();
     assert_eq!(rows.len(), 1, "each paid embedding call is metered once");
