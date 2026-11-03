@@ -32008,27 +32008,32 @@ export interface components {
       /**
        * Format: int64
        * @description Output tokens the balance covered, when the provider said.
+       * @example 283
        */
       affordable_tokens?: number | null;
       /**
        * @description Whether the provider's balance was read (without spending tokens).
        *     `false`: the provider has no balance API and the request itself is
        *     the check.
+       * @example true
        */
       balance_checked?: boolean | null;
       /**
        * Format: int32
        * @description Max output tokens of the smaller retry (`shrunk` only).
+       * @example 7680
        */
       max_tokens?: number | null;
       /**
        * Format: date-time
        * @description When the next check runs, when one was scheduled.
+       * @example 2026-11-03T07:01:00Z
        */
       next_check_at?: string | null;
       /**
        * Format: int64
        * @description Max output tokens the refused request asked for, when the provider said.
+       * @example 65536
        */
       requested_max_tokens?: number | null;
       /**
@@ -32039,6 +32044,7 @@ export interface components {
       /**
        * Format: date-time
        * @description When the wait for credits ends at the latest.
+       * @example 2026-11-03T08:00:00Z
        */
       wait_until?: string | null;
     };
