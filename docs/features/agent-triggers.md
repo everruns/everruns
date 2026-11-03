@@ -9,7 +9,7 @@ Agent triggers let an Agent start work without a user message. A trigger belongs
 | `trigger_type` | Fires when | Set up |
 |---|---|---|
 | `schedule` | A cron expression matches | This page |
-| `webhook` | An external system calls the trigger's token-authenticated URL | API (`token`, optional `filter`, `rate_limit_per_minute`) |
+| `webhook` | An external system calls the trigger's token-authenticated URL | **Add trigger** → **Webhook**, or API (`token`, optional `filter`, `rate_limit_per_minute`) |
 | `github` | A GitHub event reaches the Agent's GitHub App, such as a pull request | [Summarize GitHub pull requests](/how-to/summarize-github-pull-requests/) |
 | `mcp_event` | One of the Agent's MCP servers emits a subscribed event | [MCP Events](/features/mcp/) |
 
@@ -18,7 +18,7 @@ The rest of this page covers schedule triggers.
 ## Create a trigger in the UI
 
 1. Open the agent.
-2. Select the **Integrations** tab.
+2. Select the **Channels and triggers** tab.
 3. Select **Add trigger**.
 4. Choose a preset or enter a 5-field cron expression (or a 7-field expression whose year is `*`), then enter an IANA timezone. In 5-field cron, weekdays count 0-6 from Sunday (7 is also Sunday), so `0 9 * * 1-5` runs Monday through Friday. A 7-field expression counts weekdays 1-7 from Sunday, so its Monday through Friday is `2-6` (or `MON-FRI`). The editor shows the schedule in human-readable form and previews the next eight runs. The default timezone is `UTC`.
 5. Choose a session mode:
@@ -27,17 +27,13 @@ The rest of this page covers schedule triggers.
 6. Enter the message that starts the run. Messages may use `{{...}}` template values from the agent, trigger, and invocation context.
 7. Leave **Enabled** on to activate the schedule, then select **Create trigger**.
 
-The trigger card shows the schedule in human-readable form, its timezone, message, session mode, enabled state, and recent run outcomes.
+The **Triggers** table lists every trigger with its schedule in human-readable form, whether it is on, and when it last ran. Select a row to open the trigger's page, `/agents/{agent_id}/triggers/{trigger_id}`, with its settings, setup and recent run outcomes. API, CLI and MCP responses for a trigger include that page as `view_url`.
 
 ## Operate and test a trigger
 
-From the **Triggers** section of the **Integrations** tab you can:
+From a trigger's row menu on the **Channels and triggers** tab you can select **Run now**, **Turn off** or **Turn on**, and **Delete**. On the trigger's page you can also edit its schedule, timezone, session mode and message, and see its most recent durable execution outcomes.
 
-- enable or disable the recurring schedule;
-- edit its schedule, timezone, session mode, message, or enabled state;
-- select **Run now** to start one invocation immediately;
-- inspect the most recent durable execution outcomes; or
-- delete the trigger.
+**Pause agent** in the Agent's **⋯** menu stops every trigger and schedule of the Agent, along with its channels, until you resume it. A scheduled run while paused is recorded as failed with `Agent is paused`.
 
 **Run now** uses the same execution path as a scheduled run. The trigger must be enabled.
 

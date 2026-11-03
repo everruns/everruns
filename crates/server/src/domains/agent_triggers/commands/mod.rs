@@ -1058,6 +1058,12 @@ pub async fn invoke_agent_trigger(
     if agent.status != "active" {
         return Err(CommandError::forbidden("Agent is not active".to_string()));
     }
+    // Pause agent covers schedules too (it used to stop only channels and event
+    // triggers). The tick is recorded as a failed run, so a paused agent's run
+    // history says why nothing happened.
+    if agent.exposures_suspended {
+        return Err(CommandError::forbidden("Agent is paused".to_string()));
+    }
     // Defense-in-depth: the requested agent (from the route/durable target) must
     // match the trigger's owner.
     if let Ok(requested) = agent_id.parse::<AgentId>()

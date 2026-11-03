@@ -708,7 +708,7 @@ function AgentChannelForm({
             )}
             <p className="text-xs text-muted-foreground">
               {ui(
-                "Publish opens this channel to callers and Unpublish closes it. Pausing all channels on the agent's Integrations tab overrides both.",
+                "Publish opens this channel to callers and Unpublish closes it. Pausing the agent overrides both.",
               )}
             </p>
             {(canBudget("budget.view") || callerSpend) && (

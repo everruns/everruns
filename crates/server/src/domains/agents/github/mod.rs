@@ -40,6 +40,11 @@ use crate::storage::{AgentRow, EncryptionService, StorageBackend};
 /// GitHub as seen from an agent's page.
 #[derive(Debug, Default, Serialize, PartialEq, ToSchema)]
 pub struct AgentGitHubStatus {
+    /// The agent's GitHub page in the console, so a caller can link to it.
+    /// Absolute in responses; built as a relative path here because the
+    /// console's address is known only where links are decorated.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub view_url: Option<String>,
     /// The agent's identity, once it has one; disconnect goes through it.
     pub identity_id: Option<String>,
     /// An installation is bound, so tools and triggers work: the agent's own
@@ -179,8 +184,10 @@ pub(crate) async fn status_for_agent(
     let web_url = &github.api.endpoints().web_url;
     let suggested_owners = suggested_owners(db, org_id).await?;
     let everruns_app_installations = choosable_installations(db, github, org_id).await?;
+    let view_url = Some(format!("agents/{}/github", agent.public_id));
     let Some(identity_id) = agent.virtual_user_id else {
         return Ok(AgentGitHubStatus {
+            view_url,
             suggested_owners,
             everruns_app_installations,
             ..AgentGitHubStatus::default()
@@ -236,6 +243,7 @@ pub(crate) async fn status_for_agent(
         .and_then(|v| v.as_str())
         .map(str::to_string);
     Ok(AgentGitHubStatus {
+        view_url,
         identity_id: Some(identity_id.to_string()),
         connected: connection.is_some(),
         app_created: app.is_some(),

@@ -27,7 +27,17 @@ import { AgentMembersTab, agentMembers } from "@/components/agents/agent-members
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Copy, Download, MessageCircle, Pencil, RefreshCw, Telescope } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Download,
+  MessageCircle,
+  PauseCircle,
+  Pencil,
+  Play,
+  RefreshCw,
+  Telescope,
+} from "lucide-react";
 import {
   useAgent,
   useAgentCredentials,
@@ -42,8 +52,13 @@ import {
   useLatestHealthCheckRun,
   useModels,
   usePageTitle,
+  usePauseAgent,
+  useResumeAgent,
   useUpdateAgent,
 } from "@/hooks";
+import { useAgentGitHub } from "@/hooks/use-agent-github";
+import { useConfirmation } from "@/components/ui/confirmation-provider";
+import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
 import { usePolicies } from "@/hooks/use-policies";
 import { useVirtualUser } from "@/hooks/use-virtual-users";
 import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
@@ -224,6 +239,10 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const copyAgent = useCopyAgent();
+  const pauseAgent = usePauseAgent();
+  const resumeAgent = useResumeAgent();
+  const confirm = useConfirmation();
+  const { data: github } = useAgentGitHub(agentId);
   const { can } = usePolicies("agents");
   const webmcp = useWebMcp();
   const chatMode = usePageChatMode();
@@ -528,6 +547,17 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
         ? ui("{value0} bound", { value0: credentials.length })
         : ui("None"),
     },
+    // GitHub has a page of its own, so it can be linked to directly.
+    {
+      id: "github",
+      label: ui("GitHub"),
+      summary: github?.connected
+        ? (github.bot_login ?? ui("Connected"))
+        : github?.app_created
+          ? ui("Not installed")
+          : ui("Not connected"),
+      href: `/agents/${agent.id}/github`,
+    },
     {
       id: "service",
       label: ui("Service account"),
@@ -592,6 +622,23 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   const slackRemovalForbidden =
     !!channels && hasManagedSlackApps(channels) && !can("agent.dangerous");
   const recordPermissions = { manage: canManage };
+  // Pause agent (EVE-1007): channels stop accepting messages and triggers and
+  // schedules stop starting it. Built-in agents can be paused too: it is
+  // deployment state, not definition.
+  const paused = !!agent.exposures_suspended;
+  const canPause = canManage && !statusReadOnly;
+  const resume = () => resumeAgent.mutate(agent.id);
+  const pause = async () => {
+    if (
+      await confirm(
+        ui(
+          "Pause {value0}? Its channels stop accepting messages and its triggers and schedules stop starting it until you resume it. Sessions already running continue.",
+          { value0: displayName },
+        ),
+      )
+    )
+      pauseAgent.mutate(agent.id);
+  };
 
   const overflowMenu = (
     <EntityActionsMenu
@@ -612,6 +659,25 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                   ? "Could not load Agent source"
                   : "Loading source",
               },
+            ]
+          : []),
+        ...(canPause
+          ? [
+              paused
+                ? {
+                    id: "resume",
+                    label: ui("Resume agent"),
+                    icon: <Play className="size-4" />,
+                    onSelect: resume,
+                    disabled: resumeAgent.isPending,
+                  }
+                : {
+                    id: "pause",
+                    label: ui("Pause agent"),
+                    icon: <PauseCircle className="size-4" />,
+                    onSelect: () => void pause(),
+                    disabled: pauseAgent.isPending,
+                  },
             ]
           : []),
         {
@@ -718,6 +784,12 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                       {ui(agent.status)}
                     </Badge>
                   )}
+                  {paused && !editing && (
+                    <Badge variant="outline">
+                      <PauseCircle />
+                      {ui("Paused")}
+                    </Badge>
+                  )}
                   {builtIn && <Badge variant="outline">{ui("Built-in")}</Badge>}
                 </>
               }
@@ -758,6 +830,29 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                 </>
               }
             />
+
+            {paused && !editing && (
+              <Notice variant="warning" icon={<PauseCircle className="size-4" />}>
+                <NoticeTitle>{ui("This agent is paused")}</NoticeTitle>
+                <NoticeDescription>
+                  {ui(
+                    "Its channels do not accept messages and its triggers and schedules do not start it. Each channel and trigger keeps its own setting for when you resume.",
+                  )}
+                </NoticeDescription>
+                {canPause && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2"
+                    onClick={resume}
+                    disabled={resumeAgent.isPending}
+                  >
+                    <Play className="size-4" />
+                    {ui("Resume")}
+                  </Button>
+                )}
+              </Notice>
+            )}
 
             {!editing && !builtIn && (
               <ExternalWorker

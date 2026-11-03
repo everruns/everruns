@@ -17,9 +17,9 @@ use uuid::Uuid;
 
 #[cfg(test)]
 use crate::domains::apps::record::{App, AppStatus};
-use everruns_contracts::typed_id::AgentChannelId;
+use everruns_contracts::typed_id::{AgentChannelId, AgentId};
 #[cfg(test)]
-use everruns_contracts::typed_id::{AgentId, AppId, HarnessId, PrincipalId};
+use everruns_contracts::typed_id::{AppId, HarnessId, PrincipalId};
 pub use everruns_core::channel::SessionBinding;
 use exposure::{DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT, PublicToolVisibility};
 
@@ -196,6 +196,12 @@ pub struct AgentChannel {
     /// Internal UUID primary key. Never exposed in API.
     #[serde(skip, default = "Uuid::nil")]
     pub internal_id: Uuid,
+    /// The agent that owns this channel. Also what lets responses carry a
+    /// `view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),
+    /// so a caller can hand out a direct link.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a000070008000000000000001")]
+    pub agent_id: Option<AgentId>,
     /// Channel type (e.g. slack).
     pub channel_type: ChannelType,
     /// Channel-specific configuration (validated per channel type).

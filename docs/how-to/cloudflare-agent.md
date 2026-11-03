@@ -119,7 +119,7 @@ retrying registration; the CP refuses to replace a still-held lease.
 
 ## Slack
 
-On that same Agent's **Integrations** tab, add and publish Slack using
+On that same Agent's **Channels and triggers** tab, add and publish Slack using
 [the Slack guide](https://everruns.com/docs/how-to/publish-to-slack/). Use **Direct**
 communication. Mention the Agent in a Slack thread with the north-sales question.
 Slack intake creates/binds the normal session; CP dispatches to the Worker;

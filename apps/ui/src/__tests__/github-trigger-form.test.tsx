@@ -171,3 +171,41 @@ it("stages trigger text without changing conditions or saving, and enforces page
     /read-only/,
   );
 });
+
+// Webhooks are triggers now (EVE-1006): created here, not under New channel.
+describe("Webhook trigger page", () => {
+  beforeEach(() => {
+    mockCanManage = true;
+    search = "type=webhook";
+    create.mockClear();
+    create.mockResolvedValue({ id: "trg_new" });
+    push.mockClear();
+  });
+
+  it("creates a webhook trigger with a generated token and opens its page", async () => {
+    render(page());
+    expect(screen.getByRole("link", { name: "Webhook" })).toHaveAttribute("aria-current", "page");
+    const token = screen.getByLabelText("Token") as HTMLInputElement;
+    expect(token.value).toMatch(/^[0-9a-f]{48}$/);
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "Process {{payload}}" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(create.mock.calls[0][0]).toEqual({
+      trigger_type: "webhook",
+      message: "Process {{payload}}",
+      session_mode: "shared_session",
+      enabled: true,
+      token: token.value,
+    });
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/agents/agent_1/triggers/trg_new"));
+  });
+
+  it("does not save a webhook without a token", async () => {
+    render(page());
+    fireEvent.change(screen.getByLabelText("Token"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "Go" } });
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+});

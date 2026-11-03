@@ -3220,7 +3220,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "Let live endpoints serve again",
+        "summary": "Deprecated alias of resume",
         "operationId": "resume_agent_exposures",
         "parameters": [
           {
@@ -3235,7 +3235,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Exposures resumed",
+            "description": "Agent resumed",
             "content": {
               "application/json": {
                 "schema": {
@@ -3255,12 +3255,17 @@
             }
           }
         },
+        "deprecated": true,
+        "x-deprecation": {
+          "migration": "Use the pause or resume route. This alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        }
+        },
+        "x-superseded-by": "resume_agent"
       }
     },
     "/v1/agents/{agent_id}/exposures/suspend": {
@@ -3268,7 +3273,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "Take every endpoint offline",
+        "summary": "Deprecated alias of pause",
         "operationId": "suspend_agent_exposures",
         "parameters": [
           {
@@ -3283,7 +3288,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Exposures suspended",
+            "description": "Agent paused",
             "content": {
               "application/json": {
                 "schema": {
@@ -3303,12 +3308,17 @@
             }
           }
         },
+        "deprecated": true,
+        "x-deprecation": {
+          "migration": "Use the pause or resume route. This alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        }
+        },
+        "x-superseded-by": "pause_agent"
       }
     },
     "/v1/agents/{agent_id}/external-worker": {
@@ -4035,6 +4045,103 @@
           },
           "500": {
             "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/pause": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Pause an agent",
+        "description": "Its channels stop accepting messages and its triggers and schedules do not\nrun until it is resumed. Each channel keeps its own published state.",
+        "operationId": "pause_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Agent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/resume": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Resume a paused agent",
+        "operationId": "resume_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Agent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -36648,6 +36755,14 @@
           "updated_at"
         ],
         "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent that owns this channel. Also what lets responses carry a\n`view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),\nso a caller can hand out a direct link.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
           "auth": {
             "oneOf": [
               {
@@ -37328,6 +37443,13 @@
               "$ref": "#/components/schemas/GitHubOwnerSuggestion"
             },
             "description": "GitHub accounts this organization already reached, as candidates for\n`owner_org` when creating the App: installation accounts of its GitHub\nconnections and owners of its other agents' Apps. Organizations first,\nthen users, then accounts of unknown kind; by login within each."
+          },
+          "view_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent's GitHub page in the console, so a caller can link to it.\nAbsolute in responses; built as a relative path here because the\nconsole's address is known only where links are decorated."
           }
         }
       },
@@ -38519,6 +38641,14 @@
           "updated_at"
         ],
         "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent that owns this channel. Also what lets responses carry a\n`view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),\nso a caller can hand out a direct link.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
           "auth": {
             "oneOf": [
               {

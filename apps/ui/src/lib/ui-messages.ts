@@ -1,3 +1,4 @@
+import { messages as channelsAndTriggers } from "./messages/uk/channels-and-triggers";
 import { messages as sandboxBuilds } from "./messages/uk/sandbox-builds";
 import { messages as externalWorker } from "./messages/uk/external-worker";
 import { messages as agentCost } from "./messages/uk/agent-cost";
@@ -69,6 +70,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   costs,
   evals,
   evalCases,
+  channelsAndTriggers,
 );
 
 /** Product catalogs use null-prototype maps so hostile lookup keys fall back safely. */

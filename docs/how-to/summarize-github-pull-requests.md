@@ -28,8 +28,9 @@ create or paste.
 
 ## Connect GitHub
 
-1. Open the Agent and select **Integrations**.
-2. In the **GitHub** section, between **Channels** and **Triggers**, open
+1. Open the Agent and, in the **More** list of the **Agent** tab, select **GitHub**.
+   It opens the Agent's GitHub page, `/agents/{agent_id}/github`.
+2. Open
    **Create this agent's own GitHub App** and choose where to create
    the App: **Personal account**, an organization your Everruns organization
    already connected to GitHub, or **Another organization…** to type one. The
@@ -40,7 +41,7 @@ create or paste.
 4. Choose where to install it and which repositories it can reach, then select
    **Install**.
 
-You land back on **Integrations** with the **GitHub** section showing the
+You land back on the Agent's **GitHub** page showing the
 Agent's bot login (for example `pr-summarizer[bot]`), the account and the
 repositories. The App is this Agent's alone: its comments appear as the App's
 bot. Its GitHub tools, its trigger, and any MCP server set to use the Agent's
@@ -48,7 +49,7 @@ bot. Its GitHub tools, its trigger, and any MCP server set to use the Agent's
 
 ### Set the avatar
 
-GitHub offers no way to set an App's logo for it, so the **GitHub** section
+GitHub offers no way to set an App's logo for it, so the **GitHub** page
 shows a **Set the avatar** step. Select **Download avatar** to save the Agent's
 avatar (shown when the Agent has one), then **Open App settings** and upload
 it as the logo on GitHub.
@@ -56,7 +57,7 @@ it as the logo on GitHub.
 ### Use the Everruns app instead
 
 When an org admin has linked a GitHub account to the shared Everruns GitHub
-App, the **GitHub** section also offers **Use the Everruns app**. Pick a
+App, the **GitHub** page also offers **Use the Everruns app**. Pick a
 linked account and the Agent acts as the shared App's bot on that
 installation, with no App of its own to create. Its comments then appear as
 the shared bot, not as the Agent, and there is no avatar step.
@@ -68,7 +69,7 @@ stays installed on GitHub.
 
 ## Add a pull request trigger
 
-1. In the **GitHub** section, select **Add pull request trigger**.
+1. On the Agent's **GitHub** page, select **Add pull request trigger**.
 2. Keep the default events (opened, reopened, new commits pushed, ready for
    review), or change them.
 3. Leave repositories empty to cover every repository the App is installed on,
@@ -95,7 +96,7 @@ reason, so you can see why an event did not start a run.
 
 ## Disconnect
 
-Select **Disconnect** in the **GitHub** section. This uninstalls the App from
+Select **Disconnect** on the Agent's **GitHub** page. This uninstalls the App from
 GitHub and removes the Agent's GitHub connection. For an Agent using the
 Everruns app, it only removes the Agent's choice; the account stays linked to
 the organization. The App itself stays on your
@@ -104,7 +105,7 @@ GitHub account, so connecting again reuses it; delete it from GitHub's
 
 If the App was created but never installed, for example on your personal
 account when the repositories belong to an organization, select **Start over**
-in the **GitHub** section's actions menu instead. Everruns forgets that App, so the next **Connect GitHub** creates a new
+in the **GitHub** page's actions menu instead. Everruns forgets that App, so the next **Connect GitHub** creates a new
 one.
 
 ## From the CLI

@@ -225,6 +225,8 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/agents/{agent_id}/export", Read),
     ("POST", "/v1/agents/{agent_id}/exposures/resume", Write),
     ("POST", "/v1/agents/{agent_id}/exposures/suspend", Write),
+    ("POST", "/v1/agents/{agent_id}/pause", Write),
+    ("POST", "/v1/agents/{agent_id}/resume", Write),
     ("POST", "/v1/agents/{agent_id}/github/connect", Never),
     ("GET", "/v1/agents/{agent_id}/health-checks", Read),
     ("POST", "/v1/agents/{agent_id}/health-checks", Write),

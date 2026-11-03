@@ -243,6 +243,7 @@ pub fn channel_row_to_channel(
     AgentChannel {
         public_id,
         internal_id: row.id,
+        agent_id: None,
         channel_type: ChannelType::from_str_opt(&row.channel_type).unwrap_or(ChannelType::Slack),
         channel_config,
         auth,

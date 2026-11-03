@@ -8,7 +8,7 @@ An application that only needs to talk to one agent should not hold a personal a
 
 ## 1. Publish the agent with an Agent API channel
 
-In the agent's **Integrations** tab, add an **Agent API** channel, then create a key in its **Agent keys** card. The secret (`evr_ak_…`) is shown once. The channel shows its **agent URL**, for example `https://app.everruns.com/api/v1/channels/appchan_…`.
+In the agent's **Channels and triggers** tab, add an **Agent API** channel, then create a key in its **Agent keys** card. The secret (`evr_ak_…`) is shown once. The channel shows its **agent URL**, for example `https://app.everruns.com/api/v1/channels/appchan_…`.
 
 Name each key after the application that holds it, so you know which one to revoke. Rotating gives a new secret and keeps the old one working for an overlap you choose, so you can deploy the new secret first.
 

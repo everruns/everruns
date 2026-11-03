@@ -300,18 +300,42 @@ streaming with agent-controlled messages on channel threads is a per-surface ans
 that generalizes across transports. Shared exposure *policy* (tool visibility) moves to
 the neutral module; transport config stays typed per transport.
 
-## Integrations tab
+## Channels and triggers tab
 
-Agent detail owns an **Integrations** tab alongside Overview / Preview /
-Credentials / Triggers / Versions / Stats:
+Agent detail owns a **Channels and triggers** tab (URL value still `?tab=integrations`, so
+old links keep working). It was "Integrations" until 2026-11-03, when it also held the
+GitHub identity and an "Accept traffic" switch; both moved out so the tab answers one
+question: how the agent is reached and how it starts on its own.
 
-- Stat strip: Health / Invocations 24h / Success rate / Activity, unchanged.
-- **Channels** section: channel inventory with create, edit, publish, unpublish, delete,
-  and migrated schedule run-now controls.
-- **Triggers** section: absorbs today's Triggers tab. Read-only UI renders a
-  human-readable cron description plus timezone; raw cron only inside the editable input.
-- Header: agent identity control and the suspend-all-exposures switch.
+- **Channels** section: one table row per channel, the whole row opening the channel's
+  page, with publish and unpublish in the row menu.
+- **Triggers** section: the same table shape, one row per trigger (schedule, webhook,
+  GitHub, MCP event), each opening the trigger's page, with Run now, Turn on/off and Delete
+  in the row menu. Schedules created as channels before schedules were triggers are listed
+  here too and open on their channel page. Read-only surfaces render a human-readable cron
+  description, raw cron only inside the editable input.
+- **Webhook is a trigger.** New channel no longer offers it (it points to New trigger);
+  existing webhook channels keep working and keep their page. Webhook triggers answer at
+  the same `/v1/channels/{id}/webhook` URL.
+- **GitHub** is not on this tab: it is who the agent is, not a way to reach it. It is a row
+  in the Agent tab's settings list that opens `/agents/{id}/github`
+  ([GitHub model](github-model.md) D7).
+- **Pause agent** is in the agent header menu, not on this tab: see below.
 - App editor routes are retired. Channel and trigger editors are Agent-owned.
+
+Every channel, trigger and the GitHub identity has a page of its own, and API, CLI and MCP
+output carries its `view_url`, so an external agent can hand out a direct link
+([resource links](../../crates/server/src/resource_links.rs)).
+
+### Pause agent
+
+`exposures_suspended` is the agent-level kill switch, presented as **Pause agent**
+(`POST /v1/agents/{id}/pause` and `/resume`, `everruns agents pause|resume`). Paused, the
+agent's channels refuse messages and its triggers do not start it, schedules included
+(schedules used to keep firing, which made the old "suspend exposures" name only half
+true). Each channel's publish state and each trigger's on/off setting are left alone, so
+resuming restores exactly what was live. The old `/exposures/suspend|resume` routes stay as
+deprecated aliases. The agent page shows a Paused badge and a notice with Resume.
 
 `Credentials` stays the org-wide read view of channel keys and tokens.
 
@@ -320,10 +344,9 @@ org is reachable from outside right now", which is a question security asks and 
 detail page answers. It becomes a read-mostly cross-agent **Exposures** view that links
 into agents (EVE-1010, landed at `/exposures`).
 
-**The word is "Exposures"**, settling open question 3. The API and CLI already say it
-user-facingly (`/v1/agents/{id}/exposures/suspend`, `everruns agents exposures suspend`),
-so a different UI term would make the product say two things about one concept; and it
-covers triggers, which "Channels" does not. It sits under **Operational**, beside
+**The word was "Exposures"**, settling open question 3 at the time, because the API and CLI
+said it (`exposures/suspend`, since renamed to pause and resume) and it covered triggers,
+which "Channels" does not. It sits under **Operational**, beside
 Sessions and Reports, because reading it is an operational act and the editing it links to
 lives on the agent. This view has since moved onto the Agents page as its Channels view,
 which says "channels" instead, and `/exposures` redirects there; see
@@ -383,7 +406,7 @@ rest proceeds.
    `channel_ingress::channel_liveness`. The App publish switch remains, and now drives the
    channels it owns, until App management is retired. The Slack manifest and bot identity
    move to the channel separately (EVE-1008).
-7. **UI**: Integrations tab with channel and trigger editors (EVE-1009), cross-agent
+7. **UI**: Integrations tab (now Channels and triggers) with channel and trigger editors (EVE-1009), cross-agent
    Exposures view (EVE-1010).
 8. **Freeze** the `apps` table and retire App management (EVE-1011). Historical records,
    attribution, budget bindings, and permanent route aliases stay. Ingress and

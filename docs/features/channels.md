@@ -40,7 +40,7 @@ authentication and membership in the file's organization.
 
 ## Create a channel
 
-1. Open the Agent and select the **Integrations** tab.
+1. Open the Agent and select the **Channels and triggers** tab.
 2. Select **Add channel** and choose the channel type.
 3. Configure the type-specific fields and select **Create channel**.
 4. Select **Publish** to make the channel live.
@@ -59,12 +59,14 @@ Disabled → Draft
 ```
 
 - **Draft**: Configured but does not accept ingress traffic.
-- **Live**: Published and able to accept traffic while its Agent is active and exposures are not suspended.
+- **Live**: Published and able to accept traffic while its Agent is active and not paused.
 - **Disabled**: Kept for configuration but rejects ingress traffic and does not invoke the Agent.
 
 Publishing and unpublishing require the dangerous Agent permission (Owner by default). The same permission is required to change a live channel's configuration, including its authentication and secrets, or to disable it. Members who can manage Agents can still edit Draft and Disabled channels.
 
-A channel serves traffic only when all three hold: the channel is live, the Agent is active, and the Agent's exposures are not suspended. Suspending exposures from the Agent's **Integrations** tab takes every channel of that Agent offline at once without changing each channel's state.
+A channel serves traffic only when all three hold: the channel is live, the Agent is active, and the Agent is not paused. **Pause agent** in the Agent's **⋯** menu (or `everruns agents pause`) takes every channel of that Agent offline and stops its triggers and schedules at once, without changing each channel's or trigger's own state; **Resume** restores them.
+
+Every channel has its own page at `/agents/{agent_id}/channels/{channel_id}`. API, CLI and MCP responses for a channel include that page as `view_url`, so you can link to it directly.
 
 Errors from public channels are sanitized so they do not expose internal state, such as whether a channel exists or why it is offline.
 
@@ -158,13 +160,13 @@ To list the agent in the AgentID directory, use `{API base URL}/v1/agentid/initi
 
 An Agent API channel gives one Agent a base URL, `/v1/channels/{channel_id}`, that your own code calls with an **agent key** (`evr_ak_…`). A key reaches only this Agent's session routes, never the management API. Callers start sessions, send messages, follow events over SSE, answer questions, approve tool calls and cancel turns, and each caller sees only its own sessions. Channel settings add end users, your own identity provider, browser origins, safe retries and a daily spending limit per caller. In the console that daily limit sits with the channel budget under **Spending**: the budget is the shared pool, and the daily limit caps each person until midnight UTC.
 
-Add an **Agent API** channel on the Agent's **Integrations** tab, publish it, and create a key in its **Agent keys** card. See [Agent API](/features/agent-api/) for keys, every route, authentication, settings, streaming and errors, and [Call your agent from code](/how-to/call-your-agent-from-code/) for a walkthrough. A [serve](/framework/serve/) app serves the same routes at `/v1/channels/{agent}`.
+Add an **Agent API** channel on the Agent's **Channels and triggers** tab, publish it, and create a key in its **Agent keys** card. See [Agent API](/features/agent-api/) for keys, every route, authentication, settings, streaming and errors, and [Call your agent from code](/how-to/call-your-agent-from-code/) for a walkthrough. A [serve](/framework/serve/) app serves the same routes at `/v1/channels/{agent}`.
 
 ## Other transports
 
 The same channel model also carries transports that do not need a reply channel:
 
-- `webhook` runs the Agent when an authenticated HTTP call reaches `/v1/channels/{channel_id}/webhook`, and is available under **Add channel**. A sender that retries can set an `Idempotency-Key` header: a repeat of a key the channel accepted in the last day answers `"delivery": "duplicate"` and starts nothing.
+- `webhook` runs the Agent when an authenticated HTTP call reaches `/v1/channels/{channel_id}/webhook`, and is created as a [webhook trigger](/features/agent-triggers/) under **Add trigger**. Webhook channels created before keep working. A sender that retries can set an `Idempotency-Key` header: a repeat of a key the channel accepted in the last day answers `"delivery": "duplicate"` and starts nothing.
 - `schedule` runs the Agent on a cron schedule. Create schedules as [Agent triggers](/features/agent-triggers/), which also cover webhook, GitHub, and MCP event starts.
 
 ## Existing integrations

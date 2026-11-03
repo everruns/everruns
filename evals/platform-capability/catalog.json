@@ -18598,6 +18598,30 @@
     "read_only": false
   },
   {
+    "category": "agents",
+    "cli": "agents pause",
+    "description": "Pause an agent: its channels stop accepting messages and its triggers and schedules do not run until it is resumed.",
+    "input_schema": {
+      "description": "Pause an agent: nothing new starts until it is resumed (EVE-1007).\n\nThis is the incident control, and is deliberately separate from archiving and\nfrom per-channel publish: it leaves every channel's own `status` and every\ntrigger's `enabled` untouched, so resuming restores exactly the set that was\nlive before, which is what makes it safe to reach for under pressure.\n\nDecision: it was \"suspend exposures\" and stopped channels and event triggers\nbut not schedules. \"Pause agent\" stops all of them, so the word means one\nthing. The `exposures_suspended` column keeps its name; the old\n`/exposures/suspend|resume` routes stay as deprecated HTTP aliases.",
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "pause_agent",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/pause",
+    "positional_arg": "agent_id",
+    "read_only": false
+  },
+  {
     "category": "schedules",
     "cli": "durable schedules pause",
     "description": "Pause a durable schedule.",
@@ -20267,10 +20291,10 @@
   },
   {
     "category": "agents",
-    "cli": "agents exposures resume",
-    "description": "Let an agent's live channels accept traffic again.",
+    "cli": "agents resume",
+    "description": "Resume a paused agent: its published channels, triggers and schedules work again.",
     "input_schema": {
-      "description": "Clear the agent-level exposure suspend, restoring the previously live set.",
+      "description": "Resume a paused agent, restoring the channels and triggers that were live.",
       "properties": {
         "agent_id": {
           "description": "Agent's prefixed public identifier.",
@@ -20283,9 +20307,9 @@
       "type": "object"
     },
     "method": "POST",
-    "name": "resume_agent_exposures",
+    "name": "resume_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/exposures/resume",
+    "path": "/v1/agents/{agent_id}/resume",
     "positional_arg": "agent_id",
     "read_only": false
   },
@@ -21659,30 +21683,6 @@
     "output_shape": "unknown",
     "path": "/v1/mcp-servers/{id}/tools/suggest-labels",
     "positional_arg": "id",
-    "read_only": false
-  },
-  {
-    "category": "agents",
-    "cli": "agents exposures suspend",
-    "description": "Stop every channel on an agent from accepting traffic.",
-    "input_schema": {
-      "description": "Take every endpoint on an agent off the internet in one action (EVE-1007).\n\nThis is the incident control, and is deliberately separate from archiving and\nfrom per-endpoint publish: it leaves every endpoint's own `status` untouched,\nso resuming restores exactly the set that was live before — which is what\nmakes it safe to reach for under pressure.",
-      "properties": {
-        "agent_id": {
-          "description": "Agent's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "agent_id"
-      ],
-      "type": "object"
-    },
-    "method": "POST",
-    "name": "suspend_agent_exposures",
-    "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/exposures/suspend",
-    "positional_arg": "agent_id",
     "read_only": false
   },
   {
