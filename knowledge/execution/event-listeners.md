@@ -73,11 +73,14 @@ below makes them restart safe.
   and only from the value the pass started at. A replica that stops mid-pass
   hands the pass over again.
 - **Tiers.** Near (polled every 250 ms, woken at once by this replica's own
-  writes): thread coordination, budgets, A2A push, notifications, MCP events,
+  writes): thread coordination, A2A push, notifications, MCP events,
   sandbox lifecycle, and listeners an embedder adds. Later (polled every 2 s,
-  pages of 1,000): usage, customer tracing, turn latency, titles, run
+  pages of 1,000): usage, budgets, customer tracing, turn latency, titles, run
   summaries, observer matching, approval audit. Each tier has its own cursors,
-  so a slow exporter never delays a coordination wake-up.
+  so a slow exporter never delays a coordination wake-up. Usage and budgets
+  share the later tier because both read `llm.generation`, the largest event:
+  reading and decoding it in one tier, not two, is a measurable share of the
+  server's CPU per turn.
 - **In-process.** OpenTelemetry ends a turn's anchor span, started when the
   turn's first event is prepared on the emitting replica, when it sees that
   event, so it stays on the emitting replica with Braintrust and Prometheus

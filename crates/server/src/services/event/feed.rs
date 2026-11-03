@@ -10,11 +10,11 @@
 //!   keep per-process state and counters. They are observability, so a crash
 //!   losing their work is the accepted cost.
 //! - Two consumers. Near (polled every 250 ms and woken by this replica's own
-//!   writes of a type it wants): coordination, budgets, A2A push,
-//!   notifications, MCP events, sandbox lifecycle, and listeners an embedder
-//!   adds. Later (polled every 2 s, larger pages): usage, tracing and metrics
-//!   exporters, titles, run summaries, turn latency, observer matching,
-//!   approval audit. Each keeps its own cursor, so a slow exporter never
+//!   writes of a type it wants): coordination, A2A push, notifications, MCP
+//!   events, sandbox lifecycle, and listeners an embedder adds. Later (polled
+//!   every 2 s, larger pages): usage and budgets (both on `llm.generation`),
+//!   tracing exporters, titles, run summaries, turn latency, observer
+//!   matching, approval audit. Each keeps its own cursor, so a slow exporter never
 //!   delays a coordination wake-up.
 //! - The poll is one probe per consumer for all partitions this replica
 //!   holds (`feed_probe`), waking only the partitions with something to
@@ -77,7 +77,6 @@ const UNKNOWN: i64 = -1;
 #[cfg_attr(not(test), allow(dead_code))]
 const NEAR: &[&str] = &[
     "coordination_thread_turns",
-    "BudgetService",
     "A2aPushListener",
     "NotificationEventListener",
     "McpEventsListener",
@@ -91,6 +90,10 @@ const IN_PROCESS: &[&str] = &[
 ];
 /// Listeners that run within seconds, in larger pages.
 const LATER: &[&str] = &[
+    // Budgets read `llm.generation`, the largest event (tens of KB), like
+    // usage: one tier reading and decoding it costs the server half as much
+    // as two, and budgets were never on the turn's path.
+    "BudgetService",
     "UsageTrackingListener",
     "CustomerTracing",
     "TurnLatencyListener",

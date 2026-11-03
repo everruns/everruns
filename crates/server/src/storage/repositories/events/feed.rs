@@ -23,7 +23,8 @@
 //!   sequences, after the consumer ran, and only from the value the pass
 //!   started at: a crash in between hands the same events over again (at
 //!   least once), never skips them, and two passes that overlapped (a lock
-//!   connection lost) cannot both move it.
+//!   connection lost) cannot both move it. That record commits without
+//!   waiting for the WAL flush: losing it in a crash only repeats a pass.
 
 use anyhow::Result;
 use uuid::Uuid;
@@ -435,9 +436,15 @@ impl Database {
     ) -> Result<bool> {
         let (sessions, sequences): (Vec<Uuid>, Vec<i32>) = delivered.iter().copied().unzip();
         // One statement: the cursor moves only from `from`, and the delivered
-        // sequences are recorded only when it did.
+        // sequences are recorded only when it did. It commits without waiting
+        // for the WAL flush (`synchronous_commit` off for this transaction
+        // only): a crash that loses the last record hands those events over
+        // again, which delivery at least once allows, and the event appends
+        // waiting on the same flushes do not pay for the feed.
         let moved: i64 = sqlx::query_scalar(
-            "WITH moved AS ( \
+            "WITH async AS MATERIALIZED ( \
+                 SELECT set_config('synchronous_commit', 'off', true) AS setting \
+             ), moved AS ( \
                  INSERT INTO event_feed_cursors (consumer, partition, next_xact_id) \
                  VALUES ($1, $2, $3::text::xid8) \
                  ON CONFLICT (consumer, partition) DO UPDATE \
@@ -455,7 +462,7 @@ impl Database {
                      updated_at = now() \
                  RETURNING 1 \
              ) \
-             SELECT COUNT(*) FROM moved",
+             SELECT COUNT(*) FROM moved, async",
         )
         .bind(consumer)
         .bind(partition as i16)
@@ -663,6 +670,29 @@ mod tests {
             .await
             .unwrap();
         assert!(ready.is_empty(), "other event types do not count");
+    }
+
+    #[tokio::test]
+    async fn a_recorded_pass_leaves_the_connection_settings_alone() {
+        let db = StorageBackend::test_database();
+        let session = db.create_test_session().await.uuid();
+        let partition = feed_partition(session);
+        let cursor = db.feed_cursor("settings", partition).await.unwrap();
+        assert!(
+            db.feed_commit("settings", partition, cursor, cursor + 1, &[(session, 1)])
+                .await
+                .unwrap()
+        );
+        // The asynchronous commit is local to the recording transaction.
+        let setting: String = sqlx::query_scalar("SHOW synchronous_commit")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(setting, "on");
+        assert_eq!(
+            db.feed_cursor("settings", partition).await.unwrap(),
+            cursor + 1
+        );
     }
 
     #[tokio::test]
