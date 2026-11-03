@@ -159,6 +159,8 @@ pub(super) async fn call(
         "x-total-count",
         "content-disposition",
         "everruns-committed-change",
+        "x-atif-images-omitted",
+        "x-atif-next-cursor",
     ]
     .into_iter()
     .filter_map(|name| {

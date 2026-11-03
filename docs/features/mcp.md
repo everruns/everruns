@@ -107,7 +107,8 @@ fullscreen can expand the view.
 The views use your connected MCP account and selected organization, without a
 second browser sign-in. Read-only tokens retain read-only access. Self-hosted
 deployments must serve the configured frontend URL so the shared UI can load.
-Files and downloads use the MCP connection. HTML has a static preview;
+Files use the MCP connection, and downloads require host download support.
+HTML has a static preview;
 PDF and interactive HTML previews, along with credential entry, open in Everruns
 through the host. Hosts without app rendering still receive structured data and text.
 

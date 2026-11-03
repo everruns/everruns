@@ -4,6 +4,7 @@ import { useUiTranslations } from "@/providers/locale-provider";
 import { ManualPageContext } from "@/components/chat-mode/manual-page-context";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 import { relativeFilePath } from "@/lib/path-utils";
+import { downloadBlob } from "@/lib/download";
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -89,14 +90,7 @@ export function FileViewer({ source, file, onClose, badges, actions, footer }: F
     setDownloadError(undefined);
     if (source.download) {
       try {
-        const url = URL.createObjectURL(await source.download(file.path));
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = file.name;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 0);
+        await downloadBlob(file.name, await source.download(file.path));
       } catch (error) {
         setDownloadError(error instanceof Error ? error.message : String(error));
       }
@@ -119,14 +113,11 @@ export function FileViewer({ source, file, onClose, badges, actions, footer }: F
     const blob = new Blob([fileData.content], {
       type: fileData.encoding === "base64" ? "application/octet-stream" : "text/plain",
     });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = file.name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      await downloadBlob(file.name, blob);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : String(error));
+    }
   };
 
   const extension = getFileExtension(file.path);

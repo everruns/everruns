@@ -2,6 +2,7 @@
 // Only the parent MCP resource can proxy these requests through the host.
 import { applyTheme } from "@/lib/theme";
 import { setEventStreamFactory, type EventStreamLike } from "@/lib/event-stream";
+import { setBlobDownloadHandler } from "@/lib/download";
 
 export interface WorkspaceView {
   kind: string;
@@ -34,22 +35,53 @@ interface Reply {
 let nextId = 1;
 const pending = new Map<
   number,
-  { resolve: (value: unknown) => void; reject: (error: Error) => void }
+  {
+    resolve: (value: unknown) => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
 >();
 let organization: string | undefined;
 
 export function workspaceRequest<T>(tool: string, args: Record<string, unknown> = {}): Promise<T> {
+  return workspaceMessage("everruns:request", {
+    tool,
+    arguments: { ...args, organization_id: organization },
+  });
+}
+
+function workspaceMessage<T>(
+  type: string,
+  fields: Record<string, unknown>,
+  timeout = 30_000,
+): Promise<T> {
   const id = nextId++;
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve: (value) => resolve(value as T), reject });
-    window.parent.postMessage(
-      { type: "everruns:request", id, tool, arguments: { ...args, organization_id: organization } },
-      "*",
-    );
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       if (pending.delete(id)) reject(new Error("Workspace request timed out"));
-    }, 30_000);
+    }, timeout);
+    pending.set(id, { resolve: (value) => resolve(value as T), reject, timer });
+    window.parent.postMessage({ type, id, ...fields }, "*");
   });
+}
+
+export async function workspaceDownload(filename: string, blob: Blob): Promise<void> {
+  if (blob.size > 8 * 1024 * 1024) throw new Error("Workspace downloads are limited to 8 MiB");
+  const encoded = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1]);
+    reader.onerror = () => reject(new Error("Could not prepare the download"));
+    reader.readAsDataURL(blob);
+  });
+  await workspaceMessage(
+    "everruns:download",
+    {
+      filename,
+      mimeType: blob.type || "application/octet-stream",
+      blob: encoded,
+    },
+    120_000,
+  );
 }
 
 export function connectWorkspace(
@@ -63,12 +95,16 @@ export function connectWorkspace(
       const item = pending.get(message.id);
       if (!item) return;
       pending.delete(message.id);
+      clearTimeout(item.timer);
       if (message.error) item.reject(new Error(message.error));
       else item.resolve(message.result);
     }
     if (message.type === "everruns:init" && message.view) {
       if (organization !== message.organization_id) {
-        for (const item of pending.values()) item.reject(new Error("Organization changed"));
+        for (const item of pending.values()) {
+          clearTimeout(item.timer);
+          item.reject(new Error("Organization changed"));
+        }
         pending.clear();
       }
       organization = message.organization_id;
@@ -83,7 +119,10 @@ export function connectWorkspace(
   window.parent.postMessage({ type: "everruns:ready" }, "*");
   return () => {
     window.removeEventListener("message", receive);
-    for (const item of pending.values()) item.reject(new Error("Workspace closed"));
+    for (const item of pending.values()) {
+      clearTimeout(item.timer);
+      item.reject(new Error("Workspace closed"));
+    }
     pending.clear();
   };
 }
@@ -133,9 +172,11 @@ export function installWorkspaceTransport() {
   // The session hooks already support a pluggable live stream. Poll bounded
   // event pages through the bridge; the UI consumes the same event objects.
   const restore = setEventStreamFactory((url) => new WorkspaceEvents(url));
+  const restoreDownload = setBlobDownloadHandler(workspaceDownload);
   return () => {
     window.fetch = nativeFetch;
     setEventStreamFactory(restore);
+    setBlobDownloadHandler(restoreDownload);
   };
 }
 

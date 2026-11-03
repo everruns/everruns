@@ -1,4 +1,9 @@
-import { WorkspaceEvents, connectWorkspace, workspaceRequest } from "../transport";
+import {
+  WorkspaceEvents,
+  connectWorkspace,
+  workspaceRequest,
+  workspaceDownload,
+} from "../transport";
 
 describe("MCP workspace events", () => {
   const nativeFetch = global.fetch;
@@ -115,4 +120,40 @@ it("accepts workspace initialization and replies only from its parent", async ()
   await expect(request).resolves.toEqual({ status: 200 });
   disconnect();
   send.mockRestore();
+});
+
+it("hands exact binary bytes to the host and surfaces a rejected save", async () => {
+  const send = jest.spyOn(window.parent, "postMessage").mockImplementation(() => {});
+  const disconnect = connectWorkspace(() => {});
+  try {
+    const download = workspaceDownload(
+      "résumé.bin",
+      new Blob([new Uint8Array([0, 255, 128, 65])], { type: "application/octet-stream" }),
+    );
+    // FileReader completes asynchronously before the host request is emitted.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const message = send.mock.calls.at(-1)![0];
+    expect(message).toMatchObject({
+      type: "everruns:download",
+      filename: "résumé.bin",
+      mimeType: "application/octet-stream",
+      blob: "AP+AQQ==",
+    });
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: window.parent,
+        data: { type: "everruns:response", id: message.id, error: "Save declined" },
+      }),
+    );
+    await expect(download).rejects.toThrow("Save declined");
+  } finally {
+    disconnect();
+    send.mockRestore();
+  }
+});
+
+it("rejects oversized downloads before crossing the host bridge", async () => {
+  await expect(
+    workspaceDownload("large.bin", new Blob([new Uint8Array(8 * 1024 * 1024 + 1)])),
+  ).rejects.toThrow("8 MiB");
 });

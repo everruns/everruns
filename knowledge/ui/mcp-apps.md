@@ -93,6 +93,9 @@ connection carrying cookies.
 
 Workspace file reads and downloads use the same MCP bridge. Embedded file
 sources do not navigate to cookie-authenticated download or preview endpoints.
+Files and session exports save through the host's standard `ui/download-file`
+action with bounded inline bytes; hosts without download support report the
+limitation instead of attempting a sandbox-blocked browser download.
 Images and video can render from the returned content; HTML uses the existing
 static preview. Browser-dependent PDF and interactive HTML previews have an
 explicit Open in Everruns link, since the MCP host sandbox cannot reproduce the
