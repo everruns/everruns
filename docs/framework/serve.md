@@ -385,7 +385,9 @@ voice, greeting and speaking style for every agent. Speech uses OpenAI with
 
 An agent can hand work to other agents of the same app:
 
-```rust
+```rust ignore
+use serve::prelude::*;
+
 /// Answers revenue questions.
 #[agent(default)]
 fn analyst() -> Agent {

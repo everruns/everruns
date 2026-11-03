@@ -32,7 +32,7 @@ pub fn extract(bytes: &[u8], path: &str, mime: &str) -> Extracted {
             Ok(doc) if doc.markdown.len() <= super::content::EXTRACT_LIMIT => Extracted {
                 text: Some(doc.markdown),
                 metadata: json!({"extraction":{"profile":PROFILE,"format":doc.format,"title":doc.title,"stats":doc.stats}}),
-                warnings: doc.warnings,
+                warnings: doc.warnings.iter().map(ToString::to_string).collect(),
                 status: "ready",
             },
             Ok(_) => Extracted {

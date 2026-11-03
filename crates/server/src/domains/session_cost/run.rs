@@ -43,8 +43,10 @@ pub struct GetSessionRun {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RunAgent {
     /// The agent's id, as `/v1/agents/{agent_id}` takes it.
+    #[schema(example = "agent_01h9xk2m")]
     pub id: String,
     /// The agent's display name.
+    #[schema(example = "Triage")]
     pub name: String,
 }
 
@@ -52,16 +54,22 @@ pub struct RunAgent {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RunTurn {
     /// Turn number within its session, from 1.
+    #[schema(example = 1)]
     pub turn_no: i32,
     /// Public turn id (`turn_...`).
+    #[schema(example = "turn_01h9xk2m")]
     pub turn_id: String,
+    #[schema(example = "2026-11-03T09:00:00Z")]
     pub started_at: DateTime<Utc>,
     /// Absent while the turn runs.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "2026-11-03T09:01:30Z")]
     pub ended_at: Option<DateTime<Utc>>,
     /// Trace status of the turn: `running`, `completed`, `failed`, ...
+    #[schema(example = "completed")]
     pub status: String,
     /// Model spend of the turn in USD.
+    #[schema(example = 0.21)]
     pub cost_usd: f64,
 }
 
@@ -69,26 +77,34 @@ pub struct RunTurn {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RunSession {
     /// Session's prefixed public identifier.
+    #[schema(example = "session_01h9xk2m")]
     pub session_id: String,
     /// The session that handed it work; absent for the first session.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "session_01h9xk1a")]
     pub parent_session_id: Option<String>,
     /// The agent that ran it. Absent when it has none or it was deleted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<RunAgent>,
     /// The session's title: for work handed off, the task's name.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Triage the failing build")]
     pub title: Option<String>,
     /// Session status: `started`, `active`, `idle`, `waiting_for_tool_results`, ...
+    #[schema(example = "idle")]
     pub status: String,
     /// Outcome of its last finished turn: `completed`, `failed` or `cancelled`.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "completed")]
     pub last_turn_status: Option<String>,
+    #[schema(example = "2026-11-03T09:00:00Z")]
     pub created_at: DateTime<Utc>,
     /// When its last turn ended; absent while it works or before it ran.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "2026-11-03T09:01:30Z")]
     pub last_turn_at: Option<DateTime<Utc>>,
     /// Model spend in USD.
+    #[schema(example = 0.21)]
     pub cost_usd: f64,
     /// Its turns, oldest first.
     pub turns: Vec<RunTurn>,
@@ -99,16 +115,21 @@ pub struct RunSession {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SessionRun {
     /// The run's first session, the one the person talks to.
+    #[schema(example = "session_01h9xk1a")]
     pub root_session_id: String,
     /// Spend of every session in the run, in USD.
+    #[schema(example = 5.06)]
     pub cost_usd: f64,
     /// Spend of the first session alone, in USD.
+    #[schema(example = 0.25)]
     pub first_session_cost_usd: f64,
     /// Questions and approvals any agent in the run waits on the person for.
+    #[schema(example = 1)]
     pub waiting_requests: usize,
     /// The first session, then every session started under it by creation.
     pub sessions: Vec<RunSession>,
     /// More sessions or turns existed than were returned.
+    #[schema(example = false)]
     pub truncated: bool,
 }
 

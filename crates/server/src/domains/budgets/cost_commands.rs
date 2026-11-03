@@ -340,11 +340,15 @@ pub struct CostSummary {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RunsWithAgentsLine {
     /// The agent the runs started with.
+    #[schema(example = "agent_01h9xk1a")]
     pub agent_id: String,
+    #[schema(example = "Foreman")]
     pub agent_name: String,
     /// Runs it handed work to other agents in, with usage in the window.
+    #[schema(example = 12)]
     pub runs: i64,
     /// Priced cost of those runs in USD, every agent included.
+    #[schema(example = 212.4)]
     pub cost_usd: f64,
     /// Who spent it, the leading agent itself included, largest first.
     pub by_agent: Vec<RunsWithAgentsShare>,
@@ -355,12 +359,16 @@ pub struct RunsWithAgentsLine {
 pub struct RunsWithAgentsShare {
     /// Absent for usage recorded with no agent.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "agent_01h9xk2m")]
     pub agent_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Implement")]
     pub agent_name: Option<String>,
     /// `lead` for the leading agent itself, `created_here` for an agent
     /// created as part of it, `linked` for any other agent.
+    #[schema(example = "created_here")]
     pub relation: String,
+    #[schema(example = 121.3)]
     pub cost_usd: f64,
 }
 

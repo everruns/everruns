@@ -836,7 +836,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Let live endpoints serve again */
+    /**
+     * Deprecated alias of resume
+     * @deprecated
+     */
     post: operations["resume_agent_exposures"];
     delete?: never;
     options?: never;
@@ -853,7 +856,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Take every endpoint offline */
+    /**
+     * Deprecated alias of pause
+     * @deprecated
+     */
     post: operations["suspend_agent_exposures"];
     delete?: never;
     options?: never;
@@ -1058,6 +1064,44 @@ export interface paths {
      * @description Revokes the current caller's user connection or the virtual user's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.
      */
     delete: operations["revoke_agent_mcp_connection"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Pause an agent
+     * @description Its channels stop accepting messages and its triggers and schedules do not
+     *     run until it is resumed. Each channel keeps its own published state.
+     */
+    post: operations["pause_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume a paused agent */
+    post: operations["resume_agent"];
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -9869,6 +9913,13 @@ export interface components {
      *     Each channel has its own type, config, and lifecycle status.
      */
     AgentChannel: {
+      /**
+       * @description The agent that owns this channel. Also what lets responses carry a
+       *     `view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),
+       *     so a caller can hand out a direct link.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      agent_id?: string | null;
       auth?: components["schemas"]["ChannelAuthConfig"] | null;
       /** @description Channel-specific configuration (validated per channel type). */
       channel_config?: unknown;
@@ -10202,6 +10253,7 @@ export interface components {
        * @description The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the
        *     shared App's (`everruns[bot]`) when the agent chose it and the
        *     deployment names its slug; `None` otherwise.
+       * @example pr-summarizer[bot]
        */
       bot_login?: string | null;
       /**
@@ -10220,6 +10272,7 @@ export interface components {
       /**
        * @description Which GitHub identity the agent acts as: `agent_app` (its own App) or
        *     `everruns_app` (the shared Everruns App). `None` before either exists.
+       * @example agent_app
        */
       kind?: string | null;
       /**
@@ -10228,7 +10281,10 @@ export interface components {
        *     Empty when not connected.
        */
       missing_permissions: string[];
-      /** @description `all` or `selected`. */
+      /**
+       * @description `all` or `selected`.
+       * @example selected
+       */
       repository_selection?: string | null;
       /**
        * @description GitHub accounts this organization already reached, as candidates for
@@ -10237,6 +10293,13 @@ export interface components {
        *     then users, then accounts of unknown kind; by login within each.
        */
       suggested_owners: components["schemas"]["GitHubOwnerSuggestion"][];
+      /**
+       * @description The agent's GitHub page in the console, so a caller can link to it.
+       *     Absolute in responses; built as a relative path here because the
+       *     console's address is known only where links are decorated.
+       * @example https://app.everruns.com/agents/agent_01933b5a000070008000000000000001/github
+       */
+      view_url?: string | null;
     };
     /** @enum {string} */
     AgentHarnessSource: "explicit" | "organization_default";
@@ -10850,6 +10913,13 @@ export interface components {
      *     Each channel has its own type, config, and lifecycle status.
      */
     AppChannel: {
+      /**
+       * @description The agent that owns this channel. Also what lets responses carry a
+       *     `view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),
+       *     so a caller can hand out a direct link.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      agent_id?: string | null;
       auth?: components["schemas"]["ChannelAuthConfig"] | null;
       /** @description Channel-specific configuration (validated per channel type). */
       channel_config?: unknown;
@@ -14940,6 +15010,11 @@ export interface components {
      * @enum {string}
      */
     CredentialUsage: "user" | "service";
+    /**
+     * @description What the runtime did about a provider's "not enough credits" refusal.
+     * @enum {string}
+     */
+    CreditShortfallAction: "shrunk" | "wait_started" | "still_waiting" | "resumed" | "gave_up";
     /** @description Database info response. */
     DatabaseInfoResponse: {
       /** @description Timestamp when this resource was created (RFC 3339). */
@@ -16526,6 +16601,7 @@ export interface components {
       | components["schemas"]["TurnSealedData"]
       | components["schemas"]["TurnCancelledData"]
       | components["schemas"]["TurnCompletionCheckedData"]
+      | components["schemas"]["TurnCreditShortfallData"]
       | components["schemas"]["SessionStartedData"]
       | components["schemas"]["SessionActivatedData"]
       | components["schemas"]["SessionIdledData"]
@@ -26738,7 +26814,10 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       id: string;
-      /** @description The agent's display name. */
+      /**
+       * @description The agent's display name.
+       * @example Research Assistant
+       */
       name: string;
     };
     /** @description Response body for the `resolve_org` operation. */
@@ -26993,9 +27072,15 @@ export interface components {
     };
     /** @description The agent behind a session of the run. */
     RunAgent: {
-      /** @description The agent's id, as `/v1/agents/{agent_id}` takes it. */
+      /**
+       * @description The agent's id, as `/v1/agents/{agent_id}` takes it.
+       * @example agent_01h9xk2m
+       */
       id: string;
-      /** @description The agent's display name. */
+      /**
+       * @description The agent's display name.
+       * @example Triage
+       */
       name: string;
     };
     /** @description Turns started and failed in one bucket. */
@@ -27008,19 +27093,27 @@ export interface components {
     /** @description One request from another agent in the run. */
     RunRequest: {
       agent?: components["schemas"]["RequestingAgent"] | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-11-03T10:15:00Z
+       */
       requested_at: string;
-      /** @description The asking agent's session. */
+      /**
+       * @description The asking agent's session.
+       * @example session_01933b5a00007000800000000000001
+       */
       session_id: string;
       tool_call: components["schemas"]["RunRequestToolCall"];
     };
     /** @description A tool call another agent in the run waits on the person for. */
     RunRequestToolCall: {
       arguments: Record<string, unknown>;
+      /** @example call_approval_1 */
       id: string;
       /**
        * @description `ask_user`, `approve_tool_call`, `openai_mcp_approval`,
        *     `confirm_url_elicitation` or `setup_connection`.
+       * @example approve_tool_call
        */
       name: string;
     };
@@ -27034,24 +27127,44 @@ export interface components {
       /**
        * Format: double
        * @description Model spend in USD.
+       * @example 0.21
        */
       cost_usd: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-11-03T09:00:00Z
+       */
       created_at: string;
       /**
        * Format: date-time
        * @description When its last turn ended; absent while it works or before it ran.
+       * @example 2026-11-03T09:01:30Z
        */
       last_turn_at?: string | null;
-      /** @description Outcome of its last finished turn: `completed`, `failed` or `cancelled`. */
+      /**
+       * @description Outcome of its last finished turn: `completed`, `failed` or `cancelled`.
+       * @example completed
+       */
       last_turn_status?: string | null;
-      /** @description The session that handed it work; absent for the first session. */
+      /**
+       * @description The session that handed it work; absent for the first session.
+       * @example session_01h9xk1a
+       */
       parent_session_id?: string | null;
-      /** @description Session's prefixed public identifier. */
+      /**
+       * @description Session's prefixed public identifier.
+       * @example session_01h9xk2m
+       */
       session_id: string;
-      /** @description Session status: `started`, `active`, `idle`, `waiting_for_tool_results`, ... */
+      /**
+       * @description Session status: `started`, `active`, `idle`, `waiting_for_tool_results`, ...
+       * @example idle
+       */
       status: string;
-      /** @description The session's title: for work handed off, the task's name. */
+      /**
+       * @description The session's title: for work handed off, the task's name.
+       * @example Triage the failing build
+       */
       title?: string | null;
       /** @description Its turns, oldest first. */
       turns: components["schemas"]["RunTurn"][];
@@ -27155,53 +27268,79 @@ export interface components {
       /**
        * Format: double
        * @description Model spend of the turn in USD.
+       * @example 0.21
        */
       cost_usd: number;
       /**
        * Format: date-time
        * @description Absent while the turn runs.
+       * @example 2026-11-03T09:01:30Z
        */
       ended_at?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @example 2026-11-03T09:00:00Z
+       */
       started_at: string;
-      /** @description Trace status of the turn: `running`, `completed`, `failed`, ... */
+      /**
+       * @description Trace status of the turn: `running`, `completed`, `failed`, ...
+       * @example completed
+       */
       status: string;
-      /** @description Public turn id (`turn_...`). */
+      /**
+       * @description Public turn id (`turn_...`).
+       * @example turn_01h9xk2m
+       */
       turn_id: string;
       /**
        * Format: int32
        * @description Turn number within its session, from 1.
+       * @example 1
        */
       turn_no: number;
     };
     /** @description The runs one agent led, with whole-run cost and who spent it. */
     RunsWithAgentsLine: {
-      /** @description The agent the runs started with. */
+      /**
+       * @description The agent the runs started with.
+       * @example agent_01h9xk1a
+       */
       agent_id: string;
+      /** @example Foreman */
       agent_name: string;
       /** @description Who spent it, the leading agent itself included, largest first. */
       by_agent: components["schemas"]["RunsWithAgentsShare"][];
       /**
        * Format: double
        * @description Priced cost of those runs in USD, every agent included.
+       * @example 212.4
        */
       cost_usd: number;
       /**
        * Format: int64
        * @description Runs it handed work to other agents in, with usage in the window.
+       * @example 12
        */
       runs: number;
     };
     /** @description One agent's spend within the runs another agent led. */
     RunsWithAgentsShare: {
-      /** @description Absent for usage recorded with no agent. */
+      /**
+       * @description Absent for usage recorded with no agent.
+       * @example agent_01h9xk2m
+       */
       agent_id?: string | null;
+      /** @example Implement */
       agent_name?: string | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @example 121.3
+       */
       cost_usd: number;
       /**
        * @description `lead` for the leading agent itself, `created_here` for an agent
        *     created as part of it, `linked` for any other agent.
+       * @example created_here
        */
       relation: string;
     };
@@ -29479,20 +29618,31 @@ export interface components {
       /**
        * Format: double
        * @description Spend of every session in the run, in USD.
+       * @example 5.06
        */
       cost_usd: number;
       /**
        * Format: double
        * @description Spend of the first session alone, in USD.
+       * @example 0.25
        */
       first_session_cost_usd: number;
-      /** @description The run's first session, the one the person talks to. */
+      /**
+       * @description The run's first session, the one the person talks to.
+       * @example session_01h9xk1a
+       */
       root_session_id: string;
       /** @description The first session, then every session started under it by creation. */
       sessions: components["schemas"]["RunSession"][];
-      /** @description More sessions or turns existed than were returned. */
+      /**
+       * @description More sessions or turns existed than were returned.
+       * @example false
+       */
       truncated: boolean;
-      /** @description Questions and approvals any agent in the run waits on the person for. */
+      /**
+       * @description Questions and approvals any agent in the run waits on the person for.
+       * @example 1
+       */
       waiting_requests: number;
     };
     /**
@@ -32377,6 +32527,59 @@ export interface components {
        */
       turn_id: string;
       verdict?: components["schemas"]["CompletionVerdict"] | null;
+    };
+    /**
+     * @description Data for turn.credit_shortfall event.
+     *
+     *     The provider refused a request because the account could not pay for it.
+     *     One event per decision: a smaller retry, the start of a wait, each check
+     *     during it, the resume, and giving up.
+     */
+    TurnCreditShortfallData: {
+      /** @description What the runtime did. */
+      action: components["schemas"]["CreditShortfallAction"];
+      /**
+       * Format: int64
+       * @description Output tokens the balance covered, when the provider said.
+       * @example 283
+       */
+      affordable_tokens?: number | null;
+      /**
+       * @description Whether the provider's balance was read (without spending tokens).
+       *     `false`: the provider has no balance API and the request itself is
+       *     the check.
+       * @example true
+       */
+      balance_checked?: boolean | null;
+      /**
+       * Format: int32
+       * @description Max output tokens of the smaller retry (`shrunk` only).
+       * @example 7680
+       */
+      max_tokens?: number | null;
+      /**
+       * Format: date-time
+       * @description When the next check runs, when one was scheduled.
+       * @example 2026-11-03T07:01:00Z
+       */
+      next_check_at?: string | null;
+      /**
+       * Format: int64
+       * @description Max output tokens the refused request asked for, when the provider said.
+       * @example 65536
+       */
+      requested_max_tokens?: number | null;
+      /**
+       * @description Turn identifier
+       * @example turn_01933b5a00007000800000000000001
+       */
+      turn_id: string;
+      /**
+       * Format: date-time
+       * @description When the wait for credits ends at the latest.
+       * @example 2026-11-03T08:00:00Z
+       */
+      wait_until?: string | null;
     };
     /**
      * @description Data for turn.failed event. A failed turn is always an error (severity
@@ -38305,7 +38508,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Exposures resumed */
+      /** @description Agent resumed */
       200: {
         headers: {
           [name: string]: unknown;
@@ -38337,7 +38540,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Exposures suspended */
+      /** @description Agent paused */
       200: {
         headers: {
           [name: string]: unknown;
@@ -38824,6 +39027,70 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  pause_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent paused */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Agent"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  resume_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Agent"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };
