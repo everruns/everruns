@@ -7,6 +7,4 @@
 # on sqlx-mysql, but cargo tree confirms it's NOT compiled into the binary.
 # See: https://github.com/launchbadge/sqlx/issues/3538
 #
-# RUSTSEC-2026-0436: calamine 0.37 (via markkit) CFB parser DoS on crafted
-# spreadsheets. TEMPORARY until markkit moves to calamine 0.38; see deny.toml.
-ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0436"]
+ignore = ["RUSTSEC-2023-0071"]
