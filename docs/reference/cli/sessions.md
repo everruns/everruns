@@ -22,7 +22,6 @@ Running and archived sessions, their state and participants.
 | [`sessions get`](#sessions-get) | Get session details including status, agent, harness, and model. |
 | [`sessions context`](#sessions-context) | Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation. |
 | [`sessions facets`](#sessions-facets) | Counts per status, source, and agent plus masthead metrics for the sessions list, over the same filters as list_sessions. |
-| [`sessions run get`](#sessions-run-get) | Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend. |
 | [`sessions stats`](#sessions-stats) | Get session counts by status. |
 | [`sessions list`](#sessions-list) | List sessions. |
 | [`sessions pin`](#sessions-pin) | Pin a session for the current user. |
@@ -64,6 +63,7 @@ Running and archived sessions, their state and participants.
 | [`sessions participants list`](#sessions-participants-list) | List the participant history for a session. |
 | [`sessions platform-chat ensure`](#sessions-platform-chat-ensure) | Open the current user's permanent platform conversation. |
 | [`sessions resources list`](#sessions-resources-list) | List all resources registered in a session. |
+| [`sessions run get`](#sessions-run-get) | Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend. |
 | [`sessions sandbox get`](#sessions-sandbox-get) | Inspect a Session's primary Sandbox and what it may touch. |
 | [`sessions sandbox manage`](#sessions-sandbox-manage) | Pause, resume, or delete the managed sandbox for a session. |
 | [`sessions sse stream`](#sessions-sse-stream) | Stream events via SSE. |
@@ -287,25 +287,6 @@ Example:
 ```bash
 # Break the session list down by status, agent and source
 everruns sessions facets --search triage
-```
-
-## sessions run get
-
-Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.
-
-```bash
-everruns sessions run get [OPTIONS] [SESSION_ID]
-```
-
-| Flag | Description |
-|---|---|
-| `--session-id <SESSION_ID>` | Session's prefixed public identifier (a path parameter). |
-
-Example:
-
-```bash
-# See every agent in a session's run
-everruns sessions run get session_01h9
 ```
 
 ## sessions stats
@@ -1175,6 +1156,25 @@ Example:
 ```bash
 # List the files and other resources registered in a session
 everruns sessions resources list session_01h9
+```
+
+## sessions run get
+
+Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.
+
+```bash
+everruns sessions run get [OPTIONS] [SESSION_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Session's prefixed public identifier (a path parameter). |
+
+Example:
+
+```bash
+# See every agent in a session's run
+everruns sessions run get session_01h9
 ```
 
 ## sessions sandbox get
