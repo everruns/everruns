@@ -50,10 +50,10 @@
   <text x="400" y="220" text-anchor="middle" class="sublabel">You run: API, workers, PostgreSQL</text>
   <text x="400" y="242" text-anchor="middle" class="mono">docker compose up -d</text>
 
-  <!-- Everruns Cloud -->
+  <!-- Everruns Demo -->
   <rect x="540" y="120" width="240" height="140" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <rect x="540" y="120" width="240" height="4" fill="#0A1636"/>
-  <text x="660" y="144" text-anchor="middle" class="header-text">EVERRUNS CLOUD</text>
+  <text x="660" y="144" text-anchor="middle" class="header-text">EVERRUNS DEMO</text>
   <text x="660" y="168" text-anchor="middle" class="label">Hosted Platform</text>
   <text x="660" y="186" text-anchor="middle" class="sublabel">run by Everruns</text>
   <line x1="556" y1="200" x2="764" y2="200" stroke="#A0A0A0" stroke-width="1"/>

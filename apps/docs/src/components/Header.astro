@@ -1,8 +1,8 @@
 ---
 // The docs bar: the sticky row under the everruns.com site header (see
 // PageFrame.astro). "Docs", the section tabs, search, the theme switch, and an
-// Open Cloud button. When the site header scrolls out of view the bar gets
-// data-compact, and the logo and Open Cloud slide in (docs-layout.css), so
+// Try Demo button. When the site header scrolls out of view the bar gets
+// data-compact, and the logo and Try Demo slide in (docs-layout.css), so
 // the bar alone still says which site this is.
 import { docsPath } from "../lib/site";
 import Search from "./Search.astro";
@@ -41,12 +41,12 @@ const isTopicActive = (topic: any) =>
   <Search />
   <ThemeSwitch />
   <span class="er-bar-cta">
-    <a href="https://app.everruns.com" tabindex="-1" data-er-bar-cta>Open Cloud</a>
+    <a href="https://app.everruns.com" tabindex="-1" data-er-bar-cta>Try Demo</a>
   </span>
 </div>
 
 <script>
-  // Open Cloud is only reachable by keyboard once it is visible.
+  // Try Demo is only reachable by keyboard once it is visible.
   const bar = document.querySelector<HTMLElement>("[data-er-docs-bar]");
   const cta = document.querySelector<HTMLElement>("[data-er-bar-cta]");
   if (bar && cta) {
