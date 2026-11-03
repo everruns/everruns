@@ -43,8 +43,11 @@ pub(crate) async fn find_agent(
 }
 
 fn row_to_channel(ctx: &Ctx, row: IngressChannelRow) -> Result<AgentChannel, CommandError> {
+    let agent_id = row.agent_public_id.parse::<AgentId>().ok();
     let (_, channel) = row_to_ingress(ctx.encryption.as_ref(), row)?;
-    Ok(redact_channel_for_response(channel.into_channel()))
+    let mut channel = channel.into_channel();
+    channel.agent_id = agent_id;
+    Ok(redact_channel_for_response(channel))
 }
 
 pub(super) fn decrypted_config(ctx: &Ctx, row: IngressChannelRow) -> Result<Value, CommandError> {

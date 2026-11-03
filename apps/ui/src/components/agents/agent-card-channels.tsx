@@ -26,7 +26,7 @@ function channelLabel(channel: AgentChannelSummary) {
 
 function presentation(agent: Agent, channel: AgentChannelSummary) {
   if (agent.status !== "active") return { label: "disabled", description: "Agent unavailable" };
-  if (agent.exposures_suspended) return { label: "disabled", description: "Suspended" };
+  if (agent.exposures_suspended) return { label: "disabled", description: "Paused" };
   return getChannelLifecyclePresentation(channel);
 }
 

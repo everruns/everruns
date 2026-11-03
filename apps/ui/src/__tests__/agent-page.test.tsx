@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Suspense } from "react";
 import AgentPage from "@/app/(main)/agents/[agentId]/page";
 import { LocaleProvider } from "@/providers/locale-provider";
@@ -206,6 +206,8 @@ const mockUseHarnesses = jest.fn();
 const mockUpdate = jest.fn();
 const mockArchive = jest.fn();
 const mockCreateSession = jest.fn();
+const mockPause = jest.fn();
+const mockResume = jest.fn();
 const mutation = (mutateAsync = jest.fn()) => ({
   mutateAsync,
   isPending: false,
@@ -221,6 +223,8 @@ jest.mock("@/hooks", () => ({
   useModels: () => ({ data: [] }),
   useExportAgent: () => mutation(),
   useCopyAgent: () => mutation(),
+  usePauseAgent: () => ({ ...mutation(), mutate: mockPause }),
+  useResumeAgent: () => ({ ...mutation(), mutate: mockResume }),
   useHarnesses: () => mockUseHarnesses(),
   useAgentStats: () => ({ data: undefined, isLoading: false, error: null }),
   useAgentMcpAttachments: () => ({ data: [{ name: "github" }, { name: "linear" }] }),
@@ -261,6 +265,12 @@ jest.mock("@/hooks/use-change-history", () => ({
 }));
 
 jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
+jest.mock("@/hooks/use-agent-github", () => ({
+  useAgentGitHub: () => ({ data: { connected: true, bot_login: "reviewer[bot]" } }),
+}));
+jest.mock("@/components/ui/confirmation-provider", () => ({
+  useConfirmation: () => async () => true,
+}));
 
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlag: () => false,
@@ -348,7 +358,7 @@ describe("AgentPage layout", () => {
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Agent",
       "Preview",
-      "Integrations0",
+      "Channels and triggers0",
       "Stats",
       "Sessions3",
     ]);
@@ -365,7 +375,7 @@ describe("AgentPage layout", () => {
     mockUseAgentTriggers.mockReturnValue({ data: [{ enabled: true }, { enabled: false }] });
     await renderPage();
 
-    expect(screen.getByRole("tab", { name: "Integrations 5" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Channels and triggers 5" })).toBeInTheDocument();
   });
 
   it.each(["channels", "triggers"])("hides the total until %s have loaded", async (pending) => {
@@ -373,7 +383,7 @@ describe("AgentPage layout", () => {
     mockUseAgentTriggers.mockReturnValue({ data: pending === "triggers" ? undefined : [{}] });
     await renderPage();
 
-    expect(screen.getByRole("tab", { name: "Integrations" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Channels and triggers" })).toBeInTheDocument();
   });
 
   it("makes the system prompt the page and lists secondary settings with their values", async () => {
@@ -559,7 +569,7 @@ describe("AgentPage layout", () => {
   it("writes the selected tab into the URL so a refresh keeps it", async () => {
     await renderPage();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Integrations 0" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Channels and triggers 0" }));
 
     expect(screen.getByText("agent integrations")).toBeInTheDocument();
     expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", { scroll: false });
@@ -876,6 +886,38 @@ describe("AgentPage edit mode", () => {
   });
 });
 
+describe("AgentPage pause and GitHub", () => {
+  it("links the GitHub row to the agent's GitHub page", async () => {
+    await renderPage();
+
+    const more = within(screen.getByRole("navigation", { name: "More settings" }));
+    const row = more.getByText("GitHub").closest("[data-href]");
+    expect(row).toHaveAttribute("data-href", "/agents/agent-1/github");
+    expect(row).toHaveTextContent("reviewer[bot]");
+  });
+
+  it("pauses from the header menu after confirming", async () => {
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pause agent" }));
+    await waitFor(() => expect(mockPause).toHaveBeenCalledWith("agent-1"));
+  });
+
+  it("shows a paused agent with a Paused badge, a notice, and Resume", async () => {
+    mockUseAgent.mockReturnValue({
+      data: { ...mockAgent, exposures_suspended: true },
+      isLoading: false,
+    });
+    await renderPage();
+
+    expect(screen.getByText("Paused")).toBeInTheDocument();
+    expect(screen.getByText("This agent is paused")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    expect(mockResume).toHaveBeenCalledWith("agent-1");
+  });
+});
+
 describe("AgentPage entity actions", () => {
   it("puts History and Manager notes in the menu, not Version history", async () => {
     await renderPage();
@@ -884,6 +926,7 @@ describe("AgentPage entity actions", () => {
     const items = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
     expect(items).toEqual([
       "Sync with GitHub",
+      "Pause agent",
       "Copy",
       "Export package (ZIP)",
       "Export Markdown",

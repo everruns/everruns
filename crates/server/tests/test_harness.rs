@@ -566,14 +566,14 @@ impl TestServer {
         runner_override: Option<Arc<dyn TurnBackend>>,
         permission_resolver: Option<Arc<dyn everruns_core::PermissionResolver>>,
     ) -> Self {
-        Self::build_with_feature_policy(
+        Self::build_with_overrides(
             mode,
             api_base_url,
             atif_export_max_bytes,
             encryption_enabled,
             runner_override,
             permission_resolver,
-            None,
+            (None, auth::config::AuthMode::None),
         )
         .await
     }
@@ -581,26 +581,42 @@ impl TestServer {
     pub async fn in_memory_with_feature_policy(
         policy: everruns_server::records::FeatureFlagPolicy,
     ) -> Self {
-        Self::build_with_feature_policy(
+        Self::build_with_overrides(
             TestMode::InMemory,
             "http://127.0.0.1:0/api".to_string(),
             None,
             true,
             None,
             None,
-            Some(policy),
+            (Some(policy), auth::config::AuthMode::None),
         )
         .await
     }
 
-    async fn build_with_feature_policy(
+    pub async fn in_memory_authenticated() -> Self {
+        Self::build_with_overrides(
+            TestMode::InMemory,
+            "http://127.0.0.1:0/api".into(),
+            None,
+            true,
+            None,
+            None,
+            (None, auth::config::AuthMode::Full),
+        )
+        .await
+    }
+
+    async fn build_with_overrides(
         mode: TestMode,
         api_base_url: String,
         atif_export_max_bytes: Option<usize>,
         encryption_enabled: bool,
         runner_override: Option<Arc<dyn TurnBackend>>,
         permission_resolver: Option<Arc<dyn everruns_core::PermissionResolver>>,
-        policy_override: Option<everruns_server::records::FeatureFlagPolicy>,
+        (policy_override, auth_mode): (
+            Option<everruns_server::records::FeatureFlagPolicy>,
+            auth::config::AuthMode,
+        ),
     ) -> Self {
         let grade = everruns_core::DeploymentGrade::from_env();
         let host_composition = Arc::new(everruns_server::oss_host_composition_for_grade(grade));
@@ -623,6 +639,7 @@ impl TestServer {
 
         // Create auth config and backend (no auth for tests)
         let auth_config = auth::AuthConfig {
+            mode: auth_mode,
             base_url: api_base_url.clone(),
             frontend_url: api_base_url
                 .trim_end_matches("/api")
@@ -1100,6 +1117,7 @@ impl TestServer {
             .merge(api::agent_triggers::routes(agent_triggers_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
+            .merge(api::session_trace::routes(api_state.clone()))
             .merge(everruns_server::channels::voice::routes(voice_state))
             .merge(api::messages::routes(messages_state))
             .merge(api::tool_results::routes(tool_results_state))
@@ -1197,7 +1215,13 @@ impl TestServer {
             .merge(everruns_server::channels::poppy::well_known_routes(
                 poppy_state,
             ))
-            .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
+            .merge(api::mcp_endpoint::routes(
+                mcp_endpoint_state.with_app_router(auth::pat_scope::classify_api_routes(
+                    api_routes.clone(),
+                    "/api",
+                    Default::default(),
+                )),
+            ))
             .merge(api::mcp_elicitation::routes(mcp_elicitation_state))
             .merge(auth::cli_auth::cli_auth_public_routes(
                 auth::cli_auth::CliAuthState {

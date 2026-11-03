@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { ChannelType } from "@/lib/api/types";
 import { getChannelTypeDisplayName } from "@/lib/channel-display";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
+import Link from "next/link";
 import { CHANNEL_FORM_KINDS } from "./channel-form";
 import { ChannelIcon } from "./channel-icon";
 import { CHANNEL_TYPE_INFO, channelTypeInfo, type ChannelAudience } from "./channel-types";
@@ -32,9 +33,16 @@ const AUDIENCES: { audience: ChannelAudience; title: string; hint: string }[] = 
   },
 ];
 
-/// Rows, not cards: the choice is one of eight, each needs one sentence, and a
+/// Rows, not cards: the choice is one of seven, each needs one sentence, and a
 /// row keeps the sentence readable at any width.
-export function ChannelTypePicker({ onChange }: { onChange: (value: ChannelType) => void }) {
+export function ChannelTypePicker({
+  onChange,
+  agentId,
+}: {
+  onChange: (value: ChannelType) => void;
+  /** When set, the software group points to webhook triggers. */
+  agentId?: string;
+}) {
   const ui = useUiTranslations();
   const kinds = useChoosableChannelTypes();
   return (
@@ -76,6 +84,17 @@ export function ChannelTypePicker({ onChange }: { onChange: (value: ChannelType)
                 </li>
               ))}
             </ul>
+            {audience === "software" && agentId && (
+              <p className="mt-2.5 text-sm text-muted-foreground">
+                {ui("Need another system to start the agent with an HTTP request?")}{" "}
+                <Link
+                  href={`/agents/${agentId}/triggers/new?type=webhook`}
+                  className="text-foreground underline underline-offset-4"
+                >
+                  {ui("Add a webhook trigger")}
+                </Link>
+              </p>
+            )}
           </section>
         );
       })}

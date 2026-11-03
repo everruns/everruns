@@ -2,6 +2,7 @@
 // Org travels in the X-Org-Id header (see ./active-org), with the everruns_org cookie as fallback
 
 import { withSessionActivity } from "../session-activity";
+import { downloadBlob } from "../download";
 import { api, throwApiError } from "./client";
 import { withOrgHeader } from "./active-org";
 import type {
@@ -277,7 +278,7 @@ export async function exportSession(
   }
   const omitted = parseImagesOmitted(response.headers.get("X-Atif-Images-Omitted"));
   const blob = await response.blob();
-  triggerBlobDownload(format === "atif" ? `${sessionId}.atif.json` : `${sessionId}.jsonl`, blob);
+  await downloadBlob(format === "atif" ? `${sessionId}.atif.json` : `${sessionId}.jsonl`, blob);
   return { imagesOmitted: omitted };
 }
 
@@ -319,17 +320,6 @@ export class SegmentedExportError extends Error {
 function parseImagesOmitted(header: string | null): number {
   const n = header ? Number.parseInt(header, 10) : 0;
   return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-function triggerBlobDownload(filename: string, blob: Blob): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 /**
@@ -412,7 +402,7 @@ export async function exportSessionSegmented(sessionId: string): Promise<Segment
 
     imagesOmitted += parseImagesOmitted(response.headers.get("X-Atif-Images-Omitted"));
     const text = await response.text();
-    triggerBlobDownload(
+    await downloadBlob(
       `${sessionId}.atif.part${partsSaved + 1}.json`,
       new Blob([text], { type: "application/json" }),
     );

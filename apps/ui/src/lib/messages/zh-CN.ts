@@ -1,3 +1,4 @@
+import { messages as channelsAndTriggers } from "./zh-CN/channels-and-triggers";
 import { messages as sandboxBuilds } from "./zh-CN/sandbox-builds";
 import { messages as agentCost } from "./zh-CN/agent-cost";
 import { messages as sharedControls } from "./zh-CN/shared-controls";
@@ -66,4 +67,5 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   costs,
   evals,
   evalCases,
+  channelsAndTriggers,
 );

@@ -203,6 +203,8 @@ export const messages: Readonly<Record<string, string>> = {
     "Das Konto des AI-Anbieters hat kein Guthaben oder kein Kontingent mehr. Fügen Sie Guthaben hinzu oder erhöhen Sie die Kontolimits des Anbieters, um fortzufahren.",
   "The AI provider account is out of credits for this request: it asked for up to {requested_max_tokens} output tokens, but the balance covers {affordable_tokens}. Add credits or lower the max output tokens to continue.":
     "Das Konto des KI-Anbieters hat für diese Anfrage kein Guthaben mehr: Es wurden bis zu {requested_max_tokens} Ausgabetoken angefordert, aber der Restbetrag deckt {affordable_tokens} ab. Fügen Sie Credits hinzu oder verringern Sie die maximale Ausgabetokens, um fortzufahren.",
+  "The work continues automatically once credits are back (checked every minute for up to an hour).":
+    "Die Arbeit wird automatisch fortgesetzt, sobald wieder Guthaben vorhanden ist (Prüfung jede Minute, höchstens eine Stunde lang).",
   "The AI provider account has not completed a confirmation this model requires. Complete it at {confirm_url}, then try again.":
     "Das AI-Anbieterkonto hat keine Bestätigung abgeschlossen, die dieses Modell erfordert. Schließen Sie den Vorgang bei {confirm_url} ab und versuchen Sie es dann erneut.",
   "The AI provider account has not completed a confirmation this model requires ({missing_types}). Complete it at {confirm_url}, then try again.":

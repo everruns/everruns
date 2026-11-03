@@ -401,7 +401,7 @@ File: `crates/core/src/builtins/self_budget.rs`.
 
 Neither can be created through the API: `validate_subject_type` in `crates/server/src/domains/budgets/commands.rs` accepts only the live set, and never accepted either of them, which is why migration 153 could assume every `app_channel` row came from migration 138. Budget management has no feature flag: the `budget.view` and `budget.manage` policies decide who sees and changes budgets, and the check pipeline always honours existing rows.
 
-UI: the Agent Integrations tab surfaces budget controls (shown to members with `budget.view`) for the agent and for each of its channels, and exposes a form for the common period presets (sliding 1h / 5h / 24h / 7d / 30d, calendar month) plus a "Custom JSON" escape hatch that accepts the raw `BudgetPeriod` payload, the in-product DSL, so advanced rules ship without waiting for first-class form fields.
+UI: the Agent Channels and triggers tab surfaces budget controls (shown to members with `budget.view`) for the agent and for each of its channels, and exposes a form for the common period presets (sliding 1h / 5h / 24h / 7d / 30d, calendar month) plus a "Custom JSON" escape hatch that accepts the raw `BudgetPeriod` payload, the in-product DSL, so advanced rules ship without waiting for first-class form fields.
 
 ## Future Work
 

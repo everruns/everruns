@@ -1251,6 +1251,9 @@ impl ServerAppBuilder {
             &self.config.api_prefix,
             self.pat_route_classes,
         );
+        // Internal app calls keep route authorization, but are already throttled
+        // at the outer MCP boundary. Do not charge a second, peerless localhost bucket.
+        let app_router = api_routes.clone();
         // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
         // not /health or /metrics). Set RATE_LIMIT_API_REQUESTS_PER_MINUTE=0 to disable.
         let api_rate_limiter = http_layers::api_rate_limiter(valkey_for_api_rate_limits);
@@ -1270,7 +1273,9 @@ impl ServerAppBuilder {
             auth_config.base_url.clone(),
         );
         let mut root_routes = Router::new()
-            .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
+            .merge(api::mcp_endpoint::routes(
+                mcp_endpoint_state.with_app_router(app_router),
+            ))
             .merge(api::mcp_elicitation::routes(mcp_elicitation_state))
             .merge(channel_root_routes);
 

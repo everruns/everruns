@@ -192,6 +192,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::TurnSealed(d) => to_json(d),
         EventData::TurnCancelled(d) => to_json(d),
         EventData::TurnCompletionChecked(d) => to_json(d),
+        EventData::TurnCreditShortfall(d) => to_json(d),
         EventData::ReasonStarted(d) => to_json(d),
         EventData::ReasonCompleted(d) => to_json(d),
         EventData::ReasonRecovered(d) => to_json(d),

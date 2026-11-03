@@ -203,6 +203,8 @@ export const messages: Readonly<Record<string, string>> = {
     "Le compte du fournisseur d'IA n'a plus de crédits ou de quota. Ajoutez des crédits ou augmentez les limites du compte du fournisseur pour continuer.",
   "The AI provider account is out of credits for this request: it asked for up to {requested_max_tokens} output tokens, but the balance covers {affordable_tokens}. Add credits or lower the max output tokens to continue.":
     "Le compte du fournisseur d'IA n'a plus de crédits pour cette demande : il a demandé jusqu'à {requested_max_tokens} de jetons de sortie, mais le solde couvre {affordable_tokens}. Ajoutez des crédits ou réduisez le nombre maximum de jetons de sortie pour continuer.",
+  "The work continues automatically once credits are back (checked every minute for up to an hour).":
+    "Le travail reprendra automatiquement dès que des crédits seront disponibles (vérification chaque minute pendant une heure au maximum).",
   "The AI provider account has not completed a confirmation this model requires. Complete it at {confirm_url}, then try again.":
     "Le ​​compte du fournisseur d'IA n'a pas complété la confirmation requise par ce modèle. Complétez-le à {confirm_url}, puis réessayez.",
   "The AI provider account has not completed a confirmation this model requires ({missing_types}). Complete it at {confirm_url}, then try again.":

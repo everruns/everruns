@@ -14,7 +14,7 @@ This guide deploys an Agent as a Slack bot through an Agent-owned channel. For S
 
 ## Add the Channel
 
-1. Open the Agent and select **Integrations**.
+1. Open the Agent and select **Channels and triggers**.
 2. Select **Add channel**, then select **Slack**.
 3. Choose a session strategy.
 4. Leave the Slack credentials empty and select **Create channel**.
@@ -71,7 +71,7 @@ connection from **Settings** > **Slack workspaces**.
 2. If more than one workspace is connected, choose which one.
 3. Select **Add to Slack**.
 4. Approve Slack's consent screen. The workspace is already selected.
-5. If one-click setup is unavailable, return to **Integrations**, expand the channel, and select **Create Slack app**. Copy the resulting signing secret and bot token back through **Configure**.
+5. If one-click setup is unavailable, return to **Channels and triggers**, expand the channel, and select **Create Slack app**. Copy the resulting signing secret and bot token back through **Configure**.
 
 Publish first because Slack verifies the manifest's channel Request URL when it creates the Slack app. New installs use `/v1/channels/{channel_id}/slack/events`.
 
@@ -86,7 +86,7 @@ A manually created Slack app needs its name and description updated in Slack.
 
 1. In Slack, enter `/invite @botname` in a channel.
 2. Mention the bot.
-3. Return to the Agent's **Integrations** tab and expand the Slack channel.
+3. Return to the Agent's **Channels and triggers** tab and expand the Slack channel.
 4. Confirm that the checklist records the first message.
 
 To stop new Slack messages without deleting the configuration, select **Unpublish** on this channel. Existing sessions remain available.

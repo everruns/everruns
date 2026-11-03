@@ -309,12 +309,16 @@ function SessionRecordingActions({
   sessionTitle,
   sessionTags,
   platformChat,
+  credentialsAction,
+  onForked,
 }: {
   sessionId: string;
   agentId?: string;
   sessionTitle: string | null;
   sessionTags: string[];
   platformChat: boolean;
+  credentialsAction?: React.ReactNode;
+  onForked?: (sessionId: string) => void;
 }) {
   const ui = useUiTranslations();
   const { locale } = useLocale();
@@ -328,9 +332,10 @@ function SessionRecordingActions({
         sessionTags={sessionTags}
         agentId={agentId}
         platformChat={platformChat}
+        onForked={onForked}
       />
 
-      <SessionCredentialsDialog sessionId={sessionId} />
+      {credentialsAction ?? <SessionCredentialsDialog sessionId={sessionId} />}
       <DropdownMenu>
         <DropdownMenuTrigger
           className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
@@ -377,6 +382,8 @@ export function SessionHeader({
   sessionTraceLabel,
   backHref = "/sessions",
   backLabel = "Sessions",
+  credentialsAction,
+  onForked,
 }: {
   sessionId: string;
   session: Session;
@@ -393,6 +400,8 @@ export function SessionHeader({
   sessionTraceLabel?: string;
   backHref?: string;
   backLabel?: string;
+  credentialsAction?: React.ReactNode;
+  onForked?: (sessionId: string) => void;
 }) {
   const { displayLocale } = useDisplayLocale();
   const ui = useUiTranslations();
@@ -473,6 +482,8 @@ export function SessionHeader({
             sessionTitle={session.title ?? null}
             sessionTags={session.tags ?? []}
             platformChat={agent?.name === "platform-chat"}
+            credentialsAction={credentialsAction}
+            onForked={onForked}
           />
         </div>
       </div>

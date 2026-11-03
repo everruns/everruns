@@ -1,5 +1,7 @@
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  "Open in Everruns": "Open in Everruns",
+  Expand: "Expand",
   "Loading page": "Loading page",
   "Changes affect only this estimate.": "Changes affect only this estimate.",
   "This content could not be displayed.": "This content could not be displayed.",

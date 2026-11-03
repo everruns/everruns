@@ -589,12 +589,18 @@ fn tool_names(list: &serde_json::Value) -> BTreeSet<String> {
 /// The tools a `read` token may list and call on `/mcp`.
 const READ_ONLY_MCP_TOOLS: &[&str] = &[
     "agent_get_card",
+    "app_bootstrap",
+    "app_read",
+    "capability_get_card",
     "discover",
     "everruns_home",
+    "harness_get_card",
+    "knowledge_get_card",
     "list_organizations",
     "me",
     "query",
     "session_get_status",
+    "session_open",
     "session_view",
 ];
 
@@ -653,12 +659,40 @@ async fn surfaces(port: u16, db: &StorageBackend) {
     )
     .await;
     let full_tools = tool_names(&full_list);
-    assert!(full_tools.is_superset(&expected) && full_tools.contains("execute"));
+    assert!(
+        full_tools.is_superset(&expected)
+            && full_tools.contains("execute")
+            && full_tools.contains("app_write")
+    );
     assert_eq!(full_list["result"]["cacheScope"], "public");
 
     // tools/call: execute is refused to a read token with insufficient_scope;
     // query still runs; a * token is never refused for its scope.
     let call = |name: &str, arguments: serde_json::Value| serde_json::json!({ "name": name, "arguments": arguments });
+    let read = mcp(
+        &client,
+        &base,
+        &read_token,
+        "tools/call",
+        call("app_read", serde_json::json!({"path":"/v1/agents"})),
+    )
+    .await;
+    assert_eq!(read["result"]["structuredContent"]["status"], 200, "{read}");
+    let write = mcp(
+        &client,
+        &base,
+        &read_token,
+        "tools/call",
+        call(
+            "app_write",
+            serde_json::json!({"path":"/v1/agents","method":"POST","body":{}}),
+        ),
+    )
+    .await;
+    assert_eq!(
+        write["result"]["structuredContent"]["code"], INSUFFICIENT_SCOPE,
+        "{write}"
+    );
     let script = serde_json::json!({ "commands": "list_agents" });
     let denied = mcp(
         &client,

@@ -21,6 +21,7 @@
 * [Soft Approval](soft-approval.md) - Spoken-consent confirmation before critical actions, as prompt guidance rather than a permission gate.
 * [Tool Approval](tool-approval.md) - The hard per-call approval gate, and how hosted sessions park a turn on it durably until a person answers.
 * [Turn Completion Check](turn-completion-check.md) - Review of a finishing unattended turn and bounded, durable automatic continuation.
+* [Credit Shortfall](credit-shortfall.md) - Smaller retry or a durable, bounded wait for credits when a provider refuses a request it cannot bill.
 * [Browser Use](browser-use.md) - Provider-neutral `browser` tool: accessibility tree with element refs, form filling and tabs on a Browserless browser.
 * [Computer Use](computer-use.md) - Provider-neutral computer use: screenshots plus pointer and keyboard actions on a display.
 * [Guardrails Specification](guardrails.md) - Guardrails (capability-based output/tool-call checks).

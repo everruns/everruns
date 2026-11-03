@@ -16,7 +16,7 @@ Every Everruns deployment exposes an authenticated MCP endpoint at `/mcp` so ext
 - **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`; under `2026-07-28`, `skills/list`, `skills/get`, and `resources/directory/read`, plus `tasks/get`, `tasks/update` and `tasks/cancel` for clients that use [Tasks](#long-agent-turns-as-tasks); and, for organizations that turn on MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
 - **Auth**: MCP requests authenticate and resolve an organization before dispatch. OAuth 2.1 uses mandatory PKCE, and MCP access tokens are bound to the exact `/mcp` resource so they cannot be reused against the REST API. Unauthenticated requests fail with `401` and protected-resource discovery metadata is served at `/.well-known/oauth-protected-resource/mcp`.
 - **Files**: `agent_run` and `session_send_message` take an optional `files` list, each file as base64 `data` or a public `https` `url`. The files are copied into the session's `/attachments` folder, as for [channels](/features/channels/#files-people-send).
-- **Entity cards**: under protocol `2025-06-18` and newer, `agent_get_card` links to a sandboxed MCP Apps template and returns structured agent details. Supported hosts render the card; other clients receive a text summary.
+- **Entity cards**: under protocol `2025-06-18` and newer, `agent_get_card`, `harness_get_card`, `capability_get_card`, and `knowledge_get_card` open the corresponding Everruns cards. Supported hosts render the cards; other clients receive structured details and a text fallback.
 
 Routing is intentionally split: REST under `/api/*`, MCP OAuth under `/oauth/*`, and MCP JSON-RPC at `/mcp`.
 
@@ -92,11 +92,25 @@ the extension keep getting plain tool results.
 
 ### In ChatGPT and Codex
 
-`/mcp` is an [MCP App](https://github.com/modelcontextprotocol/ext-apps): hosts that
-render MCP Apps, including ChatGPT, Codex and Claude, show a live session view
-after `agent_run`, answer an agent's questions in a form, approve or decline a
-pending action, and open an Everruns panel from the sidebar. Hosts that do not
-render apps get the same tools as plain text.
+`/mcp` is an [MCP App](https://github.com/modelcontextprotocol/ext-apps). Hosts
+that support app rendering and embedded frames can show Agent, Harness, Capability
+and Knowledge cards, the full organization Home, and the full Session workspace.
+Session includes Trace, Approvals, Work, Events, Files and Cost, using the same
+components as Everruns in your browser.
+
+Ask your client to show an entity, open Everruns Home, or open a session. The
+entrypoints are the card tools, `everruns_home`, and `session_open`; conversation
+tools also link their results to the Session view. Entity titles open Everruns,
+while Session tabs navigate within the embedded workspace. Hosts that advertise
+fullscreen can expand the view.
+
+The views use your connected MCP account and selected organization, without a
+second browser sign-in. Read-only tokens retain read-only access. Self-hosted
+deployments must serve the configured frontend URL so the shared UI can load.
+Files use the MCP connection, and downloads require host download support.
+HTML has a static preview;
+PDF and interactive HTML previews, along with credential entry, open in Everruns
+through the host. Hosts without app rendering still receive structured data and text.
 
 ### Session events (experimental)
 

@@ -55,6 +55,10 @@ const nextConfig: NextConfig = {
     // when open, keep discovery and invocation restricted to the document's own origin.
     return [
       {
+        source: "/mcp-app/:path*",
+        headers: [{ key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'" }],
+      },
+      {
         source: "/:path*",
         headers: [
           {
