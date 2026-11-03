@@ -622,9 +622,8 @@ export function ChannelForm({
   // The OAuth exchange is what records the workspace id, so an app id plus a workspace id means
   // Everruns created this channel's app and it was installed.
   const slackLive = Boolean(state.slackAppId && state.slackTeamId);
-  // Add to Slack stopped before Slack's approval: the app exists and its signing secret is
-  // saved, but no bot token or workspace came back. Offer Add to Slack again, which reuses
-  // that app, instead of treating the saved secret as a finished manual setup.
+  // Created but never approved in Slack: the saved signing secret is not a finished manual
+  // setup, so offer Add to Slack again (the server reuses the app).
   const slackInstallUnfinished = Boolean(state.slackAppId) && !slackLive;
   const slackCanAdd = !state.slackCredentialsConfigured || slackInstallUnfinished;
   const selectSlackInstallTeam = useCallback(
