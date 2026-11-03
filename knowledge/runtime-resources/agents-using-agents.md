@@ -12,8 +12,8 @@ tags:
 
 Status: accepted (2026-11-02). Part 1 (members, created-here agents, package
 format, Agents tab) is built. Approvals and questions on the first
-session, the shared team folder and copy-of-files are built. The rest of
-part 2 (run conversation) and part 3 (whole-run costs and traces)
+session, the shared team folder, copy-of-files and the run conversation
+are built. Part 3 (whole-run costs and traces)
 follow. The mechanism underneath is [Agent Handoff](agent-handoff.md).
 
 ## Abstract
@@ -175,11 +175,32 @@ is not offered: two agents writing one set of files overwrite each other. An
 explicit `seed` on `spawn_agent` still wins. The export keeps member names
 only, so the setting is not carried in a package yet.
 
-## Run conversation (part 2)
+## Run conversation
 
-Agents in one run can message each other with `send_message`, mentions and
-reactions as acknowledgements, under a message cap. It is kept separate so it
-can move onto shared boards if that design is accepted.
+Agents in one run talk to each other. The routing agent has the tools through
+the Agents capability; every session started under another one gets the
+`run_conversation` capability from the host (`attach_run_conversation` in
+session creation), so the same agent on its own has nothing to talk in.
+
+- `message_agent(text, to?)` posts a message. `to` is an agent's name or
+  `everyone`; a named agent gets it as input in its own session (it reads it
+  at its next step, or it starts a turn when idle). Without `to` it is only
+  posted.
+- `read_run_conversation(limit?)` reads the latest messages and lists who can
+  be messaged.
+- **Storage.** One file per message under `team/conversation/`, in the team
+  folder, so the person reads it in the first session's Files and it outlives
+  the run. Names map to sessions in `team/conversation/agents/<name>`, written
+  by `spawn_agent` (for itself and the agent it hands work to) and by each
+  agent when it first uses the tools.
+- **Safety.** Delivery goes only to the run's first session or a session
+  started directly under it, checked on every send. Delivered text says it is
+  from another agent and is not the person (TM-AGENT-040). A run stops at 200
+  messages.
+- **Not yet.** Reactions in the run conversation, and the person posting
+  there from the UI: the person talks to the first agent.
+
+Code: `crates/capabilities/src/capabilities/run_conversation.rs`.
 
 ## Costs (part 3)
 
