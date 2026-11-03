@@ -7,7 +7,7 @@ import { relativeFilePath } from "@/lib/path-utils";
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { File, X, Save, Edit3, Lock, Download, Eye, Code2 } from "lucide-react";
@@ -44,6 +44,7 @@ export function FileViewer({ source, file, onClose, badges, actions, footer }: F
   const {
     data: fileData,
     isLoading,
+    error: fileError,
     refetch,
   } = useQuery({
     queryKey: ["file-source", source.key, "file", file.path],
@@ -51,6 +52,7 @@ export function FileViewer({ source, file, onClose, badges, actions, footer }: F
     enabled: !!source.key,
   });
   const [saving, setSaving] = useState(false);
+  const [downloadError, setDownloadError] = useState<string>();
 
   const handleEdit = () => {
     if (
@@ -83,7 +85,23 @@ export function FileViewer({ source, file, onClose, badges, actions, footer }: F
     setEditContent("");
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
+    setDownloadError(undefined);
+    if (source.download) {
+      try {
+        const url = URL.createObjectURL(await source.download(file.path));
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = file.name;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      } catch (error) {
+        setDownloadError(error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
     // The raw download gives the real bytes: binary content arrives
     // base64-encoded, and some sources only show a text view of the original.
     const rawUrl = source.downloadUrl(file.path);
@@ -226,8 +244,24 @@ export function FileViewer({ source, file, onClose, badges, actions, footer }: F
         </div>
         <div className="text-xs text-muted-foreground truncate">{relativeFilePath(file.path)}</div>
       </CardHeader>
+      {downloadError && (
+        <p role="alert" className="px-4 py-2 text-sm text-destructive">
+          {downloadError}
+        </p>
+      )}
+      {source.externalPreviewHref && hasPreview && previewType !== "pdf" && (
+        <div className="border-b px-4 py-2">
+          <LinkButton variant="ghost" size="sm" target="_blank" href={source.externalPreviewHref}>
+            {ui("Open in Everruns")}
+          </LinkButton>
+        </div>
+      )}
       <CardContent className="flex-1 p-0 overflow-hidden">
-        {isLoading ? (
+        {fileError ? (
+          <p role="alert" className="p-4 text-sm text-destructive">
+            {fileError.message}
+          </p>
+        ) : isLoading ? (
           <div className="p-4 text-sm text-muted-foreground">{ui("Loading...")}</div>
         ) : isBinary && !hasPreview ? (
           <div className="p-4 text-sm text-muted-foreground text-center">
@@ -248,6 +282,12 @@ export function FileViewer({ source, file, onClose, badges, actions, footer }: F
             <File className="h-12 w-12 mb-2 opacity-30" />
             <p className="text-sm">{ui("Empty file")}</p>
           </div>
+        ) : previewType === "pdf" && source.externalPreviewHref && viewMode === "preview" ? (
+          <div className="p-4 text-sm text-muted-foreground">
+            <LinkButton variant="outline" target="_blank" href={source.externalPreviewHref}>
+              {ui("Open in Everruns")}
+            </LinkButton>
+          </div>
         ) : hasPreview && viewMode === "preview" ? (
           <FilePreview
             content={fileData.content}
@@ -255,6 +295,7 @@ export function FileViewer({ source, file, onClose, badges, actions, footer }: F
             encoding={encoding}
             htmlPreviewSrc={htmlPreviewSrc}
             videoSrc={videoSrc}
+            staticHtml={!!source.externalPreviewHref}
           />
         ) : (
           <ScrollArea className="h-full">

@@ -3,6 +3,7 @@ import { useEffect, useRef, type MouseEvent } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { LinkButton } from "@/components/ui/button";
 import { useUiTranslations } from "@/providers/locale-provider";
+import { FileNavigationContext } from "@/components/files/file-source";
 import { OrgHome } from "@/components/home/org-home";
 import { SessionProvider } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { SessionLayoutContent } from "@/app/(main)/sessions/[sessionId]/layout";
@@ -85,24 +86,28 @@ export function McpWorkspacePage() {
     >
       {section === "home" && <OrgHome />}
       {section === "sessions" && id && (
-        <SessionProvider key={id} sessionId={id}>
-          <SessionLayoutContent
-            sessionId={id}
-            credentialsAction={
-              <LinkButton
-                variant="outline"
-                size="sm"
-                target="_blank"
-                href={`/sessions/${id}/trace`}
-                title={ui("Open in Everruns")}
-              >
-                {ui("Credentials")}
-              </LinkButton>
-            }
-          >
-            <Tab />
-          </SessionLayoutContent>
-        </SessionProvider>
+        <FileNavigationContext
+          value={{ browserUrls: false, externalPreviewHref: `/sessions/${id}/files` }}
+        >
+          <SessionProvider key={id} sessionId={id}>
+            <SessionLayoutContent
+              sessionId={id}
+              credentialsAction={
+                <LinkButton
+                  variant="outline"
+                  size="sm"
+                  target="_blank"
+                  href={`/sessions/${id}/trace`}
+                  title={ui("Open in Everruns")}
+                >
+                  {ui("Credentials")}
+                </LinkButton>
+              }
+            >
+              <Tab />
+            </SessionLayoutContent>
+          </SessionProvider>
+        </FileNavigationContext>
       )}
       {section === "agents" && id && <AgentView id={id} />}
       {section === "harnesses" && id && <HarnessView id={id} />}

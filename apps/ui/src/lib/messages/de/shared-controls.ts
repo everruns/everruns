@@ -1,4 +1,6 @@
 export const messages: Readonly<Record<string, string>> = {
+  "Open in Everruns": "In Everruns öffnen",
+  Expand: "Erweitern",
   "This content could not be displayed.": "Dieser Inhalt konnte nicht angezeigt werden.",
   "The message could not be sent.": "Die Nachricht konnte nicht gesendet werden.",
 

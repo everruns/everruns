@@ -210,6 +210,8 @@ export function canPreview(extension: string, encoding: "text" | "base64"): bool
 }
 
 interface PreviewProps {
+  /** Disable HTML scripts when the embedding environment cannot isolate a network preview. */
+  staticHtml?: boolean;
   content: string;
   extension: string;
   encoding: "text" | "base64";
@@ -647,7 +649,15 @@ function injectHtmlPreviewCsp(html: string): string {
   return `${meta}${html}`;
 }
 
-export function HtmlPreview({ content, src }: { content: string; src?: string }) {
+export function HtmlPreview({
+  content,
+  src,
+  allowScripts = true,
+}: {
+  content: string;
+  src?: string;
+  allowScripts?: boolean;
+}) {
   const ui = useUiTranslations();
   const srcDoc = useMemo(() => injectHtmlPreviewCsp(content), [content]);
 
@@ -662,7 +672,7 @@ export function HtmlPreview({ content, src }: { content: string; src?: string })
     return (
       <iframe
         title={ui("HTML preview")}
-        sandbox="allow-scripts"
+        sandbox={allowScripts ? "allow-scripts" : ""}
         referrerPolicy="no-referrer"
         src={src}
         className="w-full h-full border-0 bg-white"
@@ -678,7 +688,7 @@ export function HtmlPreview({ content, src }: { content: string; src?: string })
   return (
     <iframe
       title={ui("HTML preview")}
-      sandbox="allow-scripts"
+      sandbox={allowScripts ? "allow-scripts" : ""}
       referrerPolicy="no-referrer"
       srcDoc={srcDoc}
       className="w-full h-full border-0 bg-white"
@@ -721,6 +731,7 @@ export function FilePreview({
   encoding,
   htmlPreviewSrc,
   videoSrc,
+  staticHtml = false,
 }: PreviewProps) {
   const previewType = getPreviewType(extension, encoding);
 
@@ -736,7 +747,7 @@ export function FilePreview({
     case "svg":
       return <SVGPreview content={content} encoding={encoding} />;
     case "html":
-      return <HtmlPreview content={content} src={htmlPreviewSrc} />;
+      return <HtmlPreview content={content} src={htmlPreviewSrc} allowScripts={!staticHtml} />;
     case "pdf":
       return <PdfPreview content={content} />;
     case "image":

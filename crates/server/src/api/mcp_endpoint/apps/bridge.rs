@@ -23,16 +23,23 @@ pub(super) fn is_tool(name: &str) -> bool {
 fn allowed_path(raw: &str, read: bool) -> bool {
     let path = raw.split('?').next().unwrap_or_default();
     let lower = path.to_ascii_lowercase();
+    let workspace_files =
+        path.split('/').nth(2) == Some("workspaces") && path.split('/').nth(4) == Some("fs");
     if !path.starts_with("/v1/")
         || path.contains('\\')
         || path.contains("//")
         || lower.contains("%2f")
         || lower.contains("%5c")
         || lower.contains("%2e")
-        || lower.contains("%25")
+        || (!workspace_files && lower.contains("%25"))
         || path.split('/').any(|p| p == "." || p == "..")
     {
         return false;
+    }
+    // Workspace reads retain the filesystem API's containment and tenant checks.
+    // Filenames are data here, including names such as "keys" or "secrets".
+    if workspace_files {
+        return read;
     }
     // The recording UI lists names/metadata only; secret values and credential
     // writes must use the existing credential-collection surface.
@@ -179,6 +186,8 @@ mod tests {
             "/v1/sessions/session_1/trace?limit=20",
             "/v1/agents/activity",
             "/v1/knowledge",
+            "/v1/workspaces/ws_1/fs/workspace/report%25.txt",
+            "/v1/workspaces/ws_1/fs/_/download/workspace/keys",
             "/v1/sessions/session_1/storage/secrets",
             "/v1/sessions/session_1/storage/keys",
             "/v1/durable/config",

@@ -74,6 +74,44 @@ async fn shared_workspace_reads_the_same_resources_and_opens_each_entity() {
         let result = call(&server, "app_read", json!({"path":path})).await;
         api_body(&result);
     }
+    let recording: Value = server
+        .get(&format!("/v1/sessions/{session}"))
+        .await
+        .assert_success()
+        .json();
+    let file_path = format!(
+        "/v1/workspaces/{}/fs/workspace/bridge.txt",
+        recording["workspace_id"].as_str().unwrap()
+    );
+    server
+        .post(
+            &file_path,
+            json!({"content":"Bridge file bytes", "encoding":"text"}),
+        )
+        .await
+        .assert_success();
+    let file = api_body(&call(&server, "app_read", json!({"path":file_path})).await);
+    assert_eq!(file["content"], "Bridge file bytes");
+    let download_path = format!(
+        "/v1/workspaces/{}/fs/_/download/workspace/bridge.txt",
+        recording["workspace_id"].as_str().unwrap()
+    );
+    let downloaded = structured(&call(&server, "app_read", json!({"path":download_path})).await);
+    assert_eq!(downloaded["status"], 200);
+    assert_eq!(
+        base64::engine::general_purpose::STANDARD
+            .decode(downloaded["body"].as_str().unwrap())
+            .unwrap(),
+        b"Bridge file bytes"
+    );
+    assert!(is_error(
+        &call(
+            &server,
+            "app_write",
+            json!({"path":file_path,"method":"DELETE"})
+        )
+        .await
+    ));
     let changed = call(&server, "app_write", json!({"path":format!("/v1/agents/{agent}"),"method":"PATCH","body":{"description":"Changed through the workspace"}})).await;
     assert_eq!(
         api_body(&changed)["description"],

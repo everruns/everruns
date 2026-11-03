@@ -14,6 +14,7 @@ window.addEventListener('message',async event=>{
  const m=event.data;if(!m||typeof m!=='object')return;
  if(event.source===frame.contentWindow && event.origin===config.origin){
   if(m.type==='everruns:ready'){ready=true;toFrame('everruns:init',{...current,context,capabilities:host});return;}
+  if(m.type==='everruns:labels'&&typeof m.expand==='string'){expand.textContent=m.expand;return;}
   if(m.type==='everruns:size'){height=Math.max(80,Math.min(1200,Number(m.height)||760));layout();if(context.displayMode!=='fullscreen')notify('ui/notifications/size-changed',{height});return;}
   if(m.type==='everruns:open-link'){if(host.openLinks&&typeof m.url==='string')send('ui/open-link',{url:m.url}).catch(()=>{});return;}
   if(m.type!=='everruns:request'||!['app_read','app_write','app_bootstrap'].includes(m.tool))return;

@@ -1,4 +1,6 @@
 export const messages: Readonly<Record<string, string>> = {
+  "Open in Everruns": "在 Everruns 中打开",
+  Expand: "展开",
   "This content could not be displayed.": "无法显示此内容。",
   "The message could not be sent.": "无法发送消息。",
 

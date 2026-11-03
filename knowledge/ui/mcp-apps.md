@@ -89,6 +89,13 @@ history endpoint's tail semantics. Busy pages drain before waiting for the next
 poll. Closing the workspace stops listeners and timers; there is no direct SSE
 connection carrying cookies.
 
+Workspace file reads and downloads use the same MCP bridge. Embedded file
+sources do not navigate to cookie-authenticated download or preview endpoints.
+Images and video can render from the returned content; HTML uses the existing
+static preview. Browser-dependent PDF and interactive HTML previews have an
+explicit Open in Everruns link, since the MCP host sandbox cannot reproduce the
+browser's preview environment.
+
 ## Security
 
 - **XSS and framing.** The bridge uses no HTML insertion sinks. The child is the

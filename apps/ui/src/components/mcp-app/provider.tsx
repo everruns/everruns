@@ -67,6 +67,9 @@ export function McpAppProvider({ children }: { children: ReactNode }) {
       queryClient.clear();
     };
   }, [queryClient, router]);
+  useEffect(() => {
+    window.parent.postMessage({ type: "everruns:labels", expand: ui("Expand") }, "*");
+  }, [ui]);
   if (error)
     return (
       <p role="alert" className="p-6 text-destructive">
