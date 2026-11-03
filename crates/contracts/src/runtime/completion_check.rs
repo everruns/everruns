@@ -5,7 +5,6 @@
 //! doing it is lost when nobody is watching: a trigger or schedule session has
 //! no person to say "go on". In chat a person is there to notice, so the check
 //! (one extra model call on the turns that need it) is opt-in with `always`.
-//! See `knowledge/execution/turn-completion-check.md`.
 
 use serde::{Deserialize, Serialize};
 
