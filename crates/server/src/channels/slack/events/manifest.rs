@@ -456,3 +456,65 @@ pub(crate) fn urlencoding_encode(s: &str) -> String {
     }
     result
 }
+
+/// Manifests for the agents most likely to break Slack's limits: very long
+/// names and descriptions, non-ASCII text, characters YAML must escape, the
+/// description production refused, and every starter slot filled. The system
+/// doctor sends each to Slack's `apps.manifest.validate`, and a committed
+/// fixture keeps a copy for checks that run without a server.
+pub(crate) fn worst_case_manifest_yamls() -> Vec<(&'static str, String)> {
+    let long_ascii = "Watches agent frameworks for features worth adopting. ".repeat(100);
+    let long_cyrillic = "Тримає розпорядок дня дітей і відповідає в Slack. ".repeat(100);
+    let refused = "Daily watch of agent frameworks (Vercel AI SDK, LangGraph, DeepAgents, PydanticAI and more) for features worth adopting in Everruns or Yolop.";
+    let tricky = "Quotes \"here\", a backslash \\, a tab\tand\nnew lines: ok? — yes # no";
+    let long_name = "Дуже довга назва агента, що не влазить у ліміт Slack";
+    let very_long_name = "x".repeat(200);
+    let starters: Vec<ConversationStarter> = (0..8)
+        .map(|i| ConversationStarter {
+            icon: None,
+            text: format!(
+                "Starter {i}: {}",
+                "a long prompt that keeps going ".repeat(20)
+            ),
+        })
+        .collect();
+    let cases: [(&'static str, &str, Option<&str>, bool); 6] = [
+        ("plain", "Ecosystem Watch", Some("Answers questions"), false),
+        ("refused-in-prod", "Ecosystem Watch", Some(refused), true),
+        (
+            "long-ascii",
+            "Ecosystem Watch",
+            Some(long_ascii.as_str()),
+            true,
+        ),
+        (
+            "long-cyrillic",
+            long_name,
+            Some(long_cyrillic.as_str()),
+            true,
+        ),
+        ("tricky-characters", "Bot", Some(tricky), true),
+        (
+            "no-description-long-name",
+            very_long_name.as_str(),
+            None,
+            true,
+        ),
+    ];
+    cases
+        .into_iter()
+        .map(|(case, name, description, agent_surface)| {
+            let yaml = build_manifest_yaml(
+                name,
+                &truncate_display_name(name),
+                description,
+                "https://example.com/events",
+                "https://example.com/interactivity",
+                "https://example.com/callback",
+                agent_surface,
+                &starters,
+            );
+            (case, yaml)
+        })
+        .collect()
+}

@@ -43,10 +43,10 @@ fn explicit_cache_wire_options_are_model_gated() {
     });
     let original = json!({"instructions": "Stable policy", "input": [{"role": "user", "content": "Changing question"}]});
     let mut body = original.clone();
-    apply_cache_options(&mut body, &config, true);
+    apply_cache_options(&mut body, &config, true, true);
     assert_eq!(
         body["prompt_cache_options"],
-        json!({"ttl":"30m","mode":"explicit"})
+        json!({"ttl":"12h","mode":"explicit"})
     );
     assert!(body.get("instructions").is_none());
     assert_eq!(
@@ -55,17 +55,17 @@ fn explicit_cache_wire_options_are_model_gated() {
     );
     assert_eq!(body["input"][1], original["input"][0]);
     let mut gateway = original.clone();
-    apply_cache_options(&mut gateway, &config, false);
+    apply_cache_options(&mut gateway, &config, false, true);
     assert_eq!(gateway, original);
     config.model = "gpt-5.5".into();
     let mut older = original.clone();
-    apply_cache_options(&mut older, &config, true);
+    apply_cache_options(&mut older, &config, true, true);
     assert_eq!(older, original);
     config.model = "gpt-5.6-sol".into();
     config.prompt_cache.as_mut().unwrap().strategy =
         crate::driver_registry::PromptCacheStrategy::Auto;
     let mut implicit = original.clone();
-    apply_cache_options(&mut implicit, &config, true);
+    apply_cache_options(&mut implicit, &config, true, true);
     assert_eq!(implicit["instructions"], original["instructions"]);
     assert_eq!(implicit["prompt_cache_options"]["mode"], "implicit");
 }
@@ -837,4 +837,67 @@ async fn retry_after_longer_than_budget_still_retries_within_budget() {
         .expect("a Retry-After beyond the budget must still allow a retry");
     assert_authenticated_stream(stream).await;
     assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[test]
+fn cache_retention_defaults_to_twelve_hours_only_for_openai() {
+    use crate::driver_registry::{PromptCacheConfig, PromptCacheRetention, PromptCacheStrategy};
+    for (retention, ttl, anthropic) in [
+        (PromptCacheRetention::Default, "12h", None),
+        (PromptCacheRetention::FiveMinutes, "30m", None),
+        (PromptCacheRetention::ThirtyMinutes, "30m", None),
+        (PromptCacheRetention::OneHour, "30m", Some("1h")),
+        (PromptCacheRetention::TwelveHours, "12h", Some("1h")),
+    ] {
+        assert_eq!(retention.anthropic_ttl(), anthropic);
+        assert_eq!(
+            serde_json::from_value::<PromptCacheRetention>(json!(retention)).unwrap(),
+            retention
+        );
+        for strategy in [PromptCacheStrategy::Auto, PromptCacheStrategy::Explicit] {
+            let mut config = LlmCallConfig::new("gpt-6.1-sol");
+            config.prompt_cache = Some(PromptCacheConfig {
+                enabled: true,
+                retention,
+                strategy,
+                ..Default::default()
+            });
+            let original = json!({"instructions":"policy", "input":[]});
+            let mut body = original.clone();
+            apply_cache_options(&mut body, &config, true, true);
+            assert_eq!(body["prompt_cache_options"]["ttl"], ttl);
+            let mut azure = original.clone();
+            apply_cache_options(&mut azure, &config, true, false);
+            assert_eq!(azure["prompt_cache_options"]["ttl"], "30m");
+            config.prompt_cache.as_mut().unwrap().enabled = false;
+            let mut disabled = original.clone();
+            apply_cache_options(&mut disabled, &config, true, true);
+            assert_eq!(disabled, original);
+        }
+    }
+}
+
+#[test]
+fn unconfigured_cache_defaults_require_native_model_and_endpoint() {
+    let original = json!({"instructions":"policy", "input":[]});
+    for (model, native, official, expected) in [
+        ("gpt-6.1-sol", true, true, true),
+        ("gpt-5.6-sol", true, true, true),
+        ("gpt-5.5", true, true, false),
+        ("gpt-unknown", true, true, false),
+        ("gpt-6.1-sol", false, true, false),
+        ("gpt-6.1-sol", true, false, false),
+    ] {
+        let mut body = original.clone();
+        apply_cache_options(&mut body, &LlmCallConfig::new(model), native, official);
+        if expected {
+            assert_eq!(
+                body["prompt_cache_options"],
+                json!({"ttl":"12h", "mode":"implicit"})
+            );
+            assert_eq!(body["instructions"], original["instructions"]);
+        } else {
+            assert_eq!(body, original);
+        }
+    }
 }

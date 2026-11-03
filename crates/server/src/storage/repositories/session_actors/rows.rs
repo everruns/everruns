@@ -54,6 +54,9 @@ pub struct SessionActorRow {
     pub next_input_seq: i64,
     /// Leases since the last release (poison guard).
     pub attempts: i32,
+    /// The worker that last released the actor; it gets the next turn first
+    /// (sticky sessions). Cleared by a hand-off.
+    pub preferred_worker: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
