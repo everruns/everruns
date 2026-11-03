@@ -268,6 +268,16 @@ pub trait ChatDriver: Send + Sync {
         // Default: not supported
         Ok(None)
     }
+
+    /// Read the account's balance without spending tokens, so a turn waiting
+    /// for credits can tell when they are back. `Ok(None)`: the provider has
+    /// no balance API, and the waiting turn retries on a timer instead.
+    async fn credit_status(
+        &self,
+        _endpoint: &crate::runtime_provider::ProviderEndpoint,
+    ) -> Result<Option<crate::provider_limit::CreditStatus>> {
+        Ok(None)
+    }
 }
 
 /// Implement ChatDriver for `Box<dyn ChatDriver>` to allow dynamic dispatch
@@ -358,6 +368,13 @@ impl ChatDriver for Box<dyn ChatDriver> {
         budget_tokens: usize,
     ) -> Option<(String, serde_json::Value)> {
         (**self).provider_managed_reduction_option(endpoint, model, budget_tokens)
+    }
+
+    async fn credit_status(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+    ) -> Result<Option<crate::provider_limit::CreditStatus>> {
+        (**self).credit_status(endpoint).await
     }
 
     fn provider_managed_reduction_fallback_reason(
@@ -933,6 +950,13 @@ impl ChatDriver for RequestOptionsDriver {
         request: CompactRequest,
     ) -> Result<Option<CompactResponse>> {
         self.inner.compact(endpoint, request).await
+    }
+
+    async fn credit_status(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+    ) -> Result<Option<crate::provider_limit::CreditStatus>> {
+        self.inner.credit_status(endpoint).await
     }
 }
 

@@ -132,12 +132,17 @@ function localizeRuntimeErrorBase(
     case "provider_quota_exhausted": {
       const requested = integerField(error.fields, "requested_max_tokens");
       const affordable = integerField(error.fields, "affordable_tokens");
-      return requested != null && affordable != null
-        ? formatMessage(locale, "runtime_error_provider_quota_exhausted_affordable", {
-            requested_max_tokens: requested,
-            affordable_tokens: affordable,
-          })
-        : formatMessage(locale, "runtime_error_provider_quota_exhausted");
+      const text =
+        requested != null && affordable != null
+          ? formatMessage(locale, "runtime_error_provider_quota_exhausted_affordable", {
+              requested_max_tokens: requested,
+              affordable_tokens: affordable,
+            })
+          : formatMessage(locale, "runtime_error_provider_quota_exhausted");
+      // The engine checks for credits and continues on its own (credit_shortfall).
+      return error.fields?.credit_wait === true
+        ? `${text} ${formatMessage(locale, "runtime_error_provider_quota_credit_wait")}`
+        : text;
     }
     case "provider_attestation_required": {
       // The confirmation page is the whole point of this code — without it the

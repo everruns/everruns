@@ -529,12 +529,20 @@ fn rate_limited_message(fields: &UserFacingErrorFields) -> String {
 fn quota_exhausted_message(fields: &UserFacingErrorFields) -> String {
     let requested = fields.get("requested_max_tokens").and_then(Value::as_u64);
     let affordable = fields.get("affordable_tokens").and_then(Value::as_u64);
-    match (requested, affordable) {
+    let message = match (requested, affordable) {
         (Some(requested), Some(affordable)) => format!(
             "The AI provider account is out of credits for this request: it asked for up to {requested} output tokens, but the balance covers {affordable}. Add credits or lower the max output tokens to continue."
         ),
         _ => "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue."
             .to_string(),
+    };
+    // Set by the engine when it scheduled checks for credits (credit_shortfall).
+    if bool_field(fields, "credit_wait") {
+        format!(
+            "{message} The work continues automatically once credits are back (checked every minute for up to an hour)."
+        )
+    } else {
+        message
     }
 }
 
@@ -1119,6 +1127,16 @@ mod tests {
                 "{unsafe_type}"
             );
         }
+    }
+
+    #[test]
+    fn a_credit_wait_says_the_work_continues_by_itself() {
+        let error =
+            UserFacingError::new(codes::PROVIDER_QUOTA_EXHAUSTED).with_field("credit_wait", true);
+        assert_eq!(
+            error.fallback_message(),
+            "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue. The work continues automatically once credits are back (checked every minute for up to an hour)."
+        );
     }
 
     #[test]

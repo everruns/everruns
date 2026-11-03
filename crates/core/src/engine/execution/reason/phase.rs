@@ -1,6 +1,11 @@
 //! Reason admission, durable retry boundaries and terminal error handling.
 use super::*;
 
+// Declared here because `reason.rs` is size-ratcheted; the file sits beside
+// this one (`reason/credit.rs`).
+#[path = "credit.rs"]
+pub(super) mod credit;
+
 impl ReasonAtom {
     pub(super) async fn execute_inner(
         &self,
@@ -105,6 +110,15 @@ impl ReasonAtom {
                     .await
             }
         };
+        // A turn a credit check started reads the balance first
+        // (`crate::engine::credit_shortfall`).
+        let credit_check = match &assembled {
+            Ok(assembled) => crate::engine::credit_shortfall::credit_check(
+                &assembled.messages,
+                context.input_message_id,
+            ),
+            _ => None,
+        };
         let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
                 let (policy, retry, started, cause) =
@@ -127,6 +141,7 @@ impl ReasonAtom {
                             mcp_tool_definitions: &mcp_tool_definitions,
                             assembled,
                             prior,
+                            credit_check,
                         },
                     ),
                 ));
@@ -191,6 +206,18 @@ impl ReasonAtom {
                 }
                 Err(error) => Err(error),
             },
+            result => result,
+        };
+
+        // A refusal for lack of credits starts or continues a durable wait.
+        let mut credit_wait = false;
+        let call_result = match call_result {
+            Err(e) if !error_policy::returned_to_turn_driver(&e, &context) => {
+                let (result, waiting) =
+                    credit::after_refusal(self, &context, credit_check, e).await;
+                credit_wait = waiting;
+                result
+            }
             result => result,
         };
 
@@ -277,6 +304,9 @@ impl ReasonAtom {
                     }
                 }
 
+                if credit_wait {
+                    source_error = source_error.with_field("credit_wait", true);
+                }
                 let user_error = source_error.apply_disclosure(error_disclosure, Some(&error_msg));
                 let user_error_text = user_error.fallback_message();
 

@@ -214,6 +214,8 @@ const messages = {
       "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
     runtime_error_provider_quota_exhausted_affordable:
       "The AI provider account is out of credits for this request: it asked for up to {requested_max_tokens} output tokens, but the balance covers {affordable_tokens}. Add credits or lower the max output tokens to continue.",
+    runtime_error_provider_quota_credit_wait:
+      "The work continues automatically once credits are back (checked every minute for up to an hour).",
     runtime_error_provider_attestation_required:
       "The AI provider account has not completed a confirmation this model requires. Complete it at {confirm_url}, then try again.",
     runtime_error_provider_attestation_required_types:
@@ -540,6 +542,8 @@ const messages = {
       "На обліковому записі AI-провайдера закінчилися кредити або квота. Поповніть рахунок або збільште ліміти, щоб продовжити.",
     runtime_error_provider_quota_exhausted_affordable:
       "На обліковому записі AI-провайдера бракує кредитів для цього запиту: запитано до {requested_max_tokens} вихідних токенів, а баланс покриває {affordable_tokens}. Поповніть рахунок або зменште максимальну кількість вихідних токенів, щоб продовжити.",
+    runtime_error_provider_quota_credit_wait:
+      "Робота продовжиться автоматично, щойно кредити з'являться (перевірка щохвилини протягом години).",
     runtime_error_provider_attestation_required:
       "Обліковий запис AI-провайдера не пройшов підтвердження, якого вимагає ця модель. Завершіть його на {confirm_url} і спробуйте ще раз.",
     runtime_error_provider_attestation_required_types:
