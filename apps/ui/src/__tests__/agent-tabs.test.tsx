@@ -24,7 +24,15 @@ describe("agent tab definitions", () => {
     expect(labels(getAgentTabItems())).not.toContain("Evals");
   });
 
+  it("shows Agents after Agent only for an agent that uses other agents", () => {
+    expect(labels(getAgentTabItems(undefined, undefined, undefined, { agents: 3 }))[1]).toBe(
+      "Agents3",
+    );
+    expect(labels(getAgentTabItems())).not.toContain("Agents");
+  });
+
   it.each([
+    ["agents", "agents", null, null],
     ["evals", "evals", null, null],
     ["mcp", "agent", "mcp", null],
     ["credentials", "agent", "credentials", null],

@@ -2981,6 +2981,14 @@
             }
           ]
         },
+        "owner_agent_id": {
+          "description": "Agent this one is created as part of (\"Created here\" on that agent's\nAgents tab). It groups under that agent on Agents home and is bundled\ninto its export.",
+          "example": "agent_01933b5a00007000800000000000001",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "parallel_tool_calls": {
           "description": "Request-level parallel tool calling preference (EVE-598). `true` signals\nthe provider that parallel tool calls are wanted; `false` requests at\nmost one tool call per turn and forces serial execution. Omit to use the\nprovider default.",
           "example": true,
@@ -26586,6 +26594,14 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "owner_agent_id": {
+              "description": "Agent this one is created as part of (\"Created here\" on that agent's\nAgents tab). It groups under that agent on Agents home and is bundled\ninto its export.",
+              "example": "agent_01933b5a00007000800000000000001",
+              "type": [
+                "string",
+                "null"
               ]
             },
             "parallel_tool_calls": {

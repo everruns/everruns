@@ -206,6 +206,30 @@ with `SendMessage` on the same `taskId`. A question that asks for a secret
 reports `auth-required` instead and links to the session, so a person
 provides the value in Everruns rather than through another agent.
 
+### Reactions
+
+The Agent Card lists the extension `https://everruns.com/ext/a2a/reactions/v1`.
+To react to one of the agent's replies, send `SendMessage` on the same `taskId`
+with a single data part under `everruns/reaction`. `messageId` is the reply's
+artifact id, and `action` is `added` or `removed`:
+
+```json
+{
+  "message": {
+    "role": "user",
+    "messageId": "m-2",
+    "taskId": "session_...",
+    "parts": [{ "kind": "data", "data": { "everruns/reaction": {
+      "messageId": "message_...", "emoji": "👍", "action": "added"
+    } } }]
+  }
+}
+```
+
+The reaction is stored like any other and does not start a turn by itself.
+The agent reads it as a short note, as its Reactions setting says. The answer
+is the task.
+
 ### Personal agents (PACT)
 
 [PACT](https://github.com/openpactprotocol/openpactprotocol) (Personal Agent

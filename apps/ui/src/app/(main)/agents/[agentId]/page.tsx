@@ -8,6 +8,7 @@ import { ExternalWorker } from "@/components/agents/external-worker";
 import { AgentSourcePanel } from "@/components/agents/agent-source";
 import { useAgentSource } from "@/hooks/use-agent-source";
 import { exportAgentPackage } from "@/lib/api/agents";
+import { AgentMembersTab, agentMembers } from "@/components/agents/agent-members-tab";
 
 // Agent page: one layout for reading and editing an agent.
 //
@@ -805,6 +806,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                   }}
                   items={getAgentTabItems(sessionCount, integrationCount, ui, {
                     evals: evalsEnabled,
+                    agents: agentMembers(agent)?.length,
                   })}
                   className="border-x border-t bg-background px-2"
                 />
@@ -869,6 +871,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
                       tools={agent.tools ?? []}
                     />
                   )}
+                  {activeTab === "agents" && <AgentMembersTab agent={agent} canEdit={canEdit} />}
                   {activeTab === "integrations" && (
                     <AgentIntegrationsPanel
                       agent={agent}

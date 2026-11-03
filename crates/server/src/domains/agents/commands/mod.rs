@@ -146,6 +146,17 @@ impl Command for CreateAgent {
         validate_sandbox_policy_for_harness(ctx, harness_id, req.sandbox_policy.as_ref()).await?;
 
         validate_service_account(ctx, req.service_virtual_user_id).await?;
+        let owner = match req.owner_agent_id {
+            Some(owner) => Some(
+                ctx.db
+                    .get_agent(ctx.org_id(), owner)
+                    .await?
+                    .filter(|row| row.status == "active")
+                    .ok_or_else(|| CommandError::not_found("Owner agent"))?
+                    .id,
+            ),
+            None => None,
+        };
         // Persist
         let client_id = req.id;
         let (row, agent_uuid) = if let Some(client_id) = client_id {
@@ -242,7 +253,13 @@ impl Command for CreateAgent {
         } else {
             row
         };
-        let row = persist_harness_source(ctx, row, harness_source).await?;
+        let mut row = persist_harness_source(ctx, row, harness_source).await?;
+        if let Some(owner) = owner {
+            ctx.db
+                .set_agent_owner(ctx.org_id(), row.id, Some(owner))
+                .await?;
+            row.owner_agent_id = Some(owner);
+        }
         persist_capabilities(&ctx.db, agent_uuid, &caps).await?;
         Ok(crate::storage::row_to_agent(row, caps))
     }
@@ -797,6 +814,7 @@ impl Command for CopyAgent {
             q::find_unique_name(&ctx.db, ctx.org_id(), &format!("{}-copy", source.name)).await?;
 
         let req = CreateAgentRequest {
+            owner_agent_id: None,
             service_virtual_user_id: None,
 
             id: None,

@@ -7,8 +7,8 @@ significance: minor
 products: [platform, cloud]
 surfaces: [ui, api]
 links:
-  docs: [/features/ui/#sessions, /features/agent-api/, /features/channels/]
-  prs: [everruns/everruns#5146, everruns/everruns#5150]
+  docs: [/features/ui/#sessions, /features/agent-api/, /features/channels/, /features/a2a/#reactions]
+  prs: [everruns/everruns#5146, everruns/everruns#5150, everruns/everruns#5173]
 ---
 
 Anyone in a conversation can now put an emoji on a message, and so can the
@@ -32,3 +32,5 @@ curl "$BASE/sessions/$SESSION/reactions" -H "Authorization: Bearer $KEY"
 
 AG-UI channels stream each reaction as a `CUSTOM` event named
 `everruns.reaction` (see [Channels](/features/channels/)).
+A2A callers react through the reactions extension (see [A2A](/features/a2a/#reactions)),
+and the Rust, Python and TypeScript SDKs have `react`, `unreact` and `reactions`.

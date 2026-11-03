@@ -48,6 +48,9 @@ pub struct AgentRow {
     pub forked_from_agent_id: Option<AgentId>,
     #[sqlx(default)]
     pub root_agent_id: Option<AgentId>,
+    /// Agent this one was created as part of (`agents.owner_agent_id`).
+    #[sqlx(default)]
+    pub owner_agent_id: Option<AgentId>,
     pub tags: Vec<String>,
     pub status: String,
     /// Incident switch: when true no endpoint on this agent accepts traffic,
@@ -307,6 +310,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
         harness_id: row.harness_id,
         forked_from_agent_id: row.forked_from_agent_id,
         root_agent_id: row.root_agent_id,
+        owner_agent_id: row.owner_agent_id,
         tags: row.tags,
         is_built_in: row.is_built_in,
         capabilities,
