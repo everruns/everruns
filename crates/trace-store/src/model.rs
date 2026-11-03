@@ -46,6 +46,8 @@ pub struct Limits {
     pub max_query_segments: usize,
     pub max_query_index_bytes: u64,
     pub query_memory_bytes: usize,
+    /// Decoded immutable indexes only. Zero disables caching for cold probes.
+    pub index_cache_bytes: usize,
     pub query_timeout: std::time::Duration,
 }
 
@@ -60,6 +62,7 @@ impl Default for Limits {
             max_query_segments: 256,
             max_query_index_bytes: 64 * 1024 * 1024,
             query_memory_bytes: 128 * 1024 * 1024,
+            index_cache_bytes: 64 * 1024 * 1024,
             query_timeout: std::time::Duration::from_secs(15),
         }
     }
@@ -183,4 +186,62 @@ pub struct QueryPage {
     pub events: Vec<EventSummary>,
     pub has_more: bool,
     pub segments_scanned: usize,
+    pub profile: ReadProfile,
+}
+
+/// Fixed stages only; contains no event identities, object keys or payloads.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ReadProfile {
+    pub engine: ReadEngine,
+    pub segments_scanned: usize,
+    pub total_seconds: f64,
+    pub catalog_seconds: f64,
+    pub index_io_seconds: f64,
+    pub index_decode_seconds: f64,
+    pub planning_seconds: f64,
+    pub execution_seconds: f64,
+    pub payload_io_seconds: f64,
+    pub payload_decode_seconds: f64,
+    pub cache_hits: usize,
+    pub cache_misses: usize,
+    pub index_bytes_read: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadEngine {
+    #[default]
+    None,
+    SessionIndex,
+    Datafusion,
+    Locator,
+}
+impl ReadEngine {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::SessionIndex => "session_index",
+            Self::Datafusion => "datafusion",
+            Self::Locator => "locator",
+        }
+    }
+}
+
+impl ReadProfile {
+    pub fn cache_state(&self) -> &'static str {
+        match (self.cache_hits > 0, self.cache_misses > 0) {
+            (true, false) => "warm",
+            (false, true) => "cold",
+            (true, true) => "mixed",
+            (false, false) => "empty",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+pub struct CacheStats {
+    pub bytes: usize,
+    pub entries: usize,
+    pub evictions: u64,
 }

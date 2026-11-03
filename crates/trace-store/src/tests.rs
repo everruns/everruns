@@ -58,8 +58,8 @@ async fn parquet_predicates_isolate_tenants_without_reading_payloads() {
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].summary.sequence, 3);
     let mut altered = manifest;
-    // Even if the metastore points an org at an index containing a different
-    // tenant, row-level predicates cannot expose the other tenant's events.
+    // Even if the metastore points an org at another tenant's index, loading
+    // rejects it before either DataFusion or direct lookup can see the rows.
     let root = prefix
         .clone()
         .join("org-2")
@@ -90,8 +90,7 @@ async fn parquet_predicates_isolate_tenants_without_reading_payloads() {
             None
         )
         .await
-        .unwrap()
-        .is_empty()
+        .is_err()
     );
 }
 

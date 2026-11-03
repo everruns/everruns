@@ -171,6 +171,34 @@ dual write is added to event emission: object-store failures cannot fail or slow
 an agent append through an added application call. Catch-up errors are visible
 through health, metrics and durable status, with bounded retries between cycles.
 
+## Serving path and measurement
+
+Ordinary single-session sequence pages use a planner-free ordered index path;
+payload lookups resolve locators directly. Filtered and cross-session queries
+retain DataFusion over validated Arrow tables. A process shares its execution
+infrastructure, while each query owns its table provider: there is no shared
+tenant table registry or mutable per-query object-store binding.
+
+Only checksum-verified immutable indexes are cached. Current manifest selection,
+source visibility, tenant scope and tombstones remain mandatory on every read.
+Cache identity includes immutable placement/segment information and checksum, so
+new exports/compaction cannot return an earlier snapshot. Explicit trace deletion
+evicts that instance's indexes for the session; other readers still revalidate
+live manifests. The cache never retains payload bodies and has
+bounded bytes/entries with LRU eviction. Cold I/O, concurrent decoded inputs,
+decoder cancellation and query results remain separately bounded. A cache hit
+does not establish authorization or justify relaxing deletion checks.
+
+Qualification runs the same bounded window through PostgreSQL, initial and
+repeat serving reads, and DataFusion, checking all results before a match. It
+records actual engine/cache state and separates catalog, index transfer/decode,
+planning, execution and payload I/O. Only executed stages enter their latency
+histograms. Cold versus warm distributions, cache pressure and observed process
+memory accompany latency evidence; configured limits are not measurements.
+The [operator guide](../../crates/trace-store/README.md) owns exact metrics,
+limits and the repeatable local sample. This optimization establishes no product
+read cutover or promised cold-object latency.
+
 ## Shadow comparison semantics
 
 A shadow result is meaningful only when both stores answer the same question.
@@ -243,12 +271,12 @@ same idempotent migrations through its normal migration path.
 
 ## Dependency boundary
 
-DataFusion's object-store API generation is isolated behind a read-only bridge
-that exposes only the selected manifest index keys. All actual cloud I/O uses
-the platform's patched backend generation; the older API dependency has cloud
-features disabled. The bridge preserves range/version/precondition reads and
-refuses mutations, preventing an older transitive S3/XML implementation from
-entering the companion. Advisory and real S3 protocol tests gate this boundary.
+All cloud I/O uses the platform's patched object-store backend. The query loader
+reads only indexes named by selected manifests, validates checksums/scope and
+passes in-memory Arrow tables to DataFusion. DataFusion has no cloud client or
+bucket enumeration capability. Its older transitive object-store dependency has
+cloud features disabled, preventing an older S3/XML implementation from entering
+the companion. Advisory and real S3 protocol tests gate this boundary.
 
 ## Validation and remaining boundaries
 

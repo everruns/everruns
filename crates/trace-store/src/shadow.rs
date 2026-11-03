@@ -1,6 +1,6 @@
 //! Synthetic shadow workload. Both stores answer the same sequence window; lag
 //! is recorded separately from parity. Product HTTP responses never depend on it.
-use crate::{EventQuery, EventRecord, EventSummary, Scope, TraceStore, catalog};
+use crate::{EventQuery, EventRecord, EventSummary, ReadProfile, Scope, TraceStore, catalog};
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -47,6 +47,14 @@ pub struct ShadowReport {
     pub source_payload_seconds: f64,
     pub trace_payload_seconds: f64,
     pub segments_scanned: usize,
+    #[serde(default)]
+    pub trace_profile: Option<ReadProfile>,
+    #[serde(default)]
+    pub warm_trace_profile: Option<ReadProfile>,
+    #[serde(default)]
+    pub datafusion_profile: Option<ReadProfile>,
+    #[serde(default)]
+    pub payload_profile: Option<ReadProfile>,
 }
 impl ShadowReport {
     fn empty(session_id: Uuid, outcome: ShadowOutcome) -> Self {
@@ -68,6 +76,10 @@ impl ShadowReport {
             source_payload_seconds: 0.0,
             trace_payload_seconds: 0.0,
             segments_scanned: 0,
+            trace_profile: None,
+            warm_trace_profile: None,
+            datafusion_profile: None,
+            payload_profile: None,
         }
     }
 }
@@ -180,23 +192,34 @@ impl TraceStore {
         report.window_through_sequence = window_through;
         let rows = rows.into_iter().take(limit).collect::<Vec<_>>();
         let trace_start = Instant::now();
-        let page = self
-            .query(
-                scope,
-                &EventQuery {
-                    session_id: Some(report.session_id),
-                    after_sequence: Some(report.after_sequence),
-                    through_sequence: Some(window_through),
-                    limit,
-                    ..Default::default()
-                },
-            )
-            .await?;
+        let event_query = EventQuery {
+            session_id: Some(report.session_id),
+            after_sequence: Some(report.after_sequence),
+            through_sequence: Some(window_through),
+            limit,
+            ..Default::default()
+        };
+        let page = self.query(scope, &event_query).await?;
         report.trace_seconds = trace_start.elapsed().as_secs_f64();
+        report.trace_profile = Some(page.profile.clone());
+        // Paired reads use exactly the same bounded window and predicates. A
+        // compaction or an uncached oversized index is labelled from real hits,
+        // never assumed to be warm simply because this is the second query.
+        let warm = self.query(scope, &event_query).await?;
+        report.warm_trace_profile = Some(warm.profile);
+        let analytical = self.query_datafusion(scope, &event_query).await?;
+        report.datafusion_profile = Some(analytical.profile);
         report.source_rows = rows.len();
         report.trace_rows = page.events.len();
         report.segments_scanned = page.segments_scanned;
-        report.summary_matches = Some(rows == page.events && source_has_more == page.has_more);
+        report.summary_matches = Some(
+            rows == page.events
+                && source_has_more == page.has_more
+                && rows == warm.events
+                && source_has_more == warm.has_more
+                && rows == analytical.events
+                && source_has_more == analytical.has_more,
+        );
         report.next_sequence = if source_has_more {
             rows.last().context("empty continuation")?.sequence
         } else {
@@ -211,10 +234,16 @@ impl TraceStore {
             everruns_durable::commit_transaction(tx).await?;
             report.source_payload_seconds = source_start.elapsed().as_secs_f64();
             let trace_start = Instant::now();
-            let copied = self
-                .read_event_at(scope, report.session_id, sample.event_id, sample.sequence)
+            let (copied, profile) = self
+                .read_event_profiled(
+                    scope,
+                    report.session_id,
+                    sample.event_id,
+                    Some(sample.sequence),
+                )
                 .await?;
             report.trace_payload_seconds = trace_start.elapsed().as_secs_f64();
+            report.payload_profile = Some(profile);
             report.payload_matches = Some(record.is_some() && record == copied);
         }
         report.outcome = if report.source_rows == 0 && report.trace_rows == 0 {

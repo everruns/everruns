@@ -91,10 +91,7 @@ pub(crate) async fn select_segments(
 
 pub(crate) async fn begin(pool: &PgPool) -> Result<Transaction<'static, Postgres>> {
     let mut tx = everruns_durable::begin_transaction(pool).await?;
-    sqlx::query("SET LOCAL lock_timeout = '5s'")
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("SET LOCAL statement_timeout = '20s'")
+    sqlx::raw_sql("SET LOCAL lock_timeout = '5s'; SET LOCAL statement_timeout = '20s'")
         .execute(&mut *tx)
         .await?;
     Ok(tx)

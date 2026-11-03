@@ -27,20 +27,23 @@ futures.workspace = true
 everruns-durable.workspace = true
 hex.workspace = true
 # Keep the AWS/XML implementation on the platform's patched generation. The
-# DataFusion API bridge has no cloud features or XML dependency.
+# DataFusion receives validated in-memory tables, never an S3 client.
 object_store.workspace = true
-object_store_df = { package = "object_store", version = "0.13.2", default-features = false }
 parquet = { version = "59.2", default-features = false, features = ["arrow", "zstd"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sqlx = { workspace = true, features = ["json"] }
 tokio.workspace = true
-url = "2"
 uuid.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Read the kernel's real clock-tick frequency for aggregate process CPU time.
+rustix = { version = "1", default-features = false, features = ["param"] }
 
 [dev-dependencies]
 tempfile.workspace = true
+url = "2"
 
 [lints]
 workspace = true

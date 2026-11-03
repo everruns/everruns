@@ -1,6 +1,6 @@
 //! Private, low-cardinality measurement surface. Never serialize driver errors,
 //! tenant/session identifiers, object paths, payloads or credentials into metrics.
-use crate::{ShadowOutcome, ShadowReport};
+use crate::{CacheStats, ReadProfile, ShadowOutcome, ShadowReport};
 use axum::{
     Router,
     extract::State,
@@ -8,14 +8,18 @@ use axum::{
     routing::get,
 };
 use std::{
+    collections::BTreeMap,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
-const BOUNDS: [f64; 10] = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 15.0, 60.0];
+const BOUNDS: [f64; 20] = [
+    0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.025, 0.05, 0.075, 0.1,
+    0.15, 0.2, 0.5, 1.0, 5.0, 15.0, 60.0,
+];
 const KINDS: [&str; 4] = [
     "postgres_summary",
-    "datafusion_summary",
+    "trace_summary",
     "postgres_payload",
     "object_payload",
 ];
@@ -29,7 +33,7 @@ const OUTCOMES: [ShadowOutcome; 6] = [
 ];
 #[derive(Default)]
 struct Histogram {
-    buckets: [u64; 10],
+    buckets: [u64; 20],
     count: u64,
     sum: f64,
 }
@@ -63,6 +67,12 @@ struct Measurements {
     backfill_pending: i64,
     backfill_failed: i64,
     unhealthy_checks: i64,
+    reads: BTreeMap<(&'static str, &'static str, &'static str), Histogram>,
+    stages: BTreeMap<(&'static str, &'static str, &'static str), Histogram>,
+    cache: CacheStats,
+    cache_hits: u64,
+    cache_misses: u64,
+    index_bytes_read: u64,
 }
 #[derive(Clone, Default)]
 pub struct Monitor {
@@ -85,6 +95,7 @@ impl Monitor {
         m.backfill_pending = cycle.backfill_pending;
         m.backfill_failed = cycle.backfill_failed;
         m.unhealthy_checks = cycle.unhealthy_checks;
+        m.cache = cycle.cache;
         for report in &cycle.comparisons {
             Self::observe(&mut m, report);
         }
@@ -106,6 +117,42 @@ impl Monitor {
             report.trace_payload_seconds,
         ]) {
             h.observe(t);
+        }
+        for (kind, profile) in [
+            ("summary", &report.trace_profile),
+            ("summary", &report.warm_trace_profile),
+            ("summary", &report.datafusion_profile),
+            ("payload", &report.payload_profile),
+        ] {
+            if let Some(profile) = profile {
+                Self::profile(m, kind, profile);
+            }
+        }
+    }
+    fn profile(m: &mut Measurements, kind: &'static str, profile: &ReadProfile) {
+        m.reads
+            .entry((kind, profile.engine.label(), profile.cache_state()))
+            .or_default()
+            .observe(profile.total_seconds);
+        m.cache_hits += profile.cache_hits as u64;
+        m.cache_misses += profile.cache_misses as u64;
+        m.index_bytes_read += profile.index_bytes_read;
+        for (stage, seconds) in [
+            ("catalog", profile.catalog_seconds),
+            ("index_io", profile.index_io_seconds),
+            ("index_decode", profile.index_decode_seconds),
+            ("planning", profile.planning_seconds),
+            ("execution", profile.execution_seconds),
+            ("payload_io", profile.payload_io_seconds),
+            ("payload_decode", profile.payload_decode_seconds),
+        ] {
+            // Unexecuted stages never become artificial zero-latency samples.
+            if seconds > 0.0 {
+                m.stages
+                    .entry((kind, profile.engine.label(), stage))
+                    .or_default()
+                    .observe(seconds);
+            }
         }
     }
     pub fn ready(&self, max_age: Duration) -> bool {
@@ -131,6 +178,56 @@ impl Monitor {
         scalar("unhealthy_checks", "gauge", m.unhealthy_checks.to_string());
         scalar("index_bytes", "gauge", m.index_bytes.to_string());
         scalar("payload_bytes", "gauge", m.payload_bytes.to_string());
+        scalar("cache_bytes", "gauge", m.cache.bytes.to_string());
+        scalar("cache_entries", "gauge", m.cache.entries.to_string());
+        scalar(
+            "cache_evictions_total",
+            "counter",
+            m.cache.evictions.to_string(),
+        );
+        scalar("cache_hits_total", "counter", m.cache_hits.to_string());
+        scalar("cache_misses_total", "counter", m.cache_misses.to_string());
+        scalar(
+            "index_bytes_read_total",
+            "counter",
+            m.index_bytes_read.to_string(),
+        );
+        // The optional companion runs on Linux; report observed RSS rather
+        // than treating a configured memory limit as a measurement.
+        if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+            for (field, metric) in [
+                ("VmRSS:", "process_resident_memory_bytes"),
+                ("VmHWM:", "process_peak_resident_memory_bytes"),
+            ] {
+                if let Some(kib) = status.lines().find_map(|line| {
+                    line.strip_prefix(field)
+                        .and_then(|value| value.split_whitespace().next())
+                        .and_then(|value| value.parse::<u64>().ok())
+                }) {
+                    scalar(metric, "gauge", kib.saturating_mul(1024).to_string());
+                }
+            }
+        }
+        #[cfg(target_os = "linux")]
+        if let Ok(stat) = std::fs::read_to_string("/proc/self/stat") {
+            // /proc/PID/stat aggregates the process's threads. Field 2 may
+            // contain spaces/parentheses; fields after its final ')' start at 3.
+            if let Some((_, fields)) = stat.rsplit_once(')') {
+                let mut fields = fields.split_whitespace().skip(11);
+                let user = fields.next().and_then(|v| v.parse::<u64>().ok());
+                let system = fields.next().and_then(|v| v.parse::<u64>().ok());
+                let ticks = rustix::param::clock_ticks_per_second();
+                if let Some(total) = user.zip(system).and_then(|(u, s)| u.checked_add(s))
+                    && ticks > 0
+                {
+                    scalar(
+                        "process_cpu_seconds_total",
+                        "counter",
+                        (total as f64 / ticks as f64).to_string(),
+                    );
+                }
+            }
+        }
         scalar(
             "backfill_pending_sessions",
             "gauge",
@@ -155,12 +252,24 @@ impl Monitor {
                 outcome.label()
             ));
         }
-        out.push_str("# TYPE everruns_trace_store_query_seconds histogram\n");
         for (kind, h) in KINDS.iter().zip(&m.latencies) {
-            for (bound, count) in BOUNDS.iter().zip(h.buckets) {
-                out.push_str(&format!("everruns_trace_store_query_seconds_bucket{{kind=\"{kind}\",le=\"{bound}\"}} {count}\n"));
-            }
-            out.push_str(&format!("everruns_trace_store_query_seconds_bucket{{kind=\"{kind}\",le=\"+Inf\"}} {}\neverruns_trace_store_query_seconds_count{{kind=\"{kind}\"}} {}\neverruns_trace_store_query_seconds_sum{{kind=\"{kind}\"}} {}\n",h.count,h.count,h.sum));
+            histogram(&mut out, "query_seconds", &format!("kind=\"{kind}\""), h);
+        }
+        for ((kind, engine, cache), h) in &m.reads {
+            histogram(
+                &mut out,
+                "read_seconds",
+                &format!("kind=\"{kind}\",engine=\"{engine}\",cache=\"{cache}\""),
+                h,
+            );
+        }
+        for ((kind, engine, stage), h) in &m.stages {
+            histogram(
+                &mut out,
+                "stage_seconds",
+                &format!("kind=\"{kind}\",engine=\"{engine}\",stage=\"{stage}\""),
+                h,
+            );
         }
         out
     }
@@ -192,4 +301,18 @@ impl Monitor {
             )
             .with_state((self.clone(), max_age))
     }
+}
+
+fn histogram(out: &mut String, name: &str, labels: &str, h: &Histogram) {
+    // One TYPE declaration per metric family, even when it has many series.
+    let declaration = format!("# TYPE everruns_trace_store_{name} histogram\n");
+    if !out.contains(&declaration) {
+        out.push_str(&declaration);
+    }
+    for (bound, count) in BOUNDS.iter().zip(h.buckets) {
+        out.push_str(&format!(
+            "everruns_trace_store_{name}_bucket{{{labels},le=\"{bound}\"}} {count}\n"
+        ));
+    }
+    out.push_str(&format!("everruns_trace_store_{name}_bucket{{{labels},le=\"+Inf\"}} {}\neverruns_trace_store_{name}_count{{{labels}}} {}\neverruns_trace_store_{name}_sum{{{labels}}} {}\n", h.count, h.count, h.sum));
 }
