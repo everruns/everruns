@@ -24,6 +24,7 @@ import { getDisplayName } from "@/lib/entity-lifecycle";
 const SESSION_TAB_LABELS: Record<SessionNavKey, string> = {
   trace: "Trace",
   approvals: "Approvals",
+  agents: "Agents",
   work: "Work",
   events: "Events",
   files: "Files",
@@ -63,6 +64,7 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
     if (pathname.endsWith("/files")) return "files";
     if (pathname.endsWith("/events")) return "events";
     if (pathname.endsWith("/work")) return "work";
+    if (pathname.endsWith("/agents")) return "agents";
     if (pathname.endsWith("/cost")) return "cost";
     if (pathname.endsWith("/approvals")) return "approvals";
     return "trace"; // Default while the base route and old tabs redirect.
@@ -81,6 +83,7 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
     eventCount: session?.event_count,
     fileCount: session?.file_count,
     activeScheduleCount: session?.active_schedule_count,
+    inRun: !!session?.parent_session_id,
   });
 
   // Resolve the session-level provider trace link here, where org/provider

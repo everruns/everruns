@@ -202,19 +202,42 @@ session creation), so the same agent on its own has nothing to talk in.
 
 Code: `crates/capabilities/src/capabilities/run_conversation.rs`.
 
-## Costs (part 3)
+## Whole run
 
-Costs "By agent" stays as is. Usage records gain run attribution (the agent
-that started the run), a "Runs that use other agents" card shows whole-run
-cost, a usage policy can limit a whole run, and the routing agent can cap each
-hand-off. Today an agent's usage policy does not cover its members' spend; only
-the session-level root pool is shared.
+A run is the first session and every session started under it
+(`root_session_id`). `GET /v1/sessions/{id}/run` answers for any session of the
+run: each agent session with its agent, status, turns (from the trace index)
+and spend, the run's total, the first session's share, and how many requests
+wait on the person. It is computed on read; there is no new storage
+(`crates/server/src/domains/session_cost/run.rs`).
 
-## Traces (part 3)
+- **Session Agents tab.** Shown on a session that can hand work to other
+  agents (`agent_handoffs` feature) or that another agent handed work to. Run
+  cost, agents in the run, requests waiting on the person, and every hand-off
+  with status, time and cost; a row opens that agent's session. Read-only: the
+  session page never asks the person anything.
+- **Trace "Whole run".** When the run has more than one session, Trace gets
+  "This session / Whole run". Whole run adds a timeline above the session's own
+  turns: one lane per agent session, bars are turns, a dashed line marks when a
+  session was handed its work; a bar opens that session's trace.
+- **Cost "Whole run".** The same switch on the Cost tab shows the run's spend
+  split by agent session.
+- **Costs "Runs that use other agents".** A card under By agent on the
+  organization's Costs page (`runs_with_agents` on `GET /v1/costs/summary`):
+  for each agent that started runs where it handed work to others, the whole
+  cost of those runs and who spent it, marked "Created here" (an agent owned by
+  the lead) or "Linked". Each usage record counts once, under the run its
+  session belongs to; the By agent card still shows every agent's own spend,
+  so nothing is counted twice.
 
-A hand-off step shows its outcome, a member's session shows "Woken by", and the
-run view lays out every agent's session as lanes on one timeline with a
-breadcrumb back to the first session. The Cost tab can show the whole run.
+Visibility: anyone who can view one session of the run sees every agent's
+status, timing and spend in it, not their conversations.
+
+Not yet: a usage policy that limits a whole run and a per-hand-off spend cap
+(today only the session-level root pool is shared, and an agent's usage policy
+does not cover its members' spend); the hand-off step's outcome and "Woken by"
+in the trace step list; a breadcrumb from a member's trace back to the step
+that started it.
 
 ## Framework
 

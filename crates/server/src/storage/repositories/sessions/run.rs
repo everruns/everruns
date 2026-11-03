@@ -45,4 +45,32 @@ impl Database {
                 .await?;
         Ok(root.flatten().map(SessionId::from_uuid))
     }
+
+    /// The first session `root` and every session started under it, first
+    /// session first, then by creation. At most `limit` rows.
+    pub async fn list_run_sessions(
+        &self,
+        org_id: i64,
+        root: SessionId,
+        limit: i64,
+    ) -> Result<Vec<SessionRow>> {
+        let sql = format!(
+            r#"
+            SELECT {SESSION_COLUMNS}, root_session_id
+            FROM sessions
+            WHERE org_id = $1
+              AND (id = $2 OR root_session_id = $2)
+            ORDER BY (id = $2) DESC, created_at ASC
+            LIMIT $3
+            "#,
+        );
+        // Only the static column projection is interpolated; no caller data.
+        let rows = sqlx::query_as::<_, SessionRow>(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(org_id)
+            .bind(root)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
 }

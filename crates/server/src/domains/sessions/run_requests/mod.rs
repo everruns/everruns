@@ -163,6 +163,26 @@ async fn last_tool_call_requested(
         .pop())
 }
 
+/// How many person-facing requests `sessions` wait on, each read from its last
+/// `tool.call_requested`. For the whole-run view, which counts the first
+/// session's own requests too.
+pub(crate) async fn count_person_requests(
+    db: &StorageBackend,
+    sessions: &[SessionId],
+) -> anyhow::Result<usize> {
+    let mut waiting = Vec::with_capacity(sessions.len());
+    for session_id in sessions {
+        if let Some(requested) = last_tool_call_requested(db, *session_id).await? {
+            waiting.push(WaitingAgent {
+                session_id: *session_id,
+                agent: None,
+                requested,
+            });
+        }
+    }
+    Ok(run_requests(&waiting).len())
+}
+
 /// The person-facing requests of the other agents in the run.
 pub(crate) fn run_requests(waiting: &[WaitingAgent]) -> Vec<RunRequest> {
     let mut requests = Vec::new();

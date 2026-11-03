@@ -13,7 +13,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getCostSummary, type CostSummary, type CostSummaryLine } from "@/lib/api/costs";
+import {
+  getCostSummary,
+  type CostSummary,
+  type CostSummaryLine,
+  type RunsWithAgentsLine,
+} from "@/lib/api/costs";
 import { useUiTranslations } from "@/providers/locale-provider";
 
 function Amount({ line }: { line: CostSummaryLine }) {
@@ -81,6 +86,104 @@ function SectionTable({
           </TableBody>
         </Table>
       )}
+    </section>
+  );
+}
+
+/**
+ * Runs where an agent handed work to other agents: each leading agent with the
+ * whole cost of its runs and who spent it. Every amount is also under By
+ * agent, for the agent that spent it, so nothing is counted twice; an agent
+ * working for two leads shows under each (knowledge/runtime-resources/agents-using-agents.md).
+ */
+export function RunsWithAgentsCard({
+  lines,
+  note,
+}: {
+  lines: RunsWithAgentsLine[];
+  note?: string;
+}) {
+  const ui = useUiTranslations();
+  const shared = new Map<string, { name: string; leads: { lead: string; cost: number }[] }>();
+  for (const line of lines) {
+    for (const share of line.by_agent) {
+      if (share.relation === "lead" || !share.agent_id) continue;
+      const entry = shared.get(share.agent_id) ?? {
+        name: share.agent_name ?? share.agent_id,
+        leads: [],
+      };
+      entry.leads.push({ lead: line.agent_name, cost: share.cost_usd });
+      shared.set(share.agent_id, entry);
+    }
+  }
+  const twice = [...shared.values()].filter((entry) => entry.leads.length > 1);
+  return (
+    <section className="border bg-card">
+      <div className="flex items-baseline justify-between gap-3 border-b px-4 py-3">
+        <h2 className="text-sm font-semibold">{ui("Runs that use other agents")}</h2>
+        {note ? <span className="text-xs text-muted-foreground">{note}</span> : null}
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{ui("Agent")}</TableHead>
+            <TableHead className="text-right">{ui("Cost")}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {lines.flatMap((line) => [
+            <TableRow key={line.agent_id}>
+              <TableCell>
+                <div className="font-medium">{line.agent_name}</div>
+                <div className="text-xs text-muted-foreground">
+                  {line.runs === 1
+                    ? ui("1 run")
+                    : ui("{count} runs", { count: String(line.runs) })}
+                </div>
+              </TableCell>
+              <TableCell className="text-right font-semibold tabular-nums">
+                {formatUsd(line.cost_usd)}
+              </TableCell>
+            </TableRow>,
+            ...line.by_agent.map((share) => (
+              <TableRow key={`${line.agent_id}:${share.agent_id ?? "none"}`}>
+                <TableCell className="pl-8">
+                  {share.relation === "lead"
+                    ? ui("{name} itself", { name: line.agent_name })
+                    : (share.agent_name ?? ui("No agent"))}
+                  {share.relation === "created_here" ? (
+                    <span className="ml-2 border px-1.5 py-0.5 text-xs text-muted-foreground">
+                      {ui("Created here")}
+                    </span>
+                  ) : share.relation === "linked" && share.agent_id ? (
+                    <span className="ml-2 border border-amber-500/40 px-1.5 py-0.5 text-xs text-amber-700 dark:text-amber-300">
+                      {ui("Linked")}
+                    </span>
+                  ) : null}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatUsd(share.cost_usd)}
+                </TableCell>
+              </TableRow>
+            )),
+          ])}
+        </TableBody>
+      </Table>
+      {twice.length > 0 ? (
+        <p className="border-t px-4 py-3 text-xs text-muted-foreground">
+          {twice
+            .map((entry) =>
+              ui("{name} worked for {count} agents: {parts}. By agent shows it as one row.", {
+                name: entry.name,
+                count: String(entry.leads.length),
+                parts: entry.leads
+                  .map((part) => `${formatUsd(part.cost)} ${ui("for")} ${part.lead}`)
+                  .join(", "),
+              }),
+            )
+            .join(" ")}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -164,6 +267,10 @@ export function CostsOverviewView({ summary }: { summary: CostSummary }) {
           ])}
         />
       </div>
+
+      {summary.runs_with_agents?.length ? (
+        <RunsWithAgentsCard lines={summary.runs_with_agents} note={month} />
+      ) : null}
 
       <SectionTable
         title={ui("By who started the work")}

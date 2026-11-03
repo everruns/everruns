@@ -381,4 +381,58 @@ mod reads {
         assert_eq!(cost.sources[1].kind, super::USER_SOURCE);
         assert_eq!(cost.turns.len(), 2);
     }
+
+    /// A run is the first session and every session started under it, read
+    /// from any of them, with turns from the trace index and spend per turn.
+    #[tokio::test]
+    async fn a_run_is_read_from_any_of_its_sessions() {
+        let db = StorageBackend::test_database();
+        let org = everruns_core::DEFAULT_ORG_ID;
+        let root = db.create_test_session().await;
+        let mut child = crate::storage::test_database::test_session_row(org);
+        child.parent_session_id = Some(root);
+        let child = db.create_session(child).await.unwrap().id;
+        let other = db.create_test_session().await;
+
+        let (handed_off, rows) = turn(child, None, true);
+        db.create_events(rows).await.unwrap();
+        sqlx::query(
+            "INSERT INTO llm_generations (org_id, session_id, turn_id, model, provider, \
+                input_tokens, output_tokens, cache_read_tokens, actual_cost_usd) \
+             VALUES ($1, $2, $3, 'm', 'openrouter', 100, 10, 0, 0.25), \
+                    ($1, $2, $3, 'm', 'openrouter', 100, 10, 0, 0.5)",
+        )
+        .bind(org)
+        .bind(child.uuid())
+        .bind(handed_off.uuid())
+        .execute(db.database().pool())
+        .await
+        .unwrap();
+
+        // The session itself comes first and carries the run's root.
+        let first = db.list_run_sessions(org, child, 1).await.unwrap();
+        assert_eq!(first[0].id, child);
+        assert_eq!(first[0].root_session_id, Some(root));
+
+        let sessions = db.list_run_sessions(org, root, 10).await.unwrap();
+        let ids: Vec<_> = sessions.iter().map(|s| s.id).collect();
+        assert_eq!(ids, [root, child], "first session first, never another run");
+        assert!(!ids.contains(&other));
+        assert!(db.list_run_sessions(org + 1, root, 10).await.unwrap().is_empty());
+
+        let uuids: Vec<_> = ids.iter().map(|id| id.uuid()).collect();
+        for id in &uuids {
+            db.database().catch_up_session_trace_fully(*id).await.unwrap();
+        }
+        let turns = db.run_turns(&uuids, 10).await.unwrap();
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0].session_id, child.uuid());
+        assert!(turns[0].ended_at.is_some());
+
+        let costs = db.run_turn_costs(org, &uuids).await.unwrap();
+        assert_eq!(costs.len(), 1);
+        assert_eq!(costs[0].turn_id, Some(handed_off.uuid()));
+        assert!((costs[0].cost_usd - 0.75).abs() < 1e-9);
+        assert!(db.run_turn_costs(org + 1, &uuids).await.unwrap().is_empty());
+    }
 }
