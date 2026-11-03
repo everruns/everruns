@@ -132,6 +132,39 @@ impl Database {
         .unwrap_or(0))
     }
 
+    /// Which of `partitions` (with their cursors) have a committed event of
+    /// `event_types` (every type when empty) to deliver. One statement for
+    /// all of a replica's partitions, so an idle replica costs one cheap read
+    /// per consumer per poll instead of one per partition.
+    pub(crate) async fn feed_probe(
+        &self,
+        partitions: &[(u8, i64)],
+        event_types: &[String],
+    ) -> Result<Vec<u8>> {
+        let parts: Vec<i32> = partitions.iter().map(|(p, _)| *p as i32).collect();
+        let cursors: Vec<String> = partitions.iter().map(|(_, c)| c.to_string()).collect();
+        let ready: Vec<i32> = sqlx::query_scalar(
+            "WITH point AS MATERIALIZED ( \
+                 SELECT pg_snapshot_xmin(pg_current_snapshot()) AS hi \
+             ) \
+             SELECT p.part FROM point, UNNEST($1::int[], $2::text[]) AS p(part, cur) \
+             WHERE EXISTS ( \
+                 SELECT 1 FROM events ev \
+                 WHERE (get_byte(uuid_send(ev.session_id), 15) % 8) = p.part \
+                   AND ev.xact_id IS NOT NULL \
+                   AND ev.xact_id >= p.cur::xid8 \
+                   AND ev.xact_id < point.hi \
+                   AND (cardinality($3::text[]) = 0 OR ev.event_type = ANY($3)) \
+             )",
+        )
+        .bind(&parts)
+        .bind(&cursors)
+        .bind(event_types)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(ready.into_iter().map(|p| p as u8).collect())
+    }
+
     /// Read up to `limit` committed events of `event_types` (every type when
     /// empty) from `partition` at `cursor`, plus the out-of-order ones their
     /// sessions need first.
@@ -523,6 +556,37 @@ mod tests {
                 .await
                 .unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn a_probe_names_only_partitions_with_something_to_deliver() {
+        let db = StorageBackend::test_database();
+        let session = db.create_test_session().await.uuid();
+        let partition = feed_partition(session);
+        let other = (partition + 1) % FEED_PARTITIONS;
+        let mut conn = connect(&db).await;
+        insert(&mut conn, session, 1).await;
+        let cursor = db.feed_cursor("test", partition).await.unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            let ready = db
+                .feed_probe(&[(partition, cursor), (other, i64::MAX / 2)], &types())
+                .await
+                .unwrap();
+            assert!(!ready.contains(&other), "nothing above the other cursor");
+            if ready == vec![partition] {
+                break;
+            }
+            // The read point is cluster-wide: other tests' transactions can
+            // hold it back for a moment.
+            assert!(std::time::Instant::now() < deadline, "never reported");
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let ready = db
+            .feed_probe(&[(partition, cursor)], &["no.such.type".to_string()])
+            .await
+            .unwrap();
+        assert!(ready.is_empty(), "other event types do not count");
     }
 
     #[tokio::test]

@@ -185,7 +185,7 @@ impl EventService {
     /// Wake the feed for a stored event's partition on this replica.
     fn wake_feed(&self, event: &Event) {
         if let Some(feed) = &self.feed {
-            feed.wake(event.session_id.uuid());
+            feed.wake(event.session_id.uuid(), &event.event_type);
         }
     }
 

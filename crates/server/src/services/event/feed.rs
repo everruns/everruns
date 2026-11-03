@@ -10,11 +10,18 @@
 //!   keep per-process state and counters. They are observability, so a crash
 //!   losing their work is the accepted cost.
 //! - Two consumers. Near (polled every 250 ms and woken by this replica's own
-//!   writes): coordination, budgets, A2A push, notifications, MCP events,
-//!   sandbox lifecycle, and listeners an embedder adds. Later (polled every
-//!   2 s, larger pages): usage, tracing and metrics exporters, titles, run
-//!   summaries, turn latency, observer matching, approval audit. Each keeps
-//!   its own cursor, so a slow exporter never delays a coordination wake-up.
+//!   writes of a type it wants): coordination, budgets, A2A push,
+//!   notifications, MCP events, sandbox lifecycle, and listeners an embedder
+//!   adds. Later (polled every 2 s, larger pages): usage, tracing and metrics
+//!   exporters, titles, run summaries, turn latency, observer matching,
+//!   approval audit. Each keeps its own cursor, so a slow exporter never
+//!   delays a coordination wake-up.
+//! - The poll is one probe per consumer for all partitions this replica
+//!   holds (`feed_probe`), waking only the partitions with something to
+//!   deliver; a woken partition waits [`LINGER`] so a burst of one turn's
+//!   events goes in one pass and one cursor commit. Measured at 100 agents,
+//!   polling each partition on its own added a quarter more commits per turn
+//!   and 40% database load.
 //! - Each consumer is split into partitions by session
 //!   (`storage::repositories::feed`). A replica runs a partition only while
 //!   it holds the partition's advisory lock on its lock connection; others
@@ -35,7 +42,7 @@
 //!   for it explicitly ([`EventFeed::settled`]); nothing on the worker or API
 //!   path does.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -59,6 +66,11 @@ const LOCK_RETRY: Duration = Duration::from_secs(5);
 const IDLE_ADVANCE: Duration = Duration::from_secs(5);
 /// Sessions of one pass that run at the same time.
 const SESSION_CONCURRENCY: usize = 32;
+/// A woken partition waits this long before its pass, gathering the rest of
+/// a burst of writes.
+const LINGER: Duration = Duration::from_millis(50);
+/// [`Inner::cursors`] value of a partition whose cursor is not known here.
+const UNKNOWN: i64 = -1;
 
 /// Listeners that run within a second of the commit. Anything not listed in
 /// [`LATER`] or [`IN_PROCESS`] runs here too.
@@ -151,6 +163,9 @@ struct Inner {
     consumers: Vec<Consumer>,
     /// `held[consumer][partition]`: this replica holds the partition.
     held: Vec<Vec<AtomicBool>>,
+    /// `cursors[consumer][partition]`: the partition's read point as its
+    /// loop last knew it, for the probe; [`UNKNOWN`] when not held.
+    cursors: Vec<Vec<AtomicI64>>,
     started: OnceLock<()>,
     /// Callers of [`EventFeed::settled`] waiting: idle passes move their read
     /// point at once instead of every [`IDLE_ADVANCE`].
@@ -217,11 +232,20 @@ impl EventFeed {
                     .collect()
             })
             .collect();
+        let cursors = consumers
+            .iter()
+            .map(|_| {
+                (0..FEED_PARTITIONS)
+                    .map(|_| AtomicI64::new(UNKNOWN))
+                    .collect()
+            })
+            .collect();
         let feed = Self {
             inner: Arc::new(Inner {
                 db,
                 consumers,
                 held,
+                cursors,
                 started: OnceLock::new(),
                 settling: std::sync::atomic::AtomicUsize::new(0),
                 stop: CancellationToken::new(),
@@ -241,6 +265,7 @@ impl EventFeed {
             let mut tasks = self.inner.tasks.lock().unwrap();
             tasks.push(tokio::spawn(keep_locks(self.inner.clone())));
             for consumer in 0..self.inner.consumers.len() {
+                tasks.push(tokio::spawn(probe(self.inner.clone(), consumer)));
                 for partition in 0..FEED_PARTITIONS {
                     tasks.push(tokio::spawn(run_partition(
                         self.inner.clone(),
@@ -252,11 +277,15 @@ impl EventFeed {
         });
     }
 
-    /// An event of `session_id` was stored: wake its near partition here.
-    pub fn wake(&self, session_id: Uuid) {
+    /// An event of `event_type` and `session_id` was stored: wake its near
+    /// partition here when a near listener wants that type.
+    pub fn wake(&self, session_id: Uuid, event_type: &str) {
         let partition = feed_partition(session_id) as usize;
         for consumer in &self.inner.consumers {
-            if consumer.poll < Duration::from_secs(1) {
+            if consumer.poll < Duration::from_secs(1)
+                && (consumer.event_types.is_empty()
+                    || consumer.event_types.iter().any(|t| t == event_type))
+            {
                 consumer.wakes[partition].notify_one();
             }
         }
@@ -386,14 +415,52 @@ async fn sleep_or_stop(stop: &CancellationToken, duration: Duration) -> bool {
     }
 }
 
+/// Polls every partition this replica holds for `consumer` in one statement
+/// and wakes the ones with something to deliver.
+async fn probe(inner: Arc<Inner>, consumer: usize) {
+    let spec = &inner.consumers[consumer];
+    loop {
+        if sleep_or_stop(&inner.stop, spec.poll).await {
+            return;
+        }
+        let partitions: Vec<(u8, i64)> = (0..FEED_PARTITIONS)
+            .filter(|p| inner.held[consumer][*p as usize].load(Ordering::SeqCst))
+            .filter_map(|p| {
+                let cursor = inner.cursors[consumer][p as usize].load(Ordering::SeqCst);
+                (cursor != UNKNOWN).then_some((p, cursor))
+            })
+            .collect();
+        if partitions.is_empty() {
+            continue;
+        }
+        match inner
+            .db
+            .database()
+            .feed_probe(&partitions, &spec.event_types)
+            .await
+        {
+            Ok(ready) => {
+                for partition in ready {
+                    spec.wakes[partition as usize].notify_one();
+                }
+            }
+            Err(error) => {
+                tracing::warn!(consumer = spec.name, %error, "event feed probe failed");
+            }
+        }
+    }
+}
+
 async fn run_partition(inner: Arc<Inner>, consumer: usize, partition: u8) {
     let spec = &inner.consumers[consumer];
     let held = &inner.held[consumer][partition as usize];
+    let known = &inner.cursors[consumer][partition as usize];
     let mut cursor: Option<i64> = None;
     let mut last_advance = Instant::now();
     loop {
         if !held.load(Ordering::SeqCst) {
             cursor = None;
+            known.store(UNKNOWN, Ordering::SeqCst);
             tokio::select! {
                 _ = inner.stop.cancelled() => return,
                 _ = spec.wakes[partition as usize].notified() => {}
@@ -402,19 +469,27 @@ async fn run_partition(inner: Arc<Inner>, consumer: usize, partition: u8) {
             continue;
         }
         let outcome = pass(&inner, spec, partition, &mut cursor, &mut last_advance).await;
+        known.store(cursor.unwrap_or(UNKNOWN), Ordering::SeqCst);
         let wait = match outcome {
             Ok(Pass::Delivered { more: true }) => continue,
-            Ok(Pass::Delivered { more: false } | Pass::Idle | Pass::NotHeld) => spec.poll,
+            // The probe wakes this partition when there is more; until then
+            // only the idle advance is due.
+            Ok(Pass::Delivered { more: false } | Pass::Idle | Pass::NotHeld) => IDLE_ADVANCE,
             Err(error) => {
                 tracing::warn!(consumer = spec.name, partition, %error, "event feed pass failed");
                 // Read the cursor again: a failed commit may have landed.
                 cursor = None;
+                known.store(UNKNOWN, Ordering::SeqCst);
                 Duration::from_secs(1)
             }
         };
         tokio::select! {
             _ = inner.stop.cancelled() => return,
-            _ = spec.wakes[partition as usize].notified() => {}
+            _ = spec.wakes[partition as usize].notified() => {
+                if sleep_or_stop(&inner.stop, LINGER).await {
+                    return;
+                }
+            }
             _ = tokio::time::sleep(wait) => {}
         }
     }

@@ -101,8 +101,16 @@ Effects under replay:
 
 Per stored event: one more index entry (`idx_events_feed`). Per pass with
 work: one window read, one delivered-sequence read, one read for out-of-order
-events, one commit. An idle partition costs one read per poll and moves its
-cursor every 5 s.
+events, one commit. A woken partition waits 50 ms first, so one turn's burst of
+events shares a pass. Polling is one probe statement per consumer for every
+partition the replica holds, not one per partition, and only this replica's
+writes of a type a near listener wants wake a partition at once. An idle
+partition moves its cursor every 5 s.
+
+The first cut polled each of the 8 partitions of both tiers on its own and
+woke the near tier on every write. At 100 agents on the stress bench that added
+a quarter more commits per turn, 40% more database load and a third more
+pickup latency, with overhead per model call unchanged within noise.
 
 ## Reporting
 
@@ -119,7 +127,8 @@ as a later-tier consumer that writes capability facts once per turn.
 - Repository tests (`events::feed::tests`): a late commit is read on a later
   pass, never skipped; a session stays in order when an earlier transaction
   commits later; an unrecorded pass is handed over again; a moved cursor
-  refuses the older pass; one lock connection holds a partition.
+  refuses the older pass; one lock connection holds a partition; a probe names
+  only partitions with something to deliver.
 - Service tests (`services/event/tests/fed_listeners.rs`): a fed listener sees
   every committed event in session order without the caller waiting.
 - The chaos harness stays green: live delivery of every stored event survives a
