@@ -16591,6 +16591,140 @@
         }
       }
     },
+    "/v1/health-issues/{issue_id}/actions": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "List actions on a finding",
+        "description": "List what Everruns or a person did about a finding, such as pausing a repeating schedule, and what the organization's self-healing policy offers to do now.",
+        "operationId": "list_finding_actions",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingActions"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Act on a finding",
+        "description": "Take an action the organization's self-healing policy offers on a finding, such as pausing a schedule whose runs keep ending the same way. It is recorded on the finding and can be undone.",
+        "operationId": "take_finding_action",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TakeFindingActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingActions"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/health-issues/{issue_id}/actions/{action_id}/undo": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Undo an action on a finding",
+        "description": "Undo an action taken on a finding, automatic or not. Undoing a pause resumes the schedule and starts its repeated-outcome count over.",
+        "operationId": "undo_finding_action",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingActions"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/health-issues/{issue_id}/check": {
       "post": {
         "tags": [
@@ -38986,6 +39120,24 @@
           }
         }
       },
+      "AvailableFindingAction": {
+        "type": "object",
+        "description": "An action a person can take on a finding now.",
+        "required": [
+          "kind",
+          "target_id"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "What it would do: `pause_schedule`."
+          },
+          "target_id": {
+            "type": "string",
+            "description": "What it would act on, by public id."
+          }
+        }
+      },
       "AvatarPreset": {
         "type": "object",
         "description": "Presentation and search metadata for one curated agent avatar.",
@@ -49839,6 +49991,88 @@
           }
         }
       },
+      "FindingAction": {
+        "type": "object",
+        "description": "An action taken on a finding.",
+        "required": [
+          "id",
+          "kind",
+          "target_id",
+          "automatic",
+          "current",
+          "created_at"
+        ],
+        "properties": {
+          "automatic": {
+            "type": "boolean",
+            "description": "Whether Everruns took it on its own under the org's policy."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was taken."
+          },
+          "current": {
+            "type": "boolean",
+            "description": "The finding episode it belongs to is the current one."
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed public identifier (`fact_…`)."
+          },
+          "kind": {
+            "type": "string",
+            "description": "What was done: `pause_schedule`."
+          },
+          "target_id": {
+            "type": "string",
+            "description": "What it acted on, by public id (a schedule's `sched_…`)."
+          },
+          "undone_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it was undone, if it was."
+          }
+        }
+      },
+      "FindingActions": {
+        "type": "object",
+        "description": "What has been done about a finding, and what can be.",
+        "required": [
+          "actions",
+          "available"
+        ],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FindingAction"
+            },
+            "description": "Actions taken, newest first."
+          },
+          "available": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailableFindingAction"
+            },
+            "description": "Actions the org's policy offers for a person to take now."
+          },
+          "mode": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SelfHealingMode",
+                "description": "The org's policy for this kind of finding, when it has one."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "FindingCategory": {
         "type": "string",
         "enum": [
@@ -55584,6 +55818,7 @@
                 "system_decisions",
                 "web_search_defaults",
                 "background_limits",
+                "self_healing",
                 "created_at",
                 "updated_at"
               ],
@@ -55658,6 +55893,10 @@
                   ],
                   "format": "date-time",
                   "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+                },
+                "self_healing": {
+                  "$ref": "#/components/schemas/SelfHealingPolicy",
+                  "description": "What Everruns does on its own when a finding opens (Settings →\nLimits): pause a repeating schedule automatically, and whether the\nInspector suggests changes to agents. Code defaults when the\norganization never set any."
                 },
                 "small_model_id": {
                   "type": [
@@ -62245,6 +62484,7 @@
           "system_decisions",
           "web_search_defaults",
           "background_limits",
+          "self_healing",
           "created_at",
           "updated_at"
         ],
@@ -62319,6 +62559,10 @@
             ],
             "format": "date-time",
             "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+          },
+          "self_healing": {
+            "$ref": "#/components/schemas/SelfHealingPolicy",
+            "description": "What Everruns does on its own when a finding opens (Settings →\nLimits): pause a repeating schedule automatically, and whether the\nInspector suggests changes to agents. Code defaults when the\norganization never set any."
           },
           "small_model_id": {
             "type": [
@@ -70467,6 +70711,31 @@
         },
         "additionalProperties": false
       },
+      "SelfHealingMode": {
+        "type": "string",
+        "description": "What Everruns does about one kind of finding.",
+        "enum": [
+          "auto",
+          "suggest",
+          "off"
+        ]
+      },
+      "SelfHealingPolicy": {
+        "type": "object",
+        "description": "An org's self-healing policy (Settings → Limits).",
+        "properties": {
+          "agent_fixes": {
+            "$ref": "#/components/schemas/SelfHealingMode",
+            "description": "The Inspector's suggested changes to an agent's instructions: `suggest`\n(default) or `off`. A person always approves them.",
+            "default": "suggest"
+          },
+          "runaway_schedules": {
+            "$ref": "#/components/schemas/SelfHealingMode",
+            "description": "Pausing a schedule whose runs keep ending the same way, at the warning\ncount rather than the hard stop. Default `auto`.",
+            "default": "auto"
+          }
+        }
+      },
       "ServiceKind": {
         "type": "string",
         "description": "A typed service a provider driver can offer.\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
@@ -72874,6 +73143,19 @@
           "deployment",
           "organization"
         ]
+      },
+      "TakeFindingActionRequest": {
+        "type": "object",
+        "description": "The action to take.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "`pause_schedule`."
+          }
+        }
       },
       "TaskArtifact": {
         "type": "object",
@@ -78492,6 +78774,17 @@
             ],
             "description": "The display name of the organization.",
             "example": "Acme Corporation"
+          },
+          "self_healing": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SelfHealingPolicy",
+                "description": "Self-healing policy; replaces the stored policy as a whole. Omitted\nfields take the code default. `agent_fixes` cannot be `auto`."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "small_model_id": {
             "type": [

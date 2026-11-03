@@ -1,11 +1,17 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import LimitsSettingsPage from "@/app/(main)/settings/limits/page";
 import { parseLimitsForm } from "@/components/organizations/background-limits-settings";
 import { budgetSubjectLabel, DEFAULT_BACKGROUND_LIMITS } from "@/lib/background-limits";
 import { settingsNavigationSections } from "@/lib/settings-navigation";
-import type { BackgroundLimits } from "@/lib/api/types";
+import type { BackgroundLimits, SelfHealingPolicy } from "@/lib/api/types";
 
-let mockOrganization: { id: string; background_limits?: BackgroundLimits } = { id: "org-1" };
+let mockOrganization: {
+  id: string;
+  background_limits?: BackgroundLimits;
+  self_healing?: SelfHealingPolicy;
+} = { id: "org-1" };
+const limitsCard = () => within(screen.getByTestId("background-limits-settings"));
+const healingCard = () => within(screen.getByTestId("self-healing-settings"));
 let mockCanManage = true;
 const mockMutate = jest.fn();
 jest.mock("@/hooks", () => ({ usePageTitle: jest.fn() }));
@@ -55,7 +61,7 @@ test("saves the whole object, with null for no daily cap", async () => {
     target: { value: "24" },
   });
   fireEvent.click(screen.getByRole("switch", { name: "No cap" }));
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  fireEvent.click(limitsCard().getByRole("button", { name: "Save" }));
   await waitFor(() =>
     expect(mockMutate).toHaveBeenCalledWith({
       background_limits: {
@@ -74,7 +80,7 @@ test("rejects values past the ceilings without calling the API", () => {
   fireEvent.change(screen.getByLabelText("Longest an agent's schedule may run"), {
     target: { value: "8" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  fireEvent.click(limitsCard().getByRole("button", { name: "Save" }));
   expect(screen.getByRole("alert")).toHaveTextContent("from 1 to 7");
   expect(mockMutate).not.toHaveBeenCalled();
 });
@@ -84,7 +90,37 @@ test("members see the limits read-only", () => {
   render(<LimitsSettingsPage />);
   expect(screen.getByLabelText("Most runs per agent schedule")).toHaveAttribute("readonly");
   expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
-  expect(screen.getByText(/Only organization owners and admins/)).toBeInTheDocument();
+  expect(limitsCard().getByText(/Only organization owners and admins/)).toBeInTheDocument();
+});
+
+test("self-healing saves the whole policy and shows the defaults when unset", async () => {
+  render(<LimitsSettingsPage />);
+  const card = healingCard();
+  expect(card.getByRole("button", { name: "Pause it" })).toHaveAttribute("aria-pressed", "true");
+  expect(card.getByRole("button", { name: "Suggest" })).toHaveAttribute("aria-pressed", "true");
+  // Agent changes offer no automatic option.
+  expect(card.getAllByRole("button").map((b) => b.textContent)).not.toContain("Apply it");
+  fireEvent.click(card.getByRole("button", { name: "Offer to pause it" }));
+  fireEvent.click(card.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(mockMutate).toHaveBeenCalledWith({
+      self_healing: { runaway_schedules: "suggest", agent_fixes: "suggest" },
+    }),
+  );
+});
+
+test("self-healing shows the stored policy", () => {
+  mockOrganization = {
+    id: "org-1",
+    self_healing: { runaway_schedules: "off", agent_fixes: "off" },
+  };
+  render(<LimitsSettingsPage />);
+  const card = healingCard();
+  expect(card.getByRole("button", { name: "Do nothing" })).toHaveAttribute("aria-pressed", "true");
+  expect(card.getByRole("button", { name: "Don't suggest" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 });
 
 test("an older server without background_limits shows the code defaults", () => {

@@ -10,8 +10,9 @@ tags:
 
 # Suggested fixes for findings
 
-Status: implemented (Evals rebuild, step 10). Self-healing, which acts without
-a person for protective actions, is the next step and builds on this one.
+Status: implemented (Evals rebuild, step 10). [Self-healing](self-healing.md)
+(step 11) acts without a person only for protective actions; fixes stay with a
+person, and an org can turn them off.
 
 ## What it is
 

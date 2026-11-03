@@ -16250,6 +16250,31 @@
   },
   {
     "category": "evals",
+    "cli": "health-issues actions list",
+    "description": "List what Everruns or a person did about a finding, such as pausing a repeating schedule, and what the organization's self-healing policy offers to do now.",
+    "input_schema": {
+      "description": "List what has been done about a finding.",
+      "properties": {
+        "issue_id": {
+          "description": "The finding.",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_finding_actions",
+    "output_shape": "unknown",
+    "path": "/v1/health-issues/{issue_id}/actions",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "evals",
     "cli": "evals fixes list",
     "description": "List the fixes the Inspector suggested for one finding or for one agent's findings, with where checking and approving each stands.",
     "input_schema": {
@@ -21800,6 +21825,53 @@
     "read_only": false
   },
   {
+    "category": "evals",
+    "cli": "health-issues actions take",
+    "description": "Take an action the organization's self-healing policy offers on a finding, such as pausing a schedule whose runs keep ending the same way. It is recorded on the finding and can be undone.",
+    "input_schema": {
+      "$defs": {
+        "TakeFindingActionRequest": {
+          "description": "The action to take.",
+          "properties": {
+            "kind": {
+              "description": "`pause_schedule`.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/TakeFindingActionRequest"
+        },
+        {
+          "properties": {
+            "issue_id": {
+              "description": "The finding.",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "issue_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Take an action the policy offers on a finding."
+    },
+    "method": "POST",
+    "name": "take_finding_action",
+    "output_shape": "unknown",
+    "path": "/v1/health-issues/{issue_id}/actions",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "test",
     "cli": null,
     "description": "Exercise command transport error handling.",
@@ -21982,6 +22054,36 @@
     "name": "unarchive_session",
     "output_shape": "unknown",
     "path": "/v1/sessions/{session_id}/archive",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "evals",
+    "cli": "health-issues actions undo",
+    "description": "Undo an action taken on a finding, automatic or not. Undoing a pause resumes the schedule and starts its repeated-outcome count over.",
+    "input_schema": {
+      "description": "Undo an action taken on a finding.",
+      "properties": {
+        "action_id": {
+          "description": "Prefixed public identifier of the action (`fact_…`).",
+          "type": "string"
+        },
+        "issue_id": {
+          "description": "The finding.",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id",
+        "action_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "undo_finding_action",
+    "output_shape": "unknown",
+    "path": "/v1/health-issues/{issue_id}/actions/{action_id}/undo",
     "positional_arg": null,
     "read_only": false
   },
@@ -27288,6 +27390,31 @@
           ],
           "type": "string"
         },
+        "SelfHealingMode": {
+          "description": "What Everruns does about one kind of finding.",
+          "enum": [
+            "auto",
+            "suggest",
+            "off"
+          ],
+          "type": "string"
+        },
+        "SelfHealingPolicy": {
+          "description": "An org's self-healing policy (Settings → Limits).",
+          "properties": {
+            "agent_fixes": {
+              "$ref": "#/$defs/SelfHealingMode",
+              "default": "suggest",
+              "description": "The Inspector's suggested changes to an agent's instructions: `suggest`\n(default) or `off`. A person always approves them."
+            },
+            "runaway_schedules": {
+              "$ref": "#/$defs/SelfHealingMode",
+              "default": "auto",
+              "description": "Pausing a schedule whose runs keep ending the same way, at the warning\ncount rather than the hard stop. Default `auto`."
+            }
+          },
+          "type": "object"
+        },
         "SystemDecisions": {
           "description": "Who answers an org's deployment-owned decision checks (guardrail `jev`\nchecks and the Slack relevance check).",
           "enum": [
@@ -27378,6 +27505,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "self_healing": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SelfHealingPolicy",
+                  "description": "Self-healing policy; replaces the stored policy as a whole. Omitted\nfields take the code default. `agent_fixes` cannot be `auto`."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "small_model_id": {
