@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/features/ui/#sessions, /features/agent-api/, /features/channels/, /features/a2a/#reactions, /capabilities/slack/#reactions]
-  prs: [everruns/everruns#5146, everruns/everruns#5150, everruns/everruns#5173, everruns/everruns#5178]
+  prs: [everruns/everruns#5146, everruns/everruns#5150, everruns/everruns#5173, everruns/everruns#5178, everruns/everruns#5187]
 ---
 
 Anyone in a conversation can put an emoji on a message, and so can the
