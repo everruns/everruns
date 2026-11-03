@@ -678,17 +678,40 @@ mod tests {
         let session = db.create_test_session().await.uuid();
         let partition = feed_partition(session);
         let cursor = db.feed_cursor("settings", partition).await.unwrap();
+        // The server's own setting (CI databases may already run with
+        // `synchronous_commit` off), read on one connection held throughout
+        // so the recording below runs on another and on this one in turn.
+        let mut conn = db.pool().acquire().await.unwrap();
+        let show = "SHOW synchronous_commit";
+        let before: String = sqlx::query_scalar(show)
+            .fetch_one(&mut *conn)
+            .await
+            .unwrap();
         assert!(
             db.feed_commit("settings", partition, cursor, cursor + 1, &[(session, 1)])
                 .await
                 .unwrap()
         );
-        // The asynchronous commit is local to the recording transaction.
-        let setting: String = sqlx::query_scalar("SHOW synchronous_commit")
-            .fetch_one(db.pool())
-            .await
-            .unwrap();
-        assert_eq!(setting, "on");
+        drop(conn);
+        // The asynchronous commit is local to the recording transaction:
+        // every pooled connection still has the server's setting.
+        let pool = db.pool();
+        let mut held = Vec::new();
+        for _ in 0..pool.size().max(1) {
+            let Ok(mut conn) =
+                tokio::time::timeout(std::time::Duration::from_millis(200), pool.acquire())
+                    .await
+                    .unwrap_or_else(|_| Err(sqlx::Error::PoolTimedOut))
+            else {
+                break;
+            };
+            let setting: String = sqlx::query_scalar(show)
+                .fetch_one(&mut *conn)
+                .await
+                .unwrap();
+            assert_eq!(setting, before);
+            held.push(conn);
+        }
         assert_eq!(
             db.feed_cursor("settings", partition).await.unwrap(),
             cursor + 1
