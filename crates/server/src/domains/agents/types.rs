@@ -32,6 +32,12 @@ pub struct CreateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub id: Option<AgentId>,
+    /// Agent this one is created as part of ("Created here" on that agent's
+    /// Agents tab). It groups under that agent on Agents home and is bundled
+    /// into its export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
+    pub owner_agent_id: Option<AgentId>,
     /// Name, unique per org. Lowercase alphanumeric and hyphens.
     /// Format: lowercase alphanumeric and hyphens (e.g. "customer-support").
     #[schema(example = "customer-support")]

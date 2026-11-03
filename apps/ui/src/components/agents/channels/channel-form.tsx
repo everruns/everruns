@@ -622,6 +622,10 @@ export function ChannelForm({
   // The OAuth exchange is what records the workspace id, so an app id plus a workspace id means
   // Everruns created this channel's app and it was installed.
   const slackLive = Boolean(state.slackAppId && state.slackTeamId);
+  // Created but never approved in Slack: the saved signing secret is not a finished manual
+  // setup, so offer Add to Slack again (the server reuses the app).
+  const slackInstallUnfinished = Boolean(state.slackAppId) && !slackLive;
+  const slackCanAdd = !state.slackCredentialsConfigured || slackInstallUnfinished;
   const selectSlackInstallTeam = useCallback(
     (teamId: string) => onChange({ ...state, slackInstallTeamId: teamId }),
     [onChange, state],
@@ -1291,21 +1295,19 @@ export function ChannelForm({
                   </a>
                 </div>
               )}
-              {!slackLive &&
-                !state.slackCredentialsConfigured &&
-                slackInstallCapability?.supported && (
-                  <SlackWorkspaceChoice
-                    capability={slackInstallCapability}
-                    selected={state.slackInstallTeamId}
-                    onSelect={selectSlackInstallTeam}
-                    onChanged={onSlackCapabilityChanged}
-                  />
-                )}
+              {!slackLive && slackCanAdd && slackInstallCapability?.supported && (
+                <SlackWorkspaceChoice
+                  capability={slackInstallCapability}
+                  selected={state.slackInstallTeamId}
+                  onSelect={selectSlackInstallTeam}
+                  onChanged={onSlackCapabilityChanged}
+                />
+              )}
               {!slackLive &&
                 mode === "edit" &&
                 channelId &&
                 slackInstallAvailable &&
-                !state.slackCredentialsConfigured &&
+                slackCanAdd &&
                 !slackInstall.unavailable && (
                   <div className="space-y-3 border p-4">
                     <div className="space-y-1">

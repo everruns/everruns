@@ -73,6 +73,11 @@ Embed with `![What the screenshot shows](./<name>@2x.png)` and
 `<video src="./<name>@2x.mp4" poster="./<name>-poster@2x.png" controls muted playsinline loop></video>`.
 Every file sits in the entry folder and is referenced from `index.md`.
 
+For anything the script cannot capture (Slack or another app, a terminal, a remote screen), and
+for the gotchas behind blurry images, follow the landing repo's
+[sharp-screenshots skill](https://github.com/everruns/landing/blob/main/.claude/skills/sharp-screenshots/SKILL.md). Its `check` command
+(`scripts/sharp-screenshot.mjs`) confirms an image is 2x for the width it is shown at.
+
 ## Integration announcements
 
 An entry that adds a new integration (a vendor, protocol host or platform Everruns or Yolop now

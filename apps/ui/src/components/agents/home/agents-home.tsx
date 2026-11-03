@@ -60,6 +60,7 @@ import {
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { formatCompactNumber, pluralize } from "@/lib/formatting";
 import type { AgentActivity, AgentActivityTotals, ChannelActivity } from "@/lib/api/types";
+import { nestUnderOwners } from "@/lib/agents-home";
 import { cn } from "@/lib/utils";
 import { AgentRow } from "./agent-row";
 import { ChannelRow } from "./channel-row";
@@ -94,7 +95,11 @@ export function AgentsHome() {
   const [search, setSearch] = useState("");
   const [agentTab, setAgentTab] = useState<AgentTab>("all");
   const [channelTab, setChannelTab] = useState<ChannelTab>("all");
-  useChatPageFilters({ search, tab: view, status: view === "channels" ? channelTab : agentTab });
+  useChatPageFilters({
+    search,
+    tab: view,
+    status: view === "channels" ? channelTab : agentTab,
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -345,8 +350,16 @@ export function AgentsHome() {
               value={view}
               onValueChange={(value) => setView(value as View)}
               options={[
-                { value: "agents", label: ui("Agents"), icon: <AgentIcon className="size-4" /> },
-                { value: "channels", label: ui("Channels"), icon: <Radio className="size-4" /> },
+                {
+                  value: "agents",
+                  label: ui("Agents"),
+                  icon: <AgentIcon className="size-4" />,
+                },
+                {
+                  value: "channels",
+                  label: ui("Channels"),
+                  icon: <Radio className="size-4" />,
+                },
               ]}
             />
             <SearchInput
@@ -386,7 +399,11 @@ export function AgentsHome() {
                 onValueChange={(value) => setChannelTab(value as ChannelTab)}
                 items={[
                   { value: "all", label: ui("All"), count: channelCounts.all },
-                  { value: "live", label: ui("Live"), count: channelCounts.live },
+                  {
+                    value: "live",
+                    label: ui("Live"),
+                    count: channelCounts.live,
+                  },
                   {
                     value: "draft",
                     label: ui("Draft"),
@@ -414,10 +431,11 @@ export function AgentsHome() {
               <EmptyState icon={<AgentIcon />} title={ui("No agents match your filters.")} />
             ) : (
               <ul className="divide-y border bg-card">
-                {visibleAgents.map((agent) => (
+                {nestUnderOwners(visibleAgents).map(({ agent, nested }) => (
                   <AgentRow
                     key={agent.id}
                     agent={agent}
+                    nested={nested}
                     activity={activityById.get(agent.id)}
                     attention={attentionByAgent.get(agent.id) ?? []}
                     activityGeneratedAt={activity?.generated_at}

@@ -9,7 +9,8 @@
   review, and **Follow-ups**. Do not substitute ad-hoc headings, even for small changes.
 - For the Before/After, attach evidence a skeptical reviewer can check, not just a claim — CLI/API
   output, logs, or metrics, and screenshots or recordings for UI changes (`apps/ui`). State
-  explicitly when a change has no observable behavior.
+  explicitly when a change has no observable behavior. Capture screenshots at 2x and lossless
+  ([sharp-screenshots skill](https://github.com/everruns/landing/blob/main/.claude/skills/sharp-screenshots/SKILL.md)).
 
 ## Publish evidence assets
 

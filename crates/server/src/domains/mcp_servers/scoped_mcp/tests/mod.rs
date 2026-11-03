@@ -426,6 +426,7 @@ pub(crate) fn test_agent() -> Agent {
         harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
         forked_from_agent_id: None,
         root_agent_id: None,
+        owner_agent_id: None,
         tags: vec![],
         capabilities: vec![],
         sandbox_policy: None,

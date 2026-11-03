@@ -288,6 +288,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         virtual_user_id: None,
         forked_from_agent_id: None,
         root_agent_id: None,
+        owner_agent_id: None,
         tags: vec![],
         status: "active".to_string(),
         exposures_suspended: false,

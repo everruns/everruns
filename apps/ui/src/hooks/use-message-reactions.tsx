@@ -47,6 +47,20 @@ export function useMessageReactions(
   });
 }
 
+/**
+ * The session's reactions as the server lists them, with each message's
+ * author and position. Shares the cache of `useMessageReactions`.
+ */
+export function useMessageReactionList(sessionId: string | undefined) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+  return useQuery({
+    queryKey: queryKeys.sessions.messageReactions(org, sessionId),
+    queryFn: () => listMessageReactions(sessionId!),
+    enabled: !!org && !!sessionId,
+  });
+}
+
 /** One message's reactions from the session map, stable when it has none. */
 export function reactionsFor(
   map: Map<string, ReactionSummary[]> | undefined,

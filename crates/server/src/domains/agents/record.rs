@@ -190,6 +190,11 @@ pub struct Agent {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub root_agent_id: Option<AgentId>,
+    /// Agent this one was created as part of, shown as "Created here" on
+    /// that agent's Agents tab and bundled into its export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
+    pub owner_agent_id: Option<AgentId>,
     /// Tags for organizing and filtering agents.
     #[serde(default)]
     #[schema(example = json!(["support", "production"]))]
@@ -412,6 +417,7 @@ mod tests {
             harness_id: "harness_01933b5a000070008000000000000001".parse().unwrap(),
             forked_from_agent_id: None,
             root_agent_id: None,
+            owner_agent_id: None,
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],

@@ -469,6 +469,7 @@ mod tests {
             harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
             forked_from_agent_id: None,
             root_agent_id: None,
+            owner_agent_id: None,
             tags: vec!["faq".into(), "tier-1".into()],
             capabilities: vec![],
             sandbox_policy: None,

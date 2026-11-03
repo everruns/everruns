@@ -288,6 +288,28 @@ impl SessionFileSystem for PolicyFileStore {
         Ok(entries)
     }
 
+    /// Same filter as `list_directory`, applied to every entry of the tree.
+    async fn list_tree(&self, session_id: SessionId, path: &str) -> Result<Option<Vec<FileInfo>>> {
+        let canonical = self.checked_path(path)?;
+        if !self.policy.permits_read_traversal(&canonical) {
+            self.policy
+                .check_read(&canonical)
+                .map_err(|error| AgentLoopError::tool(error.to_string()))?;
+        }
+        let Some(mut entries) = self.inner.list_tree(session_id, path).await? else {
+            return Ok(None);
+        };
+        let root = path.trim_end_matches('/');
+        entries.retain(|entry| {
+            let full = format!("{root}/{}", entry.path.trim_start_matches('/'));
+            self.checked_path(&full).is_ok_and(|canonical| {
+                self.policy.permits_read(&canonical)
+                    || self.policy.permits_read_traversal(&canonical)
+            })
+        });
+        Ok(Some(entries))
+    }
+
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
         let canonical = self.checked_path(path)?;
         if !self.policy.permits_read_traversal(&canonical) {
@@ -516,6 +538,10 @@ impl SessionFileSystem for WriteBlocklistFileStore {
         self.inner.list_directory(session_id, path).await
     }
 
+    async fn list_tree(&self, session_id: SessionId, path: &str) -> Result<Option<Vec<FileInfo>>> {
+        self.inner.list_tree(session_id, path).await
+    }
+
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
         self.inner.stat_file(session_id, path).await
     }
@@ -736,6 +762,10 @@ impl SessionFileSystem for ApprovalGatingFileStore {
 
     async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
         self.inner.list_directory(session_id, path).await
+    }
+
+    async fn list_tree(&self, session_id: SessionId, path: &str) -> Result<Option<Vec<FileInfo>>> {
+        self.inner.list_tree(session_id, path).await
     }
 
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {

@@ -503,6 +503,31 @@ describe("Slack channel first run", () => {
     expect(screen.queryByRole("button", { name: "Add to Slack" })).not.toBeInTheDocument();
   });
 
+  it("offers Add to Slack again when the app was created but never approved in Slack", () => {
+    // Creating the app saves its signing secret; only Slack's approval returns the bot token
+    // and workspace. Stopping between the two must not look like a finished manual setup.
+    render(
+      <ChannelForm
+        state={getDefaultChannelFormState("slack", {
+          ...slackChannel(),
+          channel_config: {
+            slack_app_id: "A0123",
+            slack_app_provisioned: true,
+            signing_secret_configured: true,
+            session_strategy: "per_channel",
+          },
+        })}
+        onChange={jest.fn()}
+        mode="edit"
+        channelId="appchan_123"
+        slackInstallCapability={mockSlackCapability}
+      />,
+    );
+    expect(screen.getByText("Acme (T1)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add to Slack" })).toBeInTheDocument();
+    expect(screen.queryByText("Installed in Slack")).not.toBeInTheDocument();
+  });
+
   it("starts Slack install immediately after saving a credential-free channel", async () => {
     const authorizeUrl = `${window.location.href}#slack-consent`;
     (beginSlackInstall as jest.Mock).mockResolvedValue({

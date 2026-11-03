@@ -420,6 +420,7 @@ everruns agents upsert [OPTIONS] --name <name> --system-prompt <system_prompt> [
 | `--mcpServers <MCPSERVERS>` |  |
 | `--name <NAME>` | Required. Name, unique per org. |
 | `--network-access <NETWORK_ACCESS>` |  |
+| `--owner-agent-id <OWNER_AGENT_ID>` | Agent this one is created as part of ("Created here" on that agent's Agents tab). |
 | `--parallel-tool-calls` | Request-level parallel tool calling preference (EVE-598). |
 | `--sandbox-policy <SANDBOX_POLICY>` |  |
 | `--service-virtual-user-id <SERVICE_VIRTUAL_USER_ID>` |  |

@@ -9509,6 +9509,12 @@ export interface components {
       name: string;
       network_access?: components["schemas"]["NetworkAccessList"] | null;
       /**
+       * @description Agent this one was created as part of, shown as "Created here" on
+       *     that agent's Agents tab and bundled into its export.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      owner_agent_id?: string | null;
+      /**
        * @description Request-level parallel tool calling preference (EVE-598).
        *
        *     `None` (default) preserves provider defaults. `Some(true)` signals the
@@ -13458,6 +13464,13 @@ export interface components {
        */
       name: string;
       network_access?: components["schemas"]["NetworkAccessList"] | null;
+      /**
+       * @description Agent this one is created as part of ("Created here" on that agent's
+       *     Agents tab). It groups under that agent on Agents home and is bundled
+       *     into its export.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      owner_agent_id?: string | null;
       /**
        * @description Request-level parallel tool calling preference (EVE-598). `true` signals
        *     the provider that parallel tool calls are wanted; `false` requests at
@@ -18930,6 +18943,12 @@ export interface components {
         name: string;
         network_access?: components["schemas"]["NetworkAccessList"] | null;
         /**
+         * @description Agent this one was created as part of, shown as "Created here" on
+         *     that agent's Agents tab and bundled into its export.
+         * @example agent_01933b5a00007000800000000000001
+         */
+        owner_agent_id?: string | null;
+        /**
          * @description Request-level parallel tool calling preference (EVE-598).
          *
          *     `None` (default) preserves provider defaults. `Some(true)` signals the
@@ -21853,6 +21872,11 @@ export interface components {
     };
     /** @description Authored values only: no organisation, agent, model, harness or channel IDs. */
     Manifest: {
+      /**
+       * @description Agents bundled with this one, each a complete definition. Folders and
+       *     archives keep them in `.agents/agents/<name>/`; text formats inline them.
+       */
+      agents?: components["schemas"]["Manifest"][];
       /** @description Named capabilities, optionally with configuration; the host validates availability. */
       capabilities?: components["schemas"]["PackageCapability"][];
       /** @description Named channel descriptions, upserted without removing omitted destination channels. */
@@ -21887,6 +21911,12 @@ export interface components {
       mcpServers?: {
         [key: string]: components["schemas"]["ScopedMcpServer"];
       };
+      /**
+       * @description Other agents, by name, that this agent can hand work to. Agents bundled
+       *     under `.agents/agents/` are found without listing them here; an explicit
+       *     empty list turns that discovery off.
+       */
+      members?: string[] | null;
       model?: components["schemas"]["PackageModel"] | null;
       /** @description Stable agent name used for destination lookup; resource IDs are not portable. */
       name?: string;
@@ -22518,9 +22548,20 @@ export interface components {
     };
     /** @description The reactions on one message. */
     MessageReactions: {
+      /**
+       * @description Who wrote the message: `user` (a user-role message) or `agent`.
+       * @example agent
+       */
+      author?: string | null;
       /** @example message_01933b5a00007000800000000000001 */
       message_id: string;
       reactions: components["schemas"]["ReactionSummary"][];
+      /**
+       * Format: int64
+       * @description Position of the message in the session's event log, which places it in
+       *     a turn of the trace. Absent when the message is no longer stored.
+       */
+      sequence?: number | null;
     };
     /**
      * @description Message role (API layer)
@@ -33725,6 +33766,12 @@ export interface components {
        */
       name: string;
       network_access?: components["schemas"]["NetworkAccessList"] | null;
+      /**
+       * @description Agent this one was created as part of, shown as "Created here" on
+       *     that agent's Agents tab and bundled into its export.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      owner_agent_id?: string | null;
       /**
        * @description Request-level parallel tool calling preference (EVE-598).
        *

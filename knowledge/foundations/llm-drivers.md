@@ -1050,6 +1050,31 @@ Invariant: **a request with `previous_response_id` only carries delta items in `
 
 `OpenResponsesProtocolChatDriver` enforces this by trimming `input` via `compute_delta_input_items` whenever `previous_response_id` is `Some(_)` (see `crates/contracts/src/openresponses_protocol/mod.rs`).
 
+### Anthropic message threads
+
+Message threads are an explicitly enabled transport optimization, independent of
+prompt caching. They do not make the runtime's history delta-only: the Anthropic
+driver still receives the complete transcript, so worker loss or provider state
+expiry cannot lose conversation history. The driver must not advertise the
+Responses-style statefulness contract for this feature.
+
+A reusable continuation belongs to one session, credential/endpoint and request
+configuration, and must match the caller's exact conversation prefix. Claiming it
+is exclusive; only a completed response can replace it. Edits, branches, changed
+configuration, compaction and incomplete responses cannot silently reuse stale
+state. Provider thread-specific failures have bounded full-history recovery;
+unrelated failures retain their classification. No thread cache is durable.
+
+See the [implementation](../../crates/drivers/drivers/src/anthropic/message_threads.rs),
+[wire tests](../../crates/drivers/drivers/tests/anthropic_message_threads_wire.rs),
+and [Framework session test](../../crates/everruns/tests/anthropic_message_threads.rs).
+The [live acceptance suite](../../crates/llm-tests/tests/provider_live/anthropic_message_threads.rs)
+must prove real provider state across delta-only text and tool turns, and recovery
+after a response ID is consumed. Missing credentials or silent unthreaded fallback
+must fail these tests; nightly/full provider CI owns their execution.
+The [provider guide](../../docs/providers/anthropic.md#message-threads-beta) owns
+opt-in instructions, retention exclusions and compatibility limits.
+
 ### Provider-declared statefulness
 
 Server-side continuation only works where the endpoint actually stores responses. OpenAI-compatible gateways that expose a stateless `/responses` shim, e.g. OpenRouter and Google Gemini's compat endpoint, *accept* `previous_response_id` but silently ignore it (`store: false`). Chaining against them drops the conversation from turn 2 onward (only the latest tool output reaches the model), so the agent loses the task and loops on exploration.

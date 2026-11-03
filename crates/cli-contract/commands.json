@@ -963,6 +963,13 @@
         "required": false
       },
       {
+        "field": "owner_agent_id",
+        "long": "owner-agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Agent this one is created as part of (\"Created here\" on that agent's Agents tab)."
+      },
+      {
         "field": "parallel_tool_calls",
         "long": "parallel-tool-calls",
         "kind": "boolean",
@@ -3265,6 +3272,13 @@
         "long": "network-access",
         "kind": "json",
         "required": false
+      },
+      {
+        "field": "owner_agent_id",
+        "long": "owner-agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Agent this one is created as part of (\"Created here\" on that agent's Agents tab)."
       },
       {
         "field": "parallel_tool_calls",

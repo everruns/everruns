@@ -44,6 +44,7 @@ mod channel_a2a_pact_delegated_send_test;
 mod channel_a2a_pact_delegation_test;
 mod channel_a2a_pact_test;
 mod channel_a2a_protocol_test;
+mod channel_a2a_reactions_test;
 mod channel_attribution_test;
 mod channel_poppy_test;
 mod channel_rename_test;

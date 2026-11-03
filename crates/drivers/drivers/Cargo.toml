@@ -35,7 +35,7 @@ all-features = true
 # No vendor is on by default: a consumer names the ones it serves, so nothing
 # ships a driver it never constructs.
 default = []
-anthropic = ["dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
+anthropic = ["dep:sha2", "dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
 bedrock = [
     "dep:tokio",
     "dep:futures",
@@ -203,3 +203,7 @@ required-features = ["openai"]
 [[test]]
 name = "mistral_responses_wire"
 required-features = ["mistral"]
+
+[[test]]
+name = "anthropic_message_threads_wire"
+required-features = ["anthropic"]
