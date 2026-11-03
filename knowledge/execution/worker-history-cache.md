@@ -45,6 +45,8 @@ tracking:
 - A failed read drops the session's entry. Two racing reads never step an
   entry back to an older sequence.
 - `WORKER_HISTORY_CACHE=off` disables it.
+- It hits only on the worker that ran the session before, which [sticky
+  sessions](sticky-sessions.md) make the usual case.
 
 ## Verification
 
