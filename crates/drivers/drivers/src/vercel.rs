@@ -198,6 +198,24 @@ struct VercelModelInfo {
 
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const VERCEL_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "vercel",
+        recommended_models: &[
+            "gpt-6.1-sol",
+            "gpt-6-astra",
+            "gpt-6-luna",
+            "muse-spark-1.3-contributor",
+        ],
+        coding_model: "gpt-6.1-sol",
+        research_model: "gpt-6-astra",
+        chat_model: "gpt-6-luna",
+        small_model: "gpt-6-luna",
+        decision_model: "gpt-6-luna",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Vercel AI Gateway".into(),
@@ -209,6 +227,7 @@ pub fn descriptor() -> DriverDescriptor {
              `provider/model` (`anthropic/claude-opus-5`, `openai/gpt-6-astra`).",
         ),
         base_url_env: None,
+        recommended_models: Some(VERCEL_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Vercel, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             Provider::new(config.provider.clone(), VercelChatDriver::new())
