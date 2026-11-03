@@ -1,4 +1,4 @@
-# Nightly check that Slack accepts the worst-case manifests Add to Slack can
+# Check that Slack accepts the worst-case manifests Add to Slack can
 # generate. Slack enforces limits it does not document (a 140-byte app
 # description was refused in production, #5181), so only Slack can answer.
 # The manifests come from crates/server/tests/fixtures/, which a unit test
@@ -6,10 +6,11 @@
 # to `apps.manifest.validate` with a Slack app configuration token.
 name: Slack Manifest Validation
 
+# Manual only for now: each run rotates the Slack refresh token and must save
+# the new one, and CI has no Doppler token allowed to write. The server's
+# system doctor runs the same check daily with the workspace tokens it keeps.
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '17 9 * * *'
 
 # Each run rotates the Slack refresh token and saves the new one, so two runs
 # must never overlap or the slower one would save a token already spent.
