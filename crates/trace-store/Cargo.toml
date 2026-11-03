@@ -1,0 +1,44 @@
+[package]
+name = "everruns-trace-store"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Object-backed event segments and bounded DataFusion queries"
+
+[features]
+# Real PostgreSQL fixtures, selected separately from the offline unit suite.
+postgres-tests = []
+# Local S3 protocol fixture only, never production endpoints or credentials.
+s3-tests = ["postgres-tests"]
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+arrow = { version = "59.2", default-features = false }
+bytes.workspace = true
+chrono.workspace = true
+clap.workspace = true
+datafusion = { version = "55.2", default-features = false, features = ["parquet"] }
+futures.workspace = true
+# Reuse the platform's cancellation-safe SQLx transaction guards.
+everruns-durable.workspace = true
+hex.workspace = true
+# DataFusion 55 uses this object_store generation. Isolated from the server's
+# 0.14 backend until DataFusion upgrades; never convert stores between versions.
+object_store = { version = "0.13.2", features = ["aws"] }
+parquet = { version = "59.2", default-features = false, features = ["arrow", "zstd"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sqlx = { workspace = true, features = ["json"] }
+tokio.workspace = true
+url = "2"
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

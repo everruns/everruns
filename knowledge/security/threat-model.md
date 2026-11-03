@@ -12,6 +12,19 @@ tags:
 
 This document defines the security threat model for Everruns, a durable agentic harness engine. It enumerates threats by category with stable IDs, documents mitigations, and identifies accepted risks and caller responsibilities.
 
+## Analytical trace storage boundary
+
+The experimental [DataFusion trace store](../operations/trace-storage.md) is a
+trusted operator tool. Its query path discovers manifests only through live,
+org-scoped source sessions and reapplies tenant predicates in DataFusion. Detail
+reads accept event identity, never caller-chosen object paths. Tombstones hide
+deleted traces and block re-export before physical GC. Shared/exclusive advisory
+locks protect active reads and unpublished uploads from collection. Typed
+predicates, admission budgets, deadlines and disabled spill files constrain
+queries; the DataFusion pool is not a whole-process RSS limit. Raw payload reads
+include internal JSON and require the same privileged access as the source DB;
+future public APIs must retain their own disclosure/authorization boundaries.
+
 ## Hosted Work Chat boundaries
 
 | ID | Threat | Mitigation |
@@ -869,7 +882,10 @@ the session log, its actor lease and the durable task queue only through the
 control plane's gRPC service. Database-driver isolation checks normal, build, optional,
 and renamed dependency edges; embedded hosts also open SQLite through durable,
 while retaining their existing schemas and shared query handles. Contracts'
-optional typed-id SQLx codecs grant no connection ownership. See
+optional typed-id SQLx codecs grant no connection ownership. The unpublished
+trace companion is a separately privileged operator boundary with scoped
+canonical reads and its own metastore; its explicit SQLx exception grants no
+access to workers. See
 [`check-database-driver-isolation.sh`](../../scripts/lib/check-database-driver-isolation.sh)
 and [`check-durable-isolation.sh`](../../scripts/lib/check-durable-isolation.sh).
 Credentials do

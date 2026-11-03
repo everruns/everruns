@@ -17,6 +17,7 @@ members = [
     "crates/drivers/llmsim",
     "crates/drivers/drivers",
     "crates/turbopuffer",
+    "crates/trace-store",
     "crates/internal-protocol",
     "crates/cli",
     "crates/cli-contract",
