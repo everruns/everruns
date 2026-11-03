@@ -34,4 +34,4 @@ AG-UI channels stream each reaction as a `CUSTOM` event named
 `everruns.reaction` (see [Channels](/features/channels/)).
 A2A callers react through the reactions extension (see [A2A](/features/a2a/#reactions)),
 and the Rust, Python and TypeScript SDKs have `react`, `unreact` and `reactions`.
-The session trace shows each turn's reactions under its prompt and reply.
+The session trace shows reactions on each turn.
