@@ -169,6 +169,26 @@ button:disabled { opacity: 0.5; cursor: default; }
     return el("div", { class: "row spread" }, [el("h1", { text: title }), right]);
   }
 
+  // ----- Agent card: data from agent_get_card, never server-authored HTML -----
+  var agentCard = null;
+  function renderAgentCard() {
+    if (!agentCard) return;
+    var card = agentCard;
+    var kids = [header(card.title, [badge(card.status, "s-" + card.status)])];
+    if (card.avatar_data_uri && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(card.avatar_data_uri)) {
+      kids.unshift(el("img", { src: card.avatar_data_uri, alt: "", width: "48", height: "48" }));
+    }
+    if (card.subtitle) kids.push(el("div", { class: "muted", text: card.subtitle }));
+    kids.push(el("div", { class: "muted small", text: card.public_id }));
+    if (card.description) kids.push(el("p", { class: "msg", text: card.description }));
+    kids.push(el("div", { class: "actions" }, (card.tags || []).map(function (tag) { return badge(tag, "muted"); })));
+    kids.push(el("dl", { class: "list" }, (card.stats || []).map(function (stat) {
+      return el("div", { class: "row spread" }, [el("dt", { class: "muted", text: stat.label }), el("dd", { text: stat.value })]);
+    })));
+    kids.push(el("footer", { class: "muted small" }, (card.footer_lines || []).map(function (line) { return el("div", { text: line }); })));
+    render(kids);
+  }
+
   // ----- Home: agents, sessions, pending input -----
   var home = null;
   function renderHome() {
@@ -335,12 +355,13 @@ button:disabled { opacity: 0.5; cursor: default; }
     return el("div", {}, [el("h2", { text: "Reply" }), input, el("div", { class: "actions" }, [el("button", { class: "primary", text: "Send", onclick: sendReply })])]);
   }
 
-  function rerender() { if (state.view === "session") renderSession(); else if (state.view === "home") renderHome(); else render([]); }
+  function rerender() { if (state.view === "session") renderSession(); else if (state.view === "home") renderHome(); else if (state.view === "agent") renderAgentCard(); else render([]); }
 
   // A tool result is the first render: never re-call the tool that produced it.
   function show(result) {
     var data = structured(result);
     if (!data) { render([el("p", { class: "muted", text: "Nothing to show." })]); return; }
+    if (data.agent_card) { clearTimeout(state.pollTimer); agentCard = data.agent_card; state.view = "agent"; renderAgentCard(); return; }
     if (Array.isArray(data.agents)) { home = data; state.view = "home"; renderHome(); return; }
     if (data.session_id) {
       if (data.messages) { state.view = "session"; state.sessionId = data.session_id; session = data; renderSession(); schedulePoll(); }

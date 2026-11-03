@@ -262,6 +262,10 @@ async fn tools_list_links_tools_to_views() {
         tool("agent_run")["_meta"]["ui"]["resourceUri"],
         SESSION_VIEW_URI
     );
+    assert_eq!(
+        tool("agent_get_card")["_meta"]["ui"]["resourceUri"],
+        "ui://everruns/app/agent"
+    );
     let home = tool("everruns_home");
     assert_eq!(home["_meta"]["ui"]["resourceUri"], HOME_VIEW_URI);
     assert_eq!(
@@ -300,25 +304,26 @@ async fn templates_are_served_as_mcp_app_resources() {
         .iter()
         .filter_map(|r| r["uri"].as_str())
         .collect();
-    assert!(uris.contains(&SESSION_VIEW_URI) && uris.contains(&HOME_VIEW_URI));
-
-    let read = rpc(
-        &server,
-        "resources/read",
-        json!({ "uri": SESSION_VIEW_URI }),
-        LATEST,
-        vec![],
-    )
-    .await;
-    let content = &read["result"]["contents"][0];
-    assert_eq!(content["mimeType"], APP_MIME);
-    assert!(
-        content["text"]
-            .as_str()
-            .unwrap()
-            .starts_with("<!doctype html>")
-    );
-    assert_eq!(content["_meta"]["ui"]["prefersBorder"], true);
+    for uri in [SESSION_VIEW_URI, HOME_VIEW_URI, "ui://everruns/app/agent"] {
+        assert!(uris.contains(&uri));
+        let read = rpc(
+            &server,
+            "resources/read",
+            json!({ "uri": uri }),
+            LATEST,
+            vec![],
+        )
+        .await;
+        let content = &read["result"]["contents"][0];
+        assert_eq!(content["mimeType"], APP_MIME);
+        assert!(
+            content["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("<!doctype html>")
+        );
+        assert_eq!(content["_meta"]["ui"]["prefersBorder"], true);
+    }
 }
 
 // ============================================================================

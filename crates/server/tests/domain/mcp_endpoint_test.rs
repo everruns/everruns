@@ -244,10 +244,7 @@ fn tool_is_error(resp: &Value) -> bool {
     resp["result"]["isError"].as_bool().unwrap_or(false)
 }
 
-/// Extract the plain-text summary from a card tool result. Card tools return a
-/// content array of `[{type:"resource", ...}, {type:"text", text: summary}]`
-/// (see `card_tool_content`), so the summary lives on the first `text` item,
-/// not at `content[0]`.
+/// Extract the text fallback from a card tool result.
 fn card_summary_text(resp: &Value) -> String {
     resp["result"]["content"]
         .as_array()
@@ -942,6 +939,18 @@ async fn test_mcp_agent_get_card_counts_sessions_by_internal_id() {
         card_summary_text(&resp).contains("0 session(s)"),
         "expected 0 sessions in summary, got: {}",
         card_summary_text(&resp)
+    );
+
+    assert_eq!(
+        resp["result"]["structuredContent"]["agent_card"]["public_id"],
+        agent_public_id
+    );
+    assert!(
+        resp["result"]["content"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["type"] == "text")
     );
 
     // Create a session bound to this agent (REST resolves public_id ->

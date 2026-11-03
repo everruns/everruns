@@ -96,14 +96,12 @@ The Tasks extension runs `agent_run` and `session_send_message` as tasks, one pe
 
 ### Entity Cards
 
-Under negotiated protocol `2025-06-18`, Everruns exposes per-entity card
-tools (`agent_get_card`, future `session_get_card`, …) that return an MCP
-`resource` content block of MIME type `text/html` at the `ui://` scheme
-along with a one-line text summary. MCP-Apps-aware hosts render the HTML
-in a sandboxed iframe; hosts that ignore embedded resources still see the
-summary. See [`knowledge/ui/mcp-cards.md`](../ui/mcp-cards.md) for the standard,
-including the URI scheme, sandboxing requirements, and the planned
-`postMessage` action protocol that backs future mutation buttons.
+Under negotiated protocols `2025-06-18` and newer, `agent_get_card` opens a
+standard MCP Apps view via tool metadata, with structured card data and a
+one-line text fallback. The static template is available through
+`resources/read`; no entity HTML is embedded in the tool result. See
+[MCP Apps](../ui/mcp-apps.md) for the wire contract and
+[entity cards](../ui/mcp-cards.md) for the card presentation.
 
 ### Tool Metadata
 
