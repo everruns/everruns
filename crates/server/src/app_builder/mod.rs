@@ -575,18 +575,16 @@ impl ServerAppBuilder {
                 .transpose()
         };
 
-        let event_service = Arc::new(services::EventService::with_listeners(
-            db.clone(),
-            event_delivery.clone(),
-            event_listeners.clone(),
-        ));
-        thread_turns.bind_registry(&db, &event_service, &runner);
-        automatic_titles.bind_events(&event_service);
+        // The listener feed reads on the background pool, off the requests'
+        // connections; the request-path service shares it.
         let background_event_service = Arc::new(services::EventService::with_listeners(
             background_db.clone(),
             event_delivery.clone(),
             event_listeners,
         ));
+        let event_service = Arc::new(background_event_service.with_database(db.clone()));
+        thread_turns.bind_registry(&db, &event_service, &runner);
+        automatic_titles.bind_events(&event_service);
 
         let sse_tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits::from_env()));
 

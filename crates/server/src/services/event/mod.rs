@@ -15,10 +15,13 @@
 // when NATS is active; otherwise they go through PG like any other event.
 //
 // Event Listeners:
-// After persisting events, the service notifies registered listeners for
-// observability integrations (OTel spans, metrics, etc.). They run in order
-// per session (`listener_dispatch`). A session actor's holder does not wait
-// for them; every other caller does.
+// Listeners of stored events are fed from the database (`feed`): every
+// committed event reaches them in each session's order, at least once, on
+// whichever replica holds the session's partition, shortly after the commit.
+// No caller waits for them. Exporters that keep per-process state
+// (OpenTelemetry, Braintrust, Prometheus) and ephemeral events still go
+// through in-process queues (`listener_dispatch`), in order per session; a
+// session actor's holder does not wait for those, every other caller does.
 
 use crate::domains::sessions::record::SessionParticipantKind;
 use crate::live_updates::event_delivery::EventDelivery;
@@ -44,9 +47,11 @@ use uuid::Uuid;
 /// sessions and keeps memory predictable. Mirrors the PAT auth cache
 /// (`auth::builtin`) and reuses the same moka version.
 mod deleted_session;
+mod feed;
 mod listener_dispatch;
 mod tool_images;
 use deleted_session::{session_gone, single_session};
+pub use feed::EventFeed;
 use listener_dispatch::ListenerDispatch;
 pub use listener_dispatch::wait_for_queued_listeners;
 
@@ -97,8 +102,10 @@ pub struct EventService {
     event_delivery: EventDelivery,
     /// Registered event listeners for observability
     listeners: Arc<Vec<Arc<dyn EventListener>>>,
-    /// Ordered per-session queues the listeners run from.
+    /// Ordered per-session queues the in-process listeners run from.
     dispatch: ListenerDispatch,
+    /// Delivers stored events to the other listeners from the database.
+    feed: Option<EventFeed>,
     /// Bounded cache: session_id -> agent metadata. moka is internally
     /// `Arc`-backed and `Clone`, so no outer `Arc<RwLock>` is needed.
     agent_metadata_cache: Cache<SessionId, AgentEventMetadata>,
@@ -122,14 +129,26 @@ impl EventService {
         event_delivery: EventDelivery,
         listeners: Vec<Arc<dyn EventListener>>,
     ) -> Self {
-        let listeners = Arc::new(listeners);
+        let (feed, in_process) = EventFeed::split(db.clone(), &listeners);
         Self {
             db,
             event_delivery,
-            dispatch: ListenerDispatch::new(listeners.clone()),
-            listeners,
+            dispatch: ListenerDispatch::new(Arc::new(in_process)),
+            feed,
+            listeners: Arc::new(listeners),
             agent_metadata_cache: build_agent_metadata_cache(),
         }
+    }
+
+    /// This service on another database handle (a background pool), sharing
+    /// its listeners, queues and feed.
+    pub fn with_database(&self, db: Arc<StorageBackend>) -> Self {
+        Self { db, ..self.clone() }
+    }
+
+    /// The listener feed, when any listener is fed from the database.
+    pub fn feed(&self) -> Option<&EventFeed> {
+        self.feed.as_ref()
     }
 
     /// Get reference to the event delivery backend (for SSE subscriptions).
@@ -152,11 +171,22 @@ impl EventService {
         }
     }
 
-    /// Wait until every event handed to the listeners so far was handled.
-    /// For tests and shutdown: callers of a fenced append are answered
-    /// before their events' listeners run.
+    /// Wait until every event stored or handed to the listeners so far was
+    /// handled. For tests: no caller waits for the listeners of its events.
     pub async fn listeners_settled(&self) {
         self.dispatch.settled().await;
+        if let Some(feed) = &self.feed
+            && !feed.settled(Duration::from_secs(30)).await
+        {
+            tracing::warn!("event feed did not settle within 30 s");
+        }
+    }
+
+    /// Wake the feed for a stored event's partition on this replica.
+    fn wake_feed(&self, event: &Event) {
+        if let Some(feed) = &self.feed {
+            feed.wake(event.session_id.uuid());
+        }
     }
 
     /// Validate that event_type matches the data type.
@@ -705,9 +735,11 @@ impl EventService {
             );
         }
 
-        // Notify listeners after persisting. Queueing keeps the session's
-        // order even when the caller does not wait.
+        // In-process listeners after persisting; queueing keeps the
+        // session's order even when the caller does not wait. The feed reads
+        // the committed row itself.
         self.notify(event, wait).await;
+        self.wake_feed(event);
     }
 
     /// Emit a batch of typed event requests.
@@ -791,6 +823,7 @@ impl EventService {
         let notified = event.clone();
         crate::storage::transaction::after_commit_detached(async move {
             service.notify_listeners(&notified).await;
+            service.wake_feed(&notified);
         })
         .await;
 
@@ -976,7 +1009,7 @@ mod tests {
 
     mod cancelled_caller;
     mod emit_conditional;
-    mod fenced_listeners;
+    mod fed_listeners;
     mod service_mcp_responder;
     mod tool_images;
 
