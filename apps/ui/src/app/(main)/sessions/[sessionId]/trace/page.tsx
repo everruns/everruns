@@ -18,7 +18,7 @@ export default function TracePage() {
   const liveSequence = useMemo(() => latestTraceSequence(events), [events]);
   const { data: run } = useSessionRun(sessionId, isActive);
   const [scope, setScope] = useState<"session" | "run">("session");
-  const multi = (run?.sessions.length ?? 0) > 1;
+  const multi = (run?.sessions?.length ?? 0) > 1;
   return (
     <Suspense>
       {multi && run ? (

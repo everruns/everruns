@@ -52,15 +52,15 @@ export default function CostPage() {
   // (knowledge/runtime-resources/agents-using-agents.md, Whole run).
   const { data: run } = useSessionRun(sessionId, isActive);
   const [scope, setScope] = useState<"session" | "run">("session");
-  const multi = !!run && run.sessions.length > 1;
+  const multi = !!run && (run.sessions?.length ?? 0) > 1;
 
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6">
-        {multi ? (
+        {multi && run ? (
           <RunScopeSwitch scope={scope} onChange={setScope} agents={run.sessions.length} />
         ) : null}
-        {multi && scope === "run" ? (
+        {multi && run && scope === "run" ? (
           <>
             <RunSummaryCards run={run} />
             <RunCostSplit run={run} />
