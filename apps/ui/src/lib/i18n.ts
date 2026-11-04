@@ -220,6 +220,7 @@ const messages = {
       "The AI provider account has not completed a confirmation this model requires. Complete it at {confirm_url}, then try again.",
     runtime_error_provider_attestation_required_types:
       "The AI provider account has not completed a confirmation this model requires ({missing_types}). Complete it at {confirm_url}, then try again.",
+    runtime_error_model_refusal: "The model declined this request.",
     runtime_error_details_label: "Details",
     runtime_error_provider_unavailable:
       "The AI provider is experiencing issues. Please try again shortly.",
@@ -548,6 +549,7 @@ const messages = {
       "Обліковий запис AI-провайдера не пройшов підтвердження, якого вимагає ця модель. Завершіть його на {confirm_url} і спробуйте ще раз.",
     runtime_error_provider_attestation_required_types:
       "Обліковий запис AI-провайдера не пройшов підтвердження, якого вимагає ця модель ({missing_types}). Завершіть його на {confirm_url} і спробуйте ще раз.",
+    runtime_error_model_refusal: "Модель відмовилася виконати цей запит.",
     runtime_error_details_label: "Деталі",
     runtime_error_provider_unavailable:
       "AI-провайдер зараз недоступний. Спробуйте ще раз трохи пізніше.",

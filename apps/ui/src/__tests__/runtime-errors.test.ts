@@ -1,4 +1,8 @@
-import { getLocalizedOutputMessageText, localizeRuntimeError } from "@/lib/runtime-errors";
+import {
+  getLocalizedOutputMessageText,
+  localizeRuntimeError,
+  isRetryableRuntimeError,
+} from "@/lib/runtime-errors";
 
 describe("runtime error localization", () => {
   it("localizes output message text from structured budget metadata instead of fallback prose", () => {
@@ -225,4 +229,13 @@ describe("runtime error localization", () => {
     expect(text).toContain("Update the integration");
     expect(text).not.toContain("generic processing error");
   });
+});
+
+it("localizes model refusals without suggesting a retry", () => {
+  const error = { code: "model_refusal" };
+  expect(localizeRuntimeError("en", error, "fallback")).toBe("The model declined this request.");
+  expect(localizeRuntimeError("uk", error, "fallback")).toBe(
+    "Модель відмовилася виконати цей запит.",
+  );
+  expect(isRetryableRuntimeError(error)).toBe(false);
 });

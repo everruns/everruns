@@ -908,7 +908,7 @@ impl ReasonAtom {
                                 last_failure.as_deref(),
                             );
                             failed_generation
-                                .emit(&error.to_string(), None, &stream_retry_metadata)
+                                .emit(&error, None, &stream_retry_metadata)
                                 .await;
                             return Err(error);
                         }
@@ -1034,7 +1034,7 @@ impl ReasonAtom {
                         )
                         .with_retry_metadata(&stream_retry_metadata);
                         failed_generation
-                            .emit(&error.to_string(), None, &stream_retry_metadata)
+                            .emit(&error, None, &stream_retry_metadata)
                             .await;
                         return Err(error);
                     };
@@ -1548,7 +1548,9 @@ impl ReasonAtom {
                                 retry_config.calculate_backoff(stream_retry_metadata.attempts);
                             reserve_retry_wait(&retry_config, &mut retry_started_at, proposed)
                         });
-                        let has_partial_output = compaction_started_at.is_none()
+                        let has_partial_output = err.kind()
+                            != crate::engine::error::LlmErrorKind::Refusal
+                            && compaction_started_at.is_none()
                             && (!tool_calls.is_empty()
                                 || !text.is_empty() && !matches!(retry_wait, Some(Some(_))));
 
@@ -1602,17 +1604,14 @@ impl ReasonAtom {
                             continue 'stream_attempt;
                         }
 
+                        let error = err.into_agent_error();
                         failed_generation
-                            .emit(
-                                &err.to_string(),
-                                time_to_first_token_ms,
-                                &stream_retry_metadata,
-                            )
+                            .emit(&error, time_to_first_token_ms, &stream_retry_metadata)
                             .await;
                         if compaction_started_at.is_some() {
                             compaction_lifecycle.fail().await;
                         }
-                        return Err(AgentLoopError::llm_kind(err.kind(), err.to_string()));
+                        return Err(error);
                     }
                     // `LlmStreamEvent` is `#[non_exhaustive]`: ignore kinds this build does
                     // not know so the turn keeps streaming (unreachable in-workspace).
