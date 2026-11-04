@@ -268,6 +268,7 @@ mod tests {
 
     fn session_row(agent: AgentId, harness: HarnessId, tags: Vec<String>) -> CreateSessionRow {
         CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,

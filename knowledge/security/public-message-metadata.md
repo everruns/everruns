@@ -25,6 +25,10 @@ filters provenance; its explicit canonical escape hatch remains trusted.
 
 Unknown historical keys are withheld because ownership cannot be inferred from
 the key name or the user role. Caller-owned JSON has an explicit custom namespace.
+Inbound MCP provenance is an allowlisted `mcp_client` object on server-owned
+`input.message` **event** metadata. A similarly named object in caller-owned
+message metadata, including an old `everruns_mcp_client` value, never supplies
+identity and remains withheld. The UI reads only the event envelope.
 The public migration contract is in [Events](../../docs/features/events.md).
 No storage migration is needed: internal journals, database events, gRPC and
 recovery keep their complete state, including tool changes and script stdin.

@@ -238,6 +238,7 @@ async fn scoped_mcp_lookup_uses_current_agent_config_in_direct_and_grpc_paths() 
     let session = adapters
         .db
         .create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             trigger_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,
@@ -421,6 +422,7 @@ async fn seed_platform_session(
 
     let session = db
         .create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             trigger_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,
@@ -1309,6 +1311,7 @@ async fn get_session_carries_org_public_id() {
     let row = adapters
         .db
         .create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             trigger_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,

@@ -374,6 +374,9 @@ pub struct SessionParticipant {
 /// A session represents a single conversation with an agent.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Session {
+    /// Server-recorded MCP client that created this session. Not the author of later inputs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_creator: Option<crate::auth::mcp_attribution::McpClientAttribution>,
     /// Unique identifier for the session (format: session_{32-hex}).
     #[schema(value_type = String, example = "session_01933b5a00007000800000000000001")]
     pub id: SessionId,
@@ -663,6 +666,7 @@ impl Session {
             max_iterations: execution.max_iterations,
             parallel_tool_calls: execution.parallel_tool_calls,
             status,
+            mcp_creator: None,
             source: SessionSource::Unknown,
             activity,
             last_turn_status: None,

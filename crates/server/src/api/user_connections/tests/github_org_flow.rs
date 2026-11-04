@@ -57,6 +57,7 @@ impl AuthBackend for OneUser {
 
 fn management_user(user_id: Uuid, role: OrgRole) -> ManagementUser {
     ManagementUser {
+        mcp_client: None,
         id: user_id,
         email: format!("{user_id}@example.com"),
         name: "Test".to_string(),

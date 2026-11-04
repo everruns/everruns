@@ -156,6 +156,8 @@ impl IntoResponse for AuthError {
 /// Authenticated user context extracted from request
 #[derive(Debug, Clone)]
 pub struct AuthUser {
+    /// Validated inbound MCP grant; absent for legacy tokens and other credentials.
+    pub mcp_client: Option<super::mcp_attribution::McpClientAttribution>,
     /// User ID
     pub id: Uuid,
     /// User email
@@ -181,6 +183,7 @@ impl AuthUser {
     /// so all code paths (org membership, API keys, etc.) work uniformly.
     pub fn anonymous() -> Self {
         Self {
+            mcp_client: None,
             id: ANONYMOUS_USER_ID,
             email: ANONYMOUS_USER_EMAIL.to_string(),
             name: ANONYMOUS_USER_NAME.to_string(),

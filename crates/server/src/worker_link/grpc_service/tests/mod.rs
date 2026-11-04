@@ -578,6 +578,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
     let session = service
         .db
         .create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,

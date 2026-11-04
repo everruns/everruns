@@ -22,6 +22,7 @@ pub(super) fn test_harness_id() -> HarnessId {
 
 pub(super) fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
     CreateSessionRow {
+        mcp_creator: None,
         playground_user_id: None,
         source: crate::domains::sessions::record::SessionSource::Api,
         workspace_id: None,

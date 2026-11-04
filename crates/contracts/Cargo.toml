@@ -19,7 +19,7 @@ schemars = { workspace = true, optional = true }
 
 # Serialization
 serde.workspace = true
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
 
 # IDs / time / text
 uuid.workspace = true

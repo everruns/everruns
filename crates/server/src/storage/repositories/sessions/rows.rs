@@ -37,6 +37,8 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, FromRow)]
 pub struct SessionRow {
+    #[sqlx(default)]
+    pub mcp_creator: Option<serde_json::Value>,
     pub id: SessionId,
     pub org_id: i64,
     /// Workspace this session is attached to (owns the virtual filesystem).
@@ -266,6 +268,7 @@ pub struct UpdateSession {
 
 #[derive(Debug, Clone)]
 pub struct CreateSessionRow {
+    pub mcp_creator: Option<serde_json::Value>,
     pub org_id: i64,
     /// How this session was started. Set by the creating ingress path, never
     /// taken from untrusted client input except for client-declarable
@@ -325,6 +328,7 @@ pub struct CreateSessionRow {
 impl Default for CreateSessionRow {
     fn default() -> Self {
         Self {
+            mcp_creator: None,
             org_id: 0,
             source: crate::domains::sessions::record::SessionSource::Api,
             app_id: None,

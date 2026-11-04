@@ -12,3 +12,4 @@
 * [TC011: Full Auth - Session Renewal and Expiry](TC011_session_refresh_and_expiry.md) - Verify that an idle browser session renews through its refresh cookie and that expired refresh credentials return the user to login without losing the destination.
 * [TC012: Full Auth - Auth Outage and Failed Sign-out](TC012_auth_outage_and_logout_failure.md) - Verify that auth bootstrap failures block protected content and that failed sign-out clears application caches without falsely reporting the session as ended.
 * [State-machine coverage map](coverage-map.md) - Reachability and runtime session coverage.
+* [TC013: MCP consent and client attribution](TC013_mcp_consent_and_attribution.md) - Verify consent scope and per-action provenance across multiple clients, legacy messages, and tenant boundaries.

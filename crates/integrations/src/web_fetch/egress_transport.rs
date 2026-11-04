@@ -149,12 +149,11 @@ mod tests {
         }
 
         fn requested_urls(&self) -> Vec<String> {
-            self.requests
-                .lock()
-                .unwrap()
-                .iter()
-                .map(|r| r.url.clone())
-                .collect()
+            self.recorded().iter().map(|r| r.url.clone()).collect()
+        }
+
+        fn recorded(&self) -> Vec<EgressRequest> {
+            self.requests.lock().unwrap().clone()
         }
     }
 
@@ -185,22 +184,66 @@ mod tests {
 
     #[tokio::test]
     async fn fetches_html_and_converts_to_markdown() {
-        let egress = Arc::new(MockEgress::with_responses(vec![MockEgress::ok(
+        // Since fetchkit 0.6 the fetcher probes same-origin agent-resource
+        // URIs with HEAD requests whenever it converts HTML to markdown
+        // (AGENT_RESOURCE_PROBES in fetchkit's default fetcher). Each probe
+        // crosses the egress boundary, so the mock queue holds the page plus
+        // one 404 per probe; probes run concurrently, so only the sorted set
+        // of probe URLs is asserted, not their order.
+        const PROBE_PATHS: [&str; 10] = [
+            "/llms.txt",
+            "/llms-full.txt",
+            "/auth.md",
+            "/.well-known/oauth-authorization-server",
+            "/.well-known/openid-configuration",
+            "/.well-known/oauth-protected-resource",
+            "/.well-known/api-catalog",
+            "/.well-known/mcp/server-card.json",
+            "/.well-known/agent-card.json",
+            "/.well-known/agent-skills/index.json",
+        ];
+        let page_url = "http://93.184.216.34/page";
+        let mut responses = vec![MockEgress::ok(
             200,
             &[("content-type", "text/html; charset=utf-8")],
             "<html><head><title>T</title></head><body><h1>Title</h1><p>Body</p></body></html>",
-        )]));
+        )];
+        responses.extend(PROBE_PATHS.iter().map(|_| MockEgress::ok(404, &[], "")));
+        let egress = Arc::new(MockEgress::with_responses(responses));
         let tool = tool_with_egress(egress.clone());
 
         let response = tool
-            .execute(FetchRequest::new("http://93.184.216.34/page").as_markdown())
+            .execute(FetchRequest::new(page_url).as_markdown())
             .await
             .unwrap();
 
         assert_eq!(response.status_code, 200);
         assert_eq!(response.format.as_deref(), Some("markdown"));
-        assert_eq!(response.content.as_deref(), Some("T\n# Title\n\nBody"));
-        assert_eq!(egress.requested_urls(), vec!["http://93.184.216.34/page"]);
+        // markkit 0.3 converts only the body; <title> is no longer hoisted.
+        assert_eq!(response.content.as_deref(), Some("# Title\n\nBody"));
+        let recorded = egress.recorded();
+        assert_eq!(
+            recorded.len(),
+            1 + PROBE_PATHS.len(),
+            "page plus one HEAD probe per agent-resource URI"
+        );
+        assert_eq!(recorded[0].method, "GET");
+        assert_eq!(recorded[0].url, page_url);
+        let mut probed: Vec<String> = recorded[1..]
+            .iter()
+            .map(|request| request.url.clone())
+            .collect();
+        probed.sort();
+        let mut expected: Vec<String> = PROBE_PATHS
+            .iter()
+            .map(|path| format!("http://93.184.216.34{path}"))
+            .collect();
+        expected.sort();
+        assert_eq!(probed, expected);
+        assert!(
+            recorded[1..].iter().all(|request| request.method == "HEAD"),
+            "agent-resource probes must use HEAD"
+        );
     }
 
     #[tokio::test]

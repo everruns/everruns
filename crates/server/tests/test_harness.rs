@@ -1074,6 +1074,10 @@ impl TestServer {
         .with_virtual_registry(virtual_registry.clone())
         // URL mode elicitation pages hang off the same root `/mcp` is served
         // under, matching app_builder.
+        .with_mcp_resource(format!(
+            "{}/mcp",
+            auth::builtin::root_url_from_api_base(&auth_config.base_url)
+        ))
         .with_elicitation_base_url(auth::builtin::root_url_from_api_base(&auth_config.base_url))
         .with_mcp_events(mcp_events.clone())
         .with_provider_services(providers_state.provider_services());

@@ -1,6 +1,6 @@
 // HTTP middleware stacks applied around the routers.
 //
-// Decision: layer order is load-bearing. Each `.layer` call wraps outside the
+// Decision: layer order determines request handling. Each `.layer` call wraps outside the
 //   ones before it, so the last layer runs first on a request. Keep the order
 //   below when adding a layer (see the RequestIdLayer note at the end).
 
