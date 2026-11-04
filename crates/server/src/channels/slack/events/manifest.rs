@@ -178,8 +178,12 @@ pub(crate) async fn resolve_manifest_starters(
 ///
 /// Slack requires `long_description` to be 174–4000 chars. We build it from the
 /// app's description (if any) plus a standard suffix, padding if needed.
-/// Slack caps `agent_view.agent_description` at 300 characters.
-pub(crate) const SLACK_AGENT_DESC_MAX: usize = 300;
+/// Our cap for `agent_view.agent_description`, in bytes.
+///
+/// Slack documents 300 characters, but the daily manifest check saw a
+/// 300-character ASCII text refused as too long: Slack counts something
+/// stricter (bytes, after the em dash), as with `description`. Stay clear of it.
+pub(crate) const SLACK_AGENT_DESC_MAX_BYTES: usize = 250;
 
 /// Slack renders at most four suggested prompts in an agent thread, so the
 /// manifest never carries more than that even though an agent may author up to
@@ -220,7 +224,7 @@ pub(crate) fn build_agent_description(app_name: &str, app_description: Option<&s
         Some(d) => format!("{app_name} — {d}"),
         None => format!("{app_name}, an AI agent powered by Everruns"),
     };
-    truncate_chars(&desc, SLACK_AGENT_DESC_MAX)
+    shorten_at_word(&desc, SLACK_AGENT_DESC_MAX_BYTES)
 }
 
 pub(crate) fn build_short_description(app_name: &str, app_description: Option<&str>) -> String {
@@ -242,7 +246,8 @@ pub(crate) fn build_short_description(app_name: &str, app_description: Option<&s
 pub(crate) const SLACK_SHORT_DESC_MAX_BYTES: usize = 120;
 
 /// `s` if it fits in `max` bytes, else its longest whole-word prefix that fits
-/// with a trailing ellipsis. Falls back to a byte cut for a single long word.
+/// with a trailing ellipsis. Falls back to a byte cut when the last word break
+/// would drop more than half the room (a single long word).
 pub(crate) fn shorten_at_word(s: &str, max: usize) -> String {
     const ELLIPSIS: &str = "…";
     let s = s.trim();
@@ -251,7 +256,7 @@ pub(crate) fn shorten_at_word(s: &str, max: usize) -> String {
     }
     let room = truncate_bytes(s, max - ELLIPSIS.len());
     let cut = match room.rfind(char::is_whitespace) {
-        Some(end) if end > 0 => &room[..end],
+        Some(end) if end >= room.len() / 2 => &room[..end],
         _ => room.as_str(),
     };
     let cut = cut.trim_end_matches(|c: char| c.is_whitespace() || ",;:-—(".contains(c));
@@ -320,7 +325,7 @@ pub(crate) fn build_manifest_yaml(
     agent_surface_enabled: bool,
     starters: &[ConversationStarter],
 ) -> String {
-    let escaped_name = yaml_escape(&truncate_chars(app_name, 35));
+    let escaped_name = yaml_escape(&build_app_name(app_name));
     let name = &escaped_name;
     let display_name = yaml_escape(display_name);
     let short_desc = yaml_escape(&build_short_description(app_name, app_description));
@@ -392,6 +397,36 @@ pub(crate) fn build_manifest_yaml(
     )
 }
 
+/// Slack's cap for `display_information.name`, in characters.
+pub(crate) const SLACK_APP_NAME_MAX: usize = 35;
+
+/// The app name Slack will accept: letters, digits, spaces and `-_.` only.
+///
+/// Slack refused "Дуже довга назва агента, що не влаз" with
+/// `invalid_characters` and documents no allowed set. Letters of any script
+/// stay; punctuation such as the comma becomes a space. A name with nothing
+/// left falls back to a generic one rather than an empty field Slack refuses.
+pub(crate) fn build_app_name(app_name: &str) -> String {
+    let cleaned: String = app_name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || "-_.".contains(c) {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
+    let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let name = truncate_chars(&cleaned, SLACK_APP_NAME_MAX);
+    let name = name.trim_end();
+    if name.is_empty() {
+        "Everruns agent".to_string()
+    } else {
+        name.to_string()
+    }
+}
+
 /// Truncate display name to 80 chars (Slack limit for bot_user display_name).
 /// Uses char boundary to avoid panicking on multi-byte UTF-8.
 pub(crate) fn truncate_display_name(name: &str) -> String {
@@ -417,7 +452,10 @@ pub(crate) fn yaml_escape(s: &str) -> String {
 
 /// Slack requires long_description to be 174–4000 characters.
 pub(crate) const SLACK_LONG_DESC_MIN: usize = 174;
-pub(crate) const SLACK_LONG_DESC_MAX: usize = 4000;
+/// Our cap for `long_description`, in bytes. Slack refused a 4000-character
+/// ASCII text (two em dashes made it 4004 bytes) as too long, so it counts
+/// bytes, not the characters it documents. Stay clear of the boundary.
+pub(crate) const SLACK_LONG_DESC_MAX_BYTES: usize = 3800;
 
 /// Build a long_description that meets Slack's 174-char minimum.
 ///
@@ -438,7 +476,7 @@ pub(crate) fn build_long_description(app_name: &str, app_description: Option<&st
         desc.push_str(pad);
     }
 
-    truncate_chars(&desc, SLACK_LONG_DESC_MAX)
+    shorten_at_word(&desc, SLACK_LONG_DESC_MAX_BYTES)
 }
 
 /// Percent-encode a string for URL query parameters.

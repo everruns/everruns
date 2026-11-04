@@ -90,7 +90,9 @@ fn worst_case_agents_still_produce_a_manifest_within_slack_limits() {
 
                 let app_name = text("/display_information/name");
                 assert!(
-                    !app_name.is_empty() && chars(&app_name) <= 35,
+                    !app_name.is_empty()
+                        && chars(&app_name) <= SLACK_APP_NAME_MAX
+                        && app_name == build_app_name(&app_name),
                     "{case}: name {app_name:?}"
                 );
                 let short = text("/display_information/description");
@@ -100,9 +102,9 @@ fn worst_case_agents_still_produce_a_manifest_within_slack_limits() {
                 );
                 let long = text("/display_information/long_description");
                 assert!(
-                    (SLACK_LONG_DESC_MIN..=SLACK_LONG_DESC_MAX).contains(&chars(&long)),
-                    "{case}: long_description is {} chars",
-                    chars(&long)
+                    chars(&long) >= SLACK_LONG_DESC_MIN && long.len() <= SLACK_LONG_DESC_MAX_BYTES,
+                    "{case}: long_description is {} bytes",
+                    long.len()
                 );
                 let bot = text("/features/bot_user/display_name");
                 assert!(
@@ -113,7 +115,7 @@ fn worst_case_agents_still_produce_a_manifest_within_slack_limits() {
                 if agent_surface {
                     let agent = text("/features/agent_view/agent_description");
                     assert!(
-                        chars(&agent) <= SLACK_AGENT_DESC_MAX,
+                        agent.len() <= SLACK_AGENT_DESC_MAX_BYTES,
                         "{case}: agent_description"
                     );
                     let prompts = manifest
