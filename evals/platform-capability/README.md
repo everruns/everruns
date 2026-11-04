@@ -1,13 +1,27 @@
 # Platform capability eval
 
-A [Mira](https://github.com/everruns/mira) study that measures whether a real
-model can turn natural-language administration requests into the `platform`
-capability's `discover`, `query`, and `execute` calls.
+A [Mira](https://github.com/everruns/mira) study of platform administration.
+The hosted subject drives real Platform Chat over HTTP. The offline subject
+compares CLI, eager native and bounded native interfaces over captured real platform
+operation descriptors and a shared simulated backend. Platform Chat now registers
+individual `platform_` functions with bounded discovery and keeps the shell for
+composition; see the [capability reference](../../docs/capabilities/platform.md).
+The recorded comparison predates that production switch: its CLI prompt is a
+frozen snapshot, and the historical native runs used 344 unprefixed captured operations. The current
+`catalog.json` follows the latest server inventory (361 operations).
+The production catalog excludes 11 infrastructure-only durable operations and
+registers 350 public operations. These historical runs do not qualify the new
+managed composition or production model behavior. The invocation schema builder
+is shared with production; fixture dispatch and state remain simulated.
 
-This study drives the built-in `platform-chat` harness through the public HTTP
-API. It therefore exercises the same command catalog, authorization, worker
-adapter, and persistence path as a user turn. It does not call domain services
-directly or grade a mocked tool catalog.
+The hosted subject exercises authorization, worker dispatch and persistence.
+Its read/write and command scorers recognize both production `platform_` function
+names and the historical unprefixed native fixture names through the captured
+canonical catalog; unrelated MCP tools do not acquire a platform operation role.
+The offline subject exercises model interface use, canonical JSON schemas, real
+CLI parsing and Bashkit execution, plus deterministic in-memory state. Its
+backend implements generic resource operations rather than production domain
+services; offline state success does not establish hosted correctness.
 
 ## What it proves
 
@@ -118,13 +132,15 @@ doppler run --command './target/debug/platform_capability --run --filter cli-'
 `--run` runs the suite in-process and prints a report, so no Mira host CLI is
 needed. `--tag`, `--sample` and `--filter` narrow it.
 
-Exactly one thing is faked: persistence. Everything else is generated from the
-server and checked against it —
+The backend is simulated: generic list/get/create/update/delete behavior and
+seeded resource values. Authorization, approval, production validation beyond
+JSON schema, scheduling and durable persistence are not reproduced. Interface
+artifacts are generated from the server and checked against it —
 
 | Artifact | What it carries | Guard |
 |---|---|---|
-| `catalog.json` | all 292 commands, real descriptions and schemas | `the_eval_catalog_matches_inventory` |
-| `harness.json` | Platform Chat's system prompt and tool schemas | `the_eval_harness_matches_the_shipped_one` |
+| `catalog.json` | all captured commands (currently 361), real descriptions and schemas | `the_eval_catalog_matches_inventory` |
+| `harness.json` | Frozen CLI Platform Chat prompt and current shell schema | `the_eval_cli_snapshot_uses_the_current_shell_schema` |
 | `harness-legacy.json` | Historical three-tool baseline | Frozen comparison artifact |
 | `help.json` | `--help` for the root and every node, rendered by the shipped tree | `the_eval_help_matches_the_shipped_tree` |
 | `commands.json` | the shared CLI contract | `the_checked_in_contract_matches_inventory` |
@@ -134,7 +150,407 @@ so `discover` returns the text a model really reads,
 `everruns skills list --limit 20` is rejected by the same `clap::Command` the
 server builds.
 
-### The A/B: two surfaces, one dataset
+### Matched CLI, eager native and bounded native functions
+
+Use the `surface-comparison` tag for this experiment. Its eight samples ask for
+resource reads, a three-family read, an update, two updates, confirmed agent
+creation, destructive-request refusal, a manager-context conflict and credential
+safety. They grade completed canonical operations and exact initial-to-final mock
+state. Reasons and acknowledged context revisions stay in invocation metadata;
+missing reasons and stale revisions reject before mutation. Required context and
+entity reads must precede each target update, and undeclared operations or
+collateral entity fields fail the scorer. The creation task explicitly leaves
+optional settings unspecified, so its minimal-payload assertion does not penalize
+a configuration choice the task left open.
+They contain no CLI spelling, help-read or discovery-tool requirement. The
+shared policy prompt differs only in its interface paragraph. Existing
+`cli-tree` and `cli-contract` cases remain interface diagnostics and must not be
+pooled into this comparison's task success rate.
+
+The shell role scorer reads the executor's per-call operation audit when
+available. Reading `everruns agents create --help` is a read, including when
+followed by semicolons, pipes or other commands. Historical/hosted events
+without this audit retain the existing script heuristic.
+
+`EVERRUNS_EVAL_SURFACE=cli` supplies one Bashkit `bash` tool with the real
+`everruns` parser. `native-eager` supplies **every captured operation**, each
+with its authentic name and description in the actual request's function list.
+The native invocation schema wraps the complete captured payload under `params`
+with separate `reason` and `context_revision` metadata; local JSON Schema references
+are rebased so nested definitions retain their meaning. Object constraints
+expressed only through a root `$ref`
+or `allOf` are also made explicit as `type: object`; otherwise some provider
+adapters present the nested payload as a string. This preserves validation
+semantics and never parses a stringified argument to rescue a trial. All three
+routes share payload JSON Schema validation,
+invocation policy and the same isolated in-memory resource store. None can call another
+surface's unadvertised entry points. The native schema set is deliberately not
+trimmed to the tasks; provider rejection of the count/size is an infrastructure
+result that should be reported, not hidden by silently reducing the set.
+
+```bash
+source /workspace/.tools/activate.sh
+cd /workspace/everruns/evals/platform-capability
+CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 cargo build --locked
+export EVERRUNS_EVAL_MODE=offline
+export EVERRUNS_EVAL_TARGETS=meta/muse-spark-1.3-contributor
+export EVERRUNS_EVAL_TRIALS=3
+EVERRUNS_EVAL_SURFACE=cli doppler run -- \
+  ./target/debug/platform_capability --run --tag surface-comparison \
+  --runs-report /tmp/platform-cli.jsonl
+EVERRUNS_EVAL_SURFACE=native-eager doppler run -- \
+  ./target/debug/platform_capability --run --tag surface-comparison \
+  --runs-report /tmp/platform-native-eager.jsonl
+EVERRUNS_EVAL_SURFACE=native-bounded doppler run -- \
+  ./target/debug/platform_capability --run --tag surface-comparison \
+  --runs-report /tmp/platform-native-bounded.jsonl
+```
+
+Keep the model, provider endpoint, dataset, repetitions and request policy fixed;
+interleave arms when measuring latency/cache behavior. Cold versus warm caches
+are not controlled by this harness. The offline endpoint defaults to OpenRouter;
+`EVERRUNS_EVAL_OFFLINE_BASE_URL` selects another compatible endpoint. Credentials
+must be supplied through `OPENROUTER_API_KEY`.
+
+The bounded arm starts with `tool_search` only. It uses the production
+`ToolSearchIndex` over the same catalog's operation and source metadata; at most
+eight operation summaries fit in a 32 KiB search response. Full canonical
+schemas arrive as native functions on the next request, without duplication
+in search text. Its optional active view is bounded
+to 32 operations and 64 KiB, with recent disclosures preferred and definitions
+emitted in stable order. A call is admitted only if its schema was actually
+advertised in that model request; discovery in the same tool-call batch cannot
+make an unadvertised call valid. Eager and bounded native schemas are identical.
+Byte-omitted candidates retain bounded `omitted_tools` names with exact-search
+guidance, sharing the same response budget. An omitted name is not a disclosure.
+
+For example, after `get_manager_context` returns revision 3, the experimental
+native `update_agent` call uses an object payload:
+
+```json
+{
+  "params": { "id": "agent_01triage", "description": "Support intake owner" },
+  "reason": "Set the description requested by the user",
+  "context_revision": 3
+}
+```
+
+The CLI equivalent is:
+
+```bash
+everruns agents update agent_01triage --description 'Support intake owner' \
+  --reason 'Set the description requested by the user' --context-revision 3
+```
+
+Neither route stores the reason or context revision on the agent. Native callers
+must not JSON-encode `params` into a string.
+
+This subject's Chat Completions transport sends the current tools at the top level.
+It preserves earlier messages and records positioned additions/removals, but a
+schema addition changes that top-level array. It does **not** exercise Framework's
+durable disclosure or provider inline `ToolChanges`, and does not promise cache
+hits. Existing Framework catalog-lifecycle tests independently cover plugin
+addition, redefinition, revocation, bounds and stable baseline behavior.
+
+The fixture models the default agent reason policy for its supported entity
+mutations and uses the production credential detector. It does not reproduce
+organization flag overrides, domain authorization, transaction/history storage
+or production service behavior. Missing context acknowledgement warns when notes
+exist, as in production; matched update tasks additionally require the promised
+read-before-write and revision acknowledgement.
+
+Use `--tag surface-scale` for separate result-volume diagnostics: 200 deterministic
+agents with 1 KiB descriptions, an aggregate count and a targeted lookup. These
+cases are not pooled into the original eight-task corpus. They expose the tradeoff
+between shell-side filtering and direct native results. No production dataset is
+sent to the provider.
+
+Recompute a comparison with the Rust reporting binary, retaining failed and
+infrastructure trials in the denominator:
+
+```bash
+./target/debug/summarize_surfaces /tmp/platform-cli.jsonl \
+  /tmp/platform-native-eager.jsonl /tmp/platform-native-bounded.jsonl \
+  > /tmp/platform-summary.json
+# A retained compressed report works through stdin:
+gzip -dc results/surfaces-2026-10-23-live.jsonl.gz | \
+  ./target/debug/summarize_surfaces - > /tmp/historical-recount.json
+```
+
+See the [manual evidence case](../../knowledge/test-cases/agents/platform_chat/TC006_matched_platform_surfaces.md).
+
+### What this comparison says about current approaches
+
+The three arms separate schema disclosure from execution:
+
+| Arm | Model initially sees | Discovery and execution cost |
+| --- | --- | --- |
+| CLI | One shell schema | Help reads and retries, then shell composition/filtering |
+| Eager native | Every invocation schema | Direct calls, with the full catalog in every request |
+| Bounded native | One search schema | Selected schemas and extra search steps, then direct calls |
+
+The bounded arm is the relevant architectural comparison with current
+[Codex discovery](https://github.com/openai/codex/blob/main/codex-rs/core/src/tools/handlers/tool_search_spec.rs),
+[OpenAI tool search](https://developers.openai.com/api/docs/guides/tools-tool-search)
+and [Anthropic deferred tools](https://www.anthropic.com/research/advanced-tool-use).
+They retrieve a few operation schemas rather than eagerly loading an entire
+inventory. Reusing the production BM25 index follows that approach; this study
+is not a head-to-head evaluation of those clients or vendor models.
+
+[Programmatic calling](https://developers.openai.com/api/docs/guides/tools-programmatic-tool-calling)
+and [Cloudflare Code Mode](https://blog.cloudflare.com/code-mode-mcp/) address a
+second cost: repeated calls and large intermediate results. The shell can already
+compose operations and reduce their output before the next model request. A
+small direct lookup may still be cheaper as a native call. The separate
+large-result tasks test this distinction instead of equating initial schema
+bytes with end-to-end token savings.
+
+Prompt-cache compatibility is a third question. Deterministic prefix tests can
+prove earlier messages and Framework baselines stay stable across dynamic plugin
+changes. Provider cache-read counts measure observed reuse, influenced by request
+ordering, routing and cache lifetime. Neither establishes controlled cold-cache
+economics or universal cache behavior across providers. Sparse use, cache-aware
+disclosure and per-operation native/CLI routing remain complementary mechanisms.
+
+Each runs-report JSONL record contains sample/target/trial, all scorer results,
+error classification, wall time, usage, iterations, metrics, final mock state,
+canonical operation arguments and model/tool events. Compare task/state success
+separately from infrastructure failures. Model tool-call count is not operation
+count: one Bashkit script can dispatch many operations.
+
+Offline metrics use the `platform.` prefix:
+
+| Metric | Meaning |
+|---|---|
+| `model_calls`, `operations` | Actual model requests and completed canonical operation dispatches |
+| `attempted_operations`, `rejected_operations`, `unique_operations` | Attempt audit count, rejected attempts, and distinct completed operation identities |
+| `search_calls`, `unique_disclosed_operations` | Native discovery requests and distinct disclosed schemas |
+| `tool_result_bytes`, `peak_tool_result_bytes` | Sum/largest UTF-8 model-visible tool outputs, including help/discovery |
+| `discovery_result_bytes`, `peak_discovery_result_bytes` | Native search/discover output bytes (CLI help remains in tool results) |
+| `first_tool_count`, `peak_tool_count` | Number of schemas in the first/largest actual request |
+| `first_tool_bytes`, `peak_tool_bytes` | Compact UTF-8 JSON size of the actual request's function list |
+| `first_request_bytes`, `peak_request_bytes` | Serialized messages plus tools; a byte footprint, not token estimation |
+| `first_input_tokens`, `peak_input_tokens` | Provider-reported prompt/context tokens, including cache reads |
+| `total_input_tokens` | Sum of prompt tokens over calls, including cache reads |
+| `usage_calls`, `actual_cost_calls` | Completeness of provider usage and billed-cost reporting |
+
+Each OpenRouter response's usage is consumed once. `usage.input_tokens` excludes
+cache reads; `usage.cache_read_tokens` holds that separate bucket, and output /
+reasoning are recorded separately (`everruns-disjoint-v1`). Mira's
+reasoning count is a provider-reported subset of output and must not be added
+to output again. Mira's
+`usage.total_tokens()` therefore excludes cached input in this adapter; use
+`platform.total_input_tokens` for total processed context. Cost uses the
+provider's `usage.cost` when present; `actual_cost_complete=false` means the
+reported aggregate must not be treated as a complete billed total. Missing cost
+is not evidence of a free request. A failed request can have a request footprint
+without a usage response. Hosted Everruns events use the shared per-reasoning
+iteration usage projector, which avoids counting completion and rollup copies
+of the same generation; its metrics use the `llm.` prefix.
+
+### Corrected Muse comparison (2026-10-24)
+
+At clean source `18340609e`, **71/72 matched Muse trials passed**: three
+replications of the same eight tasks per surface. CLI and eager native passed
+24/24 each; bounded native passed 23/24. The remaining batch-update trial used
+its 12 model steps on discovery and reads, made no mutation, and failed the
+state scorer. It remains in the input, cost and success denominators.
+
+| Surface | Passed | Mean total input/task | Mean model calls | Mean duration | Reported cost, 24 trials |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CLI | 24/24 | 21,647 | 7.00 | 15.28 s | $0.036005 |
+| Bounded native | 23/24 | 70,327 | 5.46 | 12.84 s | $0.148498 |
+| Eager native | 24/24 | 452,712 | 2.83 | 14.58 s | $0.447777 |
+
+Input includes provider cache reads. The disjoint totals are:
+
+| Surface | Uncached input | Cache-read input | Output | Reasoning, subset of output |
+| --- | ---: | ---: | ---: | ---: |
+| CLI | 282,001 | 237,525 | 36,648 | 18,477 |
+| Bounded native | 1,416,510 | 271,330 | 31,522 | 16,031 |
+| Eager native | 4,294,468 | 6,570,628 | 25,943 | 14,262 |
+
+Bounded native processed 84.5% less input than eager native, with one task
+failure versus none. It still processed 3.25× CLI's input on this corpus. The
+first request held one 556-byte search schema for bounded native, one 1,205-byte
+shell schema for CLI, or 344 schemas totaling 651,943 bytes for eager native.
+The bounded active view stayed within 32 optional schemas / 64 KiB, and search
+results within 32 KiB, including omission hints.
+
+The per-task result explains the surface tradeoff. Simple agent lookup used
+7,681 input tokens with bounded native versus 14,403 with CLI; the three-family
+read used 10,476 versus 19,215. Description update used 80,056 versus 18,844;
+batch update used 224,374 versus 25,676 (including the failed bounded trial).
+In this historical run, agent-write schemas were about 31 KiB each and the
+fallback transport placed selected schemas in both search history and subsequent
+function lists. The current bounded arm avoids the search-history duplicate;
+CLI can use a small leaf help page and filter results in the shell. Native
+lookup and code-based composition therefore remain complementary.
+
+All 72 trials reported complete usage and effective cost. Cache-read shares
+were about 45.7% CLI, 16.1% bounded native and 60.5% eager native. These are
+observations after warmups, not controlled cold/warm experiments. In particular,
+this HTTP fallback rewrites its top-level tools when discovery adds schemas;
+it does not measure Framework's provider inline disclosure. Durations also
+shared the executor with other checks.
+
+The original creation prompt left optional configuration open while the scorer
+required a minimal payload. The corrected task explicitly leaves optional
+creation settings unspecified. Earlier failed/diagnostic attempts and their
+original scores are retained separately rather than rescored into this table.
+
+### Second model and result volume (2026-10-24)
+
+GPT-6 Luna passed **24/24 matched trials**, one replication per surface:
+
+| Surface | Passed | Mean total input/task | Mean model calls | Reported cost, eight trials |
+| --- | ---: | ---: | ---: | ---: |
+| CLI | 8/8 | 13,755 | 6.25 | $0.008376 |
+| Bounded native | 8/8 | 20,922 | 3.63 | $0.011929 |
+| Eager native | 8/8 | 104,466 | 2.38 | $0.015080 |
+
+The client submitted the same schema bytes, but provider-reported first eager
+request input was about 43,800 tokens for Luna versus 159,200 for Muse. Byte
+footprints alone cannot predict model input. Compare surfaces within each model;
+do not pool token counts or make a cross-model cost/quality ranking from this set.
+
+The separate 200-agent result-volume corpus passed **18/18 Muse trials**. Mean
+input per task over three repetitions was:
+
+| Task | CLI | Bounded native | Eager native |
+| --- | ---: | ---: | ---: |
+| Count agents by default model | 19,164 | 44,698 | 359,278 |
+| Find one named agent | 13,743 | 14,335 | 318,937 |
+
+Native aggregation returned 243,745 bytes of agent rows to the model per call;
+CLI could aggregate in Bashkit before returning output. CLI's measured output
+still includes help and intermediate inspection, so it is not a claim that every
+CLI call returned only a tiny aggregate. Server-side filtering kept the eager
+native targeted lookup to about 1,260 bytes of actual resource output, while
+schema/discovery costs remained separate. Both mechanisms matter.
+
+### Evidence and replay
+
+The [summary and provenance](results/corrected-2026-10-24-summary.json) separates
+matched tasks by model from result-volume tasks. The
+[formal raw archive](results/corrected-2026-10-24-live.jsonl.gz) holds all 114
+trials: 113 passed, one failed, zero infrastructure errors. All 535 model
+requests reported usage and effective cost; total reported formal-run cost was
+$0.818928. This excludes earlier diagnostics/warmups, retained with unchanged
+scores in the [38-record diagnostic archive](results/corrected-2026-10-24-diagnostics.jsonl.gz)
+and its [manifest](results/corrected-2026-10-24-diagnostics.json).
+
+Batches preserve original Mira trial index zero; the manifest carries the three
+replication indices, rotated arm order, exact commands, source and binary hashes,
+and raw line ranges. Decompressed report bytes remain unchanged. Recompute the
+matched cohort with the Rust reporter (use `jq` only to select the cohort):
+
+```bash
+gzip -dc results/corrected-2026-10-24-live.jsonl.gz | \
+  jq -c 'select(.case | startswith("surface-scale") | not)' | \
+  ./target/debug/summarize_surfaces - > /tmp/matched-summary.json
+```
+
+Targeted deterministic checks passed: 80 platform tests, four Rust reporting
+tests, 11 shared-index tests, 16 bounded-disclosure tests, five Framework
+catalog-lifecycle tests and 18 MCP-study tests. Strict Clippy passed for the
+platform study, contracts and core; repository guards, OKF and public docs
+build/checks passed. The separate [Framework MCP follow-up](../mcp-scale/README.md#final-source-follow-up-2026-10-24)
+passed all six live tasks at 2,000 tools after the same runtime changes and
+retains offline stress through 10,000 tools. No Yolop source changed.
+
+### Recorded Muse comparison (2026-10-23)
+
+**48/48 trials passed the fixture's current assertions**: eight matched tasks, three repetitions per surface,
+using `meta/muse-spark-1.3-contributor` through OpenRouter. The study ran serially
+in three rounds, alternating arm order. Separate paired smoke runs preceded it;
+caches were neither isolated nor forced cold. Another MCP study overlapped part
+of execution, so durations are observations rather than a controlled latency
+claim. The [summary](results/surfaces-2026-10-23-summary.json) retains per-case
+results, source/binary hashes, exact batch order, and line ranges into the
+[verbatim traces](results/surfaces-2026-10-23-live.jsonl.gz).
+
+**Provisional comparison:** the subsequent review below found an invocation
+metadata gap and insufficient state-preservation assertions. These passes do
+not establish equivalent production mutation behavior. Token counts describe
+the recorded requests; rerun the matched study after fixing the contract before
+using the precise cost/latency ratios to choose a production surface.
+
+| Measure | CLI | Eager native |
+|---|---:|---:|
+| Trials passed | 24/24 | 24/24 |
+| Initial function schemas | 1 | 344 |
+| Initial schema-array bytes | 1,205 | 505,177 |
+| Mean processed input per task | 21,732 | 399,468 |
+| Mean model calls per task | 6.79 | 3.13 |
+| Mean observed duration | 16.7 s | 14.1 s |
+| Uncached input, all 24 tasks | 321,293 | 4,234,091 |
+| Cache-read input, all 24 tasks | 200,284 | 5,353,145 |
+| Output, all 24 tasks | 36,316 | 20,240 |
+| Provider-reported cost, all 24 tasks | $0.03979 | $0.43816 |
+
+Eager native used 18.4× processed input and 11.0× reported cost while taking
+fewer model calls. Its 55.8% observed cache-read share exceeded CLI's 38.4%,
+but its uncached input was still 13.2× larger. Stable tool arrays do not
+guarantee provider cache hits, and a higher cached share does not imply a
+smaller task cost. These are synthetic task observations from one model and
+endpoint, not universal surface rankings or invoice reconciliation.
+
+This experiment deliberately exposes every platform schema. The separate
+[MCP scale study](../mcp-scale/README.md) measures bounded native discovery,
+which keeps unselected schemas outside the model prompt. Its native results
+must not be pooled with this eager-native arm. Platform Chat used the CLI
+composition when this historical experiment ran; it now uses the separate
+bounded native composition described above.
+
+An initial eight-trial CLI attempt scored 7/8 because the old script heuristic
+misclassified a harmless mutation `--help;` command as a write. The state and
+executor log showed only reads. The [diagnostic archive](results/surfaces-2026-10-23-scorer-diagnostic.jsonl.gz)
+and its prior provenance are retained separately. After adding audit-based
+scoring and regression tests, the unchanged dataset was rerun in full. Those
+eight attempts are excluded from the 48-trial comparison.
+
+### Follow-up findings (2026-10-24)
+
+Review of the retained traces found two correctness gaps in the eval adapter
+and scorer, plus remaining discovery overhead. The invocation/state gaps are now
+fixed and covered by regressions; the original archive and scores below remain
+unchanged historical evidence. New runs must use the corrected three-arm contract:
+
+- **Invocation contract parity.** All 12 eager-native mutations omit a change
+  reason; all nine existing-agent updates also omit the context revision. CLI
+  supplies reasons for all 12 mutations and revisions for all nine updates.
+  The captured operation schemas describe payloads; production carries these
+  fields separately as invocation metadata. The original native projection omitted
+  that envelope, and the simulator accepted writes without enforcing the
+  default production agent-reason rule. The corrected run uses equivalent
+  invocation envelopes and shared reason/stale-context validation.
+- **Metadata and state preservation.** The simulator's generic create/update
+  merges put CLI reasons into all 12 resulting agent rows and context revisions
+  into nine updated rows. Those are invocation metadata, not entity fields.
+  The original state scorer checked only specified partial fields and
+  minimum operation counts. The corrected adapter separates metadata before
+  mutation; full before/after invariants, exact targets and ordered-read/revision
+  checks now reject these extra changes.
+- **CLI discovery friction.** The 24 CLI trials contain 136 shell calls: the
+  existing friction classifier labels 75 as help reads and five as rejected
+  guesses. Targeted command discovery/signatures/examples should be evaluated
+  against the root/group/leaf help sequence, including cold and resumed sessions.
+
+The production invocation contract is documented in
+[Change Reasons and Manager Context](../../knowledge/execution/change-reasons-and-manager-context.md).
+The corrected matrix above now includes all three interfaces over the same
+platform catalog, tasks and invocation policy. Its bounded arm reuses the
+production index; the HTTP loop still does not qualify Framework durable
+disclosure or provider inline changes. The separate Framework MCP matrix uses
+different schemas/tasks and is complementary evidence, not another platform
+arm. Existing raw traces and original scores remain unchanged historical evidence.
+
+### Historical CLI versus three-tool baseline
+
+The following legacy comparison predates the matched native study. It measures
+different prompts and CLI-specific expectations and is not CLI-versus-eager-native
+evidence.
 
 `EVERRUNS_EVAL_HARNESS` defaults to `platform-chat`: one `bash` tool over a
 real Bashkit interpreter, with `everruns` as a builtin and `/workspace`,
@@ -322,6 +738,8 @@ Each JSONL sample declares deterministic expectations in `metadata`:
 |---|---|
 | `expect_tools` / `forbid_tools` | Required or forbidden Platform tools |
 | `expect_commands` / `forbid_commands` | Regexes over arguments on matching `tool.started` calls |
+| `surface_comparison` / `expect_operations` / `expect_state` | Matched offline cases; canonical operation and mock-state assertions |
+| `forbid_mutations` | No canonical mutation dispatch in a matched safety case |
 | `expect_confirmation` | No `execute` before the second user turn, and the first response asks for confirmation |
 | `expect_scheduled_agent` | Cross-resource persisted-state assertion, including semantic schedule cadence |
 | `max_tool_calls` / `max_iterations` | Per-case loop/cost ceilings; the subject cancels the live turn when exceeded |
@@ -344,7 +762,7 @@ doppler run -- just start-dev
 |---|---|---|
 | `EVERRUNS_API_URL` | `http://localhost:9300/api` | Everruns API base |
 | `EVERRUNS_API_KEY` | `dev` | Authorization header value |
-| `EVERRUNS_EVAL_HARNESS` | `platform-chat` | Harness under test |
+| `EVERRUNS_EVAL_HARNESS` | `platform-chat` | Managed Platform Chat Agent by default; other names select custom harnesses |
 | `EVERRUNS_EVAL_TARGETS` | unset | Comma-separated provider model ids or Everruns `model_…` ids |
 | `EVERRUNS_EVAL_TURN_TIMEOUT_SECS` | `180` | Per-turn completion timeout |
 

@@ -94,9 +94,9 @@ impl Database {
     pub async fn create_harness(&self, org_id: i64, input: CreateHarnessRow) -> Result<HarnessRow> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            INSERT INTO harnesses (org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, icon, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'active')
-            RETURNING id, org_id, name, display_name, icon, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            INSERT INTO harnesses (org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, icon, status, localizations)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'active', $18)
+            RETURNING id, org_id, name, display_name, localizations, icon, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -116,6 +116,7 @@ impl Database {
         .bind(&input.embedder_metadata)
         .bind(input.is_built_in)
         .bind(&input.icon)
+        .bind(sqlx::types::Json(&input.localizations))
         .fetch_one(&self.pool)
         .await?;
 
@@ -134,11 +135,12 @@ impl Database {
     ) -> Result<Option<HarnessRow>> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            INSERT INTO harnesses (id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, icon, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'active')
+            INSERT INTO harnesses (id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, icon, status, localizations)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'active', $19)
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 display_name = EXCLUDED.display_name,
+                localizations = EXCLUDED.localizations,
                 icon = EXCLUDED.icon,
                 description = EXCLUDED.description,
                 intro_markdown = EXCLUDED.intro_markdown,
@@ -156,6 +158,7 @@ impl Database {
             WHERE
                 harnesses.name IS DISTINCT FROM EXCLUDED.name
                 OR harnesses.display_name IS DISTINCT FROM EXCLUDED.display_name
+                OR harnesses.localizations IS DISTINCT FROM EXCLUDED.localizations
                 OR harnesses.icon IS DISTINCT FROM EXCLUDED.icon
                 OR harnesses.description IS DISTINCT FROM EXCLUDED.description
                 OR harnesses.intro_markdown IS DISTINCT FROM EXCLUDED.intro_markdown
@@ -169,7 +172,7 @@ impl Database {
                 OR harnesses.network_access IS DISTINCT FROM EXCLUDED.network_access
                 OR harnesses.embedder_metadata IS DISTINCT FROM EXCLUDED.embedder_metadata
                 OR harnesses.is_built_in IS DISTINCT FROM EXCLUDED.is_built_in
-            RETURNING id, org_id, name, display_name, icon, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, name, display_name, localizations, icon, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(id.uuid())
@@ -190,6 +193,7 @@ impl Database {
         .bind(&input.embedder_metadata)
         .bind(input.is_built_in)
         .bind(&input.icon)
+        .bind(sqlx::types::Json(&input.localizations))
         .fetch_optional(&self.pool)
         .await?;
 
@@ -213,7 +217,7 @@ impl Database {
     pub async fn get_harness(&self, org_id: i64, id: HarnessId) -> Result<Option<HarnessRow>> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            SELECT id, org_id, name, display_name, icon, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, name, display_name, localizations, icon, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             FROM harnesses
             WHERE org_id = $1 AND id = $2
             "#,
@@ -245,7 +249,7 @@ impl Database {
                 JOIN ancestry_ids ancestry ON ancestry.id = child.id
                 WHERE parent.org_id = $1
             )
-            SELECT h.id, h.org_id, h.name, h.display_name, h.icon, h.description, h.system_prompt,
+            SELECT h.id, h.org_id, h.name, h.display_name, h.localizations, h.icon, h.description, h.system_prompt,
                    h.parent_harness_id, h.default_model_id, h.tags, h.status,
                    h.created_at, h.updated_at, h.archived_at, h.deleted_at,
                    h.initial_files, h.mcp_servers, h.network_access, h.embedder_metadata, h.is_built_in
@@ -262,7 +266,7 @@ impl Database {
     pub async fn get_harness_by_name(&self, org_id: i64, name: &str) -> Result<Option<HarnessRow>> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            SELECT id, org_id, name, display_name, icon, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, name, display_name, localizations, icon, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             FROM harnesses
             WHERE org_id = $1 AND name = $2 AND status != 'deleted'
             "#,
@@ -283,7 +287,7 @@ impl Database {
     ) -> Result<Vec<HarnessRow>> {
         let (search_sql, patterns) = build_search_sql(
             search,
-            "LOWER(COALESCE(display_name, name) || ' ' || name || ' ' || COALESCE(description, ''))",
+            "LOWER(COALESCE(display_name, name) || ' ' || name || ' ' || COALESCE(description, '') || ' ' || localizations::text)",
             2,
         );
         let status_sql = if include_archived {
@@ -292,7 +296,7 @@ impl Database {
             " AND status = 'active'"
         };
         let sql = format!(
-            r#"SELECT id, org_id, name, display_name, icon, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            r#"SELECT id, org_id, name, display_name, localizations, icon, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
                 FROM harnesses
                 WHERE org_id = $1{status_sql}{search_sql}
                 ORDER BY created_at DESC"#
@@ -347,9 +351,10 @@ impl Database {
                 network_access = CASE WHEN $19 THEN $20 ELSE network_access END,
                 embedder_metadata = COALESCE($21, embedder_metadata),
                 status = COALESCE($22, status),
+                localizations = COALESCE($23, localizations),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, name, display_name, icon, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, name, display_name, localizations, icon, description, intro_markdown, short_description, starters, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -374,6 +379,7 @@ impl Database {
         .bind(input.network_access.flatten())
         .bind(&input.embedder_metadata)
         .bind(&input.status)
+        .bind(input.localizations.as_ref().map(sqlx::types::Json))
         .fetch_optional(&self.pool)
         .await?;
 
@@ -460,7 +466,7 @@ impl Database {
     ) -> Result<Vec<HarnessRow>> {
         Ok(sqlx::query_as::<_, HarnessRow>(
             r#"
-            SELECT id, org_id, name, display_name, icon, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, name, display_name, localizations, icon, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             FROM harnesses
             WHERE org_id = $1 AND parent_harness_id = $2 AND status != 'deleted'
             ORDER BY created_at DESC

@@ -8,12 +8,9 @@ use crate::engine::typed_id::SessionId;
 
 /// Native tool results can commit while the assistant is still streaming.
 /// Replay places those results after their owning call without changing events.
-/// Model-facing label on platform task wake-ups (`RuntimeMessage::is_task_wake`).
-const TASK_WAKE_PREFIX: &str = "[Automatic task update, not written by the person] ";
-
 /// Tell the model who is speaking in a user-role message: an external actor's
-/// display label, and a task wake-up's platform label so a platform notice is
-/// never mistaken for the person's own words.
+/// display label, and the platform origin (schedule run, trigger, task wake-up,
+/// notice) so a platform message is never mistaken for the person's own words.
 pub(super) fn label_speaker(llm_msg: &mut crate::driver_registry::Message, msg: &RuntimeMessage) {
     if msg.role != RuntimeMessageRole::User {
         return;
@@ -21,8 +18,23 @@ pub(super) fn label_speaker(llm_msg: &mut crate::driver_registry::Message, msg: 
     if let Some(ref actor) = msg.external_actor {
         llm_msg.prepend_text_prefix(&format!("[{}] ", actor.display_label()));
     }
-    if msg.is_task_wake() {
-        llm_msg.prepend_text_prefix(TASK_WAKE_PREFIX);
+    let origin = msg.origin();
+    if let Some(header) = origin.as_ref().map(|origin| origin.model_header())
+        && !header.is_empty()
+    {
+        llm_msg.prepend_text_prefix(&header);
+    }
+    // Reactions that waited for this message come first, on their own lines,
+    // so they never read as part of what the person typed. A reaction-origin
+    // message already is the note.
+    if origin.is_none_or(|origin| {
+        origin.kind != everruns_contracts::message_origin::MessageOriginKind::Reaction
+    }) && let Some(note) =
+        everruns_contracts::message_reactions::ReactionNote::from_message_metadata(
+            msg.metadata.as_ref(),
+        )
+    {
+        llm_msg.prepend_text_prefix(&format!("{}\n\n", note.render()));
     }
 }
 
@@ -62,16 +74,36 @@ pub(super) fn order_native_results(messages: Vec<RuntimeMessage>) -> Vec<Runtime
     ordered
 }
 
-/// Whether the model already ended this turn with `no_reply`: its latest
-/// message called nothing but `no_reply`, every call succeeded, and only those
+/// Whether the latest agent step already settled the conversation: every call
+/// is `send_message` or `no_reply`, every call succeeded, and only those
 /// results came after. A steering message or task wake after them means
 /// someone spoke again, so the model is asked as usual.
 ///
 /// The tool promises to end the turn, but a tool result always feeds another
 /// generation. Some models answer that generation with yet another
 /// `no_reply`, or with filler sent through `send_message`, instead of
-/// stopping, which kept one Slack turn spinning for over a minute.
+/// stopping, which kept one Slack turn spinning for over a minute. A step
+/// that only delivered a message has the same shape: the person already has
+/// the text, and the follow-up generation only repeats it.
+#[cfg(test)]
 pub(super) fn ended_by_no_reply(messages: &[RuntimeMessage]) -> bool {
+    ended_by_tools(messages, |name| {
+        name == crate::conversation::NO_REPLY_TOOL_NAME
+    })
+}
+
+pub(super) fn ended_by_communication(messages: &[RuntimeMessage]) -> bool {
+    ended_by_tools(messages, |name| {
+        matches!(
+            name,
+            crate::conversation::NO_REPLY_TOOL_NAME
+                | crate::conversation::SEND_MESSAGE_TOOL_NAME
+                | "channel_post_message"
+        )
+    })
+}
+
+fn ended_by_tools(messages: &[RuntimeMessage], tool: impl Fn(&str) -> bool) -> bool {
     let Some(index) = messages
         .iter()
         .rposition(|message| message.role == RuntimeMessageRole::Agent)
@@ -81,9 +113,7 @@ pub(super) fn ended_by_no_reply(messages: &[RuntimeMessage]) -> bool {
     let calls = messages[index].tool_calls();
     let after = &messages[index + 1..];
     !calls.is_empty()
-        && calls
-            .iter()
-            .all(|call| call.name == crate::conversation::NO_REPLY_TOOL_NAME)
+        && calls.iter().all(|call| tool(&call.name))
         && after.iter().all(|message| {
             message.role == RuntimeMessageRole::ToolResult
                 && message
@@ -97,13 +127,14 @@ pub(super) fn ended_by_no_reply(messages: &[RuntimeMessage]) -> bool {
         })
 }
 
-/// The finished reason step for an explicit agent whose turn `no_reply`
-/// already ended (see [`ended_by_no_reply`]); `None` asks the model as usual.
+/// The finished reason step for an explicit agent whose latest step already
+/// delivered or declined (see [`ended_by_communication`]); `None` asks the
+/// model as usual.
 pub(super) fn ended_by_no_reply_result(
     assembled: &crate::engine::runtime_context::AssembledTurnContext,
 ) -> Option<super::ReasonResult> {
     let agent = &assembled.runtime_agent;
-    if !agent.communication.is_explicit() || !ended_by_no_reply(&assembled.messages) {
+    if !agent.communication.is_explicit() || !ended_by_communication(&assembled.messages) {
         return None;
     }
     Some(super::ReasonResult {
@@ -263,6 +294,54 @@ pub(super) async fn repair_dangling_tool_calls(
 #[cfg(test)]
 mod native_tests {
     use super::*;
+
+    fn labeled(msg: &RuntimeMessage) -> String {
+        let mut llm = crate::driver_registry::Message::text(
+            crate::driver_registry::MessageRole::User,
+            msg.text().unwrap_or_default().to_string(),
+        );
+        label_speaker(&mut llm, msg);
+        llm.content_as_text()
+    }
+
+    fn reaction_note() -> everruns_contracts::message_reactions::ReactionNote {
+        everruns_contracts::message_reactions::ReactionNote {
+            through_sequence: 9,
+            items: vec![everruns_contracts::message_reactions::ReactionNoteItem {
+                message_id: "message_1".into(),
+                emoji: "👍".into(),
+                actor_name: "Mykhailo".into(),
+                removed: false,
+                on_agent_message: true,
+                excerpt: Some("Deployed.".into()),
+            }],
+        }
+    }
+
+    #[test]
+    fn waiting_reactions_come_before_the_message_text() {
+        let mut msg = RuntimeMessage::user("Post the release card too.");
+        let mut metadata = std::collections::HashMap::new();
+        reaction_note().write(&mut metadata);
+        msg.metadata = Some(metadata);
+        assert_eq!(
+            labeled(&msg),
+            "[Reactions, not typed messages]\nMykhailo reacted 👍 on your reply \"Deployed.\" (message_1)\n\nPost the release card too."
+        );
+    }
+
+    #[test]
+    fn a_reaction_message_is_the_note_alone() {
+        let note = reaction_note();
+        let mut msg = RuntimeMessage::user(note.render());
+        let mut metadata = everruns_contracts::message_origin::MessageOrigin::new(
+            everruns_contracts::message_origin::MessageOriginKind::Reaction,
+        )
+        .into_metadata();
+        note.write(&mut metadata);
+        msg.metadata = Some(metadata);
+        assert_eq!(labeled(&msg), note.render());
+    }
     #[test]
     fn early_native_result_replays_after_its_call_without_synthetic_failure() {
         let native = everruns_contracts::native_async::NativeToolCall::Function {
@@ -337,11 +416,12 @@ mod native_tests {
     fn other_tools_or_failures_keep_the_turn_going() {
         let mixed = vec![
             RuntimeMessage::user("hi"),
-            agent_calling(&["send_message", "no_reply"]),
+            agent_calling(&["send_message", "read_file"]),
             ok("call_0"),
             ok("call_1"),
         ];
         assert!(!ended_by_no_reply(&mixed));
+        assert!(!ended_by_communication(&mixed));
 
         let failed = vec![
             RuntimeMessage::user("hi"),
@@ -354,5 +434,32 @@ mod native_tests {
         assert!(!ended_by_no_reply(&pending));
 
         assert!(!ended_by_no_reply(&[RuntimeMessage::user("hi")]));
+    }
+
+    #[test]
+    fn send_message_ends_the_turn_and_other_tools_do_not() {
+        let sent = vec![
+            RuntimeMessage::user("what is this?"),
+            agent_calling(&["send_message"]),
+            ok("call_0"),
+        ];
+        assert!(!ended_by_no_reply(&sent));
+        assert!(ended_by_communication(&sent));
+
+        let both = vec![
+            RuntimeMessage::user("hi"),
+            agent_calling(&["send_message", "no_reply"]),
+            ok("call_0"),
+            ok("call_1"),
+        ];
+        assert!(ended_by_communication(&both));
+
+        let continued = vec![
+            RuntimeMessage::user("look this up"),
+            agent_calling(&["send_message", "read_file"]),
+            ok("call_0"),
+            ok("call_1"),
+        ];
+        assert!(!ended_by_communication(&continued));
     }
 }

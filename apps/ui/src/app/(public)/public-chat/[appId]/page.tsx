@@ -5,6 +5,7 @@
 // console navigation, no other apps/agents reachable from here.
 // See knowledge/integrations/public-chat.md.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Loader2, Send } from "lucide-react";
@@ -24,6 +25,7 @@ function threadStorageKey(appId: string): string {
 }
 
 export default function PublicChatPage() {
+  const ui = useUiTranslations();
   const params = useParams<{ appId: string }>();
   const appId = String(params.appId);
 
@@ -205,7 +207,7 @@ export default function PublicChatPage() {
             onClick={startNewConversation}
             className="text-xs text-muted-foreground hover:text-foreground"
           >
-            New conversation
+            {ui("New conversation")}
           </button>
         ) : null}
       </header>
@@ -241,7 +243,7 @@ export default function PublicChatPage() {
           <div className="mb-2 space-y-1">
             {signInRequired ? (
               <p className="text-center text-xs text-muted-foreground">
-                Sign in to start chatting.
+                {ui("Sign in to start chatting.")}
               </p>
             ) : null}
             <GoogleSignInButton
@@ -255,8 +257,8 @@ export default function PublicChatPage() {
           <div className="mb-2 space-y-1">
             <p className="text-center text-xs text-muted-foreground">
               {agentIdSignIn.agentid_login
-                ? "Sign in with your agent's AgentID to start chatting."
-                : "This chat accepts AgentID tokens from agents."}
+                ? ui("Sign in with your agent's AgentID to start chatting.")
+                : ui("This chat accepts AgentID tokens from agents.")}
             </p>
             {agentIdSignIn.agentid_login ? <AgentIdSignInButton appId={appId} /> : null}
           </div>
@@ -278,9 +280,11 @@ export default function PublicChatPage() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onComposerKeyDown}
             rows={1}
-            aria-label="Message"
+            aria-label={ui("Message")}
             disabled={signInRequired && !signedIn}
-            placeholder={signInRequired && !signedIn ? "Sign in to chat…" : "Type a message…"}
+            placeholder={
+              signInRequired && !signedIn ? ui("Sign in to chat…") : ui("Type a message…")
+            }
             className="max-h-40 min-h-[40px] flex-1 resize-none rounded border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
           />
           <button
@@ -289,7 +293,7 @@ export default function PublicChatPage() {
             disabled={sending || !input.trim() || (signInRequired && !signedIn)}
             className="flex h-10 w-10 items-center justify-center rounded bg-primary text-primary-foreground disabled:opacity-50"
             style={accent ? { backgroundColor: accent } : undefined}
-            aria-label="Send message"
+            aria-label={ui("Send message")}
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>

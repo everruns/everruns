@@ -304,7 +304,13 @@ async fn run_turn(
             content: vec![everruns_core::InputContentPart::text(content)],
         },
         addressed_participant_id: None,
-        controls: None,
+        controls: Some(everruns_core::Controls {
+            hints: Some(std::collections::HashMap::from([(
+                "output_streaming".to_string(),
+                serde_json::json!(false),
+            )])),
+            ..Default::default()
+        }),
         metadata: None,
         tags: None,
         external_actor: None,

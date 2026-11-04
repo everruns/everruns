@@ -100,6 +100,11 @@ pub struct RuntimeAgent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conversation_context: Option<String>,
 
+    /// Current capability reference data. Changes are appended to conversation
+    /// history and replayed at their recorded positions, never in the system prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation_context_update: Option<String>,
+
     /// How the agent talks. In `Explicit` mode assistant text is recorded as
     /// working notes and people see only what `send_message` sends; see
     /// [`crate::runtime::conversation`].
@@ -187,6 +192,7 @@ impl RuntimeAgent {
             network_access: None,
             parallel_tool_calls: None,
             conversation_context: None,
+            conversation_context_update: None,
             communication: Communication::Direct,
         }
     }
@@ -212,6 +218,7 @@ impl Default for RuntimeAgent {
             network_access: None,
             parallel_tool_calls: None,
             conversation_context: None,
+            conversation_context_update: None,
             communication: Communication::Direct,
         }
     }
@@ -414,6 +421,7 @@ impl RuntimeAgentBuilder {
         // message: model-visible every turn, but never folded into the cached
         // system prompt.
         self.runtime_agent.conversation_context = collected.conversation_context();
+        self.runtime_agent.conversation_context_update = collected.conversation_context_update();
 
         // Apply tool definitions
         if !collected.tool_definitions.is_empty() {
@@ -741,12 +749,20 @@ mod tests {
 
     fn echo_definition() -> ToolDefinition {
         crate::runtime::Tool::to_definition(&crate::runtime::tools::EchoTool)
-            .with_capability_attribution("tool_fixture", Some("Tool Fixture"))
+            .with_capability_context(
+                "tool_fixture",
+                Some("Tool Fixture"),
+                "Neutral capability fixture with one tool.",
+            )
     }
 
     fn progress_definition() -> ToolDefinition {
         crate::runtime::Tool::to_definition(&crate::runtime::conversation::SendMessageTool)
-            .with_capability_attribution("prompt_tool_fixture", Some("Prompt Tool Fixture"))
+            .with_capability_context(
+                "prompt_tool_fixture",
+                Some("Prompt Tool Fixture"),
+                "Neutral capability fixture with a prompt and tool.",
+            )
     }
 
     fn tools_json(tools: &[ToolDefinition]) -> serde_json::Value {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { use } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -11,17 +12,18 @@ import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { ObserverForm } from "@/components/observers/observer-form";
 
 export default function EditObserverPage({ params }: { params: Promise<{ observerId: string }> }) {
+  const ui = useUiTranslations();
   const { observerId } = use(params);
   const observersEnabled = useFeatureFlag("observers");
   const { data: observer, isLoading } = useObserver(observerId);
-  usePageTitle(observer ? `Edit ${observer.name}` : "Edit Observer", "Observers");
+  usePageTitle(observer ? `Edit ${observer.name}` : "Edit Observer", ui("Observers"));
 
   if (!observersEnabled) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center text-muted-foreground">
-          <p className="text-lg font-medium">Observers is not enabled</p>
-          <p className="text-sm">This feature is currently disabled.</p>
+          <p className="text-lg font-medium">{ui("Observers is not enabled")}</p>
+          <p className="text-sm">{ui("This feature is currently disabled.")}</p>
         </div>
       </div>
     );
@@ -39,8 +41,10 @@ export default function EditObserverPage({ params }: { params: Promise<{ observe
   if (!observer) {
     return (
       <ResourceNotFound
-        title="Observer not found"
-        description="This observer may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Observer not found")}
+        description={ui(
+          "This observer may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref="/observers"
         backLabel="Back to observers"
         resourceId={observerId}
@@ -55,12 +59,12 @@ export default function EditObserverPage({ params }: { params: Promise<{ observe
         className="mb-6 inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="mr-2 h-4 w-4" />
-        Back to observer
+        {ui("Back to observer")}
       </Link>
 
       <Card>
         <CardHeader>
-          <CardTitle>Edit Observer</CardTitle>
+          <CardTitle>{ui("Edit Observer")}</CardTitle>
         </CardHeader>
         <CardContent>
           <ObserverForm observer={observer} />

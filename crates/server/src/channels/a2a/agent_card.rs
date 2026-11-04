@@ -185,6 +185,11 @@ async fn agent_card(
         "capabilities": {
             "streaming": streaming,
             "pushNotifications": true,
+            "extensions": [{
+                "uri": super::reactions::REACTIONS_EXTENSION_URI,
+                "description": "Emoji reactions on the agent's messages: a message/send on the task whose only part is a DataPart under everruns/reaction, {messageId, emoji, action: added|removed}.",
+                "required": false,
+            }],
         },
         "defaultInputModes": ["text/plain"],
         "defaultOutputModes": ["text/plain"],

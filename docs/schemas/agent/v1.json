@@ -37,6 +37,15 @@
         "explicit"
       ]
     },
+    "CompletionCheck": {
+      "type": "string",
+      "description": "When a turn that is about to finish gets a completion check, and an\nautomatic continuation when the check finds the work unfinished.",
+      "enum": [
+        "off",
+        "unattended",
+        "always"
+      ]
+    },
     "ConversationStarter": {
       "type": "object",
       "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
@@ -67,6 +76,42 @@
         "automatic",
         "always"
       ]
+    },
+    "EntityLocalization": {
+      "type": "object",
+      "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Localized description (1–2000 characters when set).",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Localized display name (1–255 characters when set).",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      },
+      "additionalProperties": false
+    },
+    "EntityLocalizations": {
+      "type": "object",
+      "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+      "additionalProperties": {
+        "$ref": "#/definitions/EntityLocalization"
+      },
+      "propertyNames": {
+        "type": "string"
+      },
+      "maxProperties": 64
     },
     "File": {
       "oneOf": [
@@ -145,6 +190,13 @@
       "type": "object",
       "description": "Authored values only: no organisation, agent, model, harness or channel IDs.",
       "properties": {
+        "agents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Manifest"
+          },
+          "description": "Agents bundled with this one, each a complete definition. Folders and\narchives keep them in `.agents/agents/<name>/`; text formats inline them."
+        },
         "capabilities": {
           "type": "array",
           "items": {
@@ -168,6 +220,17 @@
             {
               "$ref": "#/definitions/Communication",
               "description": "How the agent talks: `direct` (its text is the reply) or `explicit`\n(its text is working notes; it talks through `send_message`).\nOmission means `direct`."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completion_check": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/CompletionCheck",
+              "description": "When a finishing turn gets a completion check: `off`, `unattended`\n(sessions started by triggers and schedules) or `always`. Omission\nmeans `unattended`."
             },
             {
               "type": "null"
@@ -221,6 +284,10 @@
           ],
           "description": "Optional Markdown introduction shown before the conversation starts."
         },
+        "localizations": {
+          "$ref": "#/definitions/EntityLocalizations",
+          "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+        },
         "max_iterations": {
           "type": [
             "integer",
@@ -249,6 +316,16 @@
           "propertyNames": {
             "type": "string"
           }
+        },
+        "members": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Other agents, by name, that this agent can hand work to. Agents bundled\nunder `.agents/agents/` are found without listing them here; an explicit\nempty list turns that discovery off."
         },
         "model": {
           "oneOf": [
@@ -699,6 +776,13 @@
       "type": "object",
       "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
       "properties": {
+        "capability_description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Declared capability description for source-aware tool discovery.\nNever populate this with system prompts, conversation state or secrets."
+        },
         "capability_id": {
           "type": [
             "string",

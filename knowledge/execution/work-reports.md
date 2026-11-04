@@ -31,6 +31,10 @@ changed").
 
 ## Rules
 
+A report marked done means the requested work was completed and checked.
+Blocked, incomplete or unverified requested work uses failed and explains the
+remaining step. Ending a conversation turn alone does not establish completion.
+
 - **The runtime writes the report.** It is built from events the session
   already records, so every turn of every agent has one with no prompt change
   and no extra model call. The agent can enrich it, never has to.

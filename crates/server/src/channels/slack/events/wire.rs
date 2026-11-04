@@ -92,6 +92,24 @@ pub(crate) struct SlackEvent {
     /// Legacy attachments (link unfurls, bot attachments, etc.).
     #[serde(default)]
     pub(crate) attachments: Vec<SlackAttachment>,
+    /// Reaction name on `reaction_added` / `reaction_removed`.
+    #[serde(default)]
+    pub(crate) reaction: Option<String>,
+    /// What a reaction is on.
+    #[serde(default)]
+    pub(crate) item: Option<SlackReactionItem>,
+}
+
+/// The item a Slack reaction event names.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct SlackReactionItem {
+    /// `message`, `file` or `file_comment`.
+    #[serde(rename = "type", default)]
+    pub(crate) item_type: Option<String>,
+    #[serde(default)]
+    pub(crate) channel: Option<String>,
+    #[serde(default)]
+    pub(crate) ts: Option<String>,
 }
 
 /// Slack file attachment object (subset of fields we care about).

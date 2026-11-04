@@ -4,8 +4,8 @@ use serve::prelude::*;
 #[agent]
 fn assistant() -> Agent {
     Agent::builder()
-        // `OPENAI_API_KEY` routes `openai/…` to OpenAI; a host's
-        // SERVE_GATEWAY_URL or OPENROUTER_API_KEY takes precedence.
+        // OPENAI_API_KEY, with optional OPENAI_BASE_URL for a compatible endpoint.
+        // OPENROUTER_API_KEY is another supported provider route.
         .model("openai/gpt-6.1-sol")
         .instructions(md!("instructions.md"))
         .build()

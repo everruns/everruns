@@ -99,6 +99,7 @@ impl IngressChannel {
         AgentChannel {
             public_id: self.public_id,
             internal_id: self.internal_id,
+            agent_id: None,
             channel_type: self.channel_type,
             channel_config: self.channel_config,
             enabled: self.enabled,

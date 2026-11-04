@@ -4,6 +4,7 @@ import {
   PageViewEntity,
   PageViewRegistryContext,
   useChatPageFilters,
+  useChatPageRows,
   usePageViewRegistry,
 } from "@/components/chat-mode/page-view-state";
 
@@ -48,4 +49,45 @@ it("limits visible references and excludes values outside the page registry", ()
   const data = result.current.read("/agents");
   expect(data.visible_entities).toHaveLength(50);
   expect(JSON.stringify(data)).not.toContain("chat-transcript");
+});
+
+it("bounds explicit visible-row projections and clears data on load, errors, denial and navigation", () => {
+  const { result } = renderHook(() => usePageViewRegistry("/durable/queues"));
+  function Page({ state = "ready" }: { state?: string }) {
+    useChatPageRows(
+      "Queue tasks",
+      Array.from({ length: 80 }, (_, i) => ({
+        id: `task_${i}`,
+        status: "pending",
+        name: "x".repeat(900),
+        ...({ nested: { api_key: "fixture-secret" } } as unknown as Record<string, string>),
+      })),
+      {
+        loading: state === "loading",
+        error: state === "error",
+        enabled: state !== "denied",
+      },
+    );
+    return null;
+  }
+  const tree = (state: string) => (
+    <PageViewRegistryContext.Provider value={result.current.registry}>
+      <Page state={state} />
+    </PageViewRegistryContext.Provider>
+  );
+  const { rerender, unmount } = render(tree("ready"));
+  const data = result.current.read("/durable/queues");
+  const section = data.sections[0] as { rows: Record<string, unknown>[]; truncated: boolean };
+  expect(section.rows.length).toBeLessThanOrEqual(50);
+  expect(section.truncated).toBe(true);
+  expect(String(section.rows[0].name)).toHaveLength(256);
+  expect(JSON.stringify(section)).not.toContain("fixture-secret");
+  expect(JSON.stringify(section.rows).length).toBeLessThan(13000);
+  expect(result.current.read("/agents").sections).toEqual([]);
+  for (const state of ["loading", "error", "denied"]) {
+    rerender(tree(state));
+    expect(result.current.read("/durable/queues").sections[0]).toMatchObject({ rows: [] });
+  }
+  unmount();
+  expect(result.current.read("/durable/queues").sections).toEqual([]);
 });

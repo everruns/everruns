@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { useId, useState } from "react";
 import { Check, ChevronRight, ExternalLink, Loader2, ShieldAlert } from "lucide-react";
@@ -22,6 +23,7 @@ export function ApprovalToolActivity({
   toolResult?: ToolCompletedData;
   context?: ApprovalToolContext;
 }) {
+  const ui = useUiTranslations();
   const [isExpanded, setIsExpanded] = useState(false);
   const detailsId = useId();
   const action = toolCall.arguments.action;
@@ -72,13 +74,15 @@ export function ApprovalToolActivity({
             )}
             {!isRequest && complete && (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                <span>Approved by {context?.approvedBy ?? "an unknown actor"}</span>
+                <span>
+                  {ui("Approved by")} {context?.approvedBy ?? ui("an unknown actor")}
+                </span>
                 {context?.consentMessageHref && (
                   <Link
                     href={context.consentMessageHref}
                     className="inline-flex items-center gap-1 text-primary hover:underline"
                   >
-                    View consent <ExternalLink className="size-3" />
+                    {ui("View consent")} <ExternalLink className="size-3" />
                   </Link>
                 )}
               </div>

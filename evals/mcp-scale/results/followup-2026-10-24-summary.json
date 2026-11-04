@@ -1,0 +1,554 @@
+{
+  "binary_path_at_run": "target/debug/mcp_scale",
+  "binary_sha256": "1389dd090fd0a44165a2d7e5f93d5d88a838fb15b6cde4e88486d2757f6787db",
+  "cases": [
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]",
+      "coverage": {
+        "complete": true,
+        "model_calls": 7,
+        "provider_cost_calls": 7,
+        "tool_requests_captured": 7,
+        "usage_calls": 7
+      },
+      "duration_ms": 11553,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 7.0,
+        "llm.input_tokens_first": 1066.0,
+        "llm.input_tokens_peak": 4205.0,
+        "llm.input_tokens_total": 22850.0,
+        "llm.provider_cost_calls": 7.0,
+        "llm.provider_reported_cost_usd": 0.0016931700000000001,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 5978.0,
+        "llm.tool_requests_captured": 7.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 12.0,
+        "llm.usage_calls": 7.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 15215.0,
+        "mcp.unique_operations": 4.0
+      },
+      "passed": true,
+      "scores": [
+        {
+          "na": false,
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 7635,
+        "cost_usd": 0.0016931700000000001,
+        "input_tokens": 15215,
+        "output_tokens": 782
+      },
+      "usage_metadata": {
+        "usage_convention": "everruns-disjoint-v1",
+        "usage_projection": "generation-iteration-v1"
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]",
+      "coverage": {
+        "complete": true,
+        "model_calls": 9,
+        "provider_cost_calls": 9,
+        "tool_requests_captured": 9,
+        "usage_calls": 9
+      },
+      "duration_ms": 16839,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 9.0,
+        "llm.input_tokens_first": 2346.0,
+        "llm.input_tokens_peak": 5219.0,
+        "llm.input_tokens_total": 34488.0,
+        "llm.provider_cost_calls": 9.0,
+        "llm.provider_reported_cost_usd": 0.001315418,
+        "llm.tool_bytes_first": 4017.0,
+        "llm.tool_bytes_peak": 4017.0,
+        "llm.tool_requests_captured": 9.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 9.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 6.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 10529.0,
+        "mcp.unique_operations": 4.0
+      },
+      "passed": true,
+      "scores": [
+        {
+          "na": false,
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "6 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 23959,
+        "cost_usd": 0.001315418,
+        "input_tokens": 10529,
+        "output_tokens": 1073
+      },
+      "usage_metadata": {
+        "usage_convention": "everruns-disjoint-v1",
+        "usage_projection": "generation-iteration-v1"
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]",
+      "coverage": {
+        "complete": true,
+        "model_calls": 7,
+        "provider_cost_calls": 7,
+        "tool_requests_captured": 7,
+        "usage_calls": 7
+      },
+      "duration_ms": 12280,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 7.0,
+        "llm.input_tokens_first": 2808.0,
+        "llm.input_tokens_peak": 5949.0,
+        "llm.input_tokens_total": 35068.0,
+        "llm.provider_cost_calls": 7.0,
+        "llm.provider_reported_cost_usd": 0.002124098,
+        "llm.tool_bytes_first": 5785.0,
+        "llm.tool_bytes_peak": 9994.0,
+        "llm.tool_requests_captured": 7.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 16.0,
+        "llm.usage_calls": 7.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 19369.0,
+        "mcp.unique_operations": 4.0
+      },
+      "passed": true,
+      "scores": [
+        {
+          "na": false,
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 15699,
+        "cost_usd": 0.002124098,
+        "input_tokens": 19369,
+        "output_tokens": 779
+      },
+      "usage_metadata": {
+        "usage_convention": "everruns-disjoint-v1",
+        "usage_projection": "generation-iteration-v1"
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]",
+      "coverage": {
+        "complete": true,
+        "model_calls": 3,
+        "provider_cost_calls": 3,
+        "tool_requests_captured": 3,
+        "usage_calls": 3
+      },
+      "duration_ms": 4327,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1054.0,
+        "llm.input_tokens_peak": 2317.0,
+        "llm.input_tokens_total": 5518.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000402566,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 3119.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 7.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 3485.0,
+        "mcp.unique_operations": 1.0
+      },
+      "passed": true,
+      "scores": [
+        {
+          "na": false,
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 2033,
+        "cost_usd": 0.000402566,
+        "input_tokens": 3485,
+        "output_tokens": 250
+      },
+      "usage_metadata": {
+        "usage_convention": "everruns-disjoint-v1",
+        "usage_projection": "generation-iteration-v1"
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]",
+      "coverage": {
+        "complete": true,
+        "model_calls": 4,
+        "provider_cost_calls": 4,
+        "tool_requests_captured": 4,
+        "usage_calls": 4
+      },
+      "duration_ms": 7540,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 4.0,
+        "llm.input_tokens_first": 2334.0,
+        "llm.input_tokens_peak": 3147.0,
+        "llm.input_tokens_total": 11029.0,
+        "llm.provider_cost_calls": 4.0,
+        "llm.provider_reported_cost_usd": 0.000702168,
+        "llm.tool_bytes_first": 4017.0,
+        "llm.tool_bytes_peak": 4017.0,
+        "llm.tool_requests_captured": 4.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 4.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 6195.0,
+        "mcp.unique_operations": 1.0
+      },
+      "passed": true,
+      "scores": [
+        {
+          "na": false,
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 4834,
+        "cost_usd": 0.000702168,
+        "input_tokens": 6195,
+        "output_tokens": 365
+      },
+      "usage_metadata": {
+        "usage_convention": "everruns-disjoint-v1",
+        "usage_projection": "generation-iteration-v1"
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]",
+      "coverage": {
+        "complete": true,
+        "model_calls": 3,
+        "provider_cost_calls": 3,
+        "tool_requests_captured": 3,
+        "usage_calls": 3
+      },
+      "duration_ms": 6931,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 2796.0,
+        "llm.input_tokens_peak": 5018.0,
+        "llm.input_tokens_total": 12656.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.0008541419999999999,
+        "llm.tool_bytes_first": 5785.0,
+        "llm.tool_bytes_peak": 8184.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 7935.0,
+        "mcp.unique_operations": 1.0
+      },
+      "passed": true,
+      "scores": [
+        {
+          "na": false,
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 4721,
+        "cost_usd": 0.0008541419999999999,
+        "input_tokens": 7935,
+        "output_tokens": 256
+      },
+      "usage_metadata": {
+        "usage_convention": "everruns-disjoint-v1",
+        "usage_projection": "generation-iteration-v1"
+      }
+    }
+  ],
+  "catalog_tools": 2000,
+  "concurrency": 1,
+  "environment": {
+    "arch": "x86_64",
+    "build_profile": "dev",
+    "cargo_package_version": "0.1.0",
+    "dev_debug_info": "disabled (CARGO_PROFILE_DEV_DEBUG=0)",
+    "logical_cpus": 4,
+    "os": "linux",
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+  },
+  "execution_timezone": "UTC",
+  "interpretation": [
+    "All six tasks passed tool evidence and state verification. Each surface used one distinct MCP operation for ticket reading and four for rollback from the 2000-operation catalog.",
+    "Native used less accumulated input than CLI and hybrid in this small follow-up. CLI provider-reported effective cost was about 3.7% lower than native despite about 1.60x accumulated input; this run does not establish a universal cheapest surface.",
+    "Cache-read counts are observational. This MCP run overlapped the frozen platform comparison; no causal cache savings or stable surface ranking is inferred.",
+    "Two tasks per surface and one trial per task/surface are a smoke check, not an accuracy or cost benchmark.",
+    "10000-tool results are offline retrieval/index stress only. No successful live model accuracy qualification at 10000 tools is claimed.",
+    "Stress timings are local dev-profile microbenchmarks and exclude model latency and MCP process/network startup. Serialized bytes are not index heap allocation.",
+    "The final offline stress run overlapped a Framework rebuild and platform model checks on the shared executor. CPU contention makes these timings observational rather than a controlled comparison with earlier runs; higher final timings do not establish an algorithmic regression."
+  ],
+  "lock_sha256": "90b064231069021720911919c35403a39f08bd176d1332e0c5235588e81f0dae",
+  "model": "openrouter/meta/muse-spark-1.3-contributor",
+  "offline_stress": {
+    "matrix_rows": 8,
+    "p95_ranges_across_server_partitions_and_queries": {
+      "10000": {
+        "index_build_p95_ms_max": 737.307011,
+        "index_build_p95_ms_min": 720.749763,
+        "query_p95_ms_max": 21.84804,
+        "query_p95_ms_min": 6.338934
+      },
+      "2000": {
+        "index_build_p95_ms_max": 122.68121799999999,
+        "index_build_p95_ms_min": 113.458056,
+        "query_p95_ms_max": 3.118852,
+        "query_p95_ms_min": 1.292818
+      },
+      "50": {
+        "index_build_p95_ms_max": 3.173624,
+        "index_build_p95_ms_min": 3.0426860000000002,
+        "query_p95_ms_max": 0.193692,
+        "query_p95_ms_min": 0.073321
+      },
+      "600": {
+        "index_build_p95_ms_max": 35.376786,
+        "index_build_p95_ms_min": 33.556523,
+        "query_p95_ms_max": 0.8557400000000001,
+        "query_p95_ms_min": 0.40756400000000004
+      }
+    },
+    "path": "followup-2026-10-24-stress.json",
+    "sha256": "17cbf10c923347e5f63f2f829f8e79a4b072098db5056a0764956367e0de7077",
+    "shared_index": "everruns_contracts::runtime::tool_catalog::ToolSearchIndex",
+    "synthetic_only": true
+  },
+  "phase": "clean-source MCP follow-up; separate from platform capability comparison",
+  "report": {
+    "cases": 6,
+    "compressed_bytes": 291302,
+    "decompressed_sha256": "3860c8fe227f95dcf164c68fea038a8adde59e1929e7ef5824a7fcfd1e30ae71",
+    "failed": 0,
+    "gzip_mtime": 0,
+    "infra": 0,
+    "passed": 6,
+    "path": "followup-2026-10-24-live.jsonl.gz",
+    "raw_bytes": 1891312,
+    "raw_preserved": true,
+    "raw_sha256": "3860c8fe227f95dcf164c68fea038a8adde59e1929e7ef5824a7fcfd1e30ae71",
+    "sha256": "7c380dd4f75f93b0263b2232606cc5bb82ac261f06c22ee76a85ad27554ce462",
+    "skipped": 0
+  },
+  "reproduce_command": "EVERRUNS_EVAL_TARGETS=openrouter/meta/muse-spark-1.3-contributor EVERRUNS_EVAL_TRIALS=1 EVERRUNS_EVAL_CONCURRENCY=1 target/debug/mcp_scale --run --sample readonly-ticket,staged-rollback --filter catalog_size=2000,servers=1, --runs-report /tmp/mcp-followup-live.jsonl",
+  "schema_version": 1,
+  "servers": 1,
+  "source_clean_at_build_and_run_start": true,
+  "source_commit": "18340609e744df0222f445c2caa4b93f9c83581b",
+  "source_provenance": "Source snapshot recorded at build/run start; listed source bytes independently checked against the source commit during packaging. Documentation-only edits after the run are excluded.",
+  "source_sha256": {
+    "crates/contracts/src/runtime/tool_catalog.rs": "9b8692c9d7f47c5c82e700413665e771ae0565ab5e21bdfd7f31f9d5c0d00a94",
+    "crates/core/src/builtins/tool_search.rs": "73e933a23b1e9cf0d755105869fc9de60d9df46ad0cb001c014d40480c7d6760",
+    "crates/core/src/builtins/tool_search_bounded_tests.rs": "a75e2c188cede186a419280ca90cc467a3477eebeb9ff55eaf4c48462ca7d63e",
+    "evals/common/everruns_usage.rs": "bc4c08c2b5c28d85cbff969d571c96c100cde5626917b42e0b50f6860681bfd7",
+    "evals/mcp-scale/Cargo.lock": "90b064231069021720911919c35403a39f08bd176d1332e0c5235588e81f0dae",
+    "evals/mcp-scale/Cargo.toml": "1eb714a05768edbbfb49f701704f5543776eb646bcd7312de25aa9a9f0f4e1cc",
+    "evals/mcp-scale/src/accounting.rs": "6d20c2486466048eb1703e2b681ed0b8093bb7f4eb22fa4e11025d1c2dc21d94",
+    "evals/mcp-scale/src/bin/mcp_http_fixture.rs": "1b6c9f6710ff36f2e6fd4f169bfc547b40787593df6e36d8730f24c97bdb385d",
+    "evals/mcp-scale/src/fixture.rs": "17c85a015800bb7ec5d85b7dd09910b7620c419bada62cf5a4f41e123a43c772",
+    "evals/mcp-scale/src/main.rs": "dd69f801c94ba9689676ce507cfc59cfb1983225e791119fba67e401bd494513",
+    "evals/mcp-scale/src/scorers.rs": "682f5cd658edb7e9dcc4725f0dbd1aeb59949bcff03f353e2e62d0ff9beea31f",
+    "evals/mcp-scale/src/stress.rs": "c255252ed8e3ceb9d6969c40650ec4afd2060cc2fc5297de87039c4d9c96fd31",
+    "evals/mcp-scale/src/subject.rs": "9057a27978139db14e9c4d9e2db5bcce512271b56287fd7bb2f8917fac5a1540"
+  },
+  "surfaces": [
+    "native",
+    "cli",
+    "hybrid"
+  ],
+  "tasks": [
+    "readonly-ticket",
+    "staged-rollback"
+  ],
+  "trials_per_cell": 1,
+  "usage_accounting": {
+    "all_usage_cost_capture_coverage_complete": true,
+    "convention": "everruns-disjoint-v1",
+    "model_calls": 33,
+    "projection": "generation-iteration-v1",
+    "provider_cost_calls": 33,
+    "raw_usage_matches_reaccounted": true,
+    "reaccounted_input_sha256": "f874f1946686a0dc64fe8191b2a81645eaca2be1227bd81ba2dc3ebab34c10fa",
+    "reaccounted_rows": 6,
+    "shared_rust_source": "evals/common/everruns_usage.rs",
+    "tool_requests_captured": 33,
+    "usage_calls": 33
+  },
+  "usage_by_surface": {
+    "cli": {
+      "accumulated_input_tokens": 45517,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 28793,
+      "cases": 2,
+      "model_calls": 13,
+      "output_tokens": 1438,
+      "passed": 2,
+      "peak_request_input_tokens": 5219.0,
+      "peak_tool_array_bytes": 4017.0,
+      "provider_reported_cost_usd": 0.002017586,
+      "uncached_input_tokens": 16724
+    },
+    "hybrid": {
+      "accumulated_input_tokens": 47724,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20420,
+      "cases": 2,
+      "model_calls": 10,
+      "output_tokens": 1035,
+      "passed": 2,
+      "peak_request_input_tokens": 5949.0,
+      "peak_tool_array_bytes": 9994.0,
+      "provider_reported_cost_usd": 0.00297824,
+      "uncached_input_tokens": 27304
+    },
+    "native": {
+      "accumulated_input_tokens": 28368,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 9668,
+      "cases": 2,
+      "model_calls": 10,
+      "output_tokens": 1032,
+      "passed": 2,
+      "peak_request_input_tokens": 4205.0,
+      "peak_tool_array_bytes": 5978.0,
+      "provider_reported_cost_usd": 0.002095736,
+      "uncached_input_tokens": 18700
+    }
+  },
+  "user_facing_date": "2026-10-24"
+}

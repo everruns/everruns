@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { use } from "react";
 import { useDeclarativeCapability, usePageTitle } from "@/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,9 +12,10 @@ export default function EditDeclarativeCapabilityPage({
 }: {
   params: Promise<{ declarativeId: string }>;
 }) {
+  const ui = useUiTranslations();
   const { declarativeId } = use(params);
   const { data: capability, isLoading, error } = useDeclarativeCapability(declarativeId);
-  usePageTitle(capability?.display_name ?? capability?.name ?? null, "Edit Capability");
+  usePageTitle(capability?.display_name ?? capability?.name ?? null, ui("Edit Capability"));
 
   if (isLoading) {
     return (
@@ -28,11 +30,13 @@ export default function EditDeclarativeCapabilityPage({
   if (error || !capability) {
     return (
       <ResourceNotFound
-        title={error ? "Capability unavailable" : "Capability not found"}
+        title={error ? ui("Capability unavailable") : ui("Capability not found")}
         description={
           error
-            ? `The capability could not be loaded: ${error.message}`
-            : "This declarative capability may have been deleted or moved to another organization."
+            ? ui("The capability could not be loaded: {value0}", { value0: error.message })
+            : ui(
+                "This declarative capability may have been deleted or moved to another organization.",
+              )
         }
         backHref="/capabilities"
         backLabel="Back to capabilities"

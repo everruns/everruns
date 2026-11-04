@@ -138,6 +138,8 @@ impl ProviderStore for DbProviderStore {
         );
         config.api_key = with_key.api_key;
         config.base_url = with_key.base_url;
+        config.api = crate::services::provider_resolver::provider_api(&row.settings)
+            .map_err(|error| AgentLoopError::Configuration(error.to_string()))?;
         config.request_options =
             crate::services::provider_resolver::provider_request_options(&row.settings);
         Ok(Some(config))

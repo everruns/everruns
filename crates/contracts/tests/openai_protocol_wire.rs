@@ -429,3 +429,117 @@ async fn foundry_per_minute_quota_429_is_retried() {
     assert_eq!(response.text, "ok");
     assert_eq!(server.received_requests().await.unwrap().len(), 2);
 }
+
+#[tokio::test]
+async fn complex_tool_schemas_fall_back_without_rewriting_arguments() {
+    use everruns_contracts::{OpenResponsesProtocolChatDriver, ToolDefinition};
+    use serde_json::{Value, json};
+
+    let mut deep = json!({"type": "string"});
+    for _ in 0..10 {
+        deep = json!({"type": "object", "properties": {"child": deep}});
+    }
+    let wide: serde_json::Map<String, Value> = (0..5000)
+        .map(|n| (format!("field_{n}"), json!({"type": "string"})))
+        .collect();
+    let schemas = [
+        json!({"type": "object", "properties": {
+            "optional": {"type": "string"}, "deep": deep
+        }}),
+        json!({"type": "object", "properties": {
+            "optional": {"type": "string"}, "wide": {"type": "object", "properties": wide}
+        }}),
+    ];
+    for schema in schemas {
+        for mode in ["chat_stream", "chat_json", "responses"] {
+            let server = MockServer::builder().start().await;
+            let arguments = r#"{"optional":null,"unknown":1}"#;
+            let call = json!({"id":"call_1", "type":"function", "function": {
+                "name":"complex", "arguments": arguments
+            }});
+            let (endpoint, body, content_type) = match mode {
+                "chat_json" => (
+                    "/chat/completions",
+                    json!({"id":"chat", "model":"model", "choices":[{
+                        "message":{"role":"assistant", "content":null, "tool_calls":[call]},
+                        "finish_reason":"tool_calls"
+                    }]})
+                    .to_string(),
+                    "application/json",
+                ),
+                "chat_stream" => {
+                    let mut call = call;
+                    call["index"] = json!(0);
+                    let chunk = json!({"id":"chat", "model":"model", "choices":[{
+                        "index":0,"delta":{"tool_calls":[call]},"finish_reason":"tool_calls"
+                    }]});
+                    (
+                        "/chat/completions",
+                        format!("data: {chunk}\n\ndata: [DONE]\n\n"),
+                        "text/event-stream",
+                    )
+                }
+                _ => {
+                    let item = json!({"type":"response.output_item.done", "item":{
+                        "type":"function_call", "id":"fc_1", "call_id":"call_1", "name":"complex",
+                        "arguments":arguments,"status":"completed"
+                    }});
+                    let done = json!({"type":"response.completed", "response":{
+                        "id":"resp_1","status":"completed","output":[],
+                        "usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}
+                    }});
+                    (
+                        "/responses",
+                        format!("data: {item}\n\ndata: {done}\n\n"),
+                        "text/event-stream",
+                    )
+                }
+            };
+            Mock::given(method("POST"))
+                .and(path(endpoint))
+                .respond_with(ResponseTemplate::new(200).set_body_raw(body, content_type))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let provider = if mode == "responses" {
+                Provider::new("openai", OpenResponsesProtocolChatDriver::new())
+            } else {
+                Provider::new("openai", OpenAIProtocolChatDriver::new())
+            }
+            .base_url(server.uri());
+            let mut config = LlmCallConfig::new("model");
+            config.tools = vec![ToolDefinition::function(
+                "complex",
+                "Complex tool",
+                schema.clone(),
+            )];
+            let response = if mode == "chat_json" {
+                provider
+                    .chat_completion_non_streaming(vec![], &config)
+                    .await
+            } else {
+                provider.chat_completion(vec![], &config).await
+            }
+            .unwrap();
+            assert_eq!(
+                response.tool_calls.unwrap()[0].arguments,
+                json!({"optional":null,"unknown":1}),
+                "{mode}"
+            );
+            assert_eq!(config.tools[0].parameters(), &schema);
+            let requests = server.received_requests().await.unwrap();
+            let body: Value = requests[0].body_json().unwrap();
+            let tool = if mode == "responses" {
+                &body["tools"][0]
+            } else {
+                &body["tools"][0]["function"]
+            };
+            if mode == "responses" {
+                assert_eq!(tool["strict"], false);
+            } else {
+                assert!(tool.get("strict").is_none());
+            }
+            assert_eq!(tool["parameters"], schema);
+        }
+    }
+}

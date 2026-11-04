@@ -1,3 +1,5 @@
+mod non_streaming;
+
 // Google Gemini Chat Driver
 //
 // Implementation of ChatDriver for Google's Gemini API.
@@ -29,6 +31,9 @@
 // Citations: the grounding sources and supports are reported as web citations
 // on `Done`, mapped against the streamed answer text (see `grounding`).
 
+#[cfg(not(target_arch = "wasm32"))]
+mod batch;
+mod request;
 mod streaming;
 use streaming::{ContinuationRequest, convert_gemini_stream};
 
@@ -564,6 +569,26 @@ impl GeminiChatDriver {
 
 #[async_trait]
 impl ChatDriver for GeminiChatDriver {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn batch_driver(&self) -> Option<&dyn everruns_contracts::batch::BatchDriver> {
+        Some(self)
+    }
+
+    fn supports_native_non_streaming(&self) -> bool {
+        true
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &everruns_contracts::ProviderEndpoint,
+        messages: Vec<Message>,
+        config: &LlmCallConfig,
+    ) -> Result<everruns_contracts::driver_registry::LlmResponse> {
+        let mut config = config.clone();
+        config.prefer_non_streaming = true;
+        self.chat_completion(endpoint, messages, &config).await
+    }
+
     fn stream_stall_timeout(&self, config: &LlmCallConfig) -> Option<std::time::Duration> {
         (is_argon(&config.model) && config.max_tokens.is_some_and(|tokens| tokens > 65_536))
             .then_some(std::time::Duration::from_secs(1_200))
@@ -575,78 +600,18 @@ impl ChatDriver for GeminiChatDriver {
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        if is_argon(&config.model)
-            && config
-                .prompt_cache
-                .as_ref()
-                .is_some_and(|cache| cache.enabled && cache.gemini_cached_content.is_some())
+        let (request, grounded) = self.prepare_request(&messages, config, true)?;
+
+        // Long decodes use stream-only continuation checkpoints. Whole JSON
+        // responses use the same state fold for signatures, grounding and usage.
+        if config.prefer_non_streaming
+            && !config.limits.needs_incremental_events()
+            && config.max_tokens.is_none_or(|tokens| tokens <= 65_536)
         {
-            return Err(AgentLoopError::config(
-                "Gemini 4 Argon supports implicit caching only",
-            ));
+            return self
+                .native_response(endpoint, config, &request, grounded)
+                .await;
         }
-        let (system_instruction, contents) = Self::convert_messages(&messages);
-
-        let (tools, grounded) = match Self::native_web_search_tool(config) {
-            Some(tool) => (Some(vec![tool]), true),
-            None => (Self::convert_tools(&config.tools), false),
-        };
-
-        // Reasoning is opt-in on Gemini and silent when absent: without a
-        // thinkingConfig the model still reasons but returns no thought parts
-        // and no signature, so nothing reaches the reasoning channel and
-        // multi-turn tool use loses its thought continuity.
-        let thinking_config = config
-            .reasoning_effort
-            .filter(everruns_contracts::ReasoningEffort::requests_reasoning)
-            .map(|effort| GeminiThinkingConfig {
-                thinking_budget: (!is_argon(&config.model))
-                    .then(|| driver_helpers::thinking_budget::from_effort(effort))
-                    .flatten(),
-                thinking_level: is_argon(&config.model).then_some(match effort {
-                    everruns_contracts::ReasoningEffort::Minimal
-                    | everruns_contracts::ReasoningEffort::Low => "low",
-                    everruns_contracts::ReasoningEffort::Medium => "medium",
-                    _ => "high",
-                }),
-                include_thoughts: true,
-            });
-
-        let mut generation_config = GeminiGenerationConfig {
-            temperature: config.temperature.filter(|_| !is_argon(&config.model)),
-            max_output_tokens: config.max_tokens,
-            thinking_config,
-        };
-
-        // If no max_tokens specified, use model's max output from profile, or 8192 fallback
-        if generation_config.max_output_tokens.is_none() {
-            generation_config.max_output_tokens = Some(if is_argon(&config.model) {
-                65_536
-            } else {
-                everruns_contracts::get_model_profile(
-                    &everruns_contracts::DriverId::Gemini,
-                    &config.model,
-                )
-                .and_then(|p| {
-                    p.limits
-                        .and_then(|l| u32::try_from(l.output).ok().filter(|&v| v > 0))
-                })
-                .unwrap_or(8_192)
-            });
-        }
-
-        let request = GeminiRequest {
-            contents,
-            system_instruction,
-            tools,
-            generation_config: Some(generation_config),
-            cached_content: config
-                .prompt_cache
-                .as_ref()
-                .filter(|cfg| cfg.enabled)
-                .and_then(|cfg| cfg.gemini_cached_content.clone()),
-            continuation_token: None,
-        };
 
         // Establish the byte stream, transparently reconnecting on a transport
         // failure that lands before the first chunk (the "error decoding
@@ -779,6 +744,24 @@ impl std::fmt::Debug for GeminiChatDriver {
 /// Register the Gemini driver with the driver registry
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const GEMINI_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        provider: "gemini",
+        recommended_models: &[
+            "gemini-4-argon",
+            "gemini-3.8-flash",
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
+        ],
+        coding_model: "gemini-4-argon",
+        research_model: "gemini-4-argon",
+        chat_model: "gemini-3.8-flash",
+        small_model: "gemini-3.5-flash-lite",
+        decision_model: "gemini-3.5-flash-lite",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Google Gemini".into(),
@@ -793,6 +776,7 @@ pub fn descriptor() -> DriverDescriptor {
         // GEMINI_BASE_URL was recognized before these names moved onto the
         // drivers; declaring it keeps existing dev setups working.
         base_url_env: Some("GEMINI_BASE_URL".into()),
+        recommended_models: Some(GEMINI_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Gemini, |config| {
             let provider =
                 everruns_contracts::Provider::new(config.provider.clone(), GeminiChatDriver::new())
@@ -848,14 +832,20 @@ struct GeminiGroundingHop {
     supports: Vec<GroundingSupport>,
 }
 
+#[derive(Clone, Copy, Default)]
+struct GeminiHopUsage {
+    input_tokens: u32,
+    tool_use_tokens: u32,
+    output_tokens: u32,
+    cached_tokens: Option<u32>,
+    thought_tokens: Option<u32>,
+}
+
 #[derive(Default)]
 struct GeminiStreamState {
     model: String,
     response_model: Option<String>,
-    input_tokens: u32,
-    output_tokens: u32,
-    cached_tokens: Option<u32>,
-    thought_tokens: Option<u32>,
+    usage: GeminiHopUsage,
     billed_input: u32,
     billed_output: u32,
     billed_cache: Option<u32>,
@@ -863,7 +853,7 @@ struct GeminiStreamState {
     continuation_token: Option<String>,
     can_continue: bool,
     output_since_checkpoint: bool,
-    checkpoint_usage: Option<(u32, u32, Option<u32>, Option<u32>)>,
+    checkpoint_usage: Option<GeminiHopUsage>,
     calls: StreamToolCallAccumulator,
     call_counter: u32,
     finish_reason: Option<String>,
@@ -887,16 +877,19 @@ impl GeminiStreamState {
         }
         if let Some(usage) = response.usage_metadata {
             if let Some(tokens) = usage.prompt_token_count {
-                self.input_tokens = tokens;
+                self.usage.input_tokens = tokens;
+            }
+            if let Some(tokens) = usage.tool_use_prompt_token_count {
+                self.usage.tool_use_tokens = tokens;
             }
             if let Some(tokens) = usage.candidates_token_count {
-                self.output_tokens = tokens;
+                self.usage.output_tokens = tokens;
             }
             if let Some(tokens) = usage.cached_content_token_count {
-                self.cached_tokens = Some(tokens);
+                self.usage.cached_tokens = Some(tokens);
             }
             if let Some(tokens) = usage.thoughts_token_count {
-                self.thought_tokens = Some(tokens);
+                self.usage.thought_tokens = Some(tokens);
             }
         }
         // Grounding metadata may trail the terminal candidate; read it first.
@@ -968,12 +961,7 @@ impl GeminiStreamState {
             if let Some(token) = checkpoint {
                 self.continuation_token = Some(token);
                 self.output_since_checkpoint = false;
-                self.checkpoint_usage = Some((
-                    self.input_tokens,
-                    self.output_tokens,
-                    self.cached_tokens,
-                    self.thought_tokens,
-                ));
+                self.checkpoint_usage = Some(self.usage);
             }
             if let Some(reason) = candidate
                 .finish_reason
@@ -1117,14 +1105,19 @@ impl GeminiStreamState {
     }
 
     fn add_hop_usage(&mut self) {
-        self.billed_input = self.billed_input.saturating_add(self.input_tokens);
+        // Tool-use prompts are additional input, outside the cached prompt subset.
+        // Keep their cumulative per-hop count separate until the hop is committed.
+        self.billed_input = self
+            .billed_input
+            .saturating_add(self.usage.input_tokens)
+            .saturating_add(self.usage.tool_use_tokens);
         self.billed_output = self
             .billed_output
-            .saturating_add(self.output_tokens)
-            .saturating_add(self.thought_tokens.unwrap_or(0));
+            .saturating_add(self.usage.output_tokens)
+            .saturating_add(self.usage.thought_tokens.unwrap_or(0));
         for (total, hop) in [
-            (&mut self.billed_cache, self.cached_tokens),
-            (&mut self.billed_thoughts, self.thought_tokens),
+            (&mut self.billed_cache, self.usage.cached_tokens),
+            (&mut self.billed_thoughts, self.usage.thought_tokens),
         ] {
             if let Some(tokens) = hop {
                 *total = Some(total.unwrap_or(0).saturating_add(tokens));
@@ -1138,10 +1131,7 @@ impl GeminiStreamState {
             .push(std::mem::take(&mut self.grounding));
         self.grounding.answer_range = self.answer.len()..self.answer.len();
         self.add_hop_usage();
-        self.input_tokens = 0;
-        self.output_tokens = 0;
-        self.cached_tokens = None;
-        self.thought_tokens = None;
+        self.usage = GeminiHopUsage::default();
         self.finish_reason = None;
         self.provider_finish_reason = None;
         self.output_since_checkpoint = false;
@@ -1408,6 +1398,8 @@ struct GeminiUsageMetadata {
     thoughts_token_count: Option<u32>,
     #[serde(default)]
     prompt_token_count: Option<u32>,
+    #[serde(default)]
+    tool_use_prompt_token_count: Option<u32>,
     #[serde(default)]
     candidates_token_count: Option<u32>,
     #[serde(default)]

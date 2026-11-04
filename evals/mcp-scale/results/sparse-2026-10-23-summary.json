@@ -1,0 +1,84 @@
+{
+  "baseline_commit": "8a7fc2f11c393ddfa379be4ac61373cdb7863f30",
+  "binary_sha256": "ac5765cdfa1dc59d6455fcadf19317ac73a271cbac90e088a502b9dc9489f2d3",
+  "catalog_tools": 2000,
+  "command": "EVERRUNS_EVAL_TRIALS=3 EVERRUNS_EVAL_CONCURRENCY=1 target/debug/mcp_scale --run --sample readonly-ticket,staged-rollback --filter catalog_size=2000,servers=1, --runs-report /tmp/mcp-sparse-2026-10-23-live.jsonl",
+  "model": "openrouter/meta/muse-spark-1.3-contributor",
+  "phase": "behavior qualification before the exact-lookup construction cache optimization",
+  "report": {
+    "cases": 18,
+    "infra": 0,
+    "passed": 18,
+    "path": "sparse-2026-10-23-live.jsonl.gz",
+    "sha256": "a77072e979b2f4807c1c1d54ab58076821c1b4797d3ec14f87f40f6aaba8a7e9",
+    "skipped": 0
+  },
+  "samples": [
+    "readonly-ticket",
+    "staged-rollback"
+  ],
+  "schedule": "serial within study; overlapped independent platform comparison",
+  "servers": 1,
+  "source_tree": "dirty working tree; source hashes below qualify the binary run",
+  "sources": {
+    "crates/contracts/src/runtime/tool_catalog.rs": "24900bd6ed43c0b7e10a84bb37f4496b94e04599b6a8822ee1b13ad6cb4319c4",
+    "crates/core/src/builtins/tool_search_bounded_tests.rs": "b40299d538e5f0d8d0cbf52e91f60c57b1bd5ea72973954b6c8e244edc9fdf04",
+    "crates/everruns/tests/host/sparse_catalog_lifecycle.rs": "0ada3d739e2b8b91423160fcd982f9b3127b1e050456893d705caa6beb0c8118",
+    "crates/everruns/tests/host/tool_catalog_lifecycle.rs": "01394895eca8eaa6ab95314381b84751b9337d593c83672a6c98dcf63a5d7bee",
+    "crates/integrations/src/bashkit/tools_in_shell/builtin.rs": "216de9faba25ca7da89d33a97bf47c91bfe30fde66b0899ac3b12a5ca064ccfe",
+    "crates/integrations/src/bashkit/tools_in_shell/catalog.rs": "ed85e1b07baf826f807abb4da5581053d2b633fdce3562664aec8dba4f069c6d",
+    "crates/integrations/src/bashkit/tools_in_shell/mod.rs": "66196d7bd43bc6b3b66d49502fc8d3c89af8f1c5a48f9b98b99c8f2e75b18203",
+    "evals/common/everruns_usage.rs": "bc4c08c2b5c28d85cbff969d571c96c100cde5626917b42e0b50f6860681bfd7",
+    "evals/generic/src/subject.rs": "1a2a67083a632973615b0435a9b5fb08cd487bec0c11611e303f8ae6633e762a",
+    "evals/mcp-scale/src/accounting.rs": "6d20c2486466048eb1703e2b681ed0b8093bb7f4eb22fa4e11025d1c2dc21d94",
+    "evals/mcp-scale/src/main.rs": "dd69f801c94ba9689676ce507cfc59cfb1983225e791119fba67e401bd494513",
+    "evals/mcp-scale/src/subject.rs": "3755864e772209298c0419f6dc86d409e3aa04bad782084fcecc6a1d4f913d10",
+    "evals/platform-capability/Cargo.lock": "71c481623d91031378884b02792d0308d53b0b409a132df37c0fb89b0ff49832",
+    "evals/platform-capability/Cargo.toml": "b8b509fdbaed70f4c2131a9f7f6f69dc2f2484e4e297c7ea39a9bce5386ab90f",
+    "evals/platform-capability/src/control_plane.rs": "84d55cd35af0358f3f796f3621759e93d8a90614a940abebf13b3c865f245199",
+    "evals/platform-capability/src/main.rs": "45d1d40e014cf75a0d1e810eae20cfc4315c39fa43de9efe519a41383175ca03",
+    "evals/platform-capability/src/offline.rs": "c0f1326e198b62ab1778250b4e1ed746658c14f6acafeb537c6d3c808f08df8c",
+    "evals/platform-capability/src/scorers.rs": "111583178431bcfe29279acc9ad9e12f539ef6861587231d1cf07775449682a7",
+    "evals/platform-capability/src/subject.rs": "e475fad130166abf0bb071395ea21a6d98396214fa456c0a2bb68c59732a2878",
+    "evals/tool-search-reveal/src/subject.rs": "5ce72958dfc3b98cf56982b236511853927129af06778a633ddeb3370d1d247e",
+    "evals/tools-in-shell/src/subject.rs": "8c495667c8148e0ce7bf6af3c5f6f536be7879fc06d46ffee873299bd72b86df"
+  },
+  "surfaces": [
+    "native",
+    "cli",
+    "hybrid"
+  ],
+  "trials": 3,
+  "usage_by_surface": {
+    "cli": {
+      "cache_read_tokens": 64792,
+      "cost_usd": 0.006221783999999999,
+      "input_tokens": 51632,
+      "max_request_input": 5346.0,
+      "mean_model_calls": 5.666666666666667,
+      "mean_total_input": 19404.0,
+      "output_tokens": 4645,
+      "trials": 6
+    },
+    "hybrid": {
+      "cache_read_tokens": 52270,
+      "cost_usd": 0.00752474,
+      "input_tokens": 68790,
+      "max_request_input": 5651.0,
+      "mean_model_calls": 4.5,
+      "mean_total_input": 20176.666666666668,
+      "output_tokens": 2706,
+      "trials": 6
+    },
+    "native": {
+      "cache_read_tokens": 37106,
+      "cost_usd": 0.0041861120000000005,
+      "input_tokens": 34625,
+      "max_request_input": 4102.0,
+      "mean_model_calls": 4.5,
+      "mean_total_input": 11955.166666666666,
+      "output_tokens": 3247,
+      "trials": 6
+    }
+  }
+}

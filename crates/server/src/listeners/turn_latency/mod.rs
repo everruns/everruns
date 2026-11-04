@@ -20,16 +20,17 @@
 // never sees it there. The id travels on every turn event, so this also works
 // when the input and the turn land on different server replicas.
 //
-// Decision: in-memory per-session state, bounded. A turn whose events land on
-// two server replicas yields a partial summary on each; the fields that need a
-// missing event are omitted rather than guessed.
+// Decision: the summary is replayed from the turn's stored events when its
+// terminal event arrives, not accumulated in memory. Workers spread their
+// event writes over every server replica (worker `grpc_balance`), so no replica
+// sees a whole turn: in-memory clocks reported partial turns, with model time
+// missing and counted as overhead. One indexed read per finished turn, off the
+// write path (listeners run in their own task).
 
-use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use everruns_contracts::typed_id::SessionId;
 use everruns_core::{
     ACT_COMPLETED, ACT_STARTED, Event, EventData, EventListener, INPUT_MESSAGE, LLM_GENERATION,
     REASON_COMPLETED, REASON_STARTED, TOOL_COMPLETED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
@@ -37,12 +38,20 @@ use everruns_core::{
 };
 
 use crate::metrics_names as names;
+use crate::services::EventService;
+use crate::storage::StorageBackend;
 
-/// Sessions tracked at once. Past this, entries idle for `STALE_AFTER` are
-/// dropped, then everything if that is not enough: losing a summary is fine,
-/// unbounded growth is not.
-const MAX_TRACKED_SESSIONS: usize = 10_000;
-const STALE_AFTER: chrono::Duration = chrono::Duration::minutes(30);
+/// The events a turn's breakdown is replayed from.
+const TURN_EVENT_TYPES: [&str; 8] = [
+    INPUT_MESSAGE,
+    TURN_STARTED,
+    REASON_STARTED,
+    REASON_COMPLETED,
+    ACT_STARTED,
+    ACT_COMPLETED,
+    LLM_GENERATION,
+    TOOL_COMPLETED,
+];
 
 /// What the listener needs from one event, independent of `Event`'s shape.
 #[derive(Debug, Clone, Copy)]
@@ -128,7 +137,6 @@ struct TurnClock {
     last_phase_end: Option<DateTime<Utc>>,
     reason_started_at: Option<DateTime<Utc>>,
     first_token_at: Option<DateTime<Utc>>,
-    touched: Option<DateTime<Utc>>,
     llm_ms: u64,
     tool_ms: u64,
     phase_gap_ms: u64,
@@ -143,7 +151,7 @@ fn ms_between(from: DateTime<Utc>, to: DateTime<Utc>) -> u64 {
     (to - from).num_milliseconds().max(0) as u64
 }
 
-/// One phase hand-off, reported as it happens so the histogram sees each gap.
+/// One phase hand-off, so the histogram sees each gap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PhaseGap {
     pub phase: &'static str,
@@ -153,7 +161,6 @@ pub(crate) struct PhaseGap {
 impl TurnClock {
     /// Feed one event. Returns the phase gap it closed, if any.
     fn observe(&mut self, obs: &Observation<'_>) -> Option<PhaseGap> {
-        self.touched = Some(obs.ts);
         match obs.event_type {
             INPUT_MESSAGE => {
                 // A message steering a running turn does not restart its clock.
@@ -168,7 +175,6 @@ impl TurnClock {
                     input_at,
                     started_at: Some(obs.ts),
                     last_phase_end: Some(obs.ts),
-                    touched: Some(obs.ts),
                     ..Self::default()
                 };
                 None
@@ -257,60 +263,49 @@ fn terminal_outcome(event_type: &str) -> Option<&'static str> {
     }
 }
 
-/// Per-session turn clocks fed from the event stream.
-#[derive(Default)]
-pub(crate) struct TurnLatencyTracker {
-    sessions: HashMap<SessionId, TurnClock>,
-}
-
-impl TurnLatencyTracker {
-    /// Feed one event. Returns the phase gap it closed and, on a terminal turn
-    /// event, the finished turn's breakdown.
-    pub(crate) fn observe(
-        &mut self,
-        session_id: SessionId,
-        obs: &Observation<'_>,
-    ) -> (Option<PhaseGap>, Option<TurnLatency>) {
-        if let Some(outcome) = terminal_outcome(obs.event_type) {
-            let latency = self
-                .sessions
-                .remove(&session_id)
-                .and_then(|clock| clock.finish(outcome, obs.ts));
-            return (None, latency);
-        }
-        if !self.sessions.contains_key(&session_id) {
-            self.evict(obs.ts);
-        }
-        let gap = self.sessions.entry(session_id).or_default().observe(obs);
-        (gap, None)
-    }
-
-    fn evict(&mut self, now: DateTime<Utc>) {
-        if self.sessions.len() < MAX_TRACKED_SESSIONS {
-            return;
-        }
-        self.sessions
-            .retain(|_, clock| clock.touched.is_some_and(|t| now - t < STALE_AFTER));
-        if self.sessions.len() >= MAX_TRACKED_SESSIONS {
-            self.sessions.clear();
-        }
-    }
-
-    #[cfg(test)]
-    fn tracked(&self) -> usize {
-        self.sessions.len()
-    }
+/// Replay one finished turn's events (oldest first, terminal event excluded):
+/// its phase gaps and its breakdown, or no breakdown when the turn's start is
+/// missing.
+pub(crate) fn summarize(
+    events: &[Observation<'_>],
+    outcome: &'static str,
+    ended_at: DateTime<Utc>,
+) -> (Vec<PhaseGap>, Option<TurnLatency>) {
+    let mut clock = TurnClock::default();
+    let gaps = events.iter().filter_map(|obs| clock.observe(obs)).collect();
+    (gaps, clock.finish(outcome, ended_at))
 }
 
 /// Logs `turn latency` and records the turn histograms for every finished turn.
-#[derive(Default)]
 pub struct TurnLatencyListener {
-    tracker: Mutex<TurnLatencyTracker>,
+    db: Arc<StorageBackend>,
 }
 
 impl TurnLatencyListener {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(db: Arc<StorageBackend>) -> Self {
+        Self { db }
+    }
+
+    /// The phase gaps and breakdown of the turn `event` ends, replayed from
+    /// the turn's stored events; `None` for any other event or a turn whose
+    /// start is not stored.
+    async fn replay(&self, event: &Event) -> Option<(Vec<PhaseGap>, TurnLatency)> {
+        let outcome = terminal_outcome(&event.event_type)?;
+        let turn_id = event.context.turn_id.as_ref()?;
+        let types = TURN_EVENT_TYPES.map(str::to_string);
+        let rows = self
+            .db
+            .list_turn_events(event.session_id, &turn_id.to_string(), &types)
+            .await
+            .inspect_err(|e| {
+                tracing::debug!(error = %e, "turn latency: could not read the turn's events");
+            })
+            .ok()?;
+        let events: Vec<Event> = rows.into_iter().map(EventService::row_to_event).collect();
+        let observations: Vec<Observation<'_>> =
+            events.iter().map(Observation::from_event).collect();
+        let (gaps, latency) = summarize(&observations, outcome, event.ts);
+        Some((gaps, latency?))
     }
 }
 
@@ -321,19 +316,13 @@ fn secs(ms: u64) -> f64 {
 #[async_trait]
 impl EventListener for TurnLatencyListener {
     async fn on_event(&self, event: &Event) {
-        let obs = Observation::from_event(event);
-        let (gap, latency) = match self.tracker.lock() {
-            Ok(mut tracker) => tracker.observe(event.session_id, &obs),
-            Err(_) => return,
+        let Some((gaps, l)) = self.replay(event).await else {
+            return;
         };
-
-        if let Some(gap) = gap {
+        for gap in gaps {
             metrics::histogram!(names::TURN_PHASE_GAP_DURATION, "phase" => gap.phase)
                 .record(secs(gap.ms));
         }
-        let Some(l) = latency else {
-            return;
-        };
         let outcome = l.outcome;
         if let Some(pickup) = l.pickup_ms {
             metrics::histogram!(names::TURN_PICKUP_DURATION).record(secs(pickup));
@@ -369,19 +358,7 @@ impl EventListener for TurnLatencyListener {
     }
 
     fn event_types(&self) -> Option<Vec<&'static str>> {
-        Some(vec![
-            INPUT_MESSAGE,
-            TURN_STARTED,
-            REASON_STARTED,
-            REASON_COMPLETED,
-            ACT_STARTED,
-            ACT_COMPLETED,
-            LLM_GENERATION,
-            TOOL_COMPLETED,
-            TURN_COMPLETED,
-            TURN_FAILED,
-            TURN_CANCELLED,
-        ])
+        Some(vec![TURN_COMPLETED, TURN_FAILED, TURN_CANCELLED])
     }
 
     fn name(&self) -> &'static str {

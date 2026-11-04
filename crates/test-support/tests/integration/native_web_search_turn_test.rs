@@ -93,6 +93,7 @@ async fn turn_options(
     let session_id = Uuid::now_v7();
     session_store
         .add_session(ExecutionSession {
+            unattended: Default::default(),
             id: session_id.into(),
             workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id),
             organization_id: "default".to_string(),

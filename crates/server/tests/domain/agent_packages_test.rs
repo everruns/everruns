@@ -4,7 +4,7 @@ use everruns_core::agent_package::{AgentPackage, Format};
 use serde_json::{Value, json};
 
 fn definition(name: &str) -> Value {
-    json!({"schema_version":1,"name":name,"instructions":"Read the runbook.","harness":"base","capabilities":["session_file_system"],"initial_files":[{"path":"/runbook.md","content":"The runbook"}],"channels":{"chat":{"type":"ag_ui"}}})
+    json!({"schema_version":1,"name":name,"localizations":{"uk":{"display_name":"Підтримка","description":"Допомога"},"de":{"display_name":"Hilfe"}},"instructions":"Read the runbook.","harness":"base","capabilities":["session_file_system"],"initial_files":[{"path":"/runbook.md","content":"The runbook"}],"channels":{"chat":{"type":"ag_ui"}}})
 }
 
 #[tokio::test]
@@ -43,6 +43,8 @@ async fn api_import_export_zip_and_diff_round_trip_without_ids() {
     assert!(exported.get("id").is_none());
     assert!(exported.get("harness_id").is_none());
     assert_eq!(exported["instructions"], "Read the runbook.");
+    assert_eq!(exported["localizations"]["uk"]["display_name"], "Підтримка");
+    assert_eq!(exported["localizations"]["de"]["display_name"], "Hilfe");
     assert_eq!(exported["files"][0]["content"], "The runbook");
     assert_eq!(exported["channels"]["chat"]["enabled"], false);
     let mut proposed = exported.clone();
@@ -69,6 +71,7 @@ async fn api_import_export_zip_and_diff_round_trip_without_ids() {
         .assert_status(StatusCode::OK)
         .json_value();
     assert_eq!(imported["id"], agent["id"]);
+    assert_eq!(imported["localizations"], exported["localizations"]);
     let diff = server
         .post(
             "/v1/agents/diff",
@@ -459,4 +462,106 @@ async fn denied_live_channel_update_does_not_partially_import_agent() {
         .assert_success()
         .json_value();
     assert_eq!(unchanged["system_prompt"], "Read the runbook.");
+}
+
+#[tokio::test]
+async fn bundled_agents_import_as_created_here_and_linked_agents_by_name() {
+    let server = TestServer::in_memory().await;
+    // A linked agent must already exist at the destination.
+    let review = json!({"schema_version":1,"name":"review","instructions":"Review.","description":"Reviews changes."});
+    server
+        .post(
+            "/v1/agents/import",
+            &json!({"content":review.to_string(),"format":"json"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+    let factory = json!({
+        "schema_version":1,"name":"factory","instructions":"Route work.",
+        "members":["review"],
+        "agents":[{"schema_version":1,"name":"implement","instructions":"Implement it.","description":"Implements changes."}]
+    });
+    let body = json!({"content":factory.to_string(),"format":"json"});
+    let lead = server
+        .post("/v1/agents/import", &body)
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    let implement = server
+        .get("/v1/agents/implement")
+        .await
+        .assert_success()
+        .json_value();
+    assert_eq!(implement["owner_agent_id"], lead["id"], "{implement}");
+    let cap = lead["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["ref"] == "agent_handoff")
+        .expect("Agents capability")
+        .clone();
+    let ids: Vec<_> = cap["config"]["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["id"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(ids, ["implement", "review"], "{cap}");
+    assert_eq!(
+        cap["config"]["targets"][0]["description"],
+        "Implements changes."
+    );
+
+    // Export bundles the created-here agent and links the other by name.
+    let exported = server
+        .get("/v1/agents/factory/export?format=json")
+        .await
+        .assert_success()
+        .json_value();
+    assert_eq!(exported["members"], json!(["review"]), "{exported}");
+    assert_eq!(exported["agents"][0]["name"], "implement");
+    assert!(
+        exported["capabilities"]
+            .as_array()
+            .is_none_or(|caps| caps.iter().all(|c| *c != "agent_handoff")),
+        "{exported}"
+    );
+
+    // Re-importing updates the agent created here rather than conflicting.
+    server
+        .post(
+            "/v1/agents/import",
+            &json!({"content":exported.to_string(),"format":"json","target":"factory"}),
+        )
+        .await
+        .assert_success();
+
+    // A bundled name taken by an unrelated agent is a conflict, and an
+    // unknown linked agent is reported, both before anything is written.
+    let clash = json!({
+        "schema_version":1,"name":"other","instructions":"X.",
+        "agents":[{"schema_version":1,"name":"review","instructions":"Y."}]
+    });
+    let validation = server
+        .post(
+            "/v1/agents/validate",
+            &json!({"content":clash.to_string(),"format":"json"}),
+        )
+        .await
+        .assert_success()
+        .json_value();
+    assert_eq!(validation["valid"], false, "{validation}");
+    let missing =
+        json!({"schema_version":1,"name":"other","instructions":"X.","members":["nobody"]});
+    server
+        .post(
+            "/v1/agents/import",
+            &json!({"content":missing.to_string(),"format":"json"}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    server
+        .get("/v1/agents/other")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 }

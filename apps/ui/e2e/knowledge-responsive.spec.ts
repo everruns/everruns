@@ -109,8 +109,8 @@ test.describe("Knowledge responsive collections", () => {
       await expect(page.getByRole("heading", { name: "Knowledge", exact: true })).toBeVisible();
       const card = page.getByRole("link", { name: /Bashkit Knowledge/ });
       await expect(card).toHaveAttribute("href", `/knowledge/${COLLECTION_ID}`);
-      await expect(card.getByText("Files", { exact: true })).toBeVisible();
-      await expect(card.getByText(/A deliberately long knowledge collection/)).toBeVisible();
+      await expect(page.getByText("Files only", { exact: true })).toBeVisible();
+      await expect(page.getByText(/A deliberately long knowledge collection/)).toBeVisible();
       await card.click({ trial: true });
       const box = await card.boundingBox();
       expect(box).not.toBeNull();

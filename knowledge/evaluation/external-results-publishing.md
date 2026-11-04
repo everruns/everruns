@@ -247,3 +247,29 @@ native eval) merge, treated as a name-hygiene problem, acceptable because
 `eval.import` is gated on `OrgAgentsManage` (few, trusted publishers per org).
 A future optional `project` field can add `(project, name)` identity without
 breaking this (absent project = today's behavior); deferred until it bites.
+
+## Shared formats and experiments (Evals rebuild, step 9)
+
+Mira stays the code-first developer tool and Everruns Evals the hosted home.
+They meet over JSON and HTTP, with no shared crate:
+
+- **Datasets are Mira samples.** An eval's cases export as `mira::Sample`
+  rows and import from them, matched by name
+  ([`samples.rs`](../../crates/server/src/domains/evals/samples.rs)). Case
+  settings Mira has no field for travel under `metadata.everruns`, which Mira
+  keeps and ignores, so a round trip is lossless. A plain Mira sample's
+  `expected` text becomes a `contains` scorer; attachments and seeded files
+  are reported as left behind, not refused, so a Mira dataset with them still
+  loads.
+- **Imports join experiments.** `ImportEvalRunRequest.experiment` names an
+  experiment and a variant label; each imported eval's run becomes that
+  variant of the experiment with that name on its eval, created on first use
+  ([`imported.rs`](../../crates/server/src/domains/evals/experiments/imported.rs)).
+  Re-publishing a label replaces the variant and leaves the earlier run
+  untagged. Per-case trial counts are recounted from the stored results,
+  because the comparison and the gate read them and an import's reported
+  summary does not carry them. The variant reports the system that ran it
+  (`run_elsewhere`), and the UI says "run in mira".
+- **Hosted subject.** Mira drives a deployed agent through the Agent
+  Execution API (`mira-publish-everruns`), so a developer can run hosted
+  agents from `mira run` with model matrices and trials.

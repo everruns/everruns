@@ -1,3 +1,4 @@
+import type { EntityLocalizations } from "../entity-localization";
 import type {
   AgentCapabilityConfig,
   InitialFile,
@@ -10,6 +11,7 @@ import type { Communication, OpenApiAgentChannelSummary } from "./schema-types";
 export type AgentStatus = "active" | "archived" | "deleted";
 
 export interface AgentHarnessSummary {
+  localizations?: EntityLocalizations;
   id: string | null;
   name: string | null;
   display_name: string | null;
@@ -46,6 +48,7 @@ export interface AgentAvatar {
 }
 
 export interface Agent {
+  localizations?: EntityLocalizations;
   service_virtual_user_id?: string | null;
   id: string;
   /** Addressable name (slug): lowercase alphanumeric and hyphens (e.g. "customer-support") */
@@ -77,6 +80,8 @@ export interface Agent {
   default_model_id: string | null;
   forked_from_agent_id?: string | null;
   root_agent_id?: string | null;
+  /** Agent this one was created as part of ("Created here" on its Agents tab). */
+  owner_agent_id?: string | null;
   tags: string[];
   /**
    * Built-in agents (Platform Chat) are managed by the platform and read-only:

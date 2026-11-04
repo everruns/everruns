@@ -5,7 +5,9 @@
  * focus on the component or transcript being demonstrated.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
+import { ConfirmationProvider } from "@/components/ui/confirmation-provider";
 import { ArrowLeft } from "lucide-react";
 import { usePageTitle } from "@/hooks";
 
@@ -26,13 +28,14 @@ export function DevPageShell({
   children,
   widthClassName = "max-w-6xl",
 }: DevPageShellProps) {
+  const ui = useUiTranslations();
   usePageTitle(isDev ? title : "Page not found", isDev ? "Dev" : null);
   if (!isDev) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
-          <p className="mt-2 text-muted-foreground">Page not found</p>
+          <p className="mt-2 text-muted-foreground">{ui("Page not found")}</p>
         </div>
       </div>
     );
@@ -46,7 +49,7 @@ export function DevPageShell({
           className="mb-6 inline-flex items-center gap-2 border border-border bg-card px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/35 hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Developer Tools
+          {ui("Back to Developer Tools")}
         </Link>
 
         <div className="mb-8 max-w-2xl space-y-2">
@@ -55,7 +58,7 @@ export function DevPageShell({
           <p className="text-sm leading-6 text-muted-foreground">{description}</p>
         </div>
 
-        {children}
+        <ConfirmationProvider>{children}</ConfirmationProvider>
       </div>
     </div>
   );

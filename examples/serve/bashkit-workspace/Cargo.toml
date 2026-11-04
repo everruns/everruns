@@ -1,0 +1,22 @@
+[package]
+name = "serve-example-bashkit-workspace"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "bashkit-workspace"
+path = "src/main.rs"
+
+[dependencies]
+everruns.workspace = true
+everruns-serve.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[build-dependencies]
+everruns-serve-build.workspace = true
+
+[lints]
+workspace = true

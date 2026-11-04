@@ -6,9 +6,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 1211.0,
+        "llm.input_tokens_peak": 4075.0,
+        "llm.input_tokens_total": 19472.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.000703566,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 5664.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 4.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 26695.0
+        "mcp.input_tokens": 5339.0
       },
       "passed": true,
       "qualification": true,
@@ -35,11 +49,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 70665,
-        "input_tokens": 26695,
-        "output_tokens": 3535,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 14133,
+        "cost_usd": 0.000703566,
+        "input_tokens": 5339,
+        "output_tokens": 707
       }
     },
     {
@@ -48,9 +61,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 1211.0,
+        "llm.input_tokens_peak": 4081.0,
+        "llm.input_tokens_total": 19330.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.00040512400000000003,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 5664.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 4.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 11340.0
+        "mcp.input_tokens": 2268.0
       },
       "passed": true,
       "qualification": true,
@@ -77,11 +104,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 85310,
-        "input_tokens": 11340,
-        "output_tokens": 3605,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 17062,
+        "cost_usd": 0.00040512400000000003,
+        "input_tokens": 2268,
+        "output_tokens": 721
       }
     },
     {
@@ -90,1100 +116,22 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 1211.0,
+        "llm.input_tokens_peak": 3997.0,
+        "llm.input_tokens_total": 19060.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.00067891,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 5209.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 10.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 4.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 25275.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "4 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 70025,
-        "input_tokens": 25275,
-        "output_tokens": 3635,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#0",
-      "duration_ms": 18974,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 6.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 103000.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "6 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 283560,
-        "input_tokens": 103000,
-        "output_tokens": 6060,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#1",
-      "duration_ms": 20001,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 5.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 78500.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "5 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 600775,
-        "input_tokens": 78500,
-        "output_tokens": 6105,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#2",
-      "duration_ms": 19425,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 5.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 137060.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "5 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 318835,
-        "input_tokens": 137060,
-        "output_tokens": 5985,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#0",
-      "duration_ms": 15692,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 4.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 61590.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "4 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 104660,
-        "input_tokens": 61590,
-        "output_tokens": 3060,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#1",
-      "duration_ms": 9738,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 5.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 44045.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "5 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 156990,
-        "input_tokens": 44045,
-        "output_tokens": 4405,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#2",
-      "duration_ms": 9825,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 4.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 23295.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "4 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 142270,
-        "input_tokens": 23295,
-        "output_tokens": 2805,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=native]#0",
-      "duration_ms": 4526,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 1.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 10200.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "1 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 18335,
-        "input_tokens": 10200,
-        "output_tokens": 1370,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=native]#1",
-      "duration_ms": 3935,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 1.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 16440.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "1 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 12010,
-        "input_tokens": 16440,
-        "output_tokens": 1320,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=native]#2",
-      "duration_ms": 3460,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 1.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 5400.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "1 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 22815,
-        "input_tokens": 5400,
-        "output_tokens": 1175,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#0",
-      "duration_ms": 10579,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 1.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 43290.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "1 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 130185,
-        "input_tokens": 43290,
-        "output_tokens": 3370,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#1",
-      "duration_ms": 9814,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 1.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 43195.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "1 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 130185,
-        "input_tokens": 43195,
-        "output_tokens": 3015,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#2",
-      "duration_ms": 10471,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 1.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 34030.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "1 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 100105,
-        "input_tokens": 34030,
-        "output_tokens": 2665,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#0",
-      "duration_ms": 5029,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 1.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 38640.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "1 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 20330,
-        "input_tokens": 38640,
-        "output_tokens": 1030,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#1",
-      "duration_ms": 5489,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 1.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 40855.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "1 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 33770,
-        "input_tokens": 40855,
-        "output_tokens": 1135,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#2",
-      "duration_ms": 5774,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 1.0,
-        "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 68295.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "1 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 6325,
-        "input_tokens": 68295,
-        "output_tokens": 1185,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#0",
-      "duration_ms": 22626,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 4.0,
-        "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 60825.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "4 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 36895,
-        "input_tokens": 60825,
-        "output_tokens": 3720,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#1",
-      "duration_ms": 18033,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 4.0,
-        "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 49995.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "4 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 45140,
-        "input_tokens": 49995,
-        "output_tokens": 3070,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#2",
-      "duration_ms": 16665,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 4.0,
-        "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 31240.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "4 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 66825,
-        "input_tokens": 31240,
-        "output_tokens": 4050,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]#0",
-      "duration_ms": 22006,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 6.0,
-        "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 140090.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "6 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 244520,
-        "input_tokens": 140090,
-        "output_tokens": 6140,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]#1",
-      "duration_ms": 27468,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 5.0,
-        "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 131005.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "5 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 468370,
-        "input_tokens": 131005,
-        "output_tokens": 8300,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]#2",
-      "duration_ms": 34342,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 5.0,
-        "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 298175.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "5 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 515090,
-        "input_tokens": 298175,
-        "output_tokens": 8030,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]#0",
-      "duration_ms": 13215,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 4.0,
-        "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 11190.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "4 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 155070,
-        "input_tokens": 11190,
-        "output_tokens": 3415,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]#1",
-      "duration_ms": 28793,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 4.0,
-        "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 11415.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "4 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 155710,
-        "input_tokens": 11415,
-        "output_tokens": 3395,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]#2",
-      "duration_ms": 13887,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 4.0,
-        "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 64070.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "4 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 86100,
-        "input_tokens": 64070,
-        "output_tokens": 3070,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#0",
-      "duration_ms": 4822,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 1.0,
-        "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 16340.0
-      },
-      "passed": true,
-      "qualification": true,
-      "raw_error_kind": null,
-      "role": "qualification",
-      "scores": [
-        {
-          "name": "succeeded",
-          "passed": true,
-          "reason": "no error",
-          "value": 1.0
-        },
-        {
-          "name": "tool_evidence",
-          "passed": true,
-          "reason": "1 MCP operation call(s) in Framework events",
-          "value": 1.0
-        },
-        {
-          "name": "state_verified",
-          "passed": true,
-          "reason": "fixture operation results establish the requested state",
-          "value": 1.0
-        }
-      ],
-      "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 12010,
-        "input_tokens": 16340,
-        "output_tokens": 1255,
-        "reported_cost_usd": 0.0
-      }
-    },
-    {
-      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#1",
-      "duration_ms": 5568,
-      "error": null,
-      "error_kind": null,
-      "metrics": {
-        "mcp.calls": 1.0,
-        "mcp.catalog_tools": 2000.0,
         "mcp.input_tokens": 5055.0
       },
       "passed": true,
@@ -1200,6 +148,391 @@
         {
           "name": "tool_evidence",
           "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 14005,
+        "cost_usd": 0.00067891,
+        "input_tokens": 5055,
+        "output_tokens": 727
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#0",
+      "duration_ms": 18974,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 9.0,
+        "llm.input_tokens_first": 2987.0,
+        "llm.input_tokens_peak": 12085.0,
+        "llm.input_tokens_total": 77312.0,
+        "llm.provider_cost_calls": 9.0,
+        "llm.provider_reported_cost_usd": 0.0024158240000000004,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 9.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 9.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 6.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 20600.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "6 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 56712,
+        "cost_usd": 0.0024158240000000004,
+        "input_tokens": 20600,
+        "output_tokens": 1212
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#1",
+      "duration_ms": 20001,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 11.0,
+        "llm.input_tokens_first": 2987.0,
+        "llm.input_tokens_peak": 17966.0,
+        "llm.input_tokens_total": 135855.0,
+        "llm.provider_cost_calls": 11.0,
+        "llm.provider_reported_cost_usd": 0.0020545100000000003,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 11.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 11.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 5.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 15700.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "5 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 120155,
+        "cost_usd": 0.0020545100000000003,
+        "input_tokens": 15700,
+        "output_tokens": 1221
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#2",
+      "duration_ms": 19425,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 9.0,
+        "llm.input_tokens_first": 2987.0,
+        "llm.input_tokens_peak": 13681.0,
+        "llm.input_tokens_total": 91179.0,
+        "llm.provider_cost_calls": 9.0,
+        "llm.provider_reported_cost_usd": 0.0031081340000000002,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 9.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 9.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 5.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 27412.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "5 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 63767,
+        "cost_usd": 0.0031081340000000002,
+        "input_tokens": 27412,
+        "output_tokens": 1197
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#0",
+      "duration_ms": 15692,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 3566.0,
+        "llm.input_tokens_peak": 6332.0,
+        "llm.input_tokens_total": 33250.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.0013960639999999998,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 9171.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 14.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 12318.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 20932,
+        "cost_usd": 0.0013960639999999998,
+        "input_tokens": 12318,
+        "output_tokens": 612
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#1",
+      "duration_ms": 9738,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 7.0,
+        "llm.input_tokens_first": 3566.0,
+        "llm.input_tokens_peak": 6677.0,
+        "llm.input_tokens_total": 40207.0,
+        "llm.provider_cost_calls": 7.0,
+        "llm.provider_reported_cost_usd": 0.001119896,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 9171.0,
+        "llm.tool_requests_captured": 7.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 14.0,
+        "llm.usage_calls": 7.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 5.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 8809.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "5 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 31398,
+        "cost_usd": 0.001119896,
+        "input_tokens": 8809,
+        "output_tokens": 881
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#2",
+      "duration_ms": 9825,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 3566.0,
+        "llm.input_tokens_peak": 6279.0,
+        "llm.input_tokens_total": 33113.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.000635008,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 9468.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 15.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 4659.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 28454,
+        "cost_usd": 0.000635008,
+        "input_tokens": 4659,
+        "output_tokens": 561
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=native]#0",
+      "duration_ms": 4526,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1199.0,
+        "llm.input_tokens_peak": 2338.0,
+        "llm.input_tokens_total": 5707.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000266134,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 2835.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 6.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 2040.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
           "reason": "1 MCP operation call(s) in Framework events",
           "value": 1.0
         },
@@ -1211,11 +544,1055 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 23455,
-        "input_tokens": 5055,
-        "output_tokens": 1310,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 3667,
+        "cost_usd": 0.000266134,
+        "input_tokens": 2040,
+        "output_tokens": 274
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=native]#1",
+      "duration_ms": 3935,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1199.0,
+        "llm.input_tokens_peak": 2335.0,
+        "llm.input_tokens_total": 5690.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.00038640399999999997,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 2835.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 6.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 3288.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 2402,
+        "cost_usd": 0.00038640399999999997,
+        "input_tokens": 3288,
+        "output_tokens": 264
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=native]#2",
+      "duration_ms": 3460,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1199.0,
+        "llm.input_tokens_peak": 2306.0,
+        "llm.input_tokens_total": 5643.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000164126,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 2835.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 6.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 1080.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 4563,
+        "cost_usd": 0.000164126,
+        "input_tokens": 1080,
+        "output_tokens": 235
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#0",
+      "duration_ms": 10579,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 2975.0,
+        "llm.input_tokens_peak": 8313.0,
+        "llm.input_tokens_total": 34695.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.001052674,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 8658.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 26037,
+        "cost_usd": 0.001052674,
+        "input_tokens": 8658,
+        "output_tokens": 674
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#1",
+      "duration_ms": 9814,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 2975.0,
+        "llm.input_tokens_peak": 8297.0,
+        "llm.input_tokens_total": 34676.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.0010365740000000002,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 8639.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 26037,
+        "cost_usd": 0.0010365740000000002,
+        "input_tokens": 8639,
+        "output_tokens": 603
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#2",
+      "duration_ms": 10471,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 5.0,
+        "llm.input_tokens_first": 2975.0,
+        "llm.input_tokens_peak": 8372.0,
+        "llm.input_tokens_total": 26827.0,
+        "llm.provider_cost_calls": 5.0,
+        "llm.provider_reported_cost_usd": 0.0008272420000000001,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 5.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 5.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 6806.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 20021,
+        "cost_usd": 0.0008272420000000001,
+        "input_tokens": 6806,
+        "output_tokens": 533
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#0",
+      "duration_ms": 5029,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 3554.0,
+        "llm.input_tokens_peak": 4194.0,
+        "llm.input_tokens_total": 11794.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.0008221319999999999,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 6231.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 9.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 7728.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 4066,
+        "cost_usd": 0.0008221319999999999,
+        "input_tokens": 7728,
+        "output_tokens": 206
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#1",
+      "duration_ms": 5489,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 3554.0,
+        "llm.input_tokens_peak": 5768.0,
+        "llm.input_tokens_total": 14925.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000876008,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 7972.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 8171.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 6754,
+        "cost_usd": 0.000876008,
+        "input_tokens": 8171,
+        "output_tokens": 227
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#2",
+      "duration_ms": 5774,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 3554.0,
+        "llm.input_tokens_peak": 5773.0,
+        "llm.input_tokens_total": 14924.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.0014158299999999999,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 7972.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 13659.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 1265,
+        "cost_usd": 0.0014158299999999999,
+        "input_tokens": 13659,
+        "output_tokens": 237
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#0",
+      "duration_ms": 22626,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 1211.0,
+        "llm.input_tokens_peak": 4111.0,
+        "llm.input_tokens_total": 19544.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.0013800580000000002,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 5664.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 12165.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 7379,
+        "cost_usd": 0.0013800580000000002,
+        "input_tokens": 12165,
+        "output_tokens": 744
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#1",
+      "duration_ms": 18033,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 1211.0,
+        "llm.input_tokens_peak": 3948.0,
+        "llm.input_tokens_total": 19027.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.001140756,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 5664.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 9999.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 9028,
+        "cost_usd": 0.001140756,
+        "input_tokens": 9999,
+        "output_tokens": 614
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#2",
+      "duration_ms": 16665,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 1211.0,
+        "llm.input_tokens_peak": 4133.0,
+        "llm.input_tokens_total": 19613.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.00081353,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 5664.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 6248.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 13365,
+        "cost_usd": 0.00081353,
+        "input_tokens": 6248,
+        "output_tokens": 810
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]#0",
+      "duration_ms": 22006,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 9.0,
+        "llm.input_tokens_first": 2987.0,
+        "llm.input_tokens_peak": 12010.0,
+        "llm.input_tokens_total": 76922.0,
+        "llm.provider_cost_calls": 9.0,
+        "llm.provider_reported_cost_usd": 0.003145208,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 9.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 9.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 6.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 28018.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "6 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 48904,
+        "cost_usd": 0.003145208,
+        "input_tokens": 28018,
+        "output_tokens": 1228
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]#1",
+      "duration_ms": 27468,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 11.0,
+        "llm.input_tokens_first": 2987.0,
+        "llm.input_tokens_peak": 14545.0,
+        "llm.input_tokens_total": 119875.0,
+        "llm.provider_cost_calls": 11.0,
+        "llm.provider_reported_cost_usd": 0.003139448,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 11.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 11.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 5.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 26201.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "5 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 93674,
+        "cost_usd": 0.003139448,
+        "input_tokens": 26201,
+        "output_tokens": 1660
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]#2",
+      "duration_ms": 34342,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 11.0,
+        "llm.input_tokens_first": 2987.0,
+        "llm.input_tokens_peak": 22256.0,
+        "llm.input_tokens_total": 162653.0,
+        "llm.provider_cost_calls": 11.0,
+        "llm.provider_reported_cost_usd": 0.006490736,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 11.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 11.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 5.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 59635.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "5 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 103018,
+        "cost_usd": 0.006490736,
+        "input_tokens": 59635,
+        "output_tokens": 1606
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]#0",
+      "duration_ms": 13215,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 3566.0,
+        "llm.input_tokens_peak": 6361.0,
+        "llm.input_tokens_total": 33252.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.00042242800000000003,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 9468.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 15.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 2238.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 31014,
+        "cost_usd": 0.00042242800000000003,
+        "input_tokens": 2238,
+        "output_tokens": 683
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]#1",
+      "duration_ms": 28793,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 3566.0,
+        "llm.input_tokens_peak": 6393.0,
+        "llm.input_tokens_total": 33425.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.00042638400000000003,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 9468.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 15.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 2283.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 31142,
+        "cost_usd": 0.00042638400000000003,
+        "input_tokens": 2283,
+        "output_tokens": 679
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]#2",
+      "duration_ms": 13887,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 3566.0,
+        "llm.input_tokens_peak": 5683.0,
+        "llm.input_tokens_total": 30034.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.0014386400000000001,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 8103.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 12.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 12814.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 17220,
+        "cost_usd": 0.0014386400000000001,
+        "input_tokens": 12814,
+        "output_tokens": 614
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#0",
+      "duration_ms": 4822,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1199.0,
+        "llm.input_tokens_peak": 2322.0,
+        "llm.input_tokens_total": 5670.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000381804,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 2835.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 6.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 3268.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 2402,
+        "cost_usd": 0.000381804,
+        "input_tokens": 3268,
+        "output_tokens": 251
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#1",
+      "duration_ms": 5568,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1199.0,
+        "llm.input_tokens_peak": 2342.0,
+        "llm.input_tokens_total": 5702.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000162882,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 2835.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 6.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 1011.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 4691,
+        "cost_usd": 0.000162882,
+        "input_tokens": 1011,
+        "output_tokens": 262
       }
     },
     {
@@ -1224,9 +1601,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1199.0,
+        "llm.input_tokens_peak": 2313.0,
+        "llm.input_tokens_total": 5647.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.0005771379999999999,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 2835.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 6.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 26390.0
+        "mcp.input_tokens": 5278.0
       },
       "passed": true,
       "qualification": true,
@@ -1253,11 +1644,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 1845,
-        "input_tokens": 26390,
-        "output_tokens": 1215,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 369,
+        "cost_usd": 0.0005771379999999999,
+        "input_tokens": 5278,
+        "output_tokens": 243
       }
     },
     {
@@ -1266,9 +1656,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 5.0,
+        "llm.input_tokens_first": 2975.0,
+        "llm.input_tokens_peak": 14096.0,
+        "llm.input_tokens_total": 38404.0,
+        "llm.provider_cost_calls": 5.0,
+        "llm.provider_reported_cost_usd": 0.002370662,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 5.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 5.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 111115.0
+        "mcp.input_tokens": 22223.0
       },
       "passed": true,
       "qualification": true,
@@ -1295,11 +1699,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 80905,
-        "input_tokens": 111115,
-        "output_tokens": 2900,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 16181,
+        "cost_usd": 0.002370662,
+        "input_tokens": 22223,
+        "output_tokens": 580
       }
     },
     {
@@ -1308,9 +1711,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 2975.0,
+        "llm.input_tokens_peak": 8810.0,
+        "llm.input_tokens_total": 36372.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.0016648140000000001,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 74075.0
+        "mcp.input_tokens": 14815.0
       },
       "passed": true,
       "qualification": true,
@@ -1337,11 +1754,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 107785,
-        "input_tokens": 74075,
-        "output_tokens": 3505,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 21557,
+        "cost_usd": 0.0016648140000000001,
+        "input_tokens": 14815,
+        "output_tokens": 701
       }
     },
     {
@@ -1350,9 +1766,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 2975.0,
+        "llm.input_tokens_peak": 8155.0,
+        "llm.input_tokens_total": 34133.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.00146849,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 65440.0
+        "mcp.input_tokens": 13088.0
       },
       "passed": true,
       "qualification": true,
@@ -1379,11 +1809,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 105225,
-        "input_tokens": 65440,
-        "output_tokens": 2940,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 21045,
+        "cost_usd": 0.00146849,
+        "input_tokens": 13088,
+        "output_tokens": 588
       }
     },
     {
@@ -1392,9 +1821,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 3554.0,
+        "llm.input_tokens_peak": 5762.0,
+        "llm.input_tokens_total": 14912.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.0006772740000000001,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 7972.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 30625.0
+        "mcp.input_tokens": 6125.0
       },
       "passed": true,
       "qualification": true,
@@ -1421,11 +1864,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 43935,
-        "input_tokens": 30625,
-        "output_tokens": 1180,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 8787,
+        "cost_usd": 0.0006772740000000001,
+        "input_tokens": 6125,
+        "output_tokens": 236
       }
     },
     {
@@ -1434,9 +1876,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 3554.0,
+        "llm.input_tokens_peak": 5760.0,
+        "llm.input_tokens_total": 14906.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.001014292,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 7972.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 47800.0
+        "mcp.input_tokens": 9560.0
       },
       "passed": true,
       "qualification": true,
@@ -1463,11 +1919,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 26730,
-        "input_tokens": 47800,
-        "output_tokens": 1190,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 5346,
+        "cost_usd": 0.001014292,
+        "input_tokens": 9560,
+        "output_tokens": 238
       }
     },
     {
@@ -1476,9 +1931,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 3554.0,
+        "llm.input_tokens_peak": 4209.0,
+        "llm.input_tokens_total": 11805.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000300854,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 6231.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 9.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 11890.0
+        "mcp.input_tokens": 2378.0
       },
       "passed": true,
       "qualification": true,
@@ -1505,11 +1974,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 47135,
-        "input_tokens": 11890,
-        "output_tokens": 1105,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 9427,
+        "cost_usd": 0.000300854,
+        "input_tokens": 2378,
+        "output_tokens": 221
       }
     },
     {
@@ -1518,9 +1986,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1201.0,
+        "llm.input_tokens_peak": 2848.0,
+        "llm.input_tokens_total": 6695.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000438728,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 4455.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 18905.0
+        "mcp.input_tokens": 3781.0
       },
       "passed": true,
       "qualification": true,
@@ -1547,11 +2029,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 14570,
-        "input_tokens": 18905,
-        "output_tokens": 1370,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 2914,
+        "cost_usd": 0.000438728,
+        "input_tokens": 3781,
+        "output_tokens": 274
       }
     },
     {
@@ -1560,9 +2041,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1201.0,
+        "llm.input_tokens_peak": 2808.0,
+        "llm.input_tokens_total": 6629.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000424528,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 4455.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 18575.0
+        "mcp.input_tokens": 3715.0
       },
       "passed": true,
       "qualification": true,
@@ -1589,11 +2084,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 14570,
-        "input_tokens": 18575,
-        "output_tokens": 1180,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 2914,
+        "cost_usd": 0.000424528,
+        "input_tokens": 3715,
+        "output_tokens": 236
       }
     },
     {
@@ -1602,9 +2096,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1201.0,
+        "llm.input_tokens_peak": 2809.0,
+        "llm.input_tokens_total": 6636.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000424428,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 4455.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 18610.0
+        "mcp.input_tokens": 3722.0
       },
       "passed": true,
       "qualification": true,
@@ -1631,11 +2139,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 14570,
-        "input_tokens": 18610,
-        "output_tokens": 1160,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 2914,
+        "cost_usd": 0.000424428,
+        "input_tokens": 3722,
+        "output_tokens": 232
       }
     },
     {
@@ -1644,9 +2151,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 2977.0,
+        "llm.input_tokens_peak": 5307.0,
+        "llm.input_tokens_total": 25793.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.000724698,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 28220.0
+        "mcp.input_tokens": 5644.0
       },
       "passed": true,
       "qualification": true,
@@ -1673,11 +2194,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 100745,
-        "input_tokens": 28220,
-        "output_tokens": 3000,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 20149,
+        "cost_usd": 0.000724698,
+        "input_tokens": 5644,
+        "output_tokens": 600
       }
     },
     {
@@ -1686,9 +2206,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 5.0,
+        "llm.input_tokens_first": 2977.0,
+        "llm.input_tokens_peak": 5077.0,
+        "llm.input_tokens_total": 20890.0,
+        "llm.provider_cost_calls": 5.0,
+        "llm.provider_reported_cost_usd": 0.00036146999999999997,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 5.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 5.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 12025.0
+        "mcp.input_tokens": 2405.0
       },
       "passed": true,
       "qualification": true,
@@ -1715,11 +2249,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 92425,
-        "input_tokens": 12025,
-        "output_tokens": 2100,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 18485,
+        "cost_usd": 0.00036146999999999997,
+        "input_tokens": 2405,
+        "output_tokens": 420
       }
     },
     {
@@ -1728,9 +2261,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 5.0,
+        "llm.input_tokens_first": 2977.0,
+        "llm.input_tokens_peak": 5221.0,
+        "llm.input_tokens_total": 20726.0,
+        "llm.provider_cost_calls": 5.0,
+        "llm.provider_reported_cost_usd": 0.000407558,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 5.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 5.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 12485.0
+        "mcp.input_tokens": 2497.0
       },
       "passed": true,
       "qualification": true,
@@ -1757,11 +2304,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 91145,
-        "input_tokens": 12485,
-        "output_tokens": 3035,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 18229,
+        "cost_usd": 0.000407558,
+        "input_tokens": 2497,
+        "output_tokens": 607
       }
     },
     {
@@ -1770,9 +2316,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 3556.0,
+        "llm.input_tokens_peak": 5172.0,
+        "llm.input_tokens_total": 13710.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.00073082,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 8259.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 15.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 33500.0
+        "mcp.input_tokens": 6700.0
       },
       "passed": true,
       "qualification": true,
@@ -1799,11 +2359,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 35050,
-        "input_tokens": 33500,
-        "output_tokens": 1170,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 7010,
+        "cost_usd": 0.00073082,
+        "input_tokens": 6700,
+        "output_tokens": 234
       }
     },
     {
@@ -1812,9 +2371,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 3556.0,
+        "llm.input_tokens_peak": 5154.0,
+        "llm.input_tokens_total": 13692.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.00018929800000000002,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 8259.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 15.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 5965.0
+        "mcp.input_tokens": 1193.0
       },
       "passed": true,
       "qualification": true,
@@ -1841,11 +2414,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 62495,
-        "input_tokens": 5965,
-        "output_tokens": 1125,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 12499,
+        "cost_usd": 0.00018929800000000002,
+        "input_tokens": 1193,
+        "output_tokens": 225
       }
     },
     {
@@ -1854,9 +2426,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 3556.0,
+        "llm.input_tokens_peak": 5174.0,
+        "llm.input_tokens_total": 13723.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.00019639799999999997,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 8259.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 15.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 6120.0
+        "mcp.input_tokens": 1224.0
       },
       "passed": true,
       "qualification": true,
@@ -1883,11 +2469,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 62495,
-        "input_tokens": 6120,
-        "output_tokens": 1225,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 12499,
+        "cost_usd": 0.00019639799999999997,
+        "input_tokens": 1224,
+        "output_tokens": 245
       }
     },
     {
@@ -1896,9 +2481,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 8.0,
+        "llm.input_tokens_first": 1201.0,
+        "llm.input_tokens_peak": 5907.0,
+        "llm.input_tokens_total": 30659.0,
+        "llm.provider_cost_calls": 8.0,
+        "llm.provider_reported_cost_usd": 0.0016558300000000003,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 4812.0,
+        "llm.tool_requests_captured": 8.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 12.0,
+        "llm.usage_calls": 8.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 64220.0
+        "mcp.input_tokens": 12844.0
       },
       "passed": true,
       "qualification": true,
@@ -1925,11 +2524,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 89075,
-        "input_tokens": 64220,
-        "output_tokens": 8395,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 17815,
+        "cost_usd": 0.0016558300000000003,
+        "input_tokens": 12844,
+        "output_tokens": 1679
       }
     },
     {
@@ -1938,9 +2536,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1201.0,
+        "llm.input_tokens_peak": 2850.0,
+        "llm.input_tokens_total": 6707.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.00047548999999999996,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 4455.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 20810.0
+        "mcp.input_tokens": 4162.0
       },
       "passed": true,
       "qualification": true,
@@ -1967,11 +2579,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 12725,
-        "input_tokens": 20810,
-        "output_tokens": 1355,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 2545,
+        "cost_usd": 0.00047548999999999996,
+        "input_tokens": 4162,
+        "output_tokens": 271
       }
     },
     {
@@ -1980,9 +2591,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1201.0,
+        "llm.input_tokens_peak": 2843.0,
+        "llm.input_tokens_total": 6709.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000439128,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 4455.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 18975.0
+        "mcp.input_tokens": 3795.0
       },
       "passed": true,
       "qualification": true,
@@ -2009,11 +2634,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 14570,
-        "input_tokens": 18975,
-        "output_tokens": 1345,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 2914,
+        "cost_usd": 0.000439128,
+        "input_tokens": 3795,
+        "output_tokens": 269
       }
     },
     {
@@ -2022,9 +2646,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 5.0,
+        "llm.input_tokens_first": 2977.0,
+        "llm.input_tokens_peak": 4733.0,
+        "llm.input_tokens_total": 19605.0,
+        "llm.provider_cost_calls": 5.0,
+        "llm.provider_reported_cost_usd": 0.000323778,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 5.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 5.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 10080.0
+        "mcp.input_tokens": 2016.0
       },
       "passed": true,
       "qualification": true,
@@ -2051,11 +2689,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 87945,
-        "input_tokens": 10080,
-        "output_tokens": 2175,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 17589,
+        "cost_usd": 0.000323778,
+        "input_tokens": 2016,
+        "output_tokens": 435
       }
     },
     {
@@ -2064,9 +2701,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 5.0,
+        "llm.input_tokens_first": 2977.0,
+        "llm.input_tokens_peak": 4664.0,
+        "llm.input_tokens_total": 19385.0,
+        "llm.provider_cost_calls": 5.0,
+        "llm.provider_reported_cost_usd": 0.000735748,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 5.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 5.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 31305.0
+        "mcp.input_tokens": 6261.0
       },
       "passed": true,
       "qualification": true,
@@ -2093,11 +2744,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 65620,
-        "input_tokens": 31305,
-        "output_tokens": 2085,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 13124,
+        "cost_usd": 0.000735748,
+        "input_tokens": 6261,
+        "output_tokens": 417
       }
     },
     {
@@ -2106,9 +2756,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 5.0,
+        "llm.input_tokens_first": 2977.0,
+        "llm.input_tokens_peak": 5489.0,
+        "llm.input_tokens_total": 21661.0,
+        "llm.provider_cost_calls": 5.0,
+        "llm.provider_reported_cost_usd": 0.000426138,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 5.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 5.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 13960.0
+        "mcp.input_tokens": 2792.0
       },
       "passed": true,
       "qualification": true,
@@ -2135,11 +2799,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 94345,
-        "input_tokens": 13960,
-        "output_tokens": 2730,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 18869,
+        "cost_usd": 0.000426138,
+        "input_tokens": 2792,
+        "output_tokens": 546
       }
     },
     {
@@ -2148,9 +2811,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 3556.0,
+        "llm.input_tokens_peak": 5138.0,
+        "llm.input_tokens_total": 13674.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000384002,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 8259.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 15.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 16115.0
+        "mcp.input_tokens": 3223.0
       },
       "passed": true,
       "qualification": true,
@@ -2177,11 +2854,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 52255,
-        "input_tokens": 16115,
-        "output_tokens": 1020,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 10451,
+        "cost_usd": 0.000384002,
+        "input_tokens": 3223,
+        "output_tokens": 204
       }
     },
     {
@@ -2190,9 +2866,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 3556.0,
+        "llm.input_tokens_peak": 5143.0,
+        "llm.input_tokens_total": 13679.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000673144,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 8259.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 15.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 30785.0
+        "mcp.input_tokens": 6157.0
       },
       "passed": true,
       "qualification": true,
@@ -2219,11 +2909,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 37610,
-        "input_tokens": 30785,
-        "output_tokens": 1060,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 7522,
+        "cost_usd": 0.000673144,
+        "input_tokens": 6157,
+        "output_tokens": 212
       }
     },
     {
@@ -2232,9 +2921,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 12.0,
+        "llm.input_tokens_first": 3556.0,
+        "llm.input_tokens_peak": 10938.0,
+        "llm.input_tokens_total": 95300.0,
+        "llm.provider_cost_calls": 12.0,
+        "llm.provider_reported_cost_usd": 0.0026851700000000006,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 11281.0,
+        "llm.tool_requests_captured": 12.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 21.0,
+        "llm.usage_calls": 12.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 109325.0
+        "mcp.input_tokens": 21865.0
       },
       "passed": true,
       "qualification": true,
@@ -2261,11 +2964,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 367175,
-        "input_tokens": 109325,
-        "output_tokens": 8795,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 73435,
+        "cost_usd": 0.0026851700000000006,
+        "input_tokens": 21865,
+        "output_tokens": 1759
       }
     },
     {
@@ -2274,9 +2976,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1201.0,
+        "llm.input_tokens_peak": 2827.0,
+        "llm.input_tokens_total": 6653.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.00043032799999999995,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 4455.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 18695.0
+        "mcp.input_tokens": 3739.0
       },
       "passed": true,
       "qualification": false,
@@ -2303,11 +3019,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 14570,
-        "input_tokens": 18695,
-        "output_tokens": 1265,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 2914,
+        "cost_usd": 0.00043032799999999995,
+        "input_tokens": 3739,
+        "output_tokens": 253
       }
     },
     {
@@ -2316,9 +3031,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1201.0,
+        "llm.input_tokens_peak": 2851.0,
+        "llm.input_tokens_total": 6700.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.00044002799999999997,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 4455.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 18930.0
+        "mcp.input_tokens": 3786.0
       },
       "passed": true,
       "qualification": false,
@@ -2345,11 +3074,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 14570,
-        "input_tokens": 18930,
-        "output_tokens": 1390,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 2914,
+        "cost_usd": 0.00044002799999999997,
+        "input_tokens": 3786,
+        "output_tokens": 278
       }
     },
     {
@@ -2358,9 +3086,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 1201.0,
+        "llm.input_tokens_peak": 2830.0,
+        "llm.input_tokens_total": 6673.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.000683138,
+        "llm.tool_bytes_first": 1769.0,
+        "llm.tool_bytes_peak": 4455.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 3.0,
+        "llm.tools_peak": 11.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 31520.0
+        "mcp.input_tokens": 6304.0
       },
       "passed": true,
       "qualification": false,
@@ -2387,11 +3129,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 1845,
-        "input_tokens": 31520,
-        "output_tokens": 1300,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 369,
+        "cost_usd": 0.000683138,
+        "input_tokens": 6304,
+        "output_tokens": 260
       }
     },
     {
@@ -2400,9 +3141,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 4.0,
+        "llm.input_tokens_first": 2977.0,
+        "llm.input_tokens_peak": 4221.0,
+        "llm.input_tokens_total": 14697.0,
+        "llm.provider_cost_calls": 4.0,
+        "llm.provider_reported_cost_usd": 0.000532846,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 4.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 4.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 21870.0
+        "mcp.input_tokens": 4374.0
       },
       "passed": true,
       "qualification": false,
@@ -2429,11 +3184,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 51615,
-        "input_tokens": 21870,
-        "output_tokens": 1870,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 10323,
+        "cost_usd": 0.000532846,
+        "input_tokens": 4374,
+        "output_tokens": 374
       }
     },
     {
@@ -2442,6 +3196,13 @@
       "error": "The model `meta/muse-spark-1.3-contributor` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
       "error_kind": "Infra",
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 1.0,
+        "llm.input_tokens_total": 0.0,
+        "llm.provider_cost_calls": 0.0,
+        "llm.provider_reported_cost_usd": 0.0,
+        "llm.usage_calls": 0.0,
+        "llm.usage_complete": 0.0,
         "mcp.calls": 0.0,
         "mcp.catalog_tools": 600.0,
         "mcp.input_tokens": 0.0
@@ -2471,11 +3232,9 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": null,
+        "cost_usd": 0.0,
         "input_tokens": 0,
-        "output_tokens": 0,
-        "reported_cost_usd": 0.0
+        "output_tokens": 0
       }
     },
     {
@@ -2484,9 +3243,16 @@
       "error": "The model `meta/muse-spark-1.3-contributor` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
       "error_kind": "Infra",
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 2.0,
+        "llm.input_tokens_total": 2977.0,
+        "llm.provider_cost_calls": 1.0,
+        "llm.provider_reported_cost_usd": 0.0003181,
+        "llm.usage_calls": 1.0,
+        "llm.usage_complete": 0.0,
         "mcp.calls": 0.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 8931.0
+        "mcp.input_tokens": 2977.0
       },
       "passed": false,
       "qualification": false,
@@ -2513,11 +3279,9 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": null,
-        "input_tokens": 8931,
-        "output_tokens": 306,
-        "reported_cost_usd": 0.0
+        "cost_usd": 0.0003181,
+        "input_tokens": 2977,
+        "output_tokens": 102
       }
     },
     {
@@ -2526,9 +3290,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 3556.0,
+        "llm.input_tokens_peak": 5186.0,
+        "llm.input_tokens_total": 13737.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.00092588,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 8259.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 15.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 43235.0
+        "mcp.input_tokens": 8647.0
       },
       "passed": true,
       "qualification": false,
@@ -2555,11 +3333,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 25450,
-        "input_tokens": 43235,
-        "output_tokens": 1275,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 5090,
+        "cost_usd": 0.00092588,
+        "input_tokens": 8647,
+        "output_tokens": 255
       }
     },
     {
@@ -2568,9 +3345,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 3.0,
+        "llm.input_tokens_first": 3556.0,
+        "llm.input_tokens_peak": 5163.0,
+        "llm.input_tokens_total": 13701.0,
+        "llm.provider_cost_calls": 3.0,
+        "llm.provider_reported_cost_usd": 0.001217666,
+        "llm.tool_bytes_first": 5573.0,
+        "llm.tool_bytes_peak": 8259.0,
+        "llm.tool_requests_captured": 3.0,
+        "llm.tools_first": 7.0,
+        "llm.tools_peak": 15.0,
+        "llm.usage_calls": 3.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 58340.0
+        "mcp.input_tokens": 11668.0
       },
       "passed": true,
       "qualification": false,
@@ -2597,11 +3388,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 10165,
-        "input_tokens": 58340,
-        "output_tokens": 1170,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 2033,
+        "cost_usd": 0.001217666,
+        "input_tokens": 11668,
+        "output_tokens": 234
       }
     },
     {
@@ -2610,9 +3400,16 @@
       "error": "The model `meta/muse-spark-1.3-contributor` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
       "error_kind": "Infra",
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 2.0,
+        "llm.input_tokens_total": 3556.0,
+        "llm.provider_cost_calls": 1.0,
+        "llm.provider_reported_cost_usd": 0.000373,
+        "llm.usage_calls": 1.0,
+        "llm.usage_complete": 0.0,
         "mcp.calls": 0.0,
         "mcp.catalog_tools": 600.0,
-        "mcp.input_tokens": 10668.0
+        "mcp.input_tokens": 3556.0
       },
       "passed": false,
       "qualification": false,
@@ -2639,11 +3436,9 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": null,
-        "input_tokens": 10668,
-        "output_tokens": 261,
-        "reported_cost_usd": 0.0
+        "cost_usd": 0.000373,
+        "input_tokens": 3556,
+        "output_tokens": 87
       }
     },
     {
@@ -2652,9 +3447,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 8.0,
+        "llm.input_tokens_first": 2987.0,
+        "llm.input_tokens_peak": 9689.0,
+        "llm.input_tokens_total": 58342.0,
+        "llm.provider_cost_calls": 8.0,
+        "llm.provider_reported_cost_usd": 0.0020162720000000004,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 8.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 8.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 7.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 83030.0
+        "mcp.input_tokens": 16606.0
       },
       "passed": true,
       "qualification": false,
@@ -2681,11 +3490,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 208680,
-        "input_tokens": 83030,
-        "output_tokens": 6805,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 41736,
+        "cost_usd": 0.0020162720000000004,
+        "input_tokens": 16606,
+        "output_tokens": 1361
       }
     },
     {
@@ -2694,9 +3502,23 @@
       "error": null,
       "error_kind": null,
       "metrics": {
+        "llm.cache_creation_tokens": 0.0,
+        "llm.calls": 6.0,
+        "llm.input_tokens_first": 2975.0,
+        "llm.input_tokens_peak": 10428.0,
+        "llm.input_tokens_total": 40785.0,
+        "llm.provider_cost_calls": 6.0,
+        "llm.provider_reported_cost_usd": 0.000974624,
+        "llm.tool_bytes_first": 3805.0,
+        "llm.tool_bytes_peak": 3805.0,
+        "llm.tool_requests_captured": 6.0,
+        "llm.tools_first": 4.0,
+        "llm.tools_peak": 4.0,
+        "llm.usage_calls": 6.0,
+        "llm.usage_complete": 1.0,
         "mcp.calls": 1.0,
         "mcp.catalog_tools": 2000.0,
-        "mcp.input_tokens": 38615.0
+        "mcp.input_tokens": 7723.0
       },
       "passed": true,
       "qualification": false,
@@ -2723,11 +3545,10 @@
         }
       ],
       "usage": {
-        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
-        "cache_read_tokens": 165310,
-        "input_tokens": 38615,
-        "output_tokens": 3405,
-        "reported_cost_usd": 0.0
+        "cache_read_tokens": 33062,
+        "cost_usd": 0.000974624,
+        "input_tokens": 7723,
+        "output_tokens": 681
       }
     }
   ],
@@ -2880,10 +3701,10 @@
     "skipped": 0,
     "subject_failures": 0,
     "token_totals": {
-      "actual_cost_status": "unknown/unpriced; provider reports 0.0 per row, not a billing measurement",
-      "cache_read_tokens": 5839280,
-      "input_tokens": 2467860,
-      "output_tokens": 159575
+      "cache_read_tokens": 1167856,
+      "cost_usd": 0.058075912000000014,
+      "input_tokens": 493572,
+      "output_tokens": 31915
     },
     "valid_trials": 54
   },
@@ -2968,5 +3789,6 @@
     "smoke_from_initial_connectivity_check": "one old-binary 50-tool native ticket read passed, but it was kept in /tmp and excluded from canonical evidence."
   },
   "study": "MCP scale Rust/Mira study",
-  "usage_note": "Usage tokens are raw provider/Mira report values. cost_usd was returned as 0.0, but actual billing is unknown/unpriced; zero is not a price claim. Cache-read token counts are reported without a cache-benefit claim."
+  "usage_correction": "usage-correction-2026-10-23.json",
+  "usage_note": "Usage corrected from retained generation events once per reasoning iteration. Input is uncached; cache-read is separate. The prior recursive projection counted each usage five times and missed actual provider cost. Provider-reported effective costs are observations, not invoice reconciliation. Original archives and all task scores are unchanged."
 }

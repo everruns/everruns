@@ -1,12 +1,12 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { Info } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/ui/copy-button";
 import { cn } from "@/lib/utils";
 import type { Event, TokenUsage } from "@/lib/api/types";
 import { getEventData, isRecord } from "@/lib/api/types";
-import { useLocale } from "@/providers/locale-provider";
 
 interface MessageInfoIconProps {
   /** The event containing message data */
@@ -20,7 +20,8 @@ interface MessageInfoIconProps {
  * Shows: message ID, model, reasoning effort, timestamp, and token usage.
  */
 export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconProps) {
-  const { t } = useLocale();
+  const ui = useUiTranslations();
+  const { t, displayLocale } = useLocale();
   const agentData = getEventData(event, "output.message.completed");
 
   // Model and reasoning are stored on message.metadata (set by ReasonAtom)
@@ -42,7 +43,7 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
 
   // Format timestamp
   const timestamp = new Date(event.ts);
-  const formattedTime = timestamp.toLocaleString();
+  const formattedTime = timestamp.toLocaleString(displayLocale);
 
   return (
     <Tooltip>
@@ -61,7 +62,11 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
           <dt className="text-muted-foreground">{t("message_info_id")}</dt>
           <dd>
-            <CopyButton value={event.id} label={`Copy ID: ${event.id}`} kind="id" />
+            <CopyButton
+              value={event.id}
+              label={ui("Copy ID: {value0}", { value0: event.id })}
+              kind="id"
+            />
           </dd>
           {model && (
             <>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MiniTimeline, type TimelineBin } from "./mini-timeline";
@@ -21,11 +22,16 @@ export function StatStrip({
   stats: StatStripStats;
   loading?: boolean;
 }) {
+  const ui = useUiTranslations();
   const items = [
-    { label: "Health", value: stats.health, sub: stats.healthSub },
-    { label: "Invocations · 24h", value: String(stats.invocations24h), sub: stats.invocationSub },
+    { label: ui("Health"), value: stats.health, sub: stats.healthSub },
     {
-      label: "Success rate",
+      label: ui("Invocations · 24h"),
+      value: String(stats.invocations24h),
+      sub: stats.invocationSub,
+    },
+    {
+      label: ui("Success rate"),
       value: stats.successRate === null ? "No runs" : `${stats.successRate.toFixed(1)}%`,
       sub: stats.successSub,
     },
@@ -52,9 +58,9 @@ export function StatStrip({
       ))}
       <Card>
         <CardContent className="space-y-3 py-4">
-          <p className="text-xs font-medium text-muted-foreground">Activity</p>
+          <p className="text-xs font-medium text-muted-foreground">{ui("Activity")}</p>
           {loading ? <Skeleton className="h-7 w-full" /> : <MiniTimeline runs={stats.timeline} />}
-          <p className="text-sm text-muted-foreground">Last 24 hours</p>
+          <p className="text-sm text-muted-foreground">{ui("Last 24 hours")}</p>
         </CardContent>
       </Card>
     </div>

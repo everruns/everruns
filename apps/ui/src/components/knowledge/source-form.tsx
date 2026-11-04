@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { sourceDraftSchema, isPublicDraftLocation } from "@/components/chat-mode/page-form-schemas";
 import { useState } from "react";
@@ -17,6 +18,7 @@ export function SourceForm({
   collectionId: string;
   onSaved: () => Promise<unknown>;
 }) {
+  const ui = useUiTranslations();
   const [kind, setKind] = useState("github");
   const [coordinates, setCoordinates] = useState("");
   const [branch, setBranch] = useState("main");
@@ -38,7 +40,7 @@ export function SourceForm({
     entityId: collectionId,
     entityType: "knowledge_collection",
     formId: "source",
-    label: "Connect source",
+    label: ui("Connect source"),
     baseline: "new",
     dirty: !!(
       coordinates ||
@@ -89,43 +91,46 @@ export function SourceForm({
     >
       {chatDraft.notice}
       <p className="text-sm text-muted-foreground">
-        Connected files are read-only. Refreshing keeps their file structure and replaces only
-        changed content.
+        {ui(
+          "Connected files are read-only. Refreshing keeps their file structure and replaces only changed content.",
+        )}
       </p>
       <div className="space-y-2">
-        <Label htmlFor="source-kind">Source</Label>
+        <Label htmlFor="source-kind">{ui("Source")}</Label>
         <select
           id="source-kind"
           className="h-9 w-full rounded-md border bg-background px-3 text-sm"
           value={kind}
           onChange={(e) => setKind(e.target.value)}
         >
-          <option value="github">GitHub</option>
-          <option value="git">Public Git repository</option>
+          <option value="github">{ui("GitHub")}</option>
+          <option value="git">{ui("Public Git repository")}</option>
         </select>
       </div>
       <div className="space-y-2">
         <Label htmlFor="source-repository">
-          {kind === "github" ? "Repository" : "Repository URL"}
+          {kind === "github" ? ui("Repository") : ui("Repository URL")}
         </Label>
         <Input
           id="source-repository"
           required
           value={coordinates}
           onChange={(e) => setCoordinates(e.target.value)}
-          placeholder={kind === "github" ? "owner/repository" : "https://example.com/team/docs.git"}
+          placeholder={
+            kind === "github" ? ui("owner/repository") : ui("https://example.com/team/docs.git")
+          }
         />
       </div>
       {kind === "github" && (
         <div className="space-y-2">
-          <Label htmlFor="source-identity">Read as</Label>
+          <Label htmlFor="source-identity">{ui("Read as")}</Label>
           <select
             id="source-identity"
             className="h-9 w-full rounded-md border bg-background px-3 text-sm"
             value={identity}
             onChange={(e) => setIdentity(e.target.value)}
           >
-            <option value="">Organization GitHub connection</option>
+            <option value="">{ui("Organization GitHub connection")}</option>
             {identities.data?.data.map((v) => (
               <option key={v.id} value={toUuid(v.id)}>
                 {v.name}
@@ -133,14 +138,15 @@ export function SourceForm({
             ))}
           </select>
           <p className="text-xs text-muted-foreground">
-            Uses the existing GitHub connection and its selected repositories. This collection is
-            available to agents you attach it to in this organization.
+            {ui(
+              "Uses the existing GitHub connection and its selected repositories. This collection is available to agents you attach it to in this organization.",
+            )}
           </p>
         </div>
       )}
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-2">
-          <Label htmlFor="source-branch">Branch</Label>
+          <Label htmlFor="source-branch">{ui("Branch")}</Label>
           <Input
             id="source-branch"
             value={branch}
@@ -149,23 +155,24 @@ export function SourceForm({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="source-folder">Source folder</Label>
+          <Label htmlFor="source-folder">{ui("Source folder")}</Label>
           <Input
             id="source-folder"
             value={folder}
             onChange={(e) => setFolder(e.target.value)}
-            placeholder="Whole repository"
+            placeholder={ui("Whole repository")}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="source-root">Collection folder</Label>
+          <Label htmlFor="source-root">{ui("Collection folder")}</Label>
           <Input id="source-root" value={root} onChange={(e) => setRoot(e.target.value)} />
         </div>
       </div>
       {kind === "github" && (
         <p className="text-xs text-muted-foreground">
-          Attached agents can read retained files. Disconnecting GitHub stops refreshes and keeps
-          existing copies; deny file access or archive the collection to revoke them.
+          {ui(
+            "Attached agents can read retained files. Disconnecting GitHub stops refreshes and keeps existing copies; deny file access or archive the collection to revoke them.",
+          )}
         </p>
       )}
       {error && (
@@ -174,7 +181,7 @@ export function SourceForm({
         </p>
       )}
       <Button type="submit" variant="accent" disabled={pending || chatDraft.blocked}>
-        {pending ? "Connecting…" : "Connect source"}
+        {pending ? ui("Connecting…") : ui("Connect source")}
       </Button>
     </form>
   );

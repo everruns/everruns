@@ -441,6 +441,15 @@ describe("SVGPreview", () => {
 });
 
 describe("HtmlPreview", () => {
+  it("explicitly disables scripts for embedded static previews regardless of the parent CSP", () => {
+    render(
+      <HtmlPreview
+        content="<p>Static preview</p><script>window.example = true</script>"
+        allowScripts={false}
+      />,
+    );
+    expect(screen.getByTitle("HTML preview")).toHaveAttribute("sandbox", "");
+  });
   it("loads server previews with the exact sandbox and without srcdoc", () => {
     const src = "/api/v1/workspaces/wsp_x/fs/_/preview/index.html";
     render(<HtmlPreview content="<p>ignored</p>" src={src} />);

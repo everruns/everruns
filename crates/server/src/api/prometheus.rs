@@ -72,6 +72,7 @@ pub fn install_prometheus_recorder() -> Option<PrometheusHandle> {
 
 /// GET /metrics — render all metrics in Prometheus exposition format.
 async fn metrics_handler(State(handle): State<PrometheusHandle>) -> impl IntoResponse {
+    crate::domains::system::doctor::note_metrics_scrape();
     let body = handle.render();
     (
         [(

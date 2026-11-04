@@ -177,6 +177,8 @@ async fn identity_oauth_fixture(configured: bool) -> (AppState, ResolvedOrg, Uui
         .create_agent(
             everruns_core::DEFAULT_ORG_ID,
             CreateAgentRow {
+                completion_check: Default::default(),
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: "service-agent".to_string(),
                 display_name: None,
@@ -956,6 +958,7 @@ mod github_installation_ownership {
             },
             CookieJar::new(),
             None,
+            false,
         )
         .await
         .unwrap();

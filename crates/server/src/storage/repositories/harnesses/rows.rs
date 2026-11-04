@@ -7,6 +7,8 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct HarnessRow {
+    #[sqlx(json)]
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     pub id: HarnessId,
     pub org_id: i64,
     pub name: String,
@@ -53,6 +55,7 @@ pub struct HarnessRow {
 
 #[derive(Debug, Clone)]
 pub struct CreateHarnessRow {
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     pub name: String,
     pub display_name: Option<String>,
     /// Display glyph name rendered by the UI.
@@ -82,6 +85,7 @@ pub struct CreateHarnessRow {
 
 #[derive(Debug, Clone, Default)]
 pub struct UpdateHarness {
+    pub localizations: Option<everruns_contracts::runtime::localization::EntityLocalizations>,
     pub name: Option<String>,
     pub display_name: Option<String>,
     pub description: Option<String>,

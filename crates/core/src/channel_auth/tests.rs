@@ -454,3 +454,39 @@ async fn resolve_and_validate_rejects_literal_private_ranges() {
             .is_err()
     );
 }
+
+#[test]
+fn a_verified_email_is_part_of_the_principal() {
+    let verified = principal_from_claims(
+        &serde_json::json!({
+            "iss": "https://id.example",
+            "sub": "person",
+            "email": "A@Example.com",
+            "email_verified": true
+        }),
+        "auth",
+    )
+    .unwrap();
+    assert_eq!(verified.email.as_deref(), Some("a@example.com"));
+    let confirmed = principal_from_claims(
+        &serde_json::json!({
+            "iss": "https://id.example",
+            "sub": "person",
+            "email": "a@example.com",
+            "email_confirmed": "true"
+        }),
+        "auth",
+    )
+    .unwrap();
+    assert_eq!(confirmed.email.as_deref(), Some("a@example.com"));
+    let unverified = principal_from_claims(
+        &serde_json::json!({
+            "iss": "https://id.example",
+            "sub": "person",
+            "email": "a@example.com"
+        }),
+        "auth",
+    )
+    .unwrap();
+    assert!(unverified.email.is_none());
+}

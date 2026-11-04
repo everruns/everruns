@@ -29,7 +29,8 @@ use everruns::{
 };
 
 use everruns_integrations::typesafe::Jev;
-use mira::subject::summarize_events;
+#[path = "../../common/everruns_usage.rs"]
+mod event_usage;
 use mira::{ErrorKind, Part, RunCx, Sample, Source, Subject, Target, Transcript};
 
 use crate::profiles::{
@@ -184,8 +185,7 @@ impl Subject for GenericRuntimeSubject {
                 }
             }
         }
-        let (usage, _) = summarize_events(&transcript.events);
-        transcript.usage = usage;
+        event_usage::summarize_events(&transcript.events).apply_to(&mut transcript);
         // Tool names come from the Framework's `tool.completed` events —
         // mira's generic walk looks for `{name, input}` objects, which the
         // everruns event shape (`data.tool_name`) doesn't match.

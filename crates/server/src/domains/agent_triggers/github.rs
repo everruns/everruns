@@ -35,6 +35,7 @@ use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::github_apps::{EVERRUNS_APP_CONNECTION_TYPE, GITHUB_PROVIDER};
 use crate::storage::AgentRow;
+use crate::storage::AgentTriggerRow;
 use crate::storage::GitHubAppRow;
 use crate::storage::StorageBackend;
 use everruns_contracts::typed_id::{AgentId, TriggerId, VirtualUserId};
@@ -199,7 +200,9 @@ fn normalize_events(events: Option<Vec<String>>) -> Result<Vec<String>, CommandE
 }
 
 /// `owner/name`, compared case-insensitively as GitHub does.
-fn normalize_repositories(repositories: Option<Vec<String>>) -> Result<Vec<String>, CommandError> {
+pub(super) fn normalize_repositories(
+    repositories: Option<Vec<String>>,
+) -> Result<Vec<String>, CommandError> {
     let mut repositories: Vec<String> = repositories
         .unwrap_or_default()
         .into_iter()
@@ -336,7 +339,7 @@ fn subject(github: &Value) -> Option<String> {
     })
 }
 
-fn subscribes(config: &GitHubTriggerConfig, event: &str, action: Option<&str>) -> bool {
+pub(super) fn subscribes(config: &GitHubTriggerConfig, event: &str, action: Option<&str>) -> bool {
     let with_action = event_key(event, action);
     config
         .events
@@ -359,6 +362,9 @@ pub struct GitHubDeliveryRecipients {
     pub bot_login: Option<String>,
     /// Service virtual users whose agents' GitHub triggers are candidates.
     pub identities: Vec<VirtualUserId>,
+    /// The shared App installation an org link received this delivery for;
+    /// it wakes Agent source bindings that read through that link.
+    pub org_link_installation: Option<i64>,
 }
 
 impl GitHubDeliveryRecipients {
@@ -368,6 +374,7 @@ impl GitHubDeliveryRecipients {
             org_id: app.org_id,
             bot_login: Some(format!("{}[bot]", app.slug)),
             identities: vec![app.virtual_user_id],
+            org_link_installation: None,
         }
     }
 
@@ -385,6 +392,7 @@ impl GitHubDeliveryRecipients {
             identities: db
                 .list_everruns_app_identities(org_id, installation_id)
                 .await?,
+            org_link_installation: Some(installation_id),
         })
     }
 }
@@ -425,18 +433,20 @@ pub async fn dispatch_github_delivery(
         )
     {
         let identities: Vec<_> = recipients.identities.iter().map(|id| id.uuid()).collect();
-        db.request_agent_source_push(recipients.org_id, &identities, repo, branch)
-            .await?;
+        db.request_agent_source_push(
+            recipients.org_id,
+            &identities,
+            recipients.org_link_installation,
+            repo,
+            branch,
+        )
+        .await?;
     }
     if recipients.identities.is_empty()
         || sent_by_bot(recipients.bot_login.as_deref(), &delivery.payload)
     {
         return Ok(Vec::new());
     }
-    let action = delivery.payload.get("action").and_then(Value::as_str);
-    let github = github_context(delivery);
-    let subject = subject(&github);
-
     let triggers = db
         .list_agent_triggers(recipients.org_id, None, false)
         .await?
@@ -469,64 +479,21 @@ pub async fn dispatch_github_delivery(
             tracing::warn!(trigger_id = %row.id, "invalid GitHub trigger configuration");
             continue;
         };
+        let action = delivery.payload.get("action").and_then(Value::as_str);
         if !subscribes(&config, &delivery.event, action) {
             continue;
         }
-
-        // Repository scope is a filter condition so a miss is recorded.
-        let mut filter = config.filter.clone().unwrap_or_default();
-        if !config.repositories.is_empty() {
-            filter.conditions.push(TriggerFilterCondition {
-                path: "github.repository_key".to_string(),
-                any_of: config
-                    .repositories
-                    .iter()
-                    .map(|repo| Value::String(repo.clone()))
-                    .collect(),
-            });
-        }
-        let filter: Option<TriggerEventFilter> = (!filter.conditions.is_empty()).then_some(filter);
-
-        let mut github = github.clone();
-        github["repository_key"] = github
-            .get("repository")
-            .and_then(Value::as_str)
-            .map(|repo| Value::String(repo.to_ascii_lowercase()))
-            .unwrap_or(Value::Null);
-        let context = json!({
-            "agent": { "id": agent.public_id, "name": agent.name },
-            "trigger": { "id": row.id.to_string(), "type": "github" },
-            "invocation": {
-                "source": "github",
-                "triggered_at": chrono::Utc::now().to_rfc3339(),
-            },
-            "github": github,
-            "payload": delivery.payload,
-        });
-        let outcome = events::dispatch_trigger_event(
+        let outcome = dispatch_to_trigger(
             db,
             session_service,
             message_service,
-            TriggerEventRoute {
-                trigger: &row,
+            GitHubTarget {
+                row: &row,
                 agent: &agent,
-                message_template: &config.message,
-                // per_thread without a subject (App-level events) falls back to
-                // one session per event in the pipeline.
-                session_mode: config.session_mode,
-                filter: filter.as_ref(),
-                session_source: crate::domains::sessions::record::SessionSource::Webhook,
-                webhook_compat: None,
-                script: None,
-                channel: None,
+                config: &config,
             },
-            TriggerEvent {
-                source: "github",
-                event_id: Some(delivery.delivery_id.clone()),
-                event_type: Some(event_key(&delivery.event, action)),
-                subject: subject.clone(),
-                context,
-            },
+            delivery,
+            None,
             request_id.clone(),
         )
         .await;
@@ -539,6 +506,90 @@ pub async fn dispatch_github_delivery(
         });
     }
     Ok(results)
+}
+
+/// One GitHub trigger, with its agent and parsed configuration.
+pub(super) struct GitHubTarget<'a> {
+    pub row: &'a AgentTriggerRow,
+    pub agent: &'a AgentRow,
+    pub config: &'a GitHubTriggerConfig,
+}
+
+/// Hand one GitHub event to one trigger: repository scope, context, then the
+/// shared pipeline. A manual fire (`manual`) takes the same path, so it gets
+/// the same filter, message and per pull request session.
+pub(super) async fn dispatch_to_trigger(
+    db: &Arc<StorageBackend>,
+    session_service: &SessionService,
+    message_service: &MessageService,
+    target: GitHubTarget<'_>,
+    delivery: &GitHubDelivery,
+    manual: Option<&super::manual::ManualFire>,
+    request_id: Option<String>,
+) -> Result<TriggerEventOutcome, CommandError> {
+    let GitHubTarget { row, agent, config } = target;
+    let action = delivery.payload.get("action").and_then(Value::as_str);
+    let mut github = github_context(delivery);
+    let subject = subject(&github);
+
+    // Repository scope is a filter condition so a miss is recorded.
+    let mut filter = config.filter.clone().unwrap_or_default();
+    if !config.repositories.is_empty() {
+        filter.conditions.push(TriggerFilterCondition {
+            path: "github.repository_key".to_string(),
+            any_of: config
+                .repositories
+                .iter()
+                .map(|repo| Value::String(repo.clone()))
+                .collect(),
+        });
+    }
+    let filter: Option<TriggerEventFilter> =
+        (!filter.conditions.is_empty() || filter.changes_only.is_some()).then_some(filter);
+
+    github["repository_key"] = github
+        .get("repository")
+        .and_then(Value::as_str)
+        .map(|repo| Value::String(repo.to_ascii_lowercase()))
+        .unwrap_or(Value::Null);
+    let source = super::manual::source_name(manual, "github");
+    let context = json!({
+        "agent": { "id": agent.public_id, "name": agent.name },
+        "trigger": { "id": row.id.to_string(), "type": "github" },
+        "invocation": {
+            "source": source,
+            "triggered_at": chrono::Utc::now().to_rfc3339(),
+        },
+        "github": github,
+        "payload": delivery.payload,
+    });
+    events::dispatch_trigger_event(
+        db,
+        session_service,
+        message_service,
+        TriggerEventRoute {
+            trigger: row,
+            agent,
+            message_template: &config.message,
+            // per_thread without a subject (App-level events) falls back to
+            // one session per event in the pipeline.
+            session_mode: config.session_mode,
+            filter: filter.as_ref(),
+            session_source: crate::domains::sessions::record::SessionSource::Webhook,
+            webhook_compat: None,
+            script: None,
+            channel: None,
+        },
+        TriggerEvent {
+            source,
+            event_id: super::manual::event_id(manual, Some(delivery.delivery_id.clone())),
+            event_type: Some(event_key(&delivery.event, action)),
+            subject,
+            context,
+        },
+        request_id,
+    )
+    .await
 }
 
 #[cfg(test)]

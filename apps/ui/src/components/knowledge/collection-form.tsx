@@ -1,6 +1,8 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
 import { collectionDraftSchema } from "@/components/chat-mode/page-form-schemas";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -18,6 +20,25 @@ import {
 } from "@/lib/api/knowledge";
 
 const selectClass = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
+
+// The server canonicalizes object keys. Formatting alone must not keep a saved
+// form dirty and block saved-change Undo; invalid JSON still stays a dirty draft.
+function comparableRules(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), (_key, value) =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, value[key]]),
+          )
+        : value,
+    );
+  } catch {
+    return text;
+  }
+}
+
 export function CollectionForm({
   initial,
   onSave,
@@ -27,6 +48,7 @@ export function CollectionForm({
   onSave: (input: CollectionInput) => Promise<unknown>;
   onCancel?: () => void;
 }) {
+  const ui = useUiTranslations();
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [mode, setMode] = useState<IndexMode>(initial?.indexing ?? "off");
@@ -69,6 +91,23 @@ export function CollectionForm({
       2,
     ),
   };
+  const apply = (next: typeof values) => {
+    setName(next.name);
+    setDescription(next.description);
+    setMode(next.mode);
+    setModel(next.model);
+    setIndexer(next.indexer);
+    setRules(next.rules);
+  };
+  const comparableValues = { ...values, rules: comparableRules(values.rules) };
+  const comparableSavedValues = { ...savedValues, rules: comparableRules(savedValues.rules) };
+  usePageFormPrefill({
+    identity: initial?.id ?? "new",
+    open: !!initial,
+    values: comparableValues,
+    saved: comparableSavedValues,
+    apply,
+  });
   const chatDraft = usePageFormDraft({
     schema: collectionDraftSchema,
     values,
@@ -77,17 +116,10 @@ export function CollectionForm({
     formId: "settings",
     label: initial?.name ?? "New collection",
     baseline: String(initial?.revision ?? "new"),
-    dirty: JSON.stringify(values) !== JSON.stringify(savedValues),
+    dirty: JSON.stringify(comparableValues) !== JSON.stringify(comparableSavedValues),
     writable: !pending && ["owner", "admin"].includes(currentOrg?.role ?? ""),
     readonlyFields: initial?.name === "everruns-docs" ? ["name"] : [],
-    apply: (next) => {
-      setName(next.name);
-      setDescription(next.description);
-      setMode(next.mode);
-      setModel(next.model);
-      setIndexer(next.indexer);
-      setRules(next.rules);
-    },
+    apply,
   });
   return (
     <form
@@ -115,7 +147,7 @@ export function CollectionForm({
     >
       {chatDraft.notice}
       <div className="space-y-2">
-        <Label htmlFor="knowledge-name">Name</Label>
+        <Label htmlFor="knowledge-name">{ui("Name")}</Label>
         <Input
           id="knowledge-name"
           required
@@ -126,42 +158,43 @@ export function CollectionForm({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="knowledge-description">Description</Label>
+        <Label htmlFor="knowledge-description">{ui("Description")}</Label>
         <Textarea
           id="knowledge-description"
           maxLength={4096}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="What should an agent use this collection for?"
+          placeholder={ui("What should an agent use this collection for?")}
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="knowledge-indexing">Indexing</Label>
+        <Label htmlFor="knowledge-indexing">{ui("Indexing")}</Label>
         <select
           id="knowledge-indexing"
           className={selectClass}
           value={mode}
           onChange={(e) => setMode(e.target.value as IndexMode)}
         >
-          <option value="off">Off · browse, mount and grep</option>
-          <option value="lexical">Keyword search</option>
-          <option value="hybrid">Hybrid · keyword and semantic search</option>
+          <option value="off">{ui("Off · browse, mount and grep")}</option>
+          <option value="lexical">{ui("Keyword search")}</option>
+          <option value="hybrid">{ui("Hybrid · keyword and semantic search")}</option>
         </select>
         <p className="text-xs text-muted-foreground">
-          Original files stay available independently of indexing. Hybrid indexing uses your
-          selected embedding provider.
+          {ui(
+            "Original files stay available independently of indexing. Hybrid indexing uses your selected embedding provider.",
+          )}
         </p>
       </div>
       {mode !== "off" && (
         <div className="space-y-2">
-          <Label htmlFor="knowledge-indexer">Search account</Label>
+          <Label htmlFor="knowledge-indexer">{ui("Search account")}</Label>
           <select
             id="knowledge-indexer"
             className={selectClass}
             value={indexer}
             onChange={(e) => setIndexer(e.target.value)}
           >
-            <option value="">Deployment default</option>
+            <option value="">{ui("Deployment default")}</option>
             {accounts.data?.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.name}
@@ -169,13 +202,15 @@ export function CollectionForm({
             ))}
           </select>
           <p className="text-xs text-muted-foreground">
-            Keyword search works locally. Hybrid search requires a configured vector search account.
+            {ui(
+              "Keyword search works locally. Hybrid search requires a configured vector search account.",
+            )}
           </p>
         </div>
       )}
       {mode === "hybrid" && (
         <div className="space-y-2">
-          <Label htmlFor="knowledge-model">Embedding model</Label>
+          <Label htmlFor="knowledge-model">{ui("Embedding model")}</Label>
           <select
             id="knowledge-model"
             className={selectClass}
@@ -183,7 +218,7 @@ export function CollectionForm({
             value={model}
             onChange={(e) => setModel(e.target.value)}
           >
-            <option value="">Select an embedding model</option>
+            <option value="">{ui("Select an embedding model")}</option>
             {models
               ?.filter((m) => m.enabled && m.service === "embeddings")
               .map((m) => (
@@ -195,9 +230,9 @@ export function CollectionForm({
         </div>
       )}
       <details>
-        <summary className="cursor-pointer text-sm">File exclusions</summary>
+        <summary className="cursor-pointer text-sm">{ui("File exclusions")}</summary>
         <div className="mt-3 space-y-2">
-          <Label htmlFor="knowledge-rules">Path rules</Label>
+          <Label htmlFor="knowledge-rules">{ui("Path rules")}</Label>
           <Textarea
             id="knowledge-rules"
             className="font-mono text-xs"
@@ -206,8 +241,9 @@ export function CollectionForm({
             onChange={(e) => setRules(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">
-            Ingestion omits files entirely; indexing controls search; read exclusions also hide
-            files from agents.
+            {ui(
+              "Ingestion omits files entirely; indexing controls search; read exclusions also hide files from agents.",
+            )}
           </p>
         </div>
       </details>
@@ -218,7 +254,7 @@ export function CollectionForm({
       )}
       <div className="flex gap-2">
         <Button type="submit" disabled={pending || chatDraft.blocked} variant="accent">
-          {pending ? "Saving…" : initial ? "Save settings" : "Create collection"}
+          {pending ? ui("Saving…") : initial ? ui("Save settings") : ui("Create collection")}
         </Button>
         {chatDraft.blocked && (
           <Button
@@ -237,12 +273,12 @@ export function CollectionForm({
               setRules(savedValues.rules);
             }}
           >
-            Discard
+            {ui("Discard")}
           </Button>
         )}
         {onCancel && (
           <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
+            {ui("Cancel")}
           </Button>
         )}
       </div>

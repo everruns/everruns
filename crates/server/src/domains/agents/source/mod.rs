@@ -1,5 +1,6 @@
 //! Continuous Agent source synchronization with opt-in conditional GitHub writes.
 //! Source authority is task-local and scoped to one tenant and Agent, never a request flag.
+mod accounts;
 mod github;
 #[cfg(test)]
 pub(crate) mod test_support;
@@ -7,7 +8,11 @@ pub(crate) mod test_support;
 mod tests;
 mod types;
 mod write;
-pub use types::{AgentSourceStatus, SourceMode};
+pub use accounts::{
+    AgentSourceAccounts, ListAgentSourceAccounts, OrganizationSourceAccount, PersonalSourceAccount,
+    SourceRepository,
+};
+pub use types::{AgentSourceStatus, SourceGitHubAccount, SourceMode};
 #[cfg(test)]
 mod write_tests;
 
@@ -128,69 +133,221 @@ fn is_app_connection(connection: &crate::storage::VirtualUserConnectionRow) -> b
             | crate::github_apps::EVERRUNS_APP_CONNECTION_TYPE
     )
 }
-async fn identity(ctx: &Ctx, a: &super::record::Agent) -> Result<(Uuid, Uuid, i64), CommandError> {
-    let id = a.service_virtual_user_id.ok_or_else(|| {
-        CommandError::bad_request("Connect GitHub in this Agent's Integrations first")
+
+/// The exact GitHub connection a source reads and writes through.
+///
+/// Decision (knowledge/runtime-resources/agent-sources.md): source sync is a
+/// development-time use, so it never borrows the Agent's runtime identity. A
+/// binding reads through the configuring person's own GitHub sign-in or an
+/// organization link to the shared Everruns App. `Agent` only describes
+/// bindings made before that split; they keep working until reconnected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct SourceAccess {
+    pub account: SourceAccountKind,
+    pub identity: Uuid,
+    pub connection: Uuid,
+    pub installation: Option<i64>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SourceAccountKind {
+    Agent,
+    Personal,
+    Organization,
+}
+impl SourceAccountKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Agent => "agent",
+            Self::Personal => "personal",
+            Self::Organization => "organization",
+        }
+    }
+    fn parse(value: &str) -> Self {
+        match value {
+            "personal" => Self::Personal,
+            "organization" => Self::Organization,
+            _ => Self::Agent,
+        }
+    }
+}
+impl From<SourceGitHubAccount> for SourceAccountKind {
+    fn from(value: SourceGitHubAccount) -> Self {
+        match value {
+            SourceGitHubAccount::Personal => Self::Personal,
+            SourceGitHubAccount::Organization => Self::Organization,
+        }
+    }
+}
+impl SourceAccess {
+    pub(super) fn of(row: &AgentSourceRow) -> Self {
+        Self {
+            account: SourceAccountKind::parse(&row.github_account),
+            identity: row.identity_id,
+            connection: row.connection_id,
+            installation: row.installation_id,
+        }
+    }
+}
+
+/// The caller's own GitHub sign-in: a person connection, never an installation.
+async fn personal_access(ctx: &Ctx) -> Result<SourceAccess, CommandError> {
+    let user = ctx.caller.user_id.ok_or_else(|| {
+        CommandError::bad_request("Sign in as a person to sync through your GitHub account")
     })?;
-    ctx.db
-        .get_virtual_user(ctx.org_id(), id)
-        .await?
-        .filter(|v| v.status == "active")
-        .ok_or_else(|| CommandError::bad_request("Agent GitHub identity is unavailable"))?;
+    let identity = ctx
+        .db
+        .default_virtual_user(ctx.org_id(), user)
+        .await
+        .map_err(|_| {
+            CommandError::forbidden("Your account is not a member of this organization")
+        })?;
     let connection = ctx
         .db
-        .get_virtual_user_connection(id, "github")
+        .get_virtual_user_connection(identity.id, "github")
         .await?
-        .filter(|c| c.installation_id.is_some() && is_app_connection(c))
-        .ok_or_else(|| {
-            CommandError::bad_request("Connect the Agent to a GitHub App installation first")
-        })?;
-    Ok((
-        id.uuid(),
-        connection.id,
-        connection
-            .installation_id
-            .ok_or_else(|| CommandError::bad_request("GitHub installation is unavailable"))?,
-    ))
+        .filter(|c| !is_app_connection(c) && c.installation_id.is_none())
+        .ok_or_else(|| CommandError::bad_request("Connect your GitHub account first"))?;
+    Ok(SourceAccess {
+        account: SourceAccountKind::Personal,
+        identity: identity.id.uuid(),
+        connection: connection.id,
+        installation: None,
+    })
 }
+
+/// The organization's link to the shared Everruns App for the repository's account.
+async fn organization_access(ctx: &Ctx, repository: &str) -> Result<SourceAccess, CommandError> {
+    let owner = repository.split_once('/').map(|(owner, _)| owner);
+    let link = ctx
+        .db
+        .list_everruns_app_links(ctx.org_id())
+        .await?
+        .into_iter()
+        .find(|link| {
+            link.installation_id.is_some()
+                && owner.is_some_and(|owner| {
+                    link.provider_username
+                        .as_deref()
+                        .is_some_and(|login| login.eq_ignore_ascii_case(owner))
+                })
+        })
+        .ok_or_else(|| {
+            CommandError::bad_request(format!(
+                "No organization GitHub account is connected for {}. An organization admin connects it",
+                owner.unwrap_or(repository)
+            ))
+        })?;
+    Ok(SourceAccess {
+        account: SourceAccountKind::Organization,
+        identity: link.virtual_user_id.uuid(),
+        connection: link.id,
+        installation: link.installation_id,
+    })
+}
+
+/// Select the development account for a new or changed source. Without an
+/// explicit choice the person's own GitHub answers first, then the org link.
+async fn select_access(
+    ctx: &Ctx,
+    account: Option<SourceGitHubAccount>,
+    repository: &str,
+) -> Result<SourceAccess, CommandError> {
+    match account {
+        Some(SourceGitHubAccount::Personal) => personal_access(ctx).await,
+        Some(SourceGitHubAccount::Organization) => organization_access(ctx, repository).await,
+        None => match personal_access(ctx).await {
+            Ok(access) => Ok(access),
+            Err(_) => organization_access(ctx, repository).await.map_err(|_| {
+                CommandError::bad_request(
+                    "Connect your GitHub account, or ask an organization admin to connect the repository's GitHub account",
+                )
+            }),
+        },
+    }
+}
+
 async fn validate_connection(
     ctx: &Ctx,
-    identity: Uuid,
-    connection: Uuid,
-    installation: i64,
+    access: &SourceAccess,
+    configured_by: Option<Uuid>,
 ) -> Result<(), CommandError> {
     // THREAT[TM-GHAPP-014]: never substitute a replacement installation or identity.
+    let changed = || {
+        CommandError::bad_request(
+            "The source GitHub connection changed or was disconnected. Reconnect and select the source again",
+        )
+    };
     ctx.db
-        .get_virtual_user(ctx.org_id(), VirtualUserId::from_uuid(identity))
+        .get_virtual_user(ctx.org_id(), VirtualUserId::from_uuid(access.identity))
         .await?
         .filter(|v| v.status == "active")
         .ok_or_else(|| CommandError::bad_request("Source GitHub identity is unavailable"))?;
     let current = ctx
         .db
-        .get_virtual_user_connection(VirtualUserId::from_uuid(identity), "github")
-        .await?;
-    if !current.is_some_and(|c| {
-        c.id == connection && c.installation_id == Some(installation) && is_app_connection(&c)
-    }) {
-        return Err(CommandError::bad_request(
-            "The source GitHub connection changed or was disconnected. Reconnect and select the source again",
-        ));
+        .get_virtual_user_connection_by_id(
+            VirtualUserId::from_uuid(access.identity),
+            access.connection,
+            "github",
+        )
+        .await?
+        .filter(|c| c.installation_id == access.installation)
+        .ok_or_else(changed)?;
+    let matches = match access.account {
+        SourceAccountKind::Agent => is_app_connection(&current) && access.installation.is_some(),
+        SourceAccountKind::Organization => {
+            current.connection_type == crate::github_apps::EVERRUNS_APP_CONNECTION_TYPE
+                && current.owner_scope == "organization"
+        }
+        SourceAccountKind::Personal => !is_app_connection(&current),
+    };
+    if !matches {
+        return Err(changed());
+    }
+    // A personal source reads only through the configuring person's own sign-in.
+    if access.account == SourceAccountKind::Personal {
+        let person = match configured_by.or(ctx.caller.user_id) {
+            Some(user) => ctx.db.default_virtual_user(ctx.org_id(), user).await.ok(),
+            None => None,
+        };
+        if person.is_none_or(|p| p.id.uuid() != access.identity) {
+            return Err(changed());
+        }
     }
     Ok(())
 }
-async fn token(
+pub(super) async fn token(
     ctx: &Ctx,
-    identity: Uuid,
-    connection: Uuid,
-    installation: i64,
+    access: &SourceAccess,
+    configured_by: Option<Uuid>,
     repository: &str,
+    permission: &str,
 ) -> Result<String, CommandError> {
-    validate_connection(ctx, identity, connection, installation).await?;
-    let token = ctx.connection_resolver.as_ref().ok_or_else(||CommandError::unavailable("GitHub connection resolver is unavailable"))?
-        .get_github_token_for_owner(ctx.org_id(),identity,&crate::domains::git_sources::github_read_access(repository))
-        .await.map_err(|_|CommandError::bad_request("Could not authorize read access to the source repository. Check the GitHub connection"))?
-        .ok_or_else(||CommandError::bad_request("GitHub read access to the source repository is unavailable"))?;
-    validate_connection(ctx, identity, connection, installation).await?;
+    validate_connection(ctx, access, configured_by).await?;
+    let request = everruns_contracts::runtime::GitHubAccess::new(
+        everruns_core::McpServerActsAs::Service,
+        &[("contents", permission)],
+    )
+    .for_repository(repository);
+    let unavailable = || {
+        if permission == "write" {
+            CommandError::bad_request(
+                "Two-way sync needs Contents write permission on this repository. Update the GitHub App and accept its installation permissions",
+            )
+        } else {
+            CommandError::bad_request(
+                "Could not authorize read access to the source repository. Check the GitHub connection",
+            )
+        }
+    };
+    let token = ctx
+        .connection_resolver
+        .as_ref()
+        .ok_or_else(|| CommandError::unavailable("GitHub connection resolver is unavailable"))?
+        .get_github_token_for_connection(ctx.org_id(), access.identity, access.connection, &request)
+        .await
+        .map_err(|_| unavailable())?
+        .ok_or_else(unavailable)?;
+    validate_connection(ctx, access, configured_by).await?;
     Ok(token)
 }
 fn digest(package: &AgentPackage) -> Result<String, CommandError> {
@@ -273,6 +430,9 @@ pub struct SourceOptionsRequest {
     #[serde(default)]
     #[schema(example = "agents")]
     pub path: String,
+    /// Development GitHub account to read through; omitted prefers the caller's own.
+    #[serde(default)]
+    pub github_account: Option<SourceGitHubAccount>,
 }
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct GetAgentSourceOptions {
@@ -284,11 +444,11 @@ pub struct GetAgentSourceOptions {
 impl Command for GetAgentSourceOptions {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
-        let a = agent(ctx, &self.agent_id).await?;
-        let (identity, connection, installation) = identity(ctx, &a).await?;
+        agent(ctx, &self.agent_id).await?;
         let repo = crate::domains::git_sources::normalize_github_repository(&self.req.repository)
             .map_err(CommandError::bad_request)?;
-        let token = token(ctx, identity, connection, installation, &repo).await?;
+        let access = select_access(ctx, self.req.github_account, &repo).await?;
+        let token = token(ctx, &access, None, &repo, "read").await?;
         let meta = github::metadata(ctx, &repo, &token).await?;
         let default_branch = meta["default_branch"]
             .as_str()
@@ -312,22 +472,18 @@ pub struct PreviewAgentSource {
     pub agent_id: String,
     #[serde(flatten)]
     pub req: SourceLocation,
+    /// Development GitHub account to read through; omitted prefers the caller's own.
+    #[serde(default)]
+    pub github_account: Option<SourceGitHubAccount>,
 }
 #[command(name="preview_agent_source",summary="Preview Agent source changes",category="agents",description="Validate and compare a GitHub Agent package without changing the Agent.",method="POST",path="/v1/agents/{agent_id}/source/preview",policy=AGENT_VIEW,http=plain,request_body(SourceLocation),read_only=true,cli=CliRoute::new(&["agents", "source"], "preview").with_examples(&[CliExample::new("Review a repository package without changing the Agent", "everruns agents source preview --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support")]))]
 impl Command for PreviewAgentSource {
     type Output = Value;
     async fn execute(mut self, ctx: &Ctx) -> Result<Value, CommandError> {
         self.req.validate()?;
-        let a = agent(ctx, &self.agent_id).await?;
-        let (identity, connection, installation) = identity(ctx, &a).await?;
-        let token = token(
-            ctx,
-            identity,
-            connection,
-            installation,
-            &self.req.repository,
-        )
-        .await?;
+        agent(ctx, &self.agent_id).await?;
+        let access = select_access(ctx, self.github_account, &self.req.repository).await?;
+        let token = token(ctx, &access, None, &self.req.repository, "read").await?;
         let snapshot = github::snapshot(ctx, &self.req, &token).await?;
         let mut validation = validate(ctx, &snapshot.package, &self.agent_id).await?;
         validation["commit"] = json!(snapshot.commit);
@@ -355,6 +511,10 @@ pub struct ConnectSourceRequest {
     /// Repository, branch and package path that were previewed.
     #[serde(flatten)]
     pub location: SourceLocation,
+    /// Development GitHub account the source reads and writes through; omitted
+    /// prefers the caller's own GitHub, then the organization's link.
+    #[serde(default)]
+    pub github_account: Option<SourceGitHubAccount>,
     /// Exact source commit returned by preview; a changed branch requires another preview.
     #[schema(example = "0123456789abcdef0123456789abcdef01234567")]
     pub commit: String,
@@ -384,24 +544,12 @@ impl Command for ConnectAgentSource {
                 "Only active Agents can sync source",
             ));
         }
-        let (identity_id, connection_id, installation_id) = identity(ctx, &a).await?;
-        let token = token(
-            ctx,
-            identity_id,
-            connection_id,
-            installation_id,
-            &self.req.location.repository,
-        )
-        .await?;
+        let access =
+            select_access(ctx, self.req.github_account, &self.req.location.repository).await?;
+        let repository = self.req.location.repository.clone();
+        let token = token(ctx, &access, None, &repository, "read").await?;
         if self.req.mode == SourceMode::TwoWay {
-            write::token(
-                ctx,
-                identity_id,
-                connection_id,
-                installation_id,
-                &self.req.location.repository,
-            )
-            .await?;
+            self::token(ctx, &access, None, &repository, "write").await?;
         }
         let snapshot = github::snapshot(ctx, &self.req.location, &token).await?;
         if snapshot.commit != self.req.commit {
@@ -414,9 +562,10 @@ impl Command for ConnectAgentSource {
             agent_id: a.internal_id,
             org_id: ctx.org_id(),
             generation: Uuid::new_v4(),
-            identity_id,
-            connection_id,
-            installation_id,
+            identity_id: access.identity,
+            connection_id: access.connection,
+            installation_id: access.installation,
+            github_account: access.account.as_str().into(),
             configured_by: ctx.caller.user_id,
             configured_role: serde_json::to_value(ctx.caller.role)
                 .map_err(|e| CommandError::internal(e.into()))?
@@ -461,7 +610,7 @@ impl Command for ConnectAgentSource {
                 if fresh.status != super::record::AgentStatus::Active {
                     return Err(CommandError::conflict("The Agent is no longer active"));
                 }
-                if identity(ctx, &fresh).await? != (identity_id, connection_id, installation_id) {
+                if validate_connection(ctx, &access, None).await.is_err() {
                     return Err(CommandError::conflict(
                         "The GitHub connection changed. Preview the source again",
                     ));
@@ -539,14 +688,8 @@ async fn sync(ctx: &Ctx, row: &AgentSourceRow) -> Result<(), CommandError> {
     if row.mode == "two_way" {
         return write::sync(ctx, row, &id).await;
     }
-    let token = token(
-        ctx,
-        row.identity_id,
-        row.connection_id,
-        row.installation_id,
-        &row.repository,
-    )
-    .await?;
+    let access = SourceAccess::of(row);
+    let token = token(ctx, &access, row.configured_by, &row.repository, "read").await?;
     let location = SourceLocation {
         repository: row.repository.clone(),
         branch: row.branch.clone(),
@@ -627,8 +770,7 @@ async fn sync(ctx: &Ctx, row: &AgentSourceRow) -> Result<(), CommandError> {
             if a.status != super::record::AgentStatus::Active {
                 return Ok(());
             }
-            validate_connection(ctx, row.identity_id, row.connection_id, row.installation_id)
-                .await?;
+            validate_connection(ctx, &access, row.configured_by).await?;
             if current.package_digest.as_deref() != Some(&package_digest) {
                 apply(&sync_ctx, &snapshot.package, &id, row.agent_id).await?;
             }

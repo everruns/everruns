@@ -1,5 +1,7 @@
 "use client";
 
+import type { EntityLocalizations } from "@/lib/entity-localization";
+
 // Draft state for the harness page's in-place edit mode.
 //
 // Same contract as the agent draft: every field starts as the saved value and
@@ -92,6 +94,7 @@ export function useHarnessDraft(harness: Harness | undefined) {
   const initialFiles = useMemo(() => harness?.initial_files ?? [], [harness?.initial_files]);
   const initialNetworkAccess = harness?.network_access ?? null;
 
+  const [localizations, setLocalizations] = useState<EntityLocalizations | null>(null);
   const [fieldChanges, setFieldChanges] = useState<Partial<HarnessDraftFields>>({});
   const [capabilities, setCapabilities] = useState<AgentCapabilityConfig[] | null>(null);
   const [starters, setStarters] = useState<ConversationStarter[] | null>(null);
@@ -110,6 +113,7 @@ export function useHarnessDraft(harness: Harness | undefined) {
   }, []);
 
   const values = {
+    localizations: localizations ?? harness?.localizations ?? {},
     fields,
     capabilities: capabilities ?? initialCapabilities,
     starters: starters ?? initialStarters,
@@ -128,7 +132,10 @@ export function useHarnessDraft(harness: Harness | undefined) {
     fieldChanges.parent_harness_id !== undefined &&
     fieldChanges.parent_harness_id !== initialFields.parent_harness_id;
 
+  const localizationsChanged =
+    localizations !== null && !same(localizations, harness?.localizations ?? {});
   const isDirty =
+    localizationsChanged ||
     (Object.keys(fieldChanges) as (keyof HarnessDraftFields)[]).some(
       (key) => fieldChanges[key] !== initialFields[key],
     ) ||
@@ -138,6 +145,7 @@ export function useHarnessDraft(harness: Harness | undefined) {
     networkAccessChanged;
 
   const reset = useCallback(() => {
+    setLocalizations(null);
     setFieldChanges({});
     setCapabilities(null);
     setStarters(null);
@@ -162,6 +170,7 @@ export function useHarnessDraft(harness: Harness | undefined) {
     return {
       ok: true,
       request: {
+        ...(localizationsChanged && { localizations: values.localizations }),
         name: data.name,
         display_name: data.display_name,
         description: data.description,
@@ -185,6 +194,7 @@ export function useHarnessDraft(harness: Harness | undefined) {
     errors,
     isDirty,
     nameChanged: fields.name !== initialFields.name,
+    setLocalizations,
     setField,
     setCapabilities,
     setStarters,

@@ -320,6 +320,14 @@ impl ToolApprovalCapability {
 
 #[async_trait]
 impl Capability for ToolApprovalCapability {
+    fn localizations(&self) -> Vec<crate::capabilities::CapabilityLocalization> {
+        vec![crate::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Підтвердження інструментів",
+            "Призупиняє ризиковані виклики інструментів до інтерактивного підтвердження відповідно до вибраного режиму.",
+        )]
+    }
+
     fn id(&self) -> &str {
         TOOL_APPROVAL_CAPABILITY_ID
     }

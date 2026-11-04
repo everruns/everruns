@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { DecisionModelPicker, ModelPicker } from "@/components/models/model-picker";
 import Form from "@rjsf/core";
 import validator from "@rjsf/validator-ajv8";
@@ -24,7 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Capability } from "@/lib/api/types";
 import { localizedConfigDescription, localizedConfigSchema } from "@/lib/capability-localization";
 import { formatMessage, type MessageKey, type SupportedLocale } from "@/lib/i18n";
-import { useLocale } from "@/providers/locale-provider";
+
 import { GuardrailsConfigEditor } from "./guardrails-config-editor";
 import { KnowledgeConfigEditor } from "./knowledge-config-editor";
 import { KnowledgeIndexConfigEditor } from "./knowledge-index-config-editor";
@@ -191,12 +192,13 @@ function DecisionModelWidget(props: WidgetProps) {
 }
 
 function SessionTitleModelWidget(props: WidgetProps) {
+  const ui = useUiTranslations();
   return (
     <ModelPicker
       id={props.id}
       value={props.value || ""}
-      placeholder="Organization small model (or session)"
-      additionalOptions={[{ value: "session", label: "Use session model" }]}
+      placeholder={ui("Organization small model (or session)")}
+      additionalOptions={[{ value: "session", label: ui("Use session model") }]}
       onChange={(value) => props.onChange(value || undefined)}
       disabled={props.disabled || props.readonly}
     />

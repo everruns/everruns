@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useId, useState } from "react";
 import { KeyRound, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,7 @@ export function AskUserSecretCard({
   question,
   onResolved,
 }: AskUserSecretCardProps) {
+  const ui = useUiTranslations();
   const [value, setValue] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -93,9 +95,13 @@ export function AskUserSecretCard({
       <div className="flex items-start gap-3 border-b border-border px-4 py-3">
         <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
         <div>
-          <p className="text-sm font-medium text-foreground">The agent needs a credential</p>
+          <p className="text-sm font-medium text-foreground">
+            {ui("The agent needs a credential")}
+          </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Stored encrypted on this session. The agent receives a reference, never the value.
+            {ui(
+              "Stored encrypted on this session. The agent receives a reference, never the value.",
+            )}
           </p>
         </div>
       </div>
@@ -114,7 +120,7 @@ export function AskUserSecretCard({
           type="password"
           autoComplete="off"
           spellCheck={false}
-          placeholder="Paste the credential"
+          placeholder={ui("Paste the credential")}
           value={value}
           disabled={status === "submitting"}
           onChange={(event) => setValue(event.target.value)}
@@ -124,7 +130,7 @@ export function AskUserSecretCard({
       <div className="border-t border-border px-4 py-3">
         <p className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
           <ShieldCheck className="h-3.5 w-3.5" />
-          This question does not time out. Nothing is answered for you.
+          {ui("This question does not time out. Nothing is answered for you.")}
         </p>
         {error && <p className="mb-3 text-xs text-destructive">{error}</p>}
         <div className="flex items-center justify-end gap-2">
@@ -136,10 +142,10 @@ export function AskUserSecretCard({
             disabled={status === "submitting"}
             onClick={() => void decline()}
           >
-            Decline
+            {ui("Decline")}
           </Button>
           <Button type="submit" size="sm" disabled={status === "submitting" || value.length === 0}>
-            {status === "submitting" ? "Storing…" : "Store and continue"}
+            {status === "submitting" ? ui("Storing…") : ui("Store and continue")}
           </Button>
         </div>
       </div>

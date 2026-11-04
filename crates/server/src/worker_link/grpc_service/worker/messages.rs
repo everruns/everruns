@@ -338,37 +338,17 @@ impl WorkerServiceImpl {
         let session_id = parse_uuid(req.session_id.as_ref())?;
         let message_id = parse_uuid(req.message_id.as_ref())?;
 
-        // Load message events and find the one matching message_id
-        let events = self
-            .event_service
-            .list_message_events(session_id)
-            .await
-            .map_err(|e| internal_status("Failed to list messages", e))?;
+        let message = crate::storage::runtime::message::retrieve_message(
+            &self.db,
+            session_id.into(),
+            message_id.into(),
+        )
+        .await
+        .map_err(|e| internal_status("Failed to load message", e))?;
 
-        for event in events {
-            let message = match event_to_message(&event) {
-                Some(m) => m,
-                None => {
-                    tracing::warn!(
-                        "Failed to extract message from event {}: type={}",
-                        event.id,
-                        event.event_type
-                    );
-                    continue;
-                }
-            };
-
-            if message.id.uuid() != message_id {
-                continue;
-            }
-
-            return Ok(Response::new(GetMessageResponse {
-                message: Some(message_to_proto(&message)),
-            }));
-        }
-
-        // Message not found
-        Ok(Response::new(GetMessageResponse { message: None }))
+        Ok(Response::new(GetMessageResponse {
+            message: message.as_ref().map(message_to_proto),
+        }))
     }
 
     pub(crate) async fn handle_load_messages(
@@ -392,14 +372,17 @@ impl WorkerServiceImpl {
             .map(|event| i64::from(event.sequence))
             .max()
             .or(req.after_sequence);
-        let total_count = self
-            .db
-            .count_message_events(everruns_contracts::typed_id::SessionId::from_uuid(
-                session_id,
-            ))
-            .await
-            .map_err(|e| internal_status("Failed to count messages", e))?
-            .min(i32::MAX as i64) as i32;
+        let total_count = if req.skip_total_count.unwrap_or(false) {
+            0
+        } else {
+            self.db
+                .count_message_events(everruns_contracts::typed_id::SessionId::from_uuid(
+                    session_id,
+                ))
+                .await
+                .map_err(|e| internal_status("Failed to count messages", e))?
+                .min(i32::MAX as i64) as i32
+        };
 
         let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
 
@@ -635,10 +618,7 @@ impl WorkerServiceImpl {
             ContentPart, Controls, EventContext, EventRequest, RuntimeMessage, RuntimeMessageRole,
             events::{InputMessageData, OutputMessageCompletedData},
         };
-        use everruns_internal_protocol::{
-            datetime_to_proto_timestamp, json_to_proto_list, json_to_proto_struct,
-            proto_list_to_json, proto_struct_to_json, uuid_to_proto_uuid,
-        };
+        use everruns_internal_protocol::{proto_list_to_json, proto_struct_to_json};
 
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
@@ -710,43 +690,8 @@ impl WorkerServiceImpl {
             Status::internal("Failed to store message")
         })?;
 
-        // Convert message to proto using prost types
-        let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
-        let content = Some(json_to_proto_list(&content_json_val));
-
-        let controls = message.controls.as_ref().map(|c| {
-            let json = serde_json::to_value(c).unwrap_or_default();
-            json_to_proto_struct(&json)
-        });
-
-        let metadata = message.metadata.as_ref().map(|m| {
-            let json = serde_json::to_value(m).unwrap_or_default();
-            json_to_proto_struct(&json)
-        });
-
-        let external_actor = message.external_actor.as_ref().map(|ea| {
-            let json = serde_json::to_value(ea).unwrap_or_default();
-            json_to_proto_struct(&json)
-        });
-
-        let proto_message = proto::Message {
-            id: Some(uuid_to_proto_uuid(message.id.uuid())),
-            role: message.role.to_string(),
-            content,
-            controls,
-            metadata,
-            created_at: Some(datetime_to_proto_timestamp(message.created_at)),
-            phase: message
-                .phase
-                .map(|phase| phase.as_provider_str().to_string()),
-            phase_source: message
-                .phase_source
-                .map(|source| source.as_str().to_string()),
-            external_actor,
-        };
-
         Ok(Response::new(AddMessageResponse {
-            message: Some(proto_message),
+            message: Some(message_to_proto(&message)),
         }))
     }
 }

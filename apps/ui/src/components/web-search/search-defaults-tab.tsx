@@ -1,6 +1,9 @@
 "use client";
 
-import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
+import { useUiTranslations } from "@/providers/locale-provider";
+import { z } from "zod";
+import { usePageSettingsDraft } from "@/components/chat-mode/use-page-settings-draft";
+import { useOrg } from "@/providers/org-provider";
 
 // Web search → Defaults: edits the organization's `web_search_defaults`
 // (PATCH /v1/orgs/{org}). Every change saves the whole object at once, the
@@ -48,6 +51,25 @@ const PROVIDER_HINTS: Record<string, string> = {
   account: "Every search goes to this account first; free search answers when it cannot.",
 };
 
+const defaultsSchema = z.strictObject({
+  provider: z.enum(["auto", "native", "brave", "free", "account"]),
+  account_id: z.string().nullable(),
+  automatic_order: z.array(z.string()).max(100),
+  allow_native: z.boolean(),
+  fallback: z.enum(["next", "none"]),
+  results_per_search: z.number().int().min(1).max(WEB_SEARCH_MAX_RESULTS),
+  blocked_domains: z.array(z.string().refine(isValidDomain, "Use bare domain names.")).max(1000),
+});
+const normalizedDefaults = (value: WebSearchDefaults) => ({
+  provider: value.provider ?? "auto",
+  account_id: value.account_id ?? null,
+  automatic_order: value.automatic_order ?? [],
+  allow_native: value.allow_native ?? true,
+  fallback: value.fallback ?? "next",
+  results_per_search: value.results_per_search ?? WEB_SEARCH_DEFAULT_RESULTS,
+  blocked_domains: value.blocked_domains ?? [],
+});
+
 function errorText(error: unknown): string {
   if (error instanceof ApiError && error.message) return error.message;
   return "Could not save the web search defaults. Please try again.";
@@ -60,20 +82,36 @@ export function SearchDefaultsTab({
   catalog: SearchProviderCatalog;
   canManage: boolean;
 }) {
+  const ui = useUiTranslations();
   const save = useSaveWebSearchDefaults();
-  const [draft, setDraft] = useState<WebSearchDefaults>(catalog.defaults);
+  const { currentOrg } = useOrg();
+  const [legacyDraft, setDraft] = useState<WebSearchDefaults>(catalog.defaults);
+  const settings = usePageSettingsDraft({
+    schema: defaultsSchema,
+    values: normalizedDefaults(catalog.defaults),
+    entityType: "web_search_defaults",
+    entityId: currentOrg?.public_id,
+    label: ui("Web search defaults"),
+    writable: canManage && !save.isPending,
+    save: (values) => save.mutateAsync(values),
+  });
+  const draft = settings.adopted ? settings.values : legacyDraft;
   const [error, setError] = useState<string | null>(null);
   const [domainError, setDomainError] = useState<string | null>(null);
 
   const accounts = catalog.accounts;
   const hosted = catalog.built_in.find((provider) => provider.id === AUTOMATIC_HOSTED);
   const entries = automaticEntries(draft, accounts, hosted);
-  const busy = !canManage || save.isPending;
+  const busy = !canManage || save.isPending || settings.pending;
   const nativePrice =
     catalog.built_in.find((provider) => provider.id === "native")?.price_note ??
     "Billed by the model provider, about $10 per 1,000 searches";
 
   const commit = async (next: WebSearchDefaults) => {
+    if (settings.adopted) {
+      settings.setValues(normalizedDefaults(next));
+      return;
+    }
     setDraft(next);
     setError(null);
     try {
@@ -89,48 +127,27 @@ export function SearchDefaultsTab({
       ? `account:${draft.account_id}`
       : draft.provider;
   const providerChoices: { value: string; label: string }[] = [
-    { value: "auto", label: "Automatic" },
-    { value: "native", label: "Model provider search" },
+    { value: "auto", label: ui("Automatic") },
+    { value: "native", label: ui("Model provider search") },
     ...accounts.map((account) => ({
       value: `account:${account.id}`,
       label: accountLabel(account),
     })),
-    { value: "free", label: "Free search" },
+    { value: "free", label: ui("Free search") },
   ];
   // Keep a stored choice visible even when it is not one of the usual ones.
   if (!providerChoices.some((choice) => choice.value === providerValue)) {
     providerChoices.push({
       value: providerValue ?? "auto",
-      label: "Brave Search (any key)",
+      label: ui("Brave Search (any key)"),
     });
   }
 
-  usePageReadContext({
-    fields: [
-      "provider",
-      "account_id",
-      "automatic_order",
-      "allow_native",
-      "fallback",
-      "results_per_search",
-      "blocked_domains",
-    ],
-    values: {
-      provider: draft.provider ?? "auto",
-      account_id: draft.account_id ?? "",
-      automatic_order: JSON.stringify(draft.automatic_order ?? []),
-      allow_native: String(draft.allow_native ?? true),
-      fallback: draft.fallback ?? "next",
-      results_per_search: String(draft.results_per_search ?? 8),
-      blocked_domains: JSON.stringify(draft.blocked_domains ?? []),
-    },
-    entityType: "web_search_defaults",
-    label: "Web search defaults",
-  });
   const blocked = draft.blocked_domains ?? [];
 
   return (
     <div className="flex max-w-4xl flex-col gap-3">
+      {settings.controls}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -138,12 +155,12 @@ export function SearchDefaultsTab({
       )}
       {!canManage && (
         <p className="text-sm text-muted-foreground">
-          Only organization admins change web search defaults.
+          {ui("Only organization admins change web search defaults.")}
         </p>
       )}
       <div className="divide-y border bg-card">
         <Row
-          label="Default search provider"
+          label={ui("Default search provider")}
           description={`Used by every agent with Web search whose own setting is "Organization default". Running sessions pick up a change from their next search.`}
           note={PROVIDER_HINTS[draft.provider ?? "auto"]}
         >
@@ -166,7 +183,7 @@ export function SearchDefaultsTab({
             }}
             disabled={busy}
           >
-            <SelectTrigger aria-label="Default search provider" className="w-full">
+            <SelectTrigger aria-label={ui("Default search provider")} className="w-full">
               <SelectValue>
                 {providerChoices.find((choice) => choice.value === providerValue)?.label}
               </SelectValue>
@@ -182,10 +199,12 @@ export function SearchDefaultsTab({
         </Row>
 
         <Row
-          label="Automatic order"
-          description="Automatic takes the first entry that can serve the model running the turn. Free search always stays last as the safety net."
+          label={ui("Automatic order")}
+          description={ui(
+            "Automatic takes the first entry that can serve the model running the turn. Free search always stays last as the safety net.",
+          )}
         >
-          <ol aria-label="Automatic order" className="flex flex-col gap-1.5">
+          <ol aria-label={ui("Automatic order")} className="flex flex-col gap-1.5">
             {entries.map((entry, index) => {
               const fixed = entry.kind === "free";
               const position = entries
@@ -221,14 +240,17 @@ export function SearchDefaultsTab({
                     </Badge>
                   )}
                   {fixed ? (
-                    <Lock aria-label="Always last" className="size-3.5 text-muted-foreground" />
+                    <Lock
+                      aria-label={ui("Always last")}
+                      className="size-3.5 text-muted-foreground"
+                    />
                   ) : (
                     <span className="flex shrink-0">
                       <Button
                         variant="ghost"
                         size="icon-sm"
                         className="size-6"
-                        aria-label={`Move ${entry.label} up`}
+                        aria-label={ui("Move {value0} up", { value0: entry.label })}
                         disabled={busy || index === 0}
                         onClick={() =>
                           void commit({
@@ -243,7 +265,7 @@ export function SearchDefaultsTab({
                         variant="ghost"
                         size="icon-sm"
                         className="size-6"
-                        aria-label={`Move ${entry.label} down`}
+                        aria-label={ui("Move {value0} down", { value0: entry.label })}
                         disabled={busy || index >= entries.length - 2}
                         onClick={() =>
                           void commit({
@@ -263,11 +285,14 @@ export function SearchDefaultsTab({
         </Row>
 
         <Row
-          label="Allow model provider search"
-          description={`The model's provider runs these searches itself: ${nativePrice.charAt(0).toLowerCase()}${nativePrice.slice(1)}, on that provider's account (or on your Everruns balance for the Everruns LLM provider). They do not pass through this organization's network allowlist. Turn off to keep every search on your own network path.`}
+          label={ui("Allow model provider search")}
+          description={ui(
+            "The model's provider runs these searches itself: {value0}{value1}, on that provider's account (or on your Everruns balance for the Everruns LLM provider). They do not pass through this organization's network allowlist. Turn off to keep every search on your own network path.",
+            { value0: nativePrice.charAt(0).toLowerCase(), value1: nativePrice.slice(1) },
+          )}
         >
           <Switch
-            aria-label="Allow model provider search"
+            aria-label={ui("Allow model provider search")}
             checked={draft.allow_native !== false}
             disabled={busy}
             onCheckedChange={(checked) => void commit({ ...draft, allow_native: checked })}
@@ -275,8 +300,10 @@ export function SearchDefaultsTab({
         </Row>
 
         <Row
-          label="When a search provider fails"
-          description="A failed or rate-limited search can move on to the next provider in the plan; free search is the last one. Agents can set their own."
+          label={ui("When a search provider fails")}
+          description={ui(
+            "A failed or rate-limited search can move on to the next provider in the plan; free search is the last one. Agents can set their own.",
+          )}
         >
           <Select
             value={draft.fallback ?? "next"}
@@ -289,23 +316,25 @@ export function SearchDefaultsTab({
             }
             disabled={busy}
           >
-            <SelectTrigger aria-label="When a search provider fails" className="w-full">
+            <SelectTrigger aria-label={ui("When a search provider fails")} className="w-full">
               <SelectValue>
                 {(draft.fallback ?? "next") === "next"
-                  ? "Fall back to the next provider"
-                  : "Stop and report the failure"}
+                  ? ui("Fall back to the next provider")
+                  : ui("Stop and report the failure")}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="next">Fall back to the next provider</SelectItem>
-              <SelectItem value="none">Stop and report the failure</SelectItem>
+              <SelectItem value="next">{ui("Fall back to the next provider")}</SelectItem>
+              <SelectItem value="none">{ui("Stop and report the failure")}</SelectItem>
             </SelectContent>
           </Select>
         </Row>
 
         <Row
-          label="Results per search"
-          description="When neither the model nor the agent asks for a number. Agents can ask for fewer. Native search decides its own count."
+          label={ui("Results per search")}
+          description={ui(
+            "When neither the model nor the agent asks for a number. Agents can ask for fewer. Native search decides its own count.",
+          )}
         >
           <Select
             value={String(draft.results_per_search ?? WEB_SEARCH_DEFAULT_RESULTS)}
@@ -314,7 +343,7 @@ export function SearchDefaultsTab({
             }
             disabled={busy}
           >
-            <SelectTrigger aria-label="Results per search" className="w-28">
+            <SelectTrigger aria-label={ui("Results per search")} className="w-28">
               <SelectValue>
                 {String(draft.results_per_search ?? WEB_SEARCH_DEFAULT_RESULTS)}
               </SelectValue>
@@ -330,13 +359,15 @@ export function SearchDefaultsTab({
         </Row>
 
         <Row
-          label="Blocked domains"
-          description="Never returned by any provider, for every agent in this organization. Agents can add more."
+          label={ui("Blocked domains")}
+          description={ui(
+            "Never returned by any provider, for every agent in this organization. Agents can add more.",
+          )}
           problem={domainError}
         >
           <TagInput
             value={blocked.join(", ")}
-            placeholder="Add domain…"
+            placeholder={ui("Add domain…")}
             disabled={busy}
             onChange={(value) => {
               const domains = parseDomainList(value);

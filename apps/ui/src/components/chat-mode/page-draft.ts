@@ -4,6 +4,37 @@ export const PAGE_READ_TOOL = "read_page_draft";
 export const PAGE_PATCH_TOOL = "patch_page_draft";
 export const MAX_PAGE_DRAFT_SIZE = 256 * 1024;
 
+// Display overlays have the same bounded shape as the page editor. They cannot
+// alter stable names, instructions, capabilities or other execution settings.
+export const entityLocalizationsDraftSchema = z
+  .record(
+    z
+      .string()
+      .max(64)
+      .regex(/^[a-zA-Z]{2,8}(?:[-_][a-zA-Z0-9]{1,8})*$/),
+    z.strictObject({
+      display_name: z
+        .string()
+        .max(255)
+        .refine((v) => !v.includes("\0"))
+        .nullable()
+        .optional(),
+      description: z
+        .string()
+        .max(2000)
+        .refine((v) => !v.includes("\0"))
+        .nullable()
+        .optional(),
+    }),
+  )
+  .refine((entries) => {
+    const locales = Object.keys(entries);
+    return (
+      locales.length <= 64 &&
+      new Set(locales.map((key) => key.replaceAll("_", "-").toLowerCase())).size === locales.length
+    );
+  }, "Use at most 64 distinct locales.");
+
 // Form strings stay strings, including tag lists and token limits. Save retains
 // its normal validation; Chat can repair one field in an otherwise invalid form.
 export const agentDraftPatchSchema = z
@@ -19,6 +50,7 @@ export const agentDraftPatchSchema = z
     default_model_id: z.string().optional(),
     communication: z.enum(["direct", "explicit"]).optional(),
     max_output_tokens: z.string().optional(),
+    localizations: entityLocalizationsDraftSchema.optional(),
     capabilities: z
       .array(
         z

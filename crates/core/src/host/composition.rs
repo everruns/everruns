@@ -187,6 +187,12 @@ impl HostComposition {
     pub fn extension<T: std::any::Any + Send + Sync>(&self) -> Option<Arc<T>> {
         self.extensions.get::<T>()
     }
+
+    /// Insert a type-keyed service into a composition that is already built,
+    /// for a host that layers its own services onto a preset composition.
+    pub fn insert_extension<T: std::any::Any + Send + Sync>(&mut self, value: Arc<T>) {
+        self.extensions.insert(value);
+    }
 }
 
 /// Clones are independent compositions.

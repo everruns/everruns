@@ -5,6 +5,7 @@
 // `VoiceChannelConfig` in crates/contracts/src/voice.rs; limits match its
 // `validate()`.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useId, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -113,6 +114,7 @@ export function VoiceFields({
   value: VoiceFormState;
   onChange: (value: VoiceFormState) => void;
 }) {
+  const ui = useUiTranslations();
   const id = useId();
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const set = <K extends keyof VoiceFormState>(key: K, next: VoiceFormState[K]) =>
@@ -125,12 +127,13 @@ export function VoiceFields({
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
-        A speech model listens and speaks; this agent, with its own model and tools, writes every
-        answer. Business rules belong in the agent, not here.
+        {ui(
+          "A speech model listens and speaks; this agent, with its own model and tools, writes every answer. Business rules belong in the agent, not here.",
+        )}
       </p>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor={`${id}_voice`}>Voice</Label>
+          <Label htmlFor={`${id}_voice`}>{ui("Voice")}</Label>
           <Select value={value.voice} onValueChange={(next) => set("voice", String(next ?? ""))}>
             <SelectTrigger id={`${id}_voice`}>
               <SelectValue />
@@ -145,34 +148,34 @@ export function VoiceFields({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${id}_language`}>Language hint</Label>
+          <Label htmlFor={`${id}_language`}>{ui("Language hint")}</Label>
           <Input
             id={`${id}_language`}
             value={value.language}
             onChange={(event) => set("language", event.target.value)}
-            placeholder="Auto-detect (e.g. en, de, uk)"
+            placeholder={ui("Auto-detect (e.g. en, de, uk)")}
           />
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`${id}_greeting`}>Greeting</Label>
+        <Label htmlFor={`${id}_greeting`}>{ui("Greeting")}</Label>
         <Textarea
           id={`${id}_greeting`}
           value={value.greeting}
           onChange={(event) => set("greeting", event.target.value)}
           maxLength={MAX_GREETING}
           rows={2}
-          placeholder="Hi, you're talking to an AI assistant for Acme. How can I help?"
+          placeholder={ui("Hi, you're talking to an AI assistant for Acme. How can I help?")}
         />
         <p className="text-xs text-muted-foreground">
-          Spoken when the call connects. Tell callers they are talking to an AI.
+          {ui("Spoken when the call connects. Tell callers they are talking to an AI.")}
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor={`${id}_interruption`}>When the caller interrupts</Label>
+          <Label htmlFor={`${id}_interruption`}>{ui("When the caller interrupts")}</Label>
           <Select
             value={value.interruption}
             onValueChange={(next) => set("interruption", next as VoiceInterruption)}
@@ -181,17 +184,18 @@ export function VoiceFields({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="steer">Keep working, take it into account</SelectItem>
-              <SelectItem value="cancel">Stop and start over</SelectItem>
+              <SelectItem value="steer">{ui("Keep working, take it into account")}</SelectItem>
+              <SelectItem value="cancel">{ui("Stop and start over")}</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Speech always stops. Keep working lets the caller&apos;s next words steer the answer in
-            progress; stop and start over cancels it.
+            {ui(
+              "Speech always stops. Keep working lets the caller's next words steer the answer in progress; stop and start over cancels it.",
+            )}
           </p>
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${id}_turn_detection`}>End of turn</Label>
+          <Label htmlFor={`${id}_turn_detection`}>{ui("End of turn")}</Label>
           <Select
             value={value.turnDetection}
             onValueChange={(next) => set("turnDetection", next as VoiceTurnDetection)}
@@ -200,20 +204,21 @@ export function VoiceFields({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="server_vad">Pause-based</SelectItem>
-              <SelectItem value="semantic_vad">Waits for a finished thought</SelectItem>
+              <SelectItem value="server_vad">{ui("Pause-based")}</SelectItem>
+              <SelectItem value="semantic_vad">{ui("Waits for a finished thought")}</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Pause-based answers after a short silence. Waits for a finished thought rides through
-            mid-sentence pauses.
+            {ui(
+              "Pause-based answers after a short silence. Waits for a finished thought rides through mid-sentence pauses.",
+            )}
           </p>
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor={`${id}_filler`}>Filler line</Label>
+          <Label htmlFor={`${id}_filler`}>{ui("Filler line")}</Label>
           <Input
             id={`${id}_filler`}
             value={value.filler}
@@ -222,7 +227,7 @@ export function VoiceFields({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${id}_filler_after`}>Filler delay (ms)</Label>
+          <Label htmlFor={`${id}_filler_after`}>{ui("Filler delay (ms)")}</Label>
           <Input
             id={`${id}_filler_after`}
             value={value.fillerAfterMs}
@@ -232,20 +237,22 @@ export function VoiceFields({
             placeholder={String(DEFAULT_VOICE_FILLER_AFTER_MS)}
           />
           <p className="text-xs text-muted-foreground">
-            Spoken while the agent works and has said nothing yet. 0 turns fillers off; max 60000.
+            {ui(
+              "Spoken while the agent works and has said nothing yet. 0 turns fillers off; max 60000.",
+            )}
           </p>
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`${id}_speaking_style`}>Speaking style</Label>
+        <Label htmlFor={`${id}_speaking_style`}>{ui("Speaking style")}</Label>
         <Textarea
           id={`${id}_speaking_style`}
           value={value.speakingStyle}
           onChange={(event) => set("speakingStyle", event.target.value)}
           maxLength={MAX_SPEAKING_STYLE}
           rows={3}
-          placeholder="Warm and brief. Spell out numbers digit by digit."
+          placeholder={ui("Warm and brief. Spell out numbers digit by digit.")}
         />
       </div>
 
@@ -261,11 +268,11 @@ export function VoiceFields({
                 !advancedOpen && "-rotate-90",
               )}
             />
-            <span>Advanced</span>
+            <span>{ui("Advanced")}</span>
           </button>
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-2 pt-4">
-          <Label htmlFor={`${id}_model`}>Speech model</Label>
+          <Label htmlFor={`${id}_model`}>{ui("Speech model")}</Label>
           <Input
             id={`${id}_model`}
             value={value.model}

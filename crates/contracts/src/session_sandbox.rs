@@ -90,17 +90,38 @@ impl SessionSandboxConfig {
 /// Key of `provider_config.desktop` that turns desktop recording off.
 pub const DESKTOP_RECORD_KEY: &str = "record";
 
+/// The bytes of a [`DesktopRecording`], streamed from the sandbox in chunks.
+pub type RecordingBody = futures::stream::BoxStream<'static, Result<Vec<u8>, String>>;
+
 /// A finished recording of a sandbox desktop, collected from the provider.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// Decision: the video is a stream, never a buffer, so a long recording costs
+/// the collector a chunk of memory rather than its whole size. Because the
+/// stream reads from the sandbox, the recording stays there until the caller
+/// has stored it and awaits [`DesktopRecording::remove`]; a failed store
+/// leaves it for the next collection.
 pub struct DesktopRecording {
     /// File name to store it under, e.g. `2026-10-26T19-50-00Z.mp4`.
     pub file_name: String,
     /// Length in seconds, when the provider reports it.
     pub duration_seconds: Option<f64>,
-    /// Size of the video file in bytes.
+    /// Size of the video file in bytes, as the provider reports it.
     pub size_bytes: u64,
-    /// The video, or `None` when it was larger than the collection limit.
-    pub content: Option<Vec<u8>>,
+    /// The video, or `None` when it was larger than the provider's limit.
+    pub body: Option<RecordingBody>,
+    /// Deletes the recording from the sandbox.
+    pub remove: futures::future::BoxFuture<'static, Result<(), String>>,
+}
+
+impl std::fmt::Debug for DesktopRecording {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DesktopRecording")
+            .field("file_name", &self.file_name)
+            .field("duration_seconds", &self.duration_seconds)
+            .field("size_bytes", &self.size_bytes)
+            .field("has_body", &self.body.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for SessionSandboxConfig {

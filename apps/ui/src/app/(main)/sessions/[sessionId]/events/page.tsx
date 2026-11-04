@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { useSessionContext } from "../session-context";
 import { EventFilter } from "@/components/events/event-filter";
+import { RawEventPreview } from "@/components/events/raw-event-preview";
 import { DEFAULT_EXCLUDED_EVENTS } from "@/lib/api/events";
 import { LlmHistoryViewer } from "@/components/llm/llm-history-viewer";
 import type { LlmGenerationData, Event as SessionEvent } from "@/lib/api/types";
@@ -25,6 +27,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 const EVENTS_PER_PAGE = 50;
 
 function CopyButton({ data }: { data: unknown }) {
+  const ui = useUiTranslations();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -42,12 +45,12 @@ function CopyButton({ data }: { data: unknown }) {
       {copied ? (
         <>
           <Check className="w-3 h-3 mr-1" />
-          Copied
+          {ui("Copied")}
         </>
       ) : (
         <>
           <Copy className="w-3 h-3 mr-1" />
-          Copy
+          {ui("Copy")}
         </>
       )}
     </Button>
@@ -55,6 +58,9 @@ function CopyButton({ data }: { data: unknown }) {
 }
 
 export default function EventsPage() {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const { events, eventsLoading, sessionId } = useSessionContext();
   const [currentPage, setCurrentPage] = useState(1);
   useChatPageFilters({ page: currentPage });
@@ -140,8 +146,8 @@ export default function EventsPage() {
       ) : events?.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
           <Activity className="w-12 h-12 mb-4 opacity-50" />
-          <p className="text-lg font-medium">No events yet</p>
-          <p className="text-sm">Events will appear here as the session runs</p>
+          <p className="text-lg font-medium">{ui("No events yet")}</p>
+          <p className="text-sm">{ui("Events will appear here as the session runs")}</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -162,12 +168,13 @@ export default function EventsPage() {
                   className="gap-1.5 text-primary border-primary hover:bg-primary/10"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  New events available
+                  {ui("New events available")}
                 </Button>
               )}
             </div>
             <div className="text-sm text-muted-foreground">
-              Showing {startIndex + 1}-{Math.min(endIndex, totalEvents)} of {totalEvents} events
+              {ui("Showing")} {startIndex + 1}-{Math.min(endIndex, totalEvents)} {ui("of")}{" "}
+              {totalEvents} {ui("events")}
             </div>
           </div>
 
@@ -176,10 +183,10 @@ export default function EventsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[80px]">Seq</TableHead>
-                  <TableHead className="w-[180px]">Type</TableHead>
-                  <TableHead className="w-[200px]">Timestamp</TableHead>
-                  <TableHead>Raw event</TableHead>
+                  <TableHead className="w-[80px]">{ui("Seq")}</TableHead>
+                  <TableHead className="w-[180px]">{ui("Type")}</TableHead>
+                  <TableHead className="w-[200px]">{ui("Timestamp")}</TableHead>
+                  <TableHead>{ui("Raw event")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -192,7 +199,7 @@ export default function EventsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {new Date(event.ts).toLocaleString()}
+                      {new Date(event.ts).toLocaleString(displayLocale)}
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       <div className="relative">
@@ -205,14 +212,12 @@ export default function EventsPage() {
                               onClick={() => setSelectedGeneration(event)}
                             >
                               <Eye className="w-3 h-3 mr-1" />
-                              View
+                              {ui("View")}
                             </Button>
                           )}
                           <CopyButton data={event} />
                         </div>
-                        <pre className="whitespace-pre-wrap break-all text-xs bg-muted p-2 rounded max-h-[200px] overflow-y-auto">
-                          {JSON.stringify(event, null, 2)}
-                        </pre>
+                        <RawEventPreview event={event} />
                       </div>
                     </TableCell>
                   </TableRow>
@@ -229,7 +234,7 @@ export default function EventsPage() {
                 size="icon-sm"
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
-                aria-label="Previous page"
+                aria-label={ui("Previous page")}
               >
                 <ChevronLeft className="size-4" />
               </Button>
@@ -251,7 +256,7 @@ export default function EventsPage() {
                         variant={currentPage === page ? "default" : "outline"}
                         size="icon-sm"
                         onClick={() => handlePageChange(page)}
-                        aria-label={`Page ${page}`}
+                        aria-label={ui("Page {value0}", { value0: page })}
                         aria-current={currentPage === page ? "page" : undefined}
                       >
                         {page}
@@ -264,7 +269,7 @@ export default function EventsPage() {
                 size="icon-sm"
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
-                aria-label="Next page"
+                aria-label={ui("Next page")}
               >
                 <ChevronRight className="size-4" />
               </Button>
@@ -282,7 +287,7 @@ export default function EventsPage() {
       >
         <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
-            <DialogTitle>LLM Generation Details</DialogTitle>
+            <DialogTitle>{ui("LLM Generation Details")}</DialogTitle>
           </DialogHeader>
           {selectedGeneration && (
             <div className="flex-1 min-h-0 overflow-y-auto">

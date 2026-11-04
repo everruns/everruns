@@ -7,6 +7,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useChatMode } from "@/components/chat-mode/chat-mode-context";
@@ -99,6 +100,7 @@ export function CommandPalette() {
 }
 
 function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }) {
+  const ui = useUiTranslations();
   const openChat = useChatMode()?.setOpen;
   const router = useRouter();
   const listId = useId();
@@ -182,10 +184,11 @@ function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }
 
   return (
     <div className="bg-background w-full max-w-2xl border shadow-2xl animate-in fade-in-0 zoom-in-95 duration-150">
-      <DialogPrimitive.Title className="sr-only">Search and navigate</DialogPrimitive.Title>
+      <DialogPrimitive.Title className="sr-only">{ui("Search and navigate")}</DialogPrimitive.Title>
       <DialogPrimitive.Description className="sr-only">
-        Find pages, resources, or organizations. Use arrow keys to choose a result and Enter to open
-        it.
+        {ui(
+          "Find pages, resources, or organizations. Use arrow keys to choose a result and Enter to open it.",
+        )}
       </DialogPrimitive.Description>
       {/* Search input */}
       <div className="flex items-center gap-3 border-b px-4">
@@ -195,9 +198,9 @@ function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Search pages, resources, organizations..."
+          placeholder={ui("Search pages, resources, organizations...")}
           className="flex-1 bg-transparent py-3.5 text-sm outline-none placeholder:text-muted-foreground"
-          aria-label="Search pages, resources, organizations"
+          aria-label={ui("Search pages, resources, organizations")}
           role="combobox"
           aria-expanded="true"
           aria-autocomplete="list"
@@ -205,7 +208,7 @@ function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }
           aria-activedescendant={flatResults.length ? `${listId}-${activeIndex}` : undefined}
         />
         <kbd className="hidden sm:inline-flex h-5 items-center gap-1 border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-          ESC
+          {ui("ESC")}
         </kbd>
       </div>
 
@@ -214,12 +217,14 @@ function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }
         ref={listRef}
         id={listId}
         role="listbox"
-        aria-label="Search results"
+        aria-label={ui("Search results")}
         className="max-h-[min(50vh,400px)] overflow-y-auto p-1.5"
       >
         {flatResults.length === 0 && query.trim() ? (
           <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-            No results for &ldquo;{query}&rdquo;
+            {ui("No results for “")}
+            {query}
+            {ui("”")}
           </div>
         ) : (
           grouped.map((group) => (
@@ -273,11 +278,11 @@ function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }
         <span className="inline-flex items-center gap-1">
           <ArrowUp className="h-3 w-3" />
           <ArrowDown className="h-3 w-3" />
-          navigate
+          {ui("navigate")}
         </span>
         <span className="inline-flex items-center gap-1">
           <CornerDownLeft className="h-3 w-3" />
-          select
+          {ui("select")}
         </span>
       </div>
     </div>

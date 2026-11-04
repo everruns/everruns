@@ -9,6 +9,7 @@
  * - Compact spacing for dense file trees
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import type { HTMLAttributes, ReactNode } from "react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -51,6 +52,7 @@ export const FileTree = ({
   children,
   ...props
 }: FileTreeProps) => {
+  const ui = useUiTranslations();
   const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
   const expandedPaths = controlledExpanded ?? internalExpanded;
 
@@ -70,7 +72,7 @@ export const FileTree = ({
       <div
         className={cn("bg-background font-mono text-sm", className)}
         role="tree"
-        aria-label="File tree"
+        aria-label={ui("File tree")}
         {...props}
       >
         <div className="py-1">{children}</div>

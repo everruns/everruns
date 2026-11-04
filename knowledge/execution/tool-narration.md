@@ -194,9 +194,11 @@ Arguments shown in narration are **display values, not faithful echoes**:
 
 ## Localization
 
-Phrasing helpers carry English and, where localized, Ukrainian wording, keyed by
-`locale`. English is the reference; locales without a localized family fall back
-to a generic localized verb phrase rather than mixing languages.
+Phrasing helpers keep English reference wording and resolve supported translations
+through the small [activity catalog](../../crates/contracts/src/runtime/localization/activity.rs).
+Existing Ukrainian family-specific phrasing remains available. Only static verbs
+and templates enter the lookup; paths, labels and other authored argument values
+are appended afterward. Unknown wording falls back to its English reference.
 
 ## Adding narration for a new tool
 

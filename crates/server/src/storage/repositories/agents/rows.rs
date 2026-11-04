@@ -3,6 +3,7 @@
 use crate::domains::agents::record::{Agent, AgentStatus};
 use crate::kernel_imports::contracts::typed_id::{AgentId, HarnessId, ModelId, VirtualUserId};
 use chrono::{DateTime, Utc};
+use everruns_core::completion_check::CompletionCheck;
 use everruns_core::conversation::Communication;
 use everruns_core::{InitialFile, TokenUsage};
 use sqlx::FromRow;
@@ -10,6 +11,8 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct AgentRow {
+    #[sqlx(json)]
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     pub id: AgentId,
     pub public_id: String,
     pub org_id: i64,
@@ -46,6 +49,9 @@ pub struct AgentRow {
     pub forked_from_agent_id: Option<AgentId>,
     #[sqlx(default)]
     pub root_agent_id: Option<AgentId>,
+    /// Agent this one was created as part of (`agents.owner_agent_id`).
+    #[sqlx(default)]
+    pub owner_agent_id: Option<AgentId>,
     pub tags: Vec<String>,
     pub status: String,
     /// Incident switch: when true no endpoint on this agent accepts traffic,
@@ -84,6 +90,10 @@ pub struct AgentRow {
     /// How the agent talks: `direct` or `explicit`.
     #[sqlx(default)]
     pub communication: String,
+    /// When a finishing turn gets a completion check: `off`, `unattended` or
+    /// `always`.
+    #[sqlx(default)]
+    pub completion_check: String,
     #[sqlx(default)]
     pub environments: Option<serde_json::Value>,
     /// Current avatar (`agent_avatars.id`), `None` when the agent has none.
@@ -114,6 +124,7 @@ pub struct AgentRow {
 
 #[derive(Debug, Clone)]
 pub struct CreateAgentRow {
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     pub public_id: String,
     pub name: String,
     pub display_name: Option<String>,
@@ -144,6 +155,8 @@ pub struct CreateAgentRow {
     pub max_output_tokens: Option<i32>,
     /// How the agent talks.
     pub communication: Communication,
+    /// When a finishing turn gets a completion check.
+    pub completion_check: CompletionCheck,
     pub environments: Option<serde_json::Value>,
     /// Platform-supplied agent. Only org bootstrap sets this; every API-facing
     /// creation path leaves it false.
@@ -160,6 +173,7 @@ impl CreateAgentRow {
         harness_id: HarnessId,
     ) -> Self {
         Self {
+            localizations: Default::default(),
             public_id: public_id.into(),
             name: name.into(),
             display_name: None,
@@ -179,6 +193,7 @@ impl CreateAgentRow {
             parallel_tool_calls: None,
             max_output_tokens: None,
             communication: Communication::default(),
+            completion_check: CompletionCheck::default(),
             environments: None,
             is_built_in: false,
         }
@@ -187,6 +202,7 @@ impl CreateAgentRow {
 
 #[derive(Debug, Clone, Default)]
 pub struct UpdateAgent {
+    pub localizations: Option<everruns_contracts::runtime::localization::EntityLocalizations>,
     pub virtual_user_id: Option<Option<VirtualUserId>>,
     pub name: Option<String>,
     pub display_name: Option<String>,
@@ -220,6 +236,8 @@ pub struct UpdateAgent {
     pub max_output_tokens: Option<Option<i32>>,
     /// How the agent talks. None = don't change.
     pub communication: Option<Communication>,
+    /// When a finishing turn gets a completion check. None = don't change.
+    pub completion_check: Option<CompletionCheck>,
     pub environments: Option<Option<serde_json::Value>>,
 }
 
@@ -281,6 +299,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
         .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
 
     Agent {
+        localizations: row.localizations.clone(),
         service_virtual_user_id: row.virtual_user_id,
         public_id,
         internal_id: row.id.uuid(),
@@ -301,6 +320,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
         harness_id: row.harness_id,
         forked_from_agent_id: row.forked_from_agent_id,
         root_agent_id: row.root_agent_id,
+        owner_agent_id: row.owner_agent_id,
         tags: row.tags,
         is_built_in: row.is_built_in,
         capabilities,
@@ -319,6 +339,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
             row.max_output_tokens,
         ),
         communication: Communication::from_str_opt(&row.communication).unwrap_or_default(),
+        completion_check: CompletionCheck::from_wire(Some(&row.completion_check)),
         tools: serde_json::from_value(row.tools).unwrap_or_default(),
         status: AgentStatus::from(row.status.as_str()),
         // `exposed` is derived from the endpoint rows, which this row-level

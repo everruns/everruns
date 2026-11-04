@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { use, useCallback, useState } from "react";
@@ -104,6 +105,9 @@ function AttributionBadge({ run }: { run: EvalRun }) {
 }
 
 function ResultRow({ result, columns }: { result: EvalCaseResult; columns: number }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const [open, setOpen] = useState(false);
   const scores = normalizeScores(result.scores);
   // Imported results carry a transcript/metrics envelope instead of a session;
@@ -121,7 +125,7 @@ function ResultRow({ result, columns }: { result: EvalCaseResult; columns: numbe
                 type="button"
                 onClick={() => setOpen((v) => !v)}
                 aria-expanded={open}
-                aria-label={open ? "Hide transcript" : "Show transcript"}
+                aria-label={open ? ui("Hide transcript") : ui("Show transcript")}
                 className="text-muted-foreground hover:text-foreground"
               >
                 {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -133,7 +137,9 @@ function ResultRow({ result, columns }: { result: EvalCaseResult; columns: numbe
                 href={`/sessions/${result.session_id}/trace`}
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label={`Open session for ${result.case_name ?? result.eval_case_id} in new tab`}
+                aria-label={ui("Open session for {value0} in new tab", {
+                  value0: result.case_name ?? result.eval_case_id,
+                })}
               >
                 <ExternalLink className="w-3 h-3 text-muted-foreground hover:text-foreground" />
               </Link>
@@ -151,10 +157,10 @@ function ResultRow({ result, columns }: { result: EvalCaseResult; columns: numbe
           {result.latency_ms ? formatDuration(result.latency_ms) : "-"}
         </td>
         <td className="py-3 px-4 text-sm text-muted-foreground">
-          {result.input_tokens != null ? result.input_tokens.toLocaleString() : "-"}
+          {result.input_tokens != null ? result.input_tokens.toLocaleString(displayLocale) : "-"}
         </td>
         <td className="py-3 px-4 text-sm text-muted-foreground">
-          {result.output_tokens != null ? result.output_tokens.toLocaleString() : "-"}
+          {result.output_tokens != null ? result.output_tokens.toLocaleString(displayLocale) : "-"}
         </td>
         <td className="py-3 px-4">
           {scores.length > 0 && (
@@ -192,10 +198,13 @@ export default function EvalRunDetailPage({
 }: {
   params: Promise<{ evalId: string; runId: string }>;
 }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const { evalId, runId } = use(params);
   const { data: ev } = useEval(evalId);
   const { data: run, isLoading: runLoading } = useEvalRun(evalId, runId);
-  usePageTitle("Run", ev?.name ?? null, "Eval");
+  usePageTitle(ui("Run"), ev?.name ?? null, ui("Eval"));
   const cancelRun = useCancelEvalRun(evalId);
   // null = follow the default (matrix when the run spans multiple targets);
   // a user choice sticks once made.
@@ -223,8 +232,10 @@ export default function EvalRunDetailPage({
   if (!run) {
     return (
       <ResourceNotFound
-        title="Run not found"
-        description="This eval run may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Run not found")}
+        description={ui(
+          "This eval run may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref={`/evals/${evalId}`}
         backLabel="Back to eval"
         resourceId={runId}
@@ -247,26 +258,37 @@ export default function EvalRunDetailPage({
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to {ev?.name ?? "Eval"}
+        {ui("Back to")} {ev?.name ?? ui("Eval")}
       </Link>
 
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            Run
+            {ui("Run")}
             <Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>
             <AttributionBadge run={run} />
             {run.target && <TargetBadge target={run.target} />}
           </h1>
           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
             <span>
-              Started: {run.started_at ? new Date(run.started_at).toLocaleString() : "Pending"}
+              {ui("Started:")}{" "}
+              {run.started_at
+                ? new Date(run.started_at).toLocaleString(displayLocale)
+                : ui("Pending")}
             </span>
             {run.completed_at && (
-              <span>Completed: {new Date(run.completed_at).toLocaleString()}</span>
+              <span>
+                {ui("Completed:")} {new Date(run.completed_at).toLocaleString(displayLocale)}
+              </span>
             )}
-            <span>Triggered by: {run.triggered_by}</span>
-            {run.model_override && <span>Model: {run.model_override}</span>}
+            <span>
+              {ui("Triggered by:")} {run.triggered_by}
+            </span>
+            {run.model_override && (
+              <span>
+                {ui("Model:")} {run.model_override}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-start gap-3">
@@ -274,7 +296,7 @@ export default function EvalRunDetailPage({
           {canCancel && (
             <Button variant="destructive" onClick={handleCancel} disabled={cancelRun.isPending}>
               <Square className="w-4 h-4 mr-2" />
-              {cancelRun.isPending ? "Cancelling..." : "Cancel Run"}
+              {cancelRun.isPending ? ui("Cancelling...") : ui("Cancel Run")}
             </Button>
           )}
         </div>
@@ -285,7 +307,7 @@ export default function EvalRunDetailPage({
         <div className="grid gap-4 md:grid-cols-4 mb-6">
           <Card>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Pass Rate</p>
+              <p className="text-xs text-muted-foreground">{ui("Pass Rate")}</p>
               <p className={`text-2xl font-bold ${passRateColor(run.summary.pass_rate)}`}>
                 {(run.summary.pass_rate * 100).toFixed(1)}%
               </p>
@@ -293,32 +315,32 @@ export default function EvalRunDetailPage({
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Results</p>
+              <p className="text-xs text-muted-foreground">{ui("Results")}</p>
               <p className="text-2xl font-bold">
                 {run.summary.passed}/{run.summary.total}
               </p>
               <p className="text-xs text-muted-foreground">
-                {run.summary.failed} failed, {run.summary.errored} errored
+                {run.summary.failed} {ui("failed,")} {run.summary.errored} {ui("errored")}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Avg Latency</p>
+              <p className="text-xs text-muted-foreground">{ui("Avg Latency")}</p>
               <p className="text-2xl font-bold">{formatDuration(run.summary.avg_latency_ms)}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Total Tokens</p>
+              <p className="text-xs text-muted-foreground">{ui("Total Tokens")}</p>
               <p className="text-2xl font-bold">
-                {(
-                  run.summary.total_input_tokens + run.summary.total_output_tokens
-                ).toLocaleString()}
+                {(run.summary.total_input_tokens + run.summary.total_output_tokens).toLocaleString(
+                  displayLocale,
+                )}
               </p>
               <p className="text-xs text-muted-foreground">
-                {run.summary.total_input_tokens.toLocaleString()} in /{" "}
-                {run.summary.total_output_tokens.toLocaleString()} out
+                {run.summary.total_input_tokens.toLocaleString(displayLocale)} {ui("in /")}{" "}
+                {run.summary.total_output_tokens.toLocaleString(displayLocale)} {ui("out")}
               </p>
             </CardContent>
           </Card>
@@ -328,7 +350,10 @@ export default function EvalRunDetailPage({
       {/* Results */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Results ({run.results.length})</CardTitle>
+          <CardTitle>
+            {ui("Results (")}
+            {run.results.length})
+          </CardTitle>
           {multiTarget && run.results.length > 0 && (
             <div className="flex gap-1">
               <Button
@@ -336,14 +361,14 @@ export default function EvalRunDetailPage({
                 size="sm"
                 onClick={() => setView("matrix")}
               >
-                Matrix
+                {ui("Matrix")}
               </Button>
               <Button
                 variant={effectiveView === "table" ? "secondary" : "ghost"}
                 size="sm"
                 onClick={() => setView("table")}
               >
-                Table
+                {ui("Table")}
               </Button>
             </div>
           )}
@@ -351,7 +376,7 @@ export default function EvalRunDetailPage({
         <CardContent>
           {run.results.length === 0 ? (
             <p className="text-center py-8 text-muted-foreground">
-              {canCancel ? "Waiting for results..." : "No results"}
+              {canCancel ? ui("Waiting for results...") : ui("No results")}
             </p>
           ) : effectiveView === "matrix" ? (
             <RunResultsMatrix results={run.results} />
@@ -360,14 +385,30 @@ export default function EvalRunDetailPage({
               <table className="w-full">
                 <thead>
                   <tr className="border-b text-left">
-                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Case</th>
-                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Status</th>
-                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Target</th>
-                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Turns</th>
-                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Latency</th>
-                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Input</th>
-                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Output</th>
-                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Scores</th>
+                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">
+                      {ui("Case")}
+                    </th>
+                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">
+                      {ui("Status")}
+                    </th>
+                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">
+                      {ui("Target")}
+                    </th>
+                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">
+                      {ui("Turns")}
+                    </th>
+                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">
+                      {ui("Latency")}
+                    </th>
+                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">
+                      {ui("Input")}
+                    </th>
+                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">
+                      {ui("Output")}
+                    </th>
+                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">
+                      {ui("Scores")}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

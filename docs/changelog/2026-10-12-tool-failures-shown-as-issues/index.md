@@ -10,13 +10,14 @@ release: "0.48.0"
 links:
   docs: [/event-reference/, /features/events/]
   prs: [everruns/everruns#4410]
-visual: "Chat work log of a turn with a failed tool call, showing the amber 1 issue marker and the warning-styled tool row (/chat), cropped to the work log"
 ---
 
 **In the UI:** when a tool call fails and the agent keeps going, the chat work
 log shows an amber "1 issue" marker instead of a red "1 error", and the failed
 tool rows use warning styling. Red stays for work that stopped, such as a failed
 turn.
+
+![Chat work log with an amber 2 issues marker and a warning-styled tool row](./tool-issue-work-log@2x.png)
 
 **In code:** a failed `tool.completed` event carries `"severity": "issue"`, and
 `turn.completed` carries `issue_count` with the number of failed tool calls the

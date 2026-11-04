@@ -257,8 +257,12 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/agents/{agent_id}/stats", get(get_agent_stats))
         .command::<crate::domains::agents::DestroyAgent>()
         .command::<crate::domains::agents::DraftAgent>()
+        .command::<crate::domains::agents::cost_plan::PlanAgentCosts>()
         .route("/v1/agents/{agent_id}/export", get(export_agent))
         .route("/v1/agents/{agent_id}/copy", post(copy_agent))
+        .route("/v1/agents/{agent_id}/pause", post(pause_agent))
+        .route("/v1/agents/{agent_id}/resume", post(resume_agent))
+        // Deprecated aliases from when pausing was "suspend exposures".
         .route(
             "/v1/agents/{agent_id}/exposures/suspend",
             post(suspend_agent_exposures),
@@ -494,7 +498,58 @@ pub async fn copy_agent(
         .await
 }
 
-/// POST /v1/agents/{agent_id}/exposures/suspend - Take every endpoint offline
+/// POST /v1/agents/{agent_id}/pause - Pause an agent
+///
+/// Its channels stop accepting messages and its triggers and schedules do not
+/// run until it is resumed. Each channel keeps its own published state.
+#[utoipa::path(
+    post,
+    path = "/v1/agents/{agent_id}/pause",
+    params(
+        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
+    ),
+    responses(
+        (status = 200, description = "Agent paused", body = WithUrls<Agent>),
+        (status = 404, description = "Agent not found", body = ErrorResponse),
+    ),
+    tag = "agents"
+)]
+pub async fn pause_agent(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> ApiResult<WithUrls<Agent>> {
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::agents::PauseAgent { agent_id })
+        .await
+}
+
+/// POST /v1/agents/{agent_id}/resume - Resume a paused agent
+#[utoipa::path(
+    post,
+    path = "/v1/agents/{agent_id}/resume",
+    params(
+        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
+    ),
+    responses(
+        (status = 200, description = "Agent resumed", body = WithUrls<Agent>),
+        (status = 404, description = "Agent not found", body = ErrorResponse),
+    ),
+    tag = "agents"
+)]
+pub async fn resume_agent(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> ApiResult<WithUrls<Agent>> {
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::agents::ResumeAgent { agent_id })
+        .await
+}
+
+/// POST /v1/agents/{agent_id}/exposures/suspend - Deprecated alias of pause
 #[utoipa::path(
     post,
     path = "/v1/agents/{agent_id}/exposures/suspend",
@@ -502,23 +557,20 @@ pub async fn copy_agent(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
     responses(
-        (status = 200, description = "Exposures suspended", body = WithUrls<Agent>),
+        (status = 200, description = "Agent paused", body = WithUrls<Agent>),
         (status = 404, description = "Agent not found", body = ErrorResponse),
     ),
     tag = "agents"
 )]
 pub async fn suspend_agent_exposures(
     org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    state: State<AppState>,
+    path: Path<String>,
 ) -> ApiResult<WithUrls<Agent>> {
-    state
-        .dispatcher(&org)
-        .run_with_urls(crate::domains::agents::SuspendAgentExposures { agent_id })
-        .await
+    pause_agent(org, state, path).await
 }
 
-/// POST /v1/agents/{agent_id}/exposures/resume - Let live endpoints serve again
+/// POST /v1/agents/{agent_id}/exposures/resume - Deprecated alias of resume
 #[utoipa::path(
     post,
     path = "/v1/agents/{agent_id}/exposures/resume",
@@ -526,20 +578,17 @@ pub async fn suspend_agent_exposures(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
     responses(
-        (status = 200, description = "Exposures resumed", body = WithUrls<Agent>),
+        (status = 200, description = "Agent resumed", body = WithUrls<Agent>),
         (status = 404, description = "Agent not found", body = ErrorResponse),
     ),
     tag = "agents"
 )]
 pub async fn resume_agent_exposures(
     org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    state: State<AppState>,
+    path: Path<String>,
 ) -> ApiResult<WithUrls<Agent>> {
-    state
-        .dispatcher(&org)
-        .run_with_urls(crate::domains::agents::ResumeAgentExposures { agent_id })
-        .await
+    resume_agent(org, state, path).await
 }
 
 /// PUT /v1/agents/{agent_id} - Create or update agent (upsert)
@@ -608,6 +657,7 @@ pub async fn upsert_agent(
                 .map_err(crate::domains::common::classify_anyhow)?
                 .ok_or_else(|| crate::domains::common::CommandError::not_found("Agent"))?;
                 let update_req = UpdateAgentRequest {
+                    localizations: Some(req.localizations.clone()),
                     service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 
                     name: Some(req.name),
@@ -634,6 +684,7 @@ pub async fn upsert_agent(
                         crate::storage::UpdateField::Set,
                     ),
                     communication: Some(req.communication),
+                    completion_check: Some(req.completion_check),
                     status: None,
                 };
                 let agent = crate::domains::agents::UpdateAgentCmd {

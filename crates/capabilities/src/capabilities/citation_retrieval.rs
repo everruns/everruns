@@ -71,6 +71,14 @@ impl CitationRetrievalConfig {
 pub struct CitationRetrievalCapability;
 
 impl Capability for CitationRetrievalCapability {
+    fn localizations(&self) -> Vec<everruns_core::capabilities::CapabilityLocalization> {
+        vec![everruns_core::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Посилання на джерела пошуку",
+            "Додає до тверджень відповіді посилання на джерела з результатів search_index і search_knowledge.",
+        )]
+    }
+
     fn id(&self) -> &str {
         CITATION_RETRIEVAL_CAPABILITY_ID
     }

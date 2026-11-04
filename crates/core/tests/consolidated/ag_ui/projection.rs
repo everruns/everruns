@@ -943,3 +943,44 @@ fn a_restarted_stream_moves_to_a_fresh_message() {
         assert!(projector.is_finished());
     }
 }
+
+#[test]
+fn reactions_stream_as_custom_events_naming_the_message_like_the_text_events() {
+    let mut projector = Projector::new("t", "r", policy());
+    let answer = MessageId::new();
+    projector.project("output.message.delta", &delta(answer, "Deployed"));
+    let reaction = |emoji: &str| {
+        json!({
+            "message_id": answer.to_string(),
+            "emoji": emoji,
+            "actor": { "kind": "agent", "id": "agent_1", "name": "Ops" },
+            "source": "agent",
+        })
+    };
+    projector.project("message.reaction.added", &reaction("✅"));
+    projector.project("message.reaction.removed", &reaction("👀"));
+    projector.project("message.reaction.added", &json!({ "emoji": "👍" }));
+    projector.project("turn.completed", &json!({}));
+    let events: Vec<Event> = projector.drain().collect();
+    assert_conformant(&events);
+    let custom: Vec<Value> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Custom(custom) => {
+                assert_eq!(custom.name, "everruns.reaction");
+                Some(custom.value.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    // A malformed reaction is dropped, not forwarded.
+    assert_eq!(custom.len(), 2);
+    assert_eq!(custom[0]["messageId"], answer.uuid().to_string());
+    assert_eq!(custom[0]["emoji"], "✅");
+    assert_eq!(custom[0]["action"], "added");
+    assert_eq!(
+        custom[0]["actor"],
+        json!({ "kind": "agent", "name": "Ops" })
+    );
+    assert_eq!(custom[1]["action"], "removed");
+}

@@ -15,7 +15,7 @@ tags:
 
 - Canonical local stack running, health checked with its actual auth mode.
 - Signed-in operator can manage Agents; an editable test Agent exists.
-- Organization has adopted Chat mode; Platform Chat has a real model configured.
+- Organization has adopted Chat workspace; Platform Chat has a real model configured.
 
 ## Steps
 

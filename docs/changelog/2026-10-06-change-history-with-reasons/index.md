@@ -10,13 +10,16 @@ release: "0.42.0"
 links:
   docs: [/features/change-history/, /reference/cli/history/]
   prs: [everruns/everruns#4228, everruns/everruns#4264, everruns/everruns#4260, everruns/everruns#4271, everruns/everruns#4272]
-visual: "Agent page with the History sheet open showing entries with reasons and a diff (/agents/<id>?sheet=history), cropped to the sheet"
 ---
 
 Every mutating command now records one history entry: the entity, the action,
 the changed fields, the actor, the surface, the session and an optional reason.
 Configuration changes also create numbered revisions you can compare and
 restore. Secrets appear only as changed or unchanged.
+
+![Agent History sheet listing changes with their reasons](./history-reasons@2x.png)
+
+![History entry for a prompt change showing its reason and the diff](./history-diff@2x.png)
 
 **In the UI:** open the **⋯** menu on an entity's page. **History** lists
 changes with their reasons, and **Restore this point** asks for a reason.

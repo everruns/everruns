@@ -152,12 +152,12 @@ pub struct SkillValidationResult {
 
 /// Parse a SKILL.md string into structured data.
 ///
-/// Uses a two-pass strategy: strict `serde_yaml` first, then a lenient
+/// Uses a two-pass strategy: strict YAML first, then a lenient
 /// fallback that auto-fixes common issues (unquoted colons, special chars)
 /// before rejecting the skill entirely. Logs a warning when fallback is used.
 pub fn parse_skill_md(content: &str) -> Result<ParsedSkillMd, Vec<String>> {
     let (frontmatter_str, body) = extract_frontmatter(content)?;
-    let fm: SkillFrontmatter = match serde_yaml::from_str(&frontmatter_str) {
+    let fm: SkillFrontmatter = match parse_yaml_frontmatter(&frontmatter_str) {
         Ok(fm) => fm,
         Err(strict_err) => match try_lenient_yaml_parse(&frontmatter_str) {
             Ok(fm) => {
@@ -380,13 +380,27 @@ fn extract_frontmatter(content: &str) -> Result<(String, String), Vec<String>> {
     Ok((frontmatter.to_string(), body))
 }
 
+// THREAT[TM-DOS-052]: retain parser budgets for untrusted YAML.
+// Preserve YAML 1.2 scalars and literal merge keys. Keep parser resource budgets
+// enabled and omit source snippets from diagnostics, which may be logged.
+fn parse_yaml_frontmatter(frontmatter: &str) -> Result<SkillFrontmatter, serde_saphyr::Error> {
+    serde_saphyr::from_str_with_options(
+        frontmatter,
+        serde_saphyr::options! {
+            strict_booleans: true,
+            merge_keys: serde_saphyr::MergeKeyPolicy::AsOrdinary,
+            with_snippet: false,
+        },
+    )
+}
+
 /// Attempt lenient YAML parsing by auto-fixing common issues:
 /// - Unquoted values containing colons (e.g., `description: Use this: it works`)
 /// - Unquoted values with special YAML characters (`{`, `}`, `[`, `]`, `#`)
 /// - Strip invalid control characters (except tab; newlines consumed by line iteration)
-fn try_lenient_yaml_parse(frontmatter: &str) -> Result<SkillFrontmatter, serde_yaml::Error> {
+fn try_lenient_yaml_parse(frontmatter: &str) -> Result<SkillFrontmatter, serde_saphyr::Error> {
     let fixed = fix_yaml_values(frontmatter);
-    serde_yaml::from_str(&fixed)
+    parse_yaml_frontmatter(&fixed)
 }
 
 /// Auto-quote YAML values that contain problematic characters.

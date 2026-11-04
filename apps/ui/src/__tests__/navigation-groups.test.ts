@@ -18,7 +18,8 @@ describe("navigationGroupForPath", () => {
 
   it("prefers the longest matching route", () => {
     // Both `/durable` and `/durable/workers` match; the more specific wins.
-    expect(navigationGroupForPath("/durable/workers")).toBe("Durable Execution");
+    expect(navigationGroupForPath("/durable/workers")).toBe("System");
+    expect(navigationGroupForPath("/system/health")).toBe("System");
   });
 
   it("gives no group to pages outside a labelled section", () => {

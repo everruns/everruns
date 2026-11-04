@@ -10,7 +10,7 @@
 
 use async_trait::async_trait;
 use everruns_core::channel::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelStreamDelivery,
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelReactionSurface, ChannelStreamDelivery,
     DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
     OutboundChannelMessage,
 };
@@ -134,6 +134,35 @@ impl SlackDeliveryAdapter {
     }
 }
 
+impl SlackDeliveryAdapter {
+    /// Post one reply with retries; returns the first posted message's `ts`.
+    async fn post_reply(
+        &self,
+        message: &OutboundChannelMessage,
+        context: &ChannelDeliveryContext,
+    ) -> Result<Option<String>, SlackApiError> {
+        // Correlation comes from the message rather than the context: the
+        // context is per-registration, the ids identify this one reply.
+        let correlation =
+            message
+                .correlation_id
+                .as_ref()
+                .map(|input_message_id| SlackCorrelation {
+                    session_id: message.session_id.to_string(),
+                    input_message_id: input_message_id.clone(),
+                });
+        post_to_slack_with_retry_base(
+            &self.api_base,
+            &context.auth_token,
+            &context.channel_id,
+            &context.thread_ref,
+            &message.text,
+            correlation.as_ref(),
+        )
+        .await
+    }
+}
+
 impl Default for SlackDeliveryAdapter {
     fn default() -> Self {
         Self::new()
@@ -151,28 +180,8 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
         message: &OutboundChannelMessage,
         context: &ChannelDeliveryContext,
     ) -> ChannelDeliveryResult {
-        // Correlation comes from the message rather than the context: the
-        // context is per-registration, the ids identify this one reply.
-        let correlation =
-            message
-                .correlation_id
-                .as_ref()
-                .map(|input_message_id| SlackCorrelation {
-                    session_id: message.session_id.to_string(),
-                    input_message_id: input_message_id.clone(),
-                });
-
-        match post_to_slack_with_retry_base(
-            &self.api_base,
-            &context.auth_token,
-            &context.channel_id,
-            &context.thread_ref,
-            &message.text,
-            correlation.as_ref(),
-        )
-        .await
-        {
-            Ok(()) => ChannelDeliveryResult::Ok,
+        match self.post_reply(message, context).await {
+            Ok(_) => ChannelDeliveryResult::Ok,
             Err(e) => classify_slack_failure(e),
         }
     }
@@ -204,6 +213,10 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
     fn agent_surface(&self) -> Option<&dyn ChannelAgentSurface> {
         Some(self)
     }
+
+    fn reactions(&self) -> Option<&dyn ChannelReactionSurface> {
+        Some(self)
+    }
 }
 
 /// Keys the Slack adapter reads out of `DeliveryContext::extra`.
@@ -214,6 +227,8 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
 pub(crate) const SLACK_RECIPIENT_USER_ID: &str = "slack_recipient_user_id";
 pub(crate) const SLACK_RECIPIENT_TEAM_ID: &str = "slack_recipient_team_id";
 
+mod reactions;
+pub(crate) use reactions::emoji_for_slack_reaction;
 mod streams;
 use streams::classify_slack_failure;
 
@@ -294,13 +309,13 @@ async fn post_to_slack_with_retry_base(
     thread_ts: &str,
     text: &str,
     correlation: Option<&SlackCorrelation>,
-) -> Result<(), SlackApiError> {
+) -> Result<Option<String>, SlackApiError> {
     let max_attempts = 3;
     let mut backoff = std::time::Duration::from_secs(1);
 
     for attempt in 1..=max_attempts {
         match post_slack_message(base_url, bot_token, channel, thread_ts, text, correlation).await {
-            Ok(()) => return Ok(()),
+            Ok(ts) => return Ok(ts),
             Err(e) => {
                 if e.is_permanent() || attempt == max_attempts {
                     return Err(e);
@@ -418,14 +433,17 @@ pub(crate) async fn post_to_slack_base(
     thread_ts: &str,
     text: &str,
 ) -> Result<(), SlackApiError> {
-    post_slack_message(base_url, bot_token, channel, thread_ts, text, None).await
+    post_slack_message(base_url, bot_token, channel, thread_ts, text, None)
+        .await
+        .map(|_| ())
 }
 
 /// Post one reply, as one or more `chat.postMessage` calls.
 ///
 /// Every call renders through `markdown` blocks, so agent output reaches Slack
 /// as the Markdown it actually is rather than being reinterpreted as the much
-/// smaller `mrkdwn` dialect.
+/// smaller `mrkdwn` dialect. Returns the first message's `ts`, the key a
+/// reaction on the reply names.
 pub(crate) async fn post_slack_message(
     base_url: &str,
     bot_token: &str,
@@ -433,10 +451,11 @@ pub(crate) async fn post_slack_message(
     thread_ts: &str,
     text: &str,
     correlation: Option<&SlackCorrelation>,
-) -> Result<(), SlackApiError> {
+) -> Result<Option<String>, SlackApiError> {
     let client = reqwest::Client::new();
     let payloads = build_post_payloads(channel, thread_ts, text, correlation);
     let total = payloads.len();
+    let mut first_ts = None;
 
     for (index, payload) in payloads.into_iter().enumerate() {
         let response = client
@@ -488,10 +507,16 @@ pub(crate) async fn post_slack_message(
             }
             return Err(failure);
         }
+        if first_ts.is_none() {
+            first_ts = body
+                .get("ts")
+                .and_then(|ts| ts.as_str())
+                .map(str::to_string);
+        }
     }
 
     info!(channel = channel, parts = total, "Posted response to Slack");
-    Ok(())
+    Ok(first_ts)
 }
 
 #[cfg(test)]
@@ -738,7 +763,7 @@ mod tests {
             )
             .await;
 
-            assert!(result.is_ok());
+            assert_eq!(result.unwrap().as_deref(), Some("1234567890.123456"));
         }
 
         #[tokio::test]

@@ -13,6 +13,9 @@ async fn agent_with_model(
     default_model_id: Option<ModelId>,
 ) -> <crate::domains::agents::CreateAgent as Command>::Output {
     crate::domains::agents::CreateAgent(CreateAgentRequest {
+        owner_agent_id: None,
+        completion_check: Default::default(),
+        localizations: Default::default(),
         service_virtual_user_id: None,
         id: None,
         name: "model-binding-agent".to_string(),

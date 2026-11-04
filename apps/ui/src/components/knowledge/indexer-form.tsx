@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 import { isPublicDraftLocation } from "@/components/chat-mode/page-form-schemas";
 import { useOrg } from "@/providers/org-provider";
@@ -10,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 export function IndexerForm({ onSaved }: { onSaved: () => Promise<unknown> }) {
+  const ui = useUiTranslations();
   const [name, setName] = useState("");
   const [endpoint, setEndpoint] = useState("https://gcp-us-central1.turbopuffer.com");
   const [key, setKey] = useState("");
@@ -21,7 +23,7 @@ export function IndexerForm({ onSaved }: { onSaved: () => Promise<unknown> }) {
     values: { name, endpoint },
     entityType: "knowledge_indexer",
     formId: "search_account",
-    label: "New search account",
+    label: ui("New search account"),
     baseline: "new",
     dirty: !!name || endpoint !== "https://gcp-us-central1.turbopuffer.com",
     writable: !pending && ["owner", "admin"].includes(currentOrg?.role ?? ""),
@@ -47,7 +49,7 @@ export function IndexerForm({ onSaved }: { onSaved: () => Promise<unknown> }) {
             { scope: "organization", usage: "service" },
             {
               name: `KNOWLEDGE_${crypto.randomUUID().replaceAll("-", "").toUpperCase()}`,
-              label: `Knowledge · ${name}`,
+              label: ui("Knowledge · {value0}", { value0: name }),
               binding: { url: endpoint, auth: { type: "bearer" } },
             },
           );
@@ -65,11 +67,12 @@ export function IndexerForm({ onSaved }: { onSaved: () => Promise<unknown> }) {
     >
       {chatDraft.notice}
       <p className="text-sm text-muted-foreground">
-        Use your organization&apos;s Turbopuffer account. The key is stored as a write-only
-        organization credential. Embedding costs use the collection&apos;s separate model provider.
+        {ui(
+          "Use your organization's Turbopuffer account. The key is stored as a write-only organization credential. Embedding costs use the collection's separate model provider.",
+        )}
       </p>
       <div className="space-y-2">
-        <Label htmlFor="indexer-name">Account name</Label>
+        <Label htmlFor="indexer-name">{ui("Account name")}</Label>
         <Input
           id="indexer-name"
           value={name}
@@ -79,7 +82,7 @@ export function IndexerForm({ onSaved }: { onSaved: () => Promise<unknown> }) {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="indexer-region">Regional endpoint</Label>
+        <Label htmlFor="indexer-region">{ui("Regional endpoint")}</Label>
         <Input
           id="indexer-region"
           type="url"
@@ -89,7 +92,7 @@ export function IndexerForm({ onSaved }: { onSaved: () => Promise<unknown> }) {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="indexer-key">API key</Label>
+        <Label htmlFor="indexer-key">{ui("API key")}</Label>
         <Input
           id="indexer-key"
           type="password"
@@ -105,7 +108,7 @@ export function IndexerForm({ onSaved }: { onSaved: () => Promise<unknown> }) {
         </p>
       )}
       <Button type="submit" variant="accent" disabled={pending || chatDraft.blocked}>
-        {pending ? "Saving…" : "Add search account"}
+        {pending ? ui("Saving…") : ui("Add search account")}
       </Button>
     </form>
   );

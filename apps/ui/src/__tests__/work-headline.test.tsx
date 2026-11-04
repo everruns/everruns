@@ -9,6 +9,7 @@ jest.mock("@/hooks/use-turn-work-report", () => ({
 jest.mock("@/providers/locale-provider", () => {
   const { formatMessage } = jest.requireActual("@/lib/i18n");
   return {
+    ...jest.requireActual("@/providers/locale-provider"),
     useLocale: () => ({
       locale: "en",
       t: (key: string, values?: Record<string, string | number>) =>

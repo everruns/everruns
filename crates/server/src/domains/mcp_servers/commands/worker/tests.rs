@@ -60,6 +60,7 @@ async fn fixture() -> Fixture {
     db.create_harness(
         DEFAULT_ORG_ID,
         CreateHarnessRow {
+            localizations: Default::default(),
             name: "base".to_string(),
             display_name: Some("Base".to_string()),
             icon: None,

@@ -73,6 +73,8 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>, name: &str) -> AgentRow
     db.create_agent(
         1,
         CreateAgentRow {
+            completion_check: Default::default(),
+            localizations: Default::default(),
             public_id: AgentId::new().to_string(),
             name: name.into(),
             display_name: None,

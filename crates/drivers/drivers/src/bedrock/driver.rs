@@ -35,6 +35,9 @@ use std::collections::{HashMap, HashSet};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::warn;
 
+mod non_streaming;
+use non_streaming::native_converse_events;
+
 const BEDROCK_STREAM_BUFFER_SIZE: usize = 64;
 
 use crate::bedrock::cache::CachePlan;
@@ -179,6 +182,26 @@ where
 /// Register the Bedrock driver with the given registry.
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
+/// Curated model recommendations for this provider. Refresh when the vendor
+/// rotates flagships; keep every role default inside `recommended_models`.
+pub const BEDROCK_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
+    everruns_contracts::recommended_models::ProviderRecommendedModels {
+        // Bedrock hosts Anthropic Claude (among others); the driver maps these
+        // canonical IDs to Bedrock wire IDs on sync.
+        provider: "bedrock",
+        recommended_models: &[
+            "claude-opus-5-5",
+            "claude-sonnet-5-5",
+            "claude-fable-5-1",
+            "claude-haiku-5-5",
+        ],
+        coding_model: "claude-opus-5-5",
+        research_model: "claude-fable-5-1",
+        chat_model: "claude-sonnet-5-5",
+        small_model: "claude-haiku-5-5",
+        decision_model: "claude-haiku-5-5",
+    };
+
 pub fn descriptor() -> DriverDescriptor {
     // Bedrock's multi-field credential is a declared schema of discrete typed
     // fields (knowledge/foundations/providers.md), not a JSON document smuggled through
@@ -213,6 +236,7 @@ pub fn descriptor() -> DriverDescriptor {
                 "Create an IAM user or role with Bedrock invoke permissions and use its access keys."
                     .to_string(),
         },
+        recommended_models: Some(BEDROCK_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Bedrock, |config| {
             match BedrockAuth::from_config(config) {
                 Ok(auth) => everruns_contracts::Provider::new(
@@ -262,6 +286,21 @@ impl ChatDriver for FailDriver {
 
 #[async_trait]
 impl ChatDriver for BedrockChatDriver {
+    fn supports_native_non_streaming(&self) -> bool {
+        true
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &everruns_contracts::ProviderEndpoint,
+        messages: Vec<Message>,
+        config: &LlmCallConfig,
+    ) -> Result<everruns_contracts::driver_registry::LlmResponse> {
+        let mut config = config.clone();
+        config.prefer_non_streaming = true;
+        self.chat_completion(endpoint, messages, &config).await
+    }
+
     async fn chat_completion_stream(
         &self,
         endpoint: &everruns_contracts::ProviderEndpoint,
@@ -300,6 +339,30 @@ impl ChatDriver for BedrockChatDriver {
             .set_temperature(config.temperature)
             .set_max_tokens(config.max_tokens.map(|t| t as i32))
             .build();
+
+        if config.prefer_non_streaming && !config.limits.needs_incremental_events() {
+            let response = client
+                .converse()
+                .model_id(&model_id)
+                .set_messages(Some(bedrock_messages))
+                .set_system((!system_blocks.is_empty()).then_some(system_blocks))
+                .set_tool_config(tool_cfg)
+                .inference_config(inference_cfg)
+                .send()
+                .await
+                .map_err(|error| {
+                    let msg = describe_sdk_error(&error);
+                    if is_too_large(&msg) {
+                        AgentLoopError::request_too_large(msg)
+                    } else {
+                        AgentLoopError::llm_kind(
+                            LlmErrorKind::from_error_text(&msg),
+                            format!("Bedrock Converse failed: {msg}"),
+                        )
+                    }
+                })?;
+            return native_converse_events(response, &model_id);
+        }
 
         let mut req = client.converse_stream().model_id(&model_id);
 

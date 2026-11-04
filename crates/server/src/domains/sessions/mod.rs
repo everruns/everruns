@@ -14,6 +14,7 @@ pub(crate) mod playground;
 #[cfg(test)]
 mod playground_tests;
 pub mod queries;
+pub(crate) mod run_requests;
 pub mod service;
 pub mod types;
 mod validation;

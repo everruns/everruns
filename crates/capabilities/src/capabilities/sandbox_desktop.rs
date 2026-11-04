@@ -42,6 +42,14 @@ static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
 pub struct SandboxDesktopCapability;
 
 impl Capability for SandboxDesktopCapability {
+    fn localizations(&self) -> Vec<everruns_core::capabilities::CapabilityLocalization> {
+        vec![everruns_core::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Робочий стіл пісочниці",
+            "Дозволяє агенту працювати з робочим столом основної пісочниці сесії: робити знімки екрана, натискати, вводити текст, прокручувати та використовувати клавіші.",
+        )]
+    }
+
     fn id(&self) -> &str {
         SANDBOX_DESKTOP_CAPABILITY_ID
     }

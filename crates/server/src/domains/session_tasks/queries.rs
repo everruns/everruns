@@ -212,6 +212,7 @@ async fn load_harness_chain(
 
         cursor = row.parent_harness_id;
         chain.push(Harness {
+            localizations: Default::default(),
             id: row.id,
             name: row.name,
             display_name: row.display_name,

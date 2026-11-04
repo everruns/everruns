@@ -10,10 +10,11 @@ release: "0.26.0"
 links:
   docs: [/features/ui/]
   prs: [everruns/everruns#3535]
-visual: "Chat composer with a PDF file chip attached before sending (/chats/<id>); crop to the composer"
 ---
 
 Agents can read PDF documents sent with a message.
+
+![Chat composer with a PDF file chip attached before sending, on a model that accepts PDF input](./composer-pdf-chip@2x.png)
 
 **In the UI:** the chat composer offers PDF attachments when the selected model
 accepts PDF input, and shows each attachment as a file chip.

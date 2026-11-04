@@ -200,8 +200,14 @@ impl SlackHealthService {
 }
 
 pub fn issue_copy(row: &HealthIssueRow) -> (String, String) {
+    if row.code == crate::domains::trace_exports::health::CODE {
+        return ("Trace delivery needs attention".into(),"One or more enabled destinations cannot accept exports. Review endpoints and authentication in Settings → Tracing.".into());
+    }
     if row.code == super::active_turns::ACTIVE_TURN_LIMIT {
         return super::active_turns::copy(&row.status);
+    }
+    if super::background_work::owns(&row.code) {
+        return super::background_work::copy(row);
     }
     if row.status == "needs_check" {
         return ("Slack permissions need a check".into(),"Everruns could not verify this installation. Check again before assuming it is healthy.".into());
@@ -236,9 +242,10 @@ pub fn issue_copy(row: &HealthIssueRow) -> (String, String) {
     if row.missing_scopes == ["reactions:write"] {
         (
             "Slack reactions need an additional permission".into(),
-            "This bot cannot add emoji reactions. Reconnect Slack to grant permission.".into(),
+            "This bot cannot add emoji reactions until the permission is added to its Slack app."
+                .into(),
         )
     } else {
-        ("Slack needs additional permissions".into(),"Some Slack features are unavailable. Review the missing permissions and reconnect this installation.".into())
+        ("Slack needs additional permissions".into(),"Some Slack features are unavailable until the missing permissions are added to this app.".into())
     }
 }

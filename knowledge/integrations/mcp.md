@@ -96,14 +96,12 @@ The Tasks extension runs `agent_run` and `session_send_message` as tasks, one pe
 
 ### Entity Cards
 
-Under negotiated protocol `2025-06-18`, Everruns exposes per-entity card
-tools (`agent_get_card`, future `session_get_card`, …) that return an MCP
-`resource` content block of MIME type `text/html` at the `ui://` scheme
-along with a one-line text summary. MCP-Apps-aware hosts render the HTML
-in a sandboxed iframe; hosts that ignore embedded resources still see the
-summary. See [`knowledge/ui/mcp-cards.md`](../ui/mcp-cards.md) for the standard,
-including the URI scheme, sandboxing requirements, and the planned
-`postMessage` action protocol that backs future mutation buttons.
+Under negotiated protocols `2025-06-18` and newer, `agent_get_card` opens a
+standard MCP Apps view via tool metadata, with structured card data and a
+one-line text fallback. The static template is available through
+`resources/read`; no entity HTML is embedded in the tool result. See
+[MCP Apps](../ui/mcp-apps.md) for the wire contract and
+[entity cards](../ui/mcp-cards.md) for the card presentation.
 
 ### Tool Metadata
 
@@ -312,6 +310,20 @@ rather than trusted from the token, since it can be revoked in between.
 
 The pages carry no scripts and no external resources, are never cached or framed,
 and send `Referrer-Policy: no-referrer` so the token cannot leak onward.
+
+## Session status reply snapshot
+
+The status tool's latest output means the most recent non-empty text said to the
+session, independent of the caller's event cursor, event-type filter, or event
+page size. Direct replies and successfully delivered explicit messages share
+the conversation contract; private commentary and unsent tool arguments never
+become output. A turn that says nothing leaves the previous reply available.
+
+The event page and its cursor retain incremental polling semantics. Reply lookup
+walks reply-bearing events newest first in bounded pages, so noisy tools and
+long runs of commentary cannot hide an older visible reply. Authorization stays
+on the org-scoped event read path. See the [MCP endpoint](../../crates/server/src/api/mcp_endpoint/mod.rs)
+and its [status regressions](../../crates/server/tests/domain/mcp_endpoint_test/status.rs).
 
 ## Form mode elicitation (2026-07-28)
 

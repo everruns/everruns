@@ -22,7 +22,6 @@ mod serve;
 use crate::api::sse::{SseConnectionLimits, SseConnectionTracker};
 use crate::auth::{self, AuthBackend};
 use crate::background::supervised_task::TaskSupervisor;
-use crate::live_updates::event_delivery::EventDelivery;
 use crate::live_updates::pg_listener_config::resolve_pg_listener_database_url;
 use crate::openapi::ApiDoc;
 use crate::server::{ServerConfig, build_router_with_prefix};
@@ -154,6 +153,7 @@ pub struct ServerContext {
 pub struct ServerAppBuilder {
     config: ServerConfig,
     auth_factory: Option<AuthFactoryFn>,
+    channel_auth_verifier: Option<api::channel_auth::ChannelAuthVerifier>,
     host_composition: Option<HostComposition>,
     built_in_harnesses: Option<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
     connector_registry: Option<everruns_contracts::connector::ConnectorRegistry>,
@@ -179,6 +179,7 @@ impl ServerAppBuilder {
         Self {
             config,
             auth_factory: None,
+            channel_auth_verifier: None,
             host_composition: None,
             built_in_harnesses: None,
             connector_registry: None,
@@ -213,6 +214,19 @@ impl ServerAppBuilder {
         + 'static,
     ) -> Self {
         self.auth_factory = Some(Box::new(factory));
+        self
+    }
+
+    /// Supply a host-owned verifier for Agent API/Work Chat execution and
+    /// runtime-auth routes, for example with preloaded OIDC
+    /// discovery/keys in an offline embedding. JWT signature, audience, expiry
+    /// and channel policy checks still apply. No HTTP or environment switch
+    /// enables this override; the default uses the normal SSRF-safe fetcher.
+    pub fn channel_auth_verifier(
+        mut self,
+        verifier: api::channel_auth::ChannelAuthVerifier,
+    ) -> Self {
+        self.channel_auth_verifier = Some(verifier);
         self
     }
 
@@ -550,7 +564,7 @@ impl ServerAppBuilder {
         let event_delivery = if self.config.dev_mode {
             crate::live_updates::event_delivery::EventDelivery::in_memory()
         } else {
-            crate::live_updates::event_delivery::EventDelivery::from_env().await
+            crate::live_updates::event_delivery::EventDelivery::from_env(db.clone()).await
         };
         let resolve_listener_database_url = || {
             database_url
@@ -561,40 +575,19 @@ impl ServerAppBuilder {
                 .transpose()
         };
 
-        let event_service = Arc::new(services::EventService::with_listeners(
-            db.clone(),
-            event_delivery.clone(),
-            event_listeners.clone(),
-        ));
-        thread_turns.bind_registry(&db, &event_service, &runner);
-        automatic_titles.bind_events(&event_service);
+        // The listener feed reads on the background pool, off the requests'
+        // connections; the request-path service shares it.
         let background_event_service = Arc::new(services::EventService::with_listeners(
             background_db.clone(),
             event_delivery.clone(),
             event_listeners,
         ));
+        let event_service = Arc::new(background_event_service.with_database(db.clone()));
+        thread_turns.bind_registry(&db, &event_service, &runner);
+        automatic_titles.bind_events(&event_service);
 
         let sse_tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits::from_env()));
 
-        let event_broadcaster = if matches!(event_delivery, EventDelivery::Nats(_)) {
-            tracing::info!(
-                "Skipping legacy PostgreSQL event listener; NATS event delivery is active"
-            );
-            None
-        } else if let Some(database_url) = resolve_listener_database_url()?.as_ref() {
-            let broadcaster =
-                crate::live_updates::event_notifications::EventNotificationBroadcaster::new(
-                    database_url.clone(),
-                )
-                .await;
-            tracing::info!("Event notification broadcaster initialized for push-based SSE");
-            Some(Arc::new(broadcaster))
-        } else {
-            tracing::info!(
-                "Event notification broadcaster not available (DEV_MODE), SSE will use polling"
-            );
-            None
-        };
         let notification_broadcaster = if let Some(database_url) =
             resolve_listener_database_url()?.as_ref()
         {
@@ -649,7 +642,8 @@ impl ServerAppBuilder {
             db.clone(),
             sessions_state.session_service.clone(),
             auth_state.clone(),
-        );
+        )
+        .with_encryption(encryption.clone());
         let session_sandbox_state = session_sandbox_service.as_ref().map(|sandbox_service| {
             api::session_sandbox::AppState::new(
                 db.clone(),
@@ -682,7 +676,6 @@ impl ServerAppBuilder {
             ),
             event_service: event_service.clone(),
             sse_tracker: sse_tracker.clone(),
-            event_broadcaster,
             auth: auth_state.clone(),
         };
         let notifications_state = api::notifications::AppState {
@@ -693,28 +686,20 @@ impl ServerAppBuilder {
             auth: auth_state.clone(),
         };
 
-        // Now that the LLM stack exists, spawn the observer scoring worker with
-        // an LLM-judge client backed by the org's own configured providers.
-        if let Some(observer_wake) = observer_wake {
-            let judge: Arc<dyn crate::domains::observers::JudgeClient> =
-                Arc::new(crate::domains::observers::LlmJudgeClient::new(
-                    background_db.clone(),
-                    driver_registry.clone(),
-                    provider_resolver.clone(),
-                ));
-            supervisor.track(
-                "observer_scoring",
-                crate::domains::observers::spawn_observer_worker(
-                    crate::domains::observers::ObserverWorkerDeps {
-                        db: background_db.clone(),
-                        judge: Some(judge),
-                    },
-                    observer_wake,
-                    crate::domains::observers::ObserverWorkerConfig::default(),
-                ),
-            );
-            tracing::info!("Observers enabled: scoring worker started");
-        }
+        // Now that the LLM stack exists, start what grades sessions with the
+        // org's models: Observers scoring and the built-in session classifiers.
+        health::start_session_graders(
+            &mut supervisor,
+            background_db.clone(),
+            crate::domains::evals::graders::Graders::for_host(
+                background_db.clone(),
+                &host_composition,
+                driver_registry.clone(),
+                provider_resolver.clone(),
+            ),
+            observer_wake,
+            host_composition.decisions().is_configured(),
+        );
 
         let providers_state = api::providers::AppState::new(
             db.clone(),
@@ -830,16 +815,17 @@ impl ServerAppBuilder {
                 runner.clone(),
                 event_delivery.clone(),
             )),
-            // Judged scorers (citation_judged) use the org's own configured model,
-            // mirroring the observer LLM judge.
-            judge: Some(Arc::new(crate::domains::observers::LlmJudgeClient::new(
+            // Model-backed scorers use the org's own models, as observers do.
+            graders: crate::domains::evals::graders::Graders::for_host(
                 db.clone(),
+                &host_composition,
                 driver_registry.clone(),
                 provider_resolver.clone(),
-            ))),
+            ),
+            queue: Default::default(),
         });
         let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone())
-            .with_run_context(eval_run_ctx);
+            .with_run_context(eval_run_ctx.clone());
         // Agent health checks are shared by HTTP and MCP (knowledge/evaluation/agent-checks.md).
         // They need a utility LLM to generate/judge cases and a default harness to host sessions.
         let utility_llm = host_composition.utility_llm_service();
@@ -899,6 +885,7 @@ impl ServerAppBuilder {
             sse_tracker: sse_tracker.clone(),
             valkey: valkey_for_channel_rate_limits,
             auth: auth_state.clone(),
+            auth_verifier: self.channel_auth_verifier.clone(),
             frontend_url: auth_config.frontend_url.clone(),
             public_chat_enabled: feature_flags.public_chat,
             mcp_event_triggers: mcp_event_triggers.clone(),
@@ -962,7 +949,7 @@ impl ServerAppBuilder {
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
         );
-        let agent_triggers_state = api::agent_triggers::AppState::new(
+        let mut agent_triggers_state = api::agent_triggers::AppState::new(
             db.clone(),
             encryption.clone(),
             scheduler_store.clone(),
@@ -973,6 +960,13 @@ impl ServerAppBuilder {
         )
         .with_mcp_event_triggers(mcp_event_triggers.clone())
         .with_channels(channel_recovery.clone());
+        agent_triggers_state.external_egress = Some(host_composition.egress_service());
+        agent_triggers_state.connection_resolver = optional_connection_resolver(
+            &db,
+            &encryption,
+            &auth_config,
+            host_composition.egress_service(),
+        );
         let schedules_state = api::schedules::routes(
             api::schedules::ScheduleAppState::new(
                 db.clone(),
@@ -1056,6 +1050,13 @@ impl ServerAppBuilder {
             user_connections_state.clone(),
         )))
         .with_provider_services(provider_services.clone())
+        .with_system_doctor(health::system_doctor(
+            &db,
+            &scheduler_store,
+            &encryption,
+            &auth_config,
+            &host_composition,
+        ))
         .with_connection_resolver(optional_connection_resolver(
             &db,
             &encryption,
@@ -1076,9 +1077,7 @@ impl ServerAppBuilder {
             &mcp_endpoint_state,
         );
 
-        let health_state = health::HealthState {
-            auth_mode: format!("{:?}", auth_config.mode),
-        };
+        let health_state = health::HealthState::new(&auth_config, &db, &event_delivery);
 
         let feature_flags_state = api::feature_flags::AppState {
             flags: feature_flags.clone(),
@@ -1105,7 +1104,7 @@ impl ServerAppBuilder {
                 db: db.clone(),
                 auth: auth_state.clone(),
                 encryption: encryption.clone(),
-                verifier: api::channel_auth::ChannelAuthVerifier::new(),
+                verifier: self.channel_auth_verifier.clone().unwrap_or_default(),
             }))
             .merge(api::virtual_users::routes(api_state.clone()))
             .merge(api::organization_connections::routes(
@@ -1116,6 +1115,7 @@ impl ServerAppBuilder {
             ))
             .merge(api::apps::routes(apps_state))
             .merge(api::agent_channels::routes(agent_triggers_state.clone()))
+            .merge(api::external_agents::routes(agent_triggers_state.clone()))
             .merge(api::agent_triggers::routes(agent_triggers_state))
             // Evals routes are conditionally merged below based on feature flag.
             .merge(api::harness_examples::routes(harness_examples_state))
@@ -1146,22 +1146,6 @@ impl ServerAppBuilder {
             .merge(schedules_state)
             .merge(api::files::routes(api_state.clone()))
             .merge(api::images::routes(api_state.clone()))
-            .merge({
-                // Only mount presigned image routes when WORKER_GRPC_AUTH_TOKEN is set.
-                // Without a signing secret, presigned URLs would be trivially forgeable.
-                match std::env::var("WORKER_GRPC_AUTH_TOKEN")
-                    .ok()
-                    .filter(|s| !s.is_empty())
-                {
-                    Some(signing_secret) => {
-                        api::internal_images::routes(api::internal_images::AppState {
-                            db: db.clone(),
-                            signing_secret,
-                        })
-                    }
-                    None => Router::new(),
-                }
-            })
             .merge(api::skills::routes(api_state.clone()))
             .merge(api::organizations::routes(organizations_state))
             .merge(api::org_invitations::routes(org_invitations_state))
@@ -1174,6 +1158,8 @@ impl ServerAppBuilder {
                 ),
             ))
             .merge(api::health_issues::routes(api_state.clone()))
+            .merge(api::tracing_destinations::routes(api_state.clone()))
+            .merge(api::system::routes(api_state.clone()))
             .merge(api::memory::routes(api_state.clone()))
             .merge(api::workspaces::routes(api_state.clone()))
             .merge(api::workspace_files::routes(workspace_files_state))
@@ -1263,6 +1249,9 @@ impl ServerAppBuilder {
             &self.config.api_prefix,
             self.pat_route_classes,
         );
+        // Internal app calls keep route authorization, but are already throttled
+        // at the outer MCP boundary. Do not charge a second, peerless localhost bucket.
+        let app_router = api_routes.clone();
         // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
         // not /health or /metrics). Set RATE_LIMIT_API_REQUESTS_PER_MINUTE=0 to disable.
         let api_rate_limiter = http_layers::api_rate_limiter(valkey_for_api_rate_limits);
@@ -1282,7 +1271,9 @@ impl ServerAppBuilder {
             auth_config.base_url.clone(),
         );
         let mut root_routes = Router::new()
-            .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
+            .merge(api::mcp_endpoint::routes(
+                mcp_endpoint_state.with_app_router(app_router),
+            ))
             .merge(api::mcp_elicitation::routes(mcp_elicitation_state))
             .merge(channel_root_routes);
 
@@ -1296,7 +1287,7 @@ impl ServerAppBuilder {
 
         // Main router
         let mut app = Router::new()
-            .route("/health", get(health::endpoint).with_state(health_state))
+            .merge(health::routes(health_state))
             .route(
                 "/api-doc/openapi.json",
                 get(|| async { Json(ApiDoc::openapi()) }),
@@ -1360,6 +1351,15 @@ impl ServerAppBuilder {
             utility_llm_service: host_composition.utility_llm_service(),
             error_reporter: error_reporter.clone(),
         };
+
+        background::spawn_custom_worker_server(&mut supervisor, db.clone(), event_service.clone())?;
+        background::spawn_external_workers(
+            &mut supervisor,
+            db.clone(),
+            event_service.clone(),
+            encryption.clone(),
+            host_composition.egress_service(),
+        )?;
 
         let worker_link = background::WorkerLinkDeps {
             db: db.clone(),
@@ -1432,6 +1432,11 @@ impl ServerAppBuilder {
             );
         }
 
+        // Eval cases run as durable tasks on this replica's eval pool.
+        if let Some(store) = background_scheduler_store.clone() {
+            let pool = crate::domains::evals::start_case_pool(store, eval_run_ctx).await;
+            supervisor.track_optional("eval_cases", pool);
+        }
         // -- Durable task scheduler (both prod and dev) --
         let cluster_jobs_store = background_scheduler_store.clone();
         if let Some(store) = background_scheduler_store {
@@ -1471,11 +1476,11 @@ impl ServerAppBuilder {
                 ),
                 driver_registry: driver_registry.clone(),
                 session_sandbox_service: session_sandbox_service.clone(),
+                egress: host_composition.egress_service(),
             },
             cluster_jobs_store,
         )
         .await;
-
         // -- Custom background tasks --
         spawn_background_tasks(&mut supervisor, &server_context, self.background_tasks);
 

@@ -7,6 +7,7 @@
  * in both standalone and in-chat context.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
@@ -15,12 +16,13 @@ import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 // Chat context wrapper — shows the indicator inside a mock agent message
 // ---------------------------------------------------------------------------
 function ChatContextMock({ children }: { children: React.ReactNode }) {
+  const ui = useUiTranslations();
   return (
     <div className="border border-border bg-background p-3">
       {/* User message */}
       <div className="flex justify-end mb-3">
         <div className="border-r-2 border-r-accent bg-secondary/50 px-3 py-2 text-xs max-w-[70%]">
-          Refactor the auth module to use JWTs
+          {ui("Refactor the auth module to use JWTs")}
         </div>
       </div>
       {/* Agent response area */}
@@ -40,17 +42,20 @@ function ChatContextMock({ children }: { children: React.ReactNode }) {
 // Page
 // ---------------------------------------------------------------------------
 export default function ThinkingAnimationsPage() {
+  const ui = useUiTranslations();
   return (
     <DevPageShell
       eyebrow="Thinking Animations"
-      title="Wave bar thinking indicator"
-      description="Production combo variant: fast 0.7s wave bars with brand navy-to-gold color ramp. Toggle dark mode to compare both themes."
+      title={ui("Wave bar thinking indicator")}
+      description={ui(
+        "Production combo variant: fast 0.7s wave bars with brand navy-to-gold color ramp. Toggle dark mode to compare both themes.",
+      )}
       widthClassName="max-w-2xl"
     >
       <div className="space-y-8">
         {/* Standalone preview */}
         <div className="space-y-3">
-          <h2 className="text-sm font-medium text-foreground">Standalone</h2>
+          <h2 className="text-sm font-medium text-foreground">{ui("Standalone")}</h2>
           <div className="flex items-center justify-center h-16 border border-dashed border-border bg-background">
             <ThinkingIndicator />
           </div>
@@ -58,7 +63,7 @@ export default function ThinkingAnimationsPage() {
 
         {/* In-chat context */}
         <div className="space-y-3">
-          <h2 className="text-sm font-medium text-foreground">In chat context</h2>
+          <h2 className="text-sm font-medium text-foreground">{ui("In chat context")}</h2>
           <ChatContextMock>
             <ThinkingIndicator />
           </ChatContextMock>
@@ -66,7 +71,7 @@ export default function ThinkingAnimationsPage() {
 
         {/* With model name */}
         <div className="space-y-3">
-          <h2 className="text-sm font-medium text-foreground">With model name</h2>
+          <h2 className="text-sm font-medium text-foreground">{ui("With model name")}</h2>
           <div className="flex items-center justify-center h-16 border border-dashed border-border bg-background">
             <ThinkingIndicator model="claude-opus-4-7" />
           </div>

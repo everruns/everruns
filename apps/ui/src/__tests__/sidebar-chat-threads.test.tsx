@@ -3,6 +3,7 @@ import { SidebarChatThreads } from "@/components/layout/sidebar-chat-threads";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { SIDEBAR_THREAD_LIMIT } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
+import { LocaleProvider } from "@/providers/locale-provider";
 
 jest.mock("next/link", () => ({
   __esModule: true,
@@ -51,21 +52,50 @@ function setThreads(threads: Session[]) {
 
 describe("SidebarChatThreads", () => {
   beforeEach(() => jest.clearAllMocks());
+  afterEach(() => localStorage.clear());
+
+  it("localizes shortcut labels while preserving authored thread titles", () => {
+    localStorage.setItem("everruns.ui-language", "uk");
+    setThreads(
+      Array.from({ length: SIDEBAR_THREAD_LIMIT + 1 }, (_, index) =>
+        thread(`sess_${index}`, index === 0 ? "New subchat" : `Thread ${index}`),
+      ),
+    );
+
+    render(
+      <LocaleProvider>
+        <SidebarChatThreads pathname="/chats/history" />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByRole("link", { name: "Новий додатковий чат" })).toHaveAttribute(
+      "title",
+      "Новий додатковий чат",
+    );
+    expect(screen.getByRole("link", { name: "Усі чати" })).toHaveAttribute(
+      "href",
+      "/chats/history",
+    );
+    expect(screen.getByRole("link", { name: "New subchat" })).toHaveAttribute(
+      "href",
+      "/chats/sess_0",
+    );
+  });
 
   it("identifies side chats as a separate group and marks the selected conversation", () => {
     setThreads([thread("sess_a", "Alpha"), thread("sess_b", "Beta")]);
 
     render(<SidebarChatThreads pathname="/chats/sess_a" />);
 
-    const sideChats = within(screen.getByRole("group", { name: "Side chats" }));
-    expect(sideChats.getByText("Side chats")).toBeInTheDocument();
+    const sideChats = within(screen.getByRole("group", { name: "Subchats" }));
+    expect(sideChats.getByText("Subchats")).toBeInTheDocument();
     expect(sideChats.getByRole("link", { name: "Alpha" })).toHaveAttribute("aria-current", "page");
     expect(sideChats.getByRole("link", { name: "Beta" })).not.toHaveAttribute("aria-current");
-    expect(sideChats.getByRole("link", { name: "New side chat" })).toBeInTheDocument();
-    expect(sideChats.getByText("Side chats").parentElement).toContainElement(
-      sideChats.getByRole("link", { name: "New side chat" }),
+    expect(sideChats.getByRole("link", { name: "New subchat" })).toBeInTheDocument();
+    expect(sideChats.getByText("Subchats").parentElement).toContainElement(
+      sideChats.getByRole("link", { name: "New subchat" }),
     );
-    expect(sideChats.queryByText("New side chat")).not.toBeInTheDocument();
+    expect(sideChats.queryByText("New subchat")).not.toBeInTheDocument();
   });
 
   it("caps the list and offers the way out to all chats", () => {
@@ -80,10 +110,7 @@ describe("SidebarChatThreads", () => {
       "href",
       "/chats/history",
     );
-    expect(screen.getByRole("link", { name: "New side chat" })).toHaveAttribute(
-      "href",
-      "/chats/new",
-    );
+    expect(screen.getByRole("link", { name: "New subchat" })).toHaveAttribute("href", "/chats/new");
   });
 
   it.each([0, 1, 5])("hides All chats with %i side chats", (count) => {
@@ -94,10 +121,7 @@ describe("SidebarChatThreads", () => {
     render(<SidebarChatThreads pathname="/chats/history" />);
 
     expect(screen.queryByRole("link", { name: "View all chats" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "New side chat" })).toHaveAttribute(
-      "href",
-      "/chats/new",
-    );
+    expect(screen.getByRole("link", { name: "New subchat" })).toHaveAttribute("href", "/chats/new");
   });
 
   it("marks pinned threads", () => {

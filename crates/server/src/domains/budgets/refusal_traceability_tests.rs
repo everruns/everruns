@@ -42,7 +42,7 @@ async fn test_check_budgets_exhausted_budget_returns_stop() {
     assert_eq!(
         result.message.as_deref(),
         Some(
-            "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue."
+            "Usage limit reached. 100.00 tokens spent reached the 100.00 tokens limit. A usage policy stopped this work; raise its limit to continue."
         )
     );
     assert_eq!(result.error_code.as_deref(), Some("budget_exhausted"));

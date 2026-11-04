@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
  * surfaces present the same recoverable error instead of a blank screen.
  */
 export function AuthUnavailableState() {
+  const ui = useUiTranslations();
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-lg">
@@ -17,14 +19,15 @@ export function AuthUnavailableState() {
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
             <AlertTriangle className="h-6 w-6 text-destructive" />
           </div>
-          <CardTitle>Authentication unavailable</CardTitle>
+          <CardTitle>{ui("Authentication unavailable")}</CardTitle>
           <CardDescription>
-            We couldn&apos;t verify your authentication state. Protected routes stay blocked until
-            auth bootstrap succeeds.
+            {ui(
+              "We couldn't verify your authentication state. Protected routes stay blocked until auth bootstrap succeeds.",
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex justify-center">
-          <Button onClick={() => window.location.reload()}>Retry</Button>
+          <Button onClick={() => window.location.reload()}>{ui("Retry")}</Button>
         </CardContent>
       </Card>
     </div>

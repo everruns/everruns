@@ -7,13 +7,16 @@ significance: notable
 products: [platform, cloud]
 surfaces: [ui, api]
 release: "0.18.0"
-visual: "Chats list at /chats with one pinned thread at the top and the pin button visible in a thread header; crop to the list and header"
 links:
   docs: [/features/ui/, /built-ins/harnesses/platform-chat/]
   prs: [everruns/everruns#3100]
 ---
 
 Chats is now core functionality. The chat API, the **Chats** sidebar entry, search, the new-chat flow and chat threads work in every organization without a setting in **Settings → Features**, and the Experimental badge is gone. Voice keeps its own separate setting.
+
+![All chats list with the pinned Weekend support rota chat above an unpinned one](./subchats-pinned-list@2x.png)
+
+![Pinned chat open with Unpin chat in its header and the pin shown in the sidebar](./pinned-chat-header@2x.png)
 
 Chat threads can also be pinned: use the pin button in a thread header to keep it at the top of the Chats list and the sidebar.
 

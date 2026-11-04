@@ -161,6 +161,43 @@ Each signed delivery is an event whose id is the delivery's `webhook-id`;
 `subject_template` can make one, for `per_thread`. Behind the `mcp_events`
 flag. See `knowledge/integrations/mcp-events.md`.
 
+## Manual fire
+
+`POST /v1/agents/{agent_id}/triggers/{trigger_id}/trigger` (CLI
+`everruns agents triggers trigger`, the same command over MCP) runs a trigger
+now. Without a body it runs a schedule trigger as a tick would. With an
+`event` it runs any trigger type on that event, and the event takes the
+trigger's real path: the source's own normalization (webhook request, GitHub
+event, MCP event, or a schedule `payload`), then the event pipeline above, so
+it meets the same filter, message, `per_thread` routing and delivery log.
+Owned by `crates/server/src/domains/agent_triggers/manual.rs`.
+
+Decisions:
+
+- **Recorded, not disguised.** The delivery source and `invocation.source`
+  are `manual`. The event id is fresh unless the caller names one (or a
+  webhook trigger's `event_id_template` renders one), so a test fire runs, and
+  repeating a real id tests deduplication.
+- **Source authentication is skipped, not faked.** The caller holds
+  `agent.manage`, the right that edits the trigger's message and filter. The
+  GitHub own-bot drop does not apply: the person asked for the event.
+- **Explicit over silent.** An event a GitHub trigger does not subscribe to,
+  or a field the trigger type has no use for, is refused with the reason. A
+  filter miss returns `status: filtered` with the condition it missed;
+  `duplicate` likewise. Webhook, GitHub and MCP event triggers refuse a fire
+  without an event, since they have nothing to run on.
+- **Raw or by reference.** An event is given raw, as the source sends it
+  (`payload`, plus `name` for the GitHub event or MCP event and `headers` for a
+  webhook), or by a reference the trigger type resolves. GitHub resolves
+  `{repository, pull_request}` by reading the pull request through the agent's
+  own GitHub connection (pull requests read, that repository only) and building
+  the `pull_request` event GitHub would send, with the first pull request
+  action the trigger listens to. A manual review therefore lands in the pull
+  request's own session, next to the ones real deliveries open.
+- **No stored payloads.** Delivery rows keep no event bodies (they carry
+  third-party content), so replaying a past delivery means sending its event
+  again; a reference is the short way to do that for pull requests.
+
 ## Ownership and provenance
 
 Trigger sessions are owned by the **agent's own `agent_identity` principal**, so

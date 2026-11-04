@@ -38,6 +38,14 @@ impl Default for AutomaticSessionTitlesConfig {
 pub struct AutomaticSessionTitlesCapability;
 
 impl Capability for AutomaticSessionTitlesCapability {
+    fn localizations(&self) -> Vec<everruns_core::capabilities::CapabilityLocalization> {
+        vec![everruns_core::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Автоматичні назви сесій",
+            "Автоматично називає сесії та оновлює назви, коли змінюється головна тема. Власноруч задані назви завжди мають пріоритет.",
+        )]
+    }
+
     fn id(&self) -> &str {
         AUTOMATIC_SESSION_TITLES_CAPABILITY_ID
     }

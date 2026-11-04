@@ -5,6 +5,7 @@ pub mod egress_allowlist;
 pub mod provider_accounts;
 pub mod queries;
 pub mod record;
+pub mod settings;
 pub mod types;
 pub mod web_search;
 

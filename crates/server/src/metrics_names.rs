@@ -24,6 +24,12 @@ pub const DATABASE_POOL_MAX_SIZE: &str = "everruns_database_pool_max_size";
 pub const DATABASE_POOL_IDLE: &str = "everruns_database_pool_idle";
 /// Open connections currently checked out from an sqlx pool. Label: pool.
 pub const DATABASE_POOL_IN_USE: &str = "everruns_database_pool_in_use";
+/// One system doctor check: 0 ok or not used, 1 warning, 2 problem.
+/// Labels: area, check. Every replica runs its own doctor every minute;
+/// alert on `max without(instance) (everruns_doctor_check_status) == 2`.
+pub const DOCTOR_CHECK_STATUS: &str = "everruns_doctor_check_status";
+/// The whole report, same scale as [`DOCTOR_CHECK_STATUS`].
+pub const DOCTOR_STATUS: &str = "everruns_doctor_status";
 // DB cumulative totals as gauges (not _total — these are global state, not
 // per-instance counters). These are monotonically increasing in normal
 // operation. Use delta() in PromQL for rate-like queries on gauges.

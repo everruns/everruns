@@ -82,6 +82,11 @@ valkey:
     requests: { cpu: 50m, memory: 64Mi }
 
 server:
+  # The server drains on SIGTERM: 5 s linger, up to 20 s for requests (SSE
+  # streams end with a shutdown event), up to 5 s for worker gRPC calls.
+  # SERVER_SHUTDOWN_DELAY_SECS / SERVER_SHUTDOWN_GRACE_SECS change the first
+  # two; keep this above their sum plus 5.
+  terminationGracePeriodSeconds: 45
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits: { memory: 2Gi }
@@ -97,8 +102,15 @@ worker:
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits: { memory: 2Gi }
-  # The worker finishes or hands back its work on SIGTERM.
+  # The worker hands running turns off at their next step on SIGTERM and gives
+  # other tasks WORKER_SHUTDOWN_GRACE_SECS (default 25) to finish; keep this
+  # above that.
   terminationGracePeriodSeconds: 60
+  # Voluntary disruptions (node drains, consolidation) stop at most one worker
+  # at a time.
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
   extraEnv: []
   extraEnvFrom: []
   nodeSelector: {}

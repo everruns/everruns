@@ -1,3 +1,15 @@
+import type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
+export type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
+export type {
+  ArtifactSpec,
+  CreateEvalCaseRequest,
+  CreateEvalRunRequest,
+  EvalCase,
+  EvalInputMessage,
+  Scorer,
+  SimulatedUser,
+  ToolFixture,
+} from "./eval-case-types";
 export type {
   Organization,
   UpdateOrganizationRequest,
@@ -1389,15 +1401,15 @@ export interface CreateScheduleRequest {
 
 /** Request to update a schedule */
 export interface UpdateScheduleRequest {
-  description?: string;
+  description?: string | null;
   cron_expression?: string;
   timezone?: string;
   target?: ScheduleTarget;
   enabled?: boolean;
-  max_concurrent?: number;
+  max_concurrent?: number | null;
   catch_up_missed?: boolean;
-  max_catch_up?: number;
-  retry_policy?: Record<string, unknown>;
+  max_catch_up?: number | null;
+  retry_policy?: Record<string, unknown> | null;
 }
 
 /** Schedules list response */
@@ -1464,107 +1476,12 @@ export interface Eval {
   tags: string[];
   status: "active" | "archived" | "deleted";
   case_count: number;
+  /** Counts changes to the cases (the dataset); runs record the one they ran. */
+  version?: number;
   last_run?: EvalRunSummaryView;
   created_at: string;
   updated_at: string;
 }
-
-export interface EvalRunSummaryView {
-  id: string;
-  status: EvalRunStatus;
-  summary?: RunSummary;
-  created_at: string;
-}
-
-export type EvalRunStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
-
-export interface RunSummary {
-  total: number;
-  passed: number;
-  failed: number;
-  errored: number;
-  pass_rate: number;
-  avg_score: number;
-  avg_turns: number;
-  avg_latency_ms: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-}
-
-export interface EvalCase {
-  id: string;
-  name: string;
-  description?: string;
-  target?: EvalTarget;
-  tags: string[];
-  conversation: EvalInputMessage[];
-  artifacts?: ArtifactSpec[];
-  scorers: Scorer[];
-  max_turns?: number;
-  timeout_seconds?: number;
-  position: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface EvalInputMessage {
-  content: string;
-}
-
-export interface ArtifactSpec {
-  name: string;
-  path: string;
-}
-
-export type Scorer =
-  | {
-      type: "contains";
-      text: string;
-      weight?: number;
-    }
-  | {
-      type: "not_contains";
-      text: string;
-      weight?: number;
-    }
-  | {
-      type: "regex";
-      pattern: string;
-      weight?: number;
-    }
-  | {
-      type: "tool_called";
-      tool: string;
-      min?: number;
-      weight?: number;
-    }
-  | {
-      type: "tool_not_called";
-      tool: string;
-      weight?: number;
-    }
-  | {
-      type: "tool_call_count";
-      min?: number;
-      max?: number;
-      weight?: number;
-    }
-  | {
-      type: "turns_within";
-      max: number;
-      weight?: number;
-    }
-  | {
-      type: "file_contains";
-      path: string;
-      text: string;
-      weight?: number;
-    }
-  | {
-      type: "json_schema";
-      schema: object;
-      weight?: number;
-    };
 
 // Provenance for an externally-executed (imported) run. Open-vocab; the
 // producing system (e.g. Mira) fills what it has.
@@ -1585,6 +1502,9 @@ export interface EvalRun {
   target?: EvalTarget;
   model_override?: string;
   filter_tags?: string[];
+  /** The experiment this run is a variant of. */
+  experiment_id?: string | null;
+  variant_label?: string | null;
   status: EvalRunStatus;
   triggered_by: string;
   started_at?: string;
@@ -1707,132 +1627,6 @@ export interface UpdateEvalRequest {
   target?: EvalTarget;
   model_override?: string;
   tags?: string[];
-}
-
-export interface CreateEvalCaseRequest {
-  name: string;
-  description?: string;
-  target?: EvalTarget;
-  tags?: string[];
-  conversation: EvalInputMessage[];
-  artifacts?: ArtifactSpec[];
-  scorers: Scorer[];
-  max_turns?: number;
-  timeout_seconds?: number;
-  position?: number;
-}
-
-export interface CreateEvalRunRequest {
-  target?: EvalTarget;
-  model_override?: string;
-}
-
-// ============================================
-// Observer types (online scoring of production sessions)
-// ============================================
-// Hand-written (not generated): the backend exposes a flattened tagged union for
-// scorer configs and a snake_case tagged union for rule scorers. See the
-// `/v1/observers` API contract.
-
-export type ObserverStatus = "active" | "paused" | "archived";
-
-/** Match rules deciding which production turns an observer samples. */
-export interface ObserverMatch {
-  agent_ids?: string[];
-  harness_ids?: string[];
-  session_tags?: string[];
-}
-
-/**
- * Deterministic rule scorer variants (snake_case, discriminated by `type`).
- * Mirrors the eval Scorer union, minus `file_contains` (rejected by the server
- * for observers). `weight` defaults to 1.0 server-side.
- */
-export type ScorerRule =
-  | { type: "contains"; text: string; weight?: number }
-  | { type: "not_contains"; text: string; weight?: number }
-  | { type: "regex"; pattern: string; weight?: number }
-  | { type: "tool_called"; tool: string; min?: number; weight?: number }
-  | { type: "tool_not_called"; tool: string; weight?: number }
-  | { type: "tool_call_count"; min?: number; max?: number; weight?: number }
-  | { type: "turns_within"; max: number; weight?: number }
-  | { type: "json_schema"; schema: object; weight?: number };
-
-/** Scope a scorer evaluates against. Only `turn` is currently supported. */
-export type ObserverScorerScope = "turn" | "session" | "tool";
-
-/**
- * Per-scorer configuration. FLATTENED tagged union discriminated by `method`:
- * the method-specific fields sit alongside `key`/`scope`, not nested.
- */
-export type ObserverScorerConfig =
-  | {
-      key: string;
-      scope: ObserverScorerScope;
-      method: "rule";
-      rule: ScorerRule;
-    }
-  | {
-      key: string;
-      scope: ObserverScorerScope;
-      method: "llm_judge";
-      rubric: string;
-      model_id?: string;
-      pass_threshold: number;
-    };
-
-export interface Observer {
-  id: string;
-  name: string;
-  description?: string;
-  match: ObserverMatch;
-  sampling_rate: number;
-  scorers: ObserverScorerConfig[];
-  status: ObserverStatus;
-  created_at: string;
-  updated_at: string;
-  archived_at?: string;
-}
-
-export interface CreateObserverRequest {
-  name: string;
-  description?: string;
-  match?: ObserverMatch;
-  sampling_rate?: number;
-  scorers: ObserverScorerConfig[];
-}
-
-export interface UpdateObserverRequest {
-  name?: string;
-  description?: string;
-  match?: ObserverMatch;
-  sampling_rate?: number;
-  scorers?: ObserverScorerConfig[];
-  status?: ObserverStatus;
-}
-
-export type TraceScoreStatus = "pending" | "scoring" | "completed" | "errored" | "skipped";
-
-/** A single scored production turn produced by an observer. */
-export interface TraceScore {
-  id: string;
-  observer_id: string;
-  scorer_key: string;
-  session_id: string;
-  turn_id: string;
-  agent_id?: string;
-  harness_id?: string;
-  status: TraceScoreStatus;
-  pass?: boolean;
-  value?: number;
-  label?: string;
-  reason?: string;
-  judge_input_tokens?: number;
-  judge_output_tokens?: number;
-  judge_cost_usd?: number;
-  error_message?: string;
-  created_at: string;
-  updated_at: string;
 }
 
 // From legacy event-types.ts; retained as UI compatibility over generated OpenAPI schemas.
@@ -3010,129 +2804,7 @@ export interface UpdateInstalledPluginRequest {
 // ============================================
 // LLM Provider types
 // ============================================
-export type ProviderStatus = "active" | "disabled";
-
-/**
- * Configuration for linking from the chat UI to a provider's observability
- * dashboard ("trace"/"logs"). URL templates support the `{response_id}`,
- * `{session_id}`, `{turn_id}` and `{model}` placeholders. The backend resolves
- * driver defaults overlaid with the org's stored overrides; `enabled` gates
- * whether links are shown at all.
- */
-export interface ProviderTraceConfig {
-  enabled: boolean;
-  generation_url_template?: string;
-  session_url_template?: string;
-}
-
-/** One extra HTTP header sent with every request to a provider connection. */
-export interface ProviderRequestHeader {
-  name: string;
-  value: string;
-}
-
-/** Per-connection extra request headers and prompt-cache diagnostics opt-in (Anthropic today). */
-export interface ProviderRequestOptions {
-  headers?: ProviderRequestHeader[];
-  cache_diagnostics?: boolean;
-}
-
-export interface Provider {
-  id: string;
-  name: string;
-  provider_type: DriverId;
-  base_url?: string;
-  api_key_set: boolean;
-  status: ProviderStatus;
-  /** Whether this provider is host-managed (read-only to org admins). */
-  managed: boolean;
-  /** Most recent successful model sync from the provider's API. */
-  last_synced_at?: string;
-  /** When someone last reviewed this provider's discovered models. */
-  models_reviewed_at?: string;
-  created_at: string;
-  updated_at: string;
-  /** Resolved trace/observability link configuration (driver defaults + overrides). */
-  trace?: ProviderTraceConfig;
-  /** Extra headers and diagnostics options applied to every request to this provider. */
-  request_options?: ProviderRequestOptions;
-}
-
-export interface CreateProviderRequest {
-  name: string;
-  provider_type: DriverId;
-  base_url?: string;
-  api_key?: string;
-  /** Typed credential fields keyed by the driver's credential-schema field names. */
-  credentials?: Record<string, string>;
-  trace?: ProviderTraceConfig;
-  request_options?: ProviderRequestOptions;
-}
-
-export interface CheckCredentialsRequest {
-  provider_type: DriverId;
-  api_key?: string;
-  /** Typed credential fields keyed by the driver's credential-schema field names. */
-  credentials?: Record<string, string>;
-  base_url?: string;
-}
-
-/**
- * Outcome of probing a candidate API key against the provider. Only
- * `rejected` proves the key is bad: `unsupported` (driver has no check) and
- * `unreachable` (outage/network) must not block the user.
- */
-export type CredentialCheckResult =
-  | { status: "valid"; models: number }
-  | { status: "rejected"; message: string }
-  | { status: "unsupported" }
-  | { status: "unreachable"; message: string };
-
-export interface UpdateProviderRequest {
-  name?: string;
-  provider_type?: DriverId;
-  base_url?: string;
-  api_key?: string;
-  /** Typed credential fields keyed by the driver's credential-schema field names. */
-  credentials?: Record<string, string>;
-  status?: ProviderStatus;
-  trace?: ProviderTraceConfig;
-  request_options?: ProviderRequestOptions;
-}
-
-/** A single declared credential field (mirrors core `FormField`). */
-export interface CredentialFormField {
-  name: string;
-  label: string;
-  field_type: "password" | "text" | "url";
-  required: boolean;
-  placeholder?: string;
-  help_text?: string;
-  /** Default value the form pre-fills (e.g. an OAuth scope or AWS region). */
-  default_value?: string;
-  /** Mutually-exclusive group label; fields sharing it are one credential method. */
-  group?: string;
-}
-
-/** A driver's declared credential schema (mirrors core `CredentialFormSchema`). */
-export interface CredentialFormSchema {
-  fields: CredentialFormField[];
-  instructions_markdown: string;
-}
-
-/** Per-driver credential schema from `GET /v1/providers/config`. */
-export interface DriverCredentialInfo {
-  services?: import("./model-types").ModelService[];
-  driver: DriverId;
-  credential_schema: CredentialFormSchema;
-  supports_oauth: boolean;
-}
-
-/** Response shape of `GET /v1/providers/config`. */
-export interface ProvidersConfigResponse {
-  policies: Record<string, boolean>;
-  drivers: DriverCredentialInfo[];
-}
+export type * from "./provider-config-types";
 
 // Response from syncing models from a provider
 export type SyncModelsResponse =
@@ -3356,9 +3028,7 @@ export interface UpdateSessionRequest {
   model_id?: string | null;
 }
 
-// ============================================
 // Session Schedule types
-// ============================================
 export type ScheduleType = "oneshot" | "recurring";
 
 export interface SessionSchedule {
@@ -3379,6 +3049,8 @@ export interface SessionSchedule {
   trigger_count: number;
   created_at: string;
   updated_at: string;
+  /** Set when the schedule was deleted. The row stays on the session recording. */
+  deleted_at?: string | null;
 }
 
 export interface UpdateSessionScheduleRequest {

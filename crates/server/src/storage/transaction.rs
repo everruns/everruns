@@ -62,7 +62,7 @@ struct TxSlot {
     /// `None` once the transaction has finished.
     connection: Arc<Mutex<SlotConnection>>,
     /// Savepoints currently open on `connection` (each holds its mutex).
-    savepoints: AtomicUsize,
+    savepoints: Arc<AtomicUsize>,
     after_commit: std::sync::Mutex<Vec<BoxFuture<'static, ()>>>,
 }
 
@@ -265,10 +265,16 @@ where
     let slot = Arc::new(TxSlot {
         pool: pool_identity(&pool),
         connection: Arc::new(Mutex::new(Some(connection))),
-        savepoints: AtomicUsize::new(0),
+        savepoints: Arc::new(AtomicUsize::new(0)),
         after_commit: std::sync::Mutex::new(Vec::new()),
     });
-    let result = CURRENT.scope(slot.clone(), body).await;
+    let result = everruns_durable::schedule_transaction::scope(
+        &pool,
+        slot.connection.clone(),
+        slot.savepoints.clone(),
+        CURRENT.scope(slot.clone(), body),
+    )
+    .await;
     let connection = slot.connection.lock().await.take();
     let effects = std::mem::take(
         &mut *slot
@@ -332,6 +338,24 @@ impl TxPool {
             .try_with(Arc::clone)
             .ok()
             .filter(|slot| slot.pool == pool_identity(&self.pool))
+    }
+
+    /// Try a lock on the current request transaction, never an implicit one.
+    /// Unlike ordinary queries this must fail closed when there is no matching
+    /// scope or a savepoint holds its connection: a pool fallback would release
+    /// the lock before the operation it is supposed to protect.
+    pub(crate) async fn try_advisory_xact_lock(&self, key: &str) -> Result<bool, sqlx::Error> {
+        let slot = self.slot().ok_or_else(|| {
+            sqlx::Error::Protocol("advisory lock requires a matching request transaction".into())
+        })?;
+        let mut guard = slot.lock().await.ok_or_else(|| {
+            sqlx::Error::Protocol("advisory lock cannot bypass an open savepoint".into())
+        })?;
+        let connection = guard.as_mut().ok_or_else(closed)?;
+        sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(hashtextextended($1::text, 0))")
+            .bind(key)
+            .fetch_one(&mut **connection)
+            .await
     }
 
     /// Begin a transaction of its own on the pool, outside any command

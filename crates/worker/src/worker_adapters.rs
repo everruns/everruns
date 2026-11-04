@@ -341,6 +341,16 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         path: &str,
     ) -> Result<Vec<FileInfo>>;
 
+    /// Everything below `path` in one call; see `SessionFileSystem::list_tree`.
+    async fn list_tree(
+        &self,
+        _org_id: i64,
+        _session_id: Uuid,
+        _path: &str,
+    ) -> Result<Option<Vec<FileInfo>>> {
+        Ok(None)
+    }
+
     /// Get file stats
     async fn stat_file(
         &self,
@@ -1122,6 +1132,12 @@ impl<A: WorkerAdapters> ImageResolver for OrgAdapter<A> {
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
         self.adapters.resolve_image(self.org_id, image_id).await
     }
+
+    async fn resolve_images(&self, image_ids: &[Uuid]) -> Result<HashMap<Uuid, ResolvedImage>> {
+        self.adapters
+            .resolve_images_batch(self.org_id, image_ids)
+            .await
+    }
 }
 
 #[async_trait]
@@ -1384,6 +1400,13 @@ impl<A: WorkerAdapters> crate::core::session_files::SessionFileSystem for Sessio
         let org_id = self.require_org("list_directory")?;
         self.adapters
             .list_directory(org_id, session_id.uuid(), path)
+            .await
+    }
+
+    async fn list_tree(&self, session_id: SessionId, path: &str) -> Result<Option<Vec<FileInfo>>> {
+        let org_id = self.require_org("list_tree")?;
+        self.adapters
+            .list_tree(org_id, session_id.uuid(), path)
             .await
     }
 

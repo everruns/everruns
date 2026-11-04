@@ -29,6 +29,25 @@ use async_trait::async_trait;
 use everruns_contracts::vector_store::{VectorMatch, VectorQuery, VectorRecord, VectorStore};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use std::sync::Arc;
+
+/// Provider-reported resources, before monetary pricing. Missing receipts must
+/// never be replaced with guessed request sizes or a fabricated query count.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Usage {
+    #[serde(default, rename = "billable_logical_bytes_written")]
+    pub written_bytes: u64,
+    #[serde(default, rename = "billable_logical_bytes_queried")]
+    pub queried_bytes: u64,
+    #[serde(default, rename = "billable_logical_bytes_returned")]
+    pub returned_bytes: u64,
+}
+
+#[async_trait]
+pub trait UsageRecorder: Send + Sync {
+    async fn record(&self, source_ref: &str, usage: Usage) -> Result<()>;
+}
 
 /// Distance metric used for all namespaces. Cosine matches the in-memory
 /// backend's ranking so the two stores rank embeddings the same way.
@@ -43,6 +62,7 @@ pub struct TurbopufferVectorStore {
     /// trailing slash.
     base_url: String,
     api_key: String,
+    usage_recorder: Option<Arc<dyn UsageRecorder>>,
 }
 
 impl TurbopufferVectorStore {
@@ -57,7 +77,13 @@ impl TurbopufferVectorStore {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             api_key: api_key.into(),
+            usage_recorder: None,
         }
+    }
+
+    pub fn with_usage_recorder(mut self, recorder: Arc<dyn UsageRecorder>) -> Self {
+        self.usage_recorder = Some(recorder);
+        self
     }
 
     /// The process-wide request HTTP client, resolved per request rather than
@@ -85,7 +111,31 @@ impl TurbopufferVectorStore {
             .send()
             .await
             .with_context(|| format!("turbopuffer {op} request failed"))?;
-        ensure_success(resp, op).await?;
+        let resp = ensure_success(resp, op).await?;
+        if op == "upsert"
+            && let Some(recorder) = &self.usage_recorder
+        {
+            let response: Value = resp
+                .json()
+                .await
+                .context("turbopuffer write receipt invalid")?;
+            let usage = response
+                .get("billing")
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("turbopuffer write receipt missing"))?;
+            // Stable across worker retries of the same immutable fragment batch.
+            // Cleanup/reconciliation writes are platform overhead, not charges.
+            let mut digest = Sha256::new();
+            digest.update(namespace.as_bytes());
+            digest.update(serde_json::to_vec(&body)?);
+            let source_ref = format!("knowledge:index-write:{}", hex::encode(digest.finalize()));
+            recorder
+                .record(
+                    &source_ref,
+                    parse_receipt(usage, &["billable_logical_bytes_written"])?,
+                )
+                .await?;
+        }
         Ok(())
     }
 }
@@ -200,6 +250,27 @@ impl VectorStore for TurbopufferVectorStore {
             .json()
             .await
             .context("turbopuffer query: malformed response body")?;
+        if let Some(recorder) = &self.usage_recorder {
+            let usage = parsed
+                .billing
+                .clone()
+                .ok_or_else(|| anyhow::anyhow!("turbopuffer query receipt missing"))?;
+            // Separate actual queries are separate supplier operations, even
+            // when their text is identical. Replay of a receipt never bills twice.
+            let source_ref = format!("knowledge:index-query:{}", uuid::Uuid::now_v7());
+            recorder
+                .record(
+                    &source_ref,
+                    parse_receipt(
+                        usage,
+                        &[
+                            "billable_logical_bytes_queried",
+                            "billable_logical_bytes_returned",
+                        ],
+                    )?,
+                )
+                .await?;
+        }
 
         // Both single- and multi-query (RRF) responses surface a fused `rows`
         // array already ordered best-first. Map `$dist` to `VectorMatch.score`
@@ -263,7 +334,21 @@ struct QueryRow {
 #[derive(Debug, Deserialize)]
 struct QueryResponse {
     #[serde(default)]
+    billing: Option<Value>,
+    #[serde(default)]
     rows: Vec<QueryRow>,
+}
+
+fn parse_receipt(billing: Value, required: &[&str]) -> Result<Usage> {
+    // Providers report different fields for writes and queries. Require the
+    // operation's fields, including explicit zeroes; absent data is not free use.
+    for field in required {
+        billing
+            .get(field)
+            .and_then(Value::as_u64)
+            .context("turbopuffer billing receipt incomplete")?;
+    }
+    serde_json::from_value(billing).context("turbopuffer billing receipt invalid")
 }
 
 /// Require a 2xx status, returning a sanitized error otherwise.
@@ -299,6 +384,114 @@ mod tests {
     use super::*;
     use wiremock::matchers::{body_json, method, path};
     use wiremock::{Mock, MockServer, Request, ResponseTemplate};
+
+    #[derive(Default)]
+    struct Receipts(std::sync::Mutex<Vec<(String, Usage)>>);
+
+    #[async_trait]
+    impl UsageRecorder for Receipts {
+        async fn record(&self, source_ref: &str, usage: Usage) -> Result<()> {
+            self.0.lock().unwrap().push((source_ref.to_string(), usage));
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn managed_operations_reject_incomplete_receipts_without_recording_zero_usage() {
+        let server = MockServer::start().await;
+        let receipts = Arc::new(Receipts::default());
+        let store = TurbopufferVectorStore::new(server.uri(), "fixture-key")
+            .with_usage_recorder(receipts.clone());
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "rows":[], "billing":{}
+            })))
+            .mount(&server)
+            .await;
+        assert!(
+            store
+                .upsert(
+                    "receipt-test",
+                    vec![record("fragment", "version", vec![], "passage")]
+                )
+                .await
+                .is_err()
+        );
+        assert!(
+            store
+                .query(
+                    "receipt-test",
+                    VectorQuery {
+                        vector: None,
+                        text: Some("passage".into()),
+                        top_k: 1
+                    }
+                )
+                .await
+                .is_err()
+        );
+        assert!(receipts.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn write_receipts_preserve_provider_units_and_replay_identity() {
+        let server = MockServer::start().await;
+        let receipts = Arc::new(Receipts::default());
+        let store = TurbopufferVectorStore::new(server.uri(), "fixture-key")
+            .with_usage_recorder(receipts.clone());
+        Mock::given(method("POST"))
+            .and(path("/v2/namespaces/receipt-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "billing":{"billable_logical_bytes_written":23456}
+            })))
+            .mount(&server)
+            .await;
+        let records = vec![record("fragment", "version", vec![1.0, 0.0], "passage")];
+        store.upsert("receipt-test", records.clone()).await.unwrap();
+        store.upsert("receipt-test", records).await.unwrap();
+        let receipts = receipts.0.lock().unwrap();
+        assert_eq!(receipts.len(), 2);
+        assert_eq!(
+            receipts[0].0, receipts[1].0,
+            "an immutable batch retry has one billing identity"
+        );
+        assert_eq!(
+            receipts[0].1.written_bytes, 23456,
+            "supplier units, not JSON payload size"
+        );
+    }
+
+    #[tokio::test]
+    async fn query_receipts_count_empty_results_and_keep_separate_actual_queries_distinct() {
+        let server = MockServer::start().await;
+        let receipts = Arc::new(Receipts::default());
+        let store = TurbopufferVectorStore::new(server.uri(), "fixture-key")
+            .with_usage_recorder(receipts.clone());
+        Mock::given(method("POST")).and(path("/v2/namespaces/receipt-test/query"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "rows":[],"billing":{"billable_logical_bytes_queried":1280000000u64,"billable_logical_bytes_returned":0}
+            }))).mount(&server).await;
+        for _ in 0..2 {
+            assert!(
+                store
+                    .query(
+                        "receipt-test",
+                        VectorQuery {
+                            vector: None,
+                            text: Some("same query".into()),
+                            top_k: 5
+                        }
+                    )
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        let receipts = receipts.0.lock().unwrap();
+        assert_eq!(receipts.len(), 2);
+        assert_ne!(receipts[0].0, receipts[1].0);
+        assert_eq!(receipts[0].1.queried_bytes, 1280000000);
+    }
 
     fn record(id: &str, doc: &str, vector: Vec<f32>, text: &str) -> VectorRecord {
         VectorRecord {

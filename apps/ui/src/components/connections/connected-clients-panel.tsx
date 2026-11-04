@@ -1,5 +1,9 @@
 "use client";
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
+
 // External AI clients (Claude, ChatGPT, Cursor, ...) the viewer approved to act
 // as them on /mcp, with Revoke. The other direction, servers Everruns agents
 // call as the viewer, is My MCP servers above it
@@ -45,7 +49,15 @@ function ClientInitial({ name }: { name: string }) {
 }
 
 export function ConnectedClientsPanel() {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const clients = useConnectedClients();
+  useChatPageRows(
+    "Connected AI clients",
+    (clients.data ?? []).map((c) => ({ id: c.id, name: c.client_name, created_at: c.created_at })),
+    { loading: clients.isLoading, error: !!clients.error },
+  );
+
   const revoke = useRevokeConnectedClient();
   const [pending, setPending] = useState<ConnectedClient | null>(null);
 
@@ -67,10 +79,11 @@ export function ConnectedClientsPanel() {
   return (
     <section id="connected-ai-clients" className="scroll-mt-6">
       <div className="mb-4">
-        <h2 className="text-xl font-semibold">Connected AI clients</h2>
+        <h2 className="text-xl font-semibold">{ui("Connected AI clients")}</h2>
         <p className="text-sm text-muted-foreground">
-          Apps like Claude, ChatGPT and Cursor that you approved to use Everruns MCP as you, in
-          every organization you belong to.
+          {ui(
+            "Apps like Claude, ChatGPT and Cursor that you approved to use Everruns MCP as you, in every organization you belong to.",
+          )}
         </p>
         <Button
           className="mt-3"
@@ -79,7 +92,7 @@ export function ConnectedClientsPanel() {
           disabled={clients.isFetching}
           onClick={() => void clients.refetch()}
         >
-          <RefreshCw className="size-4" /> Refresh connections
+          <RefreshCw className="size-4" /> {ui("Refresh connections")}
         </Button>
       </div>
       <QueryStateWrapper
@@ -91,8 +104,10 @@ export function ConnectedClientsPanel() {
         emptyState={
           <EmptyState
             icon={<Plug />}
-            title="No connected AI clients"
-            description="When you approve an AI client to use Everruns MCP, it appears here and you can disconnect it."
+            title={ui("No connected AI clients")}
+            description={ui(
+              "When you approve an AI client to use Everruns MCP, it appears here and you can disconnect it.",
+            )}
           />
         }
       >
@@ -101,12 +116,12 @@ export function ConnectedClientsPanel() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Redirects to</TableHead>
-                  <TableHead>Approved</TableHead>
-                  <TableHead>Last used</TableHead>
-                  <TableHead>Access</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{ui("Client")}</TableHead>
+                  <TableHead>{ui("Redirects to")}</TableHead>
+                  <TableHead>{ui("Approved")}</TableHead>
+                  <TableHead>{ui("Last used")}</TableHead>
+                  <TableHead>{ui("Access")}</TableHead>
+                  <TableHead className="text-right">{ui("Actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -121,23 +136,25 @@ export function ConnectedClientsPanel() {
                     <TableCell className="font-mono text-xs">
                       {client.redirect_hosts.length > 0 ? client.redirect_hosts.join(", ") : "—"}
                     </TableCell>
-                    <TableCell>{formatShortDate(client.created_at)}</TableCell>
+                    <TableCell>{formatShortDate(client.created_at, displayLocale)}</TableCell>
                     <TableCell>
-                      {client.last_used_at ? formatRelativeTime(client.last_used_at) : "Never"}
+                      {client.last_used_at
+                        ? formatRelativeTime(client.last_used_at, displayLocale)
+                        : ui("Never")}
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         <Badge variant="outline">
-                          {client.access === "read_only" ? "Read only" : "Read and run"}
+                          {client.access === "read_only" ? ui("Read only") : ui("Read and run")}
                         </Badge>
                         {client.all_organizations && (
-                          <Badge variant="outline">All organizations</Badge>
+                          <Badge variant="outline">{ui("All organizations")}</Badge>
                         )}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="outline" size="sm" onClick={() => askToRevoke(client)}>
-                        Revoke
+                        {ui("Revoke")}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -153,25 +170,29 @@ export function ConnectedClientsPanel() {
           if (!open) setPending(null);
         }}
       >
-        <DialogContent>
+        <DialogContent chatProtected="Revoke client access">
           <DialogHeader>
-            <DialogTitle>Disconnect {pending?.client_name}?</DialogTitle>
+            <DialogTitle>
+              {ui("Disconnect")} {pending?.client_name}?
+            </DialogTitle>
             <DialogDescription>
-              <span className="font-medium">{pending?.client_name}</span> will lose access to
-              Everruns within a minute. To use it again, you will need to approve it again.
+              <span className="font-medium">{pending?.client_name}</span>{" "}
+              {ui(
+                "will lose access to Everruns within a minute. To use it again, you will need to approve it again.",
+              )}
             </DialogDescription>
           </DialogHeader>
           {revoke.error && (
             <p className="text-sm text-destructive">
-              The client could not be disconnected: {revoke.error.message}
+              {ui("The client could not be disconnected:")} {revoke.error.message}
             </p>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setPending(null)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button variant="destructive" onClick={confirmRevoke} disabled={revoke.isPending}>
-              {revoke.isPending ? "Revoking…" : "Revoke"}
+              {revoke.isPending ? ui("Revoking…") : ui("Revoke")}
             </Button>
           </DialogFooter>
         </DialogContent>

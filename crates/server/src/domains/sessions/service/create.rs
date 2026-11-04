@@ -468,12 +468,22 @@ impl SessionService {
         } else {
             Vec::new()
         };
-        let session_capabilities =
+        let mut session_capabilities =
             crate::domains::sandbox_templates::resolution::apply_sandbox_to_capabilities(
                 &req.capabilities,
                 &merge_capabilities(&effective_harness.capabilities, &agent_capabilities),
                 resolved_sandbox.as_ref().map(|sandbox| &sandbox.spec),
             );
+        // Decision: an agent handed work in a run can talk to the others in it
+        // (knowledge/runtime-resources/agents-using-agents.md, Run
+        // conversation). The host attaches the conversation to the session,
+        // not the agent: the same agent on its own has no run to talk in.
+        if req.parent_session_id.is_some() {
+            attach_run_conversation(
+                &mut session_capabilities,
+                &[&effective_harness.capabilities, &agent_capabilities],
+            );
+        }
 
         // EVE-AARDVARK: authorize high-risk session capability assignment
         // before full config validation so unauthorized callers cannot force
@@ -878,5 +888,21 @@ impl SessionService {
 
         crate::domains::models::catalog::require_chat(model.provider_metadata.as_ref())?;
         Ok(Some(model_id))
+    }
+}
+
+/// Add the run conversation to a session started under another one, unless
+/// its harness or agent already has it.
+fn attach_run_conversation(
+    session_capabilities: &mut Vec<AgentCapabilityConfig>,
+    inherited: &[&[AgentCapabilityConfig]],
+) {
+    use everruns_capabilities::capabilities::run_conversation::RUN_CONVERSATION_CAPABILITY_ID;
+    let present = session_capabilities
+        .iter()
+        .chain(inherited.iter().flat_map(|caps| caps.iter()))
+        .any(|capability| capability.id() == RUN_CONVERSATION_CAPABILITY_ID);
+    if !present {
+        session_capabilities.push(AgentCapabilityConfig::new(RUN_CONVERSATION_CAPABILITY_ID));
     }
 }

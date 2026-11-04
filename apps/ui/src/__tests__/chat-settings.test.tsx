@@ -1,4 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
+import type { ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
 import ChatSettingsPage from "@/app/(main)/settings/chat/page";
 
 let mockOrganization = {
@@ -42,10 +45,12 @@ jest.mock("@/components/models/model-picker", () => ({
       <option value="">Use agents and sessions default</option>
       <option value="model-chat">Current Chat</option>
       <option value="model-other">Another eligible model</option>
+      <option value="model-concurrent">Concurrent model</option>
     </select>
   ),
 }));
 beforeEach(() => {
+  global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
   mockOrganization = { id: "org-1", chat_model_id: "model-chat", default_model_id: "model-agent" };
   mockCanManage = true;
   mockMutate.mockReset().mockImplementation(async (patch) => ({ ...mockOrganization, ...patch }));
@@ -87,4 +92,53 @@ test("a rejected choice remains unsaved and shows the API error", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("available provider"));
   expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+});
+
+let adapter: PageDraftAdapter;
+const mode: ChatModeState = {
+  page: { route: "/settings/chat", label: "Chat settings" },
+  pageContainer: { current: null },
+  open: true,
+  setOpen: () => {},
+  actions: [],
+  recordAction: () => {},
+  registerPage: (_, value) => {
+    adapter = value!;
+    return () => {};
+  },
+};
+test("stages Chat model edits in the live form and saves only after review", async () => {
+  render(
+    <PageChatProvider value={mode}>
+      <ChatSettingsPage />
+    </PageChatProvider>,
+  );
+  const before = adapter.read(adapter.describe().binding);
+  act(() => {
+    adapter.patch(before.binding, before.revision, { chat_model_id: "model-other" });
+  });
+  expect(screen.getByLabelText("Chat model")).toHaveValue("model-other");
+  expect(mockMutate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() => expect(mockMutate).toHaveBeenCalledWith({ chat_model_id: "model-other" }));
+  expect(mockOrganization.default_model_id).toBe("model-agent");
+});
+test("retains a dirty Chat model and blocks a stale Save until Discard", () => {
+  const { rerender } = render(
+    <PageChatProvider value={mode}>
+      <ChatSettingsPage />
+    </PageChatProvider>,
+  );
+  fireEvent.change(screen.getByLabelText("Chat model"), { target: { value: "model-other" } });
+  mockOrganization = { ...mockOrganization, chat_model_id: "model-concurrent" };
+  rerender(
+    <PageChatProvider value={mode}>
+      <ChatSettingsPage />
+    </PageChatProvider>,
+  );
+  expect(screen.getByLabelText("Chat model")).toHaveValue("model-other");
+  expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+  expect(screen.getByLabelText("Chat model")).toHaveValue("model-concurrent");
+  expect(mockMutate).not.toHaveBeenCalled();
 });

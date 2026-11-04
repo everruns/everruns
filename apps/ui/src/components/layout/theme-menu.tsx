@@ -6,6 +6,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Monitor, Moon, Sun } from "lucide-react";
 import {
   DropdownMenuRadioGroup,
@@ -18,6 +19,7 @@ import { useTheme } from "@/providers/theme-provider";
 import { parseThemeMode } from "@/lib/theme";
 
 export function ThemeMenuSub() {
+  const ui = useUiTranslations();
   const { mode, theme, setMode } = useTheme();
   const TriggerIcon = theme === "dark" ? Moon : Sun;
 
@@ -25,7 +27,7 @@ export function ThemeMenuSub() {
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
         <TriggerIcon className="icon-sharp mr-2 h-4 w-4" />
-        Theme
+        {ui("Theme")}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-40">
         <DropdownMenuRadioGroup
@@ -34,15 +36,15 @@ export function ThemeMenuSub() {
         >
           <DropdownMenuRadioItem value="light">
             <Sun className="icon-sharp h-4 w-4" />
-            Light
+            {ui("Light")}
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="dark">
             <Moon className="icon-sharp h-4 w-4" />
-            Dark
+            {ui("Dark")}
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="system">
             <Monitor className="icon-sharp h-4 w-4" />
-            System
+            {ui("System")}
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
       </DropdownMenuSubContent>

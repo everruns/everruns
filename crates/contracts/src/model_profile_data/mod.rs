@@ -9,12 +9,16 @@
 //! assert_eq!(profile.family, "claude-sonnet-5");
 //! ```
 
+mod decision_models;
+pub use decision_models::openrouter_decision_model_id;
+
 pub mod profiles;
 mod types;
 
 pub use profiles::{
-    ModelProfileEntry, all_profile_entries, all_profiles, cache_write_1h_surcharge_usd,
-    estimate_cost_usd, estimate_cost_usd_for_speed, get_model_profile, get_model_profile_by_key,
+    CostBreakdown, ModelProfileEntry, all_profile_entries, all_profiles,
+    cache_write_1h_surcharge_usd, estimate_cost_breakdown_usd, estimate_cost_usd,
+    estimate_cost_usd_for_speed, get_model_profile, get_model_profile_by_key,
     get_model_profile_key, get_model_service_kind, get_model_vendor, profile_entries_for_provider,
     profiles_for_provider, selected_profiles, selected_profiles_for_provider,
 };

@@ -11,6 +11,14 @@ use serde_json::{Value, json};
 pub struct KnowledgeCapability;
 #[async_trait]
 impl Capability for KnowledgeCapability {
+    fn localizations(&self) -> Vec<everruns_core::capabilities::CapabilityLocalization> {
+        vec![everruns_core::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Знання",
+            "Читання та пошук у підключених колекціях знань, зокрема у вихідних файлах, метаданих і витягнутих документах.",
+        )]
+    }
+
     fn id(&self) -> &str {
         "knowledge"
     }

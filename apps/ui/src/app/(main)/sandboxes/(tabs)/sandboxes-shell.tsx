@@ -6,6 +6,7 @@
 // (`/sandboxes`, `/sandboxes/templates`, `/sandboxes/accounts`); the shell is
 // the tabs' layout and each tab's page renders its content.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Box, KeyRound, Layers, Plus } from "lucide-react";
@@ -30,6 +31,7 @@ const DESCRIPTIONS: Record<Tab, string> = {
 };
 
 export function SandboxesShell({ children }: { children: ReactNode }) {
+  const ui = useUiTranslations();
   const tab = tabFromPath(usePathname(), "/sandboxes", TABS, "sandboxes");
   const { hasRole } = useOrg();
   // Provider accounts hold organization credentials; only admins manage them.
@@ -42,14 +44,14 @@ export function SandboxesShell({ children }: { children: ReactNode }) {
     {
       value: "sandboxes",
       href: tabPath("sandboxes"),
-      label: "Sandboxes",
+      label: ui("Sandboxes"),
       icon: <Box className="icon-sharp size-3.5" />,
       count: live,
     },
     {
       value: "templates",
       href: tabPath("templates"),
-      label: "Templates",
+      label: ui("Templates"),
       icon: <Layers className="icon-sharp size-3.5" />,
       count: templates.data?.length,
     },
@@ -58,7 +60,7 @@ export function SandboxesShell({ children }: { children: ReactNode }) {
           {
             value: "accounts",
             href: tabPath("accounts"),
-            label: "Provider accounts",
+            label: ui("Provider accounts"),
             icon: <KeyRound className="icon-sharp size-3.5" />,
           },
         ]
@@ -67,20 +69,20 @@ export function SandboxesShell({ children }: { children: ReactNode }) {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Sandboxes" }]} />
+      <PageBreadcrumb items={[{ label: ui("Sandboxes") }]} />
       <PageMasthead
         icon={<SandboxIcon />}
-        title="Sandboxes"
+        title={ui("Sandboxes")}
         description={DESCRIPTIONS[tab]}
         actions={
           tab === "templates" ? (
             <LinkButton variant="accent" href="/sandboxes/templates/new">
-              <Plus className="size-4" /> New Sandbox Template
+              <Plus className="size-4" /> {ui("New Sandbox Template")}
             </LinkButton>
           ) : undefined
         }
       />
-      <SectionTabs aria-label="Sandboxes sections" value={tab} items={tabs} />
+      <SectionTabs aria-label={ui("Sandboxes sections")} value={tab} items={tabs} />
       {children}
     </PageContainer>
   );

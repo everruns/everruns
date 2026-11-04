@@ -10,6 +10,12 @@
 // and React bubbles synthetic events through portals, so the name form below
 // stops its submit event from reaching (and saving) the channel form.
 
+import {
+  useLocale as useFormattingLocale,
+  useLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { useState } from "react";
 import { KeyRound, Plus, RotateCw, ShieldOff } from "lucide-react";
 import {
@@ -56,6 +62,8 @@ export function AgentKeysCard({
   channelId: string;
   canManage: boolean;
 }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const keys = useAgentKeys(agentId, channelId);
   const createKey = useCreateAgentKey(agentId, channelId);
   const rotateKey = useRotateAgentKey(agentId, channelId);
@@ -87,7 +95,7 @@ export function AgentKeysCard({
       <CardHeader className="flex flex-row items-center justify-between gap-3">
         <CardTitle className="flex items-center gap-2">
           <KeyRound className="size-4" />
-          Agent keys
+          {ui("Agent keys")}
         </CardTitle>
         <Button
           type="button"
@@ -97,16 +105,17 @@ export function AgentKeysCard({
           onClick={() => setCreateOpen(true)}
         >
           <Plus className="size-4" />
-          Create key
+          {ui("Create key")}
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Your code sends a key as <code>Authorization: Bearer evr_ak_…</code>. A key reaches only
-          this agent&apos;s session routes, never the management API, and sees only the sessions it
-          started.
+          {ui("Your code sends a key as")} <code>Authorization: Bearer evr_ak_…</code>
+          {ui(
+            ". A key reaches only this agent's session routes, never the management API, and sees only the sessions it started.",
+          )}
         </p>
-        {keys.isLoading && <p className="text-sm text-muted-foreground">Loading keys...</p>}
+        {keys.isLoading && <p className="text-sm text-muted-foreground">{ui("Loading keys...")}</p>}
         {keys.error && (
           <Notice variant="destructive">
             <NoticeDescription>{keys.error.message}</NoticeDescription>
@@ -114,11 +123,11 @@ export function AgentKeysCard({
         )}
         {keys.data && keys.data.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            No keys yet. Create one for each application that calls this agent.
+            {ui("No keys yet. Create one for each application that calls this agent.")}
           </p>
         )}
         {keys.data && keys.data.length > 0 && (
-          <ul className="divide-y border" aria-label="Agent keys">
+          <ul className="divide-y border" aria-label={ui("Agent keys")}>
             {keys.data.map((key) => {
               const state = keyState(key, now);
               const overlapActive =
@@ -135,10 +144,16 @@ export function AgentKeysCard({
                     <p className="mt-1 font-mono text-xs text-muted-foreground">{key.prefix}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {key.last_used_at
-                        ? `Last used ${formatRelativeTime(key.last_used_at)}`
-                        : "Never used"}
+                        ? ui("Last used {value0}", {
+                            value0: formatRelativeTime(key.last_used_at, displayLocale),
+                          })
+                        : ui("Never used")}
                       {overlapActive && key.previous_valid_until
-                        ? ` · previous secret works until ${new Date(key.previous_valid_until).toLocaleString()}`
+                        ? ui(" · previous secret works until {value0}", {
+                            value0: new Date(key.previous_valid_until).toLocaleString(
+                              displayLocale,
+                            ),
+                          })
                         : ""}
                     </p>
                   </div>
@@ -152,7 +167,7 @@ export function AgentKeysCard({
                         onClick={() => setPending({ action: "rotate", key })}
                       >
                         <RotateCw className="size-4" />
-                        Rotate
+                        {ui("Rotate")}
                       </Button>
                       <Button
                         type="button"
@@ -162,7 +177,7 @@ export function AgentKeysCard({
                         onClick={() => setPending({ action: "revoke", key })}
                       >
                         <ShieldOff className="size-4" />
-                        Revoke
+                        {ui("Revoke")}
                       </Button>
                     </div>
                   )}
@@ -193,18 +208,20 @@ export function AgentKeysCard({
             className="space-y-4"
           >
             <DialogHeader>
-              <DialogTitle>Create agent key</DialogTitle>
+              <DialogTitle>{ui("Create agent key")}</DialogTitle>
               <DialogDescription>
-                Name it after the application that will hold it, so you know which key to revoke.
+                {ui(
+                  "Name it after the application that will hold it, so you know which key to revoke.",
+                )}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2">
-              <Label htmlFor="agent_key_name">Name</Label>
+              <Label htmlFor="agent_key_name">{ui("Name")}</Label>
               <Input
                 id="agent_key_name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="Support backend"
+                placeholder={ui("Support backend")}
                 autoFocus
               />
             </div>
@@ -215,10 +232,10 @@ export function AgentKeysCard({
             )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={closeCreate}>
-                Cancel
+                {ui("Cancel")}
               </Button>
               <Button type="submit" disabled={!name.trim() || createKey.isPending}>
-                {createKey.isPending ? "Creating..." : "Create key"}
+                {createKey.isPending ? ui("Creating...") : ui("Create key")}
               </Button>
             </DialogFooter>
           </form>
@@ -230,14 +247,17 @@ export function AgentKeysCard({
           {pending?.action === "rotate" && (
             <>
               <DialogHeader>
-                <DialogTitle>Rotate {pending.key.name}</DialogTitle>
+                <DialogTitle>
+                  {ui("Rotate")} {pending.key.name}
+                </DialogTitle>
                 <DialogDescription>
-                  You get a new secret for the same key. The current secret keeps working for the
-                  overlap, so you can deploy the new one first.
+                  {ui(
+                    "You get a new secret for the same key. The current secret keeps working for the overlap, so you can deploy the new one first.",
+                  )}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-2">
-                <Label htmlFor="agent_key_overlap">Overlap (hours)</Label>
+                <Label htmlFor="agent_key_overlap">{ui("Overlap (hours)")}</Label>
                 <Input
                   id="agent_key_overlap"
                   value={overlapHours}
@@ -246,7 +266,8 @@ export function AgentKeysCard({
                   aria-invalid={!overlapValid}
                 />
                 <p className="text-xs text-muted-foreground">
-                  0 to {MAX_OVERLAP_HOURS}. Use 0 when the current secret has leaked.
+                  {ui("0 to")} {MAX_OVERLAP_HOURS}
+                  {ui(". Use 0 when the current secret has leaked.")}
                 </p>
               </div>
               {rotateKey.error && (
@@ -256,7 +277,7 @@ export function AgentKeysCard({
               )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={closePending}>
-                  Cancel
+                  {ui("Cancel")}
                 </Button>
                 <Button
                   type="button"
@@ -273,7 +294,7 @@ export function AgentKeysCard({
                     )
                   }
                 >
-                  {rotateKey.isPending ? "Rotating..." : "Rotate key"}
+                  {rotateKey.isPending ? ui("Rotating...") : ui("Rotate key")}
                 </Button>
               </DialogFooter>
             </>
@@ -281,10 +302,13 @@ export function AgentKeysCard({
           {pending?.action === "revoke" && (
             <>
               <DialogHeader>
-                <DialogTitle>Revoke {pending.key.name}</DialogTitle>
+                <DialogTitle>
+                  {ui("Revoke")} {pending.key.name}
+                </DialogTitle>
                 <DialogDescription>
-                  Both its current and previous secrets stop working at once. A revoked key cannot
-                  be restored.
+                  {ui(
+                    "Both its current and previous secrets stop working at once. A revoked key cannot be restored.",
+                  )}
                 </DialogDescription>
               </DialogHeader>
               {revokeKey.error && (
@@ -294,7 +318,7 @@ export function AgentKeysCard({
               )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={closePending}>
-                  Cancel
+                  {ui("Cancel")}
                 </Button>
                 <Button
                   type="button"
@@ -302,7 +326,7 @@ export function AgentKeysCard({
                   disabled={revokeKey.isPending}
                   onClick={() => revokeKey.mutate(pending.key.id, { onSuccess: closePending })}
                 >
-                  {revokeKey.isPending ? "Revoking..." : "Revoke key"}
+                  {revokeKey.isPending ? ui("Revoking...") : ui("Revoke key")}
                 </Button>
               </DialogFooter>
             </>
@@ -313,9 +337,11 @@ export function AgentKeysCard({
       <Dialog open={revealed !== null} onOpenChange={(open) => !open && setRevealed(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Copy the secret for {revealed?.name}</DialogTitle>
+            <DialogTitle>
+              {ui("Copy the secret for")} {revealed?.name}
+            </DialogTitle>
             <DialogDescription>
-              This is the only time it is shown. Store it in your application&apos;s secrets now.
+              {ui("This is the only time it is shown. Store it in your application's secrets now.")}
             </DialogDescription>
           </DialogHeader>
           {revealed && (
@@ -323,12 +349,12 @@ export function AgentKeysCard({
               <code className="min-w-0 flex-1 break-all text-sm" data-testid="agent-key-secret">
                 {revealed.secret}
               </code>
-              <CopyButton value={revealed.secret} label="Copy secret" />
+              <CopyButton value={revealed.secret} label={ui("Copy secret")} />
             </div>
           )}
           <DialogFooter>
             <Button type="button" onClick={() => setRevealed(null)}>
-              I stored it
+              {ui("I stored it")}
             </Button>
           </DialogFooter>
         </DialogContent>

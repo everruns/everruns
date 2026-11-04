@@ -147,6 +147,26 @@ pub async fn connect(url: &str) -> Result<Client> {
     .await
 }
 
+/// Connect once, without retries, and round-trip a flush; for the system
+/// doctor, which reports a failure instead of waiting it out.
+pub async fn probe(url: &str) -> Result<()> {
+    let (addrs, credentials) = parse_nats_url(url)?;
+    if addrs.is_empty() {
+        anyhow::bail!("NATS URL is empty");
+    }
+    let mut options = ConnectOptions::new();
+    if let Some((user, pass)) = credentials {
+        options = options.user_and_password(user, pass);
+    }
+    let client = options
+        .connect(addrs)
+        .await
+        .context("NATS connection failed")?;
+    client.flush().await.context("NATS round trip failed")?;
+    client.drain().await.ok();
+    Ok(())
+}
+
 /// Run `attempt` once, then again after each `backoff` delay while it fails.
 /// Returns the first success or the last error.
 async fn retry_initial_connect<T, F, Fut>(

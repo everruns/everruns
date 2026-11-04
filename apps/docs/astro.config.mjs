@@ -10,6 +10,7 @@ import remarkStripRustHiddenLines from "./plugins/remark-strip-rust-hidden-lines
 import remarkMermaidDiagrams from "./plugins/remark-mermaid-diagrams.mjs";
 import rehypeBaseLinks from "./plugins/rehype-base-links.ts";
 import { BASE, SITE, withBase } from "./site.config.mjs";
+import { GALLERY_ROOT, LEGACY_GALLERY_ROOT, galleryCategories } from "./generative-ui-catalog.mjs";
 import perPageMarkdown from "./integrations/per-page-markdown.mjs";
 import sitemapEnhance from "./integrations/sitemap-enhance.mjs";
 import changelogMedia from "./integrations/changelog-media.mjs";
@@ -60,6 +61,7 @@ export default defineConfig({
   },
   // Astro adds the base to redirect sources but not to their destinations.
   redirects: Object.fromEntries(Object.entries({
+    [`${LEGACY_GALLERY_ROOT}/`]: `${GALLERY_ROOT}/`,
     // virtual_bash capability renamed to bashkit_shell
     "/capabilities/virtual-bash/": "/capabilities/bashkit-shell/",
     // generic-tool-search page renamed to tool-search
@@ -260,6 +262,7 @@ export default defineConfig({
         ],
       },
       components: {
+        Head: "./src/components/Head.astro",
         Header: "./src/components/Header.astro",
         Search: "./src/components/Search.astro",
         Footer: "./src/components/Footer.astro",
@@ -298,7 +301,7 @@ export default defineConfig({
                     { label: "Self-hosted: on your machine", slug: "getting-started/run-locally" },
                     { label: "Self-hosted: Docker Compose", slug: "getting-started/docker-compose" },
                     { label: "Self-hosted: Kubernetes", slug: "getting-started/kubernetes" },
-                    { label: "Everruns Cloud", slug: "getting-started/cloud" },
+                    { label: "Everruns Demo", slug: "getting-started/cloud" },
                     { label: "Concepts", slug: "getting-started/concepts" },
                     { label: "Use in AI Tools", slug: "getting-started/use-in-ai-tools" },
                   ],
@@ -334,6 +337,7 @@ export default defineConfig({
                     { label: "Agent Format Reference", slug: "reference/agent-package" },
                     { label: "Models and Providers", slug: "framework/models-and-providers" },
                     { label: "Direct Calls and Decisions", slug: "framework/direct-model-calls" },
+                    { label: "Batch Model Requests", slug: "framework/batch-model-requests" },
                     { label: "Sessions", slug: "framework/sessions" },
                     { label: "Events and Cancellation", slug: "framework/events-and-cancellation" },
                     { label: "Observability", slug: "framework/observability" },
@@ -381,6 +385,7 @@ export default defineConfig({
                   items: [
                     { label: "Overview", slug: "framework/examples" },
                     { label: "Support Agent", slug: "framework/examples/support-agent" },
+                    { label: "Custom Data Agent Worker", slug: "framework/examples/custom-data-agent" },
                     { label: "Everruns Support Agent", slug: "framework/examples/everruns-support-agent" },
                     { label: "Coding Review Agent", slug: "framework/examples/coding-review-agent" },
                     { label: "Research Agent", slug: "framework/examples/research-agent" },
@@ -388,6 +393,7 @@ export default defineConfig({
                     { label: "Bashkit Repo Agent", slug: "framework/examples/bashkit-repo-agent" },
                     { label: "Host Shell Agent", slug: "framework/examples/host-shell-agent" },
                     { label: "Foreman", slug: "framework/examples/foreman-agent" },
+                    { label: "Durable Chat on Cloudflare", slug: "framework/examples/durable-chat" },
                   ],
                 },
               ],
@@ -442,6 +448,9 @@ export default defineConfig({
                   items: [
                     { label: "Environment Variables", slug: "sre/environment-variables" },
                     { label: "Admin Container", slug: "sre/admin-container" },
+                    { label: "System Doctor", slug: "sre/system-doctor" },
+                    { label: "Custom Agent Workers", slug: "how-to/custom-agent-workers" },
+                    { label: "Cloudflare Agent", slug: "how-to/cloudflare-agent" },
                     { label: "Request Signing", slug: "sre/request-signing" },
                     {
                       label: "Runbooks",
@@ -457,8 +466,29 @@ export default defineConfig({
               icon: "information",
               id: "reference",
               items: [
+                {
+                  label: "Generative UI",
+                  collapsed: true,
+                  items: [
+                    { label: "Overview", slug: GALLERY_ROOT.slice(1) },
+                    ...galleryCategories.map(({ group, slug }) => ({ label: group, slug: `${GALLERY_ROOT.slice(1)}/${slug}` })),
+                  ],
+                },
                 { label: "Event Reference", slug: "event-reference" },
                 { label: "ID Schema", slug: "advanced/id-schema" },
+                {
+                  // Slate, the UI design system: knowledge/ui/design-system.md.
+                  label: "Design System",
+                  collapsed: true,
+                  items: [
+                    { label: "Overview", slug: "design-system" },
+                    { label: "Foundations", slug: "design-system/foundations" },
+                    { label: "Components", slug: "design-system/components" },
+                    { label: "Page Layouts", slug: "design-system/layouts" },
+                    { label: "Icons and Brand", slug: "design-system/icons" },
+                    { label: "Writing", slug: "design-system/writing" },
+                  ],
+                },
                 {
                   // Generated from the everruns binary; see crates/cli/src/reference.rs.
                   label: "CLI Commands",
@@ -579,6 +609,7 @@ export default defineConfig({
                         { label: "Self-Budget", slug: "capabilities/self-budget" },
                         { label: "Parallel Tool Calls", slug: "capabilities/parallel-tool-calls" },
                         { label: "Prompt Caching", slug: "capabilities/prompt-caching" },
+                        { label: "Claude Message Threads", slug: "capabilities/claude-message-threads" },
                       ],
                     },
                     {
@@ -617,6 +648,10 @@ export default defineConfig({
                   items: [
                     { label: "Overview", slug: "integrations" },
                     { label: "Messaging", items: [{ label: "Slack", slug: "integrations/slack" }] },
+                    {
+                      label: "Agent protocols",
+                      items: [{ label: "AG-UI", slug: "integrations/ag-ui" }],
+                    },
                     {
                       label: "Sandboxes & execution",
                       items: [
@@ -732,7 +767,7 @@ export default defineConfig({
             "",
             `- **Framework**: embed Everruns in a Rust application with the \`everruns\` crate. You own the process, deployment, integrations, and data path. Start at <${SITE}${BASE}/framework/quickstart/>.`,
             `- **Self-hosted platform**: run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution. Start at <${SITE}${BASE}/getting-started/run-locally/> on your machine (\`everruns docker up\`), <${SITE}${BASE}/getting-started/docker-compose/> on a server, or <${SITE}${BASE}/getting-started/kubernetes/> with the Helm chart.`,
-            `- **Everruns Cloud**: use the shared runtime and production operations without operating the platform yourself, with a built-in model provider and starter credit. Start at <${SITE}${BASE}/getting-started/cloud/>.`,
+            `- **Everruns Demo**: explore the hosted open-source platform with available promotional credit for built-in models or your own provider keys. Credit purchases and top-ups are unavailable. Start at <${SITE}${BASE}/getting-started/cloud/>.`,
             "",
             "The documentation sets below are organised the same way, so a reader with a narrow question can take one set instead of the complete text. Every page in them carries a `Source:` line with its canonical URL; cite that rather than the text file.",
             "",
@@ -799,8 +834,14 @@ export default defineConfig({
             {
               label: "Reference",
               description:
-                "the event protocol and every CLI command with its flags; REST endpoints live in the OpenAPI schema",
-              paths: ["event-reference", "reference/cli/**"],
+                "interactive generative UI components, the event protocol and CLI commands; REST endpoints live in the OpenAPI schema",
+              paths: ["event-reference", "reference/cli/**", "reference/generative-ui/**"],
+            },
+            {
+              label: "Design system",
+              description:
+                "Slate, the Everruns UI design system: tokens, components, page layouts, icons, and UI writing rules",
+              paths: ["design-system/**"],
             },
             {
               label: "Operations",
@@ -874,6 +915,7 @@ export default defineConfig({
             "reference/cli/**",
             "capabilities/platform-management",
             "changelog/**",
+            "design-system/**",
           ],
         }),
         // Validate internal links and hash anchors at build time so broken

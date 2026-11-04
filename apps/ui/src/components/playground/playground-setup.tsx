@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Users, FlaskConical } from "lucide-react";
@@ -26,21 +27,25 @@ export function PlaygroundSetup() {
 }
 
 function Setup() {
+  const ui = useUiTranslations();
   const searchParams = useSearchParams();
   const { currentOrg, hasRole } = useOrg();
   const { data: me, error } = useVirtualUser("me");
   const [selected, setSelected] = useState("");
   const subject = selected || me?.id || "";
-  usePageTitle("New Playground chat", "Playground");
+  usePageTitle(ui("New Playground chat"), ui("Playground"));
   return (
     <PageContainer>
       <PageBreadcrumb
-        items={[{ label: "Playground", href: "/playground" }, { label: "New Playground chat" }]}
+        items={[
+          { label: ui("Playground"), href: "/playground" },
+          { label: ui("New Playground chat") },
+        ]}
       />
       <PageMasthead
         icon={<FlaskConical />}
-        title="New Playground chat"
-        description="Choose an agent and a virtual user to start a shared chat."
+        title={ui("New Playground chat")}
+        description={ui("Choose an agent and a virtual user to start a shared chat.")}
       />
       <PageColumns>
         <PageMain>
@@ -52,22 +57,22 @@ function Setup() {
                 initialDryRun={searchParams.get("dry_run") === "1"}
               >
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">Talk as</p>
+                  <p className="text-xs font-medium text-muted-foreground">{ui("Talk as")}</p>
                   <VirtualUserSelect
                     usage="end_user"
                     value={subject}
                     onValueChange={setSelected}
                     includeNone={false}
                     disabled={!hasRole("admin")}
-                    placeholder="Talk as virtual user"
+                    placeholder={ui("Talk as virtual user")}
                     className="w-full"
                   />
                   <p className="text-xs leading-relaxed text-muted-foreground">
-                    The agent and virtual user stay fixed for this chat.
+                    {ui("The agent and virtual user stay fixed for this chat.")}
                   </p>
                   {error && (
                     <p role="alert" className="text-xs text-destructive">
-                      Could not load your virtual user. Please reload.
+                      {ui("Could not load your virtual user. Please reload.")}
                     </p>
                   )}
                 </div>
@@ -76,19 +81,21 @@ function Setup() {
           </div>
         </PageMain>
         <PageRail>
-          <RailSection label="Sharing">
+          <RailSection label={ui("Sharing")}>
             <p className="flex items-center gap-2 text-sm font-medium">
-              <Users className="size-4" /> Shared with your organisation
+              <Users className="size-4" /> {ui("Shared with your organisation")}
             </p>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              Everyone in {currentOrg?.name ?? "your organisation"} can view the chat. Private user
-              connections and memory are unavailable in Playground.
+              {ui("Everyone in")} {currentOrg?.name ?? ui("your organisation")}{" "}
+              {ui(
+                "can view the chat. Private user connections and memory are unavailable in Playground.",
+              )}
             </p>
           </RailSection>
         </PageRail>
       </PageColumns>
       <PageFooter>
-        <BackLink href="/playground">Back to Playground</BackLink>
+        <BackLink href="/playground">{ui("Back to Playground")}</BackLink>
       </PageFooter>
     </PageContainer>
   );

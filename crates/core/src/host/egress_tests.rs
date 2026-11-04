@@ -926,3 +926,67 @@ async fn deny_feeds_refuse_open_traffic_but_not_curated_hosts() {
         PolicyDecision::OpenOrg
     );
 }
+
+fn web_bot_auth_service() -> DirectEgressService {
+    DirectEgressService::new().with_web_bot_auth(Some(Arc::new(
+        super::super::web_bot_auth::WebBotAuth::new(
+            "n4Ni-HpISpVObnQMW0wOhCKROaIKqKtW_2ZYb2p9KcU",
+            "https://app.example.com",
+        )
+        .unwrap(),
+    )))
+}
+
+fn signing_request(url: &str, signing: EgressSigning) -> EgressRequest {
+    EgressRequest::new("GET", url, EgressRequestKind::Capability).signing(signing)
+}
+
+#[test]
+fn platform_signing_adds_web_bot_auth_headers_to_https_requests() {
+    let mut request = signing_request("https://example.com/a", EgressSigning::PlatformDefault)
+        .header("Signature-Agent", "\"https://spoofed.example\"");
+    web_bot_auth_service().sign(&mut request).unwrap();
+    assert_eq!(
+        request.headers["signature-agent"],
+        "\"https://app.example.com\""
+    );
+    assert!(
+        !request.headers.contains_key("Signature-Agent"),
+        "caller-supplied Signature-Agent is replaced"
+    );
+    assert!(request.headers["signature-input"].contains("tag=\"web-bot-auth\""));
+    assert!(request.headers["signature"].starts_with("sig1=:"));
+}
+
+#[test]
+fn signing_is_skipped_when_disabled_or_the_caller_signed_itself() {
+    let service = web_bot_auth_service();
+    let mut disabled = signing_request("https://example.com/", EgressSigning::Disabled);
+    service.sign(&mut disabled).unwrap();
+    assert!(disabled.headers.is_empty());
+
+    let mut own = signing_request("https://example.com/", EgressSigning::PlatformDefault)
+        .header("Signature", "mine=:AA==:")
+        .header("Signature-Input", "mine=();created=1");
+    service.sign(&mut own).unwrap();
+    assert_eq!(own.headers["Signature"], "mine=:AA==:");
+    assert!(!own.headers.contains_key("signature-agent"));
+}
+
+#[test]
+fn unsignable_requests_go_unsigned_by_default_and_fail_when_required() {
+    let service = web_bot_auth_service();
+    let mut plain = signing_request("http://example.com/", EgressSigning::PlatformDefault);
+    service.sign(&mut plain).unwrap();
+    assert!(plain.headers.is_empty(), "plain http is never signed");
+
+    let mut required = signing_request("http://example.com/", EgressSigning::Required);
+    assert!(matches!(
+        service.sign(&mut required),
+        Err(EgressError::SigningUnavailable)
+    ));
+
+    let mut unconfigured = signing_request("https://example.com/", EgressSigning::PlatformDefault);
+    DirectEgressService::new().sign(&mut unconfigured).unwrap();
+    assert!(unconfigured.headers.is_empty());
+}

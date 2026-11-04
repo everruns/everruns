@@ -1,0 +1,7 @@
+flowchart LR
+  accTitle: Multiplayer chat inside Cloudflare Durable Objects
+  accDescr: Browsers use public room routes. A ChatRoom Durable Object stores the directory, presence, reminder outbox and its alarm. It admits work to a ChatSession Durable Object for each conversation or search child. Each session runs Everruns Engine and ObjectHosting with its own journal, execution epoch and alarm, calls OpenRouter through the shared driver and fetch, and returns application tool calls to the room. Browsers can disconnect while durable alarms continue the work.
+  Browser[Shared browsers] -->|Public room routes| Room[ChatRoom DO: directory, presence, outbox, reminders, alarm]
+  Room -->|Stable admission IDs| Session[ChatSession DO: Engine, ObjectHosting, journal, epoch, alarm; one per conversation or search child]
+  Session -->|Application tools| Room
+  Session -->|Shared driver and host fetch| Model[OpenRouter: Muse Spark 1.3 Contributor]

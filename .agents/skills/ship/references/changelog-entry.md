@@ -45,6 +45,11 @@ frontmatter from a recent entry. Leave `release:` and `cloud:` out: `/prepare-re
   request, CLI command, config or code a reader would write (a short code block that compiles),
   or a screenshot of the changed UI. A breaking change shows before and after. JSON is valid and
   pretty-printed with a two-space indent (`JSON.stringify(value, null, 2)`).
+- For Framework changes, apply the required Rust-example rule in
+  [`knowledge/docs/changelog.md`](../../../../knowledge/docs/changelog.md#entry-format).
+  Show the public API call with its imports and required feature, and compile-check
+  the snippet without running live provider calls. Keep launch commands as optional
+  extras rather than the sole example.
 - Link docs in the sentence that names them (`see [Prompt caching](/features/prompt-caching/)`),
   not as a separate list. Every `links.docs` page must be linked from the body; the check fails
   otherwise. `links.docs` must name pages that exist; `links.prs` uses `everruns/<repo>#<n>` and
@@ -68,6 +73,11 @@ Embed with `![What the screenshot shows](./<name>@2x.png)` and
 `<video src="./<name>@2x.mp4" poster="./<name>-poster@2x.png" controls muted playsinline loop></video>`.
 Every file sits in the entry folder and is referenced from `index.md`.
 
+For anything the script cannot capture (Slack or another app, a terminal, a remote screen), and
+for the gotchas behind blurry images, follow the landing repo's
+[sharp-screenshots skill](https://github.com/everruns/landing/blob/main/.claude/skills/sharp-screenshots/SKILL.md). Its `check` command
+(`scripts/sharp-screenshot.mjs`) confirms an image is 2x for the width it is shown at.
+
 ## Integration announcements
 
 An entry that adds a new integration (a vendor, protocol host or platform Everruns or Yolop now
@@ -85,6 +95,22 @@ node scripts/generate-integration-card.mjs --host everruns --partner slack --nam
 a logo slug in `apps/docs/src/assets/changelog/logos/` and repeats for up to three partners; a slug
 without a logo file renders as its `--name` in a wordmark tile. Embed it first, with alt text that
 names both sides. A UI screenshot can follow it.
+
+## Social card
+
+The build draws the entry's Open Graph card ([Social cards](../../../../knowledge/docs/changelog.md#social-cards)).
+`minor` entries get a plain card and `notable` ones generated icon art: nothing to do.
+For a `major` entry or a release, draw `social.svg` in the entry folder: one picture of the
+feature on `viewBox="0 0 520 560"`, navy `#0A1636`, gold `#D4A43A`, grays `#3A4766` /
+`#A8B0BE`, panels `#0F1D45`, Geist and Geist Mono, square corners. Show the thing (real UI
+pieces, real assets referenced by relative path, the data shape), not decoration. Preview it:
+
+```bash
+cd apps/docs && node scripts/generate-og-image.mjs && open public/og/changelog/<folder>.png
+```
+
+If the generated icons fit the entry poorly, set `icons: [hero, ...satellites]` (Facet names
+from `apps/ui/src/components/icons/facet-icon-data.ts`).
 
 ## Check
 

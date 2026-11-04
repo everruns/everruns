@@ -280,7 +280,7 @@ impl ToolsBuiltin {
         let source_matches = catalog.source_matches(&query, SEARCH_LIMIT);
         if matches.is_empty() && source_matches.is_empty() {
             return text(format!(
-                "No tools match `{query}`. Run `tools --help` to list everything.\n"
+                "No tools match `{query}`. Refine the search terms, or use `tools --help` to browse the bounded server list.\n"
             ));
         }
         let mut out = String::new();
@@ -295,11 +295,25 @@ impl ToolsBuiltin {
             out.push_str("\nRun `<line> --help` for a tool's input.\n");
         }
         if !source_matches.is_empty() {
-            out.push_str("\nServer description matches (browse these servers; these are not operation matches):\n");
+            out.push_str("\nMatching sources (refine search with an operation name):\n");
             for source in source_matches {
-                out.push_str(&format!(
-                    "  {source}  Run `tools {source} --help` to browse its operations; refine search with an operation name.\n"
-                ));
+                use everruns_contracts::runtime::tool_catalog::ToolSearchSourceKind;
+                let line = match source.kind {
+                    ToolSearchSourceKind::McpServer => {
+                        let command = source.id.replace('_', "-");
+                        format!(
+                            "  {command}  Run `tools {command} --help` to browse its operations."
+                        )
+                    }
+                    ToolSearchSourceKind::Capability => {
+                        format!(
+                            "  {} ({})  Capability; refine search with an operation name.",
+                            source.name, source.id
+                        )
+                    }
+                };
+                out.push_str(&super::catalog::bounded_line(&line));
+                out.push('\n');
             }
         }
         text(out)
@@ -546,6 +560,7 @@ fn inherit_mcp_server_search_context(
     definitions: &mut [everruns_contracts::tool_types::ToolDefinition],
 ) {
     let placeholder = pending.placeholder.to_definition();
+    let owner_hints = &pending.hints;
     let source_metadata = match &placeholder {
         everruns_contracts::tool_types::ToolDefinition::Builtin(tool) => tool
             .hints
@@ -577,6 +592,21 @@ fn inherit_mcp_server_search_context(
         let everruns_contracts::tool_types::ToolDefinition::Builtin(tool) = definition else {
             continue;
         };
+        tool.hints.capability_id = tool
+            .hints
+            .capability_id
+            .take()
+            .or_else(|| owner_hints.capability_id.clone());
+        tool.hints.capability_name = tool
+            .hints
+            .capability_name
+            .take()
+            .or_else(|| owner_hints.capability_name.clone());
+        tool.hints.capability_description = tool
+            .hints
+            .capability_description
+            .take()
+            .or_else(|| owner_hints.capability_description.clone());
         let metadata = tool.hints.metadata.get_or_insert_with(|| json!({}));
         let Some(metadata) = metadata.as_object_mut() else {
             // Preserve opaque metadata exactly; there is no safe way to add a

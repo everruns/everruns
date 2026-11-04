@@ -450,6 +450,10 @@ session per hour, counted from the schedules it created) so a provider that
 keeps refusing cannot turn it into a loop. Hooks run on every terminal error,
 transient ones included: a transient error reaching the atom has already spent
 its in-call retries.
+The hook identifies a newly created retry separately from user-facing error
+fields. The engine records its link to the failed input even under generic
+error disclosure. [Runtime identity](../runtime-resources/virtual-users.md#request-session-and-execution-contracts)
+owns the continuation authorization boundary; prompt text is not that boundary.
 
 ##### System Prompt Methods
 
@@ -554,6 +558,10 @@ Display strings are localized through additive overlays, keeping
   the generic editor stays capability-agnostic. Server-side
   `validate_config` errors remain canonical English; clients localize their
   own pre-submit validation messages.
+- The server enriches built-in display metadata with its maintained resource
+  catalogs before returning API DTOs. Existing capability-supplied translations
+  win; tenant MCP, skill and declarative resource metadata stays authored.
+  The larger display catalog is separate from portable Engine activity wording.
 - Localization affects display only. Prompt building and LLM-facing
   descriptions always use the canonical English strings.
 
@@ -650,7 +658,7 @@ Capabilities declare UI features they contribute to via `features()`. Features a
 2. **Aggregation**: `compute_features()` resolves dependencies and collects features from all resolved capabilities
 3. **Deduplication**: Features are deduplicated, multiple capabilities contributing the same feature produce one entry
 4. **Session DTO**: The `Session.features` field is computed at read time (not stored in the database)
-5. **UI Rendering**: The UI conditionally renders tabs based on the feature set (e.g., Workspace tab only appears when `"file_system"` is present)
+5. **UI Rendering**: The UI conditionally renders tabs based on the feature set. The Files tab appears for `file_system`, `managed_sandbox`, `key_value`, `secrets`, or `schedules` (and when the session already has files). It lists the filesystem, key values, and schedules, including schedules that were deleted. The Work tab appears for `leased_resources` or `schedules`, and also when the session still has tasks or an active schedule.
 
 #### Built-in Feature Mapping
 
@@ -673,11 +681,11 @@ MCP and Skill virtual capabilities currently declare no features.
 
 | Feature | UI Element | Description |
 |---------|------------|-------------|
-| `file_system` | Workspace tab | Session has file system access |
-| `secrets` | Storage tab | Session can store encrypted secrets |
-| `managed_sandbox` | Sandbox-aware UX | Session has one managed sandbox with provider-neutral tools |
-| `key_value` | Storage tab | Session can store key/value pairs |
-| `schedules` | Schedules tab | Session can create/manage schedules |
+| `file_system` | Files tab, filesystem | Session has file system access |
+| `secrets` | Files tab, key values | Session can store encrypted secrets |
+| `managed_sandbox` | Files tab, filesystem | Session has one managed sandbox; its files and desktop recordings are on the session filesystem |
+| `key_value` | Files tab, key values | Session can store key/value pairs |
+| `schedules` | Files tab and Work tab | Session can create and manage schedules, including ones later deleted |
 | `sql_database` | *(reserved)* | Session has SQL database access |
 | `openui` | OpenUI rendering | Session can render OpenUI Lang components |
 | `a2ui` | A2UI rendering | Session can render A2UI JSON component trees |

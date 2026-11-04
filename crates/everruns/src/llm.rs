@@ -334,6 +334,22 @@ impl Completion {
         self
     }
 
+    pub(crate) fn into_batch_request(
+        self,
+    ) -> Result<(Vec<Message>, LlmCallConfig), crate::batch::BatchError> {
+        if self.provider.is_some() {
+            return Err(crate::batch::BatchError::InvalidRequest(
+                "batch requests must use a model without a provider; the batch owns its provider",
+            ));
+        }
+        if self.messages.is_empty() {
+            return Err(crate::batch::BatchError::InvalidRequest(
+                "batch request has no messages",
+            ));
+        }
+        Ok((self.messages, self.config))
+    }
+
     /// Send the call and wait for the whole answer.
     ///
     /// Non-streaming: drivers with a native non-streaming endpoint use it,
@@ -364,7 +380,9 @@ impl Completion {
 
     /// Validate the described call, keeping both configuration mistakes off the
     /// wire.
-    fn into_request(self) -> Result<(Provider, Vec<Message>, LlmCallConfig), CompletionError> {
+    pub(crate) fn into_request(
+        self,
+    ) -> Result<(Provider, Vec<Message>, LlmCallConfig), CompletionError> {
         let provider = self.provider.ok_or(CompletionError::MissingProvider)?;
         if self.messages.is_empty() {
             return Err(CompletionError::NoMessages);

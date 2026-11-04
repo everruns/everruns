@@ -2,8 +2,9 @@
 
 The full [serve](../../../crates/serve) project layout in one app. The
 warehouse is an in-memory SQLite; the agent runs on `openai/gpt-6.1-sol` (the
-reviewer on `openai/gpt-6-luna`), so set `OPENAI_API_KEY` (or a host's
-`SERVE_GATEWAY_URL` / `OPENROUTER_API_KEY`).
+reviewer on `openai/gpt-6-luna`), so set `OPENAI_API_KEY` or
+`OPENROUTER_API_KEY`. Optional `OPENAI_BASE_URL` selects a compatible Responses
+API endpoint when used with `OPENAI_API_KEY`.
 
 ```sh
 cargo run -p serve-example-revenue-analyst              # dev server on :3000
@@ -31,7 +32,8 @@ CALL=$(curl -s localhost:3000/v1/sessions/$ID | jq -r '.pending_approvals[0].too
 curl -s localhost:3000/v1/sessions/$ID/approvals/$CALL \
   -H 'content-type: application/json' -d '{"decision":"approve"}'
 
-# 3. Ask for a review. The analyst delegates to the reviewer subagent.
+# 3. Ask for a review. The analyst hands the query to the reviewer agent, which
+#    runs as its own session in the same run.
 say "Check the query with the reviewer"
 
 # Follow everything live (replay first) in another terminal:
@@ -60,11 +62,11 @@ steer it toward (1) a cheap query, (2) a full scan that waits for approval,
 | `serve.toml` | name, `sandbox.kind = "bashkit"`, deploy target |
 | `agent/instructions.md` | the always-on prompt |
 | `agent/skills/sql-style/SKILL.md` | a skill; no code needed |
-| `src/agent.rs` | `#[agent] fn analyst()` |
+| `src/agent.rs` | `#[agent(default)] fn analyst()`, with `.member("reviewer")` |
 | `src/tools/run_sql.rs` | `#[tool(needs_approval = …)] async fn run_sql` |
 | `src/connections/warehouse.rs` | `#[connection]`, a typed value tools reach via `cx.connection::<Warehouse>()` |
 | `src/connections/linear.rs` | `#[connection]`, an MCP server (skipped until `LINEAR_TOKEN` is set) |
 | `src/channels/slack.rs` | `#[channel]`, Slack Events API in and `chat.postMessage` out |
 | `src/schedules/weekly.rs` | `#[schedule("0 9 * * MON")]`, which posts to Slack |
-| `src/subagents/reviewer.rs` | `#[agent(sub)]`, exposed to the analyst as `ask_reviewer` |
+| `src/reviewer.rs` | `#[agent] fn reviewer()`, the analyst's member, reached through `spawn_agent` |
 | `evals/revenue.rs` | two `#[eval]`s |

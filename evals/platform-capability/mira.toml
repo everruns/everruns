@@ -43,3 +43,7 @@ tag = "history"
 # and stops at the Connect card. `mira run --preset user-mcp`.
 [presets.user-mcp]
 tag = "user-mcp"
+
+# Matched CLI/native experiment, offline only; excludes CLI spelling diagnostics.
+[presets.surface-comparison]
+tag = "surface-comparison"

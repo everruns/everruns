@@ -15,21 +15,28 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::grpc_durable_store::{GrpcDurableStore, TaskNotificationEvent};
+use crate::self_checks::SelfCheck;
 use crate::task_store::{TaskStore, TaskWakeups};
 
 #[async_trait]
 impl TaskStore for GrpcDurableStore {
     async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError> {
         let mut store = self.clone();
-        GrpcDurableStore::register_worker(
-            &mut store,
-            &worker.id,
-            worker.worker_group,
-            worker.activity_types,
-            worker.max_concurrency,
-        )
-        .await
-        .map_err(store_error)
+        GrpcDurableStore::register_worker(&mut store, &worker)
+            .await
+            .map_err(store_error)
+    }
+
+    async fn record_worker_checks(
+        &self,
+        worker_id: &str,
+        checks: &[SelfCheck],
+    ) -> Result<(), StoreError> {
+        let mut store = self.clone();
+        store
+            .report_worker_checks(worker_id, checks)
+            .await
+            .map_err(store_error)
     }
 
     async fn worker_heartbeat(

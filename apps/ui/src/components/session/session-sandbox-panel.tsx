@@ -10,6 +10,7 @@
 // build cannot succeed there; showing that as a plain row means an operator
 // reads it before a run fails rather than after.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useQuery } from "@tanstack/react-query";
 import { Box, Check, Cpu, Minus, ShieldCheck, ShieldOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -57,18 +58,19 @@ function useSessionSandbox(sessionId: string) {
 }
 
 function CapabilityRow({ label, enabled }: { label: string; enabled: boolean }) {
+  const ui = useUiTranslations();
   return (
     <div className="flex items-center justify-between gap-3 py-1">
       <span className={enabled ? "text-sm" : "text-sm text-muted-foreground"}>{label}</span>
       {enabled ? (
         <span className="flex items-center gap-1 text-xs text-foreground">
           <Check className="h-3 w-3" aria-hidden />
-          yes
+          {ui("yes")}
         </span>
       ) : (
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <Minus className="h-3 w-3" aria-hidden />
-          no
+          {ui("no")}
         </span>
       )}
     </div>
@@ -76,12 +78,13 @@ function CapabilityRow({ label, enabled }: { label: string; enabled: boolean }) 
 }
 
 export function SessionSandboxPanel({ sessionId }: { sessionId: string }) {
+  const ui = useUiTranslations();
   const { data, isLoading } = useSessionSandbox(sessionId);
 
   if (isLoading) {
     return (
       <div className="border-t p-4">
-        <h2 className="mb-3 text-sm font-medium text-muted-foreground">Sandbox</h2>
+        <h2 className="mb-3 text-sm font-medium text-muted-foreground">{ui("Sandbox")}</h2>
         <Skeleton className="h-24 w-full" />
       </div>
     );
@@ -101,7 +104,7 @@ export function SessionSandboxPanel({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="border-t p-4">
-      <h2 className="mb-3 text-sm font-medium text-muted-foreground">Sandbox</h2>
+      <h2 className="mb-3 text-sm font-medium text-muted-foreground">{ui("Sandbox")}</h2>
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -134,7 +137,9 @@ export function SessionSandboxPanel({ sessionId }: { sessionId: string }) {
                 )}
                 {CONTAINMENT_LABELS[data.containment.level] ?? data.containment.level}
               </Badge>
-              <Badge variant="outline">network {data.containment.network}</Badge>
+              <Badge variant="outline">
+                {ui("network")} {data.containment.network}
+              </Badge>
             </>
           ) : null}
         </div>
@@ -142,7 +147,7 @@ export function SessionSandboxPanel({ sessionId }: { sessionId: string }) {
         {data.target ? (
           <div className="border p-3">
             <div className="mb-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">
-              What it can do
+              {ui("What it can do")}
             </div>
             <div className="divide-y">
               {CAPABILITY_ROWS.map((row) => (
@@ -156,21 +161,54 @@ export function SessionSandboxPanel({ sessionId }: { sessionId: string }) {
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
-            This session runs no commands. It reads and writes files only.
+            {ui("This session runs no commands. It reads and writes files only.")}
           </p>
         )}
 
+        {data.build ? (
+          <div className="space-y-2 border p-3">
+            <h3 className="text-sm font-medium">{ui("Built snapshot")}</h3>
+            <p className="break-all font-mono text-xs">{data.build.snapshot_id}</p>
+            {data.build.software_notes ? (
+              <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-xs">
+                {data.build.software_notes}
+              </pre>
+            ) : null}
+            <p className="text-xs text-muted-foreground">
+              {ui(
+                "Author-supplied reference data. These notes do not grant capabilities or change runtime policy.",
+              )}
+            </p>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          {data.name ? <span>Sandbox: {data.name}</span> : null}
+          {data.name ? (
+            <span>
+              {ui("Sandbox:")} {data.name}
+            </span>
+          ) : null}
           {data.sandbox_template_revision_id ? (
             <span className="font-mono">{data.sandbox_template_revision_id}</span>
           ) : null}
           {data.sandbox_id ? <span className="font-mono">{data.sandbox_id}</span> : null}
-          {data.generation ? <span>Generation {data.generation}</span> : null}
-          {data.observed_state ? <span>Status: {data.observed_state}</span> : null}
-          <span>Recovery: {DURABILITY_LABELS[data.durability] ?? data.durability}</span>
+          {data.generation ? (
+            <span>
+              {ui("Generation")} {data.generation}
+            </span>
+          ) : null}
+          {data.observed_state ? (
+            <span>
+              {ui("Status:")} {data.observed_state}
+            </span>
+          ) : null}
+          <span>
+            {ui("Recovery:")} {DURABILITY_LABELS[data.durability] ?? data.durability}
+          </span>
           {data.source_capability ? (
-            <span className="font-mono">from {data.source_capability}</span>
+            <span className="font-mono">
+              {ui("from")} {data.source_capability}
+            </span>
           ) : null}
         </div>
       </div>

@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  useLocale as useDisplayLocale,
+  useLocale,
+  useUiTranslations,
+} from "@/providers/locale-provider";
+
 import { SessionCredentialsDialog } from "@/components/credentials/session-credentials-dialog";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ComponentType } from "react";
@@ -19,14 +25,14 @@ import {
 import { IconTile, PageBreadcrumb, SectionTabs } from "@/components/layout/page-layout";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { downloadSessionExport } from "@/lib/session-export";
-import { useLocale } from "@/providers/locale-provider";
+
 import { useOptionalNotificationsContext } from "@/providers/notifications-provider";
 import {
   getDisplayName,
   getEntityReferenceClassName,
   getEntityReferenceLabel,
 } from "@/lib/entity-lifecycle";
-import { formatCompactNumber, formatTokens } from "@/lib/formatting";
+import { formatCompactNumber, formatCostUsd, formatTokens } from "@/lib/formatting";
 import { cn, shortenId } from "@/lib/utils";
 import { sessionOutcome } from "@/lib/session-outcome";
 import {
@@ -38,6 +44,7 @@ import {
   MessageSquare,
   ShieldCheck,
   Sparkles,
+  Users,
   Waypoints,
   Workflow,
   Zap,
@@ -48,7 +55,7 @@ import {
  * recording actually has. `files` keeps its route id — the label is
  * "Files"; its stable route preserves existing links.
  */
-export type SessionNavKey = "trace" | "approvals" | "work" | "events" | "files" | "cost";
+export type SessionNavKey = "trace" | "approvals" | "agents" | "work" | "events" | "files" | "cost";
 
 export interface SessionNavItem {
   key: SessionNavKey;
@@ -59,31 +66,36 @@ export interface SessionNavItem {
 }
 
 export function SessionUsageBadge({ usage }: { usage: TokenUsage }) {
+  const { displayLocale } = useLocale();
+  const cost = usage.effective_cost_usd ?? usage.actual_cost_usd ?? usage.estimated_cost_usd;
+
+  const ui = useUiTranslations();
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger>
           <Badge variant="outline" className="cursor-help gap-1">
             <Zap className="icon-sharp h-3 w-3" />
+            {cost != null ? `${formatCostUsd(cost)} · ` : ""}
             {formatTokens(usage.input_tokens)} / {formatTokens(usage.output_tokens)}
           </Badge>
         </TooltipTrigger>
         <TooltipContent>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-            <dt className="text-muted-foreground">Input</dt>
-            <dd>{usage.input_tokens.toLocaleString()}</dd>
-            <dt className="text-muted-foreground">Output</dt>
-            <dd>{usage.output_tokens.toLocaleString()}</dd>
+            <dt className="text-muted-foreground">{ui("Input")}</dt>
+            <dd>{usage.input_tokens.toLocaleString(displayLocale)}</dd>
+            <dt className="text-muted-foreground">{ui("Output")}</dt>
+            <dd>{usage.output_tokens.toLocaleString(displayLocale)}</dd>
             {(usage.cache_read_tokens ?? 0) > 0 && (
               <>
-                <dt className="text-muted-foreground">Cache read</dt>
-                <dd>{usage.cache_read_tokens!.toLocaleString()}</dd>
+                <dt className="text-muted-foreground">{ui("Cache read")}</dt>
+                <dd>{usage.cache_read_tokens!.toLocaleString(displayLocale)}</dd>
               </>
             )}
             {(usage.cache_creation_tokens ?? 0) > 0 && (
               <>
-                <dt className="text-muted-foreground">Cache created</dt>
-                <dd>{usage.cache_creation_tokens!.toLocaleString()}</dd>
+                <dt className="text-muted-foreground">{ui("Cache created")}</dt>
+                <dd>{usage.cache_creation_tokens!.toLocaleString(displayLocale)}</dd>
               </>
             )}
           </dl>
@@ -148,12 +160,49 @@ function tabBadge(count: number | undefined): string | undefined {
   return formatCompactNumber(count);
 }
 
+/** Filesystem, sandbox files, stored values, or schedules — anything the Files tab can show. */
+export function sessionShowsFiles(features: Set<string>, fileCount?: number): boolean {
+  return (
+    features.has("file_system") ||
+    features.has("managed_sandbox") ||
+    features.has("key_value") ||
+    features.has("secrets") ||
+    features.has("schedules") ||
+    (fileCount ?? 0) > 0
+  );
+}
+
+export type SessionRecordPane = "files" | "values" | "schedules";
+
+/**
+ * Panes on the Files tab. The filesystem is always there so a recording can be
+ * inspected even when the agent did not declare `file_system`. Key values and
+ * schedules are separate panes, including values and schedules left behind
+ * after a capability was removed.
+ */
+export function sessionRecordPanes({
+  features,
+  hasSchedules,
+  hasValues,
+}: {
+  features: Set<string>;
+  hasSchedules: boolean;
+  hasValues?: boolean;
+}): SessionRecordPane[] {
+  const panes: SessionRecordPane[] = ["files"];
+  if (hasValues || features.has("key_value") || features.has("secrets")) panes.push("values");
+  if (hasSchedules || features.has("schedules")) panes.push("schedules");
+  return panes;
+}
+
 export function buildSessionNavigation({
   basePath,
   features,
   taskCount,
   eventCount,
   fileCount,
+  activeScheduleCount,
+  inRun,
 }: {
   basePath: string;
   features: Set<string>;
@@ -163,11 +212,23 @@ export function buildSessionNavigation({
   eventCount?: number;
   /** Non-directory files in the session's workspace. */
   fileCount?: number;
+  /** Enabled schedules. A session that still has one keeps the Work tab. */
+  activeScheduleCount?: number;
+  /** Another agent handed this session its work. */
+  inRun?: boolean;
 }): SessionNavItem[] {
   const hasFeature = (feature: string) => features.has(feature);
   // Work covers subagents, leased resources and the schedules this session
-  // created, so either capability is enough to make the tab worth showing.
-  const hasWork = hasFeature("leased_resources") || hasFeature("schedules");
+  // created. A count covers a recording whose capability was removed later.
+  const hasWork =
+    hasFeature("leased_resources") ||
+    hasFeature("schedules") ||
+    (taskCount ?? 0) > 0 ||
+    (activeScheduleCount ?? 0) > 0;
+  const hasFiles = sessionShowsFiles(features, fileCount);
+  // Agents shows the whole run: on a session that can hand work to other
+  // agents, and on one another agent handed work to.
+  const hasAgents = hasFeature("agent_handoffs") || !!inRun;
 
   return [
     {
@@ -185,6 +246,16 @@ export function buildSessionNavigation({
       href: `${basePath}/approvals`,
       icon: ShieldCheck,
     },
+    ...(hasAgents
+      ? [
+          {
+            key: "agents" as const,
+            label: "Agents",
+            href: `${basePath}/agents`,
+            icon: Users,
+          },
+        ]
+      : []),
     ...(hasWork
       ? [
           {
@@ -205,7 +276,7 @@ export function buildSessionNavigation({
       icon: Activity,
       badge: tabBadge(eventCount),
     },
-    ...(hasFeature("file_system")
+    ...(hasFiles
       ? [
           {
             key: "files" as const,
@@ -238,13 +309,18 @@ function SessionRecordingActions({
   sessionTitle,
   sessionTags,
   platformChat,
+  credentialsAction,
+  onForked,
 }: {
   sessionId: string;
   agentId?: string;
   sessionTitle: string | null;
   sessionTags: string[];
   platformChat: boolean;
+  credentialsAction?: React.ReactNode;
+  onForked?: (sessionId: string) => void;
 }) {
+  const ui = useUiTranslations();
   const { locale } = useLocale();
   const notificationsContext = useOptionalNotificationsContext();
 
@@ -256,16 +332,17 @@ function SessionRecordingActions({
         sessionTags={sessionTags}
         agentId={agentId}
         platformChat={platformChat}
+        onForked={onForked}
       />
 
-      <SessionCredentialsDialog sessionId={sessionId} />
+      {credentialsAction ?? <SessionCredentialsDialog sessionId={sessionId} />}
       <DropdownMenu>
         <DropdownMenuTrigger
           className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
-          aria-label="Export session"
+          aria-label={ui("Export session")}
         >
           <Download className="icon-sharp h-4 w-4" />
-          Export
+          {ui("Export")}
         </DropdownMenuTrigger>
         <DropdownMenuPositioner align="end">
           <DropdownMenuContent className="w-40">
@@ -274,14 +351,14 @@ function SessionRecordingActions({
                 void downloadSessionExport(sessionId, "jsonl", locale, notificationsContext?.notify)
               }
             >
-              JSONL
+              {ui("JSONL")}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
                 void downloadSessionExport(sessionId, "atif", locale, notificationsContext?.notify)
               }
             >
-              ATIF
+              {ui("ATIF")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenuPositioner>
@@ -305,6 +382,8 @@ export function SessionHeader({
   sessionTraceLabel,
   backHref = "/sessions",
   backLabel = "Sessions",
+  credentialsAction,
+  onForked,
 }: {
   sessionId: string;
   session: Session;
@@ -321,12 +400,16 @@ export function SessionHeader({
   sessionTraceLabel?: string;
   backHref?: string;
   backLabel?: string;
+  credentialsAction?: React.ReactNode;
+  onForked?: (sessionId: string) => void;
 }) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const agentReferenceLabel =
     session.agent_id != null
       ? getEntityReferenceLabel({
           kind: "Agent",
-          name: getDisplayName(agent),
+          name: getDisplayName(agent, displayLocale),
           status: agent?.status ?? "deleted",
         })
       : null;
@@ -340,7 +423,7 @@ export function SessionHeader({
         className="mb-1.5"
         items={[
           { label: backLabel, href: backHref },
-          { label: session.title || `Session ${shortenId(session.id)}` },
+          { label: session.title || ui("Session {value0}", { value0: shortenId(session.id) }) },
         ]}
       />
 
@@ -350,7 +433,7 @@ export function SessionHeader({
           <div className="min-w-0">
             <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold">
               <EntityIdentity value={sessionId}>
-                {session.title || `Session ${shortenId(session.id)}`}
+                {session.title || ui("Session {value0}", { value0: shortenId(session.id) })}
               </EntityIdentity>
             </h1>
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -399,6 +482,8 @@ export function SessionHeader({
             sessionTitle={session.title ?? null}
             sessionTags={session.tags ?? []}
             platformChat={agent?.name === "platform-chat"}
+            credentialsAction={credentialsAction}
+            onForked={onForked}
           />
         </div>
       </div>
@@ -407,7 +492,7 @@ export function SessionHeader({
           on one line, and crowding them squeezes the title out of legibility. */}
       <SectionTabs
         value={activeTab}
-        aria-label="Session views"
+        aria-label={ui("Session views")}
         className="mt-3"
         items={navigationItems.map((item) => ({
           value: item.key,

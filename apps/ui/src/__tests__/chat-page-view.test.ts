@@ -22,6 +22,25 @@ it("identifies nested resources without treating a new form as its parent", () =
   ).toBe("sandbox_template");
 });
 
+it("scopes the new Knowledge account tab without losing its loaded accounts", () => {
+  const page = pageLocation("/knowledge/accounts");
+  expect(page.entity_id).toBeUndefined();
+  expect(isPageQuery(["knowledge-indexers", "org_1"], page, "org_1")).toBe(true);
+  expect(isPageQuery(["knowledge-indexers", "org_2"], page, "org_1")).toBe(false);
+  expect(
+    isPageQuery(
+      ["knowledge-indexers", "org_1"],
+      pageLocation("/knowledge/collection_1/settings"),
+      "org_1",
+    ),
+  ).toBe(false);
+});
+
+it("gives the new system health destination a typed read-only identity", () => {
+  expect(pageLocation("/system/health").entity_type).toBe("system");
+  expect(pageLocation("/system/health").entity_id).toBeUndefined();
+});
+
 it("bounds a large loaded page and still includes nested infinite-list identities", () => {
   const budget = { nodes: 0, characters: 0, truncated: false };
   const summary = summarizePageData(

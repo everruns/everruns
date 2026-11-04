@@ -347,13 +347,12 @@ impl WorkerServiceImpl {
             ));
         }
 
-        let api_base = self
-            .api_base_url
-            .clone()
-            .unwrap_or_else(|| "http://localhost:9300".to_string());
-        let ui_base = std::env::var("PUBLIC_APP_URL")
-            .or_else(|_| std::env::var("FRONTEND_URL"))
-            .unwrap_or_else(|_| api_base.clone());
+        // Same public base the in-process worker links with.
+        let ui_base = everruns_core::config::env_string_any(
+            &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
+            "http://localhost:9300",
+        );
+        let api_base = ui_base.clone();
         let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             req.org_id,
@@ -400,8 +399,8 @@ impl WorkerServiceImpl {
 /// shared gRPC test file does not accumulate transport plumbing.
 #[cfg(test)]
 pub(crate) mod test_support {
+    use crate::worker_link::grpc_service::tests::trusted_request;
     use crate::worker_link::grpc_service::*;
-    use tonic::Request;
 
     /// Run one registered command over the gRPC command transport and return its
     /// JSON result, failing the test on a domain error rather than swallowing it.
@@ -411,7 +410,7 @@ pub(crate) mod test_support {
         params: serde_json::Value,
     ) -> serde_json::Value {
         let response = service
-            .execute_command(Request::new(ExecuteCommandRequest {
+            .execute_command(trusted_request(ExecuteCommandRequest {
                 runtime_view: false,
                 input_message_id: None,
                 platform_session_id: None,

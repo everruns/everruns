@@ -129,6 +129,7 @@ async fn test_resolve_session_harness_id_defaults_to_generic() {
         .create_harness(
             42,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "generic".to_string(),
                 display_name: Some("Generic".to_string()),
                 icon: None,

@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import OrganizationPage from "@/app/(main)/settings/organization/page";
 import { ApiError } from "@/lib/api/client";
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
+import type { ChatModeState } from "@/components/chat-mode/chat-mode-context";
 
 jest.mock("@/components/credentials/scoped-credentials-panel", () => ({
   ScopedCredentialsPanel: ({ owner }: { owner: { scope: string; usage: string } }) => (
@@ -485,6 +487,32 @@ describe("OrganizationPage", () => {
     expect(screen.getByLabelText("Organization name")).toHaveValue("Second Org");
 
     jest.useRealTimers();
+  });
+
+  it("saves only changed Adoption settings without pinning implicit harness defaults", async () => {
+    mockOrganization.default_harness_id = "";
+    mockOrganization.base_harness_id = "";
+    const mode: ChatModeState = {
+      page: { route: "/settings/organization", label: "Organization" },
+      pageContainer: { current: null },
+      open: true,
+      setOpen: () => {},
+      actions: [],
+      recordAction: () => {},
+      registerPage: () => () => {},
+    };
+    render(
+      <PageChatProvider value={mode}>
+        <OrganizationPage />
+      </PageChatProvider>,
+    );
+    fireEvent.change(screen.getByLabelText("Organization name"), {
+      target: { value: "Reviewed Org" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(mockUpdateOrganization).toHaveBeenCalledWith({ name: "Reviewed Org" }),
+    );
   });
 
   describe("outbound allowlist", () => {

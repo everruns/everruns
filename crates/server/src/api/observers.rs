@@ -3,13 +3,15 @@
 
 use crate::api::state::ApiState;
 pub use crate::domains::observers::types::{
-    CreateObserverRequest, ListObserversQuery, ListTraceScoresQuery, UpdateObserverRequest,
+    BackfillObserverRequest, CreateObserverRequest, ListObserversQuery, ListTraceScoresQuery,
+    QualitySummaryQuery, ReviewScoreRequest, UpdateObserverRequest,
 };
 use axum::Router;
 
 use crate::api::command_http::CommandRouterExt;
 use crate::domains::observers::{
-    CreateObserver, DeleteObserver, GetObserver, ListObserverScores, ListObservers, UpdateObserver,
+    BackfillObserver, CreateObserver, DeleteObserver, GetObserver, GetObserverSummary,
+    ListObserverScores, ListObservers, ReviewObserverScore, UpdateObserver,
 };
 
 // ============================================
@@ -18,11 +20,16 @@ use crate::domains::observers::{
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
+        // Static `/summary` before `/{observer_id}` for readability; the
+        // router prefers static segments either way.
+        .command::<GetObserverSummary>()
         .command::<CreateObserver>()
         .command::<ListObservers>()
         .command::<GetObserver>()
         .command::<UpdateObserver>()
         .command::<DeleteObserver>()
         .command::<ListObserverScores>()
+        .command::<ReviewObserverScore>()
+        .command::<BackfillObserver>()
         .with_state(state)
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { VirtualUserIcon } from "@/components/icons/facet-icons";
@@ -31,6 +33,7 @@ import type { VirtualUser } from "@/lib/api/types";
 type StatusTab = "all" | "active" | "archived";
 
 export function VirtualUserCard({ identity }: { identity: VirtualUser }) {
+  const ui = useUiTranslations();
   return (
     <EntityCard
       icon={<IconTile size="md" icon={<VirtualUserIcon />} />}
@@ -43,9 +46,11 @@ export function VirtualUserCard({ identity }: { identity: VirtualUser }) {
         {identity.description && (
           <EntityCardDescription>{identity.description}</EntityCardDescription>
         )}
-        <Badge variant="outline">{identity.usage === "end_user" ? "End user" : "Service"}</Badge>
+        <Badge variant="outline">
+          {identity.usage === "end_user" ? ui("End user") : ui("Service")}
+        </Badge>
         <p className="text-[13px] text-muted-foreground">
-          {identity.locale || "No locale"} · {identity.timezone || "No timezone"}
+          {identity.locale || ui("No locale")} · {identity.timezone || ui("No timezone")}
         </p>
       </div>
     </EntityCard>
@@ -53,7 +58,9 @@ export function VirtualUserCard({ identity }: { identity: VirtualUser }) {
 }
 
 export default function VirtualUsersPage() {
-  usePageTitle("Virtual Users");
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
+  usePageTitle(ui("Virtual Users"));
   const [search, setSearch] = useState("");
   const [usage, setUsage] = useState("all");
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
@@ -94,36 +101,36 @@ export default function VirtualUsersPage() {
   }, [identities, search, statusTab, usage]);
 
   const statusItems = [
-    { value: "all" as const, label: "All" },
-    { value: "active" as const, label: "Active" },
-    { value: "archived" as const, label: "Archived" },
+    { value: "all" as const, label: ui("All") },
+    { value: "active" as const, label: ui("Active") },
+    { value: "archived" as const, label: ui("Archived") },
   ];
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Virtual Users" }]} />
+      <PageBreadcrumb items={[{ label: ui("Virtual Users") }]} />
 
       <PageMasthead
         icon={<VirtualUserIcon />}
-        title="Virtual Users"
-        description="Profiles and connections for people using agents and service accounts."
+        title={ui("Virtual Users")}
+        description={ui("Profiles and connections for people using agents and service accounts.")}
         actions={
           <LinkButton variant="accent" href="/virtual-users/new">
             <Plus className="size-4" />
-            New virtual user
+            {ui("New virtual user")}
           </LinkButton>
         }
       />
 
       {error && (
         <div className="border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          Error loading virtual users: {error.message}
+          {ui("Error loading virtual users:")} {error.message}
         </div>
       )}
 
       <PageControlStrip className="flex flex-wrap items-center gap-3">
         <SearchInput
-          placeholder="Search virtual users…"
+          placeholder={ui("Search virtual users…")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           containerClassName="w-64"
@@ -132,9 +139,9 @@ export default function VirtualUsersPage() {
           value={usage}
           onValueChange={setUsage}
           items={[
-            { value: "all", label: "All usages" },
-            { value: "end_user", label: "End users" },
-            { value: "service", label: "Services" },
+            { value: "all", label: ui("All usages") },
+            { value: "end_user", label: ui("End users") },
+            { value: "service", label: ui("Services") },
           ]}
         />
         <div className="flex-1" />
@@ -160,15 +167,15 @@ export default function VirtualUsersPage() {
             icon={<VirtualUserIcon />}
             title={
               search || statusTab !== "active"
-                ? "No virtual users match your filters."
-                : "No virtual users yet."
+                ? ui("No virtual users match your filters.")
+                : ui("No virtual users yet.")
             }
             action={
               !search &&
               statusTab === "active" && (
                 <LinkButton variant="accent" href="/virtual-users/new">
                   <Plus className="size-4" />
-                  Create your first virtual user
+                  {ui("Create your first virtual user")}
                 </LinkButton>
               )
             }
@@ -182,15 +189,15 @@ export default function VirtualUsersPage() {
         )}
         {hasNextPage && (
           <Button variant="outline" disabled={isFetchingNextPage} onClick={() => fetchNextPage()}>
-            Load more
+            {ui("Load more")}
           </Button>
         )}
       </PageMain>
 
       <PageFooter>
         <span>
-          Showing {filteredIdentities.length} of {counts.all}{" "}
-          {pluralize(counts.all, "virtual user", "virtual users")}
+          {ui("Showing")} {filteredIdentities.length} {ui("of")} {counts.all}{" "}
+          {pluralize(counts.all, "virtual user", "virtual users", displayLocale)}
         </span>
         {counts.archived > 0 && statusTab !== "archived" && (
           <button
@@ -198,7 +205,7 @@ export default function VirtualUsersPage() {
             onClick={() => setStatusTab("archived")}
             className="text-primary transition-colors hover:underline"
           >
-            View archived →
+            {ui("View archived →")}
           </button>
         )}
       </PageFooter>

@@ -64,6 +64,50 @@ TOML, YAML and JSON share one schema. Capability strings select default config;
 `{ ref = "current_time", config = {} }` supplies explicit config. See the
 [format reference](/reference/agent-package/) below for optional fields.
 
+## Agents it hands work to
+
+An agent can hand work to other agents. Put the agents it brings along under
+`.agents/agents/`, as a folder each (with its own `agent.toml`) or as one
+Markdown file each. List agents that live elsewhere by name in `members`:
+
+```text
+factory/
+├── agent.toml
+├── instructions.md
+└── .agents/
+    └── agents/
+        ├── implement/
+        │   ├── agent.toml
+        │   └── instructions.md
+        └── triage.md
+```
+
+```toml
+schema_version = 1
+name = "factory"
+instructions = "Hand each request to triage, then implement, then review."
+members = ["review"]
+```
+
+```markdown
+---
+name: triage
+description: Reproduces a reported problem and writes its scope.
+---
+Reproduce the problem and write its scope.
+```
+
+- Each agent is shown to the one handing it work by its `name` and
+  `description`, so say in the description when to use it.
+- Agents nest one level, at most 32 per agent, with distinct names.
+- `members = []` turns off discovery of `.agents/agents/`.
+- In text formats, bundled agents are inlined under `agents`.
+
+On the Platform, import creates the bundled agents as **Created here** under
+this agent and links `members` to existing agents with those names; export
+does the reverse. The Framework builds bundled agents with the lead's
+providers and asks you to add linked ones with `AgentBuilder::member`.
+
 ## Paths, environments and session files
 
 An Environment describes how execution is provisioned; a Sandbox is the live
@@ -153,7 +197,7 @@ In **Agents → Import**, select a ZIP for a complete folder, or a self-containe
 TOML, YAML, JSON or Markdown file. The preview follows the Agent view: rendered
 instructions with a **Source** toggle, plus model/harness defaults and capabilities
 in the settings column. Open **Files** for starting files, permissions and skills,
-**Settings** for MCP servers and runtime settings, and **Integrations** for channels.
+**Settings** for MCP servers and runtime settings, and **Channels and triggers** for channels.
 For an existing destination, open **Changes** to review current/imported values
 and added, removed or updated files before applying. Validation failures block
 importing. Export offers a complete ZIP or Markdown.
@@ -182,9 +226,21 @@ or resolved credentials. Diff requires
 
 ## Sync an Agent continuously from GitHub
 
-Open an existing Agent and select **More actions → Sync with GitHub**. Connect the
-Agent's GitHub App in **Integrations** first, or choose an organization-linked
-Everruns App installation there. Select an accessible repository, its branch,
+Open an existing Agent and select **More actions → Sync with GitHub**. Choose the
+GitHub account to sync through:
+
+- **My GitHub account** uses your own GitHub sign-in. Two-way commits carry your
+  name. The source pauses if you disconnect GitHub or leave the organization.
+- **Organization GitHub** uses the Everruns App an organization admin linked for
+  the repository's account. Commits come from the App's bot and keep working when
+  people leave. Only admins link accounts.
+
+Either one connects in a popup without leaving the Agent page. Sync never uses the
+Agent's own GitHub identity (the **GitHub** row on the Agent tab): that identity is how the Agent
+appears on GitHub while it runs. Sources set up before this choice keep using the
+Agent's identity until you select **Change source**.
+
+Select an accessible repository, its branch,
 and a package folder or standalone manifest. Leave the path empty for a package
 at the repository root. Use **Browse folder** to navigate, then **Preview changes**
 to review the same validation and changes as an import. Select **Enable continuous
@@ -226,7 +282,7 @@ stay read-only until you change the sync direction and review the source again.
 In two-way mode, saved edits are queued and committed directly to the selected
 branch. Branch protection still applies: a branch that requires pull requests will
 reject direct updates, retain local edits and show an error. Use a branch that
-permits the Agent's App to commit. The Source panel shows queued edits and conflicts.
+permits the chosen account to commit. The Source panel shows queued edits and conflicts.
 If both sides change the package, neither version is overwritten automatically.
 **Review GitHub version** previews the incoming version; enabling sync after review
 replaces local authored changes. Export first if you want to save both versions,
@@ -243,6 +299,9 @@ GitHub write already in flight may still complete.
 
 The API exposes `GET`, `PUT` and `DELETE /v1/agents/{agent_id}/source`, plus
 `POST .../source/options`, `POST .../source/preview` and `POST .../source/sync`.
+`GET .../source/accounts` lists the GitHub accounts sync can use and their
+repositories. Options, preview and connect take `github_account` (`personal` or
+`organization`); omitted, your own GitHub answers first, then the organization's.
 Preview takes `repository`, `branch` and `path`; connecting supplies the returned
 `commit` and `agent_digest` alongside that selection. Set `mode` to `two_way` for
 write-back; omitted `mode` defaults to `pull`. Changing an existing source
@@ -310,6 +369,10 @@ capabilities require host code; they cannot be transferred as executable code.
 Packages preserve channel descriptions; Framework applications bind
 transports separately. Platform environment declarations need explicit session
 bindings and are rejected by the generic package builder.
+
+A package with [agents it hands work to](#agents-it-hands-work-to) builds its
+bundled agents with the same provider as the lead. Add each agent listed in
+`members` with `.member(agent)` before `build`; a missing one fails the build.
 
 `package.create` resolves the standard `base`, `conversation`, `worker` and
 `bashkit-worker` harnesses. For custom harnesses, use `Engine::create(agent).harness(...)`.

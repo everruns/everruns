@@ -16,6 +16,7 @@
 // gap); an undismissed user renders the banner as part of the initial stable
 // layout. The server-side preference stays the source of truth and reconciles
 // the local cache once it resolves.
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState } from "react";
 import { FlaskConical, ArrowRight, X } from "lucide-react";
 
@@ -52,6 +53,7 @@ function writeCachedDismissed(dismissed: boolean): void {
 }
 
 export function EarlyAccessBanner() {
+  const ui = useUiTranslations();
   const { data: preference } = useUserPreference(BANNER_DISMISSED_KEY);
   const setPreference = useSetUserPreference();
   // Seed synchronously from the local cache so the very first frame already
@@ -89,9 +91,9 @@ export function EarlyAccessBanner() {
         <FlaskConical className="h-[15px] w-[15px]" />
       </span>
       <span className="text-[13px] tracking-[-0.01em]">
-        <strong className="font-semibold">Early access</strong>
+        <strong className="font-semibold">{ui("Early access")}</strong>
         <span className="hidden md:inline">
-          . Everruns is still stabilizing, so expect breaking changes and rough edges.
+          {ui(". Everruns is still stabilizing, so expect breaking changes and rough edges.")}
         </span>
       </span>
       <span className="flex-1" />
@@ -101,12 +103,12 @@ export function EarlyAccessBanner() {
         rel="noopener noreferrer"
         className="hidden items-center gap-1 whitespace-nowrap text-[13px] font-medium text-primary hover:underline hover:underline-offset-[3px] md:inline-flex"
       >
-        <GithubIcon className="h-[14px] w-[14px]" /> Follow along on GitHub{" "}
+        <GithubIcon className="h-[14px] w-[14px]" /> {ui("Follow along on GitHub")}{" "}
         <ArrowRight className="h-[13px] w-[13px]" />
       </a>
       <button
         type="button"
-        aria-label="Dismiss"
+        aria-label={ui("Dismiss")}
         onClick={handleDismiss}
         className="inline-flex h-[26px] w-[26px] cursor-pointer items-center justify-center border-0 bg-transparent text-primary/70 hover:bg-[hsl(var(--accent)/0.18)] hover:text-primary"
       >

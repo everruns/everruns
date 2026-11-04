@@ -4,6 +4,7 @@
 // newest hits first. Picking a hit hands its sequence to the view, which loads
 // the turn that holds it and selects the step.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useRef, useState } from "react";
 import { SearchInput } from "@/components/ui/search-input";
 import { useTraceSearch } from "@/hooks/use-session-trace";
@@ -17,6 +18,7 @@ export function TraceSearch({
   sessionId: string;
   onPick: (sequence: number) => void;
 }) {
+  const ui = useUiTranslations();
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -49,8 +51,8 @@ export function TraceSearch({
     <div ref={boxRef} className="relative w-full sm:w-64">
       <SearchInput
         value={text}
-        placeholder="Search events"
-        aria-label="Search events"
+        placeholder={ui("Search events")}
+        aria-label={ui("Search events")}
         className="h-7 text-xs"
         onChange={(e) => {
           setText(e.target.value);
@@ -77,15 +79,15 @@ export function TraceSearch({
       {open && searching && (
         <div
           role="listbox"
-          aria-label="Search results"
+          aria-label={ui("Search results")}
           className="absolute top-full right-0 z-30 mt-1 max-h-80 w-[min(28rem,calc(100vw-2rem))] overflow-y-auto border bg-popover text-xs shadow-md"
         >
           {search.isLoading ? (
-            <div className="px-3 py-2 text-muted-foreground">Searching…</div>
+            <div className="px-3 py-2 text-muted-foreground">{ui("Searching…")}</div>
           ) : search.error ? (
-            <div className="px-3 py-2 text-destructive">Search failed.</div>
+            <div className="px-3 py-2 text-destructive">{ui("Search failed.")}</div>
           ) : hits.length === 0 ? (
-            <div className="px-3 py-2 text-muted-foreground">No events match.</div>
+            <div className="px-3 py-2 text-muted-foreground">{ui("No events match.")}</div>
           ) : (
             hits.map((event, index) => (
               <button

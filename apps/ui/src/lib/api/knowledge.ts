@@ -41,6 +41,7 @@ export interface KnowledgeFile {
     extraction_status: string;
     metadata: unknown;
     warnings: string[];
+    created_at?: string;
   };
 }
 export interface KnowledgeIndexer {
@@ -90,12 +91,19 @@ export const createKnowledge = async (input: CollectionInput) =>
   (await api.post<KnowledgeCollection>("/v1/knowledge", input)).data;
 export const updateKnowledge = async (id: string, input: CollectionInput) =>
   (await api.patch<KnowledgeCollection>(`/v1/knowledge/${id}`, input)).data;
-export const listKnowledgeFiles = async (id: string, path = "/", after = "") =>
+/** One entry of a folder listing: a file, or a subfolder (`kind: "folder"`). */
+export type KnowledgeEntry =
+  | (KnowledgeFile & { kind: "file"; name: string })
+  | { kind: "folder"; path: string; name: string };
+/** The immediate children of a folder, paged by cursor. */
+export const listKnowledgeFolder = async (id: string, path = "/", after = "") =>
   (
-    await api.get<CursorPage<KnowledgeFile>>(
-      `/v1/knowledge/${id}/files?${new URLSearchParams({ path, after, limit: "100" })}`,
+    await api.get<CursorPage<KnowledgeEntry>>(
+      `/v1/knowledge/${id}/files?${new URLSearchParams({ path, after, limit: "500", tree: "true" })}`,
     )
   ).data;
+export const deleteKnowledgeFile = async (id: string, path: string) =>
+  api.delete(`/v1/knowledge/${id}/files?${new URLSearchParams({ path })}`);
 export const syncKnowledge = async (id: string) => api.post(`/v1/knowledge/${id}/sync`);
 export const addKnowledgeSource = async (
   id: string,
@@ -116,8 +124,17 @@ export const createKnowledgeIndexer = async (input: {
   endpoint: string;
   credential_binding_id: string | null;
 }) => api.post("/v1/knowledge-indexers", input);
-export const writeKnowledgeNote = async (id: string, path: string, content: string) =>
-  api.put(`/v1/knowledge/${id}/files`, { path, content, mime_type: "text/markdown" });
+/** Writes a text file, typed by its extension (Markdown unless it says otherwise). */
+export const writeKnowledgeFile = async (id: string, path: string, content: string) => {
+  const ext = path.split(".").pop()?.toLowerCase();
+  const mime =
+    ext === "json"
+      ? "application/json"
+      : ext === "txt" || ext === "csv" || ext === "yaml" || ext === "yml"
+        ? "text/plain"
+        : "text/markdown";
+  return api.put(`/v1/knowledge/${id}/files`, { path, content, mime_type: mime });
+};
 export async function uploadKnowledgeFile(id: string, file: File, path: string) {
   const result = await fetch(
     `/api/v1/knowledge/${id}/upload?${new URLSearchParams({ path, mime_type: file.type || "application/octet-stream" })}`,
@@ -126,23 +143,6 @@ export async function uploadKnowledgeFile(id: string, file: File, path: string) 
   if (!result.ok) throw new Error("Upload failed. Check your permissions and the file path.");
   return result.json();
 }
-export function knowledgeDownload(id: string, file: KnowledgeFile, extracted = false) {
-  return `/api/v1/knowledge/${id}/files/content?${new URLSearchParams({ path: file.path, version: file.current_version, extracted: String(extracted) })}`;
-}
-export async function previewKnowledge(id: string, file: KnowledgeFile, extracted = true) {
-  const response = await fetch(`${knowledgeDownload(id, file, extracted)}&length=65536`, {
-    headers: withOrgHeader(),
-    credentials: "include",
-  });
-  if (!response.ok)
-    throw new Error(
-      extracted
-        ? "No text view is available. Download the original file."
-        : "File preview unavailable.",
-    );
-  return response.text();
-}
-
 export const updateKnowledgeFileMetadata = async (
   id: string,
   input: {

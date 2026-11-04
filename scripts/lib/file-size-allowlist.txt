@@ -11,13 +11,11 @@
 # file instead.
 apps/ui/src/lib/api/legacy-api-types.ts
 crates/capabilities/src/capabilities/a2a_delegation/mod.rs
-crates/capabilities/src/capabilities/agent_handoff.rs
 crates/capabilities/src/capabilities/subagents.rs
 crates/capabilities/src/session_sandbox.rs
 crates/core/src/builtins/compaction.rs
 crates/core/src/builtins/guardrails.rs
 crates/core/src/builtins/infinity_context.rs
-crates/core/src/builtins/progress_guard.rs
 crates/core/src/builtins/skills.rs
 crates/core/src/engine/execution/act.rs
 crates/core/src/engine/execution/reason.rs

@@ -228,7 +228,7 @@ pub trait SessionStorageStore: Send + Sync {
 /// Used by scheduling tools to create, cancel, and list schedules.
 #[async_trait]
 pub trait SessionScheduleStore: Send + Sync {
-    /// Create a new schedule for a session.
+    /// Create a new schedule for a session, with no lifetime or budget.
     async fn create_schedule(
         &self,
         session_id: SessionId,
@@ -240,7 +240,12 @@ pub trait SessionScheduleStore: Send + Sync {
 
     /// Create a new schedule after enforcing create-time limits in the same
     /// store operation. Backends with shared mutable state must override this
-    /// to make the check-and-create sequence atomic.
+    /// to make the check-and-create sequence atomic. `bounds` is what the agent
+    /// asked for. This default validates it against the default
+    /// [`crate::runtime::session_schedule::BackgroundLimits`], so the agent
+    /// always states what it needs, but it does not persist the bounds: a
+    /// backend that enforces lifetime and budget (the server) overrides this,
+    /// resolves against the org's limits and stores the result.
     async fn create_schedule_enforcing_limits(
         &self,
         session_id: SessionId,
@@ -248,8 +253,16 @@ pub trait SessionScheduleStore: Send + Sync {
         cron_expression: Option<String>,
         scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
         timezone: String,
+        bounds: crate::runtime::session_schedule::ScheduleBounds,
     ) -> std::result::Result<SessionSchedule, crate::runtime::session_schedule::ScheduleLimitError>
     {
+        crate::runtime::session_schedule::resolve_agent_schedule_bounds(
+            &bounds,
+            &crate::runtime::session_schedule::BackgroundLimits::default(),
+            cron_expression.is_some(),
+            chrono::Utc::now(),
+        )
+        .map_err(crate::runtime::session_schedule::ScheduleLimitError::Rejected)?;
         let per_session = self
             .count_active_schedules(session_id)
             .await

@@ -61,6 +61,10 @@ Anthropic, $14 per 1,000 search queries on Gemini 3 and $35 per 1,000 grounded a
 2.x. The model call
 records it as a `hosted_tool` cost component (`web_search_call`, with the number of searches) and
 budgets count it. In chat, a native search shows as a **Searching the web for "…"** row.
+If an OpenAI Responses search ends before completing, its activity is marked as
+failed. Any partial answer and citations remain available. Everruns does not
+retry the search automatically; provider usage still counts toward cost.
+
 
 The OpenAI and OpenRouter server tools capabilities keep their own `web_search` option. When one of
 them already turns on its provider's search, that configuration is used.

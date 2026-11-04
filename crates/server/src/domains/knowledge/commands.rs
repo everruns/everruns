@@ -20,9 +20,29 @@ impl Command for ListKnowledge {
         let limit = self.limit.unwrap_or(100).clamp(1, 500) as i64;
         let rows:Vec<Collection>=sqlx::query_as("SELECT * FROM knowledge_collections WHERE org_id=$1 AND name>$2 AND status='active' ORDER BY name LIMIT $3").bind(ctx.org_id()).bind(self.after.unwrap_or_default()).bind(limit+1).fetch_all(ctx.db.tx_pool()).await.map_err(db_error)?;
         let next = (rows.len() > limit as usize).then(|| rows[limit as usize - 1].name.clone());
-        Ok(
-            json!({"data":rows.into_iter().take(limit as usize).map(collection_view).collect::<Vec<_>>(),"next_cursor":next}),
-        )
+        let rows: Vec<Collection> = rows.into_iter().take(limit as usize).collect();
+        // The collection cards show where files come from and how many there
+        // are: one query each for the whole page, not one per collection.
+        let ids: Vec<Uuid> = rows.iter().map(|c| c.id).collect();
+        let sources:Vec<Source>=sqlx::query_as("SELECT * FROM knowledge_sources WHERE org_id=$1 AND collection_id=ANY($2) ORDER BY root_path").bind(ctx.org_id()).bind(&ids).fetch_all(ctx.db.tx_pool()).await.map_err(db_error)?;
+        let counts:Vec<(Uuid,i64)>=sqlx::query_as("SELECT collection_id,count(*) FROM knowledge_files WHERE org_id=$1 AND collection_id=ANY($2) AND deleted_at IS NULL GROUP BY collection_id").bind(ctx.org_id()).bind(&ids).fetch_all(ctx.db.tx_pool()).await.map_err(db_error)?;
+        let data: Vec<Value> = rows
+            .into_iter()
+            .map(|c| {
+                let id = c.id;
+                let mut view = collection_view(c);
+                view["sources"] = json!(
+                    sources
+                        .iter()
+                        .filter(|s| s.collection_id == id)
+                        .collect::<Vec<_>>()
+                );
+                view["file_count"] =
+                    json!(counts.iter().find(|(c, _)| *c == id).map_or(0, |(_, n)| *n));
+                view
+            })
+            .collect();
+        Ok(json!({"data":data,"next_cursor":next}))
     }
 }
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

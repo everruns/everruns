@@ -5,6 +5,7 @@
 // and a note when the call lost the previous call's cache or ran a long prompt
 // with caching off.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import type { TraceRequestUsage } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { formatCount } from "./trace-model";
@@ -26,22 +27,28 @@ const SEGMENTS = [
 ] as const;
 
 export function CacheBar({ usage, className }: { usage: TraceRequestUsage; className?: string }) {
+  const ui = useUiTranslations();
   const prompt = usage.input_tokens + usage.cache_read_tokens + usage.cache_creation_tokens;
   if (prompt <= 0) return null;
   const hitRate = Math.round((usage.cache_read_tokens / prompt) * 100);
   return (
     <div className={cn("space-y-1.5", className)}>
       <div className="flex items-baseline gap-2 text-xs">
-        <span className="font-medium">{formatCount(prompt)} prompt tokens</span>
+        <span className="font-medium">
+          {formatCount(prompt)} {ui("prompt tokens")}
+        </span>
         <span className="text-muted-foreground">
-          {hitRate}% from cache · {formatCount(usage.output_tokens)} out
-          {usage.prompt_cache ? ` · caching: ${usage.prompt_cache}` : " · caching off"}
+          {hitRate}
+          {ui("% from cache ·")} {formatCount(usage.output_tokens)} {ui("out")}
+          {usage.prompt_cache
+            ? ui(" · caching: {value0}", { value0: usage.prompt_cache })
+            : ui(" · caching off")}
         </span>
       </div>
       <div
         className="flex h-2 w-full overflow-hidden bg-muted"
         role="img"
-        aria-label={`${hitRate}% of the prompt read from cache`}
+        aria-label={ui("{value0}% of the prompt read from cache", { value0: hitRate })}
       >
         {SEGMENTS.map(({ key, swatch, label }) =>
           usage[key] > 0 ? (
@@ -49,7 +56,7 @@ export function CacheBar({ usage, className }: { usage: TraceRequestUsage; class
               key={key}
               className={swatch}
               style={{ width: `${(usage[key] / prompt) * 100}%` }}
-              title={`${label}: ${formatCount(usage[key])}`}
+              title={ui("{value0}: {value1}", { value0: label, value1: formatCount(usage[key]) })}
             />
           ) : null,
         )}
@@ -64,7 +71,8 @@ export function CacheBar({ usage, className }: { usage: TraceRequestUsage; class
       </ul>
       {usage.cache_reset && (
         <p className="text-[11px] text-warning" role="note">
-          Cache reset: {formatCount(usage.cache_reset.lost_tokens)} cached tokens not reused because{" "}
+          {ui("Cache reset:")} {formatCount(usage.cache_reset.lost_tokens)}{" "}
+          {ui("cached tokens not reused because")}{" "}
           {RESET_REASONS[usage.cache_reset.reason] ?? RESET_REASONS.unknown}
           {usage.cache_reset.reason === "expired" &&
             ` (idle ${formatIdle(usage.cache_reset.idle_seconds)})`}
@@ -73,8 +81,9 @@ export function CacheBar({ usage, className }: { usage: TraceRequestUsage; class
       )}
       {usage.caching_would_help && (
         <p className="text-[11px] text-muted-foreground" role="note">
-          This long prompt was sent with caching off. The Prompt Caching capability would let later
-          calls reuse it.
+          {ui(
+            "This long prompt was sent with caching off. The Prompt Caching capability would let later calls reuse it.",
+          )}
         </p>
       )}
     </div>

@@ -4,6 +4,8 @@ pub mod commands;
 pub mod content;
 pub mod extraction;
 pub mod files;
+#[cfg(test)]
+mod folder_tests;
 pub mod indexing;
 pub mod okf;
 pub mod repository;
@@ -12,6 +14,7 @@ pub mod sources;
 #[cfg(test)]
 mod tests;
 pub mod types;
+mod usage;
 pub mod worker;
 use crate::domains::common::{CommandError, Ctx};
 use everruns_core::{Permission, Policy, Rule};

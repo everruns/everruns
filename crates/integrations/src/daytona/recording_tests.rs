@@ -86,8 +86,20 @@ async fn starts_a_recording_only_when_none_runs() {
     ensure_started(&client(&busy), SANDBOX).await.unwrap();
 }
 
+/// Read a collected recording's whole body.
+async fn read_body(recording: &mut DesktopRecording) -> Vec<u8> {
+    use futures::TryStreamExt;
+    recording
+        .body
+        .take()
+        .expect("a body")
+        .try_concat()
+        .await
+        .unwrap()
+}
+
 #[tokio::test]
-async fn collect_stops_downloads_and_deletes() {
+async fn collect_stops_streams_and_deletes_only_when_told() {
     let server = MockServer::start().await;
     list_returns(
         &server,
@@ -120,19 +132,36 @@ async fn collect_stops_downloads_and_deletes() {
             .and(path(route(&format!("/recordings/{id}"))))
             .respond_with(ResponseTemplate::new(204))
             .expect(1)
+            .named(id)
             .mount(&server)
             .await;
     }
 
-    let collected = collect(&client(&server), SANDBOX).await.unwrap();
+    let mut collected = collect(Arc::new(client(&server)), SANDBOX).await.unwrap();
+    assert_eq!(collected.len(), 1);
+    let mut live = collected.remove(0);
+    assert_eq!(live.file_name, "desktop-2026-10-26T19-50-00Z.mp4");
+    assert_eq!(live.duration_seconds, Some(12.5));
+    assert_eq!(live.size_bytes, 3);
+    assert_eq!(read_body(&mut live).await, vec![1, 2, 3]);
+
+    // Only the failed recording is gone so far; the stored one waits for
+    // its owner to finish.
+    let deletes = |requests: Vec<wiremock::Request>| {
+        requests
+            .into_iter()
+            .filter(|r| r.method == wiremock::http::Method::DELETE)
+            .map(|r| r.url.path().to_string())
+            .collect::<Vec<_>>()
+    };
     assert_eq!(
-        collected,
-        vec![DesktopRecording {
-            file_name: "desktop-2026-10-26T19-50-00Z.mp4".to_string(),
-            duration_seconds: Some(12.5),
-            size_bytes: 3,
-            content: Some(vec![1, 2, 3]),
-        }]
+        deletes(server.received_requests().await.unwrap()),
+        [route("/recordings/broken")]
+    );
+    live.remove.await.unwrap();
+    assert_eq!(
+        deletes(server.received_requests().await.unwrap()),
+        [route("/recordings/broken"), route("/recordings/live")]
     );
 }
 
@@ -155,8 +184,10 @@ async fn an_oversized_recording_is_reported_without_its_video() {
         .mount(&server)
         .await;
 
-    let collected = collect(&client(&server), SANDBOX).await.unwrap();
+    let collected = collect(Arc::new(client(&server)), SANDBOX).await.unwrap();
     assert_eq!(collected.len(), 1);
-    assert_eq!(collected[0].content, None);
-    assert_eq!(collected[0].size_bytes, MAX_RECORDING_BYTES + 1);
+    let big = collected.into_iter().next().unwrap();
+    assert!(big.body.is_none());
+    assert_eq!(big.size_bytes, MAX_RECORDING_BYTES + 1);
+    big.remove.await.unwrap();
 }

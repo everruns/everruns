@@ -10,7 +10,6 @@ release: "0.47.0"
 links:
   docs: [/features/voice/, /framework/voice/]
   prs: [everruns/everruns#4394, everruns/everruns#4402, everruns/everruns#4406]
-visual: "Agent Integrations tab with a voice channel and its talk button (/agents/<id>), cropped to the channel card"
 ---
 
 Voice is now a channel type. A speech-to-speech model only listens and speaks;
@@ -18,6 +17,8 @@ the agent, with its own model and tools, writes every answer. Speech starts
 sentence by sentence while the answer streams, short fillers cover silence, and
 talking over the agent stops it. A call and a text chat on one session share a
 transcript.
+
+![Voice channel on the agent Integrations tab with its Talk to this channel button](./voice-channel-talk@2x.png)
 
 **In the UI:** an organization administrator turns on **Voice** in
 **Settings → Features**. Then add a voice channel from the agent's

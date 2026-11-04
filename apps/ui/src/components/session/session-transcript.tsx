@@ -1,13 +1,15 @@
 "use client";
 
 // The read-only half of a conversation: history, streaming output, and turn
-// navigation, with no composer and no mutating call of any kind.
+// navigation, with no composer. Its only answers are the request cards a chat
+// surface opts into (`runRequests`), the same cards the transcript shows.
 //
 // Extracted from `ChatPanel` (EVE-854) so the session detail page — a recording,
 // not a workspace — can render the same transcript the chat surface renders.
 // `ChatPanel` keeps this component and adds the composer on top, so the two
 // surfaces cannot drift.
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { useMemo, type ReactNode } from "react";
 import { ArrowDown } from "lucide-react";
 import { getEventData } from "@/lib/api/types";
@@ -25,7 +27,8 @@ import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { assignRunsToEvents } from "@/components/chat/run-cards";
 import { ChatNavRail, type ChatNavAnchor } from "@/components/chat/chat-nav-rail";
 import { StreamingMessage } from "@/components/streaming-message";
-import { useLocale } from "@/providers/locale-provider";
+import { SessionReactionsScope } from "@/components/chat/message-reactions";
+import { RunRequestCards } from "@/components/chat/run-request-cards";
 
 export function SessionTranscript({
   /** Rendered inside the scroll container, below the transcript (e.g. composer errors). */
@@ -38,13 +41,17 @@ export function SessionTranscript({
   emptyState,
   /** Good / Bad and Branch on agent replies; only chats that can be forked. */
   messageActions = false,
+  /** Show the questions and approvals of the agents this chat handed work to. */
+  runRequests = false,
 }: {
   footer?: ReactNode;
   showRunCards?: boolean;
   collapseWorkLog?: boolean;
   emptyState?: ReactNode;
   messageActions?: boolean;
+  runRequests?: boolean;
 }) {
+  const ui = useUiTranslations();
   const { t } = useLocale();
   const {
     events,
@@ -103,11 +110,11 @@ export function SessionTranscript({
       const text = getMessageText(data).trim();
       anchors.push({
         id: event.id,
-        label: text.length > 80 ? `${text.slice(0, 80)}…` : text,
+        label: text.length > 80 ? ui("{value0}…", { value0: text.slice(0, 80) }) : text,
       });
     }
     return anchors;
-  }, [chatEvents, getMessageText]);
+  }, [chatEvents, getMessageText, ui]);
 
   const { currentAnchorId, scrollToAnchor } = useMessageScrollerVisibility(
     scrollContainerRef,
@@ -139,36 +146,39 @@ export function SessionTranscript({
             !eventsLoading && transcriptEmpty && "flex flex-1 flex-col justify-center",
           )}
         >
-          <ChatMessageList
-            events={events}
-            chatEvents={chatEvents}
-            sessionId={sessionId}
-            toolResultsMap={toolResultsMap}
-            toolProgressMap={toolProgressMap}
-            toolOutputMap={toolOutputMap}
-            eventsLoading={eventsLoading}
-            hasMoreEvents={hasMoreEvents}
-            loadingOlderEvents={loadingOlderEvents}
-            getMessageText={getMessageText}
-            getToolCalls={getToolCalls}
-            participants={participants}
-            runsByEventId={runsByEventId}
-            emptyState={emptyState}
-            collapseWorkLog={collapseWorkLog}
-            pendingSends={chatSends.pending}
-            onRetrySend={chatSends.retry}
-            sessionActive={isActive}
-            messageActions={messageActions}
-            streamingWork={
-              (isThinking && !streamingText) || streamingPhase === "commentary"
-                ? {
-                    turnId: streamingTurnId ?? null,
-                    text: streamingPhase === "commentary" ? streamingText : null,
-                    isThinking: Boolean(isThinking && !streamingText),
-                  }
-                : null
-            }
-          />
+          <SessionReactionsScope sessionId={sessionId} enabled={messageActions} events={events}>
+            <ChatMessageList
+              events={events}
+              chatEvents={chatEvents}
+              sessionId={sessionId}
+              toolResultsMap={toolResultsMap}
+              toolProgressMap={toolProgressMap}
+              toolOutputMap={toolOutputMap}
+              eventsLoading={eventsLoading}
+              hasMoreEvents={hasMoreEvents}
+              loadingOlderEvents={loadingOlderEvents}
+              getMessageText={getMessageText}
+              getToolCalls={getToolCalls}
+              participants={participants}
+              runsByEventId={runsByEventId}
+              emptyState={emptyState}
+              collapseWorkLog={collapseWorkLog}
+              pendingSends={chatSends.pending}
+              onRetrySend={chatSends.retry}
+              onDiscardSend={chatSends.discard}
+              sessionActive={isActive}
+              messageActions={messageActions}
+              streamingWork={
+                (isThinking && !streamingText) || streamingPhase === "commentary"
+                  ? {
+                      turnId: streamingTurnId ?? null,
+                      text: streamingPhase === "commentary" ? streamingText : null,
+                      isThinking: Boolean(isThinking && !streamingText),
+                    }
+                  : null
+              }
+            />
+          </SessionReactionsScope>
 
           {streamingText && streamingPhase !== "commentary" && (
             <div className="mt-4 flex justify-start">
@@ -186,6 +196,8 @@ export function SessionTranscript({
               </div>
             </div>
           )}
+
+          {runRequests && <RunRequestCards sessionId={sessionId} sessionActive={isActive} />}
 
           {footer}
         </div>

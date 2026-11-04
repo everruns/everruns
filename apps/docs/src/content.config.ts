@@ -29,6 +29,8 @@ export const collections = {
           .array(z.enum(["cloud", "platform", "framework", "sdk", "cli", "yolop", "mira", "bashkit"]))
           .optional(),
         surfaces: z.array(z.enum(["ui", "api", "code", "cli", "agent", "operations"])).optional(),
+        // Social card icons by Facet name, hero first; overrides the automatic pick.
+        icons: z.array(z.string()).optional(),
         // First version of the product that shipped the change. Stamped by the
         // release skills, not by the entry's author.
         release: z.string().optional(),

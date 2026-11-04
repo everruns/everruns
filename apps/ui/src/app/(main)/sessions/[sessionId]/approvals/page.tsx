@@ -4,6 +4,7 @@
 // A request and its grant are one card. The org-wide list that showed them as
 // unrelated rows is gone; an admin reads the pair on the session it belongs to.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { getEventData } from "@/lib/api/types";
 import {
   TOOL_APPROVAL_TOOL,
@@ -14,6 +15,7 @@ import { useSessionApprovals } from "@/hooks/use-session-approvals";
 import { useSessionContext } from "../session-context";
 
 export default function SessionApprovalsPage() {
+  const ui = useUiTranslations();
   const { sessionId, events, eventsLoading, hasMoreEvents, toolResultsMap } = useSessionContext();
   // Follow the latest parked batch, rather than a locally projected running
   // status: session.activated remains the last status event while tools wait.
@@ -42,10 +44,13 @@ export default function SessionApprovalsPage() {
   );
 
   return (
-    <section aria-label="Approvals" className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+    <section
+      aria-label={ui("Approvals")}
+      className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6"
+    >
       {requests.length > 0 && (
         <div className="mb-6 max-w-3xl">
-          <h2 className="mb-3 text-sm font-medium">Tool approvals</h2>
+          <h2 className="mb-3 text-sm font-medium">{ui("Tool approvals")}</h2>
           <ToolApprovalRequests
             key={latestBoundary?.id}
             sessionId={sessionId}

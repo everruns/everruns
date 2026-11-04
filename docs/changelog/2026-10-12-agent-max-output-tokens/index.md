@@ -23,3 +23,8 @@ limit when that is known. Without it [OpenRouter](/providers/openrouter/) reserv
 your credits and returns HTTP 402 ("can only afford N tokens") on a low balance; a ceiling below
 that number lets the call through. The field is `max_output_tokens` on the agent API, and agent
 packages export and import it.
+
+## Update 2026-10-26
+
+**Max output tokens** is under **More** on the agent page, with the other settings that are rarely
+changed. It is no longer next to the default model.

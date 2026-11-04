@@ -4,6 +4,7 @@ use crate::auth::config::{AuthConfig, AuthMode, JwtConfig};
 use crate::auth::middleware::{AuthError, AuthMethod};
 use crate::auth::routes::AuthConfigResponse;
 use crate::domains::organizations::record::OrgMembership;
+use crate::storage::UpdateField;
 use axum::body::Body;
 use axum::http::Request;
 use http_body_util::BodyExt;
@@ -169,7 +170,7 @@ async fn organization_settings_require_database_admin_role() {
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(
             json["detail"],
-            "Only organization admins can update organization settings"
+            "Access denied: policy 'organization.manage' requires 'org:settings:manage'"
         );
     }
 }

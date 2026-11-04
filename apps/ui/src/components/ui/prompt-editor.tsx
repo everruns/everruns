@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Textarea } from "./textarea";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ export function PromptEditor({
   className,
   disabled = false,
 }: PromptEditorProps) {
+  const ui = useUiTranslations();
   const [mode, setMode] = useState<"edit" | "preview">("edit");
 
   return (
@@ -32,7 +34,7 @@ export function PromptEditor({
       <SectionTabs
         value={mode}
         onValueChange={(value) => setMode(value as "edit" | "preview")}
-        aria-label="Prompt editor"
+        aria-label={ui("Prompt editor")}
         items={[
           { value: "edit", label: "Edit", disabled },
           { value: "preview", label: "Preview", disabled },
@@ -54,7 +56,7 @@ export function PromptEditor({
           {value ? (
             <StreamdownMessage variant="compact">{value}</StreamdownMessage>
           ) : (
-            <p className="text-muted-foreground italic">Nothing to preview</p>
+            <p className="text-muted-foreground italic">{ui("Nothing to preview")}</p>
           )}
         </div>
       )}

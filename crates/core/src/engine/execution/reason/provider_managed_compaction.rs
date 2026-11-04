@@ -299,6 +299,8 @@ pub(super) struct Call<'a> {
     pub(super) mcp_tool_definitions: &'a [ToolDefinition],
     pub(super) assembled: crate::engine::runtime_context::AssembledTurnContext,
     pub(super) prior: super::partial_recovery::PriorStream,
+    /// This turn is a check for credits (`crate::engine::credit_shortfall`).
+    pub(super) credit_check: Option<crate::engine::credit_shortfall::CreditCheck>,
 }
 
 pub(super) type ErrorHooks = Vec<(
@@ -316,6 +318,11 @@ fn preflight_fallback_reason(
         .conversation_context
         .as_deref()
         .is_some_and(|context| !context.is_empty())
+        || assembled
+            .runtime_agent
+            .conversation_context_update
+            .is_some()
+        || super::context_updates::has_history(&assembled.messages)
     {
         return Some("dynamic_conversation_context");
     }
@@ -359,6 +366,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
         mcp_tool_definitions,
         mut assembled,
         prior,
+        credit_check,
     } = call;
     let mut disclosure = resolve_error_disclosure(
         &atom.capability_registry,
@@ -374,7 +382,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
     if atom.native_async.is_none()
         && let Some(result) = super::transcript::ended_by_no_reply_result(&assembled)
     {
-        tracing::info!(%session_id, turn_id = %context.turn_id, "no_reply ended the turn");
+        tracing::info!(%session_id, turn_id = %context.turn_id, "the sent reply ended the turn");
         return CallOutcome {
             disclosure,
             error_context,
@@ -425,6 +433,22 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
             }
         }
     }
+    let mut balance_checked = true;
+    if let Some(check) = credit_check {
+        match super::phase::credit::before_call(atom, context, &assembled, check).await {
+            super::phase::credit::BeforeCall::Call {
+                balance_checked: checked,
+            } => balance_checked = checked,
+            super::phase::credit::BeforeCall::Done(result) => {
+                return CallOutcome {
+                    disclosure,
+                    error_context,
+                    error_hooks,
+                    result: *result,
+                };
+            }
+        }
+    }
     let native_provider = assembled.model.provider_managed_reduction_option.is_some();
     let provider_type = assembled.model.provider_type.clone();
     let model = assembled.model.model.clone();
@@ -443,6 +467,64 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
             prior,
         )
         .await;
+    // The balance covers a useful answer, but not the requested ceiling: ask
+    // once more for what it covers (`crate::engine::credit_shortfall`).
+    if let Err(error) = &result
+        && let Some((requested, affordable, max_tokens)) =
+            crate::engine::credit_shortfall::shrink_target(error)
+    {
+        match atom
+            .context_resolver
+            .resolve_turn_context(crate::engine::runtime_context::TurnContextRequest {
+                session_id,
+                harness_id,
+                agent_id,
+                mcp_tool_definitions: mcp_tool_definitions.to_vec(),
+                allow_provider_managed_reduction: native_provider,
+            })
+            .await
+        {
+            Ok(mut smaller) => {
+                smaller.runtime_agent.max_tokens = Some(max_tokens);
+                let record = crate::engine::credit_shortfall::Record {
+                    emitter: atom.event_emitter.as_ref(),
+                    session_id,
+                    turn_id: context.turn_id,
+                    input_message_id: context.input_message_id,
+                };
+                let mut data = record.data(crate::engine::events::CreditShortfallAction::Shrunk);
+                data.requested_max_tokens = Some(requested);
+                data.affordable_tokens = Some(affordable);
+                data.max_tokens = Some(max_tokens);
+                record.emit(data).await;
+                tracing::info!(%session_id, turn_id = %context.turn_id, requested, affordable, max_tokens, "ReasonAtom: retrying a credit refusal with fewer max output tokens");
+                result = atom
+                    .execute_llm_call(
+                        session_id,
+                        harness_id,
+                        agent_id,
+                        org_id,
+                        context,
+                        trace_id,
+                        reason_span_id,
+                        previous_response_id.clone(),
+                        iteration,
+                        smaller,
+                        super::partial_recovery::PriorStream::None,
+                    )
+                    .await;
+            }
+            Err(error) => {
+                tracing::warn!(%session_id, error = %error, "ReasonAtom: could not reassemble the turn for a smaller retry");
+            }
+        }
+    }
+    if let Some(check) = credit_check
+        && !balance_checked
+        && result.is_ok()
+    {
+        super::phase::credit::resumed_by_request(atom, context, check).await;
+    }
     if !native_provider
         || !result.as_ref().is_err_and(|error| {
             error.rejected_provider_capability(

@@ -15,6 +15,8 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
+use crate::self_checks::SelfCheck;
+
 use crate::durable::{
     ClaimedTask, EventLog, HeartbeatResponse, StoreError, TaskFailureOutcome, TaskQueue,
     WorkerHeartbeat, WorkerInfo, WorkerRegistry, WorkflowError, WorkflowEventStore,
@@ -43,6 +45,15 @@ pub trait TaskStore: Send + Sync + 'static {
     async fn drain_worker(&self, worker_id: &str) -> Result<(), StoreError>;
 
     async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError>;
+
+    /// Keep the worker's checks on its own setup for the system doctor.
+    async fn record_worker_checks(
+        &self,
+        _worker_id: &str,
+        _checks: &[SelfCheck],
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
 
     async fn claim_task(
         &self,
@@ -113,6 +124,16 @@ where
 
     async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {
         WorkerRegistry::deregister_worker(self, worker_id).await
+    }
+
+    async fn record_worker_checks(
+        &self,
+        worker_id: &str,
+        checks: &[SelfCheck],
+    ) -> Result<(), StoreError> {
+        let checks = serde_json::to_value(checks)
+            .map_err(|error| StoreError::Serialization(error.to_string()))?;
+        WorkerRegistry::record_worker_checks(self, worker_id, checks).await
     }
 
     async fn claim_task(

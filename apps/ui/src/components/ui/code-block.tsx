@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { HighlightResult } from "@streamdown/code";
 import { Check, Copy } from "lucide-react";
@@ -34,6 +35,7 @@ interface CodeBlockProps {
  * to the initial route bundle.
  */
 export function CodeBlock({ samples, className }: CodeBlockProps) {
+  const ui = useUiTranslations();
   const [active, setActive] = useState(0);
   const [copied, setCopied] = useState(false);
   const current = samples[active] ?? samples[0];
@@ -54,7 +56,7 @@ export function CodeBlock({ samples, className }: CodeBlockProps) {
   return (
     <div className={cn("overflow-hidden rounded-md border bg-muted", className)}>
       <div className="flex items-center justify-between gap-2 border-b bg-muted/50 px-2 py-1">
-        <div className="flex flex-wrap gap-0.5" role="group" aria-label="Code language">
+        <div className="flex flex-wrap gap-0.5" role="group" aria-label={ui("Code language")}>
           {samples.length > 1 &&
             samples.map((sample, index) => (
               <button

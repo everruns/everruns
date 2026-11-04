@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
@@ -14,7 +15,8 @@ export default function MainError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  usePageTitle("Something went wrong");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Something went wrong"));
   const router = useRouter();
 
   useEffect(() => {
@@ -28,16 +30,18 @@ export default function MainError({
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
             <AlertTriangle className="h-6 w-6 text-destructive" />
           </div>
-          <CardTitle>Something went wrong</CardTitle>
+          <CardTitle>{ui("Something went wrong")}</CardTitle>
           <CardDescription>
-            An unexpected error occurred. Your work is safe. Try again or return to the dashboard.
+            {ui(
+              "An unexpected error occurred. Your work is safe. Try again or return to the dashboard.",
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex justify-center gap-3">
           <Button variant="outline" onClick={() => router.push("/chats")}>
-            Dashboard
+            {ui("Dashboard")}
           </Button>
-          <Button onClick={reset}>Try again</Button>
+          <Button onClick={reset}>{ui("Try again")}</Button>
         </CardContent>
       </Card>
     </div>

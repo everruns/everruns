@@ -195,15 +195,17 @@ for a session on that Sandbox, through the Daytona or E2B session types above.
 - **Recordings.** Daytona's toolbox records the screen itself
   (`/computeruse/recordings/*`), so the provider starts a recording when the
   desktop opens and `SessionSandboxProvider::collect_desktop_recordings`
-  stops it, downloads it and deletes it from the Sandbox. The server collects
-  on `session.idled`, the end of a turn, and writes the video read-only to
+  stops it and hands back the video as a stream plus a handle that deletes it
+  from the Sandbox. The server collects on `session.idled`, the end of a turn,
+  streams the video read-only (never buffered whole, so the session-file
+  limit, 2 GiB per file with object storage, is the only size bound) to
   `/recordings/` in the session files with a `file.written` event, which the
   chat places under the turn that just ended
   ([`crates/server/src/domains/session_sandbox/recordings.rs`](../../crates/server/src/domains/session_sandbox/recordings.rs)).
   Collection runs on the server rather than inside a turn because it needs no
   model step and the server already owns idle handling with a provider
   context. The Sandbox's recording list is the only state: running means no
-  end time, collected means deleted. On by default for desktops;
+  end time, stored means deleted; a failed store leaves it for the next idle. On by default for desktops;
   `desktop.record: false` turns it off. A video shows what the screenshots
   stored with tool results already show, to the same session readers. E2B has
   no recording API, so its provider keeps the default of nothing to collect.

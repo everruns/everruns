@@ -159,8 +159,10 @@ mod knowledge;
 mod manager_context;
 mod models_files;
 mod resources_tasks;
+mod sandbox_builds;
 pub mod sandbox_fleet;
 mod sandbox_templates;
+pub mod session_cost;
 pub use crate::storage::repositories::{OwnedMcpServerRow, UserMcpServerRow};
 
 #[cfg(test)]

@@ -24,7 +24,7 @@ so the same app runs under `dev` on a laptop and on AgentCore without changes.
 | `GET /ping` | `Healthy`, or `HealthyBusy` while a turn runs so AgentCore keeps the microVM up |
 | Session storage mount (`/mnt/workspace`) | serve's SQLite session log and the agent's workspace |
 | The session microVM | The sandbox: `[sandbox] kind = "microvm"` gives the agent a real shell |
-| Gateway inference target (`/inference/v1`) | serve's model gateway (`SERVE_GATEWAY_URL`) |
+| OpenAI-compatible Responses API endpoint | `OPENAI_BASE_URL` and `OPENAI_API_KEY` for `openai/…` models |
 | Gateway MCP target | A `#[connection]` returning `McpServer` |
 
 serve's `/v1` wire API and `/health` stay mounted next to the AgentCore routes.
@@ -85,7 +85,8 @@ docker buildx build --platform linux/arm64 \
   -f examples/serve/agentcore/Dockerfile -t "$ECR_REPO:latest" --push .
 ```
 
-Create the runtime with the AG-UI protocol and session storage:
+Create the runtime with the AG-UI protocol, session storage and an OpenAI key
+for the example's model:
 
 ```sh
 aws bedrock-agentcore-control create-agent-runtime \
@@ -95,7 +96,7 @@ aws bedrock-agentcore-control create-agent-runtime \
   --network-configuration networkMode=PUBLIC \
   --protocol-configuration serverProtocol=AGUI \
   --filesystem-configurations '[{"sessionStorage":{"mountPath":"/mnt/workspace"}}]' \
-  --environment-variables "SERVE_GATEWAY_URL=$GATEWAY_URL/inference/v1,SERVE_GATEWAY_KEY=$GATEWAY_TOKEN"
+  --environment-variables "OPENAI_API_KEY=$OPENAI_API_KEY"
 ```
 
 Use `serverProtocol=HTTP` instead when callers send `{"prompt": ...}`;
@@ -225,11 +226,16 @@ foundation model in each region it routes to. Pass the region in
 route is serve's `bedrock` feature, on by default in `everruns-serve-agentcore`;
 `default-features = false` drops it and the AWS SDK.
 
-Other `provider/model` ids go through serve's gateway. Set `SERVE_GATEWAY_URL`
-to an AgentCore Gateway inference endpoint (`https://<gateway>/inference/v1`)
-with targets named after providers (`anthropic`, `openai`), and
-`anthropic/claude-sonnet-5` routes as-is. Provider API keys then stay in the
-Gateway's credential providers instead of the runtime's environment.
+For `openai/<model>` agents, set `OPENAI_API_KEY`; optional `OPENAI_BASE_URL`
+selects a compatible Responses API endpoint. Serve strips only the first
+`openai/` prefix. An endpoint that expects `target/model` therefore needs an
+agent model of `openai/target/model`. An endpoint that expects
+`openai/gpt-6.1-sol` needs `openai/openai/gpt-6.1-sol` in the agent definition.
+Configure the endpoint's credential as `OPENAI_API_KEY`.
+
+Without an explicit OpenAI URL/key pair, `OPENROUTER_API_KEY` routes
+`provider/model` IDs unchanged through OpenRouter. An OpenAI endpoint override
+does not reroute `anthropic/…` or `bedrock/…` models.
 
 ## Configuration
 
@@ -239,7 +245,7 @@ Gateway's credential providers instead of the runtime's environment.
 | `SERVE_AGENTCORE_AGENT` | The agent `/invocations` runs, default the app's default agent |
 | `SERVE_DATA_DIR`, `DATABASE_URL` | Where the session log lives. Default: session storage when mounted |
 | `SERVE_WORKSPACE` | The agent's workspace. Default: the session storage mount |
-| `SERVE_GATEWAY_URL`, `SERVE_GATEWAY_KEY` | serve's model gateway |
+| `OPENAI_API_KEY`, `OPENAI_BASE_URL` | Credential and optional Responses API endpoint for `openai/…` models |
 | `AWS_REGION`, `AWS_DEFAULT_REGION` | Region for `bedrock/<model-id>` models, which run on the execution role |
 
 ## Compared with other AgentCore agents

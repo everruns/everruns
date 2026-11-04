@@ -173,6 +173,8 @@ states concrete behavior or how to use it.
 ### UI Design System (Slate)
 
 The "Slate" design system defines the visual language for the Everruns UI application.
+Its browsable reference, with live examples built from the app's tokens and icons, is the
+[design system pages](design-system.md) at everruns.com/docs/design-system/.
 
 #### Sources of truth and DESIGN.md
 

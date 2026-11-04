@@ -1,4 +1,5 @@
 "use client";
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { useUpdateAgent } from "@/hooks";
 import { VirtualUserSelect } from "@/components/virtual-user/virtual-user-select";
@@ -13,6 +14,7 @@ export function AgentServiceAccount({
   value?: string | null;
   disabled?: boolean;
 }) {
+  const ui = useUiTranslations();
   const update = useUpdateAgent();
   return (
     <div className="space-y-3">
@@ -27,7 +29,7 @@ export function AgentServiceAccount({
       />
       {value && (
         <Link className="text-sm text-primary underline" href={`/virtual-users/${value}`}>
-          Manage service account and connections
+          {ui("Manage service account and connections")}
         </Link>
       )}
       {update.error && <p className="text-sm text-destructive">{update.error.message}</p>}

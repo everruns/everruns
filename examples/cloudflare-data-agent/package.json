@@ -1,0 +1,13 @@
+{
+  "name": "everruns-cloudflare-data-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.js && python3 -m unittest discover -s test -p '*_test.py'"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

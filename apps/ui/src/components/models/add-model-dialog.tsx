@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ export function AddModelDialog({
   onOpenChange: (open: boolean) => void;
   writable?: boolean;
 }) {
+  const ui = useUiTranslations();
   const [providerId, setProviderId] = useState("");
   const [modelId, setModelId] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -81,7 +83,7 @@ export function AddModelDialog({
     readonlyFields: ["provider_id", "service", "profile_key", "enabled"],
     entityType: "model",
     formId: "create",
-    label: "New model",
+    label: ui("New model"),
     baseline: "new",
     dirty:
       !!(providerId || modelId || displayName || profileKey) || modelType !== "chat" || !enabled,
@@ -119,16 +121,18 @@ export function AddModelDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Model</DialogTitle>
-          <DialogDescription>Add a new model to an existing provider.</DialogDescription>
+          <DialogTitle>{ui("Add Model")}</DialogTitle>
+          <DialogDescription>{ui("Add a new model to an existing provider.")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {chatDraft.notice}
           <div className="space-y-2">
-            <Label htmlFor="provider">Provider</Label>
+            <Label htmlFor="provider">{ui("Provider")}</Label>
             <Select value={providerId} onValueChange={handleProviderChange}>
               <SelectTrigger id="provider" className="w-full">
-                <SelectValue placeholder="Select provider">{selectedProvider?.name}</SelectValue>
+                <SelectValue placeholder={ui("Select provider")}>
+                  {selectedProvider?.name}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {providers.map((provider) => (
@@ -140,7 +144,7 @@ export function AddModelDialog({
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="model-type">Model type</Label>
+            <Label htmlFor="model-type">{ui("Model type")}</Label>
             <Select
               value={modelType}
               onValueChange={(value) => {
@@ -151,10 +155,10 @@ export function AddModelDialog({
               <SelectTrigger id="model-type" className="w-full">
                 <SelectValue>
                   {modelType === "embeddings"
-                    ? "Embeddings"
+                    ? ui("Embeddings")
                     : modelType === "decisions"
-                      ? "Decisions"
-                      : "Chat"}
+                      ? ui("Decisions")
+                      : ui("Chat")}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -163,10 +167,10 @@ export function AddModelDialog({
                   .map((service) => (
                     <SelectItem key={service} value={service}>
                       {service === "chat"
-                        ? "Chat"
+                        ? ui("Chat")
                         : service === "decisions"
-                          ? "Decisions"
-                          : "Embeddings"}
+                          ? ui("Decisions")
+                          : ui("Embeddings")}
                     </SelectItem>
                   ))}
               </SelectContent>
@@ -183,7 +187,11 @@ export function AddModelDialog({
                   const canonical = profile.key.split("/").slice(1).join("/");
                   setModelId(
                     modelType === "decisions" && selectedProvider?.provider_type === "openrouter"
-                      ? `typesafe/${canonical === "jev-1.13.0" ? "jev-1.13" : canonical}`
+                      ? ({
+                          "jev-1.14.0": "typesafe/jev-1.14",
+                          "jev-1.13.0": "typesafe/jev-1.13",
+                          "jev-latest": "~typesafe/jev-latest",
+                        }[canonical] ?? canonical)
                       : canonical,
                   );
                   setDisplayName(profile.profile.name);
@@ -192,32 +200,36 @@ export function AddModelDialog({
             />
           )}
           <div className="space-y-2">
-            <Label htmlFor="model-id">Model ID</Label>
+            <Label htmlFor="model-id">{ui("Model ID")}</Label>
             <Input
               id="model-id"
               value={modelId}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelId(e.target.value)}
-              placeholder={modelType === "embeddings" ? "text-embedding-3-small" : "gpt-5.2"}
+              placeholder={
+                modelType === "embeddings" ? ui("text-embedding-3-small") : ui("gpt-5.2")
+              }
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="display-name">Display Name</Label>
+            <Label htmlFor="display-name">{ui("Display Name")}</Label>
             <Input
               id="display-name"
               value={displayName}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDisplayName(e.target.value)}
-              placeholder="GPT-4o"
+              placeholder={ui("GPT-4o")}
               required
             />
           </div>
           <div className="flex items-center gap-2">
             <Checkbox id="model-enabled" checked={enabled} onCheckedChange={setEnabled} />
-            <Label htmlFor="model-enabled">Enable model (visible in UI model pickers)</Label>
+            <Label htmlFor="model-enabled">
+              {ui("Enable model (visible in UI model pickers)")}
+            </Label>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button
               type="submit"
@@ -229,7 +241,7 @@ export function AddModelDialog({
                 !displayName
               }
             >
-              {createModel.isPending ? "Creating..." : "Create Model"}
+              {createModel.isPending ? ui("Creating...") : ui("Create Model")}
             </Button>
           </DialogFooter>
         </form>

@@ -20,6 +20,9 @@ pub struct EvalRow {
     pub updated_at: DateTime<Utc>,
     pub archived_at: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
+    /// Version of the eval's cases (its dataset), bumped by a trigger on
+    /// every case change.
+    pub version: i32,
 }
 
 /// Input for creating an eval
@@ -61,6 +64,8 @@ pub struct EvalCaseRow {
     pub max_turns: Option<i32>,
     pub timeout_seconds: Option<i32>,
     pub position: i32,
+    pub simulated_user: Option<serde_json::Value>,
+    pub tool_fixtures: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -80,6 +85,8 @@ pub struct CreateEvalCaseRow {
     pub max_turns: Option<i32>,
     pub timeout_seconds: Option<i32>,
     pub position: i32,
+    pub simulated_user: Option<serde_json::Value>,
+    pub tool_fixtures: Option<serde_json::Value>,
 }
 
 /// Input for updating an eval case
@@ -96,6 +103,10 @@ pub struct UpdateEvalCaseRow {
     pub max_turns: Option<i32>,
     pub timeout_seconds: Option<i32>,
     pub position: Option<i32>,
+    /// `Some(None)` clears it (the case goes back to scripted messages).
+    pub simulated_user: Option<Option<serde_json::Value>>,
+    /// `Some(None)` clears them.
+    pub tool_fixtures: Option<Option<serde_json::Value>>,
 }
 
 /// Eval run row from database
@@ -119,8 +130,37 @@ pub struct EvalRunRow {
     pub source_run_id: Option<String>,
     /// Open-vocab provenance for external runs (system, version, url, labels).
     pub attribution: Option<serde_json::Value>,
+    /// How many times each case runs (pass@k / pass^k); 1 for older runs.
+    pub trials: i32,
+    /// The person whose authority the cases run with.
+    pub started_by_user_id: Option<Uuid>,
+    /// Org role of a credential without a person that started the run.
+    pub started_by_role: Option<String>,
+    /// Spending cap asked for at creation; enforced by the run's budget.
+    pub max_cost_usd: Option<f64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Dataset version the run was created from (set by a trigger).
+    pub dataset_version: Option<i32>,
+    /// The experiment this run is a variant of, and the variant's label.
+    pub experiment_id: Option<Uuid>,
+    pub variant_label: Option<String>,
+}
+
+/// An experiment: one dataset version against several variants.
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
+pub struct EvalExperimentRow {
+    pub id: Uuid,
+    pub public_id: String,
+    pub org_id: i64,
+    pub eval_id: Uuid,
+    pub name: String,
+    pub dataset_version: i32,
+    pub trials: i32,
+    pub max_cost_usd: Option<f64>,
+    pub baseline_label: String,
+    pub created_by_user_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
 }
 
 /// A read-only share token for an eval run (migration 091). The raw token is
@@ -153,7 +193,7 @@ pub struct CreateEvalRunShareTokenRow {
 }
 
 /// Input for creating an eval run
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CreateEvalRunRow {
     pub public_id: String,
     pub eval_id: Uuid,
@@ -161,6 +201,16 @@ pub struct CreateEvalRunRow {
     pub model_override: Option<String>,
     pub filter_tags: Option<Vec<String>>,
     pub triggered_by: String,
+    /// Repetitions per case, at least 1.
+    pub trials: i32,
+    /// Who started the run; cases run with their authority.
+    pub started_by_user_id: Option<Uuid>,
+    pub started_by_role: Option<String>,
+    /// Spending cap; creates the run's `eval_run` budget with the run.
+    pub max_cost_usd: Option<f64>,
+    /// Run only these cases (row ids); `None` runs every case. A selection,
+    /// not stored on the run.
+    pub case_ids: Option<Vec<Uuid>>,
 }
 
 /// Typed failures from `create_eval_run_with_case_results`. Returned (boxed in
@@ -170,10 +220,12 @@ pub struct CreateEvalRunRow {
 pub enum CreateEvalRunError {
     #[error("Too many concurrent eval runs: org has {active} active runs (limit {limit})")]
     TooManyConcurrentRuns { active: i64, limit: usize },
-    #[error("Eval run too large: {cases} cases exceeds the per-run limit of {limit}")]
+    #[error("Eval run too large: {cases} case runs exceeds the per-run limit of {limit}")]
     TooManyCases { cases: usize, limit: usize },
     #[error("no eval target configured — set a target on the eval, case, or run")]
     NoTarget,
+    #[error("none of the selected cases belong to this eval")]
+    NoMatchingCases,
 }
 
 /// Eval case result row from database
@@ -195,6 +247,8 @@ pub struct EvalCaseResultRow {
     pub output_tokens: Option<i64>,
     pub error_message: Option<String>,
     pub artifacts: Option<serde_json::Value>,
+    /// Which repetition of the case this is, from 0.
+    pub trial: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -300,4 +354,18 @@ pub struct UpdateEvalRunDatasetRow {
     pub body: Option<String>,
     pub record_count: Option<i64>,
     pub error_message: Option<String>,
+}
+
+/// Input for creating an experiment.
+#[derive(Debug, Clone)]
+pub struct CreateEvalExperimentRow {
+    pub id: Uuid,
+    pub public_id: String,
+    pub eval_id: Uuid,
+    pub name: String,
+    pub dataset_version: i32,
+    pub trials: i32,
+    pub max_cost_usd: Option<f64>,
+    pub baseline_label: String,
+    pub created_by_user_id: Option<Uuid>,
 }

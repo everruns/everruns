@@ -6,6 +6,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AccountIcon } from "@/components/icons/facet-icons";
@@ -65,6 +66,7 @@ export function SidebarUserMenu({
   renderExtraItems?: SidebarUserMenuItemsRenderer;
   version: string;
 }) {
+  const ui = useUiTranslations();
   const router = useRouter();
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
   const [logoutFailed, setLogoutFailed] = useState(false);
@@ -90,7 +92,12 @@ export function SidebarUserMenu({
   };
 
   if (!user) {
-    return <p className="px-2.5 text-[11px] text-muted-foreground">Everruns v{version}</p>;
+    return (
+      <p className="px-2.5 text-[11px] text-muted-foreground">
+        {ui("Everruns v")}
+        {version}
+      </p>
+    );
   }
 
   return (
@@ -106,7 +113,7 @@ export function SidebarUserMenu({
           <div className="min-w-0 flex-1 text-left">
             <p className="truncate font-semibold leading-5">{user.name || user.email}</p>
             {!requiresAuth ? (
-              <p className="truncate text-[11px] text-muted-foreground">Local user</p>
+              <p className="truncate text-[11px] text-muted-foreground">{ui("Local user")}</p>
             ) : user.name ? (
               <p className="truncate text-[11px] text-muted-foreground">{user.email}</p>
             ) : null}
@@ -117,16 +124,18 @@ export function SidebarUserMenu({
         <DropdownMenuPositioner side="top" align="start">
           <DropdownMenuContent className="w-56">
             <DropdownMenuGroup>
-              <DropdownMenuLabel>{requiresAuth ? "My Account" : "Local Account"}</DropdownMenuLabel>
+              <DropdownMenuLabel>
+                {requiresAuth ? ui("My Account") : ui("Local Account")}
+              </DropdownMenuLabel>
               <NotificationMenuSub />
               <DropdownMenuItem onClick={() => navigate("/settings/profile")}>
                 <AccountIcon className="icon-sharp mr-2 h-4 w-4" />
-                Account
+                {ui("Account")}
               </DropdownMenuItem>
               {requiresAuth && (
                 <DropdownMenuItem onClick={() => navigate("/settings/personal-access-tokens")}>
                   <Key className="icon-sharp mr-2 h-4 w-4" />
-                  Personal access tokens
+                  {ui("Personal access tokens")}
                 </DropdownMenuItem>
               )}
               <ThemeMenuSub />
@@ -135,7 +144,7 @@ export function SidebarUserMenu({
                 onClick={() => window.open(DOCS_URL, "_blank", "noopener,noreferrer")}
               >
                 <BookOpen className="icon-sharp mr-2 h-4 w-4" />
-                Documentation
+                {ui("Documentation")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 render={
@@ -143,17 +152,20 @@ export function SidebarUserMenu({
                     href={CHANGELOG_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    aria-label="Changelog"
+                    aria-label={ui("Changelog")}
                   />
                 }
               >
                 <ScrollText className="icon-sharp mr-2 h-4 w-4" />
-                Changelog
+                {ui("Changelog")}
               </DropdownMenuItem>
               {requiresAuth && renderExtraItems?.({ user, navigate })}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <p className="px-2 py-1 text-[11px] text-muted-foreground">Everruns v{version}</p>
+            <p className="px-2 py-1 text-[11px] text-muted-foreground">
+              {ui("Everruns v")}
+              {version}
+            </p>
             {requiresAuth && (
               <>
                 <DropdownMenuSeparator />
@@ -163,7 +175,7 @@ export function SidebarUserMenu({
                   disabled={logoutPending}
                 >
                   <LogOut className="icon-sharp mr-2 h-4 w-4" />
-                  {logoutPending ? "Signing out..." : "Sign out"}
+                  {logoutPending ? ui("Signing out...") : ui("Sign out")}
                 </DropdownMenuItem>
               </>
             )}
@@ -172,14 +184,14 @@ export function SidebarUserMenu({
       </DropdownMenu>
       {logoutFailed && (
         <div role="alert" className="mt-2 text-xs text-destructive">
-          <p>Sign out failed. Your session may still be active. Try again.</p>
+          <p>{ui("Sign out failed. Your session may still be active. Try again.")}</p>
           <button
             type="button"
             className="mt-1 font-medium underline underline-offset-2"
             onClick={() => void handleLogout()}
             disabled={logoutPending}
           >
-            Try sign out again
+            {ui("Try sign out again")}
           </button>
         </div>
       )}

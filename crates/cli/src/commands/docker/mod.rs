@@ -53,7 +53,7 @@ pub enum DockerCommand {
     /// Open the local UI in the browser
     Open(InstanceArgs),
 
-    /// Check that Docker is installed, running and new enough
+    /// Check that Docker is ready, and run the system doctor on a running instance
     Doctor(InstanceArgs),
 
     /// Move the instance to this CLI's version (or --image-tag), backing up the database first
@@ -839,10 +839,8 @@ fn doctor(args: &InstanceArgs) -> Result<()> {
     if let Some((inst, s)) = existing(args)? {
         let port = port_of(&s);
         let bind = s.value(settings::BIND).unwrap_or("0.0.0.0");
-        if running_services(&docker, &inst)
-            .iter()
-            .any(|s| s == "caddy")
-        {
+        let running = running_services(&docker, &inst);
+        if running.iter().any(|s| s == "caddy") {
             eprintln!("✓ Port: {port} is this instance's");
         } else if port_free(bind, port) {
             eprintln!("✓ Port: {port} is free");
@@ -852,12 +850,44 @@ fn doctor(args: &InstanceArgs) -> Result<()> {
             );
             bail!("port {port} is taken");
         }
+        if running.iter().any(|s| s == "server") {
+            system_doctor(&docker, &inst)?;
+        }
     } else if port_free("0.0.0.0", DEFAULT_PORT) {
         eprintln!("✓ Port: {DEFAULT_PORT} is free");
     } else {
         eprintln!("! Port: {DEFAULT_PORT} is in use; `everruns docker up` will offer another");
     }
     Ok(())
+}
+
+/// With the instance running, Docker being ready says little about Everruns
+/// itself, so run the system doctor inside the server container. It needs no
+/// sign-in there and sees the same settings the server does.
+fn system_doctor(docker: &str, inst: &Instance) -> Result<()> {
+    eprintln!();
+    let output = compose(docker, inst)
+        .args(["exec", "-T", "server", "/app/everruns-server", "--doctor"])
+        .stderr(Stdio::piped())
+        .output()
+        .context("Failed to run docker compose")?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Images from before the doctor reject the flag.
+    if stderr.contains("unexpected argument") {
+        eprintln!(
+            "! System doctor: this server version has none; `everruns docker upgrade` adds it"
+        );
+        return Ok(());
+    }
+    print!("{}", String::from_utf8_lossy(&output.stdout));
+    match output.status.code() {
+        Some(0) => Ok(()),
+        Some(1) => bail!("the system doctor found problems; see the fixes above"),
+        _ => {
+            eprint!("{stderr}");
+            bail!("the system doctor could not run in the server container")
+        }
+    }
 }
 
 /// Decision: an upgrade is the one moment a database migration runs, and

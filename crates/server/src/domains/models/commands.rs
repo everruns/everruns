@@ -230,7 +230,7 @@ impl Command for UpdateModel {
             .as_deref()
             .map(q::parse_provider_id)
             .transpose()?;
-        q::service(ctx)
+        let model = q::service(ctx)
             .update(
                 &ctx.caller,
                 model_id,
@@ -246,7 +246,10 @@ impl Command for UpdateModel {
                 },
             )
             .await?
-            .ok_or_else(|| CommandError::not_found("Model"))
+            .ok_or_else(|| CommandError::not_found("Model"))?;
+        // Turning a model off or on can open or resolve a model issue.
+        crate::domains::health_issues::model_health::check_org(&ctx.db, ctx.org_id()).await;
+        Ok(model)
     }
 }
 

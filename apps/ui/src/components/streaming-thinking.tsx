@@ -7,6 +7,7 @@
  * This is the model's chain-of-thought reasoning before producing the final response.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ export function StreamingThinking({
   defaultCollapsed = false,
   isStreaming = false,
 }: StreamingThinkingProps) {
+  const ui = useUiTranslations();
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
 
   return (
@@ -42,7 +44,7 @@ export function StreamingThinking({
           <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
         )}
         <Brain className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-        <span className="text-sm font-medium text-muted-foreground">Thinking</span>
+        <span className="text-sm font-medium text-muted-foreground">{ui("Thinking")}</span>
         {isStreaming && (
           <span className="relative flex h-2 w-2 ml-1">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-muted-foreground/50 opacity-75" />

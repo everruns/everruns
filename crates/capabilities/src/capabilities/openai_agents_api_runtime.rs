@@ -13,6 +13,14 @@ use everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID;
 pub struct OpenAiAgentsApiRuntimeCapability;
 
 impl Capability for OpenAiAgentsApiRuntimeCapability {
+    fn localizations(&self) -> Vec<everruns_core::capabilities::CapabilityLocalization> {
+        vec![everruns_core::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Виконання через OpenAI Agents API",
+            "Виконує цикл агента через OpenAI Agents API. Інструменти Everruns працюють через звичайний конвеєр. Дані сесії обробляє OpenAI; ці сесії не підтримують нульове зберігання даних.",
+        )]
+    }
+
     fn id(&self) -> &str {
         OPENAI_AGENTS_API_RUNTIME_ID
     }

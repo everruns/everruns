@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Terminal, Sparkles } from "lucide-react";
 import type { CommandDescriptor } from "@/lib/api/types";
 import { ComposerAutocomplete } from "@/components/chat/composer-autocomplete";
@@ -19,6 +20,7 @@ export function CommandAutocomplete({
   onDismiss,
   visible,
 }: CommandAutocompleteProps) {
+  const ui = useUiTranslations();
   const query = inputValue.startsWith("/") ? inputValue.slice(1).toLowerCase() : "";
   const filtered = commands.filter(
     (cmd) =>
@@ -28,9 +30,9 @@ export function CommandAutocomplete({
 
   return (
     <ComposerAutocomplete
-      emptyMessage="No matching commands"
+      emptyMessage={ui("No matching commands")}
       items={items}
-      label="Available commands"
+      label={ui("Available commands")}
       onDismiss={onDismiss}
       onSelect={(item) => onSelect(item.command)}
       visible={visible}

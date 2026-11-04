@@ -8,6 +8,7 @@ pub mod catalog;
 pub mod commands;
 pub mod queries;
 pub mod record;
+pub mod selection;
 pub mod service;
 pub mod sync;
 pub mod types;

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import type { HistoryPoint } from "./model";
 import { phases, number, duration } from "./model";
 
@@ -12,6 +13,9 @@ export function ExecutionDensity({
   selected: number | null;
   onSelect: (index: number) => void;
 }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   // At most 180 visible bins, independent of session population or the number
   // of retained one-second samples. Each bin uses the last observation.
   const stride = Math.max(1, Math.ceil(history.length / 180));
@@ -23,14 +27,14 @@ export function ExecutionDensity({
   return (
     <section className="border bg-card p-4" data-testid="monitoring-density">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold">Execution density over time</h2>
+        <h2 className="text-sm font-semibold">{ui("Execution density over time")}</h2>
         <span className="text-xs text-muted-foreground">
-          History collected while this view is open
+          {ui("History collected while this view is open")}
         </span>
       </div>
       {history.length < 2 ? (
         <p className="py-16 text-center text-sm text-muted-foreground">
-          Collecting live observations. History starts with the first successful snapshot.
+          {ui("Collecting live observations. History starts with the first successful snapshot.")}
         </p>
       ) : (
         <div className="mt-4 overflow-x-auto">
@@ -38,7 +42,7 @@ export function ExecutionDensity({
             viewBox="0 0 960 430"
             className="w-full min-w-[600px]"
             role="group"
-            aria-label="Time and execution state density; select a time bucket to replay"
+            aria-label={ui("Time and execution state density; select a time bucket to replay")}
           >
             {phases.map((phase, row) => (
               <g key={phase.key}>
@@ -62,7 +66,11 @@ export function ExecutionDensity({
                       stroke={selected === original ? "hsl(var(--foreground))" : undefined}
                       tabIndex={row === 0 ? 0 : -1}
                       role="button"
-                      aria-label={`${new Date(point.at).toLocaleTimeString()}: ${phase.label} ${point.phases[phase.key] ?? 0}`}
+                      aria-label={ui("{value0}: {value1} {value2}", {
+                        value0: new Date(point.at).toLocaleTimeString(displayLocale),
+                        value1: phase.label,
+                        value2: point.phases[phase.key] ?? 0,
+                      })}
                       onClick={() => onSelect(original)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
@@ -73,7 +81,7 @@ export function ExecutionDensity({
                       className="cursor-pointer focus:outline-2 focus:outline-ring"
                     >
                       <title>
-                        {new Date(point.at).toLocaleTimeString()} · {phase.label}:{" "}
+                        {new Date(point.at).toLocaleTimeString(displayLocale)} · {phase.label}:{" "}
                         {number(point.phases[phase.key] ?? 0)}
                       </title>
                     </rect>
@@ -82,7 +90,7 @@ export function ExecutionDensity({
               </g>
             ))}
             <text x="145" y="320" fontSize="10" fill="hsl(var(--muted-foreground))">
-              {new Date(history[0].at).toLocaleTimeString()}
+              {new Date(history[0].at).toLocaleTimeString(displayLocale)}
             </text>
             <text
               x="945"
@@ -91,10 +99,10 @@ export function ExecutionDensity({
               fontSize="10"
               fill="hsl(var(--muted-foreground))"
             >
-              {new Date(history.at(-1)!.at).toLocaleTimeString()}
+              {new Date(history.at(-1)!.at).toLocaleTimeString(displayLocale)}
             </text>
             <text x="0" y="366" fontSize="12" fill="hsl(var(--foreground))">
-              Oldest runnable
+              {ui("Oldest runnable")}
             </text>
             <text x="0" y="385" fontSize="10" fill="hsl(var(--muted-foreground))">
               0 – {duration(oldest)}
@@ -114,8 +122,9 @@ export function ExecutionDensity({
         </div>
       )}
       <p className="mt-3 text-xs text-muted-foreground">
-        Darker bins contain more sessions. Each state has its own scale. Empty history is
-        unavailable, not zero. Select a bucket to replay its population summary.
+        {ui(
+          "Darker bins contain more sessions. Each state has its own scale. Empty history is unavailable, not zero. Select a bucket to replay its population summary.",
+        )}
       </p>
     </section>
   );

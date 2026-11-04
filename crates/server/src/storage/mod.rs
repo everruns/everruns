@@ -36,6 +36,14 @@ mod system_decisions;
 // depends on `everruns-durable` and passes these fields to its schedule store.
 pub use everruns_durable::UpdateField;
 pub mod agentid;
+pub mod background_limits;
+pub mod background_work;
+pub mod behavior_detectors;
+pub mod costs;
+pub mod eval_proposals;
+pub mod finding_actions;
+pub mod finding_fixes;
+pub mod finding_investigations;
 pub mod org_egress_allowlist;
 pub mod org_slack_connections;
 pub mod org_web_search;
@@ -48,6 +56,7 @@ pub mod repositories;
 pub mod repository;
 pub mod runtime;
 pub mod runtime_identity;
+pub mod session_classifications;
 mod session_turn_claim;
 pub use session_turn_claim::*;
 pub mod test_database;
@@ -106,3 +115,5 @@ pub use runtime::session_storage::{
 pub use runtime::session_task::DbSessionTaskRegistry;
 pub use runtime::subagent_spawn_handles::PgSubagentSpawnStore;
 pub use system_decisions::SystemDecisions;
+
+pub mod trace_exports;

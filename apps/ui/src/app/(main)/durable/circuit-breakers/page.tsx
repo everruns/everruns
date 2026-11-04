@@ -1,4 +1,8 @@
 "use client";
+import { PageContainer, PageMasthead } from "@/components/layout";
+
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
+import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,13 +49,16 @@ function getStateIcon(state: CircuitBreakerState) {
   }
 }
 
-function formatDate(dateStr?: string): string {
+function formatDate(dateStr?: string, locale?: string): string {
   if (!dateStr) return "Never";
   const date = new Date(dateStr);
-  return date.toLocaleString();
+  return date.toLocaleString(locale);
 }
 
 function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const queryClient = useQueryClient();
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
@@ -90,7 +97,7 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
           <div>
             <CardTitle className="text-base font-mono">{breaker.key}</CardTitle>
             <CardDescription className="text-xs">
-              Updated {formatDate(breaker.updated_at)}
+              {ui("Updated")} {formatDate(breaker.updated_at, displayLocale)}
             </CardDescription>
           </div>
         </div>
@@ -102,20 +109,22 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
         {/* Stats */}
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-muted-foreground">Failure Count</span>
+            <span className="text-muted-foreground">{ui("Failure Count")}</span>
             <p className="font-medium">{breaker.failure_count}</p>
           </div>
           <div>
-            <span className="text-muted-foreground">Success Count</span>
+            <span className="text-muted-foreground">{ui("Success Count")}</span>
             <p className="font-medium">{breaker.success_count}</p>
           </div>
           <div>
-            <span className="text-muted-foreground">Last Failure</span>
-            <p className="font-medium text-xs">{formatDate(breaker.last_failure_at)}</p>
+            <span className="text-muted-foreground">{ui("Last Failure")}</span>
+            <p className="font-medium text-xs">
+              {formatDate(breaker.last_failure_at, displayLocale)}
+            </p>
           </div>
           <div>
-            <span className="text-muted-foreground">Opened At</span>
-            <p className="font-medium text-xs">{formatDate(breaker.opened_at)}</p>
+            <span className="text-muted-foreground">{ui("Opened At")}</span>
+            <p className="font-medium text-xs">{formatDate(breaker.opened_at, displayLocale)}</p>
           </div>
         </div>
 
@@ -131,27 +140,28 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
                 onClick={() => setOpenDialogOpen(true)}
               >
                 <ZapOff className="h-4 w-4 mr-1" />
-                Force Open
+                {ui("Force Open")}
               </Button>
               <Dialog open={openDialogOpen} onOpenChange={setOpenDialogOpen}>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Force Open Circuit Breaker?</DialogTitle>
+                    <DialogTitle>{ui("Force Open Circuit Breaker?")}</DialogTitle>
                     <DialogDescription>
-                      This will immediately block all calls through the &quot;{breaker.key}&quot;
-                      circuit. Use this to proactively protect against a known issue.
+                      {ui('This will immediately block all calls through the "')}
+                      {breaker.key}
+                      {ui('" circuit. Use this to proactively protect against a known issue.')}
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setOpenDialogOpen(false)}>
-                      Cancel
+                      {ui("Cancel")}
                     </Button>
                     <Button
                       variant="destructive"
                       onClick={() => forceOpenMutation.mutate()}
                       disabled={forceOpenMutation.isPending}
                     >
-                      {forceOpenMutation.isPending ? "Opening..." : "Force Open"}
+                      {forceOpenMutation.isPending ? ui("Opening...") : ui("Force Open")}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -166,7 +176,7 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
               disabled={forceCloseMutation.isPending}
             >
               <ShieldCheck className="h-4 w-4 mr-1" />
-              {forceCloseMutation.isPending ? "Closing..." : "Force Close"}
+              {forceCloseMutation.isPending ? ui("Closing...") : ui("Force Close")}
             </Button>
           )}
 
@@ -178,23 +188,24 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
             onClick={() => setResetDialogOpen(true)}
           >
             <Trash2 className="h-4 w-4 mr-1" />
-            Reset
+            {ui("Reset")}
           </Button>
           <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Reset Circuit Breaker?</DialogTitle>
+                <DialogTitle>{ui("Reset Circuit Breaker?")}</DialogTitle>
                 <DialogDescription>
-                  This will delete the circuit breaker state for &quot;{breaker.key}&quot;. A new
-                  circuit breaker will be created automatically when needed.
+                  {ui('This will delete the circuit breaker state for "')}
+                  {breaker.key}
+                  {ui('". A new circuit breaker will be created automatically when needed.')}
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setResetDialogOpen(false)}>
-                  Cancel
+                  {ui("Cancel")}
                 </Button>
                 <Button onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
-                  {deleteMutation.isPending ? "Resetting..." : "Reset"}
+                  {deleteMutation.isPending ? ui("Resetting...") : ui("Reset")}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -206,14 +217,26 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
 }
 
 export default function CircuitBreakersPage() {
-  usePageTitle("Circuit Breakers", "Durable");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Circuit Breakers"), ui("Durable"));
   const { data, isLoading, error } = useCircuitBreakers();
 
+  useDurablePageRows(
+    "Circuit breakers",
+    (data?.data ?? []).map((b) => ({
+      key: b.key,
+      state: b.state,
+      failure_count: b.failure_count,
+      success_count: b.success_count,
+      updated_at: b.updated_at,
+    })),
+    { loading: isLoading, error: !!error },
+  );
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">Circuit Breakers</h1>
+      <PageContainer className="operational-page">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
+          <PageMasthead title={ui("Circuit Breakers")} className="min-w-0 flex-1" />
         </div>
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -222,26 +245,26 @@ export default function CircuitBreakersPage() {
             ))}
           </div>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (error) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">Circuit Breakers</h1>
+      <PageContainer className="operational-page">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
+          <PageMasthead title={ui("Circuit Breakers")} className="min-w-0 flex-1" />
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <ShieldAlert className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Failed to Load Circuit Breakers</h3>
+            <h3 className="text-lg font-medium mb-2">{ui("Failed to Load Circuit Breakers")}</h3>
             <p className="text-sm text-muted-foreground text-center max-w-md">
-              {error instanceof Error ? error.message : "An error occurred"}
+              {error instanceof Error ? error.message : ui("An error occurred")}
             </p>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -251,41 +274,41 @@ export default function CircuitBreakersPage() {
   const halfOpenBreakers = circuitBreakers.filter((cb) => cb.state === "half_open");
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Circuit Breakers</h1>
+    <PageContainer className="operational-page">
+      <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
+        <PageMasthead title={ui("Circuit Breakers")} className="min-w-0 flex-1" />
       </div>
       <div className="space-y-6">
         {/* Summary Cards */}
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total</CardTitle>
+              <CardTitle className="text-sm font-medium">{ui("Total")}</CardTitle>
               <Zap className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{circuitBreakers.length}</div>
-              <p className="text-xs text-muted-foreground">circuit breakers</p>
+              <p className="text-xs text-muted-foreground">{ui("circuit breakers")}</p>
             </CardContent>
           </Card>
           <Card className={openBreakers.length > 0 ? "border-destructive/50" : ""}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Open</CardTitle>
+              <CardTitle className="text-sm font-medium">{ui("Open")}</CardTitle>
               <ShieldAlert className="h-4 w-4 text-destructive" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-destructive">{openBreakers.length}</div>
-              <p className="text-xs text-muted-foreground">blocking calls</p>
+              <p className="text-xs text-muted-foreground">{ui("blocking calls")}</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Closed</CardTitle>
+              <CardTitle className="text-sm font-medium">{ui("Closed")}</CardTitle>
               <ShieldCheck className="h-4 w-4 text-success" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-success">{closedBreakers.length}</div>
-              <p className="text-xs text-muted-foreground">allowing calls</p>
+              <p className="text-xs text-muted-foreground">{ui("allowing calls")}</p>
             </CardContent>
           </Card>
         </div>
@@ -298,7 +321,7 @@ export default function CircuitBreakersPage() {
               <div>
                 <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                   <ShieldAlert className="h-5 w-5 text-destructive" />
-                  Open Circuit Breakers
+                  {ui("Open Circuit Breakers")}
                 </h3>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {openBreakers.map((cb) => (
@@ -313,7 +336,7 @@ export default function CircuitBreakersPage() {
               <div>
                 <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                   <Clock className="h-5 w-5 text-warning" />
-                  Half-Open Circuit Breakers
+                  {ui("Half-Open Circuit Breakers")}
                 </h3>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {halfOpenBreakers.map((cb) => (
@@ -328,7 +351,7 @@ export default function CircuitBreakersPage() {
               <div>
                 <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                   <ShieldCheck className="h-5 w-5 text-success" />
-                  Closed Circuit Breakers
+                  {ui("Closed Circuit Breakers")}
                 </h3>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {closedBreakers.map((cb) => (
@@ -342,10 +365,11 @@ export default function CircuitBreakersPage() {
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Zap className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No Circuit Breakers</h3>
+              <h3 className="text-lg font-medium mb-2">{ui("No Circuit Breakers")}</h3>
               <p className="text-sm text-muted-foreground text-center max-w-md">
-                Circuit breakers are created automatically when protected operations are executed.
-                Check back after running some workflows.
+                {ui(
+                  "Circuit breakers are created automatically when protected operations are executed. Check back after running some workflows.",
+                )}
               </p>
             </CardContent>
           </Card>
@@ -354,33 +378,37 @@ export default function CircuitBreakersPage() {
         {/* Info Card */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">About Circuit Breakers</CardTitle>
+            <CardTitle className="text-base">{ui("About Circuit Breakers")}</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-2">
             <p>
-              Circuit breakers protect against cascading failures when external services (like LLM
-              providers) are unavailable.
+              {ui(
+                "Circuit breakers protect against cascading failures when external services (like LLM providers) are unavailable.",
+              )}
             </p>
             <ul className="list-disc list-inside space-y-1">
               <li>
-                <strong>Closed:</strong> Normal operation - calls are allowed through
+                <strong>{ui("Closed:")}</strong>{" "}
+                {ui("Normal operation - calls are allowed through")}
               </li>
               <li>
-                <strong>Open:</strong> Service failing - calls are rejected immediately
+                <strong>{ui("Open:")}</strong>{" "}
+                {ui("Service failing - calls are rejected immediately")}
               </li>
               <li>
-                <strong>Half-Open:</strong> Testing recovery - allowing one call to check if service
-                is back
+                <strong>{ui("Half-Open:")}</strong>{" "}
+                {ui("Testing recovery - allowing one call to check if service is back")}
               </li>
             </ul>
             <p className="pt-2">
-              Use <strong>Force Open</strong> to proactively block calls when you know a service has
-              issues. Use <strong>Force Close</strong> to immediately allow calls after a service
-              recovers.
+              {ui("Use")} <strong>{ui("Force Open")}</strong>{" "}
+              {ui("to proactively block calls when you know a service has issues. Use")}{" "}
+              <strong>{ui("Force Close")}</strong>{" "}
+              {ui("to immediately allow calls after a service recovers.")}
             </p>
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

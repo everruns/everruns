@@ -9,6 +9,7 @@
  */
 "use client";
 
+import { Combobox } from "@/components/ui/combobox";
 import { Check, ChevronDown, RotateCcw, Zap } from "lucide-react";
 import {
   DropdownMenu,
@@ -124,55 +125,33 @@ export function ModelEffortMenu({
       </DropdownMenuTrigger>
       <DropdownMenuPositioner align="start" sideOffset={6}>
         <DropdownMenuContent className="min-w-[200px]">
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <span>{t("model")}</span>
-              <span className="ml-auto max-w-[120px] truncate text-muted-foreground">
-                {modelTriggerLabel}
-              </span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="max-h-[320px] min-w-[200px] overflow-y-auto">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>{t("model")}</DropdownMenuLabel>
-                <OptionItem
-                  label={defaultModelOptionLabel}
-                  selected={selectedModelId === ""}
-                  onSelect={() => onModelChange("")}
-                />
-              </DropdownMenuGroup>
-              {recentModels.length > 0 && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel>{t("recent")}</DropdownMenuLabel>
-                    {recentModels.map((model) => (
-                      <OptionItem
-                        key={`recent-${model.id}`}
-                        label={model.display_name}
-                        selected={selectedModelId === model.id}
-                        onSelect={() => onModelChange(model.id)}
-                      />
-                    ))}
-                  </DropdownMenuGroup>
-                </>
-              )}
-              {enabledModels.length > 0 && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    {enabledModels.map((model) => (
-                      <OptionItem
-                        key={model.id}
-                        label={model.display_name}
-                        selected={selectedModelId === model.id && !recentIds.has(model.id)}
-                        onSelect={() => onModelChange(model.id)}
-                      />
-                    ))}
-                  </DropdownMenuGroup>
-                </>
-              )}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>{t("model")}</DropdownMenuLabel>
+            <div className="px-2 pb-2">
+              <Combobox
+                value={selectedModelId || "__default__"}
+                onValueChange={(value) => onModelChange(value === "__default__" ? "" : value)}
+                valueLabel={modelTriggerLabel}
+                ariaLabel={t("model")}
+                clearable={false}
+                options={[
+                  { value: "__default__", label: defaultModelOptionLabel },
+                  ...recentModels.map((model) => ({
+                    value: model.id,
+                    label: model.display_name,
+                    group: t("recent"),
+                  })),
+                  ...enabledModels
+                    .filter((model) => !recentIds.has(model.id))
+                    .map((model) => ({
+                      value: model.id,
+                      label: model.display_name,
+                      group: t("model"),
+                    })),
+                ]}
+              />
+            </div>
+          </DropdownMenuGroup>
 
           {supportsReasoning && reasoningEffortConfig && (
             <DropdownMenuSub>

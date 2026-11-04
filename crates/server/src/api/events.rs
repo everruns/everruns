@@ -29,7 +29,6 @@ use serde::Deserialize;
 use super::command_http::CommandRouterExt;
 use super::common::{ErrorResponse, ListResponse, impl_auth_state};
 use super::sse::{DisconnectReason, SseConnectionTracker, SseStreamConfig};
-use crate::live_updates::event_notifications::EventNotificationBroadcaster;
 use crate::services::EventService;
 
 use futures::{
@@ -37,8 +36,6 @@ use futures::{
     stream::{self, Stream},
 };
 use std::{convert::Infallible, sync::Arc, time::Duration};
-use tokio::sync::broadcast;
-use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use uuid::Uuid;
 
@@ -145,8 +142,6 @@ pub struct AppState {
     pub session_service: Arc<SessionService>,
     pub event_service: Arc<EventService>,
     pub sse_tracker: Arc<SseConnectionTracker>,
-    /// Push-based event notifications via pg_notify (None in DEV_MODE/in-memory)
-    pub event_broadcaster: Option<Arc<EventNotificationBroadcaster>>,
     pub auth: AuthState,
 }
 
@@ -164,7 +159,6 @@ impl AppState {
             session_service: Arc::new(SessionService::new(db.clone())),
             event_service: Arc::new(EventService::with_listeners(db, event_delivery, listeners)),
             sse_tracker,
-            event_broadcaster: None,
             auth,
         }
     }
@@ -313,7 +307,6 @@ pub async fn stream_sse(
 
     Ok(session_event_sse(SessionEventStream {
         event_service: state.event_service.clone(),
-        event_broadcaster: state.event_broadcaster.clone(),
         session_id,
         since_id: query.since_id.map(|id| id.uuid()),
         after_sequence: query.after_sequence,
@@ -332,10 +325,9 @@ pub async fn stream_sse(
 /// Ephemeral events (no sequence) get no `id:` field — the client's last-event-id
 /// stays pointing to the most recent durable event.
 fn canonical_sse(event: &Event, retry: Duration) -> Option<SseEvent> {
-    // Same projection the list path applies (EVE-933): reasoning replay
-    // state is stored but never published. Cloning only for the variants
-    // that carry a message keeps the delta stream allocation-free.
-    let json = if event.data.needs_public_projection() {
+    // The list path and every SSE delivery (live or replayed) share the
+    // metadata/replay projection. Deltas without metadata need no clone.
+    let json = if event.metadata.is_some() || event.data.needs_public_projection() {
         serde_json::to_string(&event.clone().into_public())
     } else {
         serde_json::to_string(event)
@@ -363,8 +355,6 @@ pub(crate) type SseRender = Arc<dyn Fn(&Event, Duration) -> Option<SseEvent> + S
 /// One session's live event stream: what to follow and how to render it.
 pub(crate) struct SessionEventStream {
     pub event_service: Arc<EventService>,
-    /// Push-based event notifications via pg_notify (None in DEV_MODE/in-memory)
-    pub event_broadcaster: Option<Arc<EventNotificationBroadcaster>>,
     pub session_id: Uuid,
     /// Reconnect cursor: replay durable events after this one first.
     pub since_id: Option<Uuid>,
@@ -380,12 +370,49 @@ pub(crate) struct SessionEventStream {
 /// The session SSE stream every surface shares: `connected`, a one-time
 /// replay from the cursor, live delivery (or PG polling when no subscription
 /// is available), connection cycling with `disconnecting`, and a heartbeat.
+/// How long a push stream waits, while a turn it has seen start is still open,
+/// before it reads PG for durable events push did not deliver.
+const PUSH_QUIET_CATCH_UP: Duration = Duration::from_secs(5);
+
+/// The last durable event a push stream sent, so a catch-up read and a late
+/// push never send one twice.
+///
+/// Decision: push can drop an event. In the EKS load test of 2026-10-26 a
+/// few turns ended in the log while their open streams never got
+/// `session.idled`, so the chat looked stuck until the connection cycled.
+/// A stream that has seen a turn start and not end reads PG after
+/// `PUSH_QUIET_CATCH_UP` without an event. Idle sessions never read, so
+/// open but quiet tabs cost nothing.
+#[derive(Clone, Copy, Debug, Default)]
+struct PushCursor {
+    delivered: Option<i32>,
+    turn_open: bool,
+}
+
+impl PushCursor {
+    /// Record a durable event; false when it was already sent. Ephemeral
+    /// events (no sequence) always pass.
+    fn advance(&mut self, event: &Event) -> bool {
+        let Some(sequence) = event.sequence else {
+            return true;
+        };
+        if self
+            .delivered
+            .is_some_and(|delivered| sequence <= delivered)
+        {
+            return false;
+        }
+        self.delivered = Some(sequence);
+        self.turn_open = event.event_type != everruns_core::SESSION_IDLED;
+        true
+    }
+}
+
 pub(crate) async fn session_event_sse(
     params: SessionEventStream,
 ) -> Sse<impl Stream<Item = Result<SseEvent, Infallible>>> {
     let SessionEventStream {
         event_service,
-        event_broadcaster,
         session_id,
         since_id: initial_since_id,
         after_sequence: initial_after_sequence,
@@ -413,34 +440,8 @@ pub(crate) async fn session_event_sse(
         .await
         .ok();
 
-    // If we have a subscription, use push-based delivery.
-    // Otherwise, fall back to legacy PG polling with pg_notify waker.
+    // If we have a subscription, use push-based delivery; otherwise poll PG.
     let use_push = subscription.is_some();
-
-    // Legacy PG polling waker (used only when EventDelivery subscription unavailable)
-    let event_waker = Arc::new(tokio::sync::Notify::new());
-    let mut pg_notify_listener_task: Option<JoinHandle<()>> = None;
-    if let (false, Some(broadcaster)) = (use_push, &event_broadcaster) {
-        let mut rx = broadcaster.subscribe();
-        let waker = event_waker.clone();
-        let target_session = session_id;
-        let task = tokio::spawn(async move {
-            loop {
-                match rx.recv().await {
-                    Ok(payload) if payload.session_id == target_session => {
-                        waker.notify_one();
-                    }
-                    Ok(_) => {}
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::debug!(lagged = n, "Event notification receiver lagged, waking");
-                        waker.notify_one();
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                }
-            }
-        });
-        pg_notify_listener_task = Some(task);
-    }
 
     // Shared subscription wrapped in Arc<Mutex> for use inside the stream
     let subscription = Arc::new(tokio::sync::Mutex::new(subscription));
@@ -475,7 +476,7 @@ pub(crate) async fn session_event_sse(
         exclude_types: Vec<String>,
         connection_start: Instant,
         max_duration: Duration,
-        event_waker: Arc<tokio::sync::Notify>,
+        push: PushCursor,
     }
 
     let initial_state = StreamState {
@@ -488,7 +489,7 @@ pub(crate) async fn session_event_sse(
         filter_types,
         exclude_types,
         connection_start,
-        event_waker,
+        push: PushCursor::default(),
     };
 
     // SSE stream: push-based via EventDelivery subscription with PG catch-up on reconnect.
@@ -563,6 +564,10 @@ pub(crate) async fn session_event_sse(
                     tracing::debug!(session_id = %session_id, last_id = ?state.last_id, after_sequence = ?state.last_sequence, "SSE: replaying missed durable events from PG");
                     match event_service.list(session_id, state.last_sequence, state.last_id, &state.filter_types, &state.exclude_types, None, None).await {
                         Ok(events) => {
+                            let mut push = state.push;
+                            for event in &events {
+                                push.advance(event);
+                            }
                             let new_last_id = events.last().map(|e| e.id.uuid()).or(state.last_id);
                             let retry_duration = state.config.retry_hint(state.config.min_backoff_ms);
                             let sse_events: Vec<Result<SseEvent, Infallible>> = events
@@ -598,6 +603,7 @@ pub(crate) async fn session_event_sse(
                                     state.last_sequence
                                 },
                                 backoff_ms: state.config.min_backoff_ms,
+                                push,
                                 ..state
                             };
                             Some((stream::iter(sse_events), new_state))
@@ -610,8 +616,9 @@ pub(crate) async fn session_event_sse(
                 }
 
                 StreamPhase::Streaming => {
-                    // Push-based: wait for events from EventDelivery subscription.
-                    // No PG polling. Connection cycling still applies.
+                    // Push-based: wait for events from EventDelivery subscription,
+                    // reading PG only to catch up a quiet open turn (`PushCursor`).
+                    // Connection cycling still applies.
                     if state.connection_start.elapsed() > state.max_duration {
                         return Some((stream::iter(vec![]), StreamState {
                             phase: StreamPhase::SendDisconnecting,
@@ -619,6 +626,11 @@ pub(crate) async fn session_event_sse(
                         }));
                     }
 
+                    enum Woke {
+                        Pushed(Option<Box<Event>>),
+                        Quiet,
+                        Cycle,
+                    }
                     let mut sub = subscription.lock().await;
                     let recv_future = async {
                         if let Some(ref mut s) = *sub {
@@ -628,35 +640,69 @@ pub(crate) async fn session_event_sse(
                             None
                         }
                     };
+                    let quiet = async {
+                        if state.push.turn_open {
+                            tokio::time::sleep(PUSH_QUIET_CATCH_UP).await
+                        } else {
+                            std::future::pending().await
+                        }
+                    };
 
-                    // Wait for event or connection cycle timeout
+                    // Wait for event, a quiet open turn, or connection cycle timeout
                     let cycle_remaining = state.max_duration.saturating_sub(state.connection_start.elapsed());
-                    tokio::select! {
-                        event = recv_future => {
-                            match event {
-                                Some(event) if event_passes_stream_filter(&event, session_id, &state.filter_types, &state.exclude_types) => {
-                                    let retry_duration = state.config.retry_hint(state.config.min_backoff_ms);
-                                    let sse_events: Vec<Result<SseEvent, Infallible>> =
-                                        render(&event, retry_duration).map(Ok).into_iter().collect();
-                                    Some((stream::iter(sse_events), state))
+                    let woke = tokio::select! {
+                        event = recv_future => Woke::Pushed(event.map(Box::new)),
+                        _ = quiet => Woke::Quiet,
+                        _ = tokio::time::sleep(cycle_remaining) => Woke::Cycle,
+                    };
+                    drop(sub);
+                    let retry_duration = state.config.retry_hint(state.config.min_backoff_ms);
+                    let mut state = state;
+                    match woke {
+                        Woke::Pushed(Some(event)) => {
+                            // Wrong session (partition collision), already sent by a
+                            // catch-up read, or filtered out: skip.
+                            let send = event.session_id.uuid() == session_id
+                                && state.push.advance(&event)
+                                && event_passes_stream_filter(&event, session_id, &state.filter_types, &state.exclude_types);
+                            let sse_events: Vec<Result<SseEvent, Infallible>> = if send {
+                                render(&event, retry_duration).map(Ok).into_iter().collect()
+                            } else {
+                                vec![]
+                            };
+                            Some((stream::iter(sse_events), state))
+                        }
+                        Woke::Pushed(None) => {
+                            // Subscription closed — end stream
+                            tracing::warn!(session_id = %session_id, "SSE: EventDelivery subscription closed");
+                            None
+                        }
+                        Woke::Quiet => {
+                            let missed = match event_service.list(session_id, state.push.delivered, None, &[], &[], None, None).await {
+                                Ok(events) => events,
+                                Err(e) => {
+                                    tracing::warn!(session_id = %session_id, error = %e, "SSE: catch-up read failed");
+                                    vec![]
                                 }
-                                Some(_) => {
-                                    // Wrong session (partition collision) or filtered out — skip
-                                    Some((stream::iter(vec![]), state))
-                                }
-                                None => {
-                                    // Subscription closed — end stream
-                                    tracing::warn!(session_id = %session_id, "SSE: EventDelivery subscription closed");
-                                    None
+                            };
+                            let mut sse_events: Vec<Result<SseEvent, Infallible>> = Vec::new();
+                            for event in &missed {
+                                if state.push.advance(event)
+                                    && event_passes_stream_filter(event, session_id, &state.filter_types, &state.exclude_types)
+                                    && let Some(frame) = render(event, retry_duration)
+                                {
+                                    sse_events.push(Ok(frame));
                                 }
                             }
+                            if !missed.is_empty() {
+                                tracing::info!(session_id = %session_id, count = missed.len(), "SSE: caught up durable events push did not deliver");
+                            }
+                            Some((stream::iter(sse_events), state))
                         }
-                        _ = tokio::time::sleep(cycle_remaining) => {
-                            Some((stream::iter(vec![]), StreamState {
-                                phase: StreamPhase::SendDisconnecting,
-                                ..state
-                            }))
-                        }
+                        Woke::Cycle => Some((stream::iter(vec![]), StreamState {
+                            phase: StreamPhase::SendDisconnecting,
+                            ..state
+                        })),
                     }
                 }
 
@@ -689,11 +735,7 @@ pub(crate) async fn session_event_sse(
                             }))
                         }
                         Ok(_) => {
-                            let fallback = Duration::from_millis(state.backoff_ms);
-                            tokio::select! {
-                                _ = state.event_waker.notified() => {}
-                                _ = tokio::time::sleep(fallback) => {}
-                            }
+                            tokio::time::sleep(Duration::from_millis(state.backoff_ms)).await;
                             Some((stream::iter(vec![]), StreamState {
                                 backoff_ms: state.config.next_backoff(state.backoff_ms),
                                 ..state
@@ -715,28 +757,18 @@ pub(crate) async fn session_event_sse(
     let guarded_stream = GuardedStream {
         inner: Box::pin(stream),
         _guard: sse_guard,
-        notification_task: pg_notify_listener_task,
     };
 
     let keep_alive = KeepAlive::new()
         .interval(config.heartbeat_interval())
         .text("heartbeat");
-    Sse::new(guarded_stream).keep_alive(keep_alive)
+    Sse::new(super::sse::end_on_shutdown(guarded_stream, &config)).keep_alive(keep_alive)
 }
 
 /// Stream wrapper that holds an SSE connection guard until the stream is dropped.
 struct GuardedStream<S> {
     inner: std::pin::Pin<Box<S>>,
     _guard: super::sse::SseConnectionGuard,
-    notification_task: Option<JoinHandle<()>>,
-}
-
-impl<S> Drop for GuardedStream<S> {
-    fn drop(&mut self) {
-        if let Some(task) = self.notification_task.take() {
-            task.abort();
-        }
-    }
 }
 
 impl<S: Stream> Stream for GuardedStream<S> {
@@ -872,6 +904,30 @@ mod tests {
     use everruns_core::VALID_EVENT_TYPES;
     use everruns_core::events::{EventData, OutputMessageDeltaData};
 
+    #[tokio::test]
+    async fn live_and_replayed_sse_filter_metadata_even_without_message_payloads() {
+        use axum::response::IntoResponse;
+        for sequence in [None, Some(1)] {
+            let mut event = test_event(Uuid::now_v7(), "output.message.delta");
+            event.sequence = sequence;
+            event.metadata = Some(
+                serde_json::json!({"initiator":{"type":"user","user_id":"u1"},"authority":"CANARY"}),
+            );
+            let frame = canonical_sse(&event, Duration::from_secs(1)).unwrap();
+            let response = Sse::new(futures::stream::iter([Ok::<_, std::convert::Infallible>(
+                frame,
+            )]))
+            .into_response();
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let text = String::from_utf8(body.to_vec()).unwrap();
+            assert!(!text.contains("CANARY"));
+            assert!(text.contains("u1"));
+            assert_eq!(text.contains("id:"), sequence.is_some());
+        }
+    }
+
     fn test_event(session_id: Uuid, event_type: &str) -> Event {
         Event {
             id: EventId::new(),
@@ -890,6 +946,39 @@ mod tests {
             tags: None,
             sequence: None,
         }
+    }
+
+    fn durable(session_id: Uuid, event_type: &str, sequence: i32) -> Event {
+        Event {
+            sequence: Some(sequence),
+            ..test_event(session_id, event_type)
+        }
+    }
+
+    #[test]
+    fn push_cursor_opens_on_a_turn_and_closes_on_idle() {
+        let session = Uuid::new_v4();
+        let mut cursor = PushCursor::default();
+        assert!(!cursor.turn_open, "a fresh stream never reads PG");
+        assert!(cursor.advance(&durable(session, "turn.started", 4)));
+        assert!(cursor.turn_open);
+        assert!(cursor.advance(&test_event(session, "output.message.delta")));
+        assert!(cursor.advance(&durable(session, "session.idled", 9)));
+        assert!(!cursor.turn_open);
+        assert_eq!(cursor.delivered, Some(9));
+    }
+
+    #[test]
+    fn push_cursor_drops_an_event_a_catch_up_already_sent() {
+        let session = Uuid::new_v4();
+        let mut cursor = PushCursor::default();
+        assert!(cursor.advance(&durable(session, "turn.started", 4)));
+        // Catch-up read sent 5 and 6; push delivers 5 late.
+        assert!(cursor.advance(&durable(session, "turn.completed", 5)));
+        assert!(cursor.advance(&durable(session, "session.idled", 6)));
+        assert!(!cursor.advance(&durable(session, "turn.completed", 5)));
+        assert_eq!(cursor.delivered, Some(6));
+        assert!(!cursor.turn_open);
     }
 
     // The layer that actually enforces session isolation for in-memory
@@ -972,7 +1061,6 @@ mod tests {
             _guard: tracker
                 .try_acquire(1, session)
                 .expect("the first connection is admitted"),
-            notification_task: None,
         };
 
         // The slot is taken for as long as the stream is alive.

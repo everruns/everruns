@@ -1,5 +1,8 @@
 "use client";
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
+
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { usePageTitle } from "@/hooks";
@@ -26,7 +29,8 @@ import {
 } from "@/lib/api/agent-channels";
 
 export default function SlackWorkspacesPage() {
-  usePageTitle("Slack workspaces", "Settings");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Slack workspaces"), ui("Settings"));
   const capability = useSlackInstallCapability();
   const supported = capability.data?.supported === true;
   const canManage = capability.data?.can_manage === true;
@@ -53,6 +57,16 @@ export default function SlackWorkspacesPage() {
     window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
   }, []);
 
+  useChatPageRows(
+    "Slack workspaces",
+    (workspaces.data ?? []).map((w) => ({
+      id: w.id,
+      status: w.status,
+      connected_at: w.connected_at,
+    })),
+    { enabled: supported, loading: workspaces.isLoading, error: !!workspaces.error },
+  );
+
   if (capability.isLoading || (supported && workspaces.isLoading)) {
     return <Skeleton className="h-40 w-full" />;
   }
@@ -63,10 +77,11 @@ export default function SlackWorkspacesPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold">Slack workspaces</h2>
+        <h2 className="text-lg font-semibold">{ui("Slack workspaces")}</h2>
         <p className="text-sm text-muted-foreground">
-          Connect a workspace once, and every agent you put in Slack gets its own Slack app there,
-          its own name in the Agents menu, with one click and one Slack approval.
+          {ui(
+            "Connect a workspace once, and every agent you put in Slack gets its own Slack app there, its own name in the Agents menu, with one click and one Slack approval.",
+          )}
         </p>
       </div>
 
@@ -79,8 +94,9 @@ export default function SlackWorkspacesPage() {
       {!supported && (
         <Notice variant="info">
           <NoticeDescription>
-            This deployment does not create Slack apps for you. Configure each Slack endpoint
-            manually from its settings.
+            {ui(
+              "This deployment does not create Slack apps for you. Configure each Slack endpoint manually from its settings.",
+            )}
           </NoticeDescription>
         </Notice>
       )}
@@ -102,8 +118,9 @@ export default function SlackWorkspacesPage() {
       {supported && !canManage && list.length === 0 && (
         <Notice variant="info">
           <NoticeDescription>
-            No Slack workspace is connected yet. Ask an organization administrator to connect one
-            here.
+            {ui(
+              "No Slack workspace is connected yet. Ask an organization administrator to connect one here.",
+            )}
           </NoticeDescription>
         </Notice>
       )}
@@ -111,9 +128,10 @@ export default function SlackWorkspacesPage() {
       {supported && showWizard && (
         <Card className="space-y-4 p-4">
           <div className="space-y-1">
-            <p className="text-sm font-medium">Connect a Slack workspace</p>
+            <p className="text-sm font-medium">{ui("Connect a Slack workspace")}</p>
             <p className="text-xs text-muted-foreground">
-              {managerApp ? "One Slack approval" : "About thirty seconds"}, once per workspace.
+              {managerApp ? ui("One Slack approval") : ui("About thirty seconds")}
+              {ui(", once per workspace.")}
             </p>
           </div>
           <ConnectSlackWorkspaceChoice
@@ -125,7 +143,7 @@ export default function SlackWorkspacesPage() {
           />
           {list.length > 0 && (
             <Button type="button" variant="ghost" size="sm" onClick={() => setConnecting(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
           )}
         </Card>
@@ -134,7 +152,7 @@ export default function SlackWorkspacesPage() {
       {supported && canManage && list.length > 0 && !connecting && (
         <Button type="button" variant="outline" onClick={() => setConnecting(true)}>
           <Slack className="size-4" />
-          Connect another workspace
+          {ui("Connect another workspace")}
         </Button>
       )}
     </div>
@@ -152,6 +170,9 @@ function WorkspaceRow({
   managerApp: boolean;
   onChanged: () => Promise<unknown>;
 }) {
+  const { displayLocale } = useLocale();
+
+  const ui = useUiTranslations();
   const [pending, setPending] = useState<"test" | "disconnect" | "reconnect" | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -187,14 +208,14 @@ function WorkspaceRow({
           <div>
             <p className="text-sm font-medium">{slackWorkspaceLabel(workspace)}</p>
             <p className="text-xs text-muted-foreground">
-              Connected {new Date(workspace.connected_at).toLocaleDateString()}
+              {ui("Connected")} {new Date(workspace.connected_at).toLocaleDateString(displayLocale)}
               {workspace.connected_with === "manager_app" && " with Slack approval"}
             </p>
           </div>
           {needsReconnect ? (
-            <Badge variant="destructive">Reconnect required</Badge>
+            <Badge variant="destructive">{ui("Reconnect required")}</Badge>
           ) : (
-            <Badge variant="success">Connected</Badge>
+            <Badge variant="success">{ui("Connected")}</Badge>
           )}
         </div>
         {canManage && (
@@ -205,7 +226,7 @@ function WorkspaceRow({
                 size="sm"
                 onClick={() => setPending(pending === "reconnect" ? null : "reconnect")}
               >
-                Reconnect
+                {ui("Reconnect")}
               </Button>
             ) : (
               <Button
@@ -215,7 +236,7 @@ function WorkspaceRow({
                 onClick={() => void run("test")}
                 disabled={pending !== null}
               >
-                {pending === "test" ? "Testing…" : "Test"}
+                {pending === "test" ? ui("Testing…") : ui("Test")}
               </Button>
             )}
             <Button
@@ -225,24 +246,25 @@ function WorkspaceRow({
               onClick={() => setConfirming(true)}
               disabled={pending === "test" || pending === "disconnect"}
             >
-              Disconnect
+              {ui("Disconnect")}
             </Button>
           </div>
         )}
       </div>
       {needsReconnect && (
         <p className="text-xs text-muted-foreground">
-          Slack stopped accepting the saved credential. Agents already in this workspace keep
-          working; new agents cannot be added until it is reconnected.
+          {ui(
+            "Slack stopped accepting the saved credential. Agents already in this workspace keep working; new agents cannot be added until it is reconnected.",
+          )}
         </p>
       )}
       {confirming && (
         <Notice variant="warning">
           <NoticeDescription>
             <span className="block">
-              Agents already in this workspace keep working; each has its own Slack app. You will
-              not be able to add agents to it, or update their Slack apps, until you connect it
-              again.
+              {ui(
+                "Agents already in this workspace keep working; each has its own Slack app. You will not be able to add agents to it, or update their Slack apps, until you connect it again.",
+              )}
             </span>
             <span className="mt-3 flex gap-2">
               <Button
@@ -252,10 +274,10 @@ function WorkspaceRow({
                 onClick={() => void run("disconnect")}
                 disabled={pending !== null}
               >
-                {pending === "disconnect" ? "Disconnecting…" : "Disconnect workspace"}
+                {pending === "disconnect" ? ui("Disconnecting…") : ui("Disconnect workspace")}
               </Button>
               <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(false)}>
-                Keep it
+                {ui("Keep it")}
               </Button>
             </span>
           </NoticeDescription>

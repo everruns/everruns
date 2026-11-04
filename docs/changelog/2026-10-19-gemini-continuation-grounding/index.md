@@ -20,3 +20,9 @@ Search usage counts a query again when another hop performs it, while repeated
 metadata within one hop stays deduplicated. A final hop without grounding keeps
 earlier citations. Token accounting and continuation limits are unchanged. See
 [Google Gemini](/providers/gemini/) for long-decode configuration.
+
+## Update 2026-11-04
+
+[Tool-use prompt accounting](/changelog/2026-11-04-gemini-tool-use-tokens/) now
+includes provider-reported hosted-tool input across continuation requests,
+including safe checkpoint recovery.

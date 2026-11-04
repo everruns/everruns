@@ -6,11 +6,14 @@
  * - A wake with no report is the line only. There is nothing to open.
  * - An opened report scrolls inside the row, so a long proposal does not take
  *   over the transcript.
+ * - The same row shows every message the platform wrote, not only task wakes:
+ *   a schedule run, a trigger, a webhook, a notice. The icon and label say
+ *   which, the detail carries a run counter (knowledge/execution/message-origin.md).
  */
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
-import { ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronRight, RefreshCw, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function AutomaticUpdate({
@@ -19,8 +22,14 @@ export function AutomaticUpdate({
   body,
   trailing,
   defaultOpen = false,
+  icon: Icon = RefreshCw,
+  detail,
 }: {
   label: string;
+  /** What wrote the message; a refresh arrow for task updates. */
+  icon?: LucideIcon;
+  /** A short fact after the headline, such as "run 12 of 96". */
+  detail?: string;
   /** Readable status, such as "Releases is done". Omitted when the wake did not parse. */
   headline?: string;
   /** The report, question, or raw wake text. Blank means the line does not open. */
@@ -48,9 +57,12 @@ export function AutomaticUpdate({
           <span className="h-4 w-4" />
         )}
       </span>
-      <RefreshCw className="h-3.5 w-3.5 shrink-0" aria-hidden />
+      <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
       <span className="shrink-0 font-medium">{label}</span>
       {title ? <span className="min-w-0 truncate text-foreground">{title}</span> : null}
+      {detail ? (
+        <span className="shrink-0 border px-1.5 font-mono text-[11px] leading-5">{detail}</span>
+      ) : null}
       <span className="h-px min-w-4 flex-1 bg-border" />
     </>
   );

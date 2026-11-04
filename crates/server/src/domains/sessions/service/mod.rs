@@ -43,9 +43,8 @@ use crate::server::ResourceLimitsConfig;
 use crate::setup::org_init;
 use crate::storage::UpdateField;
 use crate::storage::{
-    CreateEventRow, CreateMemoryRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow,
-    MemoryRow, SessionListFilters, StorageBackend, UpdateSession, UpsertSessionKeyValue,
-    UpsertSessionSecret,
+    CreateEventRow, CreateMemoryRow, CreateSessionRow, MemoryFileRow, MemoryRow,
+    SessionListFilters, StorageBackend, UpdateSession, UpsertSessionKeyValue, UpsertSessionSecret,
 };
 use anyhow::Result;
 use everruns_capabilities::capabilities::MEMORY_CAPABILITY_ID;
@@ -263,6 +262,8 @@ fn insert_mount_file(
 // normalize_initial_file_path is imported from everruns_core::config_layer
 
 #[cfg(test)]
+mod tests_foreign_harness;
+#[cfg(test)]
 mod tests_fork_from_message;
 #[cfg(test)]
 mod tests_model_binding;
@@ -272,5 +273,7 @@ mod tests_mounts_tests;
 mod tests_sessions;
 #[cfg(test)]
 mod tests_support;
+#[cfg(test)]
+mod tests_team_folder;
 #[cfg(test)]
 mod tests_userless_sandbox;

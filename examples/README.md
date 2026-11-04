@@ -6,6 +6,7 @@ repository: these Cargo packages depend on local workspace crates.
 
 | Example | Learn | Run from repository root |
 | --- | --- | --- |
+| [Custom Data Agent Worker](custom-data-agent/) | Run private database tools behind the Platform worker protocol | `cargo run -p everruns-custom-data-agent` |
 | [Support](support-agent/) | Combine account facts and policy | `cargo run -p everruns-support-agent` |
 | [Everruns Support](everruns-support-agent/) | Search and read a citable docs corpus | `cargo run -p everruns-framework-support-agent` |
 | [Code Review](coding-review-agent/) | Execute a fixed reproduction before reporting a defect | `cargo run -p everruns-coding-review-agent` |
@@ -43,3 +44,8 @@ that import into the Platform or load in Framework and serve hosts.
 AG-UI clients, and [a2a](serve/a2a/) has two agents talking over A2A, one served
 and one delegating to it (`cargo run -p serve-example-a2a --bin researcher`), and
 [voice](serve/voice/) is a front desk people call from the browser.
+
+[Durable multiplayer chat](cloudflare-durable-chat/) runs the Everruns kernel inside a
+Cloudflare Durable Object, with shared conversations, forks, scheduled
+follow-ups, and a recoverable history-search child. It is an experimental
+advanced host example; see its README for build and Wrangler commands.

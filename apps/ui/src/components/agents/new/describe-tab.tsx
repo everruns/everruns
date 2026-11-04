@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ArrowUp, Loader2 } from "lucide-react";
@@ -38,6 +39,7 @@ export function DescribeTab({
   onCreate: () => void;
   onEdit: () => void;
 }) {
+  const ui = useUiTranslations();
   const [input, setInput] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>(STARTER_PROMPTS);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -67,15 +69,17 @@ export function DescribeTab({
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <section className="flex min-h-[520px] flex-col rounded-md border bg-card">
         <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b px-4 py-3">
-          <h2 className="font-medium">Agent builder</h2>
+          <h2 className="font-medium">{ui("Agent builder")}</h2>
           <p className="text-xs text-muted-foreground">
-            Edits the draft on the right. Nothing is created until you confirm.
+            {ui("Edits the draft on the right. Nothing is created until you confirm.")}
           </p>
         </header>
         <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
           <Bubble from="assistant">
-            Describe the job in a sentence or two. I&apos;ll draft the agent on the right and pick
-            from what {orgName} already has connected.
+            {ui(
+              "Describe the job in a sentence or two. I'll draft the agent on the right and pick from what",
+            )}{" "}
+            {orgName} {ui("already has connected.")}
           </Bubble>
           {messages.map((message, index) => (
             <Bubble key={index} from={message.role}>
@@ -84,7 +88,7 @@ export function DescribeTab({
           ))}
           {builder.isPending && (
             <Bubble from="assistant">
-              <Loader2 className="size-4 animate-spin" aria-label="Drafting" />
+              <Loader2 className="size-4 animate-spin" aria-label={ui("Drafting")} />
             </Bubble>
           )}
           {builder.error && (
@@ -127,8 +131,8 @@ export function DescribeTab({
                   send(input);
                 }
               }}
-              placeholder="What should this agent do?"
-              aria-label="Describe the agent"
+              placeholder={ui("What should this agent do?")}
+              aria-label={ui("Describe the agent")}
               rows={2}
               className="min-h-16 flex-1 resize-none"
             />
@@ -136,7 +140,7 @@ export function DescribeTab({
               type="submit"
               variant="accent"
               size="icon"
-              aria-label="Send"
+              aria-label={ui("Send")}
               disabled={!input.trim() || builder.isPending}
             >
               <ArrowUp className="size-4" />

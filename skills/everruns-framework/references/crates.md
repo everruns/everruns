@@ -21,6 +21,14 @@ Enable a provider such as `openai` and configure `OpenAI::from_env()` for a live
 model. `Model::simulated` bundles an offline provider for deterministic tests.
 Provider driver identities are wire IDs, not a closed enum of all providers.
 
+All built-in vendor configurations are available through facade features;
+use provider-owned types and `.api(...)` selectors for OpenAI and Mistral.
+Reserve `everruns-drivers` for custom transports or direct driver implementation.
+Hosted provider create/update requests select the protocol with `api`; discover
+valid choices through `/v1/providers/config`. Omitted PATCH fields retain the
+choice, and `"api": "default"` resets it. See the
+[provider comparison](https://everruns.com/docs/framework/models-and-providers/).
+
 Use `mcp` for scoped remote MCP and `mcp-stdio` for opt-in local processes.
 Integration features such as `filesystem`, `bashkit`, `web-fetch`, `duckduckgo`,
 and `lua` select their concrete implementations. Host command execution through

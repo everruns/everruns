@@ -1,5 +1,6 @@
 "use client";
 
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { Check, ExternalLink, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -14,9 +15,9 @@ function sameWords(left: string | undefined, right: string | undefined): boolean
   return normalized.length > 0 && normalized === normalize(right);
 }
 
-function readableTimestamp(value: string): string {
+function readableTimestamp(value: string, locale?: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(locale);
 }
 
 function ApprovalEpisodeCard({
@@ -26,6 +27,8 @@ function ApprovalEpisodeCard({
   episode: ApprovalEpisode;
   sessionId: string;
 }) {
+  const ui = useUiTranslations();
+  const { displayLocale } = useLocale();
   const approved = episode.status === "approved";
   const title = episode.grant?.action ?? episode.ask?.action ?? "Critical action";
   const showAskedAction = Boolean(
@@ -51,7 +54,7 @@ function ApprovalEpisodeCard({
             <div className="flex items-start justify-between gap-3">
               <h2 className="min-w-0 flex-1 font-medium text-foreground">{title}</h2>
               <Badge variant={approved ? "success" : "outline"} className="mt-0.5">
-                {approved ? "Approved" : "Open"}
+                {approved ? ui("Approved") : ui("Open")}
               </Badge>
             </div>
             {episode.grant?.detail && !sameWords(episode.grant.detail, title) && (
@@ -66,7 +69,7 @@ function ApprovalEpisodeCard({
             )}
             {episode.recordedWithoutRequest && (
               <p className="mt-2 text-sm text-muted-foreground">
-                Recorded without a logged request.
+                {ui("Recorded without a logged request.")}
               </p>
             )}
           </div>
@@ -75,7 +78,7 @@ function ApprovalEpisodeCard({
         {episode.ask && episode.grant && (
           <div className="border border-border/70 bg-muted/40 px-3 py-2.5 sm:ml-11">
             <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              Requested
+              {ui("Requested")}
             </p>
             {showAskedAction && (
               <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">
@@ -88,7 +91,7 @@ function ApprovalEpisodeCard({
               </p>
             )}
             <p className="mt-1 text-xs text-muted-foreground">
-              Asked {readableTimestamp(episode.ask.at)}
+              {ui("Asked")} {readableTimestamp(episode.ask.at, displayLocale)}
             </p>
           </div>
         )}
@@ -97,9 +100,9 @@ function ApprovalEpisodeCard({
           <p className="text-xs text-muted-foreground">
             {episode.grant ? (
               <>
-                Approved by {episode.grant.approvedBy}
+                {ui("Approved by")} {episode.grant.approvedBy}
                 <span aria-hidden> · </span>
-                {readableTimestamp(episode.grant.at)}
+                {readableTimestamp(episode.grant.at, displayLocale)}
               </>
             ) : episode.awaitingConsent ? (
               "Waiting for consent. Nothing has been recorded as approved."
@@ -109,7 +112,7 @@ function ApprovalEpisodeCard({
           </p>
           {consentHref && (
             <LinkButton href={consentHref} variant="outline" size="sm" className="shrink-0">
-              View consent
+              {ui("View consent")}
               <ExternalLink className="size-3.5" />
             </LinkButton>
           )}
@@ -132,27 +135,30 @@ export function SessionApprovals({
   error?: string;
   onRetry?: () => void;
 }) {
+  const ui = useUiTranslations();
   const approvedCount = episodes.filter((episode) => episode.status === "approved").length;
   const openCount = episodes.length - approvedCount;
 
   if (loading) {
-    return <p className="py-12 text-center text-sm text-muted-foreground">Loading approvals…</p>;
+    return (
+      <p className="py-12 text-center text-sm text-muted-foreground">{ui("Loading approvals…")}</p>
+    );
   }
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <p className="text-sm text-muted-foreground">
-        Each card is one approval: the request, and what was recorded as approved.
+        {ui("Each card is one approval: the request, and what was recorded as approved.")}
       </p>
 
       {error && (
         <Card>
           <CardContent className="py-6 text-center">
-            <p className="font-medium">Couldn’t load the full approval history</p>
+            <p className="font-medium">{ui("Couldn’t load the full approval history")}</p>
             <p className="mt-1 text-sm text-muted-foreground">{error}</p>
             {onRetry && (
               <Button className="mt-4" variant="outline" onClick={onRetry}>
-                Try again
+                {ui("Try again")}
               </Button>
             )}
           </CardContent>
@@ -163,9 +169,9 @@ export function SessionApprovals({
         <Card>
           <CardContent className="py-12 text-center">
             <ShieldCheck className="mx-auto size-8 text-muted-foreground/60" />
-            <p className="mt-3 font-medium">No approvals in this session</p>
+            <p className="mt-3 font-medium">{ui("No approvals in this session")}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Requests and the approvals recorded for them will show up here together.
+              {ui("Requests and the approvals recorded for them will show up here together.")}
             </p>
           </CardContent>
         </Card>
@@ -174,8 +180,8 @@ export function SessionApprovals({
       {episodes.length > 0 && (
         <>
           <p className="text-xs text-muted-foreground">
-            {approvedCount} approved
-            {openCount > 0 ? ` · ${openCount} open` : ""}
+            {approvedCount} {ui("approved")}
+            {openCount > 0 ? ui(" · {value0} open", { value0: openCount }) : ""}
           </p>
           <div className="space-y-3">
             {episodes.map((episode) => (

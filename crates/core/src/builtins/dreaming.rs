@@ -8,6 +8,14 @@ use async_trait::async_trait;
 pub struct DreamingCapability;
 #[async_trait]
 impl Capability for DreamingCapability {
+    fn localizations(&self) -> Vec<crate::capabilities::CapabilityLocalization> {
+        vec![crate::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Узагальнення досвіду",
+            "У фоновому режимі узагальнює завершений досвід у файлах пам’яті, до яких явно надано доступ.",
+        )]
+    }
+
     fn id(&self) -> &str {
         DREAMING_CAPABILITY_ID
     }

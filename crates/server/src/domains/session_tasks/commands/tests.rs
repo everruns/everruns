@@ -43,6 +43,7 @@ async fn ensure_base_harness(
     db.create_harness(
         DEFAULT_ORG_ID,
         CreateHarnessRow {
+            localizations: Default::default(),
             name: "base".to_string(),
             display_name: Some("Base".to_string()),
             icon: None,
@@ -346,6 +347,9 @@ async fn cancel_monitor_task_cancels_linked_schedule() {
             scheduled_at: None,
             timezone: "UTC".to_string(),
             next_trigger_at: None,
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
         })
         .await
         .unwrap();
@@ -750,6 +754,9 @@ async fn cancel_terminal_monitor_task_skips_executor() {
             scheduled_at: None,
             timezone: "UTC".to_string(),
             next_trigger_at: None,
+            ends_at: None,
+            max_runs: None,
+            stop_when: None,
         })
         .await
         .unwrap();
@@ -981,6 +988,7 @@ async fn tool_context_for_ctx_populates_network_access() {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "acl-test-harness".to_string(),
                 display_name: None,
                 icon: None,
