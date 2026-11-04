@@ -230,6 +230,9 @@ export const messages: Readonly<Record<string, string>> = {
     "Kommentare und Bewertungen erscheinen unter dem eigenen Namen des Agenten. Sie erstellen die App in Ihrem persönlichen GitHub-Konto oder in einer GitHub-Organisation und sie kann nur in den Repositorys dieses Kontos funktionieren.",
   Communication: "Kommunikation",
   "Compute size": "Größe berechnen",
+  Region: "Region",
+  Frankfurt: "Frankfurt",
+  "New York": "New York",
   "Configurable: allow constrained one-offs":
     "Konfigurierbar: Beschränkte einmalige Aktionen zulassen",
   configuration: "Konfiguration",

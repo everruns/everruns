@@ -691,6 +691,7 @@ export default defineConfig({
                     { label: "Agent Handoff", slug: "capabilities/agent-handoff" },
                     { label: "AgentID Sign-In", slug: "integrations/agentid" },
                     { label: "ARD", slug: "integrations/ard" },
+                    { label: "boxd", slug: "integrations/boxd" },
                     { label: "Brave Search", slug: "integrations/brave-search" },
                     { label: "Browser Use", slug: "capabilities/browser-use" },
                     { label: "Computer Use", slug: "capabilities/computer-use" },

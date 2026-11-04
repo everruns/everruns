@@ -33,11 +33,11 @@ const COMPUTE_CAPABILITY_IDS: &[&str] = &[
 
 /// Providers a `managed` target may name. Each has its own `target.options`
 /// rules in `validate_target_options`.
-const MANAGED_PROVIDERS: &[&str] = &["daytona", "e2b", "modal"];
+const MANAGED_PROVIDERS: &[&str] = &["boxd", "daytona", "e2b", "modal"];
 
 /// Managed providers that enforce `containment.network` themselves, from the
 /// `network` entry the server writes into their provider config.
-const PROVIDER_ENFORCED_NETWORK: &[&str] = &["daytona", "e2b", "modal"];
+const PROVIDER_ENFORCED_NETWORK: &[&str] = &["boxd", "daytona", "e2b", "modal"];
 
 /// Managed providers offered only at development grade while their integration
 /// is experimental. The plugin is linked into every build, so registration
@@ -194,6 +194,9 @@ pub fn resolve_spec(authored: &SandboxTemplateSpec) -> Result<ResolvedSandboxSpe
     if is_modal(authored) {
         modal_egress(authored, &containment)?;
     }
+    if is_managed(authored, "boxd") {
+        boxd_egress(&containment)?;
+    }
 
     if authored.target.kind == SandboxTargetKind::Vfs && !authored.bootstrap.commands.is_empty() {
         return Err("bashkit bootstrap commands are not supported".to_string());
@@ -320,8 +323,25 @@ fn validate_credential_binding(
 }
 
 fn is_modal(profile: &SandboxTemplateSpec) -> bool {
+    is_managed(profile, "modal")
+}
+
+fn is_managed(profile: &SandboxTemplateSpec, provider: &str) -> bool {
     profile.target.kind == SandboxTargetKind::Managed
-        && profile.target.provider.as_deref() == Some("modal")
+        && profile.target.provider.as_deref() == Some(provider)
+}
+
+/// The allowlist boxd would hold for the template's network policy, checked
+/// with boxd's own rules (no IPv6, at most 256 entries) so a template cannot
+/// save what machine creation would refuse.
+fn boxd_egress(containment: &SandboxContainmentSpec) -> Result<(), String> {
+    let network = provider_network_config(&containment.network);
+    let rules =
+        everruns_contracts::runtime::sandbox_egress::sandbox_egress_rules(Some(&network), None)
+            .map_err(|error| format!("boxd egress: {error}"))?;
+    everruns_integrations::boxd::egress::entries(&rules)
+        .map(|_| ())
+        .map_err(|error| format!("boxd egress: {error}"))
 }
 
 /// The provider-config egress Modal enforces: the template's network policy
@@ -575,8 +595,8 @@ fn validate_target_contract(
         }
         SandboxTargetKind::Managed => {
             require_isolated(containment, kind)?;
-            // Modal (`modal_egress`), Daytona and E2B (their `network` modules)
-            // enforce deny and allowlists themselves.
+            // Modal (`modal_egress`), boxd (`boxd_egress`), Daytona and E2B
+            // (their `network` modules) enforce deny and allowlists themselves.
             if !provider.is_some_and(|provider| PROVIDER_ENFORCED_NETWORK.contains(&provider))
                 && containment.network != SandboxNetworkPolicy::Allow
             {
@@ -1107,6 +1127,72 @@ mod tests {
     }
 
     #[test]
+    fn boxd_profile_maps_to_a_session_sandbox_with_region_and_size() {
+        let mut value = profile(SandboxTargetSpec::managed("boxd"));
+        value.target.options = json!({
+            "region": "nyc", "size": "4x16", "workspace_path": "/srv/app", "title": "web"
+        });
+        value.containment = Some(SandboxContainmentSpec {
+            network: SandboxNetworkPolicy::Allowlist {
+                allowed_hosts: vec!["github.com".into()],
+            },
+            ..SandboxContainmentSpec::isolated()
+        });
+        let resolved = resolve_spec(&value).unwrap();
+        assert_eq!(resolved.durability, SandboxDurability::ProviderSnapshot);
+        let capability = capability_for_sandbox(&resolved);
+        let config = capability.config_value();
+        assert_eq!(capability.id(), "session_sandbox");
+        assert_eq!(config["provider"], "boxd");
+        assert_eq!(config["provider_config"]["region"], "nyc");
+        assert_eq!(config["provider_config"]["size"], "4x16");
+        assert_eq!(
+            config["provider_config"]["network"],
+            json!({"mode": "allowlist", "domains": ["github.com"]})
+        );
+        assert!(config["provider_config"].get("recovery").is_none());
+    }
+
+    #[test]
+    fn boxd_profile_rejects_what_boxd_would_refuse() {
+        for (options, needle) in [
+            (json!({"region": "lon"}), "region"),
+            (json!({"size": "large"}), "size"),
+            (
+                json!({"snapshot": "base", "size": "2x8"}),
+                "cannot be combined",
+            ),
+            (json!({"desktop": true}), "not caller-configurable"),
+            (json!({"image": "node:22"}), "not caller-configurable"),
+            (json!({"workspace_path": "relative"}), "workspace_path"),
+        ] {
+            let mut value = profile(SandboxTargetSpec::managed("boxd"));
+            value.target.options = options.clone();
+            let error = resolve_spec(&value).unwrap_err();
+            assert!(error.contains(needle), "{options}: {error}");
+        }
+
+        let mut checkpointed = profile(SandboxTargetSpec::managed("boxd"));
+        checkpointed.durability = Some(SandboxDurability::Checkpointed);
+        assert!(
+            resolve_spec(&checkpointed)
+                .unwrap_err()
+                .contains("provider_snapshot")
+        );
+
+        // boxd machines have no IPv6 egress.
+        let mut value = profile(SandboxTargetSpec::managed("boxd"));
+        value.containment = Some(SandboxContainmentSpec {
+            network: SandboxNetworkPolicy::Allowlist {
+                allowed_hosts: vec!["2001:db8::1".to_string()],
+            },
+            ..SandboxContainmentSpec::isolated()
+        });
+        let error = resolve_spec(&value).unwrap_err();
+        assert!(error.contains("IPv6"), "{error}");
+    }
+
+    #[test]
     fn modal_profile_rejects_what_the_provider_cannot_do() {
         let cases = [
             (json!({"snapshot": "x"}), "not caller-configurable"),
@@ -1139,7 +1225,7 @@ mod tests {
         assert!(
             resolve_spec(&unknown)
                 .unwrap_err()
-                .contains("daytona, e2b, modal")
+                .contains("boxd, daytona, e2b, modal")
         );
     }
 

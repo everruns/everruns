@@ -160,6 +160,7 @@ export const defaultBuildingNavigation: NavigationItem[] = [
       "compute",
       "daytona",
       "modal",
+      "boxd",
       "containers",
       "running",
       "sandbox templates",

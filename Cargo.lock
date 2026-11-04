@@ -4218,6 +4218,7 @@ version = "0.50.1"
 dependencies = [
  "anyhow",
  "async-trait",
+ "axum",
  "base64 0.23.1",
  "bashkit",
  "buffa",
@@ -4248,6 +4249,7 @@ dependencies = [
  "progenitor",
  "progenitor-client",
  "prost",
+ "prost-types",
  "protox",
  "regex",
  "reqwest",

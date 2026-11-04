@@ -230,6 +230,9 @@ export const messages: Readonly<Record<string, string>> = {
     "Коментарі та відгуки відображаються під іменем агента. Ви створюєте додаток у своєму особистому обліковому записі GitHub або в організації GitHub, і він може працювати лише в репозиторіях цього облікового запису.",
   Communication: "Спілкування",
   "Compute size": "Обчислити розмір",
+  Region: "Регіон",
+  Frankfurt: "Франкфурт",
+  "New York": "Нью-Йорк",
   "Configurable: allow constrained one-offs":
     "Можливість налаштування: дозволити обмежені одноразові дії",
   configuration: "налаштування",

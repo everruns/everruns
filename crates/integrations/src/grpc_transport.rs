@@ -1,12 +1,12 @@
-//! gRPC channels to Modal: TLS, keepalive, and HTTP CONNECT proxy support.
+//! gRPC channels for the gRPC-only vendors (Modal, boxd): TLS, keepalive, and
+//! HTTP CONNECT proxy support.
 //!
-//! Decision: Modal has no REST API; its SDKs speak gRPC to `api.modal.com` and
-//! to a per-task command router. tonic dials TCP directly and ignores
-//! `HTTPS_PROXY`, which every other integration honours through reqwest, so a
-//! proxied deployment (and the CI/agent sandboxes) could not reach Modal at
-//! all. The channel tunnels through the proxy itself with hyper-util's
-//! `Tunnel` connector, and tonic layers TLS on top of the tunnel, so the TLS
-//! session is still end to end with Modal.
+//! Decision: Modal and boxd have no REST API; their SDKs speak gRPC. tonic
+//! dials TCP directly and ignores `HTTPS_PROXY`, which every other integration
+//! honours through reqwest, so a proxied deployment (and the CI/agent
+//! sandboxes) could not reach them at all. The channel tunnels through the
+//! proxy itself with hyper-util's `Tunnel` connector, and tonic layers TLS on
+//! top of the tunnel, so the TLS session is still end to end with the vendor.
 
 use std::time::Duration;
 
@@ -14,7 +14,8 @@ use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::proxy::Tunnel;
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint, Uri};
 
-/// Largest message either side may send. Matches the Modal SDKs.
+/// Largest message either side may send. Matches the Modal SDKs and covers
+/// boxd's 4 MiB unary cap.
 pub(crate) const MAX_MESSAGE_SIZE: usize = 100 * 1024 * 1024;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -24,10 +25,10 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 pub(crate) fn channel(url: &str) -> Result<Channel, String> {
     let uri: Uri = url
         .parse()
-        .map_err(|e| format!("Invalid Modal endpoint URL {url}: {e}"))?;
+        .map_err(|e| format!("Invalid gRPC endpoint URL {url}: {e}"))?;
     let host = uri
         .host()
-        .ok_or_else(|| format!("Modal endpoint URL has no host: {url}"))?
+        .ok_or_else(|| format!("gRPC endpoint URL has no host: {url}"))?
         .to_string();
 
     let mut endpoint = Endpoint::from(uri.clone())
@@ -51,7 +52,7 @@ pub(crate) fn channel(url: &str) -> Result<Channel, String> {
             )
             .map_err(|e| format!("Failed to configure TLS for {url}: {e}"))?;
     } else if uri.scheme_str() != Some("http") {
-        return Err(format!("Modal endpoint must be http or https: {url}"));
+        return Err(format!("gRPC endpoint must be http or https: {url}"));
     }
 
     match proxy_for(&host, uri.scheme_str() == Some("https")) {

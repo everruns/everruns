@@ -87,6 +87,7 @@ export function attentionTitle(reason: string): string {
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
+  boxd: "boxd",
   daytona: "Daytona",
   modal: "Modal",
   docker: "Docker",

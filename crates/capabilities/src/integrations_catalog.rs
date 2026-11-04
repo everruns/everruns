@@ -87,6 +87,12 @@ pub const CATALOG: &[CatalogEntry] = &[
         feature_flags: &[],
     },
     CatalogEntry {
+        crate_name: "everruns-integrations::boxd",
+        capabilities: everruns_integrations::boxd::CAPABILITY_PLUGINS,
+        connectors: everruns_integrations::boxd::CONNECTOR_PLUGINS,
+        feature_flags: everruns_integrations::boxd::FEATURE_FLAGS,
+    },
+    CatalogEntry {
         crate_name: "everruns-integrations::brave_search",
         capabilities: everruns_integrations::brave_search::CAPABILITY_PLUGINS,
         connectors: everruns_integrations::brave_search::CONNECTOR_PLUGINS,

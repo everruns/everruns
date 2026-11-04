@@ -45,6 +45,7 @@ function targetLabel(target: Pick<SandboxTargetDescriptor, "kind" | "provider">)
   if (target.kind === "managed" && target.provider === "daytona") return "Daytona";
   if (target.kind === "managed" && target.provider === "e2b") return "E2B";
   if (target.kind === "managed" && target.provider === "modal") return "Modal";
+  if (target.kind === "managed" && target.provider === "boxd") return "boxd";
   return target.provider ? `${target.provider} (${target.kind})` : target.kind;
 }
 
@@ -224,7 +225,7 @@ type NetworkPolicy = NonNullable<NonNullable<SandboxTemplateSpec["containment"]>
 
 /**
  * Outbound network policy for providers that enforce it themselves (Modal,
- * Daytona, E2B). Renders grid cells, so it sits inside a two-column grid.
+ * Daytona, E2B, boxd). Renders grid cells, so it sits inside a two-column grid.
  */
 export function NetworkPolicyFields({
   name,
@@ -508,6 +509,97 @@ function E2BOptionFields({
   );
 }
 
+/** boxd fields; the server checks them with the provider's own rules. */
+function BoxdOptionFields({
+  name,
+  options,
+  network,
+  disabled,
+  setOption,
+  onNetworkChange,
+}: {
+  name: string;
+  options: Record<string, unknown>;
+  network: NetworkPolicy;
+  disabled: boolean;
+  setOption: (key: string, value: unknown) => void;
+  onNetworkChange: (network: NetworkPolicy) => void;
+}) {
+  const ui = useUiTranslations();
+  // A machine from a snapshot keeps the snapshot's size, so the two fields
+  // exclude each other: clear one to use the other.
+  const fromSnapshot = optionString(options, "snapshot") !== "";
+  const sized = optionString(options, "size") !== "";
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-region-${name}`}>{ui("Region")}</Label>
+        <Select
+          value={typeof options.region === "string" ? options.region : "default"}
+          onValueChange={(value) => setOption("region", value === "default" ? "" : value)}
+          disabled={disabled}
+        >
+          <SelectTrigger id={`sandbox-region-${name}`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">{ui("Provider default")}</SelectItem>
+            <SelectItem value="fra">{ui("Frankfurt")}</SelectItem>
+            <SelectItem value="nyc">{ui("New York")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-size-${name}`}>{ui("Compute size")}</Label>
+        <Select
+          value={typeof options.size === "string" ? options.size : "default"}
+          onValueChange={(value) => setOption("size", value === "default" ? "" : value)}
+          disabled={disabled || fromSnapshot}
+        >
+          <SelectTrigger id={`sandbox-size-${name}`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">{ui("Provider default")}</SelectItem>
+            <SelectItem value="1x4">1 vCPU, 4 GiB</SelectItem>
+            <SelectItem value="2x8">2 vCPU, 8 GiB</SelectItem>
+            <SelectItem value="4x16">4 vCPU, 16 GiB</SelectItem>
+            <SelectItem value="8x32">8 vCPU, 32 GiB</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-snapshot-${name}`}>{ui("Snapshot")}</Label>
+        <Input
+          id={`sandbox-snapshot-${name}`}
+          value={optionString(options, "snapshot")}
+          onChange={(event) => setOption("snapshot", event.target.value)}
+          placeholder={ui("Provider default")}
+          disabled={disabled || sized}
+          className="font-mono"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-workspace-${name}`}>{ui("Workspace path")}</Label>
+        <Input
+          id={`sandbox-workspace-${name}`}
+          value={optionString(options, "workspace_path")}
+          onChange={(event) => setOption("workspace_path", event.target.value)}
+          placeholder="/home/boxd/workspace"
+          disabled={disabled}
+          className="font-mono"
+        />
+      </div>
+      <NetworkPolicyFields
+        name={name}
+        network={network}
+        disabled={disabled}
+        onNetworkChange={onNetworkChange}
+      />
+    </div>
+  );
+}
+
 function TemplateSpecEditor({
   name,
   spec,
@@ -541,6 +633,7 @@ function TemplateSpecEditor({
   const managed = spec.target.kind === "managed";
   const modal = managed && spec.target.provider === "modal";
   const e2b = managed && spec.target.provider === "e2b";
+  const boxd = managed && spec.target.provider === "boxd";
   const daytona = managed && spec.target.provider === "daytona";
   const network = spec.containment?.network ?? { mode: "allow" as const };
   const setNetwork = (next: NetworkPolicy) =>
@@ -830,6 +923,15 @@ function TemplateSpecEditor({
                 onChange(next);
               }}
             />
+          ) : boxd ? (
+            <BoxdOptionFields
+              name={name}
+              options={options}
+              network={network}
+              disabled={disabled}
+              setOption={setOption}
+              onNetworkChange={setNetwork}
+            />
           ) : e2b ? (
             <E2BOptionFields
               name={name}
@@ -915,7 +1017,10 @@ function TemplateSpecEditor({
                     delete next.snapshot;
                     if (on) next.desktop = true;
                     else delete next.desktop;
-                    onChange({ ...spec, target: { ...spec.target, options: next } });
+                    onChange({
+                      ...spec,
+                      target: { ...spec.target, options: next },
+                    });
                   }}
                 />
               ) : null}

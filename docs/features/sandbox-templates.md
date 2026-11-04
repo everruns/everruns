@@ -23,7 +23,7 @@ when the Sandbox does not hold such a file, the read falls back to the Session's
 
 1. Open **Sandbox Templates** and select **New Sandbox Template**.
 2. Give it a stable name and display name.
-3. Select Bashkit or an available managed provider: Daytona, E2B, or Modal (when enabled).
+3. Select Bashkit or an available managed provider: Daytona, E2B, boxd, or Modal (when enabled).
 4. For a managed provider, choose its **Provider account**: whose connection the Sandbox uses,
    and so whose provider account pays. Each choice is labelled with the provider, for example
    **Daytona · Personal**:
@@ -176,12 +176,12 @@ Set `delete_after_seconds` to `null` to keep paused Sandboxes until the Session 
 
 ## Outbound network
 
-Daytona, E2B and Modal templates can limit what the Sandbox reaches on the network. Under
+Daytona, E2B, boxd and Modal templates can limit what the Sandbox reaches on the network. Under
 **Outbound network**, choose **Open**, **Only listed domains** (one per line, `*.example.com` for
 subdomains), or **Blocked**. The provider enforces the rule on its own network, so it holds for
 every process in the Sandbox.
 
-On Daytona and E2B the Session's network access list narrows the rule further: the Sandbox
+On Daytona, E2B and boxd the Session's network access list narrows the rule further: the Sandbox
 reaches only hosts both allow, and a Sandbox resumed later follows the Session's current list.
 Sandboxes the agent creates with the provider's own tools, desktops included, get the Session's
 list. Providers filter by host, so a URL rule such as `https://pypi.org/simple/` opens all of
@@ -252,8 +252,9 @@ E2B desktops are not recorded yet.
 A `checkpointed` Sandbox separates durable workspace state from replaceable physical compute.
 Everruns checkpoints successful mutations for targets with `checkpointed` durability. If a Daytona
 instance disappears, the next sandbox operation creates replacement compute, restores the workspace,
-and continues the same Session. E2B and Modal use provider snapshots instead; their UI labels that
-weaker recovery class explicitly.
+and continues the same Session. E2B, boxd and Modal use provider snapshots instead; their UI labels that
+weaker recovery class explicitly. boxd hibernates an idle Sandbox, so running processes are still
+there when it wakes.
 
 Files under the managed workspace survive replacement. Running processes, open terminals, and
 in-memory process state do not.

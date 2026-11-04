@@ -24,7 +24,7 @@ use tonic::{Code, Request, Status};
 
 use super::proto::client as pb;
 use super::proto::router as rpb;
-use super::transport;
+use crate::grpc_transport as transport;
 
 /// Default Modal control-plane endpoint.
 pub const MODAL_API_URL: &str = "https://api.modal.com";

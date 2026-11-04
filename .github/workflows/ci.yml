@@ -1165,7 +1165,7 @@ jobs:
           # while CI stayed green, because nothing executed it. Run the whole
           # suite, not --lib: the point is the integration tests.
           cargo test -p everruns-contracts --all-features
-          cargo test -p everruns-integrations --features bashkit,brave-search,brave-search-hosted,browserless,cursor,daytona,daytona-test-util,docker,duckduckgo,e2b,filesystem,github,lua,openai-decisions,openai-image,openrouter,parallel,typesafe,typesafe-hosted,web-fetch,modal,modal-test-util -- --test-threads=1
+          cargo test -p everruns-integrations --features bashkit,brave-search,brave-search-hosted,browserless,cursor,daytona,daytona-test-util,docker,duckduckgo,e2b,filesystem,github,lua,openai-decisions,openai-image,openrouter,parallel,typesafe,typesafe-hosted,web-fetch,modal,modal-test-util,boxd,boxd-test-util -- --test-threads=1
           # Experimental integrations stay on their own support track; unit and
           # mock-backed tests run here, while Sprites live tests remain manual.
           cargo test -p everruns-integrations-experimental --features sprites -- --test-threads=1
@@ -1237,6 +1237,9 @@ jobs:
             # The modal feature with its mock-gRPC tool tests; live tests run in
             # modal-integration.yml.
             cargo test -p everruns-integrations --features modal,modal-test-util
+            # boxd with its mock-gRPC provider and tool tests; live tests run in
+            # boxd-integration.yml.
+            cargo test -p everruns-integrations --features boxd,boxd-test-util
             # The crate must also build with no vendor feature on.
             cargo check -p everruns-integrations --no-default-features
             cargo test -p everruns-integrations --features typesafe,typesafe-hosted
