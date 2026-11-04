@@ -194,6 +194,32 @@
       ]
     },
     {
+      "category": "Sandboxes",
+      "dependencies": [
+        "session_storage"
+      ],
+      "docs_slug": null,
+      "feature_flag": null,
+      "features": [
+        "leased_resources"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "boxd",
+      "name": "boxd",
+      "status": "available",
+      "tools": [
+        "boxd_create_sandbox",
+        "boxd_exec",
+        "boxd_list_sandboxes",
+        "boxd_manage_sandbox",
+        "boxd_read_file",
+        "boxd_write_file"
+      ]
+    },
+    {
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
