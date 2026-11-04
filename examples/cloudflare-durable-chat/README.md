@@ -8,13 +8,7 @@ with shared conversations, forks, reminders and a recoverable history-search chi
 [Open the Cloudflare demo](https://everruns-durable-chat.everruns.workers.dev/)
 · [Read the walkthrough](../../docs/framework/examples/durable-chat.mdx)
 
-[Watch the 55-second demo on YouTube](https://www.youtube.com/watch?v=eFmwod7GTrY)
-· [Cloudflare player](https://everruns-durable-chat-video.everruns.workers.dev/)
-· [Download the MP4](https://everruns-durable-chat-video.everruns.workers.dev/walkthrough.mp4)
-
-The recording shows shared chat, a committed fork, cited history search and a
-reminder running with browsers closed. It uses real Muse responses in two fresh
-demo rooms, shortened waits, synthesized Sarah narration and English captions.
+[Watch the demo on YouTube](https://www.youtube.com/watch?v=eFmwod7GTrY)
 
 ## See it in action
 
@@ -26,8 +20,7 @@ participant; **Fork here** starts a separate conversation from a committed messa
 ![A new conversation searches the original decision; the sidebar shows its search child and a fork.](../../docs/framework/examples/durable-chat-history.png)
 
 A new conversation calls `search_history` and retrieves the earlier decision with
-citations. Its search child runs as an independent Framework session. These are
-actual captures of the deployed demo using Muse Spark 1.3 Contributor.
+citations. Its search child runs as an independent Framework session.
 
 ## How it works
 
@@ -52,10 +45,15 @@ cargo install wasm-bindgen-cli --version 0.2.129 --locked
 npm ci
 npm run build
 cp .dev.vars.example .dev.vars
+```
+
+Set `OPENROUTER_API_KEY` in `.dev.vars`, then start the Worker:
+
+```sh
 npm run dev
 ```
 
-Set `OPENROUTER_API_KEY` before starting. The default model is
+The default model is
 `meta/muse-spark-1.3-contributor` through OpenRouter. Provider charges apply, and
 the Contributor model uses submitted data for training. `MODEL` and
 `OPENROUTER_BASE_URL` are trusted deployment configuration.
@@ -79,19 +77,12 @@ JSON or SSE parser. `worker/provider.js` supplies endpoint and credential policy
 
 `ChatSession` uses the shared authority, activation and isolate bridge from
 `crates/durable-object`. Each conversation and search child has its own SQLite
-journal, Framework binding, execution epoch and durable alarm. There is no custom
-turn state machine, celld runtime, container or sibling-example dependency.
+journal, Framework binding, execution epoch and durable alarm.
 
-The source-only DO adapter implements Framework's public hosting SPI. One Engine
-Wasm module also exports the shared command reducer used inside the authority's
-storage transaction. The Worker imports `service.js` and installs those exports;
-it does not upload a second copy of the reducer. The application does not prepare
-trusted command effects.
+The DO adapter connects Framework to SQLite storage and Durable Object alarms.
+Engine and session command handling run in the same WebAssembly module.
 Each session retains its model at creation. Changing the host's `MODEL` default
 affects new sessions; recovery of existing sessions uses their original model.
-Pre-pinning memberships use `LEGACY_MODEL`, defaulting to the original Muse
-model. Set it to the historical model before upgrading an older custom
-deployment; `MODEL` selects the default for new sessions.
 
 ## What belongs to the application
 
@@ -123,21 +114,9 @@ npm test
 npm run check:bundle
 ```
 
-Tests use actual workerd, SQLite, hibernatable WebSockets and alarms. They kill
-workerd while a search is in flight, restart it without reconnecting clients, and
-check recovery. A separate restart before a timer deadline checks one reminder
-admission. Synthetic model responses exist only in tests. The hosting audit checks
-resolved dependencies and requires Framework Engine, ObjectHosting and the shared
-driver while refusing a custom runner or sibling-example dependency.
-
-To qualify an Engine upgrade, save the previous build's generated `pkg/` outside
-the checkout before building the new revision. Run
-`EVERRUNS_CHAT_UPGRADE_FROM=/absolute/path/to/previous-pkg npm test`.
-The suite creates journals with that package and switches to the current package
-when it restarts the interrupted search. It checks retained history, models,
-registrations, child recovery and subsequent reminders. Run this mode separately
-from bundle checks because it temporarily swaps generated package files and
-restores them on exit.
+Tests run in workerd with SQLite, WebSockets, alarms and simulated model
+responses. They cover shared rooms, forks, recovery of interrupted searches and
+scheduled reminders after a restart.
 
 ## Deploy
 
@@ -152,39 +131,14 @@ npm run deploy
 npx wrangler secret put OPENROUTER_API_KEY
 ```
 
-Internal room/session calls use private Cloudflare Durable Object bindings and
-need no service token. The public gateway forwards only the explicit chat routes;
-internal tool and session authority routes return 404. Do not expose these DO
-fetch handlers through another public gateway. The shared HTTP authority adapter
-retains its authentication for deployments that expose an authority service.
+The public Worker handles browser requests. Room and session Durable Objects
+communicate through private bindings, and the OpenRouter API key stays on the
+server.
 
-The demo has no browser access gate: anyone with its URL can open rooms and send
-messages. Room links need no access key or cookie. For an existing deployment,
-remove the old gate secret with `npx wrangler secret delete CHAT_ACCESS_TOKEN`.
+> [!WARNING]
+> This example has no sign-in, room access controls or per-user quotas. Anyone
+> with its URL can open rooms and send messages using the configured model
+> budget. Add access and usage controls before sharing your own deployment.
 
-## Existing demo data and limits
-
-The existing ChatRoom namespace is retained. On first access, the previous room
-payload is backed up in `chat_migration_backup`, settled text history is imported
-through Framework, and queued messages retain their original IDs. An unfinished
-legacy tool call is not replayed under the new runtime. Existing timer metadata
-and command receipts are retained. The old namespace must not be deleted.
-
-Build IDs now identify the immutable Agent policy, independently of compatible
-Engine/adapter upgrades. `retained-builds.json` names the prior live and review
-builds that used the same factory. The build checks that factory's full digest;
-do not retarget these keys to changed instructions or tools. A future behavior
-revision must retain its previous factory and host tool contracts separately.
-
-Engine selects the persisted registration and validates the runtime format.
-Unsupported code or formats suspend execution while keeping history. The room
-snapshot exposes compatibility and suspension diagnostics, and the browser shows
-a paused state. Restoring code and explicitly calling Framework's checked
-`Engine::retry_session` can resume a compatibility suspension; the demo has no
-browser retry control or automatic binding-rewrite migration.
-
-This is experimental hosting for small demo rooms. There is no automatic
-compaction, individual identity or production quota system. Shared access permits
-use of the configured model budget. External tool effects require idempotency or
-reconciliation. The chat client displays committed snapshots rather than token
-streams. See the [walkthrough](../../docs/framework/examples/durable-chat.mdx).
+See [Durable Object hosting](../../docs/framework/durable-objects.md) for hosting
+guarantees and upgrade compatibility.
