@@ -81,6 +81,12 @@ pub struct ProvisionedSlackApp {
     /// created before an organization could connect more than one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
+    /// The health issue whose fixer started the install in flight, so the
+    /// callback returns the browser to that issue instead of the channel
+    /// editor. Set only by the server, alongside `install_state`, and spent
+    /// with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_return_issue: Option<uuid::Uuid>,
 }
 
 /// Hand-written for the same reason as `SlackAppCredentials`: the derived one

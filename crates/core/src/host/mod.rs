@@ -81,6 +81,8 @@ mod turn_loop;
 mod turn_resume;
 mod turn_strategy;
 mod turn_tool_context;
+#[cfg(feature = "direct-egress")]
+pub mod web_bot_auth;
 mod workspace;
 
 pub use turn_completion_check::{COMPLETION_REVIEW_PURPOSE, REVIEW_TIMEOUT};
@@ -148,6 +150,8 @@ pub use file_store_decorators::{
 pub use org_egress_allowlist::{
     ORG_EGRESS_ALLOWLIST_CACHE_TTL, install_runtime_org_egress_allowlist,
 };
+#[cfg(feature = "direct-egress")]
+pub use web_bot_auth::WebBotAuth;
 
 pub use capabilities::{
     compose_runtime_capability_registry, runtime_capability_registry, runtime_egress_service,

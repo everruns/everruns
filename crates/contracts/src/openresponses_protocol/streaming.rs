@@ -732,9 +732,8 @@ pub(crate) fn handle_streaming_event(
             ))
         }
 
-        StreamingEvent::RefusalDelta { delta, .. } => {
-            // Treat refusal as an error message
-            LlmStreamEvent::Error(format!("Model refused: {}", delta).into())
+        StreamingEvent::RefusalDone { refusal, .. } => {
+            LlmStreamEvent::Error(super::refusal::error(&refusal))
         }
 
         // All other events: emit empty delta to maintain stream continuity

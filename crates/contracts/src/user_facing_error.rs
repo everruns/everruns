@@ -33,6 +33,7 @@ pub mod codes {
     /// account holder visits the provider's settings page, so the error
     /// carries that URL rather than pointing at support.
     pub const PROVIDER_ATTESTATION_REQUIRED: &str = "provider_attestation_required";
+    pub const MODEL_REFUSAL: &str = "model_refusal";
     pub const PROVIDER_UNAVAILABLE: &str = "provider_unavailable";
     pub const PROCESSING_ERROR: &str = "processing_error";
     /// Provider-held session state (OpenAI Agents API) is gone: deleted,
@@ -489,6 +490,9 @@ impl UserFacingError {
             }
             codes::PROVIDER_QUOTA_EXHAUSTED => quota_exhausted_message(&self.fields),
             codes::PROVIDER_ATTESTATION_REQUIRED => attestation_required_message(&self.fields),
+            codes::MODEL_REFUSAL => {
+                "The model declined this request.".to_string()
+            }
             codes::PROVIDER_UNAVAILABLE => {
                 "The AI provider is experiencing issues. Please try again shortly.".to_string()
             }

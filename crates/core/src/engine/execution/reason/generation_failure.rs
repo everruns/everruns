@@ -27,7 +27,7 @@ impl FailedGeneration<'_> {
         if !error.rejected_provider_capability(
             everruns_contracts::RejectedProviderCapability::AnthropicServerCompaction,
         ) {
-            self.emit(&error.to_string(), None, retry).await;
+            self.emit(error, None, retry).await;
         }
         generation_outcome::observe_terminal(self.model, error, retry.attempts, config);
     }
@@ -40,11 +40,16 @@ impl FailedGeneration<'_> {
     }
 
     pub async fn error(&self, error: AgentLoopError, retry: &RetryMetadata) -> AgentLoopError {
-        self.emit(&error.to_string(), None, retry).await;
+        self.emit(&error, None, retry).await;
         error
     }
 
-    pub async fn emit(&self, error: &str, first_token_ms: Option<u64>, retry: &RetryMetadata) {
+    pub async fn emit(
+        &self,
+        error: &AgentLoopError,
+        first_token_ms: Option<u64>,
+        retry: &RetryMetadata,
+    ) {
         let mut data = LlmGenerationData::failure(
             self.messages.to_vec(),
             self.agent.tools.iter().map(Into::into).collect(),
@@ -55,7 +60,13 @@ impl FailedGeneration<'_> {
             first_token_ms,
         )
         .with_provider_id(Some(self.model.provider.to_string()));
-        data.metadata.finish_reasons = Some(vec!["error".to_string()]);
+        let finish = if error.llm_error_kind() == Some(crate::engine::error::LlmErrorKind::Refusal)
+        {
+            "refusal"
+        } else {
+            "error"
+        };
+        data.metadata.finish_reasons = Some(vec![finish.to_string()]);
         if let Some(options) = &self.request_options {
             data = data.with_request_options(options.clone());
         }

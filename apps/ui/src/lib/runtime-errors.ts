@@ -160,6 +160,8 @@ function localizeRuntimeErrorBase(
             confirm_url: confirmUrl,
           });
     }
+    case "model_refusal":
+      return formatMessage(locale, "runtime_error_model_refusal");
     case "provider_unavailable":
       return formatMessage(locale, "runtime_error_provider_unavailable");
     case "processing_error":

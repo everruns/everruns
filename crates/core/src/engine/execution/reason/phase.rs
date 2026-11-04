@@ -396,10 +396,9 @@ impl ReasonAtom {
                     output_message_id,
                     time_to_first_token_ms: None,
                     response_id: None,
-                    finish_reason: error_msg
-                        .to_ascii_lowercase()
-                        .contains("model refused")
-                        .then(|| "refusal".to_string()),
+                    finish_reason: (e.llm_error_kind()
+                        == Some(crate::engine::error::LlmErrorKind::Refusal))
+                    .then(|| "refusal".to_string()),
                     ..ReasonResult::default()
                 }
             }

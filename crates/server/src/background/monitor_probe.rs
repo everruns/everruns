@@ -38,7 +38,7 @@ const WAKE_RESULT_CHARS: usize = 4_000;
 pub(crate) fn monitor_probe_tool_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::with_monitor_probe_defaults();
     everruns_core::builtins::register_monitor_tools(&mut registry);
-    for tool in everruns_integrations::web_fetch::WebFetchCapability::from_env().tools() {
+    for tool in everruns_integrations::web_fetch::WebFetchCapability::new().tools() {
         registry.register_boxed(tool);
     }
     registry

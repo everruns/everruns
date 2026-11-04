@@ -205,7 +205,7 @@ async fn finding(
         .ok_or_else(|| CommandError::not_found("Finding not found"))
 }
 
-async fn actions_for(
+pub(super) async fn actions_for(
     ctx: &Ctx,
     issue: &crate::storage::HealthIssueRow,
 ) -> Result<FindingActions, CommandError> {
@@ -311,37 +311,49 @@ impl Command for TakeFindingAction {
 
     async fn execute(self, ctx: &Ctx) -> Result<FindingActions, CommandError> {
         let issue = finding(ctx, self.issue_id).await?;
-        let current = actions_for(ctx, &issue).await?;
-        let Some(action) = current
-            .available
-            .iter()
-            .find(|a| a.kind == self.req.kind.trim())
-        else {
+        if self.req.kind.trim() != PAUSE_SCHEDULE {
             return Err(CommandError::conflict(
                 "That action is not available on this finding",
             ));
-        };
-        let schedule_id = ScheduleId::parse(&action.target_id)
-            .map_err(|_| CommandError::unprocessable("The finding names no schedule"))?;
-        let recorded = ctx
-            .db
-            .record_finding_action(
-                ctx.org_id(),
-                issue.id,
-                issue.episode_id,
-                PAUSE_SCHEDULE,
-                &action.target_id,
-                Some(ctx.caller.user_id.unwrap_or_default()),
-            )
-            .await?;
-        if recorded.is_none() {
-            return Err(CommandError::conflict("Someone already paused it"));
         }
-        SessionScheduleService::new(ctx.db.clone())
-            .stop(ctx.org_id(), schedule_id, stop_reason::RUNAWAY)
-            .await?;
+        pause_from_finding(ctx, &issue).await?;
         actions_for(ctx, &issue).await
     }
+}
+
+/// Pause the schedule a runaway finding names, recorded as the finding's
+/// action so it can be undone. Shared by the finding's actions and the
+/// Health fixer (`fixers::SCHEDULE_PAUSE`).
+pub(super) async fn pause_from_finding(
+    ctx: &Ctx,
+    issue: &crate::storage::HealthIssueRow,
+) -> Result<(), CommandError> {
+    let current = actions_for(ctx, issue).await?;
+    let Some(action) = current.available.iter().find(|a| a.kind == PAUSE_SCHEDULE) else {
+        return Err(CommandError::conflict(
+            "That action is not available on this finding",
+        ));
+    };
+    let schedule_id = ScheduleId::parse(&action.target_id)
+        .map_err(|_| CommandError::unprocessable("The finding names no schedule"))?;
+    let recorded = ctx
+        .db
+        .record_finding_action(
+            ctx.org_id(),
+            issue.id,
+            issue.episode_id,
+            PAUSE_SCHEDULE,
+            &action.target_id,
+            Some(ctx.caller.user_id.unwrap_or_default()),
+        )
+        .await?;
+    if recorded.is_none() {
+        return Err(CommandError::conflict("Someone already paused it"));
+    }
+    SessionScheduleService::new(ctx.db.clone())
+        .stop(ctx.org_id(), schedule_id, stop_reason::RUNAWAY)
+        .await?;
+    Ok(())
 }
 
 /// Undo an action taken on a finding.

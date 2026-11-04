@@ -7,6 +7,7 @@ import {
   checkHealthIssue,
   snoozeHealthIssue,
   dismissHealthIssue,
+  runHealthIssueFixer,
 } from "@/lib/api/health-issues";
 import { ApiError } from "@/lib/api/client";
 import { useOrg } from "@/providers/org-provider";
@@ -43,6 +44,22 @@ export function useHealthIssueAction(action: "check" | "snooze") {
   const client = useQueryClient();
   return useMutation({
     mutationFn: action === "check" ? checkHealthIssue : snoozeHealthIssue,
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["health-issues"] }),
+        client.invalidateQueries({ queryKey: ["health-issue"] }),
+        client.invalidateQueries({ queryKey: ["notifications"] }),
+      ]);
+    },
+  });
+}
+
+// Run a fixer the server declared on an issue. The caller decides what to do
+// with a consent URL; the lists refresh either way, since a fix is recorded.
+export function useRunHealthFixer() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, kind }: { id: string; kind: string }) => runHealthIssueFixer(id, kind),
     onSuccess: async () => {
       await Promise.all([
         client.invalidateQueries({ queryKey: ["health-issues"] }),

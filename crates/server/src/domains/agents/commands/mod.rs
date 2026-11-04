@@ -481,6 +481,8 @@ impl Command for UpdateAgentCmd {
         }
         let default_model_id =
             q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id).await?;
+        // A new model or an archived agent can open or resolve its model issue.
+        let recheck_model_health = default_model_id.is_some() || is_archiving;
         let harness_id =
             resolve_update_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
         let final_harness_id = harness_id.unwrap_or(existing.harness_id);
@@ -581,6 +583,9 @@ impl Command for UpdateAgentCmd {
             existing.description.as_deref(),
             &agent,
         );
+        if recheck_model_health {
+            crate::domains::health_issues::model_health::check_org(&ctx.db, ctx.org_id()).await;
+        }
         Ok(agent)
     }
 }

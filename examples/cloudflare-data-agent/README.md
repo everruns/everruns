@@ -42,8 +42,9 @@ CP database URL, fleet token, or Slack bot token in this Worker.
 
 ## Register and invoke
 
-Create a normal Agent in Everruns. On its Agent page choose **Configure execution**,
-enter your deployed HTTPS URL and endpoint secret, then **Verify and connect**.
+Create a normal Agent in Everruns. On its Agent page open **External agent** in
+the **More** list, enter your deployed HTTPS URL and the endpoint secret (the
+**Generate** button makes one to install first), then **Verify and connect**.
 The endpoint must pass an authenticated challenge before the CP saves a binding.
 Changing a binding requires no active turns. The account needs permission to
 manage dangerous Agent settings.

@@ -842,6 +842,9 @@ pub fn declared(name: &str) -> Change {
         "take_finding_action" | "undo_finding_action" => Change::Exempt(
             "pauses or resumes a schedule; recorded on the finding as a finding action",
         ),
+        "run_health_issue_fixer" => Change::Exempt(
+            "repairs an integration or pauses a schedule; recorded on the issue as a finding action",
+        ),
 
         _ => Change::Undeclared,
     }

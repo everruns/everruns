@@ -574,6 +574,26 @@ RESEND_API_KEY=re_...
 - The sender is fixed in code as `Everruns <no-reply@everruns.com>`.
 - The Resend account must have `everruns.com` verified and enabled for sending.
 
+## MCP HTTP response limits
+
+`EVERRUNS_MCP_MAX_RESPONSE_BYTES` caps each successful MCP HTTP response at
+16 MiB (16777216 bytes) by default. Set a positive byte count on the API,
+workers, and embedded host process when tools or resources legitimately return
+larger payloads. Invalid or zero values fail ordinary MCP requests with a
+configuration error.
+
+```bash
+EVERRUNS_MCP_MAX_RESPONSE_BYTES=33554432
+```
+
+The limit applies while reading JSON and SSE bodies, including initialization,
+resource operations, task polling, and continuation responses, even without
+`Content-Length`. Exceeding it aborts the response instead of parsing partial
+content. HTTP errors retain at most the first 8 KiB of body bytes; their status
+and headers survive truncation, invalid UTF-8, and body failures. Existing
+request timeouts still bound stalled responses. Tool discovery retains its
+separate catalog budgets.
+
 ## Outbound egress
 
 These apply to tenant traffic: requests an agent, capability, MCP server or integration chooses. Platform traffic (LLM providers, system email) is not affected. Set the same values on the control plane and workers. See [Outbound traffic](/advanced/physical-architecture/#outbound-traffic).
