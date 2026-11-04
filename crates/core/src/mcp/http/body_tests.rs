@@ -290,8 +290,13 @@ async fn real_chunked_http_body_is_cancelled_before_eof() {
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
-            let mut request = vec![0; 4096];
-            socket.read(&mut request).await.unwrap();
+            let mut request = Vec::new();
+            while !request.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                socket.read_exact(&mut byte).await.unwrap();
+                request.extend_from_slice(&byte);
+                assert!(request.len() <= 8192);
+            }
             socket
                 .write_all(
                     format!("HTTP/1.1 {status} Test\r\nTransfer-Encoding: chunked\r\n\r\n")
