@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/how-to/publish-to-slack/#resolve-installation-issues]
-  prs: [everruns/everruns#PR]
+  prs: [everruns/everruns#5227]
 ---
 
 An issue in **Settings → Health** now offers a fix when Everruns can make
