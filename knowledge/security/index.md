@@ -6,6 +6,7 @@
 * [Bound Secrets](bound-secrets.md) - Write-only API keys the platform puts on requests to one URL; the agent sees a placeholder.
 * [Audit Logging](audit-logging.md) - Audit logging.
 * [Threat Model](threat-model.md) - Security threat model.
+* [CodeQL coverage and cadence](codeql.md) - Staged migration, extraction evidence, and native/WASM limits.
 * [Security Testing](security-testing.md) - Security testing process (threat-model tests, fail-rs, DeepSec, supply chain).
 * [Multitenancy](multitenancy.md) - Organization-based multitenancy.
 * [Assignment-scoped Journal Read Foundation](worker-assignment-read-scope.md) - Preparatory server scope and deny-by-default RPC gate; production identity integration remains blocked.
