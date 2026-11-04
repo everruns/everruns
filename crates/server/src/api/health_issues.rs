@@ -1,3 +1,4 @@
+use super::command_http::CommandRouterExt;
 use super::common::{ApiResult, ErrorResponse};
 use crate::api::state::ApiState;
 use crate::auth::ResolvedOrg;
@@ -29,6 +30,7 @@ pub fn routes(state: ApiState) -> Router {
             "/v1/health-issues/{issue_id}/dismiss",
             post(dismiss_health_issue),
         )
+        .command::<RunIssueFixer>()
         .with_state(state)
 }
 #[derive(Deserialize, utoipa::IntoParams)]

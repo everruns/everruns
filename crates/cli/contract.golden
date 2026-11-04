@@ -182,6 +182,7 @@ health-issues actions take	--context-revision --issue-id! --kind! --reason
 health-issues actions undo	--action-id! --context-revision --issue-id! --reason
 health-issues check	--context-revision --issue-id! --reason
 health-issues dismiss	--context-revision --issue-id! --note! --reason
+health-issues fix	--context-revision --issue-id! --kind! --reason
 health-issues get	--context-revision --issue-id! --reason
 health-issues list	--channel-id --context-revision --limit --offset --reason
 health-issues snooze	--context-revision --issue-id! --reason

@@ -7336,6 +7336,38 @@
     ]
   },
   {
+    "wire_name": "run_health_issue_fixer",
+    "path": [
+      "health-issues"
+    ],
+    "verb": "fix",
+    "description": "Run a fixer the issue offers, such as adding missing Slack permissions to the agent's app. A fix that needs approval in the provider returns the page to approve it on; the issue resolves only when a fresh check confirms it.",
+    "method": "POST",
+    "http_path": "/v1/health-issues/{issue_id}/fix",
+    "args": [
+      {
+        "field": "issue_id",
+        "long": "issue-id",
+        "kind": "string",
+        "required": true,
+        "help": "The issue."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": true,
+        "help": "The fixer to run, as the issue's `fixers` list names it."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Add missing Slack permissions to an agent's app",
+        "command": "everruns health-issues fix --issue-id 550e8400-e29b-41d4-a716-446655440000 --kind slack.add_permissions"
+      }
+    ]
+  },
+  {
     "wire_name": "get_health_issue",
     "path": [
       "health-issues"

@@ -3,6 +3,7 @@ pub mod background_work;
 pub mod behavior;
 pub mod classifiers;
 pub mod commands;
+pub mod fixers;
 pub mod fixes;
 pub mod inspector;
 pub mod model_health;
@@ -11,6 +12,7 @@ pub mod self_healing;
 pub mod service;
 pub mod types;
 pub use commands::*;
+pub use fixers::RunIssueFixer;
 pub use fixes::{
     ApplyFindingFix, CheckFindingFix, ListFindingFixes, RejectFindingFix, UpdateFindingFix,
 };
@@ -22,6 +24,8 @@ mod background_work_tests;
 mod behavior_tests;
 #[cfg(test)]
 mod classifier_tests;
+#[cfg(test)]
+mod fixers_tests;
 #[cfg(test)]
 mod fixes_tests;
 #[cfg(test)]

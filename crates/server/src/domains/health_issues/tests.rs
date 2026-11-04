@@ -73,7 +73,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
     public_id
 }
 
-async fn fixture() -> (Arc<StorageBackend>, Ctx, crate::storage::IngressChannelRow) {
+pub(super) async fn fixture() -> (Arc<StorageBackend>, Ctx, crate::storage::IngressChannelRow) {
     let db = Arc::new(StorageBackend::test_database());
     let agent = seed_agent(&db).await;
     let internal = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None);
@@ -125,7 +125,10 @@ async fn fixture() -> (Arc<StorageBackend>, Ctx, crate::storage::IngressChannelR
     );
     (db, ctx, row)
 }
-fn observation(row: &crate::storage::IngressChannelRow, status: &str) -> ObserveHealthIssue {
+pub(super) fn observation(
+    row: &crate::storage::IngressChannelRow,
+    status: &str,
+) -> ObserveHealthIssue {
     ObserveHealthIssue {
         org_id: row.org_id,
         channel_id: row.channel_id,

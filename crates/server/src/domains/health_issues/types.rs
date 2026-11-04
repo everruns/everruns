@@ -68,6 +68,9 @@ pub struct HealthIssue {
     /// The Inspector's write-up of a finding's current episode, when it has
     /// one.
     pub investigation: Option<FindingInvestigation>,
+    /// Repairs Everruns can make for the issue now, in the order to offer
+    /// them. Empty when it has none, or the issue is resolved.
+    pub fixers: Vec<super::fixers::IssueFixer>,
 }
 
 /// The Inspector's write-up of a finding: what happened, how serious it is,

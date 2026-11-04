@@ -62,6 +62,7 @@ function issue(
     stale: false,
     href: `/health/${id}`,
     agent_id: agentId,
+    fixers: [],
   } as HealthIssue;
 }
 

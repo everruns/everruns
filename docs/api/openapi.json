@@ -16966,6 +16966,55 @@
         }
       }
     },
+    "/v1/health-issues/{issue_id}/fix": {
+      "post": {
+        "tags": [
+          "health-issues"
+        ],
+        "summary": "Fix a health issue",
+        "description": "Run a fixer the issue offers, such as adding missing Slack permissions to the agent's app. A fix that needs approval in the provider returns the page to approve it on; the issue resolves only when a fresh check confirms it.",
+        "operationId": "run_health_issue_fixer",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunIssueFixerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueFixOutcome"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/health-issues/{issue_id}/snooze": {
       "post": {
         "tags": [
@@ -52101,7 +52150,8 @@
           "first_detected_at",
           "last_checked_at",
           "stale",
-          "href"
+          "href",
+          "fixers"
         ],
         "properties": {
           "agent_id": {
@@ -52158,6 +52208,13 @@
             "format": "date-time",
             "description": "Time the current issue episode was first detected.",
             "example": "2026-10-03T12:00:00Z"
+          },
+          "fixers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueFixer"
+            },
+            "description": "Repairs Everruns can make for the issue now, in the order to offer\nthem. Empty when it has none, or the issue is resolved."
           },
           "href": {
             "type": "string",
@@ -53124,6 +53181,88 @@
             "type": "string",
             "description": "Name of the plugin entry in the marketplace catalog.",
             "example": "microsoft-docs"
+          }
+        }
+      },
+      "IssueFixOutcome": {
+        "type": "object",
+        "description": "The result of running a fixer.",
+        "required": [
+          "status",
+          "returns_automatically",
+          "issue"
+        ],
+        "properties": {
+          "consent_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The provider page that approves the change. Built by the server on the\nprovider's own origin."
+          },
+          "issue": {
+            "$ref": "#/components/schemas/HealthIssue",
+            "description": "The issue after the fix."
+          },
+          "returns_automatically": {
+            "type": "boolean",
+            "description": "Whether approving returns the browser to the issue by itself. When\nfalse the person comes back on their own and the page checks again."
+          },
+          "status": {
+            "type": "string",
+            "description": "`done` (the change is made and the issue was checked again) or\n`consent` (approve the change at `consent_url`, then come back).",
+            "example": "consent"
+          }
+        }
+      },
+      "IssueFixer": {
+        "type": "object",
+        "description": "A repair Everruns can make for an issue.",
+        "required": [
+          "kind",
+          "label",
+          "steps",
+          "effect",
+          "undoable",
+          "needs_provider_admin"
+        ],
+        "properties": {
+          "effect": {
+            "type": "string",
+            "description": "`in_place` when running it is the whole fix; `consent` when the person\nthen approves the change in the provider.",
+            "example": "consent"
+          },
+          "kind": {
+            "type": "string",
+            "description": "What it does: `slack.add_permissions`, `slack.reconnect` or `schedule.pause`.",
+            "example": "slack.add_permissions"
+          },
+          "label": {
+            "type": "string",
+            "description": "Button text.",
+            "example": "Fix in Slack"
+          },
+          "needs_provider_admin": {
+            "type": "boolean",
+            "description": "Whether the provider may ask a workspace administrator to approve."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What happens when it runs, step by step, in plain words."
+          },
+          "unavailable_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it cannot run now, and what unlocks it. Absent when it can run."
+          },
+          "undoable": {
+            "type": "boolean",
+            "description": "Whether the fix can be undone from the finding."
           }
         }
       },
@@ -67746,6 +67885,20 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "RunIssueFixerRequest": {
+        "type": "object",
+        "description": "Run one of the fixers an issue offers.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "The fixer to run, as the issue's `fixers` list names it.",
+            "example": "slack.add_permissions"
           }
         }
       },
