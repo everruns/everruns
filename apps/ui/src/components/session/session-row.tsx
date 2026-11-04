@@ -84,6 +84,11 @@ export function SessionRow({ session, agentName }: SessionRowProps) {
         <span className="truncate text-[13px] text-muted-foreground">
           {agentName ?? ui("No agent")}
         </span>
+        {session.mcp_creator && (
+          <span className="truncate text-xs text-muted-foreground">
+            {ui("Via MCP: {name} (self-declared)", { name: session.mcp_creator.client_name })}
+          </span>
+        )}
       </div>
 
       {/*

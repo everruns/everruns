@@ -570,6 +570,9 @@ impl SessionService {
         let fork_up_to_sequence = req.fork_up_to_sequence;
 
         let input = CreateSessionRow {
+            mcp_creator: crate::auth::mcp_attribution::for_user(caller.user_id)
+                .map(serde_json::to_value)
+                .transpose()?,
             org_id,
             source,
             app_id,
@@ -753,6 +756,9 @@ impl SessionService {
         let requested_goal = req.goal.clone();
 
         let input = CreateSessionRow {
+            mcp_creator: crate::auth::mcp_attribution::for_user(caller.user_id)
+                .map(serde_json::to_value)
+                .transpose()?,
             playground_user_id: None,
             workspace_id: None,
             org_id,

@@ -312,6 +312,7 @@ async fn create_persisted_session(
     .unwrap();
     let session = db
         .create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             trigger_id: None,
             source: everruns_server::domains::sessions::record::SessionSource::Api,

@@ -479,7 +479,7 @@ impl MessageService {
             external_actor: req.external_actor.clone(),
             created_at: now,
         };
-        let event_metadata = if let Some(principal_id) = ctx.runtime_subject_principal_id {
+        let mut event_metadata = if let Some(principal_id) = ctx.runtime_subject_principal_id {
             let display_name = match runtime_subject {
                 Some(id) => self
                     .db
@@ -531,6 +531,12 @@ impl MessageService {
             self.session_owner_message_metadata(ctx.org_id, session_id)
                 .await
         };
+        // THREAT[TM-MCP-014]: event metadata is server-owned. Legacy caller
+        // message metadata must never become an identity assertion on upgrade.
+        if let Some(client) = crate::auth::mcp_attribution::for_user(ctx.user_id) {
+            let metadata = event_metadata.get_or_insert_with(|| serde_json::json!({}));
+            metadata["mcp_client"] = serde_json::to_value(client)?;
+        }
         let mut input_event = EventRequest::new(
             session_id,
             EventContext::empty(),

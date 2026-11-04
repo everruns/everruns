@@ -775,7 +775,8 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
                     if check_chat {
                         ctx.db.lock_chat_configuration(ctx.org_id()).await?;
                     }
-                    let output = self.execute(ctx).await?;
+                    let output =
+                        crate::auth::mcp_attribution::scope_command(ctx, self.execute(ctx)).await?;
                     if check_chat {
                         super::agent_channels::work_chat::validate_live(ctx).await?;
                     }

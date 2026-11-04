@@ -1,5 +1,7 @@
 "use client";
 
+import { McpClientDetails } from "@/components/mcp/mcp-client-attribution";
+
 // History sheet: every recorded change to one entity, newest first, with the
 // diff of any point against the current state and "Restore this point".
 //
@@ -213,6 +215,7 @@ function HistoryEntryMeta({ change }: { change: EntityChange }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
       <span>{actorName(change)}</span>
+      {change.mcp_client && <McpClientDetails client={change.mcp_client} />}
       {change.via_session_id && (
         <Link
           href={`/sessions/${change.via_session_id}`}

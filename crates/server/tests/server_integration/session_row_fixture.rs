@@ -26,6 +26,7 @@ use everruns_server::storage::CreateSessionRow;
 /// callers that care about ownership override.
 pub fn base_session_row(org_id: i64) -> CreateSessionRow {
     CreateSessionRow {
+        mcp_creator: None,
         playground_user_id: None,
         source: everruns_server::domains::sessions::record::SessionSource::Api,
         workspace_id: None,

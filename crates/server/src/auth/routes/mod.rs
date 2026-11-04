@@ -655,7 +655,7 @@ pub async fn login(
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
         organizations,
-        pat_scope: None,
+        ..AuthUser::anonymous()
     };
 
     audit::emit(
@@ -903,7 +903,7 @@ pub async fn register(
         is_platform_user: false,
         auth_method: AuthMethod::Jwt,
         organizations,
-        pat_scope: None,
+        ..AuthUser::anonymous()
     };
 
     audit::emit(
@@ -996,7 +996,7 @@ pub async fn refresh_token(
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
         organizations,
-        pat_scope: None,
+        ..AuthUser::anonymous()
     };
 
     audit::emit(
@@ -1495,7 +1495,7 @@ async fn oauth_callback_inner(
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
         organizations,
-        pat_scope: None,
+        ..AuthUser::anonymous()
     };
 
     audit::emit(
@@ -2057,7 +2057,7 @@ async fn get_or_create_admin_user(
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
         organizations,
-        pat_scope: None,
+        ..AuthUser::anonymous()
     })
 }
 

@@ -261,6 +261,7 @@ impl BuiltinAuthBackend {
             .collect();
 
         Ok(AuthUser {
+            mcp_client: None,
             id: user.id,
             email: user.email,
             name: user.name,
@@ -318,6 +319,7 @@ impl BuiltinAuthBackend {
         // The PAT and caller-resolution paths already read fresh; this keeps the
         // JWT/MCP paths consistent (and complements EVE-703's DB-sourced roles).
         Ok(AuthUser {
+            mcp_client: None,
             id: user_id,
             email: user.email,
             name: user.name,
@@ -364,7 +366,25 @@ impl AuthBackend for BuiltinAuthBackend {
         // that client (cached ~30s; fails closed on lookup errors).
         self.mcp_grant_guard.check(&claims).await?;
 
-        self.auth_user_from_claims(claims, AuthMethod::Mcp).await
+        let client = match (&claims.client_id, claims.grant_id) {
+            (Some(client_id), Some(grant_id)) => {
+                let row = self
+                    .db
+                    .get_oauth_client_by_client_id(client_id)
+                    .await
+                    .map_err(|_| AuthError::unavailable("Could not load MCP client"))?
+                    .ok_or_else(|| AuthError::unauthorized("Invalid MCP client"))?;
+                Some(super::mcp_attribution::McpClientAttribution {
+                    client_id: client_id.clone(),
+                    grant_id,
+                    client_name: row.client_name,
+                })
+            }
+            _ => None,
+        };
+        let mut user = self.auth_user_from_claims(claims, AuthMethod::Mcp).await?;
+        user.mcp_client = client;
+        Ok(user)
     }
 
     async fn validate_personal_access_token(&self, token: &str) -> Result<AuthUser, AuthError> {

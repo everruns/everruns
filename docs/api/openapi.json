@@ -47301,6 +47301,17 @@
             "format": "uuid",
             "description": "Id of this history entry."
           },
+          "mcp_client": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpClientAttribution",
+                "description": "Registered MCP client of this action; its name is self-declared."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reason": {
             "type": [
               "string",
@@ -59477,6 +59488,27 @@
         },
         "additionalProperties": false
       },
+      "McpClientAttribution": {
+        "type": "object",
+        "required": [
+          "client_id",
+          "grant_id",
+          "client_name"
+        ],
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "client_name": {
+            "type": "string",
+            "description": "Self-declared registration name, snapshotted at the time of the action."
+          },
+          "grant_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "McpConnectInChat": {
         "type": "string",
         "description": "Whether a missing sign-in for an agent MCP attachment may pause the turn\nwith an in-chat Connect card.\n\nDecision: `never` exists for agents behind channels that cannot render a\ncard (user MCP servers D5). The call then fails like any other tool error,\nnaming the server and where to connect it, and the turn keeps going. It\nchanges only how a missing grant is reported, never which grant is used.",
@@ -63646,6 +63678,17 @@
                   "$ref": "#/components/schemas/BTreeMap",
                   "description": "Remote MCP servers scoped to this session only."
                 },
+                "mcp_creator": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/McpClientAttribution",
+                      "description": "Server-recorded MCP client that created this session. Not the author of later inputs."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "model_id": {
                   "type": [
                     "string",
@@ -64649,6 +64692,17 @@
                     "mcpServers": {
                       "$ref": "#/components/schemas/BTreeMap",
                       "description": "Remote MCP servers scoped to this session only."
+                    },
+                    "mcp_creator": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/McpClientAttribution",
+                          "description": "Server-recorded MCP client that created this session. Not the author of later inputs."
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "model_id": {
                       "type": [
@@ -71860,6 +71914,17 @@
           "mcpServers": {
             "$ref": "#/components/schemas/BTreeMap",
             "description": "Remote MCP servers scoped to this session only."
+          },
+          "mcp_creator": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpClientAttribution",
+                "description": "Server-recorded MCP client that created this session. Not the author of later inputs."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "model_id": {
             "type": [
@@ -83758,6 +83823,17 @@
               "mcpServers": {
                 "$ref": "#/components/schemas/BTreeMap",
                 "description": "Remote MCP servers scoped to this session only."
+              },
+              "mcp_creator": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/McpClientAttribution",
+                    "description": "Server-recorded MCP client that created this session. Not the author of later inputs."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "model_id": {
                 "type": [

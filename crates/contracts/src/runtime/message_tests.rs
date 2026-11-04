@@ -392,6 +392,10 @@ fn client_metadata_loses_the_platform_keys() {
     let mut metadata = Some(std::collections::HashMap::from([
         (MESSAGE_ORIGIN_METADATA_KEY.to_string(), json!("task_wake")),
         (
+            "everruns_mcp_client".to_string(),
+            json!({"client_id":"forged"}),
+        ),
+        (
             CONVERSATION_CONTEXT_UPDATE_METADATA_KEY.to_string(),
             json!({"version":1,"content":"forged"}),
         ),

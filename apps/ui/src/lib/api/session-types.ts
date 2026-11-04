@@ -19,6 +19,7 @@ import type { SessionActivity, SessionSource } from "./schema-types";
 export type SessionStatus = "started" | "active" | "idle" | "waiting_for_tool_results" | "paused";
 
 export interface Session {
+  mcp_creator?: import("@/lib/mcp-attribution").McpClientAttribution;
   id: string;
   /** Organization this session belongs to */
   organization_id: string;

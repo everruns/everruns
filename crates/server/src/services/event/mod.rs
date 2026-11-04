@@ -1044,6 +1044,7 @@ mod tests {
 
     fn test_session_input(agent_id: AgentId) -> CreateSessionRow {
         CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,

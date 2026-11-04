@@ -372,6 +372,7 @@ impl StorageBackend {
 /// A session row with nothing set beyond its org and the fixture owner.
 pub fn test_session_row(org_id: i64) -> super::CreateSessionRow {
     super::CreateSessionRow {
+        mcp_creator: None,
         playground_user_id: None,
         source: crate::domains::sessions::record::SessionSource::Api,
         workspace_id: None,

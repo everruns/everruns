@@ -95,6 +95,7 @@ fn org_for(user_id: Uuid, role: OrgRole) -> ResolvedOrg {
 
 fn session_row(owner: Uuid) -> CreateSessionRow {
     CreateSessionRow {
+        mcp_creator: None,
         playground_user_id: None,
         source: crate::domains::sessions::record::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
