@@ -135,9 +135,14 @@ impl everruns_core::EgressService for FakeEventsServer {
 
     async fn send_stream(
         &self,
-        _request: everruns_core::EgressRequest,
+        request: everruns_core::EgressRequest,
     ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
-        Err(everruns_core::EgressError::Transport("no streaming".into()))
+        let response = self.send(request).await?;
+        Ok(everruns_core::EgressStreamResponse {
+            status: response.status,
+            headers: response.headers,
+            body: Box::pin(futures::stream::iter([Ok(response.body)])),
+        })
     }
 }
 

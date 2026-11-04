@@ -28,9 +28,15 @@ impl everruns_core::EgressService for McpServerSlot {
 
     async fn send_stream(
         &self,
-        _request: everruns_core::EgressRequest,
+        request: everruns_core::EgressRequest,
     ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
-        Err(everruns_core::EgressError::Transport("no streaming".into()))
+        let server = self.0.read().clone();
+        let Some(server) = server else {
+            return Err(everruns_core::EgressError::Transport(
+                "no MCP server".into(),
+            ));
+        };
+        server.send_stream(request).await
     }
 }
 
