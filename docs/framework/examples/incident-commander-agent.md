@@ -78,13 +78,14 @@ python3 examples/incident-commander-agent/src/render_demo.py --check
 
 Tests verify that updates survive multiple writes, oversized/empty updates are rejected before a file is created, and evidence access is scoped. A live run should show all evidence reads followed by a persisted update that matches the observed facts.
 
-CI runs these offline checks without provider credentials. Live model behavior is evaluated separately; passing tests is not proof of answer quality.
+These checks run offline without provider credentials. To check the model’s answer,
+run the example and compare its output with the expected outcome above.
 
 ## Demo and recording
 
 ![Incident Commander Agent recorded run](https://raw.githubusercontent.com/everruns/everruns/main/examples/incident-commander-agent/src/demo.gif)
 
-Read the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/incident-commander-agent/src/demo.txt) at your own pace. The GIF is a paginated replay of an actual provider run, with waiting time removed. It is not interactive and does not show model reasoning. Result excerpts are shortened only for display.
+Read the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/incident-commander-agent/src/demo.txt) for the full recorded output. The GIF shows excerpts from the run.
 
 With credentials exported and Python 3, VHS, ffmpeg, and a VHS-compatible browser installed:
 

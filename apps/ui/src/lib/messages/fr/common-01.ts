@@ -1,5 +1,10 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  "web_fetch and Bashkit send {placement} only to this URL.":
+    "web_fetch et Bashkit envoient {placement} uniquement à cette URL.",
+  "Daytona, E2B, and Modal commands run without this credential.":
+    "Les commandes Daytona, E2B et Modal s’exécutent sans ces identifiants.",
+
   " · {value0}": " · {value0}",
   " · Reset due {value0}": " · Réinitialisation due {value0}",
   " {value0}": " {value0}",

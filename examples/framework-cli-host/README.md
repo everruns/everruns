@@ -62,6 +62,6 @@ tree it cannot serve — `tests/cli_in_session.rs` covers that case explicitly.
 
 `tests/cli_in_session.rs` runs real turns through the real interpreter, with a
 test-only scripted model issuing the shell calls. The
-load-bearing assertion is that a `scale` command moves the application's own
+test verifies that a `scale` command moves the application's own
 state from 2 replicas to 4: a simulated final message can claim anything, but
 only the builtin can move that number.

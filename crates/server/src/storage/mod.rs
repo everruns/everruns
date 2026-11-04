@@ -23,6 +23,7 @@ pub mod encryption_rotation;
 pub mod entity_changes;
 mod health_issues;
 mod ingress;
+pub mod managed_dispatch;
 pub mod manager_context;
 pub use health_issues::*;
 pub mod late_generation_usage;

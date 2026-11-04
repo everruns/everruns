@@ -56,8 +56,9 @@ for engine_source in input.rs reason.rs act.rs act_hooks.rs tool_scheduler.rs; d
   fi
 done
 
+# Vendor integrations now live under crates/, which the scan already covers.
 if grep -R -n -E --include='*.rs' 'everruns_core::atoms|crate::atoms' \
-  crates integrations examples tests; then
+  crates examples tests; then
   fail "Rust consumers must use core engine executors or concern-owned core contracts"
 fi
 

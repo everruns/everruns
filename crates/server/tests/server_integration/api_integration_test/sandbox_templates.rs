@@ -221,7 +221,7 @@ async fn execution_harness_pins_managed_bashkit_sandbox() {
     assert_eq!(sandbox["target"]["kind"], "vfs");
     assert_eq!(sandbox["target"]["provider"], "bashkit");
 
-    // The load-bearing claim: a caller learns a build cannot run here before
+    // Verify that a caller learns a build cannot run here before
     // running one, rather than from a confusing tool error afterwards.
     assert_eq!(sandbox["capabilities"]["native_processes"], false);
     assert_eq!(sandbox["capabilities"]["portable_checkpoint"], true);

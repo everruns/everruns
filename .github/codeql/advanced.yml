@@ -1,0 +1,159 @@
+# Staged migration: intentionally outside .github/workflows while default setup
+# is enabled. See knowledge/security/codeql.md before activating this file.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '37 6 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Preserve the observed default-setup languages and categories; add UI.
+        language: [actions, c-cpp, python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          category: /language:${{ matrix.language }}
+          wait-for-processing: true
+
+  rust:
+    name: Analyze (rust native)
+    # Expensive workspace/macro loading belongs off the push/PR critical path.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      CARGO_BUILD_JOBS: '1'
+      # The coverage gate needs extraction diagnostics in the generated SARIF.
+      CODEQL_ACTION_EXPORT_DIAGNOSTICS: 'true'
+      CODEQL_EXTRACTOR_RUST_OPTION_LOGGING_VERBOSITY: progress
+      CODEQL_EXTRACTOR_RUST_OPTION_CARGO_TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Prepare runner disk
+        # Reclaim unused SDKs with the existing helper. Its default mode keeps
+        # the CodeQL tool cache; do not use --extended for this job.
+        run: bash scripts/ci-prepare-disk.sh
+      - name: Prepare disk-backed analysis storage
+        id: storage
+        run: |
+          scratch="$RUNNER_TEMP/codeql-rust-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$scratch/tmp"
+          # A multi-GiB database/build cache on tmpfs consumes the extractor's
+          # RAM budget. --ram is a hint to Rust extraction, not a hard limit.
+          filesystem=$(stat -f -c %T "$scratch")
+          case "$filesystem" in
+            tmpfs|ramfs)
+              echo '::error::CodeQL scratch must be on disk, not tmpfs/ramfs.'
+              exit 1
+              ;;
+          esac
+          echo "TMPDIR=$scratch/tmp" >> "$GITHUB_ENV"
+          echo "CODEQL_EXTRACTOR_RUST_OPTION_CARGO_TARGET_DIR=$scratch/cargo-target" >> "$GITHUB_ENV"
+          echo "database=$scratch/databases" >> "$GITHUB_OUTPUT"
+      - name: Record full workspace inventory
+        run: |
+          mkdir -p evidence
+          cargo metadata --no-deps --format-version 1 > evidence/workspace.json
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        id: init
+        with:
+          languages: rust
+          build-mode: none
+          tools: linked
+          db-location: ${{ steps.storage.outputs.database }}
+          threads: 1
+          ram: 10000
+          # No paths-ignore, feature reduction, or workspace pruning.
+      - name: Extract and finalize before releasing build cache
+        id: extract
+        env:
+          CODEQL: ${{ steps.init.outputs.codeql-path }}
+          DATABASE: ${{ steps.storage.outputs.database }}/rust
+        run: |
+          "$CODEQL" database trace-command "$DATABASE" --use-build-mode --threads=1 --ram=10000
+          "$CODEQL" database finalize "$DATABASE" --threads=1 --ram=10000
+          # Finalization archives extracted sources. Queries use the database,
+          # so release only this run's build cache before query caching grows.
+          rm -rf -- "${RUNNER_TEMP:?}/codeql-rust-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/cargo-target"
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        id: analyze
+        with:
+          category: /language:rust/native
+          threads: 4
+          ram: 12000
+          output: evidence/sarif
+          upload: never
+          upload-database: false
+      - name: Verify extraction before publishing results
+        env:
+          CODEQL: ${{ steps.init.outputs.codeql-path }}
+          DATABASE: ${{ fromJSON(steps.analyze.outputs.db-locations).rust }}
+        run: |
+          "$CODEQL" query run .github/codeql/rust/Files.ql --database "$DATABASE" --output evidence/files.bqrs --threads=2 --ram=4000
+          "$CODEQL" bqrs decode evidence/files.bqrs --format csv --output evidence/files.csv
+          python3 scripts/codeql/verify_rust.py evidence/workspace.json evidence/files.csv evidence/sarif/rust.sarif
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          sarif_file: evidence/sarif/rust.sarif
+          category: /language:rust/native
+          wait-for-processing: true
+      - name: Report analysis resources
+        if: always()
+        run: |
+          mkdir -p evidence
+          {
+            free -m
+            df -h "$RUNNER_TEMP"
+            for field in memory.max memory.peak memory.events; do
+              if [[ -r "/sys/fs/cgroup/$field" ]]; then
+                echo "$field"
+                cat "/sys/fs/cgroup/$field"
+              fi
+            done
+          } | tee evidence/resources.txt
+      - name: Preserve extraction evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: codeql-rust-native-${{ github.run_attempt }}
+          # Findings belong in Code Scanning, not public workflow artifacts.
+          path: |
+            evidence/workspace.json
+            evidence/files.csv
+            evidence/resources.txt
+          retention-days: 14
+          if-no-files-found: error

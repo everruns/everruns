@@ -20,7 +20,7 @@ Makes an agent aware of its budget constraints. The agent receives budget inform
 
 Query the budget status for the current session.
 
-> **Note:** The current implementation returns a placeholder response indicating whether budgets are configured. Full budget data (balance, limit, status per budget) requires worker-side tool interception, which is planned for a future iteration. In the meantime, use the REST API (`GET /v1/sessions/{id}/budget-check`) for detailed budget status.
+> The tool reports whether budgets are configured. For balances, limits, and the status of each budget, use `GET /v1/sessions/{id}/budget-check`.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

@@ -19,7 +19,7 @@
 // existing snapshot behavior until that config is persisted somewhere the file
 // service can read.
 //
-// The privacy boundary is unchanged and is load-bearing: `/memory/user` is
+// To keep user memory private, `/memory/user` is
 // resolved from `resolved_owner_user_id` on the session row, and the file
 // service is keyed by *workspace*. For the default one-session workspace the
 // two ids are equal; an attached shared workspace has a different key, finds no
