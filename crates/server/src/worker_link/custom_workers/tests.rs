@@ -434,6 +434,8 @@ async fn lifecycle_events_reach_live_delivery_and_trace_listeners() {
             .status,
         "idle"
     );
+    // A fenced append is answered before its listeners run.
+    svc.events.listeners_settled().await;
     assert_eq!(
         *listener.0.lock().unwrap(),
         [

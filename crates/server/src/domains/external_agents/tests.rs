@@ -58,6 +58,15 @@ async fn protected_ingress_refuses_registration_but_allows_revocation() {
         let error = register(&agent_id).register(&ctx).await.unwrap_err();
         assert_eq!(error.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
         assert!(error.to_string().contains("protected worker ingress"));
+        // Status still shows the existing endpoint, but no new one can be set up.
+        let status = GetExternalAgent {
+            agent_id: agent_id.clone(),
+        }
+        .run(&ctx)
+        .await
+        .unwrap();
+        assert!(!status.available);
+        assert!(status.endpoint.is_some());
     }
     DisableExternalAgent {
         agent_id: agent_id.clone(),
@@ -70,6 +79,7 @@ async fn protected_ingress_refuses_registration_but_allows_revocation() {
             .run(&ctx)
             .await
             .unwrap()
+            .endpoint
             .unwrap()
             .enabled
     );
@@ -117,6 +127,7 @@ async fn self_service_registration_encrypts_secrets_rotates_and_disables_without
     .run(&ctx)
     .await
     .unwrap()
+    .endpoint
     .unwrap();
     assert_eq!(rotated.last_invoked_at, Some(invoked_at));
     assert_eq!(rotated.last_invoked_at, stored.last_invoked_at);
@@ -138,6 +149,7 @@ async fn self_service_registration_encrypts_secrets_rotates_and_disables_without
             .run(&ctx)
             .await
             .unwrap()
+            .endpoint
             .unwrap()
             .enabled
     );

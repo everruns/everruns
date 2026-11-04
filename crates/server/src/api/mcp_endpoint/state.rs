@@ -6,6 +6,8 @@ use super::*;
 
 #[derive(Clone)]
 pub struct AppState {
+    /// Classified REST routes shared with the embedded UI, without the MCP route.
+    pub(crate) app_router: Option<Router>,
     pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
@@ -79,6 +81,7 @@ impl AppState {
         sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
     ) -> Self {
         Self {
+            app_router: None,
             session_service: Arc::new(SessionService::with_registry(
                 db.clone(),
                 (*host_composition.capability_registry()).clone(),
@@ -130,6 +133,11 @@ impl AppState {
             mcp_events: None,
             provider_services: None,
         }
+    }
+
+    pub fn with_app_router(mut self, router: Router) -> Self {
+        self.app_router = Some(router);
+        self
     }
 
     pub fn with_org_rate_limiter(

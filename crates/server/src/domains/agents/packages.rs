@@ -304,6 +304,7 @@ async fn export_inner(
         "parallel_tool_calls",
         "max_output_tokens",
         "communication",
+        "completion_check",
         "tools",
         "intro_markdown",
         "short_description",
@@ -314,6 +315,9 @@ async fn export_inner(
     // `direct` is the default; a package states only a deliberate choice.
     if object.get("communication").and_then(|v| v.as_str()) == Some("direct") {
         object.remove("communication");
+    }
+    if object.get("completion_check").and_then(|v| v.as_str()) == Some("unattended") {
+        object.remove("completion_check");
     }
     object.insert("schema_version".into(), json!(1));
     let instructions = object.remove("system_prompt").unwrap_or(json!(""));
@@ -608,6 +612,7 @@ pub async fn request(
         parallel_tool_calls: m.parallel_tool_calls,
         max_output_tokens: m.max_output_tokens,
         communication: m.communication.unwrap_or_default(),
+        completion_check: m.completion_check.unwrap_or_default(),
     };
     crate::domains::validation::validate_create_agent_input(
         &req.name,

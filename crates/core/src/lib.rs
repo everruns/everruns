@@ -187,6 +187,7 @@ pub use everruns_contracts::runtime::channel;
 pub mod channel_runtime;
 
 // Permissions model (policies, rules, caller context)
+pub use everruns_contracts::runtime::completion_check;
 pub use everruns_contracts::runtime::conversation;
 pub mod permissions;
 pub use everruns_contracts::runtime::resource_names;

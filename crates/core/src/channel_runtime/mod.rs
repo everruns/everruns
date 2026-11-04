@@ -42,4 +42,4 @@ pub use host::{
     StreamTurn, TurnDeliveryPlanner,
 };
 pub use progress::TaskProgress;
-pub use store::{ChannelStore, MemoryChannelStore, PendingDelivery};
+pub use store::{ChannelStore, LinkedMessage, MemoryChannelStore, PendingDelivery};

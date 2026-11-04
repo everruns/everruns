@@ -697,3 +697,65 @@ async fn a_top_level_dm_is_answered_in_the_dm_and_a_thread_keeps_its_thread() {
         "a channel message"
     );
 }
+
+fn reaction(event_type: &str, user: &str, ts: &str, name: &str) -> Value {
+    json!({
+        "type": "event_callback",
+        "team_id": "T1",
+        "event": {
+            "type": event_type,
+            "user": user,
+            "reaction": name,
+            "item": { "type": "message", "channel": "C1", "ts": ts },
+        }
+    })
+}
+
+#[tokio::test]
+async fn a_slack_reaction_reaches_the_message_it_is_on() {
+    let slack = Slack::new(slack_config(SessionBinding::Thread)).await;
+    slack.state.bot_user_cache.insert(
+        slack.channel.public_id.to_string(),
+        Some("UBOT".to_string()),
+    );
+    let session = session_of(&slack.send(message("C1", "1.0", None)).await.unwrap());
+    let session_uuid = session.parse::<SessionId>().unwrap().uuid();
+
+    // A message the host never saw, and the bot's own reaction, are ignored.
+    let unknown = slack
+        .send(reaction("reaction_added", "U2", "9.9", "eyes"))
+        .await
+        .unwrap();
+    assert!(unknown.body.get("session_id").is_none());
+    slack
+        .send(reaction("reaction_added", "UBOT", "1.0", "eyes"))
+        .await
+        .unwrap();
+    assert!(
+        slack
+            .db
+            .list_reaction_events(session_uuid)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let added = slack
+        .send(reaction("reaction_added", "U2", "1.0", "+1::skin-tone-2"))
+        .await
+        .unwrap();
+    assert_eq!(added.body["session_id"], session);
+    slack
+        .send(reaction("reaction_removed", "U2", "1.0", "thumbsup"))
+        .await
+        .unwrap();
+
+    let events = slack.db.list_reaction_events(session_uuid).await.unwrap();
+    assert_eq!(events.len(), 2, "{events:?}");
+    assert_eq!(events[0].event_type, "message.reaction.added");
+    assert_eq!(events[0].data["emoji"], "👍");
+    assert_eq!(events[0].data["actor"]["id"], "slack:U2");
+    assert_eq!(events[0].data["actor"]["name"], "Person U2");
+    assert_eq!(events[0].data["source"], "slack");
+    assert_eq!(events[1].event_type, "message.reaction.removed");
+}

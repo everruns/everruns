@@ -75,7 +75,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Activity unavailable": "Діяльність недоступна",
   "Acts as the person": "Виконує роль особи",
   "Add a": "Додати",
-  "Add a channel from an agent's Integrations tab. New channels start as drafts and take no traffic until you publish them.":
+  "Add a channel from an agent's Channels and triggers tab. New channels start as drafts and take no traffic until you publish them.":
     "Додайте канал із вкладки Інтеграції агента. Нові канали починаються як чернетки й не отримують трафіку, доки ви їх не опублікуєте.",
   "Add a sandbox target": "Додайте ціль пісочниці",
   "Add a schedule or event to run this agent proactively.":

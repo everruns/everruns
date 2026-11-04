@@ -831,6 +831,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
             everruns_core::DEFAULT_ORG_ID,
             target_agent_id,
             crate::storage::CreateAgentRow {
+                completion_check: Default::default(),
                 localizations: Default::default(),
                 public_id: target_agent_id.to_string(),
                 name: "grpc-handoff-target".to_string(),

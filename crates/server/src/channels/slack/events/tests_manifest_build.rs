@@ -90,7 +90,9 @@ fn worst_case_agents_still_produce_a_manifest_within_slack_limits() {
 
                 let app_name = text("/display_information/name");
                 assert!(
-                    !app_name.is_empty() && chars(&app_name) <= 35,
+                    !app_name.is_empty()
+                        && chars(&app_name) <= SLACK_APP_NAME_MAX
+                        && app_name == build_app_name(&app_name),
                     "{case}: name {app_name:?}"
                 );
                 let short = text("/display_information/description");
@@ -100,9 +102,9 @@ fn worst_case_agents_still_produce_a_manifest_within_slack_limits() {
                 );
                 let long = text("/display_information/long_description");
                 assert!(
-                    (SLACK_LONG_DESC_MIN..=SLACK_LONG_DESC_MAX).contains(&chars(&long)),
-                    "{case}: long_description is {} chars",
-                    chars(&long)
+                    chars(&long) >= SLACK_LONG_DESC_MIN && long.len() <= SLACK_LONG_DESC_MAX_BYTES,
+                    "{case}: long_description is {} bytes",
+                    long.len()
                 );
                 let bot = text("/features/bot_user/display_name");
                 assert!(
@@ -113,7 +115,7 @@ fn worst_case_agents_still_produce_a_manifest_within_slack_limits() {
                 if agent_surface {
                     let agent = text("/features/agent_view/agent_description");
                     assert!(
-                        chars(&agent) <= SLACK_AGENT_DESC_MAX,
+                        agent.len() <= SLACK_AGENT_DESC_MAX_BYTES,
                         "{case}: agent_description"
                     );
                     let prompts = manifest
@@ -736,4 +738,34 @@ mod wiremock_tests {
             "{notice}"
         );
     }
+}
+
+/// The worst-case manifests, kept as a fixture for checks that run without a
+/// server. The system doctor validates the same manifests with Slack. The
+/// test fails when the fixture no longer matches what the code builds.
+/// Regenerate with `UPDATE_SLACK_MANIFEST_FIXTURE=1 cargo test -p
+/// everruns-server worst_case_manifest_fixture`.
+#[test]
+fn worst_case_manifest_fixture_is_current() {
+    let mut manifests = serde_json::Map::new();
+    for (case, yaml) in worst_case_manifest_yamls() {
+        let manifest: serde_json::Value = serde_yaml::from_str(&yaml).unwrap();
+        manifests.insert(case.to_string(), manifest);
+    }
+    let rendered = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&serde_json::Value::Object(manifests)).unwrap()
+    );
+
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/slack-worst-case-manifests.json");
+    if std::env::var_os("UPDATE_SLACK_MANIFEST_FIXTURE").is_some() {
+        std::fs::write(&path, &rendered).unwrap();
+    }
+    let committed = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(
+        committed == rendered,
+        "{} is stale; regenerate it with UPDATE_SLACK_MANIFEST_FIXTURE=1 cargo test -p everruns-server worst_case_manifest_fixture",
+        path.display()
+    );
 }

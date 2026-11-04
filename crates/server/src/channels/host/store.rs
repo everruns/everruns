@@ -1,4 +1,5 @@
-//! The channel host's store on PostgreSQL (migration 210).
+//! The channel host's store on PostgreSQL (migration 210; message links in
+//! `channel_message_links`).
 //!
 //! Decision: the host names a server channel by its row's internal id (see
 //! [`super::resolver`]), so every key here is that id. A name that is not one
@@ -9,7 +10,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_contracts::runtime::channel::{ChannelError, DeliveryTarget};
-use everruns_core::channel_runtime::{ChannelStore, PendingDelivery};
+use everruns_core::channel_runtime::{ChannelStore, LinkedMessage, PendingDelivery};
 use uuid::Uuid;
 
 use crate::storage::{ChannelPendingDeliveryRow, StorageBackend};
@@ -163,6 +164,59 @@ impl ChannelStore for PgChannelStore {
         Ok(self
             .db
             .release_channel_pending_delivery(session_uuid(session_id)?, input_message_id, holder)
+            .await?)
+    }
+
+    async fn link_message(
+        &self,
+        channel: &str,
+        message_key: &str,
+        message: &LinkedMessage,
+    ) -> Result<(), ChannelError> {
+        Ok(self
+            .db
+            .link_channel_message(
+                channel_id(channel)?,
+                message_key,
+                session_uuid(&message.session_id)?,
+                &message.message_id,
+            )
+            .await?)
+    }
+
+    async fn linked_message(
+        &self,
+        channel: &str,
+        message_key: &str,
+    ) -> Result<Option<LinkedMessage>, ChannelError> {
+        let Ok(channel_id) = channel_id(channel) else {
+            return Ok(None);
+        };
+        Ok(self
+            .db
+            .channel_linked_message(channel_id, message_key)
+            .await?
+            .map(|(session_id, message_id)| LinkedMessage {
+                session_id: session_string(session_id),
+                message_id,
+            }))
+    }
+
+    async fn message_key(
+        &self,
+        channel: &str,
+        message: &LinkedMessage,
+    ) -> Result<Option<String>, ChannelError> {
+        let Ok(channel_id) = channel_id(channel) else {
+            return Ok(None);
+        };
+        Ok(self
+            .db
+            .channel_message_key(
+                channel_id,
+                session_uuid(&message.session_id)?,
+                &message.message_id,
+            )
             .await?)
     }
 }

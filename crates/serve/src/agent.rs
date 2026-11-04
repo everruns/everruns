@@ -95,6 +95,7 @@ pub struct Agent {
     pub(crate) offline: Option<LlmSimConfig>,
     pub(crate) customize: Option<Customize>,
     pub(crate) package: Option<everruns::AgentPackage>,
+    pub(crate) members: Vec<String>,
 }
 
 impl std::fmt::Debug for Agent {
@@ -103,6 +104,7 @@ impl std::fmt::Debug for Agent {
             .field("model", &self.model)
             .field("instructions", &self.instructions)
             .field("tools", &self.tools)
+            .field("members", &self.members)
             .finish_non_exhaustive()
     }
 }
@@ -163,6 +165,7 @@ impl Agent {
                 offline: None,
                 customize: None,
                 package: None,
+                members: Vec::new(),
             },
         }
     }
@@ -194,8 +197,8 @@ impl AgentBuilder {
         self
     }
 
-    /// One line on what this agent does. Shown in the agent card; for a
-    /// subagent it is the description of its `ask_<name>` tool.
+    /// One line on what this agent does. Shown in the agent card, and to a
+    /// lead that has this agent as a member, as when to hand work to it.
     pub fn description(mut self, description: impl Into<String>) -> Self {
         self.agent.description = Some(description.into());
         self
@@ -209,6 +212,23 @@ impl AgentBuilder {
         S: Into<String>,
     {
         self.agent.tools = Some(names.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Another `#[agent]` of this app this agent can hand work to. The lead
+    /// gets the Agents capability (`spawn_agent`) with one target per member,
+    /// keyed by name; the member runs as its own session in the lead's run,
+    /// and its approvals and questions wait on the lead's session. The member
+    /// stays an agent of the app in its own right.
+    ///
+    /// ```text
+    /// #[agent(default)]
+    /// fn analyst() -> Agent {
+    ///     Agent::builder().model("openai/gpt-6.1-sol").member("reviewer").build()
+    /// }
+    /// ```
+    pub fn member(mut self, name: impl Into<String>) -> Self {
+        self.agent.members.push(name.into());
         self
     }
 

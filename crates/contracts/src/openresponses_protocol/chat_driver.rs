@@ -286,7 +286,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         if let Some(extension) = &self.request_extension {
             extension.decorate(&mut request_body, config)?;
         }
-        apply_cache_options(&mut request_body, config, self.native_prompt_cache_options);
+        apply_cache_options(
+            &mut request_body,
+            config,
+            self.native_prompt_cache_options,
+            crate::openai_protocol::is_openai_api_url(&api_url),
+        );
         let mut background = self.background_mode && super::background::wants_background(config);
         super::background::mark(&mut request_body, background);
         crate::openai_compat::validate_body(&request_body, endpoint, true)?;
@@ -403,7 +408,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 if let Some(extension) = &self.request_extension {
                     extension.decorate(&mut request_body, config)?;
                 }
-                apply_cache_options(&mut request_body, config, self.native_prompt_cache_options);
+                apply_cache_options(
+                    &mut request_body,
+                    config,
+                    self.native_prompt_cache_options,
+                    crate::openai_protocol::is_openai_api_url(&api_url),
+                );
                 super::background::mark(&mut request_body, background);
                 crate::openai_compat::validate_body(&request_body, endpoint, true)?;
                 self.connect_response(
@@ -425,6 +435,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             None => event_stream,
         };
 
+        let refusal = Arc::new(Mutex::new(super::refusal::RefusalState::default()));
+        let trailing_refusal = Arc::clone(&refusal);
         let model = config.model.clone();
         let input_tokens = Arc::new(Mutex::new(0u32));
         let output_tokens = Arc::new(Mutex::new(0u32));
@@ -449,6 +461,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let observed_completion = completed.clone();
         let frame_deferred_events = Arc::clone(&deferred_events);
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
+            let refusal = Arc::clone(&refusal);
             let model = model.clone();
             let input_tokens = Arc::clone(&input_tokens);
             let output_tokens = Arc::clone(&output_tokens);
@@ -463,8 +476,15 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 match result {
                     Ok(event) => {
                         let event_data = &event.data;
-                        if required_completion && let Ok(frame) = serde_json::from_str::<Value>(event_data) {
-                                if let Some(event) = super::completion_contract::terminal(&frame) {
+                        let parsed_frame = serde_json::from_str::<Value>(event_data);
+                        if let Ok(frame) = &parsed_frame
+                            && let Some(event) = refusal.lock().unwrap().observe(frame)
+                        {
+                            observed_completion.store(true, std::sync::atomic::Ordering::Relaxed);
+                            return Ok(event);
+                        }
+                        if required_completion && let Ok(frame) = &parsed_frame {
+                                if let Some(event) = super::completion_contract::terminal(frame) {
                                     observed_completion.store(true, std::sync::atomic::Ordering::Relaxed);
                                     return Ok(event);
                                 }
@@ -485,7 +505,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                         // A custom tool call is not represented by the typed
                         // Responses event enum. Decode completed calls before
                         // that enum so its native metadata reaches the runtime.
-                        if let Ok(json) = serde_json::from_str::<Value>(event_data)
+                        if let Ok(json) = &parsed_frame
                             && json.get("type").and_then(Value::as_str)
                                 == Some("response.output_item.done")
                             && let Some(item) = json.get("item")
@@ -537,10 +557,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                         }
 
                         // Fallback: parse as generic JSON for backwards compatibility
-                        let parsed: std::result::Result<Value, _> =
-                            serde_json::from_str(event_data);
-
-                        match parsed {
+                        match parsed_frame {
                             Ok(json) => {
                                 let event_type = json.get("type").and_then(|t| t.as_str());
 
@@ -797,6 +814,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             completion_tokens: Some(output),
                                             cache_read_tokens: cached,
                                             cache_creation_tokens: written,
+                                            cache_creation_12h_tokens: response_obj.pointer("/usage/input_tokens_details/cache_write_tokens_details/ttl_12h_tokens")
+                                                .and_then(Value::as_u64).map(|n| n.min(u32::MAX as u64) as u32),
                                             reasoning_tokens: reasoning_used,
                                             provider_cost_usd,
                                             service_tier: response_obj
@@ -870,12 +889,21 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                             )),
                         }
                     }
-                    Err(e) => Ok(LlmStreamEvent::Error(
-                        format!("Stream error: {}", e).into(),
+                    Err(e) => Ok(refusal.lock().unwrap().finish().unwrap_or_else(||
+                        LlmStreamEvent::Error(format!("Stream error: {}", e).into())
                     )),
                 }
             }
         }));
+
+        let converted_stream: LlmResponseStream = Box::pin(
+            converted_stream.chain(
+                futures::stream::once(
+                    async move { trailing_refusal.lock().unwrap().finish().map(Ok) },
+                )
+                .filter_map(futures::future::ready),
+            ),
+        );
 
         // Flush whatever the frame queued ahead of the event it mapped to. The
         // per-frame closure is 1:1 by construction, so this is the only place a

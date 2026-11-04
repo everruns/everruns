@@ -41,6 +41,9 @@ type HmacSha256 = Hmac<Sha256>;
 /// `Some(name)` = resolved, `None` = resolution failed (don't retry).
 type SlackUserCache = Cache<String, Option<String>>;
 
+/// The bot user a channel's token acts as; only successful lookups are kept.
+pub(crate) type SlackBotUserCache = SlackUserCache;
+
 /// Bound for in-memory Slack users.info cache to prevent unbounded growth.
 const SLACK_USER_CACHE_MAX_ENTRIES: u64 = 10_000;
 
@@ -62,6 +65,8 @@ pub struct SlackState {
     pub event_service: Arc<EventService>,
     /// Cache of Slack user ID → display name. Shared across requests.
     pub(crate) user_name_cache: SlackUserCache,
+    /// Cache of channel id → the Slack user its bot token acts as.
+    pub(crate) bot_user_cache: SlackBotUserCache,
     /// The channel host Slack runs on. The app always attaches one
     /// ([`with_channel_host`](Self::with_channel_host)); `None` only in tests
     /// that never reach intake.
@@ -149,6 +154,7 @@ impl SlackState {
             encryption,
             db,
             user_name_cache: new_slack_user_cache(),
+            bot_user_cache: new_slack_user_cache(),
             channels: None,
             delivery_adapter: Arc::new(
                 crate::channels::slack::delivery::SlackDeliveryAdapter::new(),

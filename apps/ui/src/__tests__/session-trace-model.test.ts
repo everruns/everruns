@@ -329,6 +329,7 @@ describe("error classification", () => {
   it("labels known failure codes and leaves the generic one unlabeled", () => {
     expect(errorCodeLabel("provider_quota_exhausted")).toBe("Provider account out of funds");
     expect(errorCodeLabel("provider_unavailable")).toBe("Provider down");
+    expect(errorCodeLabel("model_refusal")).toBe("Model declined request");
     expect(errorCodeLabel("processing_error")).toBeNull();
     expect(errorCodeLabel(undefined)).toBeNull();
   });

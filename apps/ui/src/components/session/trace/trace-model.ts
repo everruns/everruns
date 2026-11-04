@@ -499,6 +499,7 @@ const ERROR_CODE_LABEL: Record<string, string> = {
   provider_misconfigured: "Provider misconfigured",
   provider_attestation_required: "Provider needs confirmation",
   provider_session_unavailable: "Provider session lost",
+  model_refusal: "Model declined request",
   model_unavailable: "Model unavailable",
   model_not_configured: "Model not configured",
   request_too_large: "Request too large",

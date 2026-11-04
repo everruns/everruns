@@ -107,6 +107,8 @@ pub(crate) fn slack_bot_scopes(agent_surface_enabled: bool) -> Vec<&'static str>
     let mut scopes = vec![
         "chat:write",
         "reactions:write",
+        // Hears reactions people add on the agent's and their own messages.
+        "reactions:read",
         "channels:history",
         "groups:history",
         "im:history",

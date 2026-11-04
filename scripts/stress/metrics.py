@@ -184,16 +184,18 @@ def turn_summary(ts: list[dict]) -> dict:
 
 
 def top_statements(pg, turns_done: int, limit: int = 12) -> list[dict]:
-    """The statements costing the most per turn, by calls and by time, since the load began."""
+    """The statements costing the most per turn, by calls, by time and by rows
+    returned (history reads show up there), since the load began."""
     n = max(1, turns_done)
     out = []
-    for order in ("calls", "total_exec_time"):
+    for order in ("calls", "total_exec_time", "rows"):
         rows = pg.psql("stress", (
-            "SELECT calls, total_exec_time, left(regexp_replace(query, '\\s+', ' ', 'g'), 160) "
+            "SELECT calls, total_exec_time, rows, left(regexp_replace(query, '\\s+', ' ', 'g'), 160) "
             f"FROM pg_stat_statements ORDER BY {order} DESC LIMIT {limit}"))
-        for calls, ms, query in rows:
+        for calls, ms, returned, query in rows:
             out.append({"by": order, "calls_per_turn": round(float(calls) / n, 1),
-                        "ms_per_turn": round(float(ms) / n, 2), "query": query})
+                        "ms_per_turn": round(float(ms) / n, 2),
+                        "rows_per_turn": round(float(returned) / n, 1), "query": query})
     return out
 
 

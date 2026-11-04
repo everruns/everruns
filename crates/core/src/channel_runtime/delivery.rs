@@ -28,10 +28,15 @@
 //!   count as delivered.
 //! - A turn that ends having delivered nothing posts exactly one short notice
 //!   with no error detail (channels are often public), plus an optional link.
+//!   A failure whose code says the agent's model or provider is set up wrong
+//!   says so instead, so the person writing knows retrying will not help and
+//!   who has to act. Only the category shows, never the model, provider or
+//!   message, and the error-disclosure mode applies: in `generic` mode the
+//!   code is already `processing_error`, so the plain notice is posted.
 //! - No I/O happens outside the adapter, so the same object runs in a
 //!   Framework task, serve, and the server's Postgres-driven dispatcher.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -43,7 +48,8 @@ use super::{ChannelDeliveryAdapter, DeliveryContext, DeliveryResult, OutboundCha
 use crate::conversation::NO_REPLY_TOOL_NAME;
 use everruns_contracts::runtime::channel::ChannelSessionState;
 use everruns_contracts::runtime::events::{
-    CONVERSATION_MESSAGE, OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED,
+    CONVERSATION_MESSAGE, MESSAGE_REACTION_ADDED, MESSAGE_REACTION_REMOVED,
+    OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED,
     OUTPUT_MESSAGE_STARTED, SESSION_TITLE_UPDATED, TASK_CREATED, TASK_UPDATED, TOOL_COMPLETED,
     TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_SEALED, TURN_STARTED,
 };
@@ -174,6 +180,12 @@ pub struct TurnDelivery {
     notes: HashSet<String>,
     /// The agent sent a message with `send_message` this turn.
     sent_explicitly: bool,
+    /// The `error_code` of this turn's `turn.failed`, if it failed.
+    failure_code: Option<String>,
+    /// Platform keys of the messages this delivery knows, by message id.
+    keys: HashMap<String, String>,
+    /// Links made since the host last took them, for it to persist.
+    new_links: Vec<(String, String)>,
 }
 
 impl TurnDelivery {
@@ -203,7 +215,33 @@ impl TurnDelivery {
             unstreamable: HashSet::new(),
             notes: HashSet::new(),
             sent_explicitly: false,
+            failure_code: None,
+            keys: HashMap::new(),
+            new_links: Vec::new(),
         }
+    }
+
+    /// Tell the delivery a message's platform key it did not post itself
+    /// (the input message, an earlier reply), so the agent's reactions on it
+    /// reach the platform.
+    pub fn know_message_key(&mut self, message_id: impl Into<String>, key: impl Into<String>) {
+        self.keys.insert(message_id.into(), key.into());
+    }
+
+    /// Whether the delivery knows a message's platform key.
+    pub fn knows_message(&self, message_id: &str) -> bool {
+        self.keys.contains_key(message_id)
+    }
+
+    /// Keys of the messages posted since the last call, as `(key, message_id)`,
+    /// for the host to link.
+    pub fn take_links(&mut self) -> Vec<(String, String)> {
+        std::mem::take(&mut self.new_links)
+    }
+
+    fn link(&mut self, message_id: &str, key: String) {
+        self.keys.insert(message_id.to_string(), key.clone());
+        self.new_links.push((key, message_id.to_string()));
     }
 
     /// Where this delivery posts.
@@ -269,6 +307,8 @@ impl TurnDelivery {
             CONVERSATION_MESSAGE => self.on_sent(&event.data).await,
             OUTPUT_MESSAGE_REPLACED if self.streaming() => self.on_replaced(&event.data).await,
             OUTPUT_MESSAGE_COMPLETED => self.on_completed(&event.data).await,
+            MESSAGE_REACTION_ADDED => self.on_reaction(&event.data, true).await,
+            MESSAGE_REACTION_REMOVED => self.on_reaction(&event.data, false).await,
             TOOL_STARTED => {
                 self.awaiting_approval = false;
                 self.set_session_state(ChannelSessionState::Processing)
@@ -312,6 +352,13 @@ impl TurnDelivery {
             _ => {}
         }
 
+        if event.event_type == TURN_FAILED {
+            self.failure_code = event
+                .data
+                .get("error_code")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+        }
         if event.is_terminal() {
             self.finish(&event.event_type).await;
             return DeliveryStep::Finished(event.event_type.clone());
@@ -388,6 +435,10 @@ impl TurnDelivery {
             };
             match started {
                 Ok(handle) => {
+                    if let Some(reactions) = self.adapter.reactions() {
+                        let key = reactions.stream_message_key(&handle, &self.context);
+                        self.link(message_id, key);
+                    }
                     self.streams.insert(
                         message_id.to_string(),
                         Stream {
@@ -482,7 +533,7 @@ impl TurnDelivery {
             return;
         }
         let Some(text) = text else { return };
-        match self.post(text).await {
+        match self.post_message(text, message_id.as_deref()).await {
             Ok(()) => {
                 if let Some(id) = message_id {
                     self.done.insert(id);
@@ -690,12 +741,35 @@ impl TurnDelivery {
     }
 
     async fn post(&mut self, text: String) -> Result<(), String> {
+        self.post_message(text, None).await
+    }
+
+    /// Post text; a reply's message id links the posted message to it.
+    async fn post_message(&mut self, text: String, message_id: Option<&str>) -> Result<(), String> {
         let message = OutboundChannelMessage {
             session_id: self.session_id,
             text,
             thread_ref: self.context.thread_ref.clone(),
             correlation_id: Some(self.input_message_id.clone()),
         };
+        if let (Some(message_id), Some(reactions)) = (message_id, self.adapter.reactions()) {
+            return match reactions.post_keyed(&message, &self.context).await {
+                Ok(key) => {
+                    self.delivered = true;
+                    if let Some(key) = key {
+                        self.link(message_id, key);
+                    }
+                    Ok(())
+                }
+                Err(DeliveryResult::Ok) => {
+                    self.delivered = true;
+                    Ok(())
+                }
+                Err(
+                    DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error),
+                ) => Err(error),
+            };
+        }
         match self.adapter.deliver(&message, &self.context).await {
             DeliveryResult::Ok => {
                 self.delivered = true;
@@ -707,8 +781,44 @@ impl TurnDelivery {
         }
     }
 
+    /// The agent's own reaction, mirrored onto the platform message. Other
+    /// people's reactions came from a surface that already shows them.
+    async fn on_reaction(&mut self, data: &Value, added: bool) {
+        let Some(reactions) = self.adapter.reactions() else {
+            return;
+        };
+        let field = |name: &str| data.get(name).and_then(Value::as_str);
+        let by_agent = data
+            .get("actor")
+            .and_then(|actor| actor.get("kind"))
+            .and_then(Value::as_str)
+            == Some("agent");
+        let (Some(message_id), Some(emoji)) = (field("message_id"), field("emoji")) else {
+            return;
+        };
+        if !by_agent {
+            return;
+        }
+        let Some(key) = self.keys.get(message_id) else {
+            return;
+        };
+        if let DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) =
+            reactions.react(key, emoji, added, &self.context).await
+        {
+            warn!(session_id = %self.session_id, %error, "channel: could not mirror a reaction");
+        }
+    }
+
     fn notice(&self, event_type: &str) -> String {
+        let misconfigured = event_type == TURN_FAILED
+            && self
+                .failure_code
+                .as_deref()
+                .is_some_and(is_setup_error_code);
         let headline = match event_type {
+            _ if misconfigured => {
+                "This agent is not set up correctly, so it cannot answer right now. Someone who manages it needs to check its model and provider settings."
+            }
             TURN_FAILED | TURN_SEALED => "The agent could not finish this request.",
             TURN_CANCELLED => "This request was cancelled.",
             _ => "The agent finished without a reply.",
@@ -718,6 +828,20 @@ impl TurnDelivery {
             None => headline.to_string(),
         }
     }
+}
+
+/// Whether a turn failure's code means the agent's model or provider is set
+/// up wrong: retrying will not help until someone who manages it acts.
+pub fn is_setup_error_code(code: &str) -> bool {
+    use everruns_contracts::user_facing_error::codes;
+    matches!(
+        code,
+        codes::MODEL_UNAVAILABLE
+            | codes::MODEL_NOT_CONFIGURED
+            | codes::PROVIDER_MISCONFIGURED
+            | codes::PROVIDER_QUOTA_EXHAUSTED
+            | codes::PROVIDER_ATTESTATION_REQUIRED
+    )
 }
 
 /// The text of a completed assistant message. Blank parts are not reply text:

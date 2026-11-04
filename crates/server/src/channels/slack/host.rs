@@ -31,10 +31,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::http::{HeaderMap, HeaderName, HeaderValue};
 use everruns_contracts::runtime::channel::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelError, ChannelStreamDelivery,
-    ChannelViewContext, ControlAction, DeliveryContext, DeliveryResult, DeliveryTarget,
-    ExternalActor, Inbound, InboundAttachment, InboundChannelEvent, InboundControl, InboundMessage,
-    InboundRoute, OutboundChannelMessage, SessionBinding,
+    CHANNEL_MESSAGE_KEY, ChannelAgentSurface, ChannelDeliveryAdapter, ChannelError,
+    ChannelReactionSurface, ChannelStreamDelivery, ChannelViewContext, ControlAction,
+    DeliveryContext, DeliveryResult, DeliveryTarget, ExternalActor, Inbound, InboundAttachment,
+    InboundChannelEvent, InboundControl, InboundMessage, InboundReaction, InboundRoute,
+    OutboundChannelMessage, SessionBinding,
 };
 use everruns_contracts::runtime::channel_driver::{ChannelDriver, ChannelRequest, ChannelResponse};
 use everruns_core::channel_runtime::{DeliveryOptions, TurnDeliveryPlanner};
@@ -43,13 +44,14 @@ use serde_json::{Value, json};
 use super::approvals::approvals_enabled;
 use super::delivery::{
     SLACK_RECIPIENT_TEAM_ID, SLACK_RECIPIENT_USER_ID, SlackSurface, classify_surface,
-    slack_turn_options, turn_adapter::SlackTurnAdapter,
+    emoji_for_slack_reaction, slack_turn_options, turn_adapter::SlackTurnAdapter,
 };
 use super::events::{
     SlackEvent, SlackEventEnvelope, SlackState, build_attachment_content_parts,
     event_matches_slack_scope, fetch_thread_replies, is_supported_slack_message_subtype,
-    parse_slack_inbound_event, resolve_slack_user_name, should_process_message,
-    should_skip_thread_reply, slack_message_metadata, truncation_notice, verify_slack_signature,
+    parse_slack_inbound_event, resolve_slack_bot_user, resolve_slack_user_name,
+    should_process_message, should_skip_thread_reply, slack_message_metadata, truncation_notice,
+    verify_slack_signature,
 };
 use crate::channels::host::{HISTORY_NOTICE, THREAD_VIEW_CONTEXT};
 use crate::domains::agent_channels::ingress::{IngressChannel, IngressContext};
@@ -182,6 +184,47 @@ impl SlackHostDriver {
         }
     }
 
+    /// A person's reaction on a Slack message. The host finds the message it
+    /// linked to that key, or ignores it.
+    async fn reaction(&self, event: SlackEvent) -> Inbound {
+        let (Some(name), Some(item), Some(user)) = (&event.reaction, &event.item, &event.user)
+        else {
+            return Inbound::Ignore;
+        };
+        let (Some(channel), Some(ts)) = (&item.channel, &item.ts) else {
+            return Inbound::Ignore;
+        };
+        if item.item_type.as_deref() != Some("message") {
+            return Inbound::Ignore;
+        }
+        // THREAT[TM-SLACK-002]: the bot's own reactions are the agent's,
+        // already stored; hearing them back would echo. When Slack cannot
+        // say who the bot is, the reaction is dropped rather than risk it.
+        let bot = resolve_slack_bot_user(
+            &self.state.bot_user_cache,
+            &self.config.bot_token,
+            &self.channel.public_id.to_string(),
+        )
+        .await;
+        if bot.is_none() || bot.as_deref() == Some(user.as_str()) {
+            return Inbound::Ignore;
+        }
+        let actor_name =
+            resolve_slack_user_name(&self.state.user_name_cache, &self.config.bot_token, user)
+                .await;
+        Inbound::Reaction(Box::new(InboundReaction {
+            message_key: format!("{channel}:{ts}"),
+            emoji: emoji_for_slack_reaction(name),
+            added: event.event_type == "reaction_added",
+            actor: ExternalActor {
+                actor_id: user.clone(),
+                actor_name,
+                source: SLACK_PLATFORM.into(),
+                metadata: None,
+            },
+        }))
+    }
+
     async fn message(&self, raw_event: &Value, event: SlackEvent) -> Inbound {
         if event.bot_id.is_some() {
             // THREAT[TM-SLACK-002]: never answer a bot, ours included.
@@ -243,6 +286,13 @@ impl SlackHostDriver {
         inbound.message_metadata = slack_message_metadata(&self.context, &self.channel, &event)
             .into_iter()
             .collect();
+        if let Some(ts) = &event.ts {
+            // A reaction on this message names it the same way.
+            inbound.message_metadata.insert(
+                CHANNEL_MESSAGE_KEY.into(),
+                Value::String(format!("{channel}:{ts}")),
+            );
+        }
         inbound
             .routing_metadata
             .insert(SLACK_EVENT.into(), raw_event.to_string());
@@ -351,6 +401,10 @@ impl ChannelDeliveryAdapter for SlackHostDriver {
 
     fn agent_surface(&self) -> Option<&dyn ChannelAgentSurface> {
         self.state.delivery_adapter.agent_surface()
+    }
+
+    fn reactions(&self) -> Option<&dyn ChannelReactionSurface> {
+        self.state.delivery_adapter.reactions()
     }
 }
 
@@ -461,6 +515,7 @@ impl ChannelDriver for SlackHostDriver {
                 }
             }
             "app_home_opened" => Inbound::Ignore,
+            "reaction_added" | "reaction_removed" => self.reaction(event).await,
             _ => self.message(&raw["event"], event).await,
         })
     }

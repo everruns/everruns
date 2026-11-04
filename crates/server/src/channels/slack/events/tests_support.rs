@@ -87,6 +87,8 @@ pub(crate) fn test_event(channel: &str, ts: Option<&str>, thread_ts: Option<&str
         files: vec![],
         attachments: vec![],
         assistant_thread: None,
+        reaction: None,
+        item: None,
     }
 }
 

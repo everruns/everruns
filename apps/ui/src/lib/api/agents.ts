@@ -272,16 +272,16 @@ export async function deleteAgentCredentialBinding(
   await api.delete(`/v1/agents/${agentId}/credentials/${bindingId}`);
 }
 
-/// The agent-level incident switch (EVE-1007). One call takes every channel of
-/// an agent off the internet without touching the per-channel publish state it
-/// should be restored to.
-export async function suspendAgentExposures(agentId: string): Promise<Agent> {
-  const response = await api.post<Agent>(`/v1/agents/${agentId}/exposures/suspend`);
+/// Pause agent (EVE-1007): stops its channels, triggers and schedules without
+/// touching the per-channel publish or per-trigger on/off state that resuming
+/// restores.
+export async function pauseAgent(agentId: string): Promise<Agent> {
+  const response = await api.post<Agent>(`/v1/agents/${agentId}/pause`);
   return response.data;
 }
 
-export async function resumeAgentExposures(agentId: string): Promise<Agent> {
-  const response = await api.post<Agent>(`/v1/agents/${agentId}/exposures/resume`);
+export async function resumeAgent(agentId: string): Promise<Agent> {
+  const response = await api.post<Agent>(`/v1/agents/${agentId}/resume`);
   return response.data;
 }
 

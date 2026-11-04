@@ -29,8 +29,6 @@ agents draft	--context-revision --draft --messages! --reason
 agents examples adopt	--context-revision --name --reason <name>
 agents examples list	--context-revision --reason
 agents export	--format --out <agent>!
-agents exposures resume	--agent --context-revision --reason <agent_id>
-agents exposures suspend	--agent --context-revision --reason <agent_id>
 agents external-worker disable	--agent-id! --context-revision --reason
 agents external-worker get	--agent-id! --context-revision --reason
 agents failures list	--after --agent --before --context-revision --limit --offset --reason <agent_id>
@@ -45,7 +43,9 @@ agents health-checks list	--agent-id! --context-revision --reason
 agents health-checks trigger	--agent-id! --context-revision --reason
 agents import	--content --format --reason --target <file>
 agents list	--context-revision --include-archived --limit --offset --reason --search
+agents pause	--agent --context-revision --reason <agent_id>
 agents preview	--capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
+agents resume	--agent --context-revision --reason <agent_id>
 agents scripts create	--agent-id! --body! --context-revision --description! --input-schema --name! --reason
 agents scripts delete	--agent-id! --context-revision --reason --script-id!
 agents scripts get	--agent-id! --context-revision --reason --script-id!
@@ -64,10 +64,10 @@ agents triggers deliveries list	--agent-id! --context-revision --limit --reason 
 agents triggers get	--agent-id! --context-revision --reason --trigger-id!
 agents triggers list	--agent-id --context-revision --include-archived --reason <agent_id>
 agents triggers runs list	--agent-id! --context-revision --reason --trigger-id!
-agents triggers trigger	--agent-id! --context-revision --reason --trigger-id!
+agents triggers trigger	--agent-id! --context-revision --event --reason --trigger-id!
 agents triggers update	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --target-binding-key --target-channel-id --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --reason --tag/-t... --writable <agent_id>
-agents upsert	--capabilities --communication --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --localizations --max-iterations --max-output-tokens --mcpServers --name! --network-access --owner-agent-id --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
+agents upsert	--capabilities --communication --completion-check --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --localizations --max-iterations --max-output-tokens --mcpServers --name! --network-access --owner-agent-id --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents validate	--remote <file>!
 budgets check	--budget-id! --context-revision --reason
 budgets create	--context-revision --currency! --limit! --metadata --period --policy --reason --soft-limit --subject-id! --subject-type!
@@ -177,8 +177,12 @@ harnesses get	--context-revision --id --reason <id>
 harnesses list	--context-revision --include-archived --reason --search
 harnesses preview	--capabilities --context-revision --mcp-servers --parent-harness-id --reason --system-prompt
 harnesses update	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --id --initial-files --intro-markdown --localizations --mcpServers --name --network-access --parent-harness-id --reason --short-description --starters --status --system-prompt --tags... <id>
+health-issues actions list	--context-revision --issue-id! --reason
+health-issues actions take	--context-revision --issue-id! --kind! --reason
+health-issues actions undo	--action-id! --context-revision --issue-id! --reason
 health-issues check	--context-revision --issue-id! --reason
 health-issues dismiss	--context-revision --issue-id! --note! --reason
+health-issues fix	--context-revision --issue-id! --kind! --reason
 health-issues get	--context-revision --issue-id! --reason
 health-issues list	--channel-id --context-revision --limit --offset --reason
 health-issues snooze	--context-revision --issue-id! --reason
@@ -254,7 +258,7 @@ orgs list	--context-revision --reason
 orgs provider-accounts list	--context-revision --org! --reason
 orgs resolve	--context-revision --id! --reason
 orgs select
-orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --name --org! --reason --small-model-id --system-decisions --web-search-defaults
+orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --name --org! --reason --self-healing --small-model-id --system-decisions --web-search-defaults
 payments accounts create	--context-revision --label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason
 payments accounts disable	--context-revision --payment-account-id! --reason
 payments accounts get	--context-revision --payment-account-id! --reason
@@ -364,6 +368,7 @@ sessions pin	--context-revision --reason --session <session_id>
 sessions platform-chat ensure	--context-revision --reason
 sessions resources list	--context-revision --reason --session-id <session_id>
 sessions resume	--context-revision --reason --session-id <session_id>
+sessions run get	--context-revision --reason --session-id <session_id>
 sessions sandbox get	--context-revision --reason --session-id <session_id>
 sessions sandbox manage	--action! --context-revision --reason --session-id!
 sessions sse stream	--context-revision --reason --session-id <session_id>

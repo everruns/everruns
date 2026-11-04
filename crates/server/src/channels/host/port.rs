@@ -40,14 +40,14 @@ use everruns_contracts::runtime::message::{ContentPart, InputContentPart};
 use everruns_contracts::runtime::message_retriever::InputMessage;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::channel_runtime::{
-    ChannelConfig, ChannelEventStream, ChannelSessionPort, DeliveryEvent, NewChannelSession,
-    ReceivedAttachment, SendOutcome,
+    ChannelConfig, ChannelEventStream, ChannelSessionPort, DeliveryEvent, LinkedMessage,
+    NewChannelSession, ReceivedAttachment, SendOutcome,
 };
 use futures::StreamExt;
 
 use everruns_contracts::runtime::channel::{
-    ChannelViewContext, ExternalActor, THREAD_CONTEXT_KV_KEY, ThreadContext, decode_thread_context,
-    encode_thread_context,
+    ChannelViewContext, ExternalActor, InboundReaction, THREAD_CONTEXT_KV_KEY, ThreadContext,
+    decode_thread_context, encode_thread_context,
 };
 use everruns_contracts::typed_id::MessageId;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
@@ -57,6 +57,7 @@ use serde_json::Value;
 
 use super::ServerChannelScope;
 use crate::domains::agent_channels::record::ChannelType;
+use crate::domains::messages::reactions::{Reactor, set_reaction};
 use crate::domains::messages::types::{
     CreateMessageRequest, InputMessage as ServerInputMessage, MessageDelivery, MessageRole,
 };
@@ -69,6 +70,7 @@ use crate::domains::users::PrincipalService;
 use crate::execution_metadata;
 use crate::storage::{CreateSessionParticipantRow, SessionParticipantRow, UpsertSessionKeyValue};
 use crate::storage::{ListEventsParams, StorageBackend, UpdateSession};
+use everruns_core::{ReactionActor, ReactionActorKind};
 
 /// Durable events read per replay page.
 const REPLAY_PAGE: i32 = 500;
@@ -130,6 +132,14 @@ fn session_source(channel_type: &ChannelType) -> SessionSource {
         ChannelType::Schedule => SessionSource::Schedule,
         ChannelType::Webhook => SessionSource::Webhook,
         _ => SessionSource::Api,
+    }
+}
+
+/// The `source` a reaction made on a platform is stored with.
+fn reaction_source(platform: &str) -> &'static str {
+    match platform {
+        "slack" => "slack",
+        _ => "channel",
     }
 }
 
@@ -469,6 +479,46 @@ impl ChannelSessionPort for ServerChannelPort {
                 tracing::debug!(%session, %key, "channel host: unknown context update");
             }
         }
+        Ok(())
+    }
+
+    async fn react(
+        &self,
+        channel: &ChannelConfig,
+        message: &LinkedMessage,
+        reaction: &InboundReaction,
+    ) -> Result<(), ChannelError> {
+        let ServerChannelScope { context, .. } = scope(channel)?;
+        let Some(session) = self
+            .db
+            .get_session(context.org_id, session_id(&message.session_id)?)
+            .await?
+        else {
+            return Ok(());
+        };
+        // Attribution is the platform user the driver verified, never the
+        // payload's display text alone.
+        let actor = &reaction.actor;
+        let reactor = Reactor {
+            actor: ReactionActor {
+                kind: ReactionActorKind::External,
+                id: format!("{}:{}", actor.source, actor.actor_id),
+                name: actor.actor_name.clone(),
+            },
+            user_id: None,
+            principal_id: None,
+            source: reaction_source(&actor.source),
+        };
+        set_reaction(
+            &self.messages,
+            &session,
+            &message.message_id,
+            &reaction.emoji,
+            reactor,
+            reaction.added,
+        )
+        .await
+        .map_err(|error| ChannelError::Other(anyhow::anyhow!(error.to_string())))?;
         Ok(())
     }
 

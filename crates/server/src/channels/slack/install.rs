@@ -548,6 +548,7 @@ async fn begin_install(
                 install_state: None,
                 install_state_issued_at: None,
                 team_id: team_id.clone(),
+                install_return_issue: None,
             }
         }
     };
@@ -557,6 +558,8 @@ async fn begin_install(
     let team_id_for_consent = provisioned.team_id.clone();
     provisioned.install_state = Some(install_state.clone());
     provisioned.install_state_issued_at = Some(chrono::Utc::now());
+    // An install started here returns to the channel editor.
+    provisioned.install_return_issue = None;
     config.provisioned_app = Some(provisioned);
 
     persist(&state, endpoint.internal_id, &config).await?;
@@ -573,6 +576,94 @@ async fn begin_install(
         config.code_channels_enabled,
     );
     Ok(Json(BeginInstallResponse { authorize_url }))
+}
+
+/// Why [`begin_reconsent`] could not prepare Slack's consent screen.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ReconsentError {
+    #[error("This Slack channel no longer exists")]
+    NotFound,
+    #[error("Everruns did not create this Slack app")]
+    NotProvisioned,
+    #[error(transparent)]
+    Provisioning(#[from] SlackProvisioningError),
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
+}
+
+/// Prepare Slack's consent screen again for an app this deployment created:
+/// add the required bot scopes to its manifest (keeping everything else),
+/// mint a fresh install nonce, and return the authorize URL.
+///
+/// The Health fixer (`domains::health_issues::fixers`) uses it in place of
+/// [`begin_install`], which also creates apps and so needs the full Slack
+/// state. It never creates or replaces an app: a channel without one is
+/// refused. The callback returns the browser to `return_issue`.
+pub(crate) async fn begin_reconsent(
+    db: &crate::storage::StorageBackend,
+    encryption: Option<&Arc<crate::storage::EncryptionService>>,
+    provisioner: &dyn SlackAppProvisioner,
+    api_base_url: &str,
+    org_id: i64,
+    channel_public_id: &str,
+    return_issue: uuid::Uuid,
+) -> Result<String, ReconsentError> {
+    let resolve = || async {
+        crate::api::channel_ingress::resolve_channel(db, encryption, channel_public_id)
+            .await
+            .map_err(ReconsentError::Internal)?
+            .filter(|(context, endpoint)| {
+                endpoint.channel_type == ChannelType::Slack
+                    && context.agent_is_active()
+                    && context.org_id == org_id
+            })
+            .ok_or(ReconsentError::NotFound)
+    };
+    let (app, _) = resolve().await?;
+    // Same lock order as `begin_install`: agent lifecycle, then installation.
+    let _agent_lock = db.lock_slack_install(app.agent_internal_id).await?;
+    let (_, endpoint) = resolve().await?;
+    let _install_lock = db.lock_slack_install(endpoint.internal_id).await?;
+    let (_, endpoint) = resolve().await?;
+    let mut config = parse_config(&endpoint.channel_config);
+    let mut provisioned = config
+        .provisioned_app
+        .take()
+        .ok_or(ReconsentError::NotProvisioned)?;
+    if !config.bot_token.is_empty() {
+        provisioner
+            .update_permissions(
+                org_id,
+                provisioned.team_id.as_deref(),
+                &provisioned.app_id,
+                &super::events::slack_bot_scopes(config.agent_surface_enabled),
+            )
+            .await?;
+    }
+    let install_state = mint_install_state();
+    provisioned.install_state = Some(install_state.clone());
+    provisioned.install_state_issued_at = Some(chrono::Utc::now());
+    provisioned.install_return_issue = Some(return_issue);
+    let client_id = provisioned.client_id.clone();
+    let team_id = provisioned.team_id.clone();
+    config.provisioned_app = Some(provisioned);
+    let json = serde_json::to_value(&config).map_err(anyhow::Error::from)?;
+    crate::domains::agent_channels::queries::update_channel_config_unscoped(
+        db,
+        encryption,
+        endpoint.internal_id,
+        &json,
+    )
+    .await?;
+    let redirect_uri =
+        super::events::slack_oauth_redirect_url(api_base_url, &endpoint.public_id.to_string());
+    Ok(authorize_url(
+        &client_id,
+        &install_state,
+        &redirect_uri,
+        team_id.as_deref(),
+        config.agent_surface_enabled,
+    ))
 }
 
 fn authorize_url(
@@ -678,13 +769,20 @@ async fn finish_install(
     }
 
     // Endpoint editors are agent-scoped. Only a valid install nonce may expose
-    // the owning agent in this unauthenticated callback's return URL.
-    let editor_url = match context.agent_id {
-        Some(agent_id) => format!(
+    // the owning agent in this unauthenticated callback's return URL. A Health
+    // fixer's install returns to its issue; the id was stored by the server
+    // with the nonce, so the URL is never taken from the request.
+    let editor_url = match (provisioned.install_return_issue, context.agent_id) {
+        (Some(issue), _) => format!("{ui_base}/settings/health?issue={issue}"),
+        (None, Some(agent_id)) => format!(
             "{ui_base}/agents/{agent_id}/channels/{}",
             endpoint.public_id
         ),
-        None => format!("{ui_base}/agents"),
+        (None, None) => format!("{ui_base}/agents"),
+    };
+    let editor_url = match editor_url.contains('?') {
+        true => format!("{editor_url}&"),
+        false => format!("{editor_url}?"),
     };
     let result = finish_install_inner(
         &state,
@@ -718,7 +816,7 @@ async fn finish_install(
             "failed"
         }
     };
-    Redirect::to(&format!("{editor_url}?slack_install={outcome}")).into_response()
+    Redirect::to(&format!("{editor_url}slack_install={outcome}")).into_response()
 }
 
 async fn finish_install_inner(
@@ -1217,6 +1315,7 @@ mod tests {
             install_state_issued_at: issued_minutes_ago
                 .map(|ago| chrono::Utc::now() - chrono::Duration::minutes(ago)),
             team_id: None,
+            install_return_issue: None,
         }
     }
 

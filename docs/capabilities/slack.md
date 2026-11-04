@@ -52,7 +52,7 @@ If your deployment has a Slack manager app (see [Slack Manager App](/sre/environ
 ### 1. Create a Slack Channel
 
 1. Open the Agent.
-2. Select **Integrations**.
+2. Select **Channels and triggers**.
 3. Select **Add channel**.
 4. Select **Slack**.
 5. If your organization has connected more than one Slack workspace, choose one.
@@ -75,7 +75,7 @@ If your Slack workspace requires administrators to approve apps, Slack sends an 
 
 Deployments without `SECRETS_ENCRYPTION_KEY` do not create Slack apps. If Everruns reports that one-click setup is unavailable:
 
-1. Return to the Agent's **Integrations** tab.
+1. Return to the Agent's **Channels and triggers** tab.
 2. Expand the live Slack channel.
 3. Select **Create Slack app**.
 4. Review Slack's pre-filled manifest and select **Create**.
@@ -96,14 +96,14 @@ Do not replace `{channel_id}` with an Agent ID or an App ID.
 
 1. In Slack, enter `/invite @botname` in a channel.
 2. Mention the bot or send it a direct message.
-3. Return to the Agent's **Integrations** tab and expand the Slack channel.
+3. Return to the Agent's **Channels and triggers** tab and expand the Slack channel.
 4. Confirm that the setup checklist records the first message.
 
 ## Configure a Slack App Manually
 
 Use this flow only when you cannot use **Add to Slack** or **Create Slack app**.
 
-1. Create and publish a Slack channel from the Agent's **Integrations** tab.
+1. Create and publish a Slack channel from the Agent's **Channels and triggers** tab.
 2. Copy its Request URL from the expanded channel row.
 3. In [Slack API Apps](https://api.slack.com/apps), select **Create New App** > **From scratch**.
 4. Add these bot token scopes under **OAuth & Permissions**:
@@ -259,6 +259,23 @@ The generated manifest already points Slack interactivity at this channel. A Sla
 ## Task Progress
 
 When an Agent delegates work, Slack shows one **Tasks** message and updates it as workers finish. The message lists up to five tasks and summarizes larger groups by count.
+
+## Reactions
+
+Reactions work both ways on messages the conversation stored: the messages
+people sent and the agent's replies.
+
+- An emoji a person adds or removes in Slack is stored on that message as
+  theirs, and reaches the agent as a short note, the same as a reaction in
+  Chat.
+- When the agent reacts with the **Reactions** capability's `react` tool,
+  the emoji also appears on the Slack message.
+
+Hearing reactions needs the `reactions:read` scope and the `reaction_added`
+and `reaction_removed` events, which the generated manifest includes. An app
+installed before them keeps working without reactions: update its manifest
+and reinstall the app to turn them on. Custom workspace emoji are stored as
+`:name:`.
 
 ## Slack actions
 

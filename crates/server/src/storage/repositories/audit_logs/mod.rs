@@ -33,6 +33,35 @@ impl Database {
         Ok(row)
     }
 
+    /// Write an audit row under a caller-chosen id, once: a second write
+    /// with the same id (a listener seeing its event again) does nothing.
+    pub async fn create_audit_log_once(
+        &self,
+        id: uuid::Uuid,
+        input: CreateAuditLogRow,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO audit_logs (id, org_id, actor_id, event_type, ip_address, metadata, domain, action, target_type, target_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (id) DO NOTHING
+            "#,
+        )
+        .bind(id)
+        .bind(input.org_id)
+        .bind(input.actor_id)
+        .bind(&input.event_type)
+        .bind(&input.ip_address)
+        .bind(&input.metadata)
+        .bind(&input.domain)
+        .bind(&input.action)
+        .bind(&input.target_type)
+        .bind(&input.target_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn list_audit_logs(&self, query: AuditLogQuery<'_>) -> Result<Vec<AuditLogRow>> {
         let before_ts = query
             .before

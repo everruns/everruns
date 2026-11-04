@@ -30,7 +30,6 @@ use serde_json::Value;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::auth::audit;
 use crate::storage::StorageBackend;
 
 /// The soft-approval tools whose completions become audit rows.
@@ -157,6 +156,10 @@ fn bounded_detail(value: &str) -> String {
 
 #[async_trait]
 impl EventListener for ApprovalAuditListener {
+    fn name(&self) -> &'static str {
+        "ApprovalAuditListener"
+    }
+
     fn event_types(&self) -> Option<Vec<&'static str>> {
         Some(vec![TOOL_COMPLETED])
     }
@@ -219,7 +222,29 @@ impl EventListener for ApprovalAuditListener {
             audit_event = audit_event.detail("actor_resolution", "unattributed");
         }
 
-        audit::emit_event(self.db.clone(), audit_event.build());
+        // Keyed by the event, so the listener feed handing the event over
+        // again (at least once) writes the row once.
+        let event_row = audit_event.build();
+        if let Err(error) = self
+            .db
+            .create_audit_log_once(
+                event.id.uuid(),
+                crate::storage::CreateAuditLogRow {
+                    org_id: event_row.org_id,
+                    actor_id: event_row.actor_user_id,
+                    event_type: event_row.action.as_str().to_string(),
+                    ip_address: event_row.ip_address,
+                    metadata: event_row.details,
+                    domain: event_row.domain.as_str().to_string(),
+                    action: event_row.action.as_str().to_string(),
+                    target_type: event_row.target.as_ref().map(|t| t.target_type.clone()),
+                    target_id: event_row.target.as_ref().map(|t| t.target_id.clone()),
+                },
+            )
+            .await
+        {
+            tracing::warn!(%error, "Failed to write approval audit row");
+        }
     }
 }
 

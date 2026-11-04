@@ -169,7 +169,7 @@ pub(super) fn tally(
     for result in results {
         match result.outcome {
             Ok(TriggerEventOutcome::Dispatched(_)) => response.dispatched += 1,
-            Ok(TriggerEventOutcome::Filtered) => response.filtered += 1,
+            Ok(TriggerEventOutcome::Filtered { .. }) => response.filtered += 1,
             Ok(TriggerEventOutcome::Duplicate) => response.duplicate += 1,
             Err(_) => response.failed += 1,
         }

@@ -10,10 +10,12 @@ tags:
 ---
 # Agents That Use Other Agents
 
-Status: accepted (2026-11-02). Part 1 (members, created-here agents, package
-format, Agents tab) is built. Part 2 (shared run folder, copy-of-files, approvals
-on the first session, run conversation) and part 3 (whole-run costs and traces)
-follow. The mechanism underneath is [Agent Handoff](agent-handoff.md).
+Status: accepted (2026-11-02). All three parts are built (2026-11-03):
+members, created-here agents, package format and the Agents tab; approvals
+and questions on the first session, the shared team folder, copy-of-files
+and the run conversation; whole-run costs and traces. Framework and serve
+apps get members too. The mechanism underneath is
+[Agent Handoff](agent-handoff.md).
 
 ## Abstract
 
@@ -75,8 +77,8 @@ What the field agrees on, and what Everruns does by default:
 | Thing | Default | More, when needed |
 |---|---|---|
 | Conversation | Not shared; the brief only | n/a |
-| Files | Own files | Copy of this agent's files (part 2) |
-| Run folder | A `team/` folder every agent in the run reads and writes (part 2) | Always on |
+| Files | Own files | A copy of this session's files, set per member |
+| Team folder | A `team/` folder every agent in the run reads and writes | Always on |
 | Sandbox | Own, from its own harness | Not shared in v1: git branches carry code work |
 | Memory, tools, model, harness | Its own | n/a |
 | Connections and credentials | Resolved for the person; never passed | n/a |
@@ -111,37 +113,162 @@ factory/
 Source: `crates/core/src/agent_package/` (codec), and
 `crates/server/src/domains/agents/packages.rs` (platform binding).
 
-## Approvals and questions (part 2)
+## Approvals and questions
 
-Any agent in a run can need an approval or ask a question. They surface on the
-run's first session, wherever the person talks to it: Chat, Work Chat, the
-`/v1` API (`pending_approvals` / `pending_questions` with the asking agent and
-session), the Agent Execution API, Playground and Slack. The first answer wins;
-an agent can never approve. The session page stays a read-only debugging view.
+Any agent in a run can need an approval or ask a question. They are shown and
+answered on the run's first session, the one the person talks to. The session
+page stays a read-only debugging view and never asks.
 
-## Run conversation (part 2)
+- Requests are read, not copied: the first session lists the waiting sessions
+  of its run (`root_session_id`) and reads each one's last
+  `tool.call_requested`. Nothing is mirrored into the first session's events,
+  where the runtime would read a copy as its own pending batch.
+- `GET /v1/sessions/{id}/run-requests` lists them with the asking agent and
+  session. Chat and Playground render the usual cards from it, headed with the
+  agent's name; a card answers on the asking session.
+- `POST …/tool-approvals` and `POST …/question-answers` on the first session
+  route each answer to the session that waits on that call, then run that
+  session's own validation. Answers naming two agents' requests are refused.
+  Answering on the asking session directly keeps working; the first answer
+  wins.
+- The Agent Execution API includes the run's requests in `pending_approvals` /
+  `pending_questions`, each with `session_id` and `agent`, and routes answers
+  the same way, so Work Chat and other API callers get them.
+- Only a first session sees or routes them, and an agent can never approve
+  (`TM-AGENT-039`).
 
-Agents in one run can message each other with `send_message`, mentions and
-reactions as acknowledgements, under a message cap. It is kept separate so it
-can move onto shared boards if that design is accepted.
+Source: `crates/server/src/domains/sessions/run_requests.rs`,
+`crates/server/src/api/run_requests.rs`,
+`apps/ui/src/components/chat/run-request-cards.tsx`. Slack delivery of another
+agent's request is a follow-up.
 
-## Costs (part 3)
+## Team folder
 
-Costs "By agent" stays as is. Usage records gain run attribution (the agent
-that started the run), a "Runs that use other agents" card shows whole-run
-cost, a usage policy can limit a whole run, and the routing agent can cap each
-hand-off. Today an agent's usage policy does not cover its members' spend; only
-the session-level root pool is shared.
+Every agent in a run sees one `team/` folder in its files, mounted at `/team`.
+What one agent writes there the others read at once, and it outlives every
+session of the run. The Agents capability's prompt asks the routing agent to
+pass paths instead of pasting long content and to have each agent write under
+`team/<its name>/`.
 
-## Traces (part 3)
+- **Storage.** A Memory with scope `run`, owned by the run's first session
+  (`owner_session_id`), created on first use. It reuses the memory mount's
+  write-through, and organization Memory lists show only `org` scope, so a run
+  folder never appears among the organization's memories.
+- **Who sees it.** Every session started under another one, and a first
+  session only when its agent has the Agents capability. Both are fixed for
+  a session's life, so the per-process mount cache stays truthful.
+- **Isolation.** One folder per run: a second run of the same agent gets its
+  own. A session outside any run has no `/team`, and a write there stays in
+  its own files.
 
-A hand-off step shows its outcome, a member's session shows "Woken by", and the
-run view lays out every agent's session as lanes on one timeline with a
-breadcrumb back to the first session. The Cost tab can show the whole run.
+Code: `crates/server/src/domains/session_files/memory_mounts.rs`
+(`team_folder_owner`), `ensure_run_memory` in the memory repository,
+migration `20261103075442_run_team_folder`.
 
-## Framework and serve (follow-up)
+## Copy of the files
 
-The codec already reads members. Framework gains `AgentBuilder::member(agent)`
-and a catalog for linked names, running members on the same `Engine`; serve
-gains `.member("name")` for other `#[agent]`s in the app and drops
-`#[agent(sub)]` and its `ask_<name>` tools in favour of `spawn_agent`.
+A member set to **A copy of this agent's** (`files: "copy"` on its entry in
+the Agents capability, the Files control on the Agents tab) starts each
+hand-off with a copy of the handing-off session's files, the existing
+`workspace` seed. It changes the copy without touching the originals and
+hands results back through the team folder or a git branch. "The same files"
+is not offered: two agents writing one set of files overwrite each other. An
+explicit `seed` on `spawn_agent` still wins. The export keeps member names
+only, so the setting is not carried in a package yet.
+
+## Run conversation
+
+Agents in one run talk to each other. The routing agent has the tools through
+the Agents capability; every session started under another one gets the
+`run_conversation` capability from the host (`attach_run_conversation` in
+session creation), so the same agent on its own has nothing to talk in.
+
+- `message_agent(text, to?)` posts a message. `to` is an agent's name or
+  `everyone`; a named agent gets it as input in its own session (it reads it
+  at its next step, or it starts a turn when idle). Without `to` it is only
+  posted.
+- `read_run_conversation(limit?)` reads the latest messages and lists who can
+  be messaged.
+- **Storage.** One file per message under `team/conversation/`, in the team
+  folder, so the person reads it in the first session's Files and it outlives
+  the run. Names map to sessions in `team/conversation/agents/<name>`, written
+  by `spawn_agent` (for itself and the agent it hands work to) and by each
+  agent when it first uses the tools.
+- **Safety.** Delivery goes only to the run's first session or a session
+  started directly under it, checked on every send. Delivered text says it is
+  from another agent and is not the person (TM-AGENT-040). A run stops at 200
+  messages.
+- **Not yet.** Reactions in the run conversation, and the person posting
+  there from the UI: the person talks to the first agent.
+
+Code: `crates/capabilities/src/capabilities/run_conversation.rs`.
+
+## Whole run
+
+A run is the first session and every session started under it
+(`root_session_id`). `GET /v1/sessions/{id}/run` answers for any session of the
+run: each agent session with its agent, status, turns (from the trace index)
+and spend, the run's total, the first session's share, and how many requests
+wait on the person. It is computed on read; there is no new storage
+(`crates/server/src/domains/session_cost/run.rs`).
+
+- **Session Agents tab.** Shown on a session that can hand work to other
+  agents (`agent_handoffs` feature) or that another agent handed work to. Run
+  cost, agents in the run, requests waiting on the person, and every hand-off
+  with status, time and cost; a row opens that agent's session. Read-only: the
+  session page never asks the person anything.
+- **Trace "Whole run".** When the run has more than one session, Trace gets
+  "This session / Whole run". Whole run adds a timeline above the session's own
+  turns: one lane per agent session, bars are turns, a dashed line marks when a
+  session was handed its work; a bar opens that session's trace.
+- **Cost "Whole run".** The same switch on the Cost tab shows the run's spend
+  split by agent session.
+- **Costs "Runs that use other agents".** A card under By agent on the
+  organization's Costs page (`runs_with_agents` on `GET /v1/costs/summary`):
+  for each agent that started runs where it handed work to others, the whole
+  cost of those runs and who spent it, marked "Created here" (an agent owned by
+  the lead) or "Linked". Each usage record counts once, under the run its
+  session belongs to; the By agent card still shows every agent's own spend,
+  so nothing is counted twice.
+
+Visibility: anyone who can view one session of the run sees every agent's
+status, timing and spend in it, not their conversations.
+
+Not yet: a usage policy that limits a whole run and a per-hand-off spend cap
+(today only the session-level root pool is shared, and an agent's usage policy
+does not cover its members' spend); the hand-off step's outcome and "Woken by"
+in the trace step list; a breadcrumb from a member's trace back to the step
+that started it.
+
+## Framework
+
+`AgentBuilder::member(agent)` adds a member as an ordinary `Agent` value; the
+lead gets the Agents capability with one target per member, keyed by name
+(`crates/everruns/src/agent/members.rs`). A member's id is derived from its
+name, so it is the same on every build and restart. Member sessions run in the
+lead's Engine on the lead's host:
+
+- SQLite hosting: the member runs a build derived from the lead's
+  (`<lead>:agent:<member id>`, `Engine::member_build`), resolved from the
+  lead's registration, so registering the lead is enough after a restart.
+- Local profile (legacy lane): the coordination runner attaches the member.
+
+Packages: bundled agents are built with the lead's providers and host
+services; linked names must be added with `.member()` or the build fails.
+Export writes every member as bundled, since the Framework keeps no catalog
+for a linked name. Invite mode is Platform-only (it reads stored agents).
+
+## serve
+
+`serve::AgentBuilder::member("name")` names another `#[agent]` of the app.
+serve builds that agent and adds it with the Framework's
+`AgentBuilder::member`, so hand-offs, member builds and restarts work as in
+the Framework (`crates/serve/src/host/agent.rs`). `#[agent(sub)]` and its
+`ask_<name>` tools are gone. Discovery checks members
+(`crates/serve/src/app.rs`, `check_members`); the manifest lists each agent's
+members. A hosting target that brings its own session hosting profile is
+refused for apps with members until it can activate member sessions.
+
+Not yet in serve: a member's approvals and questions wait on the member's own
+session rather than the run's first session, and there is no `/team` folder or
+run conversation.

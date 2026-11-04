@@ -311,6 +311,20 @@ rather than trusted from the token, since it can be revoked in between.
 The pages carry no scripts and no external resources, are never cached or framed,
 and send `Referrer-Policy: no-referrer` so the token cannot leak onward.
 
+## Session status reply snapshot
+
+The status tool's latest output means the most recent non-empty text said to the
+session, independent of the caller's event cursor, event-type filter, or event
+page size. Direct replies and successfully delivered explicit messages share
+the conversation contract; private commentary and unsent tool arguments never
+become output. A turn that says nothing leaves the previous reply available.
+
+The event page and its cursor retain incremental polling semantics. Reply lookup
+walks reply-bearing events newest first in bounded pages, so noisy tools and
+long runs of commentary cannot hide an older visible reply. Authorization stays
+on the org-scoped event read path. See the [MCP endpoint](../../crates/server/src/api/mcp_endpoint/mod.rs)
+and its [status regressions](../../crates/server/tests/domain/mcp_endpoint_test/status.rs).
+
 ## Form mode elicitation (2026-07-28)
 
 The other half of elicitation, and the other MRTR use. `ask_user` (see

@@ -10,13 +10,15 @@ use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{SessionId, TurnId};
 use everruns_worker::actor_lease_store::{
-    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, DetachedCallKey, LeasedActor,
-    SessionActorStore,
+    ActorJournal, ActorLeaseRenewal, ActorLeaseStore, ActorRelease, ActorRenewal, DetachedCallKey,
+    LeasedActor, SessionActorStore,
 };
 
 use super::store_error;
 use crate::services::EventService;
-use crate::storage::{DEFAULT_ACTOR_LEASES_PER_ORG, StorageBackend};
+use crate::storage::{
+    ActorLeaseRenewalItem, ActorLeaseRenewalOutcome, DEFAULT_ACTOR_LEASES_PER_ORG, StorageBackend,
+};
 
 fn fence_to_db(fence: u64) -> Result<i64> {
     i64::try_from(fence).map_err(|_| AgentLoopError::store(format!("fence {fence} out of range")))
@@ -165,6 +167,43 @@ impl SessionActorStore for DirectActorLeaseStore {
             inbox_seq: row.inbox_seq,
             cancel_inbox_seq: row.cancel_inbox_seq,
         }))
+    }
+
+    async fn renew_actor_leases(
+        &self,
+        holder: &str,
+        ttl: Duration,
+        leases: &[ActorLeaseRenewal],
+    ) -> Result<Vec<Result<Option<ActorRenewal>>>> {
+        let items = leases
+            .iter()
+            .map(|lease| {
+                Ok(ActorLeaseRenewalItem {
+                    session_id: lease.session_id,
+                    fence: fence_to_db(lease.fence)?,
+                    consumed_seq: lease.consumed_seq,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let outcomes = self
+            .db
+            .renew_session_actor_leases(holder, ttl, &items)
+            .await
+            .map_err(|e| store_error(format!("Failed to renew actor leases: {e}")))?;
+        Ok(outcomes
+            .into_iter()
+            .zip(leases)
+            .map(|(outcome, lease)| match outcome {
+                ActorLeaseRenewalOutcome::Renewed(row) => Ok(Some(ActorRenewal {
+                    inbox_seq: row.inbox_seq,
+                    cancel_inbox_seq: row.cancel_inbox_seq,
+                })),
+                ActorLeaseRenewalOutcome::Lost => Ok(None),
+                ActorLeaseRenewalOutcome::SessionGone => {
+                    Err(AgentLoopError::session_not_found(lease.session_id))
+                }
+            })
+            .collect())
     }
 
     async fn release_actor(

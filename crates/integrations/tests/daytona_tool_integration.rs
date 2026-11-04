@@ -807,7 +807,7 @@ async fn test_exec_session_with_cwd_prepended() {
         "for __f in \"$HOME/.profile\" \"$HOME/.cargo/env\" \"$HOME/.nvm/nvm.sh\"; do ",
         "[ -f \"$__f\" ] && . \"$__f\" >/dev/null 2>&1; ",
         "done; unset __f; ",
-        "( cd '/workspace files' && ls -la )",
+        "( cd '/workspace files' && eval 'ls -la' )",
     );
     Mock::given(method("POST"))
         .and(path("/sb_cwd/process/session/everruns-exec/exec"))

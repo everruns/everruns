@@ -205,6 +205,13 @@ async fn poll_and_trigger(
             background_work::observe_runaway(db, &row, same_runs, true).await;
             continue;
         }
+        // The org's self-healing policy may pause it at the warning count
+        // instead (domains/health_issues/self_healing.rs).
+        if same_runs >= background_work::RUNAWAY_WARN_RUNS
+            && crate::domains::health_issues::self_healing::pause_runaway(db, &row, same_runs).await
+        {
+            continue;
+        }
 
         // Mark triggered (updates next_trigger, disables one-shot, ends a
         // schedule on its last run).

@@ -16,6 +16,7 @@ mod llmsim_migration_bridge;
 mod mcp_harness_test;
 mod message_metadata_test;
 mod mid_turn_reasoning_effort_test;
+mod model_refusal_test;
 mod native_web_search_turn_test;
 mod prompt_budget_fixtures;
 mod reason_atom_test;

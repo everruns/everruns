@@ -78,6 +78,8 @@ const EVIDENCE: Record<string, { label: string; format?: (v: unknown) => string 
   runs: { label: "Runs" },
   stop_runs: { label: "Stops after" },
   stopped: { label: "Stopped", format: (v) => (v ? "yes" : "no") },
+  // The actions card says what self-healing did.
+  paused_by_policy: { label: "", format: () => null },
   trigger_count: { label: "Times fired" },
   limit_usd: { label: "Budget", format: (v) => usd(v as number) },
   spent_usd: { label: "Spent", format: (v) => usd(v as number) },

@@ -27,7 +27,7 @@ channels do not hold the Agent row while waiting for credential edits.
 Publication, credentials and omitted destination channel bindings remain local.
 
 The source binding stays outside package export. Sync is an authoring connection,
-separate from the Agent's runtime GitHub identity on its Integrations tab: changing or
+separate from the Agent's runtime GitHub identity on its GitHub page: changing or
 removing that identity never touches the source. The person setting up sync chooses the
 account it reads and writes through: their own GitHub sign-in (two-way commits carry their
 name; the source pauses if they disconnect or leave the organization), or the organization's

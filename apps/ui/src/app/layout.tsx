@@ -2,9 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
-import { FeatureFlagsProvider } from "@/providers/feature-flags-provider";
-import { AuthProvider } from "@/providers/auth-provider";
-import { OrgProvider } from "@/providers/org-provider";
+import { ApplicationProviders } from "@/components/mcp-app/application-providers";
 import { LocaleProvider } from "@/providers/locale-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { parseThemeMode, THEME_COOKIE, THEME_SCRIPT } from "@/lib/theme";
@@ -40,11 +38,7 @@ export default async function RootLayout({
         <ThemeProvider initialMode={themeMode}>
           <LocaleProvider>
             <QueryProvider>
-              <AuthProvider>
-                <OrgProvider initialOrgId={initialOrgId}>
-                  <FeatureFlagsProvider>{children}</FeatureFlagsProvider>
-                </OrgProvider>
-              </AuthProvider>
+              <ApplicationProviders initialOrgId={initialOrgId}>{children}</ApplicationProviders>
             </QueryProvider>
           </LocaleProvider>
         </ThemeProvider>

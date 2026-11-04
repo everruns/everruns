@@ -89,6 +89,7 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
     let stale = revision_changed
         || Utc::now() - row.last_checked_at > chrono::Duration::minutes(15)
         || row.error_code.as_deref() == Some("verification_unavailable");
+    let fixers = super::fixers::fixers_for(ctx, &row).await?;
     let investigation = match row.subject_id {
         Some(_) => ctx
             .db
@@ -132,6 +133,7 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
             .map(|id| everruns_contracts::typed_id::SessionId::from_uuid(id).to_string()),
         evidence: row.evidence,
         investigation,
+        fixers,
     })
 }
 
@@ -143,7 +145,7 @@ async fn require_access(ctx: &Ctx) -> Result<(), CommandError> {
     }
     Ok(())
 }
-async fn issue(ctx: &Ctx, id: Uuid) -> Result<HealthIssueRow, CommandError> {
+pub(super) async fn issue(ctx: &Ctx, id: Uuid) -> Result<HealthIssueRow, CommandError> {
     require_access(ctx).await?;
     let mut row = ctx
         .db

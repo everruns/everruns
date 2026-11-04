@@ -57,7 +57,8 @@ Delegating work to other sessions and running it in the background.
 | [Sub Agents](/capabilities/sub-agents/) | `subagents` | 0 (contributes the `spawn_agent` delegation target) |
 | Session Tasks | `session_tasks` | 5 |
 | Background Execution | `background_execution` | 1 |
-| [Agents](/capabilities/agent-handoff/) | `agent_handoff` | 0 (contributes the `agent` `spawn_agent` target) |
+| [Agents](/capabilities/agent-handoff/) | `agent_handoff` | 2 (and contributes the `agent` `spawn_agent` target) |
+| Run conversation | `run_conversation` | 2 (added to every agent a run hands work to) |
 | [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (contributes the `external_a2a` `spawn_agent` target) |
 | AG-UI Agent Delegation | `ag_ui_delegation` | 0 (contributes the `external_ag_ui` `spawn_agent` target) |
 | [Coordination](/framework/coordination/) | `coordination` | 5 |

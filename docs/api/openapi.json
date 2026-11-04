@@ -3220,7 +3220,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "Let live endpoints serve again",
+        "summary": "Deprecated alias of resume",
         "operationId": "resume_agent_exposures",
         "parameters": [
           {
@@ -3235,7 +3235,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Exposures resumed",
+            "description": "Agent resumed",
             "content": {
               "application/json": {
                 "schema": {
@@ -3255,12 +3255,17 @@
             }
           }
         },
+        "deprecated": true,
+        "x-deprecation": {
+          "migration": "Use the pause or resume route. This alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        }
+        },
+        "x-superseded-by": "resume_agent"
       }
     },
     "/v1/agents/{agent_id}/exposures/suspend": {
@@ -3268,7 +3273,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "Take every endpoint offline",
+        "summary": "Deprecated alias of pause",
         "operationId": "suspend_agent_exposures",
         "parameters": [
           {
@@ -3283,7 +3288,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Exposures suspended",
+            "description": "Agent paused",
             "content": {
               "application/json": {
                 "schema": {
@@ -3303,12 +3308,17 @@
             }
           }
         },
+        "deprecated": true,
+        "x-deprecation": {
+          "migration": "Use the pause or resume route. This alias remains available; no removal date has been announced."
+        },
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
-        }
+        },
+        "x-superseded-by": "pause_agent"
       }
     },
     "/v1/agents/{agent_id}/external-worker": {
@@ -3333,14 +3343,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/ExternalAgent"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/ExternalAgentStatus"
                 }
               }
             }
@@ -4035,6 +4038,103 @@
           },
           "500": {
             "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/pause": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Pause an agent",
+        "description": "Its channels stop accepting messages and its triggers and schedules do not\nrun until it is resumed. Each channel keeps its own published state.",
+        "operationId": "pause_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Agent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/resume": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Resume a paused agent",
+        "operationId": "resume_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Agent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -5282,13 +5382,34 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "Optional event to fire the trigger with",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FireAgentTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "Trigger fired",
+            "description": "Trigger fired, or the event was filtered or a duplicate",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TriggerAgentTriggerOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The event does not fit the trigger",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -16591,6 +16712,140 @@
         }
       }
     },
+    "/v1/health-issues/{issue_id}/actions": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "List actions on a finding",
+        "description": "List what Everruns or a person did about a finding, such as pausing a repeating schedule, and what the organization's self-healing policy offers to do now.",
+        "operationId": "list_finding_actions",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingActions"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Act on a finding",
+        "description": "Take an action the organization's self-healing policy offers on a finding, such as pausing a schedule whose runs keep ending the same way. It is recorded on the finding and can be undone.",
+        "operationId": "take_finding_action",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TakeFindingActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingActions"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/health-issues/{issue_id}/actions/{action_id}/undo": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Undo an action on a finding",
+        "description": "Undo an action taken on a finding, automatic or not. Undoing a pause resumes the schedule and starts its repeated-outcome count over.",
+        "operationId": "undo_finding_action",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingActions"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires the evals feature flag",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/health-issues/{issue_id}/check": {
       "post": {
         "tags": [
@@ -16691,6 +16946,55 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "evaluation-reporting",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/health-issues/{issue_id}/fix": {
+      "post": {
+        "tags": [
+          "health-issues"
+        ],
+        "summary": "Fix a health issue",
+        "description": "Run a fixer the issue offers, such as adding missing Slack permissions to the agent's app. A fix that needs approval in the provider returns the page to approve it on; the issue resolves only when a fresh check confirms it.",
+        "operationId": "run_health_issue_fixer",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunIssueFixerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueFixOutcome"
                 }
               }
             }
@@ -29755,6 +30059,93 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/run": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Show a session's whole run",
+        "description": "Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.",
+        "operationId": "get_session_run",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRun"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/run-requests": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Get run requests",
+        "description": "Questions and approvals that the agents this session handed work to wait\non. Empty unless the session is a run's first session.",
+        "operationId": "get_run_requests",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requests from the other agents in the run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunRequestsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sessions/{session_id}/sandbox": {
       "get": {
         "tags": [
@@ -35986,6 +36377,10 @@
             "$ref": "#/components/schemas/Communication",
             "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`. Applies\non every surface: web chat, API, Slack, A2A, AG-UI, MCP."
           },
+          "completion_check": {
+            "$ref": "#/components/schemas/CompletionCheck",
+            "description": "When a turn about to finish is checked for whether it did what was\nasked, and continued automatically when it did not. `unattended`\n(default): sessions started by triggers and schedules, where no person\nis watching. `always`: chat too. `off`: never."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -36644,6 +37039,14 @@
           "updated_at"
         ],
         "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent that owns this channel. Also what lets responses carry a\n`view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),\nso a caller can hand out a direct link.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
           "auth": {
             "oneOf": [
               {
@@ -37277,7 +37680,8 @@
               "string",
               "null"
             ],
-            "description": "The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the\nshared App's (`everruns[bot]`) when the agent chose it and the\ndeployment names its slug; `None` otherwise."
+            "description": "The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the\nshared App's (`everruns[bot]`) when the agent chose it and the\ndeployment names its slug; `None` otherwise.",
+            "example": "pr-summarizer[bot]"
           },
           "connected": {
             "type": "boolean",
@@ -37302,7 +37706,8 @@
               "string",
               "null"
             ],
-            "description": "Which GitHub identity the agent acts as: `agent_app` (its own App) or\n`everruns_app` (the shared Everruns App). `None` before either exists."
+            "description": "Which GitHub identity the agent acts as: `agent_app` (its own App) or\n`everruns_app` (the shared Everruns App). `None` before either exists.",
+            "example": "agent_app"
           },
           "missing_permissions": {
             "type": "array",
@@ -37316,7 +37721,8 @@
               "string",
               "null"
             ],
-            "description": "`all` or `selected`."
+            "description": "`all` or `selected`.",
+            "example": "selected"
           },
           "suggested_owners": {
             "type": "array",
@@ -37324,6 +37730,14 @@
               "$ref": "#/components/schemas/GitHubOwnerSuggestion"
             },
             "description": "GitHub accounts this organization already reached, as candidates for\n`owner_org` when creating the App: installation accounts of its GitHub\nconnections and owners of its other agents' Apps. Organizations first,\nthen users, then accounts of unknown kind; by login within each."
+          },
+          "view_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent's GitHub page in the console, so a caller can link to it.\nAbsolute in responses; built as a relative path here because the\nconsole's address is known only where links are decorated.",
+            "example": "https://app.everruns.com/agents/agent_01933b5a000070008000000000000001/github"
           }
         }
       },
@@ -38515,6 +38929,14 @@
           "updated_at"
         ],
         "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent that owns this channel. Also what lets responses carry a\n`view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),\nso a caller can hand out a direct link.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
           "auth": {
             "oneOf": [
               {
@@ -38979,6 +39401,24 @@
             ],
             "description": "Kind of resource the entry is about.",
             "example": "member"
+          }
+        }
+      },
+      "AvailableFindingAction": {
+        "type": "object",
+        "description": "An action a person can take on a finding now.",
+        "required": [
+          "kind",
+          "target_id"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "What it would do: `pause_schedule`."
+          },
+          "target_id": {
+            "type": "string",
+            "description": "What it would act on, by public id."
           }
         }
       },
@@ -41264,6 +41704,34 @@
           "cost_pressure"
         ]
       },
+      "CompletionCheck": {
+        "type": "string",
+        "description": "When a turn that is about to finish gets a completion check, and an\nautomatic continuation when the check finds the work unfinished.",
+        "enum": [
+          "off",
+          "unattended",
+          "always"
+        ]
+      },
+      "CompletionCheckAction": {
+        "type": "string",
+        "description": "What the runtime did after a completion check.",
+        "enum": [
+          "finished",
+          "continued",
+          "budget_exhausted",
+          "review_failed"
+        ]
+      },
+      "CompletionVerdict": {
+        "type": "string",
+        "description": "What a completion check found: the review's verdict on whether the turn\ndid what was asked.",
+        "enum": [
+          "achieved",
+          "in_progress",
+          "blocked"
+        ]
+      },
       "ConnectSourceRequest": {
         "allOf": [
           {
@@ -42769,7 +43237,8 @@
           "by_agent",
           "by_user",
           "by_started_by",
-          "by_day"
+          "by_day",
+          "runs_with_agents"
         ],
         "properties": {
           "by_agent": {
@@ -42823,6 +43292,13 @@
             "type": "string",
             "format": "date-time",
             "description": "Window start (inclusive)."
+          },
+          "runs_with_agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunsWithAgentsLine"
+            },
+            "description": "Runs where an agent handed work to other agents: their whole cost by\nthe agent the run started with, split by the agent that spent it.\nEvery amount is also in `by_agent`, under the agent that spent it."
           },
           "timezone": {
             "type": "string",
@@ -43241,6 +43717,10 @@
           "communication": {
             "$ref": "#/components/schemas/Communication",
             "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`."
+          },
+          "completion_check": {
+            "$ref": "#/components/schemas/CompletionCheck",
+            "description": "When a turn about to finish is checked for whether it did what was\nasked, and continued automatically when it did not. `unattended`\n(default): sessions started by triggers and schedules, where no person\nis watching. `always`: chat too. `off`: never."
           },
           "default_model_id": {
             "type": [
@@ -45736,6 +46216,17 @@
         "enum": [
           "user",
           "service"
+        ]
+      },
+      "CreditShortfallAction": {
+        "type": "string",
+        "description": "What the runtime did about a provider's \"not enough credits\" refusal.",
+        "enum": [
+          "shrunk",
+          "wait_started",
+          "still_waiting",
+          "resumed",
+          "gave_up"
         ]
       },
       "DatabaseInfoResponse": {
@@ -48497,6 +48988,12 @@
             "$ref": "#/components/schemas/TurnCancelledData"
           },
           {
+            "$ref": "#/components/schemas/TurnCompletionCheckedData"
+          },
+          {
+            "$ref": "#/components/schemas/TurnCreditShortfallData"
+          },
+          {
             "$ref": "#/components/schemas/SessionStartedData"
           },
           {
@@ -49294,6 +49791,30 @@
           }
         }
       },
+      "ExternalAgentStatus": {
+        "type": "object",
+        "description": "An Agent's external-agent state, plus whether this installation lets it connect one.",
+        "required": [
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether a new endpoint can be connected here: the installation sets\n`EXTERNAL_AGENTS_ENABLED=true` and protected worker ingress is off.\nThe UI hides the setup when this is false and no endpoint exists."
+          },
+          "endpoint": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExternalAgent",
+                "description": "The connected (or disconnected) endpoint, if one was ever registered."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "ExternalScoreStatus": {
         "type": "string",
         "description": "Result status reported alongside externally computed scores.",
@@ -49800,6 +50321,88 @@
           }
         }
       },
+      "FindingAction": {
+        "type": "object",
+        "description": "An action taken on a finding.",
+        "required": [
+          "id",
+          "kind",
+          "target_id",
+          "automatic",
+          "current",
+          "created_at"
+        ],
+        "properties": {
+          "automatic": {
+            "type": "boolean",
+            "description": "Whether Everruns took it on its own under the org's policy."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was taken."
+          },
+          "current": {
+            "type": "boolean",
+            "description": "The finding episode it belongs to is the current one."
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed public identifier (`fact_…`)."
+          },
+          "kind": {
+            "type": "string",
+            "description": "What was done: `pause_schedule`."
+          },
+          "target_id": {
+            "type": "string",
+            "description": "What it acted on, by public id (a schedule's `sched_…`)."
+          },
+          "undone_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it was undone, if it was."
+          }
+        }
+      },
+      "FindingActions": {
+        "type": "object",
+        "description": "What has been done about a finding, and what can be.",
+        "required": [
+          "actions",
+          "available"
+        ],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FindingAction"
+            },
+            "description": "Actions taken, newest first."
+          },
+          "available": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailableFindingAction"
+            },
+            "description": "Actions the org's policy offers for a person to take now."
+          },
+          "mode": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SelfHealingMode",
+                "description": "The org's policy for this kind of finding, when it has one."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "FindingCategory": {
         "type": "string",
         "enum": [
@@ -50062,6 +50665,23 @@
           "llm",
           "health_check"
         ]
+      },
+      "FireAgentTriggerRequest": {
+        "type": "object",
+        "description": "Body of a manual fire. Without `event`, a schedule trigger runs as on a tick.",
+        "properties": {
+          "event": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ManualTriggerEvent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "FixCheck": {
         "type": "object",
@@ -51547,7 +52167,8 @@
           "first_detected_at",
           "last_checked_at",
           "stale",
-          "href"
+          "href",
+          "fixers"
         ],
         "properties": {
           "agent_id": {
@@ -51604,6 +52225,13 @@
             "format": "date-time",
             "description": "Time the current issue episode was first detected.",
             "example": "2026-10-03T12:00:00Z"
+          },
+          "fixers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueFixer"
+            },
+            "description": "Repairs Everruns can make for the issue now, in the order to offer\nthem. Empty when it has none, or the issue is resolved."
           },
           "href": {
             "type": "string",
@@ -52573,6 +53201,88 @@
           }
         }
       },
+      "IssueFixOutcome": {
+        "type": "object",
+        "description": "The result of running a fixer.",
+        "required": [
+          "status",
+          "returns_automatically",
+          "issue"
+        ],
+        "properties": {
+          "consent_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The provider page that approves the change. Built by the server on the\nprovider's own origin."
+          },
+          "issue": {
+            "$ref": "#/components/schemas/HealthIssue",
+            "description": "The issue after the fix."
+          },
+          "returns_automatically": {
+            "type": "boolean",
+            "description": "Whether approving returns the browser to the issue by itself. When\nfalse the person comes back on their own and the page checks again."
+          },
+          "status": {
+            "type": "string",
+            "description": "`done` (the change is made and the issue was checked again) or\n`consent` (approve the change at `consent_url`, then come back).",
+            "example": "consent"
+          }
+        }
+      },
+      "IssueFixer": {
+        "type": "object",
+        "description": "A repair Everruns can make for an issue.",
+        "required": [
+          "kind",
+          "label",
+          "steps",
+          "effect",
+          "undoable",
+          "needs_provider_admin"
+        ],
+        "properties": {
+          "effect": {
+            "type": "string",
+            "description": "`in_place` when running it is the whole fix; `consent` when the person\nthen approves the change in the provider.",
+            "example": "consent"
+          },
+          "kind": {
+            "type": "string",
+            "description": "What it does: `slack.add_permissions`, `slack.reconnect` or `schedule.pause`.",
+            "example": "slack.add_permissions"
+          },
+          "label": {
+            "type": "string",
+            "description": "Button text.",
+            "example": "Fix in Slack"
+          },
+          "needs_provider_admin": {
+            "type": "boolean",
+            "description": "Whether the provider may ask a workspace administrator to approve."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What happens when it runs, step by step, in plain words."
+          },
+          "unavailable_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it cannot run now, and what unlocks it. Absent when it can run."
+          },
+          "undoable": {
+            "type": "boolean",
+            "description": "Whether the fix can be undone from the finding."
+          }
+        }
+      },
       "KeyValueInfo": {
         "type": "object",
         "description": "Key-value entry info (key and timestamps, no value)",
@@ -53010,6 +53720,10 @@
                 "communication": {
                   "$ref": "#/components/schemas/Communication",
                   "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`. Applies\non every surface: web chat, API, Slack, A2A, AG-UI, MCP."
+                },
+                "completion_check": {
+                  "$ref": "#/components/schemas/CompletionCheck",
+                  "description": "When a turn about to finish is checked for whether it did what was\nasked, and continued automatically when it did not. `unattended`\n(default): sessions started by triggers and schedules, where no person\nis watching. `always`: chat too. `off`: never."
                 },
                 "created_at": {
                   "type": "string",
@@ -55541,6 +56255,7 @@
                 "system_decisions",
                 "web_search_defaults",
                 "background_limits",
+                "self_healing",
                 "created_at",
                 "updated_at"
               ],
@@ -55615,6 +56330,10 @@
                   ],
                   "format": "date-time",
                   "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+                },
+                "self_healing": {
+                  "$ref": "#/components/schemas/SelfHealingPolicy",
+                  "description": "What Everruns does on its own when a finding opens (Settings →\nLimits): pause a repeating schedule automatically, and whether the\nInspector suggests changes to agents. Code defaults when the\norganization never set any."
                 },
                 "small_model_id": {
                   "type": [
@@ -58504,6 +59223,17 @@
               }
             ]
           },
+          "completion_check": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CompletionCheck",
+                "description": "When a finishing turn gets a completion check: `off`, `unattended`\n(sessions started by triggers and schedules) or `always`. Omission\nmeans `unattended`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": {
             "type": [
               "string",
@@ -58669,9 +59399,83 @@
         },
         "additionalProperties": false
       },
+      "ManualFireStatus": {
+        "type": "string",
+        "description": "What a manual fire did.",
+        "enum": [
+          "dispatched",
+          "filtered",
+          "duplicate"
+        ]
+      },
       "ManualMemorySourceResponse": {
         "type": "object",
         "description": "Response body for manual memory source."
+      },
+      "ManualTriggerEvent": {
+        "type": "object",
+        "description": "An event to fire a trigger with, instead of a plain run.\n\nName it raw, as its source sends it (`payload`, with `name` for GitHub and\n`headers` for webhooks), or for a GitHub trigger by reference\n(`repository` and `pull_request`).",
+        "properties": {
+          "action": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub reference: the action the built event carries. Defaults to the\nfirst of opened, synchronize, reopened, ready_for_review the trigger\nlistens to.",
+            "example": "synchronize"
+          },
+          "headers": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Request headers a webhook trigger's templates see as `webhook.headers`.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Idempotency key. Defaults to a fresh id, so every manual fire runs;\nrepeat an id the trigger already saw to test deduplication."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Event name: the GitHub event (`pull_request`, `issue_comment`, the\n`X-GitHub-Event` header). For an MCP event trigger it defaults to the\ntrigger's event and must match it.",
+            "example": "pull_request"
+          },
+          "payload": {
+            "type": "object",
+            "description": "The event as its source sends it: a webhook request body, a GitHub\nevent payload, an MCP event's `data`, or extra context a schedule\ntrigger's message reads as `{{payload.*}}`."
+          },
+          "pull_request": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "GitHub reference: the pull request number. The server reads it through\nthe agent's GitHub connection and builds a `pull_request` event.",
+            "example": 12,
+            "minimum": 0
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub reference: the pull request's repository, `owner/name`.",
+            "example": "acme/api"
+          }
+        },
+        "additionalProperties": false
       },
       "McpConnectInChat": {
         "type": "string",
@@ -62191,6 +62995,7 @@
           "system_decisions",
           "web_search_defaults",
           "background_limits",
+          "self_healing",
           "created_at",
           "updated_at"
         ],
@@ -62265,6 +63070,10 @@
             ],
             "format": "date-time",
             "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+          },
+          "self_healing": {
+            "$ref": "#/components/schemas/SelfHealingPolicy",
+            "description": "What Everruns does on its own when a finding opens (Settings →\nLimits): pause a repeating schedule automatically, and whether the\nInspector suggests changes to agents. Code defaults when the\norganization never set any."
           },
           "small_model_id": {
             "type": [
@@ -64460,6 +65269,17 @@
           "expires_at"
         ],
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RequestingAgent",
+                "description": "The asking agent, when another agent in the run asked."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "answerable": {
             "type": "boolean",
             "description": "Always `true`: the person using the agent answers its approvals."
@@ -64479,6 +65299,13 @@
             "type": "string",
             "description": "Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`."
           },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The asking agent's session, when another agent in the run asked.\nAnswer on this session; the server routes it."
+          },
           "tool_call_id": {
             "type": "string",
             "description": "The request to name in `POST …/tool-approvals`."
@@ -64496,6 +65323,17 @@
           "questions"
         ],
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RequestingAgent",
+                "description": "The asking agent, when another agent in the run asked."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "expires_at": {
             "type": [
               "string",
@@ -64509,6 +65347,13 @@
               "type": "object"
             },
             "description": "The questions as asked: `kind`, `id`, `header`, `question`, `options`,\n`multi_select`, `allow_other`."
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The asking agent's session, when another agent in the run asked.\nAnswer on this session; the server routes it."
           },
           "tool_call_id": {
             "type": "string",
@@ -66532,6 +67377,26 @@
           }
         }
       },
+      "RequestingAgent": {
+        "type": "object",
+        "description": "The agent a request came from.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The agent's id, as `/v1/agents/{agent_id}` takes it.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "name": {
+            "type": "string",
+            "description": "The agent's display name.",
+            "example": "Research Assistant"
+          }
+        }
+      },
       "ResolveOrgResponse": {
         "type": "object",
         "description": "Response body for the `resolve_org` operation.",
@@ -67000,6 +67865,26 @@
         },
         "additionalProperties": false
       },
+      "RunAgent": {
+        "type": "object",
+        "description": "The agent behind a session of the run.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The agent's id, as `/v1/agents/{agent_id}` takes it.",
+            "example": "agent_01h9xk2m"
+          },
+          "name": {
+            "type": "string",
+            "description": "The agent's display name.",
+            "example": "Triage"
+          }
+        }
+      },
       "RunBucket": {
         "type": "object",
         "description": "Turns started and failed in one bucket.",
@@ -67017,6 +67902,178 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "RunIssueFixerRequest": {
+        "type": "object",
+        "description": "Run one of the fixers an issue offers.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "The fixer to run, as the issue's `fixers` list names it.",
+            "example": "slack.add_permissions"
+          }
+        }
+      },
+      "RunRequest": {
+        "type": "object",
+        "description": "One request from another agent in the run.",
+        "required": [
+          "session_id",
+          "requested_at",
+          "tool_call"
+        ],
+        "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RequestingAgent",
+                "description": "The asking agent. Absent when the agent was deleted."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-03T10:15:00Z"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "The asking agent's session.",
+            "example": "session_01933b5a00007000800000000000001"
+          },
+          "tool_call": {
+            "$ref": "#/components/schemas/RunRequestToolCall"
+          }
+        }
+      },
+      "RunRequestToolCall": {
+        "type": "object",
+        "description": "A tool call another agent in the run waits on the person for.",
+        "required": [
+          "id",
+          "name",
+          "arguments"
+        ],
+        "properties": {
+          "arguments": {
+            "type": "object"
+          },
+          "id": {
+            "type": "string",
+            "example": "call_approval_1"
+          },
+          "name": {
+            "type": "string",
+            "description": "`ask_user`, `approve_tool_call`, `openai_mcp_approval`,\n`confirm_url_elicitation` or `setup_connection`.",
+            "example": "approve_tool_call"
+          }
+        }
+      },
+      "RunRequestsResponse": {
+        "type": "object",
+        "description": "What the other agents in a run wait on the person for.",
+        "required": [
+          "requests"
+        ],
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunRequest"
+            }
+          }
+        }
+      },
+      "RunSession": {
+        "type": "object",
+        "description": "One agent session of the run.",
+        "required": [
+          "session_id",
+          "status",
+          "created_at",
+          "cost_usd",
+          "turns"
+        ],
+        "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunAgent",
+                "description": "The agent that ran it. Absent when it has none or it was deleted."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Model spend in USD.",
+            "example": 0.21
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-03T09:00:00Z"
+          },
+          "last_turn_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When its last turn ended; absent while it works or before it ran.",
+            "example": "2026-11-03T09:01:30Z"
+          },
+          "last_turn_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Outcome of its last finished turn: `completed`, `failed` or `cancelled`.",
+            "example": "completed"
+          },
+          "parent_session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The session that handed it work; absent for the first session.",
+            "example": "session_01h9xk1a"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Session's prefixed public identifier.",
+            "example": "session_01h9xk2m"
+          },
+          "status": {
+            "type": "string",
+            "description": "Session status: `started`, `active`, `idle`, `waiting_for_tool_results`, ...",
+            "example": "idle"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The session's title: for work handed off, the task's name.",
+            "example": "Triage the failing build"
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunTurn"
+            },
+            "description": "Its turns, oldest first."
           }
         }
       },
@@ -67139,6 +68196,131 @@
             "description": "Repetitions per case. `total` counts every repetition.",
             "example": 3,
             "minimum": 0
+          }
+        }
+      },
+      "RunTurn": {
+        "type": "object",
+        "description": "One turn of a session in the run.",
+        "required": [
+          "turn_no",
+          "turn_id",
+          "started_at",
+          "status",
+          "cost_usd"
+        ],
+        "properties": {
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Model spend of the turn in USD.",
+            "example": 0.21
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Absent while the turn runs.",
+            "example": "2026-11-03T09:01:30Z"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-03T09:00:00Z"
+          },
+          "status": {
+            "type": "string",
+            "description": "Trace status of the turn: `running`, `completed`, `failed`, ...",
+            "example": "completed"
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Public turn id (`turn_...`).",
+            "example": "turn_01h9xk2m"
+          },
+          "turn_no": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Turn number within its session, from 1.",
+            "example": 1
+          }
+        }
+      },
+      "RunsWithAgentsLine": {
+        "type": "object",
+        "description": "The runs one agent led, with whole-run cost and who spent it.",
+        "required": [
+          "agent_id",
+          "agent_name",
+          "runs",
+          "cost_usd",
+          "by_agent"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "The agent the runs started with.",
+            "example": "agent_01h9xk1a"
+          },
+          "agent_name": {
+            "type": "string",
+            "example": "Foreman"
+          },
+          "by_agent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunsWithAgentsShare"
+            },
+            "description": "Who spent it, the leading agent itself included, largest first."
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Priced cost of those runs in USD, every agent included.",
+            "example": 212.4
+          },
+          "runs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Runs it handed work to other agents in, with usage in the window.",
+            "example": 12
+          }
+        }
+      },
+      "RunsWithAgentsShare": {
+        "type": "object",
+        "description": "One agent's spend within the runs another agent led.",
+        "required": [
+          "relation",
+          "cost_usd"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absent for usage recorded with no agent.",
+            "example": "agent_01h9xk2m"
+          },
+          "agent_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Implement"
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "example": 121.3
+          },
+          "relation": {
+            "type": "string",
+            "description": "`lead` for the leading agent itself, `created_here` for an agent\ncreated as part of it, `linked` for any other agent.",
+            "example": "created_here"
           }
         }
       },
@@ -70413,6 +71595,31 @@
         },
         "additionalProperties": false
       },
+      "SelfHealingMode": {
+        "type": "string",
+        "description": "What Everruns does about one kind of finding.",
+        "enum": [
+          "auto",
+          "suggest",
+          "off"
+        ]
+      },
+      "SelfHealingPolicy": {
+        "type": "object",
+        "description": "An org's self-healing policy (Settings → Limits).",
+        "properties": {
+          "agent_fixes": {
+            "$ref": "#/components/schemas/SelfHealingMode",
+            "description": "The Inspector's suggested changes to an agent's instructions: `suggest`\n(default) or `off`. A person always approves them.",
+            "default": "suggest"
+          },
+          "runaway_schedules": {
+            "$ref": "#/components/schemas/SelfHealingMode",
+            "description": "Pausing a schedule whose runs keep ending the same way, at the warning\ncount rather than the hard stop. Default `auto`.",
+            "default": "auto"
+          }
+        }
+      },
       "ServiceKind": {
         "type": "string",
         "description": "A typed service a provider driver can offer.\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
@@ -71414,6 +72621,55 @@
           "failed",
           "released"
         ]
+      },
+      "SessionRun": {
+        "type": "object",
+        "description": "The run a session belongs to: every agent that took part, with status,\ntiming and spend.",
+        "required": [
+          "root_session_id",
+          "cost_usd",
+          "first_session_cost_usd",
+          "waiting_requests",
+          "sessions",
+          "truncated"
+        ],
+        "properties": {
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Spend of every session in the run, in USD.",
+            "example": 5.06
+          },
+          "first_session_cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Spend of the first session alone, in USD.",
+            "example": 0.25
+          },
+          "root_session_id": {
+            "type": "string",
+            "description": "The run's first session, the one the person talks to.",
+            "example": "session_01h9xk1a"
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunSession"
+            },
+            "description": "The first session, then every session started under it by creation."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "More sessions or turns existed than were returned.",
+            "example": false
+          },
+          "waiting_requests": {
+            "type": "integer",
+            "description": "Questions and approvals any agent in the run waits on the person for.",
+            "example": 1,
+            "minimum": 0
+          }
+        }
       },
       "SessionSandboxAction": {
         "type": "string",
@@ -72820,6 +74076,19 @@
           "deployment",
           "organization"
         ]
+      },
+      "TakeFindingActionRequest": {
+        "type": "object",
+        "description": "The action to take.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "`pause_schedule`."
+          }
+        }
       },
       "TaskArtifact": {
         "type": "object",
@@ -76308,16 +77577,34 @@
       "TriggerAgentTriggerOutput": {
         "type": "object",
         "required": [
-          "session_id",
+          "status",
           "created_session"
         ],
         "properties": {
           "created_session": {
             "type": "boolean"
           },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why a filtered or duplicate event did not run."
+          },
           "session_id": {
-            "$ref": "#/components/schemas/sessionId",
-            "description": "Session's prefixed public identifier."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/sessionId",
+                "description": "Session's prefixed public identifier; absent when nothing ran."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ManualFireStatus",
+            "description": "`filtered` and `duplicate` happen only for a fire with an event."
           }
         }
       },
@@ -76557,6 +77844,152 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "TurnCompletionCheckedData": {
+        "type": "object",
+        "description": "Data for turn.completion_checked event.\n\nA turn about to finish was reviewed for whether it did what was asked\n(the agent's `completion_check` setting). One event per check, emitted\nbefore the continuation input it may add.",
+        "required": [
+          "turn_id",
+          "reason",
+          "action",
+          "continuations_used",
+          "max_continuations",
+          "tokens_used",
+          "elapsed_ms"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/CompletionCheckAction",
+            "description": "What the runtime did next."
+          },
+          "continuation_message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The automatic continuation input, when one was added.",
+            "example": "message_01933b5a00007000800000000000001"
+          },
+          "continuations_used": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Automatic continuations this turn has used, this one included.",
+            "minimum": 0
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Milliseconds since the turn's first automatic continuation.",
+            "minimum": 0
+          },
+          "max_continuations": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Most automatic continuations one turn may use.",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string",
+            "description": "The review's short explanation, or why the review failed."
+          },
+          "tokens_used": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tokens the turn spent since its first automatic continuation.",
+            "minimum": 0
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn identifier",
+            "example": "turn_01933b5a00007000800000000000001"
+          },
+          "verdict": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CompletionVerdict",
+                "description": "The review's verdict. Absent when the review failed."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "TurnCreditShortfallData": {
+        "type": "object",
+        "description": "Data for turn.credit_shortfall event.\n\nThe provider refused a request because the account could not pay for it.\nOne event per decision: a smaller retry, the start of a wait, each check\nduring it, the resume, and giving up.",
+        "required": [
+          "turn_id",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/CreditShortfallAction",
+            "description": "What the runtime did."
+          },
+          "affordable_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Output tokens the balance covered, when the provider said.",
+            "example": 283,
+            "minimum": 0
+          },
+          "balance_checked": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the provider's balance was read (without spending tokens).\n`false`: the provider has no balance API and the request itself is\nthe check.",
+            "example": true
+          },
+          "max_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Max output tokens of the smaller retry (`shrunk` only).",
+            "example": 7680,
+            "minimum": 0
+          },
+          "next_check_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the next check runs, when one was scheduled.",
+            "example": "2026-11-03T07:01:00Z"
+          },
+          "requested_max_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Max output tokens the refused request asked for, when the provider said.",
+            "example": 65536,
+            "minimum": 0
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn identifier",
+            "example": "turn_01933b5a00007000800000000000001"
+          },
+          "wait_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the wait for credits ends at the latest.",
+            "example": "2026-11-03T08:00:00Z"
           }
         }
       },
@@ -76856,6 +78289,17 @@
               {
                 "$ref": "#/components/schemas/Communication",
                 "description": "How the agent talks to people: `direct` or `explicit`. Omit to leave\nunchanged."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completion_check": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CompletionCheck",
+                "description": "When a finishing turn is checked and continued: `off`, `unattended`\nor `always`. Omit to leave unchanged."
               },
               {
                 "type": "null"
@@ -78356,6 +79800,17 @@
             ],
             "description": "The display name of the organization.",
             "example": "Acme Corporation"
+          },
+          "self_healing": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SelfHealingPolicy",
+                "description": "Self-healing policy; replaces the stored policy as a whole. Omitted\nfields take the code default. `agent_fixes` cannot be `auto`."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "small_model_id": {
             "type": [
@@ -80069,6 +81524,10 @@
               "communication": {
                 "$ref": "#/components/schemas/Communication",
                 "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`. Applies\non every surface: web chat, API, Slack, A2A, AG-UI, MCP."
+              },
+              "completion_check": {
+                "$ref": "#/components/schemas/CompletionCheck",
+                "description": "When a turn about to finish is checked for whether it did what was\nasked, and continued automatically when it did not. `unattended`\n(default): sessions started by triggers and schedules, where no person\nis watching. `always`: chat too. `off`: never."
               },
               "created_at": {
                 "type": "string",

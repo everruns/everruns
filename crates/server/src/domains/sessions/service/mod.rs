@@ -274,4 +274,6 @@ mod tests_sessions;
 #[cfg(test)]
 mod tests_support;
 #[cfg(test)]
+mod tests_team_folder;
+#[cfg(test)]
 mod tests_userless_sandbox;

@@ -201,6 +201,7 @@ async fn scoped_mcp_lookup_uses_current_agent_config_in_direct_and_grpc_paths() 
             org_id,
             agent_id,
             CreateAgentRow {
+                completion_check: Default::default(),
                 localizations: Default::default(),
                 public_id: agent_id.to_string(),
                 name: "pinned-mcp-agent".to_string(),
@@ -707,6 +708,7 @@ async fn seed_agent(db: &StorageBackend) -> Uuid {
     let id = AgentId::new();
     let public_id = id.to_string();
     let create = CreateAgentRow {
+        completion_check: Default::default(),
         localizations: Default::default(),
         public_id,
         name: "test-agent".to_string(),

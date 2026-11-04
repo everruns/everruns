@@ -6,7 +6,7 @@
 // `FileSource`; write operations are optional, and a source without them
 // renders read-only.
 
-import { useMemo } from "react";
+import { createContext, useContext, useMemo } from "react";
 import {
   createFile,
   deleteFile,
@@ -17,7 +17,15 @@ import {
   readFile,
   updateFile,
 } from "@/lib/api/session-files";
+import { throwApiError } from "@/lib/api/client";
 import type { FileInfo, SessionFile } from "@/lib/api/types";
+
+// Embedders whose API identity lives in a transport cannot navigate to cookie-
+// authenticated URLs. Reads and downloads still use that transport.
+export const FileNavigationContext = createContext({
+  browserUrls: true,
+  externalPreviewHref: undefined as string | undefined,
+});
 
 export interface FileSourceWrites {
   createFile(path: string, content: string): Promise<unknown>;
@@ -36,6 +44,8 @@ export interface FileSource {
   read(path: string): Promise<SessionFile>;
   /** Raw bytes with their content type, for download and media playback. */
   downloadUrl(path: string): string | undefined;
+  download?(path: string): Promise<Blob>;
+  externalPreviewHref?: string;
   /** Sandboxed HTML preview endpoint, when the source has one. */
   htmlPreviewUrl?(path: string): string | undefined;
   writes?: FileSourceWrites;
@@ -44,7 +54,11 @@ export interface FileSource {
 /** A session workspace (`/v1/workspaces/{id}/fs`), rooted at `/workspace`. */
 export function workspaceFileSource(
   workspaceId: string | undefined,
-  { readOnly = false }: { readOnly?: boolean } = {},
+  {
+    readOnly = false,
+    browserUrls = true,
+    externalPreviewHref,
+  }: { readOnly?: boolean; browserUrls?: boolean; externalPreviewHref?: string } = {},
 ): FileSource {
   const id = () => {
     if (!workspaceId) throw new Error("Workspace is still loading");
@@ -55,8 +69,18 @@ export function workspaceFileSource(
     root: "/workspace",
     list: (path) => listFiles(id(), path),
     read: (path) => readFile(id(), path),
-    downloadUrl: (path) => workspaceId && fileDownloadUrl(workspaceId, path),
-    htmlPreviewUrl: (path) => workspaceId && htmlPreviewUrl(workspaceId, path),
+    downloadUrl: (path) =>
+      browserUrls && workspaceId ? fileDownloadUrl(workspaceId, path) : undefined,
+    download: browserUrls
+      ? undefined
+      : async (path) => {
+          const response = await fetch(fileDownloadUrl(id(), path));
+          if (!response.ok) await throwApiError(response);
+          return response.blob();
+        },
+    externalPreviewHref,
+    htmlPreviewUrl: (path) =>
+      browserUrls && workspaceId ? htmlPreviewUrl(workspaceId, path) : undefined,
     writes: readOnly
       ? undefined
       : {
@@ -73,5 +97,9 @@ export function useWorkspaceFileSource(
   options: { readOnly?: boolean } = {},
 ): FileSource {
   const { readOnly = false } = options;
-  return useMemo(() => workspaceFileSource(workspaceId, { readOnly }), [workspaceId, readOnly]);
+  const navigation = useContext(FileNavigationContext);
+  return useMemo(
+    () => workspaceFileSource(workspaceId, { readOnly, ...navigation }),
+    [workspaceId, readOnly, navigation],
+  );
 }

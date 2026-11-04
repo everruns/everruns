@@ -219,6 +219,10 @@ pub struct ExecutionSession {
     /// Validated config passed by host at blueprint spawn time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blueprint_config: Option<serde_json::Value>,
+    /// No person is watching: the session was started by a trigger or a
+    /// schedule. The agent's `unattended` completion check applies to it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unattended: bool,
 }
 
 impl ExecutionSession {
@@ -252,6 +256,7 @@ impl ExecutionSession {
             forked_from_session_id: None,
             blueprint_id: None,
             blueprint_config: None,
+            unattended: false,
         }
     }
 

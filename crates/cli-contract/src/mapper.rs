@@ -48,10 +48,6 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Ready-made agents (blueprints) to adopt and adapt.",
     ),
     (
-        "agents exposures",
-        "Pause or resume all of an agent's live channels at once.",
-    ),
-    (
         "agents external-worker",
         "Inspect or disable a customer-hosted agent runtime.",
     ),
@@ -209,6 +205,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "health-issues",
         "Operational problems detected in this installation.",
+    ),
+    (
+        "health-issues actions",
+        "What was done about a finding, such as pausing a repeating schedule, and undo.",
     ),
     (
         "history",
@@ -387,6 +387,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Your permanent Platform Chat conversation.",
     ),
     ("sessions resources", "Resources registered in a session."),
+    (
+        "sessions run",
+        "The whole run a session belongs to: every agent, its status and spend.",
+    ),
     (
         "sessions sandbox",
         "A session's sandbox: inspect, pause, resume, delete.",

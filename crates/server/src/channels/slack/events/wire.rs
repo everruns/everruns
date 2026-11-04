@@ -92,6 +92,24 @@ pub(crate) struct SlackEvent {
     /// Legacy attachments (link unfurls, bot attachments, etc.).
     #[serde(default)]
     pub(crate) attachments: Vec<SlackAttachment>,
+    /// Reaction name on `reaction_added` / `reaction_removed`.
+    #[serde(default)]
+    pub(crate) reaction: Option<String>,
+    /// What a reaction is on.
+    #[serde(default)]
+    pub(crate) item: Option<SlackReactionItem>,
+}
+
+/// The item a Slack reaction event names.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct SlackReactionItem {
+    /// `message`, `file` or `file_comment`.
+    #[serde(rename = "type", default)]
+    pub(crate) item_type: Option<String>,
+    #[serde(default)]
+    pub(crate) channel: Option<String>,
+    #[serde(default)]
+    pub(crate) ts: Option<String>,
 }
 
 impl SlackEvent {
@@ -100,7 +118,10 @@ impl SlackEvent {
     pub(crate) fn session_coordinates(&self) -> Option<(&str, Option<&str>)> {
         let nested = self.assistant_thread.as_ref();
         let channel = matching_coordinate(
-            self.channel.as_deref(),
+            matching_coordinate(
+                self.channel.as_deref(),
+                self.item.as_ref().and_then(|item| item.channel.as_deref()),
+            )?,
             nested.and_then(|thread| thread.channel_id.as_deref()),
         )??;
         let thread = matching_coordinate(
@@ -146,6 +167,30 @@ mod session_coordinate_tests {
         }))
         .unwrap();
         assert_eq!(event.session_coordinates(), Some(("C1", None)));
+    }
+
+    #[test]
+    fn reaction_coordinates_preserve_scope_and_reject_conflicting_channels() {
+        for (payload, expected) in [
+            (
+                json!({"item": {"channel": "C1", "ts": "1.0"}}),
+                Some(("C1", None)),
+            ),
+            (
+                json!({"channel": "C1", "item": {"channel": "C1"}}),
+                Some(("C1", None)),
+            ),
+            (json!({"channel": "C2", "item": {"channel": "C1"}}), None),
+            (
+                json!({"item": {"channel": "C1"}, "assistant_thread": {"channel_id": "C2"}}),
+                None,
+            ),
+        ] {
+            let mut payload = payload;
+            payload["type"] = json!("reaction_added");
+            let event: SlackEvent = serde_json::from_value(payload).unwrap();
+            assert_eq!(event.session_coordinates(), expected);
+        }
     }
 
     #[test]

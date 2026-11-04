@@ -677,6 +677,12 @@ pub(crate) fn handle_streaming_event(
                 completion_tokens: Some(output),
                 cache_read_tokens: cached,
                 cache_creation_tokens: written,
+                cache_creation_12h_tokens: response
+                    .usage
+                    .as_ref()
+                    .and_then(|u| u.input_tokens_details.as_ref())
+                    .and_then(|d| d.cache_write_tokens_details.as_ref())
+                    .map(|d| d.ttl_12h_tokens),
                 reasoning_tokens: reasoning_used,
                 provider_cost_usd,
                 service_tier: response.service_tier,
@@ -726,9 +732,8 @@ pub(crate) fn handle_streaming_event(
             ))
         }
 
-        StreamingEvent::RefusalDelta { delta, .. } => {
-            // Treat refusal as an error message
-            LlmStreamEvent::Error(format!("Model refused: {}", delta).into())
+        StreamingEvent::RefusalDone { refusal, .. } => {
+            LlmStreamEvent::Error(super::refusal::error(&refusal))
         }
 
         // All other events: emit empty delta to maintain stream continuity

@@ -717,6 +717,9 @@ fn request_options_record_the_retention_each_provider_actually_gets() {
     }
     config.model = "gpt-6-astra".into();
     assert_eq!(retention(&config, "openai").as_deref(), Some("30m"));
+    config.prompt_cache.as_mut().unwrap().retention = PromptCacheRetention::TwelveHours;
+    assert_eq!(retention(&config, "openai").as_deref(), Some("12h"));
+    assert_eq!(retention(&config, "anthropic").as_deref(), Some("1h"));
     config.model = "gpt-5.4".into();
     assert_eq!(retention(&config, "openai"), None);
     assert_eq!(retention(&config, "gemini"), None);

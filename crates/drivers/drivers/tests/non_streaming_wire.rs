@@ -90,7 +90,7 @@ async fn anthropic_native_json_preserves_signed_thinking_tool_inputs_and_cache_u
 async fn gemini_native_json_preserves_signed_parts_tools_and_usage() {
     let server = MockServer::builder().start().await;
     Mock::given(method("POST")).and(path("/v1beta/models/gemini-test:generateContent"))
-        .respond_with(ResponseTemplate::new(200).insert_header("connection", "close").set_body_json(json!({"modelVersion":"gemini-test","candidates":[{"content":{"role":"model","parts":[{"text":"answer"},{"functionCall":{"name":"lookup","args":{"id":42}},"thoughtSignature":"signed"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":20,"cachedContentTokenCount":30,"thoughtsTokenCount":5}})))
+        .respond_with(ResponseTemplate::new(200).insert_header("connection", "close").set_body_json(json!({"modelVersion":"gemini-test","candidates":[{"content":{"role":"model","parts":[{"text":"answer"},{"functionCall":{"name":"lookup","args":{"id":42}},"thoughtSignature":"signed"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"toolUsePromptTokenCount":7,"candidatesTokenCount":20,"cachedContentTokenCount":30,"thoughtsTokenCount":5}})))
         .expect(1).mount(&server).await;
     let provider = Provider::new("test", GeminiChatDriver::new())
         .base_url(format!("{}/v1beta", server.uri()))
@@ -104,9 +104,10 @@ async fn gemini_native_json_preserves_signed_parts_tools_and_usage() {
     assert_eq!(answer.text, "answer");
     assert_eq!(answer.tool_calls.unwrap()[0].arguments, json!({"id":42}));
     assert!(format!("{:?}", answer.reasoning).contains("signed"));
-    assert_eq!(answer.metadata.prompt_tokens, Some(70));
+    assert_eq!(answer.metadata.prompt_tokens, Some(77));
     assert_eq!(answer.metadata.cache_read_tokens, Some(30));
     assert_eq!(answer.metadata.completion_tokens, Some(25));
+    assert_eq!(answer.metadata.total_tokens, Some(132));
 }
 
 #[tokio::test]

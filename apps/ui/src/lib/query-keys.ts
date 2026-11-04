@@ -88,6 +88,7 @@ export const queryKeys = {
     contextReport: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "context-report"] as const,
     cost: (org?: string, sessionId?: string) => ["session", org, sessionId, "cost"] as const,
+    run: (org?: string, sessionId?: string) => ["session", org, sessionId, "run"] as const,
     work: (org?: string, sessionId?: string, turnId?: string) =>
       ["session", org, sessionId, "work", turnId ?? "latest"] as const,
     resolvedModel: (org?: string, sessionId?: string) =>
@@ -338,6 +339,7 @@ export const queryKeys = {
       ["eval", evalId, "experiment", experimentId] as const,
     proposals: (agentId: string) => ["evals", "proposals", agentId] as const,
     findingFix: (issueId: string) => ["evals", "finding-fix", issueId] as const,
+    findingActions: (issueId: string) => ["evals", "finding-actions", issueId] as const,
   },
 
   // Observer queries

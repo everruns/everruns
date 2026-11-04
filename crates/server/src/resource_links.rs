@@ -42,6 +42,16 @@ fn decorate_value_links(value: &mut Value, builder: &UrlBuilder) -> bool {
     match value {
         Value::Object(map) => {
             let mut changed = false;
+            // A response whose page cannot be found from an id prefix (the
+            // agent's GitHub page) carries its UI path as a relative
+            // `view_url`; it becomes absolute here like every other link.
+            if let Some(Value::String(path)) = map.get_mut("view_url")
+                && !path.starts_with("http://")
+                && !path.starts_with("https://")
+            {
+                *path = format!("{}/{}", builder.ui_base, path.trim_start_matches('/'));
+                changed = true;
+            }
             if !map.contains_key("ui_link")
                 && let Some(view_url) = map.get("view_url").and_then(Value::as_str)
             {
@@ -166,6 +176,21 @@ fn route_for_id(id: &str, map: &serde_json::Map<String, Value>) -> Option<LinkRo
         "model" => ("v1/models", "models".to_string()),
         "eval" => ("v1/evals", format!("evals/{id}")),
         "bdgt" => ("v1/budgets", "budgets".to_string()),
+        // Channels and triggers live under their agent, so their page needs
+        // the owner's id; an object without it gets no link rather than a
+        // wrong one.
+        "appchan" | "trg" => {
+            let agent_id = map.get("agent_id").and_then(Value::as_str)?;
+            let kind = if prefix == "appchan" {
+                "channels"
+            } else {
+                "triggers"
+            };
+            return Some(LinkRoute {
+                api_path: Some(format!("v1/agents/{agent_id}/{kind}/{id}")),
+                ui_path: format!("agents/{agent_id}/{kind}/{id}"),
+            });
+        }
         "sched" => {
             let session_id = map.get("session_id").and_then(Value::as_str)?;
             return Some(LinkRoute {
@@ -204,6 +229,46 @@ fn looks_like_capability(map: &serde_json::Map<String, Value>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn channels_and_triggers_link_to_their_page_under_the_agent() {
+        let builder = UrlBuilder::new("https://api.example/api", "https://console.example");
+        let agent = "agent_01933b5a000070008000000000000001";
+        for (id, kind) in [
+            ("appchan_01933b5a000070008000000000000002", "channels"),
+            ("trg_01933b5a000070008000000000000003", "triggers"),
+        ] {
+            let mut value = serde_json::json!({ "id": id, "agent_id": agent });
+            assert!(builder.decorate_value_links(&mut value));
+            assert_eq!(
+                value["view_url"],
+                format!("https://console.example/agents/{agent}/{kind}/{id}")
+            );
+            assert_eq!(
+                value["self_url"],
+                format!("https://api.example/api/v1/agents/{agent}/{kind}/{id}")
+            );
+        }
+        // Without its agent a channel gets no link, not the agent's page.
+        let mut orphan = serde_json::json!({ "id": "appchan_01933b5a000070008000000000000002" });
+        builder.decorate_value_links(&mut orphan);
+        assert!(orphan.get("view_url").is_none());
+    }
+
+    #[test]
+    fn relative_view_url_becomes_absolute() {
+        let builder = UrlBuilder::new("https://api.example/api", "https://console.example");
+        let mut value = serde_json::json!({ "view_url": "agents/agent_01h9/github" });
+        assert!(builder.decorate_value_links(&mut value));
+        assert_eq!(
+            value["view_url"],
+            "https://console.example/agents/agent_01h9/github"
+        );
+        assert_eq!(value["ui_link"], value["view_url"]);
+        let mut absolute = serde_json::json!({ "view_url": "https://elsewhere.example/x" });
+        builder.decorate_value_links(&mut absolute);
+        assert_eq!(absolute["view_url"], "https://elsewhere.example/x");
+    }
 
     #[test]
     fn mcp_server_links_open_the_settings_catalog() {

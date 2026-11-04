@@ -21,6 +21,9 @@ import {
   acceptEvalProposal,
   dismissEvalProposal,
   getFindingFix,
+  getFindingActions,
+  takeFindingAction,
+  undoFindingAction,
   checkFindingFix,
   updateFindingFix,
   applyFindingFix,
@@ -370,6 +373,30 @@ export function useFindingFixAction(issueId: string) {
     onSuccess: (fix) => {
       queryClient.setQueryData(queryKeys.evals.findingFix(issueId), fix);
       queryClient.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+}
+
+export function useFindingActions(issueId: string | undefined) {
+  return useOrgScopedQuery({
+    queryKey: queryKeys.evals.findingActions(issueId ?? ""),
+    queryFn: () => getFindingActions(issueId!),
+    enabled: !!issueId,
+  });
+}
+
+export function useFindingActionMutation(issueId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      action: { kind: "take"; actionKind: string } | { kind: "undo"; actionId: string },
+    ) =>
+      action.kind === "take"
+        ? takeFindingAction(issueId, action.actionKind)
+        : undoFindingAction(issueId, action.actionId),
+    onSuccess: (actions) => {
+      queryClient.setQueryData(queryKeys.evals.findingActions(issueId), actions);
+      queryClient.invalidateQueries({ queryKey: ["health-issues"] });
     },
   });
 }

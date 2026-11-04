@@ -78,7 +78,7 @@ pub(crate) fn build(
     // AG-UI, A2A and voice answer in the request (or on the call), but bind
     // their threads, contexts and conversations through the same host and
     // store as the messaging channels.
-    for agent in app.inner.agents.iter().filter(|agent| !agent.sub) {
+    for agent in app.inner.agents.iter() {
         for kind in STREAM_KINDS {
             let mut config = ChannelConfig::new(stream_channel(kind, &agent.name));
             config.agent = Some(agent.name.clone());

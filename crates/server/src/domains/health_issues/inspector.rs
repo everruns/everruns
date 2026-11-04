@@ -413,9 +413,15 @@ async fn investigate(
             CLUSTER_CHOICES,
         )
         .await?;
-    // The agent's instructions, when the finding may get a fix.
+    // The agent's instructions, when the finding may get a fix and the org
+    // has not turned suggested fixes off.
+    let fixes_wanted = fixes::FIXABLE.contains(&candidate.code.as_str())
+        && super::self_healing::policy(db, candidate.org_id)
+            .await
+            .agent_fixes
+            != super::self_healing::SelfHealingMode::Off;
     let agent = match candidate.agent_id {
-        Some(agent_id) if fixes::FIXABLE.contains(&candidate.code.as_str()) => db
+        Some(agent_id) if fixes_wanted => db
             .get_agent(
                 candidate.org_id,
                 everruns_contracts::typed_id::AgentId::from_uuid(agent_id),

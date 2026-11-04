@@ -866,6 +866,18 @@
         ]
       },
       {
+        "field": "completion_check",
+        "long": "completion-check",
+        "kind": "string",
+        "required": false,
+        "help": "When a turn that is about to finish gets a completion check, and an automatic continuation wh...",
+        "choices": [
+          "off",
+          "unattended",
+          "always"
+        ]
+      },
+      {
         "field": "default_model_id",
         "long": "default-model-id",
         "kind": "string",
@@ -1340,60 +1352,6 @@
     ]
   },
   {
-    "wire_name": "resume_agent_exposures",
-    "path": [
-      "agents",
-      "exposures"
-    ],
-    "verb": "resume",
-    "description": "Let an agent's live channels accept traffic again.",
-    "method": "POST",
-    "http_path": "/v1/agents/{agent_id}/exposures/resume",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "position": 1,
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Put a suspended agent back on its exposed surfaces",
-        "command": "everruns agents exposures resume agent_01h9 --reason 'Prompt fix verified'"
-      }
-    ]
-  },
-  {
-    "wire_name": "suspend_agent_exposures",
-    "path": [
-      "agents",
-      "exposures"
-    ],
-    "verb": "suspend",
-    "description": "Stop every channel on an agent from accepting traffic.",
-    "method": "POST",
-    "http_path": "/v1/agents/{agent_id}/exposures/suspend",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "position": 1,
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Stop an agent answering on its exposed surfaces without deleting it",
-        "command": "everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'"
-      }
-    ]
-  },
-  {
     "wire_name": "disable_external_agent",
     "path": [
       "agents",
@@ -1856,6 +1814,32 @@
     ]
   },
   {
+    "wire_name": "pause_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "pause",
+    "description": "Pause an agent: its channels stop accepting messages and its triggers and schedules do not run until it is resumed.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/pause",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop everything that starts an agent without deleting it",
+        "command": "everruns agents pause agent_01h9 --reason 'Pause while the prompt is fixed'"
+      }
+    ]
+  },
+  {
     "wire_name": "preview_agent",
     "path": [
       "agents"
@@ -1906,6 +1890,32 @@
       {
         "intent": "See the prompt a draft configuration would produce, without creating it",
         "command": "everruns agents preview --system-prompt 'Triage incoming issues'"
+      }
+    ]
+  },
+  {
+    "wire_name": "resume_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "resume",
+    "description": "Resume a paused agent: its published channels, triggers and schedules work again.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/resume",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Let a paused agent start work again",
+        "command": "everruns agents resume agent_01h9 --reason 'Prompt fix verified'"
       }
     ]
   },
@@ -2766,7 +2776,7 @@
       "triggers"
     ],
     "verb": "trigger",
-    "description": "Manually fire an agent trigger once.",
+    "description": "Manually fire an agent trigger once. Pass an event to run it through the trigger's filter, message and session routing as a real one would; webhook, GitHub and MCP event triggers need one.",
     "method": "POST",
     "http_path": "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
     "args": [
@@ -2776,6 +2786,12 @@
         "kind": "string",
         "required": true,
         "help": "Owning agent's prefixed public identifier."
+      },
+      {
+        "field": "event",
+        "long": "event",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "trigger_id",
@@ -2789,6 +2805,10 @@
       {
         "intent": "Fire a trigger once now to test it without waiting for its schedule",
         "command": "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Test the digest message'"
+      },
+      {
+        "intent": "Run a GitHub trigger on an existing pull request, in that pull request's own session",
+        "command": "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --event '{\"repository\":\"acme/api\",\"pull_request\":12}' --reason 'Review this pull request'"
       }
     ]
   },
@@ -2987,6 +3007,12 @@
         "required": false
       },
       {
+        "field": "completion_check",
+        "long": "completion-check",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "default_model_id",
         "long": "default-model-id",
         "kind": "string",
@@ -3181,6 +3207,18 @@
         "choices": [
           "direct",
           "explicit"
+        ]
+      },
+      {
+        "field": "completion_check",
+        "long": "completion-check",
+        "kind": "string",
+        "required": false,
+        "help": "When a turn that is about to finish gets a completion check, and an automatic continuation wh...",
+        "choices": [
+          "off",
+          "unattended",
+          "always"
         ]
       },
       {
@@ -7149,6 +7187,98 @@
     ]
   },
   {
+    "wire_name": "list_finding_actions",
+    "path": [
+      "health-issues",
+      "actions"
+    ],
+    "verb": "list",
+    "description": "List what Everruns or a person did about a finding, such as pausing a repeating schedule, and what the organization's self-healing policy offers to do now.",
+    "method": "GET",
+    "http_path": "/v1/health-issues/{issue_id}/actions",
+    "args": [
+      {
+        "field": "issue_id",
+        "long": "issue-id",
+        "kind": "string",
+        "required": true,
+        "help": "The finding."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See whether a repeating schedule was paused",
+        "command": "everruns health-issues actions list --issue-id 550e8400-e29b-41d4-a716-446655440000"
+      }
+    ]
+  },
+  {
+    "wire_name": "take_finding_action",
+    "path": [
+      "health-issues",
+      "actions"
+    ],
+    "verb": "take",
+    "description": "Take an action the organization's self-healing policy offers on a finding, such as pausing a schedule whose runs keep ending the same way. It is recorded on the finding and can be undone.",
+    "method": "POST",
+    "http_path": "/v1/health-issues/{issue_id}/actions",
+    "args": [
+      {
+        "field": "issue_id",
+        "long": "issue-id",
+        "kind": "string",
+        "required": true,
+        "help": "The finding."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": true,
+        "help": "`pause_schedule`."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Pause a repeating schedule from its finding",
+        "command": "everruns health-issues actions take --issue-id 550e8400-e29b-41d4-a716-446655440000 --kind pause_schedule --reason 'Claim expired, polling is pointless'"
+      }
+    ]
+  },
+  {
+    "wire_name": "undo_finding_action",
+    "path": [
+      "health-issues",
+      "actions"
+    ],
+    "verb": "undo",
+    "description": "Undo an action taken on a finding, automatic or not. Undoing a pause resumes the schedule and starts its repeated-outcome count over.",
+    "method": "POST",
+    "http_path": "/v1/health-issues/{issue_id}/actions/{action_id}/undo",
+    "args": [
+      {
+        "field": "action_id",
+        "long": "action-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier of the action (`fact_…`)."
+      },
+      {
+        "field": "issue_id",
+        "long": "issue-id",
+        "kind": "string",
+        "required": true,
+        "help": "The finding."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Resume a schedule that was paused automatically",
+        "command": "everruns health-issues actions undo --issue-id 550e8400-e29b-41d4-a716-446655440000 --action-id fact_01h9 --reason 'Still waiting on the claim; this is expected'"
+      }
+    ]
+  },
+  {
     "wire_name": "check_health_issue",
     "path": [
       "health-issues"
@@ -7202,6 +7332,38 @@
       {
         "intent": "Close a false alarm and say why",
         "command": "everruns health-issues dismiss --issue-id 550e8400-e29b-41d4-a716-446655440000 --note 'Expected: nightly load test'"
+      }
+    ]
+  },
+  {
+    "wire_name": "run_health_issue_fixer",
+    "path": [
+      "health-issues"
+    ],
+    "verb": "fix",
+    "description": "Run a fixer the issue offers, such as adding missing Slack permissions to the agent's app. A fix that needs approval in the provider returns the page to approve it on; the issue resolves only when a fresh check confirms it.",
+    "method": "POST",
+    "http_path": "/v1/health-issues/{issue_id}/fix",
+    "args": [
+      {
+        "field": "issue_id",
+        "long": "issue-id",
+        "kind": "string",
+        "required": true,
+        "help": "The issue."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": true,
+        "help": "The fixer to run, as the issue's `fixers` list names it."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Add missing Slack permissions to an agent's app",
+        "command": "everruns health-issues fix --issue-id 550e8400-e29b-41d4-a716-446655440000 --kind slack.add_permissions"
       }
     ]
   },
@@ -10090,6 +10252,12 @@
         "long": "org",
         "kind": "string",
         "required": true
+      },
+      {
+        "field": "self_healing",
+        "long": "self-healing",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "small_model_id",
@@ -14555,6 +14723,33 @@
       {
         "intent": "Let a session continue after a usage policy asked before going further",
         "command": "everruns sessions resume session_01h9 --reason 'Finish the report'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_run",
+    "path": [
+      "sessions",
+      "run"
+    ],
+    "verb": "get",
+    "description": "Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/run",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See every agent in a session's run",
+        "command": "everruns sessions run get session_01h9"
       }
     ]
   },

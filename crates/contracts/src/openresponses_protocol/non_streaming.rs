@@ -51,6 +51,9 @@ impl OpenResponsesProtocolChatDriver {
 }
 
 fn resource_frames(resource: Value) -> Result<Vec<Value>> {
+    if let Some(reason) = super::refusal::resource_reason(&resource) {
+        return Err(super::refusal::error(reason).into_agent_error());
+    }
     let terminal = match resource["status"].as_str() {
         Some("completed") => "response.completed",
         Some("incomplete") => "response.incomplete",
@@ -89,8 +92,6 @@ fn resource_frames(resource: Value) -> Result<Vec<Value>> {
             for part in item["content"].as_array().into_iter().flatten() {
                 if let Some(text) = part["text"].as_str() {
                     frames.push(json!({"type":"response.output_text.delta","delta":text}));
-                } else if let Some(refusal) = part["refusal"].as_str() {
-                    frames.push(json!({"type":"response.output_text.delta","delta":refusal}));
                 }
             }
         }

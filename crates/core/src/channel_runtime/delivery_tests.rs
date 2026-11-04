@@ -6,8 +6,8 @@ use serde_json::{Value, json};
 use super::*;
 use crate::channel::{
     ApprovalPrompt, ChannelAgentSurface, ChannelApprovalPrompt, ChannelProgressSurface,
-    ChannelSessionState, ChannelStreamDelivery, DeliveryContext, DeliveryResult, DeliveryTarget,
-    OutboundChannelMessage,
+    ChannelReactionSurface, ChannelSessionState, ChannelStreamDelivery, DeliveryContext,
+    DeliveryResult, DeliveryTarget, OutboundChannelMessage,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +22,7 @@ enum Call {
     Approval(String),
     ProgressPost(String),
     ProgressUpdate(String),
+    React(String, String, bool),
 }
 
 #[derive(Default)]
@@ -33,6 +34,7 @@ struct Recorder {
     approvals: bool,
     progress: bool,
     fail_start: bool,
+    reactions: bool,
 }
 
 impl Recorder {
@@ -71,6 +73,35 @@ impl ChannelDeliveryAdapter for Recorder {
     }
     fn progress(&self) -> Option<&dyn ChannelProgressSurface> {
         self.progress.then_some(self as &dyn ChannelProgressSurface)
+    }
+    fn reactions(&self) -> Option<&dyn ChannelReactionSurface> {
+        self.reactions
+            .then_some(self as &dyn ChannelReactionSurface)
+    }
+}
+
+#[async_trait]
+impl ChannelReactionSurface for Recorder {
+    fn stream_message_key(&self, handle: &str, _: &DeliveryContext) -> String {
+        format!("C1:{handle}")
+    }
+    async fn post_keyed(
+        &self,
+        message: &OutboundChannelMessage,
+        _: &DeliveryContext,
+    ) -> Result<Option<String>, DeliveryResult> {
+        self.push(Call::Post(message.text.clone()));
+        Ok(Some("C1:posted".into()))
+    }
+    async fn react(
+        &self,
+        key: &str,
+        emoji: &str,
+        add: bool,
+        _: &DeliveryContext,
+    ) -> DeliveryResult {
+        self.push(Call::React(key.into(), emoji.into(), add));
+        DeliveryResult::Ok
     }
 }
 
@@ -342,6 +373,46 @@ async fn a_message_the_sender_already_delivered_is_not_posted_again() {
 
     assert!(recorder.calls().is_empty());
     assert!(delivery.delivered());
+}
+
+#[tokio::test]
+async fn a_misconfigured_agent_says_so_without_detail() {
+    let recorder = Arc::new(Recorder::default());
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
+    delivery
+        .observe(&event(
+            TURN_FAILED,
+            json!({"error": "Model meta/muse-spark is disabled", "error_code": "model_unavailable"}),
+        ))
+        .await;
+
+    let calls = recorder.calls();
+    assert_eq!(
+        calls,
+        vec![Call::Post(
+            "This agent is not set up correctly, so it cannot answer right now. Someone who manages it needs to check its model and provider settings.".into()
+        )]
+    );
+}
+
+#[tokio::test]
+async fn other_failure_codes_keep_the_plain_notice() {
+    for code in ["processing_error", "provider_rate_limited"] {
+        let recorder = Arc::new(Recorder::default());
+        let mut delivery = delivery(&recorder, DeliveryOptions::default());
+        delivery
+            .observe(&event(TURN_FAILED, json!({"error_code": code})))
+            .await;
+        assert_eq!(
+            recorder.calls(),
+            vec![Call::Post(
+                "The agent could not finish this request.".into()
+            )],
+            "{code}"
+        );
+    }
+    assert!(is_setup_error_code("provider_misconfigured"));
+    assert!(!is_setup_error_code("budget_exhausted"));
 }
 
 #[tokio::test]
@@ -685,4 +756,84 @@ async fn agent_surface_off_shows_no_status_or_title() {
         .await;
     delivery.observe(&completed("m1", "Hi")).await;
     assert_eq!(recorder.calls(), vec![Call::Post("Hi".into())]);
+}
+
+fn reaction(message_id: &str, emoji: &str, actor_kind: &str, added: bool) -> DeliveryEvent {
+    event(
+        if added {
+            MESSAGE_REACTION_ADDED
+        } else {
+            MESSAGE_REACTION_REMOVED
+        },
+        json!({
+            "message_id": message_id,
+            "emoji": emoji,
+            "actor": {"kind": actor_kind, "id": "x"},
+        }),
+    )
+}
+
+#[tokio::test]
+async fn posted_and_streamed_replies_are_linked_to_their_platform_keys() {
+    let recorder = Arc::new(Recorder {
+        reactions: true,
+        stream: true,
+        ..Recorder::default()
+    });
+    let mut streaming = delivery(&recorder, DeliveryOptions::default());
+    streaming.observe(&delta("m1", "streamed")).await;
+    streaming.observe(&completed("m1", "streamed")).await;
+    let streamed = streaming.take_links();
+    assert_eq!(streamed, vec![("C1:h1".to_string(), "m1".to_string())]);
+
+    let recorder = Arc::new(Recorder {
+        reactions: true,
+        ..Recorder::default()
+    });
+    let mut posting = delivery(&recorder, DeliveryOptions::default());
+    posting.observe(&completed("m2", "posted")).await;
+    assert_eq!(
+        posting.take_links(),
+        vec![("C1:posted".to_string(), "m2".to_string())]
+    );
+    assert!(posting.take_links().is_empty(), "links are taken once");
+    assert!(posting.delivered());
+}
+
+#[tokio::test]
+async fn only_the_agents_reactions_on_known_messages_reach_the_platform() {
+    let recorder = Arc::new(Recorder {
+        reactions: true,
+        ..Recorder::default()
+    });
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
+    delivery.know_message_key(TURN, "C1:input");
+
+    delivery.observe(&reaction(TURN, "👀", "agent", true)).await;
+    delivery.observe(&reaction(TURN, "👍", "user", true)).await;
+    delivery
+        .observe(&reaction("message_unknown", "✅", "agent", true))
+        .await;
+    delivery
+        .observe(&reaction(TURN, "👀", "agent", false))
+        .await;
+
+    assert_eq!(
+        recorder.calls(),
+        vec![
+            Call::React("C1:input".into(), "👀".into(), true),
+            Call::React("C1:input".into(), "👀".into(), false),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_platform_without_reactions_keeps_them_inside() {
+    let recorder = Arc::new(Recorder::default());
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
+    delivery.know_message_key(TURN, "C1:input");
+    delivery.observe(&reaction(TURN, "👀", "agent", true)).await;
+    delivery.observe(&completed("m1", "reply")).await;
+    assert_eq!(recorder.calls(), vec![Call::Post("reply".into())]);
+    assert!(delivery.take_links().is_empty());
 }

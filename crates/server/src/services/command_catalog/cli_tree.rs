@@ -634,9 +634,9 @@ mod tests {
     fn node_help_lists_direct_children_only() {
         let listed = listed_commands(&tree().render_help("agents", None).unwrap());
         assert!(listed.contains(&"list".to_string()), "{listed:?}");
-        assert!(listed.contains(&"exposures".to_string()), "{listed:?}");
-        // A grandchild verb belongs to `agents exposures`, not to `agents`.
-        assert!(!listed.contains(&"suspend".to_string()), "{listed:?}");
+        assert!(listed.contains(&"triggers".to_string()), "{listed:?}");
+        // A grandchild verb belongs to `agents triggers`, not to `agents`.
+        assert!(!listed.contains(&"trigger".to_string()), "{listed:?}");
     }
 
     #[test]

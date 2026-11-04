@@ -2111,6 +2111,15 @@
           ],
           "type": "string"
         },
+        "CompletionCheck": {
+          "description": "When a turn that is about to finish gets a completion check, and an\nautomatic continuation when the check finds the work unfinished.",
+          "enum": [
+            "off",
+            "unattended",
+            "always"
+          ],
+          "type": "string"
+        },
         "ConversationStarter": {
           "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
           "properties": {
@@ -2868,6 +2877,10 @@
         "communication": {
           "$ref": "#/$defs/Communication",
           "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`."
+        },
+        "completion_check": {
+          "$ref": "#/$defs/CompletionCheck",
+          "description": "When a turn about to finish is checked for whether it did what was\nasked, and continued automatically when it did not. `unattended`\n(default): sessions started by triggers and schedules, where no person\nis watching. `always`: chat too. `off`: never."
         },
         "default_model_id": {
           "description": "The ID of the default LLM model to use for this agent.\nIf not specified, the system default model will be used.",
@@ -12867,6 +12880,23 @@
     "read_only": true
   },
   {
+    "description": "Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_session_run",
+    "read_only": true
+  },
+  {
     "description": "Inspect a Session's primary Sandbox and what it may touch.",
     "input_schema": {
       "properties": {
@@ -14619,6 +14649,25 @@
       "type": "object"
     },
     "name": "list_events",
+    "read_only": true
+  },
+  {
+    "description": "List what Everruns or a person did about a finding, such as pausing a repeating schedule, and what the organization's self-healing policy offers to do now.",
+    "input_schema": {
+      "description": "List what has been done about a finding.",
+      "properties": {
+        "issue_id": {
+          "description": "The finding.",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_finding_actions",
     "read_only": true
   },
   {
@@ -16499,6 +16548,24 @@
     "read_only": false
   },
   {
+    "description": "Pause an agent: its channels stop accepting messages and its triggers and schedules do not run until it is resumed.",
+    "input_schema": {
+      "description": "Pause an agent: nothing new starts until it is resumed (EVE-1007).\n\nThis is the incident control, and is deliberately separate from archiving and\nfrom per-channel publish: it leaves every channel's own `status` and every\ntrigger's `enabled` untouched, so resuming restores exactly the set that was\nlive before, which is what makes it safe to reach for under pressure.\n\nDecision: it was \"suspend exposures\" and stopped channels and event triggers\nbut not schedules. \"Pause agent\" stops all of them, so the word means one\nthing. The `exposures_suspended` column keeps its name; the old\n`/exposures/suspend|resume` routes stay as deprecated HTTP aliases.",
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "pause_agent",
+    "read_only": false
+  },
+  {
     "description": "Pin a session for the current user.",
     "input_schema": {
       "properties": {
@@ -18065,9 +18132,9 @@
     "read_only": false
   },
   {
-    "description": "Let an agent's live channels accept traffic again.",
+    "description": "Resume a paused agent: its published channels, triggers and schedules work again.",
     "input_schema": {
-      "description": "Clear the agent-level exposure suspend, restoring the previously live set.",
+      "description": "Resume a paused agent, restoring the channels and triggers that were live.",
       "properties": {
         "agent_id": {
           "description": "Agent's prefixed public identifier.",
@@ -18079,7 +18146,7 @@
       ],
       "type": "object"
     },
-    "name": "resume_agent_exposures",
+    "name": "resume_agent",
     "read_only": false
   },
   {
@@ -18320,6 +18387,48 @@
       "type": "object"
     },
     "name": "rotate_agent_key",
+    "read_only": false
+  },
+  {
+    "description": "Run a fixer the issue offers, such as adding missing Slack permissions to the agent's app. A fix that needs approval in the provider returns the page to approve it on; the issue resolves only when a fresh check confirms it.",
+    "input_schema": {
+      "$defs": {
+        "RunIssueFixerRequest": {
+          "description": "Run one of the fixers an issue offers.",
+          "properties": {
+            "kind": {
+              "description": "The fixer to run, as the issue's `fixers` list names it.",
+              "example": "slack.add_permissions",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/RunIssueFixerRequest"
+        },
+        {
+          "properties": {
+            "issue_id": {
+              "description": "The issue.",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "issue_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Run a fixer on a health issue."
+    },
+    "name": "run_health_issue_fixer",
     "read_only": false
   },
   {
@@ -19257,24 +19366,6 @@
     "read_only": false
   },
   {
-    "description": "Stop every channel on an agent from accepting traffic.",
-    "input_schema": {
-      "description": "Take every endpoint on an agent off the internet in one action (EVE-1007).\n\nThis is the incident control, and is deliberately separate from archiving and\nfrom per-endpoint publish: it leaves every endpoint's own `status` untouched,\nso resuming restores exactly the set that was live before — which is what\nmakes it safe to reach for under pressure.",
-      "properties": {
-        "agent_id": {
-          "description": "Agent's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "agent_id"
-      ],
-      "type": "object"
-    },
-    "name": "suspend_agent_exposures",
-    "read_only": false
-  },
-  {
     "description": "Queue an immediate check of this Agent's GitHub source.",
     "input_schema": {
       "properties": {
@@ -19356,6 +19447,47 @@
       "type": "object"
     },
     "name": "sync_provider_models",
+    "read_only": false
+  },
+  {
+    "description": "Take an action the organization's self-healing policy offers on a finding, such as pausing a schedule whose runs keep ending the same way. It is recorded on the finding and can be undone.",
+    "input_schema": {
+      "$defs": {
+        "TakeFindingActionRequest": {
+          "description": "The action to take.",
+          "properties": {
+            "kind": {
+              "description": "`pause_schedule`.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/TakeFindingActionRequest"
+        },
+        {
+          "properties": {
+            "issue_id": {
+              "description": "The finding.",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "issue_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Take an action the policy offers on a finding."
+    },
+    "name": "take_finding_action",
     "read_only": false
   },
   {
@@ -19445,13 +19577,91 @@
     "read_only": false
   },
   {
-    "description": "Manually fire an agent trigger once.",
+    "description": "Manually fire an agent trigger once. Pass an event to run it through the trigger's filter, message and session routing as a real one would; webhook, GitHub and MCP event triggers need one.",
     "input_schema": {
+      "$defs": {
+        "ManualTriggerEvent": {
+          "additionalProperties": false,
+          "description": "An event to fire a trigger with, instead of a plain run.\n\nName it raw, as its source sends it (`payload`, with `name` for GitHub and\n`headers` for webhooks), or for a GitHub trigger by reference\n(`repository` and `pull_request`).",
+          "properties": {
+            "action": {
+              "description": "GitHub reference: the action the built event carries. Defaults to the\nfirst of opened, synchronize, reopened, ready_for_review the trigger\nlistens to.",
+              "example": "synchronize",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "headers": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Request headers a webhook trigger's templates see as `webhook.headers`.",
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Idempotency key. Defaults to a fresh id, so every manual fire runs;\nrepeat an id the trigger already saw to test deduplication.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Event name: the GitHub event (`pull_request`, `issue_comment`, the\n`X-GitHub-Event` header). For an MCP event trigger it defaults to the\ntrigger's event and must match it.",
+              "example": "pull_request",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "payload": {
+              "description": "The event as its source sends it: a webhook request body, a GitHub\nevent payload, an MCP event's `data`, or extra context a schedule\ntrigger's message reads as `{{payload.*}}`.",
+              "type": "object"
+            },
+            "pull_request": {
+              "description": "GitHub reference: the pull request number. The server reads it through\nthe agent's GitHub connection and builds a `pull_request` event.",
+              "example": 12,
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "repository": {
+              "description": "GitHub reference: the pull request's repository, `owner/name`.",
+              "example": "acme/api",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
       "description": "Manually fire a trigger once (does not expose the durable schedule id).",
       "properties": {
         "agent_id": {
           "description": "Owning agent's prefixed public identifier.",
           "type": "string"
+        },
+        "event": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ManualTriggerEvent",
+              "description": "Fire with this event, through the same filter, message, session\nrouting and delivery log a real one takes. Required for webhook,\nGitHub and MCP event triggers; optional for schedules."
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "trigger_id": {
           "description": "Agent trigger's prefixed public identifier.",
@@ -19482,6 +19692,30 @@
       "type": "object"
     },
     "name": "unarchive_session",
+    "read_only": false
+  },
+  {
+    "description": "Undo an action taken on a finding, automatic or not. Undoing a pause resumes the schedule and starts its repeated-outcome count over.",
+    "input_schema": {
+      "description": "Undo an action taken on a finding.",
+      "properties": {
+        "action_id": {
+          "description": "Prefixed public identifier of the action (`fact_…`).",
+          "type": "string"
+        },
+        "issue_id": {
+          "description": "The finding.",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id",
+        "action_id"
+      ],
+      "type": "object"
+    },
+    "name": "undo_finding_action",
     "read_only": false
   },
   {
@@ -19865,6 +20099,15 @@
           "enum": [
             "direct",
             "explicit"
+          ],
+          "type": "string"
+        },
+        "CompletionCheck": {
+          "description": "When a turn that is about to finish gets a completion check, and an\nautomatic continuation when the check finds the work unfinished.",
+          "enum": [
+            "off",
+            "unattended",
+            "always"
           ],
           "type": "string"
         },
@@ -20630,6 +20873,17 @@
                 {
                   "$ref": "#/$defs/Communication",
                   "description": "How the agent talks to people: `direct` or `explicit`. Omit to leave\nunchanged."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "completion_check": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/CompletionCheck",
+                  "description": "When a finishing turn is checked and continued: `off`, `unattended`\nor `always`. Omit to leave unchanged."
                 },
                 {
                   "type": "null"
@@ -24627,6 +24881,31 @@
           ],
           "type": "string"
         },
+        "SelfHealingMode": {
+          "description": "What Everruns does about one kind of finding.",
+          "enum": [
+            "auto",
+            "suggest",
+            "off"
+          ],
+          "type": "string"
+        },
+        "SelfHealingPolicy": {
+          "description": "An org's self-healing policy (Settings → Limits).",
+          "properties": {
+            "agent_fixes": {
+              "$ref": "#/$defs/SelfHealingMode",
+              "default": "suggest",
+              "description": "The Inspector's suggested changes to an agent's instructions: `suggest`\n(default) or `off`. A person always approves them."
+            },
+            "runaway_schedules": {
+              "$ref": "#/$defs/SelfHealingMode",
+              "default": "auto",
+              "description": "Pausing a schedule whose runs keep ending the same way, at the warning\ncount rather than the hard stop. Default `auto`."
+            }
+          },
+          "type": "object"
+        },
         "SystemDecisions": {
           "description": "Who answers an org's deployment-owned decision checks (guardrail `jev`\nchecks and the Slack relevance check).",
           "enum": [
@@ -24717,6 +24996,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "self_healing": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SelfHealingPolicy",
+                  "description": "Self-healing policy; replaces the stored policy as a whole. Omitted\nfields take the code default. `agent_fixes` cannot be `auto`."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "small_model_id": {
@@ -26318,6 +26608,15 @@
           ],
           "type": "string"
         },
+        "CompletionCheck": {
+          "description": "When a turn that is about to finish gets a completion check, and an\nautomatic continuation when the check finds the work unfinished.",
+          "enum": [
+            "off",
+            "unattended",
+            "always"
+          ],
+          "type": "string"
+        },
         "ConversationStarter": {
           "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
           "properties": {
@@ -26363,6 +26662,10 @@
             "communication": {
               "$ref": "#/$defs/Communication",
               "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`."
+            },
+            "completion_check": {
+              "$ref": "#/$defs/CompletionCheck",
+              "description": "When a turn about to finish is checked for whether it did what was\nasked, and continued automatically when it did not. `unattended`\n(default): sessions started by triggers and schedules, where no person\nis watching. `always`: chat too. `off`: never."
             },
             "default_model_id": {
               "description": "The ID of the default LLM model to use for this agent.\nIf not specified, the system default model will be used.",

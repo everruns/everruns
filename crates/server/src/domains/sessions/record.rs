@@ -183,6 +183,13 @@ impl SessionSource {
         Self::ALL.iter().copied().find(|v| v.as_str() == s)
     }
 
+    /// Whether no person watches a session from this source: a trigger or a
+    /// schedule started it. Such sessions get the agent's `unattended`
+    /// completion check.
+    pub fn is_unattended(self) -> bool {
+        matches!(self, SessionSource::Schedule | SessionSource::Webhook)
+    }
+
     /// Whether a client may declare this source on `POST /v1/sessions`.
     /// Everything else is server-owned so facets cannot be spoofed.
     pub fn is_client_declarable(self) -> bool {
@@ -717,6 +724,7 @@ impl Session {
             forked_from_session_id: self.forked_from_session_id,
             blueprint_id: self.blueprint_id.clone(),
             blueprint_config: self.blueprint_config.clone(),
+            unattended: self.source.is_unattended(),
         }
     }
 }

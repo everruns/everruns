@@ -26,8 +26,10 @@ Agent definitions and their configuration.
 | [`agents draft`](#agents-draft) | Revise an agent draft from a conversation with the agent builder. |
 | [`agents get`](#agents-get) | Get a single agent by ID or name. |
 | [`agents list`](#agents-list) | List all active agents. |
+| [`agents pause`](#agents-pause) | Pause an agent: its channels stop accepting messages and its triggers and schedules do not run until it is resumed. |
 | [`agents cost-plan`](#agents-cost-plan) | Suggest editable typical task workloads for agent cost planning. |
 | [`agents preview`](#agents-preview) | Preview the final agent shape with capabilities applied. |
+| [`agents resume`](#agents-resume) | Resume a paused agent: its published channels, triggers and schedules work again. |
 | [`agents upsert`](#agents-upsert) | Upsert agent — create (201) or update (200) by ID. |
 | [`agents avatar presets`](#agents-avatar-presets) | List the curated agent avatars: stable id, name, family, suggested role, description and search keywords. |
 | [`agents avatar set`](#agents-avatar-set) | Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). |
@@ -50,8 +52,6 @@ Agent definitions and their configuration.
 | [`agents credentials create`](#agents-credentials-create) | Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). |
 | [`agents examples adopt`](#agents-examples-adopt) | Create an agent from an agent example by name (see list_agent_examples). |
 | [`agents examples list`](#agents-examples-list) | List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). |
-| [`agents exposures resume`](#agents-exposures-resume) | Let an agent's live channels accept traffic again. |
-| [`agents exposures suspend`](#agents-exposures-suspend) | Stop every channel on an agent from accepting traffic. |
 | [`agents external-worker disable`](#agents-external-worker-disable) | Revoke external execution; queued sessions stay bound without native fallback. |
 | [`agents external-worker get`](#agents-external-worker-get) | Get an Agent's external execution endpoint. |
 | [`agents failures list`](#agents-failures-list) | List sessions with failed turns. |
@@ -349,6 +349,25 @@ Example:
 everruns agents list --search triage --limit 20
 ```
 
+## agents pause
+
+Pause an agent: its channels stop accepting messages and its triggers and schedules do not run until it is resumed.
+
+```bash
+everruns agents pause [OPTIONS] [AGENT]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT_ID>` | Agent's prefixed public identifier. |
+
+Example:
+
+```bash
+# Stop everything that starts an agent without deleting it
+everruns agents pause agent_01h9 --reason 'Pause while the prompt is fixed'
+```
+
 ## agents cost-plan
 
 Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.
@@ -394,6 +413,25 @@ Example:
 everruns agents preview --system-prompt 'Triage incoming issues'
 ```
 
+## agents resume
+
+Resume a paused agent: its published channels, triggers and schedules work again.
+
+```bash
+everruns agents resume [OPTIONS] [AGENT]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT_ID>` | Agent's prefixed public identifier. |
+
+Example:
+
+```bash
+# Let a paused agent start work again
+everruns agents resume agent_01h9 --reason 'Prompt fix verified'
+```
+
 ## agents upsert
 
 Upsert agent — create (201) or update (200) by ID.
@@ -407,6 +445,7 @@ everruns agents upsert [OPTIONS] --name <name> --system-prompt <system_prompt> [
 | `--id <ID>` | Client-supplied agent ID (format: agent_{32-hex}). If not provided, one is auto-generated. |
 | `--capabilities <CAPABILITIES>` | Capabilities to enable for this agent with per-agent configuration. Each capability has a `re... |
 | `--communication <COMMUNICATION>` | How an agent talks to the people in its conversations. One of `direct`, `explicit`. |
+| `--completion-check <COMPLETION_CHECK>` | When a turn that is about to finish gets a completion check, and an automatic continuation wh... One of `off`, `unattended`, `always`. |
 | `--default-model-id <DEFAULT_MODEL_ID>` | The ID of the default LLM model to use for this agent. If not specified, the system default m... |
 | `--description <DESCRIPTION>` | A human-readable description of what the agent does. |
 | `--display-name <DISPLAY_NAME>` | Human-readable display name shown in UI. Falls back to `name` when absent. |
@@ -869,44 +908,6 @@ Example:
 ```bash
 # Find a ready-made agent to start from instead of writing one by hand
 everruns agents examples list
-```
-
-## agents exposures resume
-
-Let an agent's live channels accept traffic again.
-
-```bash
-everruns agents exposures resume [OPTIONS] [AGENT]
-```
-
-| Flag | Description |
-|---|---|
-| `--agent <AGENT_ID>` | Agent's prefixed public identifier. |
-
-Example:
-
-```bash
-# Put a suspended agent back on its exposed surfaces
-everruns agents exposures resume agent_01h9 --reason 'Prompt fix verified'
-```
-
-## agents exposures suspend
-
-Stop every channel on an agent from accepting traffic.
-
-```bash
-everruns agents exposures suspend [OPTIONS] [AGENT]
-```
-
-| Flag | Description |
-|---|---|
-| `--agent <AGENT_ID>` | Agent's prefixed public identifier. |
-
-Example:
-
-```bash
-# Stop an agent answering on its exposed surfaces without deleting it
-everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'
 ```
 
 ## agents external-worker disable
@@ -1485,7 +1486,7 @@ everruns agents triggers list agent_01h9
 
 ## agents triggers trigger
 
-Manually fire an agent trigger once.
+Manually fire an agent trigger once. Pass an event to run it through the trigger's filter, message and session routing as a real one would; webhook, GitHub and MCP event triggers need one.
 
 ```bash
 everruns agents triggers trigger [OPTIONS] --agent-id <agent_id> --trigger-id <trigger_id>
@@ -1494,6 +1495,7 @@ everruns agents triggers trigger [OPTIONS] --agent-id <agent_id> --trigger-id <t
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Owning agent's prefixed public identifier. |
+| `--event <EVENT>` |  |
 | `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |
 
 Example:
@@ -1501,6 +1503,9 @@ Example:
 ```bash
 # Fire a trigger once now to test it without waiting for its schedule
 everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Test the digest message'
+
+# Run a GitHub trigger on an existing pull request, in that pull request's own session
+everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --event '{"repository":"acme/api","pull_request":12}' --reason 'Review this pull request'
 ```
 
 ## agents triggers update

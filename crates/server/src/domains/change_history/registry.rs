@@ -501,8 +501,8 @@ pub fn declared(name: &str) -> Change {
         }
         "update_agent" | "upsert_agent" => on(K::Agent, Updated, ID),
         "delete_agent" | "destroy_agent" => on(K::Agent, Deleted, Param("id")),
-        "suspend_agent_exposures" => on(K::Agent, Suspended, ID),
-        "resume_agent_exposures" => on(K::Agent, Resumed, ID),
+        "pause_agent" => on(K::Agent, Suspended, ID),
+        "resume_agent" => on(K::Agent, Resumed, ID),
         "set_agent_avatar" => on(K::Agent, Updated, Param("agent_id")),
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
         "disconnect_agent_github" => on(K::Agent, Detached, Param("agent_id")),
@@ -839,6 +839,12 @@ pub fn declared(name: &str) -> Change {
         "check_health_issue" | "snooze_health_issue" | "dismiss_health_issue" => {
             Change::Exempt("triage state of a health issue, not configuration")
         }
+        "take_finding_action" | "undo_finding_action" => Change::Exempt(
+            "pauses or resumes a schedule; recorded on the finding as a finding action",
+        ),
+        "run_health_issue_fixer" => Change::Exempt(
+            "repairs an integration or pauses a schedule; recorded on the issue as a finding action",
+        ),
 
         _ => Change::Undeclared,
     }
