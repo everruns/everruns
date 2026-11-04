@@ -52,6 +52,22 @@ pub struct ContextSizeRow {
     pub cached_ratio: f64,
 }
 
+/// A model an agent or the organization is set to use, as the model-health
+/// detector sees it. `agent_id` is absent for the organization default.
+#[derive(Debug, sqlx::FromRow)]
+pub struct ConfiguredModelRow {
+    pub org_id: i64,
+    pub agent_id: Option<Uuid>,
+    pub model_name: String,
+    pub provider_name: String,
+    pub enabled: bool,
+    /// Discovered, and the provider's last sync no longer listed it.
+    pub no_longer_listed: bool,
+    pub capabilities: serde_json::Value,
+    pub provider_metadata: Option<serde_json::Value>,
+    pub provider_status: String,
+}
+
 impl StorageBackend {
     /// Count a finished run's outcome against its schedule. Returns how many
     /// runs in a row have now ended with `fingerprint`; a run already counted
@@ -466,6 +482,37 @@ impl StorageBackend {
         )
         .bind(agent_id)
         .fetch_optional(self.database().pool())
+        .await?)
+    }
+
+    /// Every model an active agent names, and every organization default
+    /// model, with what decides whether it is usable. Staleness is the same
+    /// rule the model list applies (`last_seen_at < last_synced_at`).
+    pub async fn configured_models(&self, org_id: Option<i64>) -> Result<Vec<ConfiguredModelRow>> {
+        Ok(sqlx::query_as(
+            "WITH configured AS (
+                SELECT a.org_id, a.id AS agent_id, a.default_model_id AS model_id
+                FROM agents a
+                WHERE a.default_model_id IS NOT NULL AND a.status = 'active'
+                  AND a.archived_at IS NULL AND a.deleted_at IS NULL
+                UNION ALL
+                SELECT os.org_id, NULL::uuid, os.default_model_id
+                FROM organization_settings os
+                WHERE os.default_model_id IS NOT NULL
+             )
+             SELECT c.org_id, c.agent_id, m.display_name AS model_name, p.name AS provider_name,
+                    m.enabled,
+                    (m.source = 'discovered' AND p.last_synced_at IS NOT NULL
+                        AND (m.last_seen_at IS NULL OR m.last_seen_at < p.last_synced_at))
+                        AS no_longer_listed,
+                    m.capabilities, m.provider_metadata, p.status AS provider_status
+             FROM configured c
+             JOIN models m ON m.org_id = c.org_id AND m.id = c.model_id
+             JOIN providers p ON p.org_id = m.org_id AND p.id = m.provider_id
+             WHERE $1::bigint IS NULL OR c.org_id = $1",
+        )
+        .bind(org_id)
+        .fetch_all(self.database().pool())
         .await?)
     }
 }

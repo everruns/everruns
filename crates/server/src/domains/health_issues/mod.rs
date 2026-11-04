@@ -5,6 +5,7 @@ pub mod classifiers;
 pub mod commands;
 pub mod fixes;
 pub mod inspector;
+pub mod model_health;
 pub mod quality;
 pub mod self_healing;
 pub mod service;
@@ -25,6 +26,8 @@ mod classifier_tests;
 mod fixes_tests;
 #[cfg(test)]
 mod inspector_tests;
+#[cfg(test)]
+mod model_health_tests;
 #[cfg(test)]
 mod self_healing_tests;
 #[cfg(test)]
