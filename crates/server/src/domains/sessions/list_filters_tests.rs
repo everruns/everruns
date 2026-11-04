@@ -93,6 +93,7 @@ async fn seed(db: &Arc<StorageBackend>, spec: Seed) -> SessionId {
     };
     let row = db
         .create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             source: spec.source,
             org_id: DEFAULT_ORG_ID,
@@ -438,6 +439,7 @@ async fn facets_never_count_across_organizations() {
 
     let other_org = DEFAULT_ORG_ID + 1;
     db.create_session(CreateSessionRow {
+        mcp_creator: None,
         playground_user_id: None,
         source: SessionSource::Chat,
         org_id: other_org,

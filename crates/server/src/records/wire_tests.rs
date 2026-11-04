@@ -104,6 +104,7 @@ fn test_proto_session_roundtrip_includes_organization_id() {
     let now = Utc::now();
     let session_id = everruns_contracts::typed_id::SessionId::new();
     let session = crate::domains::sessions::record::Session {
+        mcp_creator: None,
         playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
@@ -296,6 +297,7 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
     let now = Utc::now();
     let session_id = everruns_contracts::typed_id::SessionId::new();
     let session = crate::domains::sessions::record::Session {
+        mcp_creator: None,
         playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),

@@ -603,6 +603,7 @@ mod tests {
     impl AuthBackend for MockAuthBackend {
         async fn validate_token(&self, _token: &str) -> Result<AuthUser, AuthError> {
             Ok(AuthUser {
+                mcp_client: None,
                 id: Uuid::new_v4(),
                 email: "test@example.com".to_string(),
                 name: "Test User".to_string(),

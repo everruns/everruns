@@ -20,6 +20,7 @@ fn test_auth_user_anonymous() {
 #[test]
 fn test_auth_user_has_role() {
     let user = AuthUser {
+        mcp_client: None,
         id: Uuid::nil(), // Use nil UUID for testing
         email: "test@example.com".to_string(),
         name: "Test".to_string(),
@@ -39,6 +40,7 @@ fn test_auth_user_has_role() {
 #[test]
 fn test_auth_user_admin() {
     let admin = AuthUser {
+        mcp_client: None,
         id: Uuid::nil(), // Use nil UUID for testing
         email: "admin@example.com".to_string(),
         name: "Admin".to_string(),
@@ -57,6 +59,7 @@ fn test_auth_user_admin() {
 #[test]
 fn test_auth_user_org_membership() {
     let user = AuthUser {
+        mcp_client: None,
         id: Uuid::nil(),
         email: "test@example.com".to_string(),
         name: "Test".to_string(),
@@ -379,6 +382,7 @@ fn jwt_auth_state_with_db(user: AuthUser) -> (AuthState, Arc<StorageBackend>) {
 async fn multi_org_jwt_state() -> (AuthState, Uuid) {
     let user_id = Uuid::new_v4();
     let jwt_user = AuthUser {
+        mcp_client: None,
         id: user_id,
         email: "test@example.com".to_string(),
         name: "Test User".to_string(),
@@ -574,6 +578,7 @@ async fn test_resolved_org_jwt_uses_db_not_jwt_orgs() {
 
     let user_id = Uuid::new_v4();
     let jwt_user = AuthUser {
+        mcp_client: None,
         id: user_id,
         email: "test@example.com".to_string(),
         name: "Test User".to_string(),
@@ -635,6 +640,7 @@ async fn test_resolved_org_jwt_db_no_membership_returns_404() {
 
     let user_id = Uuid::new_v4();
     let jwt_user = AuthUser {
+        mcp_client: None,
         id: user_id,
         email: "test@example.com".to_string(),
         name: "Test User".to_string(),
@@ -685,6 +691,7 @@ async fn test_resolved_org_jwt_falls_back_to_jwt_when_db_unavailable() {
 
     let user_id = Uuid::new_v4();
     let jwt_user = AuthUser {
+        mcp_client: None,
         id: user_id,
         email: "test@example.com".to_string(),
         name: "Test User".to_string(),
@@ -789,6 +796,7 @@ fn pat_auth_state(user: AuthUser) -> AuthState {
 fn multi_org_pat_user() -> (Uuid, AuthUser) {
     let user_id = Uuid::new_v4();
     let user = AuthUser {
+        mcp_client: None,
         id: user_id,
         email: "apiuser@example.com".to_string(),
         name: "API User".to_string(),
@@ -818,6 +826,7 @@ fn multi_org_pat_user() -> (Uuid, AuthUser) {
 async fn test_resolved_org_pat_single_org_auto_resolves() {
     let user_id = Uuid::new_v4();
     let user = AuthUser {
+        mcp_client: None,
         id: user_id,
         email: "apiuser@example.com".to_string(),
         name: "API User".to_string(),

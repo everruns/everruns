@@ -33,6 +33,12 @@ fn identity(value: &Value) -> Value {
 /// envelopes. This is also used by the SDK's reviewed event envelope.
 pub fn event(value: &Value) -> Value {
     let mut public = strings(value, &["participant_id", "dreaming_operation_id"]);
+    if let Some(client) = value.get("mcp_client").filter(|v| v.is_object()) {
+        public.insert(
+            "mcp_client".into(),
+            Value::Object(strings(client, &["client_id", "grant_id", "client_name"])),
+        );
+    }
     if let Some(value) = value.get("initiator").filter(|v| v.is_object()) {
         public.insert("initiator".into(), identity(value));
     }
@@ -186,5 +192,28 @@ mod tests {
         let input =
             json!({"custom":{"metadata":{"tool_changes":"customer data"}},"unknown":"CANARY"});
         assert_eq!(message(&input), json!({"custom":input["custom"]}));
+    }
+}
+
+#[cfg(test)]
+mod mcp_attribution_tests {
+    #[test]
+    fn client_annotation_exposes_only_reviewed_identifiers_and_name() {
+        let public = super::event(&serde_json::json!({"mcp_client":{
+            "client_id":"client_a", "grant_id":"grant_a", "client_name":"Client A",
+            "access_token":"CANARY", "redirect_uri":"https://example.com/?secret=CANARY"
+        }}));
+        assert_eq!(
+            public["mcp_client"],
+            serde_json::json!({
+                "client_id":"client_a", "grant_id":"grant_a", "client_name":"Client A"
+            })
+        );
+        assert!(!public.to_string().contains("CANARY"));
+        let legacy = super::message(&serde_json::json!({
+            "everruns_mcp_client": public["mcp_client"],
+            "mcp_client": public["mcp_client"]
+        }));
+        assert_eq!(legacy, serde_json::json!({}));
     }
 }

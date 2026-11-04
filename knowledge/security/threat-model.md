@@ -775,7 +775,20 @@ This section covers Everruns acting as an MCP server for external MCP clients. I
 | TM-MCP-012 | Public MCP skills expose tenant data, host files, or unreviewed workflows | High | Publication is an explicit build-time allowlist of public product and operating guidance, excluding organization registry records and contributor/Framework skills. Complete embedded trees provide byte-stable manifests and exact URI lookup without runtime filesystem access; nested skill files do not expand the catalog. The existing MCP auth and org-resolution boundary runs before every method. Public cache scope applies only to these static bytes; org resources and org-dependent discovery remain private. Content activation, origin binding, and approval belong to the host. See [Skills extension contract](../integrations/mcp.md#public-skills-extension) and [endpoint regression tests](../../crates/server/tests/domain/mcp_endpoint_test/skills.rs). | MITIGATED |
 | TM-MCP-013 | MCP Tasks handle reads or answers another tenant's or user's turn | High | A task id (`{org}.{session}.{message}`, `crates/server/src/api/mcp_endpoint/tasks.rs`) is a reference, not a credential: every `tasks/get`, `tasks/update` and `tasks/cancel` re-resolves membership for the named org (TM-MCP-001), re-runs the session read policy, and checks that the message belongs to that session; any miss is the same `-32602 Unknown taskId`, so existence does not leak across orgs. The ids are UUIDv7 with 74 random bits each, so handles cannot be enumerated. `tasks/update` additionally needs `SESSION_MANAGE`, refuses another user's Platform Chat session, only answers the `ask_user` call still parked (key `ask_user:{tool_call_id}`), and validates the answer through the shared `resolve_question_answers` (TM-AGENT-015). Covered by `crates/server/tests/domain/mcp_endpoint_test/tasks.rs` and `crates/server/tests/contracts/mcp_form_elicitation_test.rs`. | MITIGATED |
 
+| TM-MCP-014 | Self-declared MCP identity impersonates a trusted client or another client’s actions | High | Consent labels registration names as self-declared, explains localhost and selected-host limits, and rejects unsupported narrower scopes. Only validated OAuth grant claims select persisted provenance. Session creation and each input capture separate records, caller metadata is stripped, and command propagation is bound to the original user. Public fields are allowlisted and UI names are rendered as text. Legacy requests and background work remain unattributed. Covered by `auth::mcp_attribution::tests`, `mcp_endpoint_test::attribution`, consent tests, and UI attribution tests. | MITIGATED |
+
 ### Mitigation Details
+
+**Inbound MCP attribution trust boundary (TM-MCP-014):** Authenticated grant identity is distinct
+from self-declared client names and MCP `clientInfo`. Request-scoped attribution
+is bound to the authenticated user, carried through command contexts, and cleared
+for background work. Session creators are immutable; each input stores its own
+provenance in server-owned event metadata. Caller-owned message metadata, including
+legacy lookalike fields, never supplies attribution. Public projection allowlists
+only client/grant IDs and the registration name. Consent shows the selected host,
+localhost limitations and full authority, rejecting unsupported narrow scopes.
+This strengthens TM-MCP-001, TM-MCP-006, TM-MCP-011 and TM-API-023; it does not grant
+extra authorization or add an inbound CIMD fetch surface.
 
 **TM-MCP-001, Everruns MCP Server Tenant Escape:**
 The first-party MCP endpoint is both a discovery surface and an execution surface: `discover` publishes the command catalog, `query` runs bashkit scripts over read-only builtins, `execute` runs scripts over the full command set, and tier-1 tools (`agent_run`, `session_send_message`, `session_get_status`) compose session and message commands directly. The threat is a caller using catalog discovery plus scripted control flow, guessed IDs, or `organization_id` overrides to read or mutate another organization.

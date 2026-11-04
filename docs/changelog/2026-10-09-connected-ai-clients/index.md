@@ -30,3 +30,9 @@ See [Use Everruns in AI tools](/getting-started/use-in-ai-tools/) and [#4461](ht
 
 Connected AI clients are their own page, **Settings > AI clients**. See
 [Personal settings pages](/changelog/2026-10-25-personal-settings-pages/).
+
+## Update 2026-11-04
+
+Consent now explains callback trust and full access. Session and message details
+identify the registered client behind each action. See
+[MCP client attribution](/changelog/2026-11-04-mcp-consent-client-attribution/).

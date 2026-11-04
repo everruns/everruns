@@ -128,6 +128,7 @@ async fn create_test_session(
         .await
         .expect("create test harness");
     db.create_session(CreateSessionRow {
+        mcp_creator: None,
         playground_user_id: None,
         source: SessionSource::Api,
         workspace_id: None,

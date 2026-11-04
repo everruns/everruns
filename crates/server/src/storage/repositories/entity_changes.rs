@@ -13,7 +13,7 @@ macro_rules! columns {
     () => {
         "id, org_id, entity_kind, entity_ref, command, action, reason, changed_fields, \
          actor_kind, actor_user_id, via_session_id, via_agent_id, surface, request_id, \
-         idempotency_key, revision, restored_from_revision, created_at"
+         idempotency_key, revision, restored_from_revision, created_at, mcp_client"
     };
 }
 
@@ -93,9 +93,9 @@ impl Database {
                 id, org_id, entity_kind, entity_ref, command, action, reason,
                 changed_fields, actor_kind, actor_user_id, via_session_id, via_agent_id,
                 surface, request_id, idempotency_key, revision, snapshot, snapshot_hash,
-                restored_from_revision
+                restored_from_revision, mcp_client
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-                $19)
+                $19, $20)
             RETURNING "#,
                 columns!()
             ),
@@ -120,6 +120,7 @@ impl Database {
             .bind(snapshot)
             .bind(snapshot_hash)
             .bind(change.restored_from_revision)
+            .bind(&change.mcp_client)
             .fetch_one(&mut *tx)
             .await?;
         tx.commit().await?;

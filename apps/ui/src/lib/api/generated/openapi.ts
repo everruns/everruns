@@ -15656,6 +15656,7 @@ export interface components {
        * @description Id of this history entry.
        */
       id: string;
+      mcp_client?: components["schemas"]["McpClientAttribution"] | null;
       /** @description Why, in the caller's words. Caller text, not verified. */
       reason?: string | null;
       /** @description Correlation id of the HTTP request, when there was one. */
@@ -22340,6 +22341,13 @@ export interface components {
        */
       repository?: string | null;
     };
+    McpClientAttribution: {
+      client_id: string;
+      /** @description Self-declared registration name, snapshotted at the time of the action. */
+      client_name: string;
+      /** Format: uuid */
+      grant_id: string;
+    };
     /**
      * @description Whether a missing sign-in for an agent MCP attachment may pause the turn
      *     with an in-chat Connect card.
@@ -24689,6 +24697,7 @@ export interface components {
         max_iterations?: number | null;
         /** @description Remote MCP servers scoped to this session only. */
         mcpServers?: components["schemas"]["BTreeMap"];
+        mcp_creator?: components["schemas"]["McpClientAttribution"] | null;
         /**
          * @description LLM model ID to use for this session (format: model_{32-hex}).
          *     Overrides the agent's default model if set.
@@ -25300,6 +25309,7 @@ export interface components {
         max_iterations?: number | null;
         /** @description Remote MCP servers scoped to this session only. */
         mcpServers?: components["schemas"]["BTreeMap"];
+        mcp_creator?: components["schemas"]["McpClientAttribution"] | null;
         /**
          * @description LLM model ID to use for this session (format: model_{32-hex}).
          *     Overrides the agent's default model if set.
@@ -29245,6 +29255,7 @@ export interface components {
       max_iterations?: number | null;
       /** @description Remote MCP servers scoped to this session only. */
       mcpServers?: components["schemas"]["BTreeMap"];
+      mcp_creator?: components["schemas"]["McpClientAttribution"] | null;
       /**
        * @description LLM model ID to use for this session (format: model_{32-hex}).
        *     Overrides the agent's default model if set.
@@ -35867,6 +35878,7 @@ export interface components {
       max_iterations?: number | null;
       /** @description Remote MCP servers scoped to this session only. */
       mcpServers?: components["schemas"]["BTreeMap"];
+      mcp_creator?: components["schemas"]["McpClientAttribution"] | null;
       /**
        * @description LLM model ID to use for this session (format: model_{32-hex}).
        *     Overrides the agent's default model if set.

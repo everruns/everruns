@@ -77,6 +77,7 @@ impl TurnBackend for FailOnceResumeRunner {
 
 async fn create_test_session(db: &StorageBackend, org_id: i64) -> crate::storage::SessionRow {
     db.create_session(crate::storage::CreateSessionRow {
+        mcp_creator: None,
         playground_user_id: None,
         source: crate::domains::sessions::record::SessionSource::Api,
         workspace_id: None,

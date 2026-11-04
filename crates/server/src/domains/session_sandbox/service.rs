@@ -793,6 +793,7 @@ mod tests {
         harness_id: everruns_contracts::typed_id::HarnessId,
     ) -> crate::storage::SessionRow {
         db.create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
@@ -877,6 +878,7 @@ mod tests {
 
         let session = db
             .create_session(CreateSessionRow {
+                mcp_creator: None,
                 playground_user_id: None,
                 source: crate::domains::sessions::record::SessionSource::Api,
                 workspace_id: None,
@@ -995,6 +997,7 @@ mod tests {
         .await
         .unwrap();
         db.create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
@@ -1096,6 +1099,7 @@ mod tests {
         .unwrap();
         let session = db
             .create_session(CreateSessionRow {
+                mcp_creator: None,
                 playground_user_id: None,
                 source: crate::domains::sessions::record::SessionSource::Api,
                 workspace_id: None,
@@ -1206,6 +1210,7 @@ mod tests {
 
         let session = db
             .create_session(CreateSessionRow {
+                mcp_creator: None,
                 playground_user_id: None,
                 source: crate::domains::sessions::record::SessionSource::Api,
                 workspace_id: None,
@@ -1268,6 +1273,7 @@ mod tests {
         .await
         .unwrap();
         db.create_session(CreateSessionRow {
+            mcp_creator: None,
             playground_user_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,

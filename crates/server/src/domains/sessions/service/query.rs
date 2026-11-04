@@ -529,6 +529,7 @@ impl SessionService {
             network_access: row
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
+            mcp_creator: row.mcp_creator.and_then(|v| serde_json::from_value(v).ok()),
             hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
             max_iterations: max_iterations::from_db(row.max_iterations),
             parallel_tool_calls: row.parallel_tool_calls,
